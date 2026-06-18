@@ -1,0 +1,21 @@
+/* Form fields — mirrors Customer dialog sections (AddressSection / CompanySection). */
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.settings-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+.form-hint {
+    margin: 0;
+    color: #64748b;
+}

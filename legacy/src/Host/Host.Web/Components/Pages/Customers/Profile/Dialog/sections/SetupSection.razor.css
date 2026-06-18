@@ -1,0 +1,126 @@
+/* Step 1 cards: identity & period (top) and coverage (bottom). Visually echoes the
+   wizard shell — same surface, same border / radius, same accent. */
+
+.setup-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.setup-card {
+    --setup-accent: #722f37;
+    --setup-accent-soft: rgba(114, 47, 55, 0.10);
+    --setup-border: #e9edf4;
+    border: 1px solid var(--setup-border);
+    border-radius: 14px;
+    padding: 1rem 1.15rem 1.1rem;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Highlight variant for the "duplicate-for-other-customer" destination card so the user
+   notices that this is a context override and not a regular Setup field. */
+.setup-card--accent {
+    --setup-accent: #1e40af;
+    --setup-accent-soft: rgba(30, 64, 175, 0.10);
+    border-color: rgba(30, 64, 175, 0.25);
+    background: linear-gradient(0deg, rgba(30, 64, 175, 0.03), rgba(30, 64, 175, 0.03)), #fff;
+}
+
+.setup-card__header {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+
+.setup-card__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 10px;
+    background: var(--setup-accent-soft);
+    color: var(--setup-accent);
+}
+
+.setup-card__title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #2f3349;
+    letter-spacing: -0.005em;
+}
+
+.setup-card__subtitle {
+    margin: 0.1rem 0 0;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.setup-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1rem;
+    align-items: end;
+}
+
+.setup-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+/* Row 3 right column: a 30/70 sub-grid that nests "alert days" + "reminder cadence"
+   inside one cell of the parent .setup-grid. Drops to a single column on narrow widths
+   so the cadence dropdown never gets squashed below ~120px. */
+.setup-subgrid-50-50 {
+    display: grid;
+    grid-template-columns: minmax(0, 50fr) minmax(0, 50fr);
+    gap: 0.85rem 1rem;
+    align-items: end;
+    min-width: 0;
+}
+
+.setup-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.setup-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+.setup-field__hint {
+    margin: 0;
+    font-size: 0.6875rem;
+    color: #94a3b8;
+    line-height: 1.45;
+}
+
+/* Second Radzen popup when both Required and Length validators apply (stations basic pattern). */
+.setup-field__validator-popup--length {
+    position: absolute;
+    top: 2.5rem;
+}
+
+@media (max-width: 720px) {
+    .setup-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .setup-subgrid-30-70 {
+        grid-template-columns: 1fr;
+    }
+}

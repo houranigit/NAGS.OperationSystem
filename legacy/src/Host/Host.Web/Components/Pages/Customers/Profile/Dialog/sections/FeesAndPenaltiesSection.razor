@@ -1,0 +1,298 @@
+@*
+  Step 2 — Fees & Penalties.
+  Layout (top-down inside one scrollable panel):
+    1. "Fees & rates" card with the six contract-wide fees.
+    2. "Cancellation charge plan" card with a toggle (off ➜ no penalty); when on,
+       Basis + Charge type + ContractPlanBracketsEditor (matching PricePlanBracketsSection look).
+    3. "Delay charge plan" card — same toggle pattern, plus a Delay-type selector.
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using Host.Web.Components.Pages.Customers.Profile.Dialog.Sections.Editors
+@using FeeType = Contracts.Domain.Enumerations.FeeType
+@using CancellationChargeBasis = Contracts.Domain.Enumerations.CancellationChargeBasis
+@using DelayChargeBasis = Contracts.Domain.Enumerations.DelayChargeBasis
+@using DelayType = Contracts.Domain.Enumerations.DelayType
+
+<div class="fees-section">
+
+    @* ── Cancellation plan ───────────────────────────────────────────────── *@
+    <article class="fees-section__card">
+        <header class="fees-section__card-header fees-section__card-header--switchable">
+            <div class="d-flex align-items-center gap-3">
+                <span class="fees-section__icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                </span>
+                <div>
+                    <h6 class="fees-section__title">Cancellation charge plan</h6>
+                    <p class="fees-section__subtitle">Optional. Charge applied when a flight is cancelled.</p>
+                </div>
+            </div>
+            <RadzenSwitch Value="@Model.EnableCancellationPlan"
+                          ValueChanged="@OnCancellationToggleAsync"
+                          TValue="bool" />
+        </header>
+
+        @if (Model.EnableCancellationPlan)
+        {
+            <div class="fees-section__plan-controls">
+                <div class="fees-section__plan-field">
+                    <label class="fees-section__plan-label">Basis</label>
+                    <RadzenDropDown Value="@Model.CancellationBasis"
+                                    ValueChanged="@OnCancellationBasisChangedAsync"
+                                    Data="@_cancellationBasisOptions"
+                                    TValue="CancellationChargeBasis"
+                                    TextProperty="Label"
+                                    ValueProperty="Value"
+                                    Style="width: 100%;" />
+                </div>
+                <div class="fees-section__plan-field">
+                    <label class="fees-section__plan-label">Charge type</label>
+                    <RadzenDropDown Value="@Model.CancellationChargeType"
+                                    ValueChanged="@OnCancellationChargeTypeChangedAsync"
+                                    Data="@_feeTypeOptions"
+                                    TValue="FeeType"
+                                    TextProperty="Label"
+                                    ValueProperty="Value"
+                                    Style="width: 100%;" />
+                </div>
+            </div>
+            <ContractPlanBracketsEditor IsFlat="@(Model.CancellationBasis == CancellationChargeBasis.PerCancel)"
+                                        ChargeType="@Model.CancellationChargeType"
+                                        CurrencyDisplay="@CurrencyDisplay"
+                                        Brackets="Model.CancellationBrackets"
+                                        FlatLabel="Charge per cancellation"
+                                        FlatHint="Applied once per cancellation regardless of how far in advance it was made."
+                                        DurationHint="Brackets are evaluated against how many minutes before operation start the cancellation arrived."
+                                        OnChanged="OnFieldChangedAsync" />
+        }
+        else
+        {
+            <p class="fees-section__placeholder">Switch on to charge customers when they cancel a flight.</p>
+        }
+    </article>
+
+    @* ── Delay plan ──────────────────────────────────────────────────────── *@
+    <article class="fees-section__card">
+        <header class="fees-section__card-header fees-section__card-header--switchable">
+            <div class="d-flex align-items-center gap-3">
+                <span class="fees-section__icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </span>
+                <div>
+                    <h6 class="fees-section__title">Delay charge plan</h6>
+                    <p class="fees-section__subtitle">Optional. Charge applied when a flight is delayed.</p>
+                </div>
+            </div>
+            <RadzenSwitch Value="@Model.EnableDelayPlan"
+                          ValueChanged="@OnDelayToggleAsync"
+                          TValue="bool" />
+        </header>
+
+        @if (Model.EnableDelayPlan)
+        {
+            <div class="fees-section__plan-controls">
+                <div class="fees-section__plan-field">
+                    <label class="fees-section__plan-label">Delay type</label>
+                    <RadzenDropDown Value="@Model.DelayType"
+                                    ValueChanged="@OnDelayTypeChangedAsync"
+                                    Data="@_delayTypeOptions"
+                                    TValue="DelayType"
+                                    TextProperty="Label"
+                                    ValueProperty="Value"
+                                    Style="width: 100%;" />
+                </div>
+                <div class="fees-section__plan-field">
+                    <label class="fees-section__plan-label">Basis</label>
+                    <RadzenDropDown Value="@Model.DelayBasis"
+                                    ValueChanged="@OnDelayBasisChangedAsync"
+                                    Data="@_delayBasisOptions"
+                                    TValue="DelayChargeBasis"
+                                    TextProperty="Label"
+                                    ValueProperty="Value"
+                                    Style="width: 100%;" />
+                </div>
+                <div class="fees-section__plan-field">
+                    <label class="fees-section__plan-label">Charge type</label>
+                    <RadzenDropDown Value="@Model.DelayChargeType"
+                                    ValueChanged="@OnDelayChargeTypeChangedAsync"
+                                    Data="@_feeTypeOptions"
+                                    TValue="FeeType"
+                                    TextProperty="Label"
+                                    ValueProperty="Value"
+                                    Style="width: 100%;" />
+                </div>
+            </div>
+            <ContractPlanBracketsEditor IsFlat="@(Model.DelayBasis == DelayChargeBasis.PerDelay)"
+                                        ChargeType="@Model.DelayChargeType"
+                                        CurrencyDisplay="@CurrencyDisplay"
+                                        Brackets="Model.DelayBrackets"
+                                        FlatLabel="Charge per delay"
+                                        FlatHint="Applied once per delay event regardless of duration."
+                                        DurationHint="Brackets are evaluated against the duration of the delay (in minutes)."
+                                        OnChanged="OnFieldChangedAsync" />
+        }
+        else
+        {
+            <p class="fees-section__placeholder">Switch on to charge customers when a flight is delayed.</p>
+        }
+    </article>
+
+    @* ── Fees & rates ────────────────────────────────────────────────────── *@
+    <article class="fees-section__card">
+        <header class="fees-section__card-header">
+            <span class="fees-section__icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></svg>
+            </span>
+            <div>
+                <h6 class="fees-section__title">Fees &amp; rates</h6>
+                <p class="fees-section__subtitle">Contract-wide fees and discounts. Each can be a percentage or a fixed amount.</p>
+            </div>
+        </header>
+
+        <div class="fees-section__fees-grid">
+            <ContractFeeRowEditor Title="Admin fee"
+                                  Key="admin"
+                                  Model="Model"
+                                  Row="Model.AdminFee"
+                                  CurrencyDisplay="@CurrencyDisplay"
+                                  OnChanged="OnFieldChangedAsync" />
+            <ContractFeeRowEditor Title="Disbursement fee"
+                                  Key="disbursement"
+                                  Model="Model"
+                                  Row="Model.DisbursementFee"
+                                  CurrencyDisplay="@CurrencyDisplay"
+                                  OnChanged="OnFieldChangedAsync" />
+            <ContractFeeRowEditor Title="Holiday fee"
+                                  Key="holiday"
+                                  Model="Model"
+                                  Row="Model.HolidayFee"
+                                  CurrencyDisplay="@CurrencyDisplay"
+                                  OnChanged="OnFieldChangedAsync" />
+            <ContractFeeRowEditor Title="Night fee"
+                                  Key="night"
+                                  Model="Model"
+                                  Row="Model.NightFee"
+                                  CurrencyDisplay="@CurrencyDisplay"
+                                  OnChanged="OnFieldChangedAsync" />
+            <ContractFeeRowEditor Title="Return-to-ramp discount"
+                                  Key="rtrDisc"
+                                  Model="Model"
+                                  Row="Model.ReturnToRampDiscount"
+                                  CurrencyDisplay="@CurrencyDisplay"
+                                  OnChanged="OnFieldChangedAsync" />
+            <ContractFeeRowEditor Title="Other discount"
+                                  Key="otherDisc"
+                                  Model="Model"
+                                  Row="Model.OtherDiscount"
+                                  CurrencyDisplay="@CurrencyDisplay"
+                                  OnChanged="OnFieldChangedAsync" />
+        </div>
+    </article>
+
+
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContractFormModel Model { get; set; } = default!;
+    [Parameter] public string CurrencyDisplay { get; set; } = "—";
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private sealed record EnumOption<T>(T Value, string Label) where T : struct, Enum;
+
+    private static readonly EnumOption<CancellationChargeBasis>[] _cancellationBasisOptions =
+    [
+        new(CancellationChargeBasis.PerCancel, "Single charge per cancellation"),
+        new(CancellationChargeBasis.Brackets,  "Brackets by lead time")
+    ];
+
+    private static readonly EnumOption<DelayType>[] _delayTypeOptions =
+    [
+        new(DelayType.LateDeparture,  "Late departure"),
+        new(DelayType.EarlyArrival,   "Early arrival"),
+        new(DelayType.ActualOnGround, "Actual on-ground")
+    ];
+
+    private static readonly EnumOption<DelayChargeBasis>[] _delayBasisOptions =
+    [
+        new(DelayChargeBasis.PerDelay, "Single charge per delay"),
+        new(DelayChargeBasis.Brackets, "Brackets by delay duration")
+    ];
+
+    private static readonly EnumOption<FeeType>[] _feeTypeOptions =
+    [
+        new(FeeType.Fixed,      "Fixed amount"),
+        new(FeeType.Percentage, "Percentage")
+    ];
+
+    private async Task OnCancellationToggleAsync(bool value)
+    {
+        Model.EnableCancellationPlan = value;
+        if (value && Model.CancellationBrackets.Count == 0)
+        {
+            Model.CancellationBrackets.Add(new ContractFormModel.PlanBracketRow { MinMinutes = 0, MaxMinutes = 0, Value = 0m });
+        }
+        await OnFieldChangedAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnDelayToggleAsync(bool value)
+    {
+        Model.EnableDelayPlan = value;
+        if (value && Model.DelayBrackets.Count == 0)
+        {
+            Model.DelayBrackets.Add(new ContractFormModel.PlanBracketRow { MinMinutes = 0, MaxMinutes = 0, Value = 0m });
+        }
+        await OnFieldChangedAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnCancellationBasisChangedAsync(CancellationChargeBasis basis)
+    {
+        if (basis == Model.CancellationBasis) return;
+        Model.CancellationBasis = basis;
+        // Switching basis resets the brackets to the canonical "starter" shape so the editor
+        // never shows an inconsistent state (Flat = single 0..0 row; Brackets = single 0..∞ row).
+        Model.CancellationBrackets = basis == CancellationChargeBasis.PerCancel
+            ? new List<ContractFormModel.PlanBracketRow> { new() { MinMinutes = 0, MaxMinutes = 0, Value = 0m } }
+            : new List<ContractFormModel.PlanBracketRow> { new() { MinMinutes = 0, MaxMinutes = null, Value = 0m } };
+        await OnFieldChangedAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnCancellationChargeTypeChangedAsync(FeeType chargeType)
+    {
+        Model.CancellationChargeType = chargeType;
+        if (chargeType == FeeType.Percentage)
+            foreach (var b in Model.CancellationBrackets) if (b.Value > 100m) b.Value = 100m;
+        await OnFieldChangedAsync();
+    }
+
+    private async Task OnDelayTypeChangedAsync(DelayType type)
+    {
+        Model.DelayType = type;
+        await OnFieldChangedAsync();
+    }
+
+    private async Task OnDelayBasisChangedAsync(DelayChargeBasis basis)
+    {
+        if (basis == Model.DelayBasis) return;
+        Model.DelayBasis = basis;
+        Model.DelayBrackets = basis == DelayChargeBasis.PerDelay
+            ? new List<ContractFormModel.PlanBracketRow> { new() { MinMinutes = 0, MaxMinutes = 0, Value = 0m } }
+            : new List<ContractFormModel.PlanBracketRow> { new() { MinMinutes = 0, MaxMinutes = null, Value = 0m } };
+        await OnFieldChangedAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnDelayChargeTypeChangedAsync(FeeType chargeType)
+    {
+        Model.DelayChargeType = chargeType;
+        if (chargeType == FeeType.Percentage)
+            foreach (var b in Model.DelayBrackets) if (b.Value > 100m) b.Value = 100m;
+        await OnFieldChangedAsync();
+    }
+
+    private Task OnFieldChangedAsync() =>
+        OnModelChanged.HasDelegate ? OnModelChanged.InvokeAsync() : Task.CompletedTask;
+}

@@ -1,0 +1,56 @@
+package com.nags.operations.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.nags.operations.AppGraph
+import com.nags.operations.ui.adhoc.AdHocFlightsViewModel
+import com.nags.operations.ui.aog.AogFlightsViewModel
+import com.nags.operations.ui.flights.MyFlightsViewModel
+import com.nags.operations.ui.login.LoginViewModel
+import com.nags.operations.ui.sync.SyncCenterViewModel
+import com.nags.operations.ui.workorder.WorkOrderDraftsViewModel
+
+/**
+ * Resolves ViewModels from [AppGraph]. Routes use this through Compose's
+ * `viewModel { }` so each NavBackStackEntry gets its own scoped instance.
+ */
+class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Factory {
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return when (modelClass) {
+            LoginViewModel::class.java -> LoginViewModel(graph.authRepository)
+            MyFlightsViewModel::class.java -> MyFlightsViewModel(
+                repository = graph.flightsRepository,
+                draftsRepository = graph.workOrderDraftsRepository,
+                outboxRepository = graph.workOrderOutboxRepository,
+                coordinator = graph.syncCoordinator,
+                networkMonitor = graph.networkMonitor,
+            )
+            WorkOrderDraftsViewModel::class.java -> WorkOrderDraftsViewModel(
+                draftsRepository = graph.workOrderDraftsRepository,
+            )
+            AogFlightsViewModel::class.java -> AogFlightsViewModel(
+                repository = graph.flightsRepository,
+                draftsRepository = graph.workOrderDraftsRepository,
+                outboxRepository = graph.workOrderOutboxRepository,
+                coordinator = graph.syncCoordinator,
+                networkMonitor = graph.networkMonitor,
+            )
+            AdHocFlightsViewModel::class.java -> AdHocFlightsViewModel(
+                repository = graph.flightsRepository,
+                draftsRepository = graph.workOrderDraftsRepository,
+                outboxRepository = graph.workOrderOutboxRepository,
+                coordinator = graph.syncCoordinator,
+                networkMonitor = graph.networkMonitor,
+            )
+            SyncCenterViewModel::class.java -> SyncCenterViewModel(
+                database = graph.database,
+                coordinator = graph.syncCoordinator,
+                networkMonitor = graph.networkMonitor,
+                realtimeChannel = graph.realtimeChannel,
+            )
+            else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")
+        } as T
+    }
+}

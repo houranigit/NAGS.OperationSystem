@@ -1,0 +1,108 @@
+@*
+  UPDATE = free-nav via the shared WizardShell.
+*@
+@using Core.Contracts.Features.OperationType
+@using Host.Web.Components.Pages.Settings.MasterData.OperationTypes.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="OperationTypeFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_steps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@IsDirty"
+                 SidebarAriaLabel="Edit operation type sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the operation type"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <BasicDetailsSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public OperationTypeDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Basic details", "Name & description", "layers", IsRequired: true, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<OperationTypeFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private OperationTypeFormModel _model = new() { IsActive = true };
+    private OperationTypeFormModel _snapshot = new() { IsActive = true };
+    private List<string> _errorMessages = new();
+
+    private bool IsDirty =>
+        !string.Equals(_model.Name, _snapshot.Name, StringComparison.Ordinal)
+        || !string.Equals(_model.Description ?? "", _snapshot.Description ?? "", StringComparison.Ordinal)
+        || _model.IsActive != _snapshot.IsActive;
+
+    protected override void OnInitialized()
+    {
+        _model = OperationTypeFormModel.FromDto(ExistingItem);
+        _snapshot = _model.Clone();
+        _currentSection = 0;
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(OperationTypeFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToUpdateOperationTypeCommand(ExistingItem.Id));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save operation type", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

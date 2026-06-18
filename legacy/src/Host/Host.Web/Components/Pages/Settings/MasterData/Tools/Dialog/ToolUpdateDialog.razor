@@ -1,0 +1,147 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Hydrates the model from the GetToolDetails
+  query on first paint (the grid DTO doesn't carry equipments). Snapshot string drives dirty.
+*@
+@using Store.Application.Features.Tool.Queries.GetToolDetails
+@using Store.Contracts.Features.Tool
+@using Host.Web.Components.Pages.Settings.MasterData.Tools.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+
+@if (_loading)
+{
+    <div class="tool-update-loading">
+        <Skeleton Height="2.5rem" Width="40%" />
+        <Skeleton Height="0.85rem" Width="60%" CssClass="mt-2" />
+        <Skeleton Height="12rem" Width="100%" CssClass="mt-3" />
+    </div>
+}
+else
+{
+    <RadzenTemplateForm @ref="_form" TItem="ToolFormModel" Data="@_model"
+                        Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+        <WizardShell Steps="@_steps"
+                     CurrentStep="_currentSection"
+                     CurrentStepChanged="@(s => _currentSection = s)"
+                     FurthestReached="@(_steps.Length - 1)"
+                     Mode="WizardMode.FreeNav"
+                     IsBusy="_saving"
+                     CanSave="@IsDirty"
+                     SidebarAriaLabel="Edit tool sections"
+                     SaveLabel="Save changes"
+                     SavingLabel="Saving…"
+                     AlertTitle="Couldn't update the tool"
+                     ConfirmCancelOnDirty="@IsDirty"
+                     ErrorMessages="@_errorMessages"
+                     OnSave="OnSaveClickedAsync"
+                     OnCancel="OnCancelAsync"
+                     OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                     OnDismissError="ClearErrors">
+            <StepContent Context="step">
+                @switch (step)
+                {
+                    case 0:
+                        <BasicDetailsSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                        break;
+                    case 1:
+                        <ToolEquipmentsSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                        break;
+                }
+            </StepContent>
+        </WizardShell>
+    </RadzenTemplateForm>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ExistingToolId { get; set; }
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Basic details", "Name, description, status", "tools", IsRequired: true, Validate: () => true),
+        new("Equipments", "Factory id, serial id, calibration", "package", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<ToolFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private bool _loading = true;
+    private bool _hydrated;
+    private ToolFormModel _model = new() { IsActive = true };
+    private string _snapshot = "{}";
+    private List<string> _errorMessages = new();
+
+    private bool IsDirty => Snapshot(_model) != _snapshot;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _hydrated) return;
+        _hydrated = true;
+        try
+        {
+            var r = await ScopedMediator.Send(new GetToolDetailsQuery(ExistingToolId));
+            if (r.IsSuccess && r.Value is not null)
+            {
+                _model = ToolFormModel.FromDetails(r.Value);
+                _snapshot = Snapshot(_model);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Tool", r.IsFailure ? r.Error.Description : "Tool was not found.");
+                DialogService.Close(false);
+                return;
+            }
+        }
+        finally { _loading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(ToolFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToUpdateCommand(ExistingToolId));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save tool", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+
+    /// <summary>Stable JSON-ish snapshot used to compute dirty state including the equipment list.</summary>
+    private static string Snapshot(ToolFormModel m)
+    {
+        var rows = string.Join("|", m.Equipments.Select(e =>
+            $"{e.Id}:{(e.FactoryId ?? string.Empty).Trim()}:{(e.SerialId ?? string.Empty).Trim()}:{e.CalibrationDate:yyyyMMdd}"));
+        return $"{m.Name?.Trim()}#{(m.Description ?? string.Empty).Trim()}#{m.IsActive}#{rows}";
+    }
+}

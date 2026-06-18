@@ -1,0 +1,13 @@
+﻿@if (IsActive)
+{
+    <span class="badge badge--active" title="Active">Active</span>
+}
+else
+{
+    <span class="badge badge--inactive" title="Inactive">Inactive</span>
+}
+
+@code {
+    [Parameter] public bool IsActive { get; set; }
+
+}

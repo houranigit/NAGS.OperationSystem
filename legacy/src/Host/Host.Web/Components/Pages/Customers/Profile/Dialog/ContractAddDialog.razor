@@ -1,0 +1,477 @@
+@*
+  ADD = wizard. 9 steps via ContractWizardShell:
+   1. Setup            (basics + stations + debrief flag)              — required
+   2. Operation types  (OT rows + per-OT services, AOG-no-mix rule)    — required
+   3. Fees & penalties (six fees + cancellation/delay plans)           — required (validates fees)
+   4. Advance payment  (optional pre-paid block)                       — optional
+   5. Services pricing — optional service pricing rows
+   6. Manpowers        — optional pricing lines
+   7. Tools            — optional pricing lines
+   8. Materials        — optional pricing lines
+   9. General supports — optional pricing lines
+*@
+@using Contracts.Application.Features.Contract.Commands.CreateContract
+@using Host.Web.Components.Pages.Customers.Profile.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Profile.Dialog.Sections.Editors
+@using Host.Web.Configuration
+@using Host.Web.Services
+@using Microsoft.Extensions.Options
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+@inject IOptions<PlatformSettings> PlatformOptions
+
+<RadzenTemplateForm @ref="_form"
+                    TItem="ContractFormModel"
+                    Data="@_model"
+                    Submit="@OnTemplateSubmitAsync"
+                    InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentStep"
+                 CurrentStepChanged="OnCurrentStepChanged"
+                 FurthestReached="_furthestReached"
+                 FurthestReachedChanged="OnFurthestReachedChanged"
+                 Mode="WizardMode.Wizard"
+                 IsBusy="_saving"
+                 CanSave="@(_hasChangedInAddMode)"
+                 SidebarAriaLabel="New contract steps"
+                 SaveLabel="Create contract"
+                 SavingLabel="Creating…"
+                 AlertTitle="Couldn't save the contract"
+                 ConfirmCancelOnDirty="@_hasChangedInAddMode"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <SetupSection Model="_model"
+                                  Currencies="_lookups.Currencies"
+                                  CurrenciesLoading="_lookups.CurrenciesLoading"
+                                  Stations="_lookups.Stations"
+                                  StationsLoading="_lookups.StationsLoading"
+                                  OperationTypes="_lookups.OperationTypes"
+                                  OperationTypesLoading="_lookups.OperationTypesLoading"
+                                  OnCurrencyChanged="OnCurrencyChangedAsync"
+                                  OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 1:
+                    <OperationTypesSection Model="_model"
+                                           OperationTypes="_lookups.OperationTypes"
+                                           Services="_lookups.Services"
+                                           OnModelChanged="OnOperationTypesChangedAsync" />
+                    break;
+                case 2:
+                    <FeesAndPenaltiesSection Model="_model"
+                                             CurrencyDisplay="@_currencyDisplay"
+                                             OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 3:
+                    <AdvancePaymentsPerOperationTypeSection Model="_model"
+                                                            OperationTypes="_filteredOperationTypes"
+                                                            CurrencyDisplay="@_currencyDisplay"
+                                                            OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 4:
+                    <PricingLinesSection Kind="ContractPricingLineKind.Service"
+                                         Lines="_model.Services"
+                                         ItemLookup="_lookups.Services"
+                                         OperationTypes="_filteredOperationTypes"
+                                         AircraftTypes="_lookups.AircraftTypes"
+                                         CurrencyDisplay="@_currencyDisplay"
+                                         GetItemPlans="_lookups.GetServiceDialogPlans"
+                                         RateMap="_rateMap"
+                                         ContractCurrencyId="@_model.CurrencyId"
+                                         CurrencyCodes="@_currencyCodes"
+                                         Loading="_lookups.ServicesLoading || _lookups.OperationTypesLoading || _lookups.AircraftTypesLoading"
+                                         InfoText="Optional. Add contract-specific service prices for any operation type on this contract."
+                                         OnLinesChanged="OnFieldChangedAsync" />
+                    break;
+                case 5:
+                    <PricingLinesSection Kind="ContractPricingLineKind.Manpower"
+                                         Lines="_model.Manpowers"
+                                         ItemLookup="_lookups.ManpowerTypes"
+                                         OperationTypes="_filteredOperationTypes"
+                                         CurrencyDisplay="@_currencyDisplay"
+                                         GetItemPlans="_lookups.GetManpowerTypeDialogPlans"
+                                         RateMap="_rateMap"
+                                         ContractCurrencyId="@_model.CurrencyId"
+                                         CurrencyCodes="@_currencyCodes"
+                                         Loading="_lookups.ManpowerTypesLoading || _lookups.OperationTypesLoading"
+                                         InfoText="Optional. Add labour categories that need a contract-specific rate."
+                                         OnLinesChanged="OnFieldChangedAsync" />
+                    break;
+                case 6:
+                    <PricingLinesSection Kind="ContractPricingLineKind.Tool"
+                                         Lines="_model.Tools"
+                                         ItemLookup="_lookups.Tools"
+                                         OperationTypes="_filteredOperationTypes"
+                                         AircraftTypes="_lookups.AircraftTypes"
+                                         CurrencyDisplay="@_currencyDisplay"
+                                         GetItemPlans="_lookups.GetToolDialogPlans"
+                                         RateMap="_rateMap"
+                                         ContractCurrencyId="@_model.CurrencyId"
+                                         CurrencyCodes="@_currencyCodes"
+                                         Loading="_lookups.ToolsLoading || _lookups.OperationTypesLoading || _lookups.AircraftTypesLoading"
+                                         InfoText="Optional. Add tool charges scoped to an operation type and (optionally) an aircraft."
+                                         OnLinesChanged="OnFieldChangedAsync" />
+                    break;
+                case 7:
+                    <PricingLinesSection Kind="ContractPricingLineKind.Material"
+                                         Lines="_model.Materials"
+                                         ItemLookup="_lookups.Materials"
+                                         OperationTypes="_filteredOperationTypes"
+                                         CurrencyDisplay="@_currencyDisplay"
+                                         GetItemPlans="_lookups.GetMaterialDialogPlans"
+                                         RateMap="_rateMap"
+                                         ContractCurrencyId="@_model.CurrencyId"
+                                         CurrencyCodes="@_currencyCodes"
+                                         Loading="_lookups.MaterialsLoading || _lookups.OperationTypesLoading"
+                                         InfoText="Optional. Add materials that have a contract-specific rate."
+                                         OnLinesChanged="OnFieldChangedAsync" />
+                    break;
+                case 8:
+                    <PricingLinesSection Kind="ContractPricingLineKind.GeneralSupport"
+                                         Lines="_model.GeneralSupports"
+                                         ItemLookup="_lookups.GeneralSupports"
+                                         OperationTypes="_filteredOperationTypes"
+                                         CurrencyDisplay="@_currencyDisplay"
+                                         GetItemPlans="_lookups.GetGeneralSupportDialogPlans"
+                                         RateMap="_rateMap"
+                                         ContractCurrencyId="@_model.CurrencyId"
+                                         CurrencyCodes="@_currencyCodes"
+                                         Loading="_lookups.GeneralSupportsLoading || _lookups.OperationTypesLoading"
+                                         InfoText="Optional. Add general-support items priced through this contract."
+                                         OnLinesChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public Guid CustomerId { get; set; }
+
+    private RadzenTemplateForm<ContractFormModel>? _form;
+    private ContractFormModel _model = new();
+    private bool _saving;
+    private bool _hasChangedInAddMode;
+    private int _currentStep;
+    private int _furthestReached;
+    private string _currencyDisplay = "—";
+
+    private ContractDialogLookups _lookups = null!;
+    private IReadOnlyList<ContractDialogLookups.DropdownOption> _filteredOperationTypes = Array.Empty<ContractDialogLookups.DropdownOption>();
+
+    /// <summary>
+    /// Live "plan currency → rate-into-contract-currency" map. Rebuilt every time the user
+    /// picks (or changes) the contract currency on Step 1 — the per-line dialog reads it
+    /// when seeding default brackets so plans denominated in another currency convert
+    /// before the user sees them.
+    /// </summary>
+    private IReadOnlyDictionary<Guid, decimal>? _rateMap;
+
+    /// <summary>
+    /// Currency id → 3-letter code map sourced from <see cref="ContractDialogLookups.GetCurrencyCodes"/>.
+    /// Forwarded to the per-line dialog so its cross-currency hint can name the source
+    /// currency by code instead of a generic placeholder.
+    /// </summary>
+    private IReadOnlyDictionary<Guid, string>? _currencyCodes;
+
+    private WizardStep[] _steps = Array.Empty<WizardStep>();
+
+    /// <summary>
+    /// Error list shown in the wizard's inline alert. We surface command failures here (instead
+    /// of relying solely on the toast) so users keep the actual server message in view while they
+    /// fix the issue. Cleared on every new submit attempt and on the user's "dismiss" click.
+    /// </summary>
+    private List<string> _errorMessages = new();
+
+    private void ClearErrors()
+    {
+        if (_errorMessages.Count == 0) return;
+        _errorMessages = new List<string>();
+        StateHasChanged();
+    }
+
+    private void SetCommandError(string description)
+    {
+        // Server descriptions are sometimes "Code: message" pairs separated by `; ` — keep the
+        // alert readable by splitting them so the user sees one line per problem.
+        _errorMessages = description
+            .Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => s.Length > 0)
+            .ToList();
+        if (_errorMessages.Count == 0)
+            _errorMessages.Add(description);
+    }
+
+    /// <remarks>
+    /// Defer the heavy lookup loads so the dialog shell paints its skeleton on first render
+    /// before we touch DI / EF. Mirrors the customer dialog's pattern.
+    /// </remarks>
+    protected override void OnInitialized()
+    {
+        _lookups = new ContractDialogLookups(PlatformOptions.Value.CurrencyCode);
+        _model = new ContractFormModel
+        {
+            CustomerId = CustomerId,
+            StartDate = DateTime.UtcNow.Date,
+            ExpiryDate = DateTime.UtcNow.Date.AddYears(1),
+        };
+        BuildSteps();
+    }
+
+    private bool _lookupsLoadStarted;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+
+        await _lookups.LoadAllAsync(ScopedMediator, LookupCache, () => InvokeAsync(StateHasChanged));
+        RecomputeFilteredOperationTypes();
+        // Pre-select the platform currency (e.g. SAR) when the user hasn't already picked
+        // one — they can still swap it for any currency that has a rate to the platform.
+        // Currency.DropdownOption.Name is the 3-letter code (see ContractDialogLookups).
+        if (_model.CurrencyId is null)
+        {
+            var platform = _lookups.Currencies
+                .FirstOrDefault(c => string.Equals(c.Name, PlatformOptions.Value.CurrencyCode, StringComparison.OrdinalIgnoreCase));
+            if (platform is not null)
+            {
+                _model.CurrencyId = platform.Id;
+            }
+        }
+        UpdateCurrencyDisplay();
+        _currencyCodes = _lookups.GetCurrencyCodes();
+        await RefreshRateMapAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void BuildSteps()
+    {
+        _steps =
+        [
+            new("Setup", "Identity, dates, stations", "settings", IsRequired: true,
+                Validate: () => _model.IsContractNoInputValid()
+                                && _model.IsCurrencyIdInputValid()
+                                && _model.IsStartDateInputValid()
+                                && _model.IsExpiryDateInputValid()
+                                && _model.IsAlertIntervalInputValid()
+                                && _model.AreStationsInputValid()),
+            new("Operation types", "OT rows + applicable services", "list", IsRequired: true,
+                Validate: () => _model.AreOperationTypesInputValid()),
+            new("Fees & penalties", "Rates, cancellation, delay", "percent", IsRequired: false,
+                Validate: () => _model.IsFeeInputValid(_model.AdminFee)
+                                && _model.IsFeeInputValid(_model.DisbursementFee)
+                                && _model.IsFeeInputValid(_model.HolidayFee)
+                                && _model.IsFeeInputValid(_model.NightFee)
+                                && _model.IsFeeInputValid(_model.ReturnToRampDiscount)
+                                && _model.IsFeeInputValid(_model.OtherDiscount)
+                                && _model.AreCancellationBracketsValid()
+                                && _model.AreDelayBracketsValid()),
+            new("Advance payment", "Optional pre-paid block per OT", "wallet", IsRequired: false,
+                Validate: () => _model.AreAdvancePaymentsInputValid()),
+            new("Services pricing", "Optional contract service prices", "tools", IsRequired: false,
+                Validate: () => _model.AreServicesInputValid()),
+            new("Manpower", "Optional labour rates", "users", IsRequired: false,
+                Validate: () => _model.AreManpowersInputValid()),
+            new("Tools", "Optional tool prices", "tools", IsRequired: false,
+                Validate: () => _model.AreToolsInputValid()),
+            new("Materials", "Optional materials prices", "package", IsRequired: false,
+                Validate: () => _model.AreMaterialsInputValid()),
+            new("General supports", "Optional support prices", "lifebuoy", IsRequired: false,
+                Validate: () => _model.AreGeneralSupportsInputValid())
+        ];
+    }
+
+    private Task OnFieldChangedAsync()
+    {
+        _hasChangedInAddMode = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnCurrentStepChanged(int step)
+    {
+        _currentStep = step;
+        return Task.CompletedTask;
+    }
+
+    private Task OnFurthestReachedChanged(int reached)
+    {
+        _furthestReached = reached;
+        return Task.CompletedTask;
+    }
+
+    private void RecomputeFilteredOperationTypes()
+    {
+        if (_model.OperationTypeIds.Count == 0)
+        {
+            _filteredOperationTypes = _lookups.OperationTypes;
+            return;
+        }
+        _filteredOperationTypes = _lookups.OperationTypes
+            .Where(o => _model.OperationTypeIds.Contains(o.Id))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Triggered when the user adds/removes operation types on Step 1. We:
+    /// <list type="number">
+    /// <item>Recompute the filtered OT list shown by the line steps.</item>
+    /// <item>Drop child rows whose OT was just deselected so save can't fail with
+    /// "OT not in contract" and the user doesn't see ghost rows on later steps.</item>
+    /// </list>
+    /// </summary>
+    private async Task OnOperationTypesChangedAsync()
+    {
+        RecomputeFilteredOperationTypes();
+        PrunePricingLinesForRemovedOperationTypes();
+        // Mirror the OT change into the per-OT advance-payments cards. Inactive rows are
+        // appended for new OTs; orphaned rows are dropped — keeps the form payload aligned
+        // with the domain rule "advance payment OT must be in OperationTypes".
+        _model.SyncAdvancePaymentRowsWithOperationTypes();
+        await Task.CompletedTask;
+    }
+
+    private void PrunePricingLinesForRemovedOperationTypes()
+    {
+        var allowed = new HashSet<Guid>(_model.OperationTypeIds);
+        _model.Services.RemoveAll(r => !allowed.Contains(r.OperationTypeId));
+        _model.Manpowers.RemoveAll(r => !allowed.Contains(r.OperationTypeId));
+        _model.Tools.RemoveAll(r => !allowed.Contains(r.OperationTypeId));
+        _model.Materials.RemoveAll(r => !allowed.Contains(r.OperationTypeId));
+        _model.GeneralSupports.RemoveAll(r => !allowed.Contains(r.OperationTypeId));
+    }
+
+    private void UpdateCurrencyDisplay()
+    {
+        if (_model.CurrencyId is { } id && _lookups.Currencies.FirstOrDefault(c => c.Id == id) is { } currency)
+            _currencyDisplay = currency.Name;
+        else
+            _currencyDisplay = "—";
+    }
+
+    /// <summary>
+    /// Step 1 currency picker hook. Updates the display label, refreshes the rate map for
+    /// the new contract currency, then asks the wizard to re-render so any open per-line
+    /// dialog opened after this point sees the freshly computed conversions.
+    /// </summary>
+    private async Task OnCurrencyChangedAsync()
+    {
+        UpdateCurrencyDisplay();
+        await RefreshRateMapAsync();
+    }
+
+    private async Task RefreshRateMapAsync()
+    {
+        if (_model.CurrencyId is not { } id || id == Guid.Empty)
+        {
+            _rateMap = null;
+            return;
+        }
+
+        await _lookups.LoadRatesForCurrencyAsync(ScopedMediator, id);
+        _rateMap = _lookups.GetRateMapTo(id);
+    }
+
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    /// <summary>
+    /// Called by the wizard shell on Next. Driving validation through <c>EditContext.Validate()</c>
+    /// is what makes RadzenCustomValidator popups light up next to the offending fields — calling
+    /// the model lambda alone bypasses the form's validation event pipeline.
+    /// </summary>
+    private Task<bool> ValidateCurrentStepAsync(int _)
+    {
+        var ok = _form?.EditContext?.Validate() ?? true;
+        if (ok) ClearErrors();
+        return Task.FromResult(ok);
+    }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving) return;
+
+        // Save walks through every step so the user can't reach Submit with an invalid Step 1
+        // (or any other step) hidden behind the active step's validators. We also restore the
+        // user's original step so the discard journey isn't disorienting.
+        if (!await ValidateAllStepsRenderedAsync())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving.");
+            return;
+        }
+
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentStep;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++)
+            {
+                _currentStep = s;
+                await InvokeAsync(StateHasChanged);
+                await Task.Yield();
+                if (_form?.EditContext is null || !_form.EditContext.Validate())
+                    return false;
+            }
+            return true;
+        }
+        finally
+        {
+            _currentStep = back;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnTemplateSubmitAsync(ContractFormModel _)
+    {
+        if (_saving) return;
+        _saving = true;
+        ClearErrors();
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            _model.CustomerId = CustomerId;
+            RecomputeFilteredOperationTypes();
+
+            var r = await ScopedMediator.Send(_model.ToCreateCommand());
+            if (r.IsFailure)
+            {
+                SetCommandError(r.Error.Description);
+                NotificationService.Notify(NotificationSeverity.Error, "Could not save contract", r.Error.Description);
+                return;
+            }
+
+            NotificationService.Notify(NotificationSeverity.Success, "Contract created", $"Contract {_model.ContractNo.Trim().ToUpperInvariant()} is ready.");
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            SetCommandError(ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+        }
+        finally
+        {
+            _saving = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnCancelAsync()
+    {
+        DialogService.Close(false);
+        await Task.CompletedTask;
+    }
+}

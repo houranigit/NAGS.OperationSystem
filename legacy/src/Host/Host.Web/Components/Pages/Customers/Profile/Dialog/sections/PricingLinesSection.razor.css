@@ -1,0 +1,184 @@
+.pricing-lines-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+/* Info banner */
+.pricing-lines-section__info {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    background: rgba(59, 130, 246, 0.08);
+    color: #1d4ed8;
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    border-radius: 10px;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+
+.pricing-lines-section__info-icon {
+    flex-shrink: 0;
+    color: #2563eb;
+    margin-top: 0.1rem;
+}
+
+.pricing-lines-section__info-text {
+    flex: 1 1 auto;
+}
+
+.pricing-lines-section__info-close {
+    flex-shrink: 0;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 0.25rem;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.pricing-lines-section__info-close:hover {
+    opacity: 1;
+}
+
+/* Grid header */
+.pricing-lines-section__header {
+    min-height: 2.5rem;
+}
+
+.pricing-lines-section__header-title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #2f3349;
+}
+
+.pricing-lines-section__add {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.95rem;
+    border: 1px solid #722f37;
+    background: linear-gradient(180deg, #843742 0%, #5d2730 100%);
+    color: #fff;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(114, 47, 55, 0.18);
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.pricing-lines-section__add:hover {
+    background: linear-gradient(180deg, #722f37 0%, #4a1f26 100%);
+    box-shadow: 0 4px 12px rgba(114, 47, 55, 0.25);
+}
+
+.pricing-lines-section__add:active {
+    transform: scale(0.97);
+}
+
+/* Brackets-in-cell */
+.pricing-lines-section__pricing-cell {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.pricing-lines-section__brackets {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pricing-lines-section__brackets-labels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    padding: 0 0.35rem 0.35rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    border-bottom: 1px solid #eef1f6;
+}
+
+.pricing-lines-section__brackets-labels span:last-child {
+    text-align: right;
+}
+
+.pricing-lines-section__brackets-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.pricing-lines-section__bracket-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.65rem;
+    align-items: baseline;
+    padding: 0.45rem 0.6rem;
+    background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+}
+
+.pricing-lines-section__bracket-duration {
+    color: #475569;
+    font-weight: 500;
+}
+
+.pricing-lines-section__bracket-value {
+    font-weight: 600;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    word-break: break-word;
+}
+
+.pricing-lines-section__brackets--flat .pricing-lines-section__bracket-item {
+    align-items: center;
+}
+
+/* Row action buttons */
+.pricing-lines-section__row-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.pricing-lines-section__row-btn--edit {
+    color: #722f37;
+}
+
+.pricing-lines-section__row-btn--edit:hover {
+    background: rgba(114, 47, 55, 0.08);
+    border-color: rgba(114, 47, 55, 0.18);
+}
+
+.pricing-lines-section__row-btn--delete {
+    color: #dc2626;
+}
+
+.pricing-lines-section__row-btn--delete:hover {
+    background: rgba(220, 38, 38, 0.08);
+    border-color: rgba(220, 38, 38, 0.18);
+}

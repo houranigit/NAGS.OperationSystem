@@ -1,0 +1,496 @@
+/* Contract card grid — header (status + number + meta + menu), period block, chip tags footer. */
+
+.contract-card-list {
+    width: 100%;
+    --contract-accent: #722f37;
+    --contract-accent-soft: rgba(114, 47, 55, 0.10);
+    --contract-accent-ring: rgba(114, 47, 55, 0.16);
+}
+
+.contract-card-list__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem 1.25rem;
+    padding: 1rem 1.25rem 1rem 1.2rem;
+    margin-bottom: 1.35rem;
+    background: linear-gradient(180deg, #ffffff 0%, #fafbfd 100%);
+    border: 1px solid #e8ecf1;
+    border-left: 3px solid var(--contract-accent);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.contract-card-list__heading {
+    min-width: 0;
+    flex: 1;
+}
+
+.contract-card-list__title {
+    margin: 0 0 0.2rem;
+    font-size: 1.1875rem;
+    font-weight: 700;
+    color: #2f3349;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+.contract-card-list__subtitle {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #64748b;
+    line-height: 1.45;
+    max-width: 42rem;
+}
+
+.contract-card-list__customer-name {
+    font-weight: 600;
+    color: #334155;
+}
+
+.contract-card-list__add {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1.15rem !important;
+    border: 1px solid rgba(114, 47, 55, 0.4) !important;
+    background: linear-gradient(145deg, #722f37 0%, #9a3240 52%, #722f37 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 10px rgba(114, 47, 55, 0.22);
+    transition:
+        box-shadow 0.18s ease,
+        filter 0.18s ease,
+        transform 0.12s ease;
+}
+
+.contract-card-list__add:hover:not(:disabled) {
+    filter: brightness(1.05);
+    box-shadow: 0 4px 14px rgba(114, 47, 55, 0.28);
+    color: #fff !important;
+}
+
+.contract-card-list__add:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.contract-card-list__add:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+}
+
+.contract-card-list__pager {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+/* Empty state */
+.contract-card-list__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 3rem 1.5rem;
+    background: #fafbfd;
+    border: 1.5px dashed #d6dde6;
+    border-radius: 14px;
+    text-align: center;
+}
+
+.contract-card-list__empty-icon {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--contract-accent-soft);
+    color: var(--contract-accent);
+    margin-bottom: 0.25rem;
+}
+
+.contract-card-list__empty-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #2f3349;
+}
+
+.contract-card-list__empty-text {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #94a3b8;
+}
+
+/* Card */
+.contract-card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e8ecf1;
+    border-radius: 14px;
+    background: #fff;
+    transition:
+        box-shadow 0.18s ease,
+        transform 0.18s ease,
+        border-color 0.18s ease;
+    overflow: hidden;
+}
+
+.contract-card:hover {
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    transform: translateY(-2px);
+    border-color: #d6dde6;
+}
+
+.contract-card--skeleton {
+    pointer-events: none;
+    opacity: 0.65;
+}
+
+/* Header */
+.contract-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 1.1rem 1.25rem 0.5rem;
+    border-bottom: 0;
+    background: transparent;
+}
+
+.contract-card__title-block {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+.contract-card__heading {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.contract-card__title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.6rem;
+    min-width: 0;
+}
+
+.contract-card__no {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.25;
+    word-break: break-word;
+}
+
+.contract-card__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+}
+
+.contract-card__created {
+    color: #64748b;
+    font-weight: 500;
+}
+
+/* Status / timeline pills — explicit colors (Bootstrap .badge + bg-label can mute or clash in this layout). */
+.contract-card__pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.28em 0.65em;
+    border-radius: 999px;
+    line-height: 1.25;
+    border: 1px solid transparent;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.contract-card__pill--success {
+    background: #dcfce7;
+    color: #166534;
+    border-color: #bbf7d0;
+}
+
+.contract-card__pill--danger {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.contract-card__pill--info {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+
+.contract-card__pill--warning {
+    background: #ffedd5;
+    color: #c2410c;
+    border-color: #fed7aa;
+}
+
+.contract-card__pill--neutral {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #e2e8f0;
+}
+
+/* Action menu — Blazor-state controlled (no Bootstrap JS dependency). */
+.contract-card__menu-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.contract-card__menu {
+    border: 0;
+    background: transparent;
+    color: #94a3b8;
+    border-radius: 999px;
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s, color 0.15s;
+    cursor: pointer;
+}
+
+.contract-card__menu:hover,
+.contract-card__menu:focus-visible,
+.contract-card__menu-wrap.is-open .contract-card__menu {
+    background: #f1f5f9;
+    color: #0f172a;
+    outline: none;
+}
+
+.contract-card__menu-list {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 50;
+    min-width: 13rem;
+    padding: 0.35rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    animation: cc-menu-pop 0.12s ease-out;
+}
+
+@keyframes cc-menu-pop {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.contract-card__menu-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem 0.7rem;
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    text-align: left;
+    font-size: 0.8125rem;
+    color: #2f3349;
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.contract-card__menu-item:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.contract-card__menu-item:focus-visible {
+    background: rgba(114, 47, 55, 0.08);
+    color: #722f37;
+    outline: none;
+}
+
+/* Status-coloured menu items — keep idle state neutral, only tint on hover so the menu
+   reads as a single column instead of a colourful list. */
+.contract-card__menu-item--warning:hover {
+    background: rgba(180, 83, 9, 0.08);
+    color: #7c2d12;
+}
+
+.contract-card__menu-item--success:hover {
+    background: rgba(22, 163, 74, 0.08);
+    color: #166534;
+}
+
+.contract-card__menu-item--danger:hover {
+    background: rgba(220, 38, 38, 0.08);
+    color: #7f1d1d;
+}
+
+/* Body */
+.contract-card__body {
+    padding: 0.5rem 1.25rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.contract-card__period {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+}
+
+.contract-card__period-block {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.contract-card__period-label {
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.contract-card__period-range {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    line-height: 1.35;
+}
+
+.contract-card__period-arrow {
+    color: var(--contract-accent);
+    font-weight: 700;
+}
+
+.contract-card__period-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.contract-card__period-total {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #475569;
+    line-height: 1.25;
+}
+
+.contract-card__period-total strong {
+    color: #0f172a;
+    font-weight: 700;
+    margin-right: 0.15rem;
+}
+
+.contract-card__payment-terms {
+    margin: 0;
+    font-size: 0.6875rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+
+.contract-card__tags-block {
+    border-top: 1px solid #eef1f6;
+    padding: 0.9rem 1.25rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.contract-card__tags-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.65rem 0.85rem;
+    min-width: 0;
+}
+
+.contract-card__tags-label {
+    flex-shrink: 0;
+    align-self: center;
+    min-width: 4.75rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* Operation-type row labels: readable title case (not all-caps like "Stations"). */
+.contract-card__tags-label--natural {
+    text-transform: none;
+    letter-spacing: 0.01em;
+    font-weight: 600;
+    min-width: 0;
+    max-width: min(52%, 12rem);
+    line-height: 1.25;
+}
+
+.contract-card__chips {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.contract-card__chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 0.32rem 0.65rem;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #fafbfc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #334155;
+    line-height: 1.25;
+    word-break: break-word;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+

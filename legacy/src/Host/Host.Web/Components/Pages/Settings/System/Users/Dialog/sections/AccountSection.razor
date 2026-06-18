@@ -1,0 +1,136 @@
+@*
+    Identity slice of the User wizard / update form. Username + email + user type live here so the
+    "create user" semantics mirror the Employees ProfileSection (settings-field/__row2 grid + popup
+    validators). UpdateMode flips the username field to read-only because the aggregate doesn't
+    support renaming users today.
+*@
+@namespace Host.Web.Components.Pages.Settings.System.Users.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.System.Users.Dialog
+@inject IJSRuntime JSRuntime
+@inject NotificationService NotificationService
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Username</label>
+            <RadzenTextBox Name="UsrUsername"
+                           @bind-Value="Model.Username"
+                           MaxLength="50"
+                           ReadOnly="@UsernameReadOnly"
+                           Change="@OnChg"
+                           Style="width:100%;" />
+            <RadzenRequiredValidator Component="UsrUsername" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Email</label>
+            <RadzenTextBox Name="UsrEmail" @bind-Value="Model.Email" MaxLength="254" Change="@OnChg" Style="width:100%;" />
+            <RadzenRequiredValidator Component="UsrEmail" Text="Required" Popup="true" Style="position:absolute;" />
+            <RadzenEmailValidator Component="UsrEmail" Text="Invalid email" Popup="true" Style="position:absolute;" />
+        </div>
+    </div>
+
+    @if (UserTypeReadOnly)
+    {
+        <div class="settings-field__row2">
+            <div class="settings-field">
+                <label class="settings-field__label">User type (read-only)</label>
+                <RadzenTextBox Value="@Model.UserTypeDisplay" Disabled="true" Style="width:100%;" />
+            </div>
+            <div class="settings-field">
+                <label class="settings-field__label">Identity status (read-only)</label>
+                <RadzenTextBox Value="@Model.StatusDisplay" Disabled="true" Style="width:100%;" />
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="settings-field">
+            <span class="settings-field__label">User type</span>
+            <RadzenSelectBar TValue="int" @bind-Value="Model.UserTypeId" Change="@OnChg" Size="ButtonSize.Small">
+                <Items>
+                    <RadzenSelectBarItem Text="Employee" Value="2" />
+                    <RadzenSelectBarItem Text="Customer" Value="3" />
+                    <RadzenSelectBarItem Text="System Admin" Value="1" />
+                </Items>
+            </RadzenSelectBar>
+        </div>
+    }
+
+    @if (UpdateMode)
+    {
+        <div class="settings-field">
+            <span class="settings-field__label">Status</span>
+            <RadzenSelectBar TValue="bool" @bind-Value="Model.IsActive" Change="@OnChg" Size="ButtonSize.Small">
+                <Items>
+                    <RadzenSelectBarItem Text="Active" Value="true" />
+                    <RadzenSelectBarItem Text="Inactive" Value="false" />
+                </Items>
+            </RadzenSelectBar>
+            @if (Model.HasPendingInvitation)
+            {
+                <span class="settings-field__hint">User has not activated yet — invitation expires @(Model.InvitationExpiresAt?.ToString("yyyy-MM-dd HH:mm") ?? "—") UTC.</span>
+                @if (!string.IsNullOrWhiteSpace(Model.InvitationToken))
+                {
+                    <div class="settings-field mt-2" style="max-width:100%;">
+                        <span class="settings-field__label">Activation token</span>
+                        <div class="d-flex gap-2 align-items-stretch flex-wrap">
+                            <RadzenTextBox Value="@Model.InvitationToken"
+                                           ReadOnly="true"
+                                           Style="flex:1; min-width:12rem; font-family:ui-monospace,monospace;" />
+                            <RadzenButton Text="Copy"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Size="ButtonSize.Small"
+                                          Click="@CopyInvitationTokenAsync" />
+                        </div>
+                        <span class="settings-field__hint d-block mt-1">If the invitation email was not delivered, copy this token and send it securely. The user enters it with their email on the activation page.</span>
+                    </div>
+                }
+                else if (Model.InvitationExpiresAt is { } exp && DateTime.UtcNow > exp)
+                {
+                    <span class="settings-field__hint d-block mt-1 text-warning">This invitation has expired — use Resend invite to issue a new token.</span>
+                }
+            }
+            else if (Model.IsLocked)
+            {
+                <span class="settings-field__hint">Account is locked due to failed login attempts.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <p class="text-secondary small mb-0" style="font-size: 0.75rem;">
+            An invitation email will be sent to the address above. The user sets a password by following the activation link.
+        </p>
+    }
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public UserFormModel Model { get; set; } = default!;
+
+    [Parameter] public bool UpdateMode { get; set; }
+
+    [Parameter] public bool UsernameReadOnly { get; set; }
+
+    [Parameter] public bool UserTypeReadOnly { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnChg() => OnModelChanged.InvokeAsync();
+
+    private async Task CopyInvitationTokenAsync()
+    {
+        var token = Model.InvitationToken;
+        if (string.IsNullOrEmpty(token))
+            return;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("copyTextToClipboard", token);
+            NotificationService.Notify(NotificationSeverity.Success, "Copied", "Activation token copied to clipboard.");
+        }
+        catch (Exception)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Copy failed", "Copy the token manually from the field.");
+        }
+    }
+}

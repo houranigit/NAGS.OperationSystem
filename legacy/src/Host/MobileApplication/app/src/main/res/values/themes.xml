@@ -1,0 +1,23 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Splash-aware base theme. Compose owns the in-app visuals; this only
+         drives the SplashScreen API and the system bars. -->
+    <style name="Theme.OperationsMobile" parent="Theme.SplashScreen">
+        <item name="postSplashScreenTheme">@style/Theme.OperationsMobile.Main</item>
+        <item name="windowSplashScreenBackground">@color/brand_red</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="windowSplashScreenAnimationDuration">350</item>
+    </style>
+
+    <!-- Alias used by AndroidManifest until the splash compat handles transition. -->
+    <style name="Theme.OperationsMobile.Splash" parent="Theme.OperationsMobile" />
+
+    <style name="Theme.OperationsMobile.Main" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/surface_light</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+        <item name="android:windowBackground">@color/surface_light</item>
+    </style>
+
+</resources>

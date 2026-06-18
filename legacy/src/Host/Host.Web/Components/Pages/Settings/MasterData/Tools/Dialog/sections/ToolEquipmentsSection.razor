@@ -1,0 +1,176 @@
+@*
+  Equipments sub-grid — Factory id / Serial id / Calibration date.
+  Pure UI editor; the parent ToolFormModel.Equipments list is mutated in place.
+  See domain rule: (FactoryId, SerialId) must be unique within a tool.
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Tools.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.Tools.Dialog
+
+<div class="tool-equipments-section">
+    <div class="tool-equipments-section__head">
+        <div>
+            <h3 class="tool-equipments-section__title">Equipments</h3>
+            <p class="tool-equipments-section__hint">Track each individual equipment unit attached to this tool — factory id, serial id, and last calibration date.</p>
+        </div>
+        <RadzenButton Text="Add equipment"
+                      Icon="add_circle_outline"
+                      ButtonStyle="ButtonStyle.Light"
+                      Variant="Variant.Filled"
+                      Shade="Shade.Light"
+                      Size="ButtonSize.Small"
+                      Click="@AddRow"
+                      ButtonType="ButtonType.Button" />
+    </div>
+
+    @if (Model.Equipments.Count == 0)
+    {
+        <div class="tool-equipments-section__empty">
+            <p class="text-secondary small mb-0">No equipments yet. Add one to start tracking calibration.</p>
+        </div>
+    }
+    else
+    {
+        <div class="tool-equipments-section__table">
+            <div class="tool-equipments-section__row tool-equipments-section__row--head">
+                <span>Factory id *</span>
+                <span>Serial id *</span>
+                <span>Calibration date</span>
+                <span></span>
+            </div>
+            @for (var i = 0; i < Model.Equipments.Count; i++)
+            {
+                var idx = i;
+                var row = Model.Equipments[idx];
+                <div class="tool-equipments-section__row">
+                    <RadzenTextBox Value="@row.FactoryId"
+                                   ValueChanged="@(v => OnFactoryChanged(idx, v))"
+                                   MaxLength="100"
+                                   Placeholder="Factory id"
+                                   Style="width: 100%;" />
+                    <RadzenTextBox Value="@row.SerialId"
+                                   ValueChanged="@(v => OnSerialChanged(idx, v))"
+                                   MaxLength="100"
+                                   Placeholder="Serial id"
+                                   Style="width: 100%;" />
+                    <RadzenDatePicker TValue="DateTime?"
+                                      Value="@(row.CalibrationDate?.ToDateTime(TimeOnly.MinValue))"
+                                      ValueChanged="@(v => OnDateChanged(idx, v))"
+                                      DateFormat="yyyy-MM-dd"
+                                      Style="width: 100%;" />
+                    <RadzenButton Icon="close"
+                                  ButtonStyle="ButtonStyle.Danger"
+                                  Variant="Variant.Text"
+                                  Size="ButtonSize.ExtraSmall"
+                                  title="Remove"
+                                  Click="@(() => RemoveRow(idx))"
+                                  ButtonType="ButtonType.Button" />
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .tool-equipments-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+    }
+
+    .tool-equipments-section__head {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .tool-equipments-section__title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .tool-equipments-section__hint {
+        margin: 0.15rem 0 0;
+        font-size: 0.75rem;
+        color: #94a3b8;
+        max-width: 32rem;
+    }
+
+    .tool-equipments-section__empty {
+        padding: 0.85rem;
+        background: #f8fafc;
+        border: 1px dashed #e2e8f0;
+        border-radius: 8px;
+    }
+
+    .tool-equipments-section__table {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+    .tool-equipments-section__row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 9rem) 2rem;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .tool-equipments-section__row--head > span {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+    }
+
+    @@media (max-width: 720px) {
+        .tool-equipments-section__row {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .tool-equipments-section__row--head {
+            display: none;
+        }
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public ToolFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task AddRow()
+    {
+        Model.Equipments.Add(new ToolFormModel.EquipmentRow());
+        return OnModelChanged.InvokeAsync();
+    }
+
+    private Task RemoveRow(int idx)
+    {
+        if (idx < 0 || idx >= Model.Equipments.Count) return Task.CompletedTask;
+        Model.Equipments.RemoveAt(idx);
+        return OnModelChanged.InvokeAsync();
+    }
+
+    private Task OnFactoryChanged(int idx, string? value)
+    {
+        Model.Equipments[idx].FactoryId = value ?? string.Empty;
+        return OnModelChanged.InvokeAsync();
+    }
+
+    private Task OnSerialChanged(int idx, string? value)
+    {
+        Model.Equipments[idx].SerialId = value ?? string.Empty;
+        return OnModelChanged.InvokeAsync();
+    }
+
+    private Task OnDateChanged(int idx, DateTime? value)
+    {
+        Model.Equipments[idx].CalibrationDate = value is null ? null : DateOnly.FromDateTime(value.Value);
+        return OnModelChanged.InvokeAsync();
+    }
+}

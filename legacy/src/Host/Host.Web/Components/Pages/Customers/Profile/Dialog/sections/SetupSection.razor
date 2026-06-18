@@ -1,0 +1,423 @@
+@*
+  Step 1 — Setup. Combines the contract identity (number / currency / dates / payment terms /
+  VAT / debrief / expiry alerts) with coverage (stations). Splits visually into two cards so
+  the form scans top-to-bottom but groups related fields. Identity card uses 4 stacked grid
+  rows; row 3's right column nests a 50/50 sub-grid for "alert days + cadence".
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections
+@using Core.Contracts.Features.Customer
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using Host.Web.Components.Pages.Shared.Feedback
+@using PaymentTerms = Contracts.Domain.Enumerations.PaymentTerms
+@using ExpiryAlertInterval = Contracts.Domain.Enumerations.ExpiryAlertInterval
+
+<div class="setup-section">
+    @* ── Destination customer (duplicate-for-other-customer flow only) ────────── *@
+    @if (ShowCustomerPicker)
+    {
+        <article class="setup-card setup-card--accent">
+            <header class="setup-card__header">
+                <span class="setup-card__icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                </span>
+                <div>
+                    <h6 class="setup-card__title">Destination customer</h6>
+                    <p class="setup-card__subtitle">Pick the customer this duplicated contract should be saved under.</p>
+                </div>
+            </header>
+
+            <div class="setup-stack">
+                <div class="setup-field" style="position: relative;">
+                    <label class="setup-field__label" for="ct-target-customer">Customer *</label>
+                    @if (CustomersLoading)
+                    {
+                        <DropdownFieldSkeleton AriaLabel="Loading customers" />
+                    }
+                    else
+                    {
+                        <RadzenDropDown id="ct-target-customer"
+                                        Name="ct-target-customer-name"
+                                        Value="@Model.CustomerId"
+                                        ValueChanged="@OnCustomerChangedAsync"
+                                        Data="@Customers"
+                                        TValue="Guid"
+                                        ValueProperty="@nameof(CustomerDto.Id)"
+                                        TextProperty="@nameof(CustomerDto.Name)"
+                                        AllowFiltering="true"
+                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        AllowClear="false"
+                                        Placeholder="Select customer"
+                                        Style="width: 100%;" />
+                        <RadzenCustomValidator Component="ct-target-customer-name"
+                                               Text="Customer is required."
+                                               Validator="@(() => Model.IsCustomerIdInputValid())"
+                                               Popup="true"
+                                               Style="position: absolute;" />
+                    }
+                    @if (SourceCustomerId is { } src && Model.CustomerId == src)
+                    {
+                        <p class="setup-field__hint">This is the same customer as the source contract. Pick a different customer to copy this contract to another customer profile.</p>
+                    }
+                    else
+                    {
+                        <p class="setup-field__hint">The contract number has been cleared because contract numbers are unique per customer.</p>
+                    }
+                </div>
+            </div>
+        </article>
+    }
+
+    @* ── Coverage ─────────────────────────────────────────────────────────── *@
+    <article class="setup-card">
+        <header class="setup-card__header">
+            <span class="setup-card__icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </span>
+            <div>
+                <h6 class="setup-card__title">Coverage</h6>
+                <p class="setup-card__subtitle">Stations and operation types this contract applies to.</p>
+            </div>
+        </header>
+
+        <div class="setup-stack">
+            <div class="setup-field" style="position: relative;">
+                <label class="setup-field__label" for="ct-stations">Stations *</label>
+                @if (StationsLoading)
+                {
+                    <DropdownFieldSkeleton AriaLabel="Loading stations" />
+                }
+                else
+                {
+                    <RadzenDropDown id="ct-stations"
+                                    Name="ct-stations-name"
+                                    Value="@Model.StationIds"
+                                    ValueChanged="@OnStationIdsChangedAsync"
+                                    Data="@Stations"
+                                    TValue="List<Guid>"
+                                    ValueProperty="Id"
+                                    TextProperty="DisplayLabel"
+                                    Multiple="true"
+                                    Chips="true"
+                                    AllowFiltering="true"
+                                    AllowClear="true"
+                                    Placeholder="Pick the airports this contract serves"
+                                    Style="width: 100%;" />
+                    <RadzenCustomValidator Component="ct-stations-name"
+                                           Text="At least one station is required."
+                                           Validator="@(() => Model.AreStationsInputValid())"
+                                           Popup="true"
+                                           Style="position: absolute;" />
+                }
+                <p class="setup-field__hint">You can add or remove stations later from this contract.</p>
+            </div>
+        </div>
+    </article>
+
+    @* ── Identity & period ────────────────────────────────────────────────── *@
+    <article class="setup-card">
+        <header class="setup-card__header">
+            <span class="setup-card__icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+            </span>
+            <div>
+                <h6 class="setup-card__title">Contract identity & period</h6>
+                <p class="setup-card__subtitle">Number, currency, dates, payment terms, VAT and debrief.</p>
+            </div>
+        </header>
+
+        @* Row 1: Contract Number | Currency *@
+        <div class="setup-grid">
+            <div class="setup-field" style="position: relative;">
+                <label class="setup-field__label" for="ct-no">Contract number *</label>
+                <RadzenTextBox id="ct-no"
+                               Name="CtContractNo"
+                               @bind-Value="Model.ContractNo"
+                               Trim="true"
+                               Change="@OnContractNoCommitAsync"
+                               Disabled="@DisableContractNo"
+                               MaxLength="30"
+                               Placeholder="e.g. NAGS-RJ-2026-001"
+                               Style="width: 100%; text-transform: uppercase;" />
+                <RadzenRequiredValidator Component="CtContractNo"
+                                         Text="Required"
+                                         Popup="true"
+                                         Style="position: absolute;" />
+                <RadzenLengthValidator Component="CtContractNo"
+                                       Min="3"
+                                       Max="30"
+                                       Text="Must be 3–30 characters."
+                                       Popup="true"
+                                       CssClass="setup-field__validator-popup--length" />
+            </div>
+
+            <div class="setup-field" style="position: relative;">
+                <label class="setup-field__label" for="ct-currency">Currency *</label>
+                @if (CurrenciesLoading)
+                {
+                    <DropdownFieldSkeleton AriaLabel="Loading currencies" />
+                }
+                else
+                {
+                    <RadzenDropDown id="ct-currency"
+                                    Name="@nameof(ContractFormModel.CurrencyId)"
+                                    Value="@Model.CurrencyId"
+                                    ValueChanged="@OnCurrencyChangedAsync"
+                                    Data="@Currencies"
+                                    TValue="Guid?"
+                                    ValueProperty="Id"
+                                    TextProperty="DisplayLabel"
+                                    AllowFiltering="true"
+                                    Disabled="@DisableCurrency"
+                                    Placeholder="Select currency"
+                                    Style="width: 100%;" />
+                    <RadzenCustomValidator Component="@nameof(ContractFormModel.CurrencyId)"
+                                           Text="Currency is required."
+                                           Validator="@(() => Model.IsCurrencyIdInputValid())"
+                                           Popup="true"
+                                           Style="position: absolute;" />
+                }
+            </div>
+        </div>
+
+        @* Row 2: Start date | Expiry date *@
+        <div class="setup-grid">
+            <div class="setup-field" style="position: relative;">
+                <label class="setup-field__label" for="ct-start">Start date *</label>
+                <RadzenDatePicker id="ct-start"
+                                  Name="ct-start-name"
+                                  Value="@Model.StartDate"
+                                  ValueChanged="@OnStartDateChangedAsync"
+                                  TValue="DateTime?"
+                                  DateFormat="dd MMM yyyy"
+                                  Style="width: 100%;" />
+                <RadzenCustomValidator Component="ct-start-name"
+                                       Text="Start date is required."
+                                       Validator="@(() => Model.IsStartDateInputValid())"
+                                       Popup="true"
+                                       Style="position: absolute;" />
+            </div>
+
+            <div class="setup-field" style="position: relative;">
+                <label class="setup-field__label" for="ct-expiry">End date *</label>
+                <RadzenDatePicker id="ct-expiry"
+                                  Name="ct-expiry-name"
+                                  Value="@Model.ExpiryDate"
+                                  ValueChanged="@OnExpiryDateChangedAsync"
+                                  TValue="DateTime?"
+                                  Min="@(Model.StartDate?.AddDays(1) ?? DateTime.UtcNow.Date)"
+                                  DateFormat="dd MMM yyyy"
+                                  Style="width: 100%;" />
+                <RadzenCustomValidator Component="ct-expiry-name"
+                                       Text="End date must be strictly after the start date."
+                                       Validator="@(() => Model.IsExpiryDateInputValid())"
+                                       Popup="true"
+                                       Style="position: absolute;" />
+            </div>
+        </div>
+
+        @* Row 3: Payment terms | (Alert days [30%] + Reminder cadence [70%]) *@
+        <div class="setup-grid">
+            <div class="setup-field">
+                <label class="setup-field__label" for="ct-payment-terms">Payment terms</label>
+                <RadzenDropDown id="ct-payment-terms"
+                                Value="@Model.PaymentTerms"
+                                ValueChanged="@OnPaymentTermsChangedAsync"
+                                Data="@_paymentTermsOptions"
+                                TValue="PaymentTerms"
+                                Style="width: 100%;" />
+            </div>
+
+            <div class="setup-subgrid-50-50">
+                <div class="setup-field">
+                    <label class="setup-field__label" for="ct-alert-days">Alert before expiry (days)</label>
+                    <RadzenNumeric id="ct-alert-days"
+                                   Value="@Model.ExpiryAlertDays"
+                                   ValueChanged="@OnAlertDaysChangedAsync"
+                                   TValue="int"
+                                   Min="0"
+                                   Max="365"
+                                   Style="width: 100%;" />
+                </div>
+
+                <div class="setup-field" style="position: relative;">
+                    <label class="setup-field__label" for="ct-alert-interval">Reminder cadence</label>
+                    <RadzenDropDown id="ct-alert-interval"
+                                    Name="ct-alert-int-name"
+                                    Value="@Model.ExpiryAlertInterval"
+                                    ValueChanged="@OnAlertIntervalChangedAsync"
+                                    Data="@_alertIntervalOptions"
+                                    TValue="ExpiryAlertInterval?"
+                                    AllowClear="true"
+                                    Disabled="@(Model.ExpiryAlertDays <= 0)"
+                                    Placeholder="None"
+                                    Style="width: 100%;" />
+                    <RadzenCustomValidator Component="ct-alert-int-name"
+                                           Text="Pick a cadence when alert days is greater than zero."
+                                           Validator="@(() => Model.IsAlertIntervalInputValid())"
+                                           Popup="true"
+                                           Style="position: absolute;" />
+                </div>
+            </div>
+        </div>
+
+        @* Row 4: VAT | Debrief required (moved here from Coverage) *@
+        <div class="setup-grid">
+            <div class="setup-field">
+                <span class="setup-field__label">VAT</span>
+                <RadzenSelectBar TValue="bool"
+                                 Value="@Model.ApplyVat"
+                                 ValueChanged="@OnApplyVatChangedAsync"
+                                 Size="ButtonSize.Small">
+                    <Items>
+                        <RadzenSelectBarItem Text="Apply VAT" Value="true" />
+                        <RadzenSelectBarItem Text="No VAT" Value="false" />
+                    </Items>
+                </RadzenSelectBar>
+            </div>
+
+            <div class="setup-field">
+                <label class="setup-field__label d-flex align-items-center gap-2 flex-wrap" style="cursor: pointer;">
+                    <RadzenCheckBox TValue="bool"
+                                    Value="@Model.DebriefRequired"
+                                    ValueChanged="@OnDebriefRequiredChangedAsync"
+                                    Name="ct-debrief"/>
+                    <span>Debrief required</span>
+                </label>
+                <p class="setup-field__hint">When set, work orders billed under this contract require a debrief before approval.</p>
+            </div>
+        </div>
+    </article>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContractFormModel Model { get; set; } = default!;
+
+    [Parameter] public bool DisableContractNo { get; set; }
+
+    /// <summary>True when the parent dialog must lock currency (e.g. the Edit dialog after save).</summary>
+    [Parameter] public bool DisableCurrency { get; set; }
+
+    [Parameter] public IReadOnlyList<ContractDialogLookups.DropdownOption> Currencies { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter] public bool CurrenciesLoading { get; set; }
+
+    [Parameter] public IReadOnlyList<ContractDialogLookups.DropdownOption> Stations { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter] public bool StationsLoading { get; set; }
+
+    [Parameter] public IReadOnlyList<ContractDialogLookups.DropdownOption> OperationTypes { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter] public bool OperationTypesLoading { get; set; }
+
+    /// <summary>
+    /// Turns on the destination-customer card. Used by the
+    /// <c>ContractDuplicateDialog</c> "duplicate for another customer" entry point so the
+    /// wizard can redirect the copy to a different customer profile.
+    /// </summary>
+    [Parameter] public bool ShowCustomerPicker { get; set; }
+
+    [Parameter] public IReadOnlyList<CustomerDto> Customers { get; set; } = Array.Empty<CustomerDto>();
+    [Parameter] public bool CustomersLoading { get; set; }
+
+    /// <summary>Source contract's customer id — used purely to surface a same-customer hint under the picker.</summary>
+    [Parameter] public Guid? SourceCustomerId { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    /// <summary>Fires when the destination customer changes — host can reset the contract number and refresh state.</summary>
+    [Parameter] public EventCallback<Guid> OnCustomerChanged { get; set; }
+
+    /// <summary>Fires when the operation-type selection changes — host re-projects filtered pricing-line OT options.</summary>
+    [Parameter] public EventCallback OnOperationTypesChanged { get; set; }
+
+    /// <summary>Fires when the currency changes — host can re-fetch currency-formatted display labels.</summary>
+    [Parameter] public EventCallback OnCurrencyChanged { get; set; }
+
+    private static readonly PaymentTerms[] _paymentTermsOptions = Enum.GetValues<PaymentTerms>();
+    private static readonly ExpiryAlertInterval[] _alertIntervalOptions = Enum.GetValues<ExpiryAlertInterval>();
+
+    /// <summary>
+    /// Commit-time normaliser: uppercases the contract number when the user leaves the field
+    /// (or hits Enter), so what they see matches what the domain stores. Whitespace is trimmed
+    /// by <see cref="RadzenTextBox.Trim"/> on the control.
+    /// </summary>
+    private async Task OnContractNoCommitAsync()
+    {
+        var normalized = (Model.ContractNo ?? string.Empty).Trim().ToUpperInvariant();
+        if (Model.ContractNo != normalized)
+        {
+            Model.ContractNo = normalized;
+            StateHasChanged();
+        }
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnCurrencyChangedAsync(Guid? value)
+    {
+        Model.CurrencyId = value;
+        if (OnCurrencyChanged.HasDelegate) await OnCurrencyChanged.InvokeAsync();
+        await OnModelChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Dispatches the destination-customer change to the host. The host owns side-effects
+    /// (clearing the contract number, etc.) so this section stays a thin view.
+    /// </summary>
+    private async Task OnCustomerChangedAsync(Guid value)
+    {
+        Model.CustomerId = value;
+        if (OnCustomerChanged.HasDelegate) await OnCustomerChanged.InvokeAsync(value);
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnPaymentTermsChangedAsync(PaymentTerms value)
+    {
+        Model.PaymentTerms = value;
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnApplyVatChangedAsync(bool value)
+    {
+        Model.ApplyVat = value;
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnStartDateChangedAsync(DateTime? value)
+    {
+        Model.StartDate = value;
+        if (Model.ExpiryDate is { } exp && Model.StartDate is { } start && exp <= start)
+            Model.ExpiryDate = start.AddYears(1);
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnExpiryDateChangedAsync(DateTime? value)
+    {
+        Model.ExpiryDate = value;
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnAlertDaysChangedAsync(int value)
+    {
+        Model.ExpiryAlertDays = Math.Clamp(value, 0, 365);
+        if (Model.ExpiryAlertDays == 0)
+            Model.ExpiryAlertInterval = null;
+        else
+            Model.ExpiryAlertInterval ??= ExpiryAlertInterval.Monthly;
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnAlertIntervalChangedAsync(ExpiryAlertInterval? value)
+    {
+        Model.ExpiryAlertInterval = value;
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnStationIdsChangedAsync(IEnumerable<Guid> values)
+    {
+        Model.StationIds = values?.Distinct().ToList() ?? new List<Guid>();
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnDebriefRequiredChangedAsync(bool value)
+    {
+        Model.DebriefRequired = value;
+        await OnModelChanged.InvokeAsync();
+    }
+}

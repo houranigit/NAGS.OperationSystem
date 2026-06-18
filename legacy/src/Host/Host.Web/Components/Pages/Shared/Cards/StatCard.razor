@@ -1,0 +1,15 @@
+
+<div class="stat-card">
+    <div class="stat-card-label">@Label</div>
+    <div class="stat-card-value">@Value</div>
+    @if (!string.IsNullOrEmpty(Subtitle))
+    {
+        <div class="stat-card-subtitle">@Subtitle</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+}

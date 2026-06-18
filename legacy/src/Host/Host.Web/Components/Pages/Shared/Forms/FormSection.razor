@@ -1,0 +1,20 @@
+
+<fieldset class="form-section">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <legend class="form-section-title">@Title</legend>
+    }
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <p class="form-section-description">@Description</p>
+    }
+    <div class="form-section-body">
+        @ChildContent
+    </div>
+</fieldset>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

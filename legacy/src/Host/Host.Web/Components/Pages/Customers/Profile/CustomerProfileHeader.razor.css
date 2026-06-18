@@ -1,0 +1,373 @@
+.customer-profile-header {
+    padding: 0.25rem 0 0;
+    margin-bottom: 0;
+    /* Sidebar / shell maroon — avoid --bs-primary (Vuexy default is purple) */
+    --cust-code-maroon: var(--ops-maroon, var(--ops-nav-active, #722f37));
+    --cust-code-mid: #9a5962;
+    --cust-code-rose: #a85c66;
+    --cust-code-accent: #8f414c;
+}
+
+.customer-profile-header__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 1rem 1.25rem;
+    width: 100%;
+}
+
+.customer-profile-header__logo-wrap {
+    flex: 0 0 min(7.5rem, 100%);
+    width: min(7.5rem, 100%);
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+}
+
+.customer-profile-header__avatar {
+    position: relative;
+    box-sizing: border-box;
+    width: min(7.5rem, 100%);
+    max-width: 7.5rem;
+    max-height: min(7.5rem, 100%);
+    aspect-ratio: 1;
+    height: auto;
+    flex-shrink: 0;
+    container-type: inline-size;
+    container-name: customer-avatar;
+}
+
+.customer-profile-header__avatar--skeleton {
+    width: min(7.5rem, 100%);
+    max-width: 7.5rem;
+    max-height: min(7.5rem, 100%);
+    aspect-ratio: 1;
+    height: auto;
+}
+
+.customer-profile-header__middle {
+    flex: 1 1 16rem;
+    min-width: 0;
+    max-width: min(64rem, 100%);
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 0.85rem;
+}
+
+.customer-profile-header__cols {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 0.5rem 0.625rem;
+    align-items: start;
+    justify-content: start;
+    width: fit-content;
+    max-width: 100%;
+}
+
+.customer-profile-header__identity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.customer-profile-header__contact {
+    min-width: 0;
+    border-left: 1px solid #e2e8f0;
+    padding-left: 0.65rem;
+    align-self: stretch;
+}
+
+.customer-profile-header__contact-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+.customer-profile-header__title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+}
+
+.customer-profile-header__name {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.customer-profile-header__meta {
+    margin: 5px 0px;
+    line-height: 1.2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.customer-profile-header__code {
+    display: inline-flex;
+    align-items: stretch;
+    max-width: 100%;
+    border-radius: 7px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--cust-code-mid) 32%, var(--bs-gray-200, #e6e6e8));
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--cust-code-maroon) 12%, transparent);
+    line-height: 1;
+    box-sizing: border-box;
+}
+
+.customer-profile-header__code-kind {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.59375rem;
+    font-weight: 600;
+    letter-spacing: 0.065em;
+    text-transform: uppercase;
+}
+
+.customer-profile-header__code-value {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+/* IATA: slightly richer strip (lighter than active menu glyph, same hue family) */
+.customer-profile-header__code--iata .customer-profile-header__code-kind {
+    background: linear-gradient(
+        158deg,
+        color-mix(in srgb, var(--cust-code-rose) 28%, #ffffff) 0%,
+        color-mix(in srgb, var(--cust-code-mid) 22%, #ffffff) 50%,
+        color-mix(in srgb, var(--cust-code-maroon) 18%, #ffffff) 100%
+    );
+    color: color-mix(in srgb, var(--cust-code-maroon) 82%, #334155);
+}
+
+.customer-profile-header__code--iata .customer-profile-header__code-value {
+    background: linear-gradient(
+        175deg,
+        color-mix(in srgb, var(--cust-code-maroon) 4%, #ffffff),
+        color-mix(in srgb, var(--cust-code-rose) 9%, #ffffff)
+    );
+    color: color-mix(in srgb, var(--cust-code-maroon) 58%, #475569);
+}
+
+/* ICAO: softer wash */
+.customer-profile-header__code--icao .customer-profile-header__code-kind {
+    background: linear-gradient(
+        158deg,
+        color-mix(in srgb, var(--cust-code-rose) 16%, #ffffff) 0%,
+        color-mix(in srgb, var(--cust-code-mid) 12%, #ffffff) 100%
+    );
+    color: color-mix(in srgb, var(--cust-code-maroon) 68%, #64748b);
+}
+
+.customer-profile-header__code--icao .customer-profile-header__code-value {
+    background: linear-gradient(
+        175deg,
+        color-mix(in srgb, var(--cust-code-maroon) 3%, #ffffff),
+        color-mix(in srgb, var(--cust-code-rose) 6%, #ffffff)
+    );
+    color: color-mix(in srgb, var(--cust-code-maroon) 50%, #6d6b77);
+}
+
+.customer-profile-header__status-dot {
+    position: absolute;
+    left: calc(50% + (50% - 1px) * 0.707106781);
+    top: calc(50% + (50% - 1px) * 0.707106781);
+    width: 0.8125rem;
+    height: 0.8125rem;
+    margin: 0;
+    border-radius: 50%;
+    border: none;
+    box-sizing: border-box;
+    box-shadow: none;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.customer-profile-header__status-dot--active {
+    background: #22c55e;
+}
+
+.customer-profile-header__status-dot--inactive {
+    background: #94a3b8;
+}
+
+.customer-profile-header__address-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.customer-profile-header__address-icon {
+    flex-shrink: 0;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.125rem;
+    color: #94a3b8;
+}
+
+.customer-profile-header__address {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+.customer-profile-header__address-empty {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+.customer-profile-header__created-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.customer-profile-header__created-icon {
+    flex-shrink: 0;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.1rem;
+    color: #94a3b8;
+}
+
+.customer-profile-header__created-text {
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+.customer-profile-header__inline-btn {
+    flex-shrink: 0;
+    opacity: 0.45;
+    transition: opacity 0.15s;
+}
+
+.customer-profile-header__inline-btn:hover {
+    opacity: 1;
+}
+
+.customer-profile-header__logo,
+.customer-profile-header__logo-placeholder {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 1px solid #e2e8f0;
+}
+
+.customer-profile-header__logo {
+    display: block;
+    padding: 0.25rem;
+    object-fit: contain;
+    object-position: center;
+    background: #fff;
+}
+
+.customer-profile-header__logo-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(0.6875rem, 18cqi, 1.125rem);
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.02em;
+    background: #fff;
+}
+
+.customer-profile-header__contact-block {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+}
+
+.customer-profile-header__contact-label-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.customer-profile-header__contact-icon {
+    flex-shrink: 0;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: #94a3b8;
+}
+
+.customer-profile-header__contact-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #94a3b8;
+    line-height: 1.3;
+}
+
+.customer-profile-header__contact-value {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: #0f172a;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.customer-profile-header__contact-muted {
+    color: #94a3b8;
+    font-weight: 400;
+}
+
+a.customer-profile-header__contact-link {
+    color: #0f172a;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+a.customer-profile-header__contact-link:hover {
+    color: #020617;
+}
+
+@media (max-width: 640px) {
+    .customer-profile-header__cols {
+        grid-template-columns: 1fr;
+    }
+
+    .customer-profile-header__contact {
+        border-left: none;
+        padding-left: 0;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 0.85rem;
+    }
+}
+
+@media (max-width: 520px) {
+    .customer-profile-header__row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .customer-profile-header__logo-wrap {
+        align-self: center;
+    }
+}

@@ -1,0 +1,70 @@
+@namespace Host.Web.Components.Pages.Settings.MasterData.AircraftTypes.Dialog.Sections
+@using Core.Domain.Enumerations
+@using Host.Web.Components.Pages.Settings.MasterData.AircraftTypes.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field">
+            <label class="settings-field__label" for="att-manufacturer">Manufacturer</label>
+            <RadzenDropDown TValue="Manufacturer"
+                            inputAttributes="@(new Dictionary<string, object> { ["id"] = "att-manufacturer" })"
+                            @bind-Value="Model.Manufacturer"
+                            Data="@_manufacturers"
+                            Placeholder="Select manufacturer…"
+                            Change="@OnFieldChangedAsync"
+                            Style="width: 100%;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="att-model">Model</label>
+            <RadzenTextBox id="att-model"
+                           Name="AircraftModel"
+                           @bind-Value="Model.Model"
+                           MaxLength="50"
+                           Placeholder="e.g. A320NEO"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%; text-transform: uppercase;" />
+            <RadzenRequiredValidator Component="AircraftModel"
+                                     Text="Model is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+            <RadzenLengthValidator Component="AircraftModel"
+                                   Max="50"
+                                   Text="Model must be at most 50 characters."
+                                   Popup="true"
+                                   Style="position: absolute;" />
+        </div>
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="att-notes">Notes</label>
+        <RadzenTextArea id="att-notes"
+                        @bind-Value="Model.Notes"
+                        MaxLength="500"
+                        Rows="3"
+                        Placeholder="Operational or billing notes"
+                        Change="@OnFieldChangedAsync"
+                        Style="width: 100%;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="att-status-label">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="att-status-label">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    private static readonly Manufacturer[] _manufacturers = Enum.GetValues<Manufacturer>();
+
+    [Parameter, EditorRequired] public AircraftTypeFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

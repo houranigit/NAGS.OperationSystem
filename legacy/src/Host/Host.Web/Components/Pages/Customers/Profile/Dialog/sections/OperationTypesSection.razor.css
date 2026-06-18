@@ -1,0 +1,114 @@
+/* Step 2 — Operation types. Card-per-row layout that visually matches the Setup
+   step's identity/period card, so the wizard reads as a continuous form rather
+   than a bag of unrelated widgets. The OperationTypesSection.razor markup uses
+   `bracket-card` / `bracket-*` class names (carry-overs from the cancellation
+   plan brackets editor); we co-locate the styles here so the section ships its
+   own look without depending on global stylesheets. */
+
+.contacts-brackets {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.brackets-container {
+    --setup-accent: #722f37;
+    --setup-accent-soft: rgba(114, 47, 55, 0.10);
+    --setup-border: #e9edf4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.bracket-card {
+    border: 1px solid var(--setup-border);
+    border-radius: 14px;
+    padding: 0.9rem 1.05rem 1rem;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.bracket-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.bracket-number {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--setup-accent);
+    text-transform: uppercase;
+}
+
+.bracket-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.bracket-field-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1rem;
+    align-items: end;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.settings-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+/* The "Add operation type" CTA sits below the cards as a low-emphasis dashed
+   tile so it reads as "create" rather than "primary action". */
+.add-bracket-area {
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+    padding: 0.35rem 0 0;
+}
+
+/* Second Radzen popup on the services field (count vs AOG/duplicate rules). */
+.operation-types__validator-popup--stacked {
+    position: absolute;
+    top: 2.5rem;
+}
+
+::deep .add-bracket-area .rz-button {
+    border: 1px dashed var(--setup-border, #e9edf4);
+    border-radius: 10px;
+    padding: 0.55rem 0.85rem;
+    background: transparent;
+    color: #475569;
+    transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+::deep .add-bracket-area .rz-button:hover {
+    border-color: var(--setup-accent, #722f37);
+    color: var(--setup-accent, #722f37);
+    background: rgba(114, 47, 55, 0.04);
+}
+
+@media (max-width: 720px) {
+    .bracket-field-row {
+        grid-template-columns: 1fr;
+    }
+}

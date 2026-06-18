@@ -1,0 +1,397 @@
+@*
+  Generic step body for steps 4–8 (Services, Manpowers, Tools, Materials, GeneralSupports).
+  Renders a RadzenDataGrid of the lines on Model + an "Add" button in the header. Each row
+  exposes Edit / Delete buttons. Mirrors the OperationsManager Step4Services.razor look.
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using Host.Web.Components.Pages.Customers.Profile.Dialog.Sections.Editors
+@using Host.Web.Services
+@using PricingBasis = Contracts.Domain.Enumerations.PricingBasis
+@using BracketBillingMode = Contracts.Domain.Enumerations.BracketBillingMode
+@inject DialogService DialogService
+
+<div class="pricing-lines-section">
+    @if (ShowInfo && _showInfo)
+    {
+        <div class="pricing-lines-section__info" role="alert">
+            <span class="pricing-lines-section__info-icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            </span>
+            <span class="pricing-lines-section__info-text">@InfoText</span>
+            <button type="button" class="pricing-lines-section__info-close"
+                    @onclick="@(() => _showInfo = false)"
+                    aria-label="Dismiss">×</button>
+        </div>
+    }
+
+    <RadzenDataGrid @ref="_grid"
+                    TItem="ContractFormModel.PricingLineRow"
+                    Data="@VisibleLines"
+                    IsLoading="@Loading"
+                    Density="Density.Compact"
+                    AllowPaging="false"
+                    AllowSorting="false"
+                    AllowFiltering="false"
+                    AllowColumnResize="true"
+                    AllowVirtualization="false"
+                    AllowRowSelectOnRowClick="false"
+                    EmptyText="@EmptyText"
+                    Style="height: auto; min-height: 18rem;">
+        <HeaderTemplate>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         JustifyContent="JustifyContent.SpaceBetween"
+                         AlignItems="AlignItems.Center"
+                         Gap="10px"
+                         Class="w-100 flex-wrap pricing-lines-section__header">
+                <span class="pricing-lines-section__header-title">@HeaderTitle</span>
+                <button type="button" class="pricing-lines-section__add" @onclick="OpenAddDialogAsync">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    @AddButtonLabel
+                </button>
+            </RadzenStack>
+        </HeaderTemplate>
+        <Columns>
+            <RadzenDataGridColumn TItem="ContractFormModel.PricingLineRow"
+                                  Title="@SingularNoun"
+                                  Width="180px">
+                <Template Context="row">
+                    @{
+                        var item = ItemLookup.FirstOrDefault(x => x.Id == row.ItemId);
+                    }
+                    @if (item is not null)
+                    {
+                        <span class="fw-semibold">@item.Name</span>
+                        @if (!string.Equals(item.Name, item.DisplayLabel, StringComparison.Ordinal))
+                        {
+                            <span class="text-body-secondary d-block small">@item.DisplayLabel</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="text-body-secondary">—</span>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+
+            @if (ScopedOperationTypeId is null)
+            {
+                <RadzenDataGridColumn TItem="ContractFormModel.PricingLineRow"
+                                      Title="Operation type"
+                                      Width="150px">
+                    <Template Context="row">
+                        @{
+                            var op = OperationTypes.FirstOrDefault(o => o.Id == row.OperationTypeId);
+                        }
+                        @(op?.Name ?? "—")
+                    </Template>
+                </RadzenDataGridColumn>
+            }
+
+            @if (HasAircraft)
+            {
+                <RadzenDataGridColumn TItem="ContractFormModel.PricingLineRow"
+                                      Title="Aircraft"
+                                      Width="120px">
+                    <Template Context="row">
+                        @if (row.AircraftTypeId is { } aid)
+                        {
+                            var ac = AircraftTypes.FirstOrDefault(a => a.Id == aid);
+                            <span class="badge bg-label-secondary">@(ac?.Name ?? "?")</span>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary small">All aircraft</span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            }
+
+            <RadzenDataGridColumn TItem="ContractFormModel.PricingLineRow"
+                                  Title="Pricing"
+                                  Width="380px">
+                <Template Context="row">
+                    <div class="pricing-lines-section__pricing-cell">
+                        @if (row.Basis == PricingBasis.Flat)
+                        {
+                            @if (row.Brackets.Count > 0)
+                            {
+                                <div class="pricing-lines-section__brackets pricing-lines-section__brackets--flat">
+                                    <ul class="pricing-lines-section__brackets-list">
+                                        <li class="pricing-lines-section__bracket-item">
+                                            <span class="pricing-lines-section__bracket-duration">Flat per unit</span>
+                                            <span class="pricing-lines-section__bracket-value">@FormatFlat(row.Brackets[0])</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            }
+                        }
+                        else if (row.Brackets.Count > 0)
+                        {
+                            <div class="pricing-lines-section__brackets">
+                                <div class="pricing-lines-section__brackets-labels">
+                                    <span>Duration</span>
+                                    <span>Value</span>
+                                </div>
+                                <ul class="pricing-lines-section__brackets-list">
+                                    @foreach (var b in row.Brackets)
+                                    {
+                                        <li class="pricing-lines-section__bracket-item">
+                                            <span class="pricing-lines-section__bracket-duration">@FormatDuration(b)</span>
+                                            <span class="pricing-lines-section__bracket-value">@FormatBracketValue(row, b)</span>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                </Template>
+            </RadzenDataGridColumn>
+
+            <RadzenDataGridColumn TItem="ContractFormModel.PricingLineRow"
+                                  Title="Actions"
+                                  Width="160px"
+                                  Frozen="true"
+                                  FrozenPosition="FrozenColumnPosition.Right"
+                                  Resizable="false"
+                                  Reorderable="false"
+                                  TextAlign="TextAlign.Center">
+                <Template Context="row">
+                    <div class="d-inline-flex gap-1 align-items-center">
+                        <button type="button" class="pricing-lines-section__row-btn pricing-lines-section__row-btn--edit"
+                                @onclick="@(() => OpenEditDialogAsync(row))">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                            Edit
+                        </button>
+                        <button type="button" class="pricing-lines-section__row-btn pricing-lines-section__row-btn--delete"
+                                @onclick="@(() => DeleteRowAsync(row))">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            Delete
+                        </button>
+                    </div>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContractPricingLineKind Kind { get; set; }
+    [Parameter, EditorRequired] public List<ContractFormModel.PricingLineRow> Lines { get; set; } = default!;
+
+    [Parameter, EditorRequired] public IReadOnlyList<ContractDialogLookups.DropdownOption> ItemLookup { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter, EditorRequired] public IReadOnlyList<ContractDialogLookups.DropdownOption> OperationTypes { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter] public IReadOnlyList<ContractDialogLookups.DropdownOption> AircraftTypes { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+
+    [Parameter] public string CurrencyDisplay { get; set; } = "—";
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public bool ShowInfo { get; set; } = true;
+    [Parameter] public string InfoText { get; set; } = "Add a row, then use Edit to set its pricing brackets.";
+
+    [Parameter] public EventCallback OnLinesChanged { get; set; }
+
+    /// <summary>
+    /// When set, the inner grid only displays rows for this operation type and the per-line
+    /// dialog opens with the OT preselected and locked. Currently unused after the Services
+    /// step was flattened into a single grid; kept for future per-OT card layouts.
+    /// </summary>
+    [Parameter] public Guid? ScopedOperationTypeId { get; set; }
+
+    /// <summary>
+    /// Resolves the system-default plans for a given item id. Forwarded to the per-line
+    /// dialog so it can pre-fill brackets when the user picks an item. <c>null</c> = no
+    /// auto-fill (the dialog still works, just without defaults).
+    /// </summary>
+    [Parameter] public Func<Guid, IReadOnlyList<DialogPricePlanScopeOption>>? GetItemPlans { get; set; }
+
+    /// <summary>
+    /// "plan currency id → multiplier into contract currency" map built by
+    /// <see cref="ContractDialogLookups.GetRateMapTo"/>. Forwarded to the per-line dialog.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<Guid, decimal>? RateMap { get; set; }
+
+    /// <summary>
+    /// Contract currency id, forwarded to the per-line dialog so it can render a
+    /// cross-currency conversion hint when a system price plan's currency differs from
+    /// the contract's.
+    /// </summary>
+    [Parameter] public Guid? ContractCurrencyId { get; set; }
+
+    /// <summary>
+    /// Currency id → 3-letter code map (e.g. <c>USD</c>). Forwarded to the per-line
+    /// dialog so the conversion hint can name the source currency.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<Guid, string>? CurrencyCodes { get; set; }
+
+    /// <summary>
+    /// Fired before the Add dialog opens; the host can show a confirm and optionally
+    /// mutate <see cref="Lines"/> (e.g. drop an existing AOG row before adding a new
+    /// service). Returning a falsy <see cref="Task{Boolean}"/> aborts the add.
+    /// </summary>
+    [Parameter] public Func<Guid, Task<bool>>? OnBeforeAddAsync { get; set; }
+
+    /// <summary>
+    /// Fired after a brand-new row was committed by the dialog. The host can clean up
+    /// other rows (e.g. AOG-vs-others mixing) and undo the add by removing the row from
+    /// <see cref="Lines"/> and returning <c>true</c>.
+    /// </summary>
+    [Parameter] public Func<ContractFormModel.PricingLineRow, Task<bool>>? OnAfterAddAsync { get; set; }
+
+    private RadzenDataGrid<ContractFormModel.PricingLineRow>? _grid;
+    private bool _showInfo = true;
+
+    private bool HasAircraft => Kind is ContractPricingLineKind.Service or ContractPricingLineKind.Tool;
+
+    /// <summary>
+    /// Subset of <see cref="Lines"/> the grid renders. When <see cref="ScopedOperationTypeId"/>
+    /// is set, only rows for that OT are visible — the inner list is the source of truth, the
+    /// view is just filtered.
+    /// </summary>
+    private IReadOnlyList<ContractFormModel.PricingLineRow> VisibleLines =>
+        ScopedOperationTypeId is { } ot
+            ? Lines.Where(l => l.OperationTypeId == ot).ToList()
+            : Lines;
+
+    private string ScopedOperationTypeName =>
+        ScopedOperationTypeId is { } ot
+            ? OperationTypes.FirstOrDefault(o => o.Id == ot)?.Name ?? "—"
+            : "";
+
+    private string HeaderTitle =>
+        ScopedOperationTypeId is null
+            ? $"{PluralTitle} ({Lines.Count})"
+            : $"{PluralTitle} — {ScopedOperationTypeName} ({VisibleLines.Count})";
+
+    private string EmptyText =>
+        ScopedOperationTypeId is null
+            ? $"No {PluralLowercase} configured yet."
+            : $"No {PluralLowercase} for {ScopedOperationTypeName} yet.";
+
+    private string SingularNoun => Kind switch
+    {
+        ContractPricingLineKind.Service => "Service",
+        ContractPricingLineKind.Manpower => "Manpower type",
+        ContractPricingLineKind.Tool => "Tool",
+        ContractPricingLineKind.Material => "Material",
+        ContractPricingLineKind.GeneralSupport => "General support",
+        _ => "Item"
+    };
+
+    private string PluralTitle => Kind switch
+    {
+        ContractPricingLineKind.Service => "Services pricing",
+        ContractPricingLineKind.Manpower => "Manpower pricing",
+        ContractPricingLineKind.Tool => "Tools pricing",
+        ContractPricingLineKind.Material => "Materials pricing",
+        ContractPricingLineKind.GeneralSupport => "General supports pricing",
+        _ => "Lines"
+    };
+
+    private string PluralLowercase => PluralTitle.ToLowerInvariant();
+
+    private string AddButtonLabel => $"Add {SingularNoun.ToLowerInvariant()}";
+
+
+    private async Task OpenAddDialogAsync()
+    {
+        // Host hook to short-circuit (e.g. AOG-vs-others mixing in services step) BEFORE
+        // we open the dialog, so the user sees the confirm in a single place.
+        if (ScopedOperationTypeId is { } ot && OnBeforeAddAsync is { } before)
+        {
+            var proceed = await before(ot);
+            if (!proceed) return;
+        }
+        await OpenDialogAsync(null);
+    }
+
+    private Task OpenEditDialogAsync(ContractFormModel.PricingLineRow row)
+    {
+        var i = Lines.IndexOf(row);
+        return i < 0 ? Task.CompletedTask : OpenDialogAsync(i);
+    }
+
+    private async Task OpenDialogAsync(int? editIndex)
+    {
+        var title = editIndex is null
+            ? $"Add {SingularNoun.ToLowerInvariant()}"
+            : $"Edit {SingularNoun.ToLowerInvariant()}";
+
+        var beforeCount = Lines.Count;
+
+        var result = await DialogService.OpenAsync<ContractPricingLineDialog>(title,
+            new Dictionary<string, object?>
+            {
+                { nameof(ContractPricingLineDialog.Kind), Kind },
+                { nameof(ContractPricingLineDialog.ParentList), Lines },
+                { nameof(ContractPricingLineDialog.EditIndex), editIndex },
+                { nameof(ContractPricingLineDialog.ItemLookup), ItemLookup },
+                { nameof(ContractPricingLineDialog.OperationTypes), OperationTypes },
+                { nameof(ContractPricingLineDialog.AircraftTypes), AircraftTypes },
+                { nameof(ContractPricingLineDialog.CurrencyDisplay), CurrencyDisplay },
+                { nameof(ContractPricingLineDialog.FixedOperationTypeId), ScopedOperationTypeId },
+                { nameof(ContractPricingLineDialog.GetItemPlans), GetItemPlans },
+                { nameof(ContractPricingLineDialog.RateMap), RateMap },
+                { nameof(ContractPricingLineDialog.ContractCurrencyId), ContractCurrencyId },
+                { nameof(ContractPricingLineDialog.CurrencyCodes), CurrencyCodes }
+            },
+            new DialogOptions
+            {
+                Width = "min(58rem, 96vw)",
+                CloseDialogOnOverlayClick = false,
+                ShowClose = true
+            });
+
+        if (result is true)
+        {
+            // Newly-added row sits at the end of the parent list (the dialog appends on
+            // create) — fire OnAfterAddAsync only on real adds, not edits.
+            if (editIndex is null && Lines.Count > beforeCount && OnAfterAddAsync is { } after)
+            {
+                var added = Lines[^1];
+                var revert = await after(added);
+                if (revert)
+                    Lines.Remove(added);
+            }
+
+            if (_grid is not null) await _grid.Reload();
+            if (OnLinesChanged.HasDelegate) await OnLinesChanged.InvokeAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DeleteRowAsync(ContractFormModel.PricingLineRow row)
+    {
+        var i = Lines.IndexOf(row);
+        if (i < 0) return;
+
+        var confirmed = await DialogService.Confirm(
+            "Remove this line from the wizard? Changes apply when you save the contract.",
+            $"Remove {SingularNoun.ToLowerInvariant()}?",
+            new ConfirmOptions { OkButtonText = "Remove", CancelButtonText = "Cancel" });
+        if (confirmed != true) return;
+
+        Lines.RemoveAt(i);
+        if (_grid is not null) await _grid.Reload();
+        if (OnLinesChanged.HasDelegate) await OnLinesChanged.InvokeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string FormatFlat(ContractFormModel.PriceBracketRow b) =>
+        $"{CurrencyDisplay} {b.PriceValue:N2} per unit";
+
+    private static string FormatDuration(ContractFormModel.PriceBracketRow b) =>
+        b.MaxMinutes is int mx
+            ? $"{b.MinMinutes} – {mx} min"
+            : $"{b.MinMinutes} – ∞ min";
+
+    private string FormatBracketValue(ContractFormModel.PricingLineRow line, ContractFormModel.PriceBracketRow b) =>
+        $"{CurrencyDisplay} {b.PriceValue:N2} · {BillingModeLabel(b.BillingMode)} · {b.BlockSize} min block";
+
+    private static string BillingModeLabel(BracketBillingMode mode) => mode switch
+    {
+        BracketBillingMode.Floor => "Floor",
+        BracketBillingMode.Ceiling => "Ceiling",
+        BracketBillingMode.ProRated => "Pro-rated",
+        _ => mode.ToString()
+    };
+}

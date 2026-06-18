@@ -1,0 +1,16 @@
+
+<div class="card-skeleton">
+    <Skeleton Height="1.25rem" Width="40%" />
+    <Skeleton Height="0.85rem" Width="70%" />
+    <Skeleton Height="0.85rem" Width="55%" />
+    @if (ShowFooter)
+    {
+        <div class="card-skeleton-footer">
+            <Skeleton Height="2rem" Width="6rem" BorderRadius="6px" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool ShowFooter { get; set; }
+}

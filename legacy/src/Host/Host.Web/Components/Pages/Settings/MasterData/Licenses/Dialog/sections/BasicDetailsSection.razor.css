@@ -1,0 +1,54 @@
+/* Form fields */
+.settings-field__row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: 100%;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.settings-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+.settings-section-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #334155;
+    margin: 0 0 0.5rem;
+}
+
+.settings-subtle-table {
+    width: 100%;
+    font-size: 0.8125rem;
+    border-collapse: collapse;
+}
+
+.settings-subtle-table th,
+.settings-subtle-table td {
+    border-bottom: 1px solid #eef1f6;
+    padding: 0.5rem 0.35rem;
+    text-align: left;
+}
+
+.settings-subtle-table th {
+    color: #64748b;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .settings-field__row2 {
+        grid-template-columns: 1fr;
+    }
+}

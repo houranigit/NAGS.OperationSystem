@@ -1,0 +1,81 @@
+@*
+  Wizard / update shared section — Name, Unit selector, Status.
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Materials.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.Materials.Dialog
+@using Store.Contracts.Features.Unit
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="mat-name">Name</label>
+        <RadzenTextBox id="mat-name"
+                       Name="MaterialName"
+                       @bind-Value="Model.Name"
+                       MaxLength="200"
+                       Placeholder="e.g. AERO SHELL FLUID 41"
+                       Change="@OnFieldChangedAsync"
+                       Style="width: 100%;" />
+        <RadzenRequiredValidator Component="MaterialName"
+                                 Text="Name is required."
+                                 Popup="true"
+                                 Style="position: absolute;" />
+        <RadzenLengthValidator Component="MaterialName"
+                               Max="200"
+                               Text="Name must not exceed 200 characters."
+                               Popup="true"
+                               Style="position: absolute; top: 2.5rem;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="mat-unit">Unit</label>
+        @if (LoadingUnits)
+        {
+            <DropdownFieldSkeleton AriaLabel="Loading units" />
+        }
+        else
+        {
+            <RadzenDropDown TValue="Guid?"
+                            id="mat-unit"
+                            Name="MaterialUnit"
+                            @bind-Value="Model.UnitId"
+                            Data="@Units"
+                            TextProperty="@nameof(UnitSelectOption.Name)"
+                            ValueProperty="@nameof(UnitSelectOption.Id)"
+                            AllowClear="false"
+                            AllowFiltering="true"
+                            FilterOperator="StringFilterOperator.Contains"
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                            Placeholder="Select…"
+                            Change="@OnFieldChangedAsync"
+                            Style="width: 100%;" />
+            <RadzenRequiredValidator Component="MaterialUnit"
+                                     Text="Unit is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+        }
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="mat-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="mat-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public MaterialFormModel Model { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<UnitSelectOption> Units { get; set; } = [];
+
+    [Parameter] public bool LoadingUnits { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

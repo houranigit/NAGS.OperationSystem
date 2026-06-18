@@ -1,0 +1,30 @@
+
+<div class="table-skeleton">
+    <div class="table-skeleton-header">
+        @for (var j = 0; j < Columns; j++)
+        {
+            <Skeleton Height="0.75rem" Width="@GetHeaderWidth(j)" />
+        }
+    </div>
+    @for (var i = 0; i < Rows; i++)
+    {
+        <div class="table-skeleton-row">
+            @for (var j = 0; j < Columns; j++)
+            {
+                <Skeleton Height="1rem" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Rows { get; set; } = 5;
+    [Parameter] public int Columns { get; set; } = 4;
+
+    private static string GetHeaderWidth(int index) => (index % 3) switch
+    {
+        0 => "60%",
+        1 => "80%",
+        _ => "45%"
+    };
+}

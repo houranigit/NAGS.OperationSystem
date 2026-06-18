@@ -1,0 +1,50 @@
+@typeparam TItem
+
+@if (IsLoading)
+{
+    <TableSkeleton Rows="SkeletonRows" Columns="SkeletonColumns" />
+}
+else if (Items is null || !Items.Any())
+{
+    <EmptyState Message="@EmptyMessage">
+        @EmptyContent
+    </EmptyState>
+}
+else
+{
+    <div class="table-container">
+        @if (ToolbarContent is not null)
+        {
+            <div class="grid-toolbar">
+                @ToolbarContent
+            </div>
+        }
+        <table class="data-table">
+            <thead>
+                <tr>@HeaderTemplate</tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Items)
+                {
+                    <tr class="@(OnRowClick.HasDelegate ? "grid-row-clickable" : "")"
+                        @onclick="() => OnRowClick.InvokeAsync(item)">
+                        @RowTemplate(item)
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem>? Items { get; set; }
+    [Parameter, EditorRequired] public RenderFragment HeaderTemplate { get; set; } = default!;
+    [Parameter, EditorRequired] public RenderFragment<TItem> RowTemplate { get; set; } = default!;
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string EmptyMessage { get; set; } = "No records found.";
+    [Parameter] public int SkeletonRows { get; set; } = 5;
+    [Parameter] public int SkeletonColumns { get; set; } = 4;
+    [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+}

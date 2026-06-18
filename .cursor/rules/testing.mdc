@@ -1,0 +1,20 @@
+---
+description: Testing expectations for rewritten backend and frontend behavior
+globs: "{tests/**/*.cs,src/**/*.Tests/**/*.cs,src/BuildingBlocks/**/*.cs,src/Modules/**/*.cs,src/Host/OperationsSystem.Api/**/*.cs,src/Host/OperationsSystem.Web/**/*.{test,spec}.{ts,tsx}}"
+alwaysApply: false
+---
+
+# Testing
+
+- Tests should prove the new business behavior, not mirror old implementation details.
+- Domain unit tests are required for meaningful business rules.
+- Validator tests are expected when validation rules are non-trivial.
+- API integration tests are required for important workflows, especially auth, permissions, state changes, and error mapping.
+- Database behavior should be tested when persistence rules, constraints, indexes, or lifecycle behavior matter.
+- Use Testcontainers where practical for integration tests that need SQL Server or external infrastructure.
+- Authentication and authorization flows need integration coverage.
+- Every rewritten feature should include a short business behavior checklist extracted from the old project.
+- Keep tests focused for narrow changes and broaden coverage when shared behavior or public API contracts change.
+- `tests/ArchitectureTests` enforces structural rules: module boundaries (no cross-module internal references), dependency direction, no DbContext sharing across modules, and naming/layering conventions.
+- Concurrency conflicts (409) and localized error messages should have at least one test where the behavior is non-trivial.
+- Do not mark a feature complete if important behavior is only manually checked and could reasonably be covered by an automated test.

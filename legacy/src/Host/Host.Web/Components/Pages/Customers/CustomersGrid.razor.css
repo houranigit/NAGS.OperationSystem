@@ -1,0 +1,130 @@
+/* Customer logo column */
+.customers-grid-logo-cell {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0.125rem 0;
+}
+
+.customers-grid-logo {
+    width: 1.625rem;
+    height: 1.625rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1px solid #e2e8f0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.customers-grid-logo--image {
+    background: #fff;
+}
+
+.customers-grid-logo__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.customers-grid-logo--fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, #f1f5f9 0%, #e2e8f0 100%);
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    color: #475569;
+    user-select: none;
+}
+
+/* Grid add / edit */
+.settings-grid-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1.2rem !important;
+    border: 1px solid rgba(114, 47, 55, 0.4) !important;
+    background: linear-gradient(145deg, #722f37 0%, #9a3240 52%, #722f37 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 10px rgba(114, 47, 55, 0.22);
+    transition:
+        box-shadow 0.18s ease,
+        filter 0.18s ease,
+        transform 0.12s ease;
+}
+
+.settings-grid-add-btn:hover:not(:disabled) {
+    filter: brightness(1.05);
+    box-shadow: 0 4px 14px rgba(114, 47, 55, 0.28);
+    color: #fff !important;
+}
+
+.settings-grid-add-btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.settings-grid-add-btn:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+}
+
+.settings-grid-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    margin: 0 auto;
+    padding: 0.32rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    color: #475569;
+    cursor: pointer;
+    transition:
+        border-color 0.16s ease,
+        background 0.16s ease,
+        color 0.16s ease,
+        box-shadow 0.16s ease;
+}
+
+.settings-grid-edit-btn:hover:not(:disabled) {
+    border-color: rgba(114, 47, 55, 0.35);
+    color: #722f37;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(114, 47, 55, 0.12);
+}
+
+.settings-grid-edit-btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.settings-grid-edit-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(114, 47, 55, 0.35);
+}
+
+.settings-grid-edit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.settings-grid-edit-btn svg {
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+
+/* Native <a> in this grid; Bootstrap link color/underline would otherwise override .settings-grid-edit-btn. */
+a.settings-grid-edit-btn {
+    --bs-link-color-rgb: 71, 85, 105; /* #475569 — match Edit button text */
+    --bs-link-hover-color-rgb: 114, 47, 55; /* #722f37 — match Edit hover */
+    color: #475569;
+    text-decoration: none;
+}

@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Operations.Application</RootNamespace>
+    <AssemblyName>Operations.Application</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="System.Linq.Dynamic.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Application\BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Contracts\BuildingBlocks.Contracts.csproj" />
+    <ProjectReference Include="..\..\Contracts\Contracts.Contracts\Contracts.Contracts.csproj" />
+    <ProjectReference Include="..\..\Core\Core.Contracts\Core.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Identity.Domain\Identity.Domain.csproj" />
+    <ProjectReference Include="..\..\Store\Store.Contracts\Store.Contracts.csproj" />
+    <ProjectReference Include="..\Operations.Contracts\Operations.Contracts.csproj" />
+    <ProjectReference Include="..\Operations.Domain\Operations.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

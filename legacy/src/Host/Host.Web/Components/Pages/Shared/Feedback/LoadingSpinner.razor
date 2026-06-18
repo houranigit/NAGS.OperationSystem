@@ -1,0 +1,17 @@
+
+<div class="spinner @SizeClass">
+    <div class="spinner-ring"></div>
+</div>
+
+@code {
+    [Parameter] public SpinnerSize Size { get; set; } = SpinnerSize.Medium;
+
+    private string SizeClass => Size switch
+    {
+        SpinnerSize.Small => "spinner-sm",
+        SpinnerSize.Large => "spinner-lg",
+        _ => ""
+    };
+
+    public enum SpinnerSize { Small, Medium, Large }
+}

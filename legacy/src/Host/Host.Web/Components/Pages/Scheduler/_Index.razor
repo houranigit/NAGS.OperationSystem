@@ -1,0 +1,402 @@
+﻿@page "/scheduler"
+@attribute [Authorize(Policy = PortalPolicies.ViewScheduler)]
+
+@rendermode InteractiveServer
+
+@using System.Globalization
+@using Core.Contracts.Features.Customer
+@using Host.Web.Authorization
+@using Identity.Domain.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Operations.Application.Features.Flight.Queries.GetFlightLightsInPeriod
+@using Operations.Domain.Enumerations
+@using Operations.Contracts.Flight
+@using Host.Web.Components.Pages.Scheduler.Dialog
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+
+<PageTitle>Scheduler</PageTitle>
+
+<HeadContent>
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/node-waves/node-waves.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/pickr/pickr-themes.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/css/core.css" />
+    <link rel="stylesheet" href="/vuexy/assets/css/demo.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/fullcalendar.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/flatpickr/flatpickr.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/select2/select2.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/quill/editor.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/libs/@@form-validation/form-validation.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/fonts/iconify-icons.css" />
+    <link rel="stylesheet" href="/vuexy/assets/vendor/css/pages/app-calendar.css" />
+    <script defer src="@Assets["js/flights-scheduler-calendar.js"]"></script>
+</HeadContent>
+
+<div data-bs-theme="light" class="vuexy-flight-scheduler-scope">
+    @* <PageHeader Title="Flights" Description="Flight visits and operational schedule.">
+        <Actions>
+            <button type="button" class="btn btn-secondary btn-sm text-white dash-customize-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" class="me-1 align-text-bottom"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                Work Orders
+            </button>
+        </Actions>
+    </PageHeader> *@
+
+    <div class="container-xxl flex-grow-1 px-4 px-lg-6 pb-6" style="padding-inline: 0px !important">
+        <div class="card app-calendar-wrapper">
+            <div class="row g-0">
+                <div class="col app-calendar-sidebar border-end" id="app-calendar-sidebar">
+                    <div class="border-bottom p-6 my-sm-0 mb-4">
+                        @if (_canCreateFlights)
+                        {
+                            <button class="btn-toggle-sidebar w-100 flights-schedule-btn"
+                                    type="button"
+                                    @onclick="OpenScheduleFlightsDialogAsync">
+                                <i class="icon-base ti tabler-plus icon-16px me-2"></i>
+                                <span class="align-middle">Schedule Flights</span>
+                            </button>
+                        }
+                    </div>
+                    <div class="px-3 pt-2">
+                        <div class="inline-calendar"></div>
+                    </div>
+                    <hr class="mb-6 mx-n4 mt-3" />
+                    <div class="px-6 pb-2">
+                        <div>
+                            <h5>Status Filters</h5>
+                        </div>
+
+                        <div class="form-check form-check-secondary mb-4 ms-2">
+                            <input class="form-check-input select-all"
+                                   type="checkbox"
+                                   id="selectAll"
+                                   data-value="all"
+                                   checked />
+                            <label class="form-check-label" for="selectAll">View all</label>
+                        </div>
+
+                        <div class="app-calendar-events-filter text-heading">
+                            <div class="form-check form-check-info mb-4 ms-2">
+                                <input class="form-check-input input-filter"
+                                       type="checkbox"
+                                       id="fs-scheduled"
+                                       data-value="Scheduled"
+                                       checked />
+                                <label class="form-check-label" for="fs-scheduled">Scheduled</label>
+                            </div>
+                            <div class="form-check form-check-warning mb-4 ms-2">
+                                <input class="form-check-input input-filter"
+                                       type="checkbox"
+                                       id="fs-inprogress"
+                                       data-value="InProgress"
+                                       checked />
+                                <label class="form-check-label" for="fs-inprogress">On progress</label>
+                            </div>
+                            <div class="form-check form-check-success mb-4 ms-2">
+                                <input class="form-check-input input-filter"
+                                       type="checkbox"
+                                       id="fs-completed"
+                                       data-value="Completed"
+                                       checked />
+                                <label class="form-check-label" for="fs-completed">Completed</label>
+                            </div>
+                            <div class="form-check form-check-danger mb-4 ms-2">
+                                <input class="form-check-input input-filter"
+                                       type="checkbox"
+                                       id="fs-canceled"
+                                       data-value="Canceled"
+                                       checked />
+                                <label class="form-check-label" for="fs-canceled">Canceled</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col app-calendar-content">
+                    <div class="card shadow-none border-0">
+                        <div class="card-body pb-0">
+                            <div id="calendar"></div>
+                        </div>
+                    </div>
+                    <div class="app-overlay"></div>
+                    <div class="d-none" aria-hidden="true">
+                        <div class="offcanvas offcanvas-end"
+                             tabindex="-1"
+                             id="addEventSidebar"
+                             data-bs-backdrop="false"
+                             style="visibility:hidden;width:0;height:0;overflow:hidden">
+                            <h5 class="offcanvas-title">Hidden</h5>
+                        </div>
+                        <form class="event-form pt-0" id="eventForm" onsubmit="return false">
+                            <div class="mb-5 form-control-validation">
+                                <input type="text" class="form-control" id="eventTitle" name="eventTitle" />
+                            </div>
+                            <div class="mb-5">
+                                <select class="form-select" id="eventLabel" name="eventLabel" data-label="primary">
+                                    <option data-label="primary" value="Business" selected>Business</option>
+                                </select>
+                            </div>
+                            <div class="mb-5 form-control-validation">
+                                <input type="text" class="form-control" id="eventStartDate" name="eventStartDate" />
+                            </div>
+                            <div class="mb-5 form-control-validation">
+                                <input type="text" class="form-control" id="eventEndDate" name="eventEndDate" />
+                            </div>
+                            <div class="mb-5">
+                                <input type="url" class="form-control" id="eventURL" name="eventURL" />
+                            </div>
+                            <div class="mb-4">
+                                <select class="form-select" id="eventGuests" name="eventGuests" multiple>
+                                    <option value="a">A</option>
+                                </select>
+                            </div>
+                            <div class="mb-5">
+                                <input type="text" class="form-control" id="eventLocation" name="eventLocation" />
+                            </div>
+                            <div class="mb-5">
+                                <textarea class="form-control" name="eventDescription" id="eventDescription"></textarea>
+                            </div>
+                            <div class="d-flex">
+                                <button type="button" id="addEventBtn" class="btn btn-primary btn-add-event me-4">Add</button>
+                                <button type="reset" class="btn btn-label-secondary btn-cancel me-sm-0 me-1">Cancel</button>
+                                <button class="btn btn-label-danger btn-delete-event d-none" type="button">Delete</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private DotNetObjectReference<_Index>? _dotNetRef;
+    private bool _canCreateFlights;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthenticationStateTask is null)
+            return;
+
+        var user = (await AuthenticationStateTask).User;
+        _canCreateFlights = user.HasClaim("permissions", Permissions.Flights.Create);
+    }
+
+    private async Task OpenScheduleFlightsDialogAsync()
+    {
+        if (!_canCreateFlights)
+            return;
+
+        var result = await DialogService.OpenAsync<ScheduleFlightsDialog>(
+            "Schedule flights",
+            null,
+            new DialogOptions
+            {
+                Width = "min(56rem, 95vw)",
+                Resizable = false,
+                Draggable = false,
+                CloseDialogOnOverlayClick = false,
+                ShowClose = false
+            });
+        if (result is true)
+            await RefetchCalendarAsync();
+    }
+
+    private async Task OpenCreateFlightFromCalendarAsync(string? dateIso)
+    {
+        if (!_canCreateFlights)
+            return;
+
+        Dictionary<string, object?>? parameters = null;
+        if (!string.IsNullOrEmpty(dateIso))
+        {
+            parameters = new Dictionary<string, object?>
+            {
+                [nameof(FlightAddDialog.CalendarDateIso)] = dateIso
+            };
+        }
+
+        var result = await DialogService.OpenAsync<FlightAddDialog>(
+            "Create flight",
+            parameters,
+            new DialogOptions
+            {
+                Width = "min(56rem, 95vw)",
+                Resizable = false,
+                Draggable = false,
+                CloseDialogOnOverlayClick = false,
+                ShowClose = false
+            });
+        if (result is true)
+            await RefetchCalendarAsync();
+    }
+
+    private async Task RefetchCalendarAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("opsFlightsCalRefetch");
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task<IReadOnlyList<FlightCalendarClientEvent>> GetFlightEvents(string? fromIso, string? toIso, string? statusParam)
+    {
+        if (!DateTimeOffset.TryParse(fromIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var from)
+            || !DateTimeOffset.TryParse(toIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var to))
+        {
+            return Array.Empty<FlightCalendarClientEvent>();
+        }
+
+        var statusFilter = ParseStatusFilterParam(statusParam);
+        if (statusFilter is { Count: 0 })
+        {
+            return Array.Empty<FlightCalendarClientEvent>();
+        }
+
+        var r = await ScopedMediator.Send(new GetFlightLightsInPeriodQuery(from, to, statusFilter));
+        if (r.IsFailure || r.Value is null)
+        {
+            return Array.Empty<FlightCalendarClientEvent>();
+        }
+
+        return r.Value.Select(MapToClientEvent).ToList();
+    }
+
+    private static IReadOnlyList<FlightStatus>? ParseStatusFilterParam(string? s)
+    {
+        if (s == "")
+        {
+            return Array.Empty<FlightStatus>();
+        }
+
+        if (string.IsNullOrEmpty(s) || s == "*")
+        {
+            return null;
+        }
+
+        return s
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => Enum.Parse<FlightStatus>(x, true))
+            .ToList();
+    }
+
+    private static FlightCalendarClientEvent MapToClientEvent(FlightLightDto f)
+    {
+        var (bg, border, text) = GetStatusUiColors(f.Status);
+        return new FlightCalendarClientEvent
+        {
+            Id = f.Id.ToString(),
+            Title = f.FlightNumber,
+            Start = f.Sta.ToString("o", CultureInfo.InvariantCulture),
+            End = f.Std.ToString("o", CultureInfo.InvariantCulture),
+            BackgroundColor = bg,
+            BorderColor = border,
+            TextColor = text,
+            ClassNames = ["ops-flight-cal-item", StatusCssClass(f.Status)],
+            ExtendedProps = new FlightCalendarExtendedProps
+            {
+                CustomerCode = f.CustomerSnapshot.IataCode,
+                FlightNumber = f.FlightNumber,
+                StationName = f.StationSnapshot.Name,
+                // ContractNumber is null on ad-hoc flights — surface "" so the JS bridge
+                // can suppress the segment in the tooltip without a null check.
+                ContractNumber = f.ContractNumber ?? string.Empty
+            }
+        };
+    }
+
+    private static string StatusCssClass(FlightStatus s) =>
+        s switch
+        {
+            FlightStatus.Scheduled => "ops-flight--scheduled",
+            FlightStatus.InProgress => "ops-flight--inprogress",
+            FlightStatus.Completed => "ops-flight--completed",
+            FlightStatus.Canceled => "ops-flight--canceled",
+            _ => "ops-flight--other"
+        };
+
+    private static (string Bg, string Border, string Text) GetStatusUiColors(FlightStatus s) =>
+        s switch
+        {
+            // Scheduled = info blue
+            FlightStatus.Scheduled => ("#E0F7FA", "#00BAD1", "#006978"),
+            // InProgress = warning orange
+            FlightStatus.InProgress => ("#FFF3E0", "#FF9F43", "#B85F00"),
+            FlightStatus.Completed => ("#C8E6C9", "#2E7D32", "#1B5E20"),
+            FlightStatus.Canceled => ("#FFCDD2", "#C62828", "#B71C1C"),
+            _ => ("#F5F5F5", "#9E9E9E", "#424242")
+        };
+
+    [JSInvokable]
+    public Task OnCalendarDateClicked(string? dateStr) =>
+        InvokeAsync(async () => await OpenCreateFlightFromCalendarAsync(dateStr));
+
+    [JSInvokable]
+    public Task OnFlightCalendarEventClicked(string? eventId) =>
+        InvokeAsync(async () => await OpenUpdateFlightDialogIfValidAsync(eventId));
+
+    private async Task OpenUpdateFlightDialogIfValidAsync(string? flightIdStr)
+    {
+        if (string.IsNullOrWhiteSpace(flightIdStr) || !Guid.TryParse(flightIdStr, out var flightId))
+        {
+            return;
+        }
+
+        var result = await DialogService.OpenAsync<FlightUpdateDialog>(
+            "Update flight",
+            new Dictionary<string, object?> { [nameof(FlightUpdateDialog.FlightId)] = flightId },
+            new DialogOptions
+            {
+                Width = "min(56rem, 95vw)",
+                Resizable = false,
+                Draggable = false,
+                CloseDialogOnOverlayClick = false,
+                ShowClose = false
+            });
+        if (result is true)
+            await RefetchCalendarAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        await JS.InvokeVoidAsync("eval",
+            """
+            (async () => {
+              const maxWaitMs = 15000;
+              const t0 = Date.now();
+              while (typeof window.initFlightsSchedulerCalendar !== 'function') {
+                if (Date.now() - t0 > maxWaitMs) return;
+                await new Promise(function (resolve) { setTimeout(resolve, 30); });
+              }
+              await window.initFlightsSchedulerCalendar();
+            })();
+            """);
+
+        if (_dotNetRef is not null)
+            await JS.InvokeVoidAsync("opsRegisterFlightsCalendar", _dotNetRef);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("opsUnregisterFlightsCalendar");
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
+    }
+}

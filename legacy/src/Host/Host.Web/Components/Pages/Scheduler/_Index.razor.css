@@ -1,0 +1,121 @@
+﻿/* Loading overlay when flights are fetched (driven from ops-flights-calendar-bridge.js). */
+.app-calendar-content {
+    position: relative;
+    min-width: 0;
+}
+
+.app-calendar-content.ops-fc-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    background: color-mix(in srgb, var(--bs-body-bg) 45%, transparent);
+    pointer-events: none;
+}
+
+.app-calendar-content.ops-fc-loading::before {
+    content: "";
+    position: absolute;
+    z-index: 7;
+    left: 50%;
+    top: 8rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-left: -1.25rem;
+    border: 0.2rem solid var(--bs-border-color);
+    border-top-color: var(--bs-primary);
+    border-radius: 50%;
+    animation: ops-fc-spin 0.7s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes ops-fc-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* "Schedule Flights" CTA — same gradient red as `settings-grid-add-btn` on other pages.
+   Defined as its own class (no `btn` / `btn-primary`) so the Bootstrap blue from the
+   page-loaded `core.css` never paints under us, even for the first frame. */
+.flights-schedule-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 999px;
+    font-weight: 600;
+    line-height: 1.2;
+    border: 1px solid rgba(114, 47, 55, 0.4);
+    background: linear-gradient(145deg, #722f37 0%, #9a3240 52%, #722f37 100%);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(114, 47, 55, 0.22);
+    transition:
+        box-shadow 0.18s ease,
+        filter 0.18s ease,
+        transform 0.12s ease;
+}
+
+.flights-schedule-btn:hover:not(:disabled) {
+    filter: brightness(1.05);
+    box-shadow: 0 4px 14px rgba(114, 47, 55, 0.28);
+    color: #fff;
+}
+
+.flights-schedule-btn:active:not(:disabled) {
+    transform: scale(0.99);
+}
+
+.flights-schedule-btn:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px #fff,
+        0 0 0 4px rgba(114, 47, 55, 0.45);
+}
+
+.flights-schedule-btn:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+}
+
+/* Flight tiles in the month / week / day grids — slightly smaller and tighter than Vuexy default. */
+.vuexy-flight-scheduler-scope :global(.app-calendar-wrapper .fc .fc-event.ops-flight-cal-item) {
+    font-weight: 600;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    padding: 0.1rem 0.35rem;
+    border-style: solid;
+    border-width: 1px;
+    border-left-width: 4px;
+    border-radius: 0.25rem;
+    box-shadow: none;
+    background-clip: padding-box;
+}
+
+.vuexy-flight-scheduler-scope :global(.app-calendar-wrapper .fc .ops-flight-cal-item .fc-event-title),
+.vuexy-flight-scheduler-scope :global(.app-calendar-wrapper .fc .ops-flight-cal-item .fc-event-time),
+.vuexy-flight-scheduler-scope :global(.app-calendar-wrapper .fc .ops-flight-cal-item .fc-event-main) {
+    font-weight: 600;
+    font-size: 0.72rem;
+    line-height: 1.15;
+}
+
+.vuexy-flight-scheduler-scope :global(.app-calendar-wrapper .fc .ops-flight-cal-item .fc-event-title) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vuexy-flight-scheduler-scope :global(.app-calendar-wrapper .fc-timegrid .fc-timegrid-event.ops-flight-cal-item) {
+    border-radius: 0.25rem;
+    border-style: solid;
+    border-width: 1px;
+    border-left-width: 4px;
+    box-shadow: none;
+    padding-block: 0.15rem;
+    padding-inline: 0.4rem;
+    font-size: 0.72rem;
+    line-height: 1.15;
+}

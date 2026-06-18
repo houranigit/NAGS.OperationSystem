@@ -1,0 +1,6 @@
+/* Scoped validation messages (layout + brand live in AuthLayout.razor.css). */
+.nags-auth-panel .form-control-validation .validation-message {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.8125rem;
+}

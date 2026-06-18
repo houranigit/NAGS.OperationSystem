@@ -1,0 +1,2 @@
+/* Add dialog has no chrome of its own — the wizard shell is fully self-styled.
+   This file exists so Blazor scoped CSS doesn't 404 if a future @@import lands here. */

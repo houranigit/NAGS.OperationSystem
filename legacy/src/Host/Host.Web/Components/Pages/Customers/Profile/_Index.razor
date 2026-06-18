@@ -1,0 +1,94 @@
+@*
+  Customer profile page — shell loaded from /customers/{id}.
+  Header (logo, names, contact) and the contract list render in parallel: the list uses
+  the route-supplied CustomerId so it never blocks on the header's customer fetch.
+*@
+@page "/customers/{CustomerId:guid}"
+@using Core.Application.Features.Customer.Queries.GetCustomerById
+@using Core.Contracts.Features.Customer
+@using Host.Web.Components.Pages.Customers.Dialog
+@using Host.Web.Services
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject NavigationManager Navigation
+
+<PageTitle>@(_customer?.Name ?? "Customer")</PageTitle>
+
+<div class="customer-profile-page">
+    <div class="customer-profile-page__back">
+        <a href="/customers" class="customer-profile-page__back-link" title="Back to customers">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            Back to customers
+        </a>
+    </div>
+
+    <CustomerProfileHeader Customer="_customer"
+                           IsLoading="_loading"
+                           OnEdit="OpenEditCustomerDialogAsync" />
+
+    @* CustomerId comes straight from the route, so this list never waits on the header fetch. *@
+    <ContractCardList CustomerId="CustomerId"
+                      CustomerName="@(_customer?.Name ?? "this customer")" />
+</div>
+
+@code {
+    [Parameter] public Guid CustomerId { get; set; }
+
+    private CustomerDto? _customer;
+    private bool _loading = true;
+
+    /// <remarks>
+    /// We don't <c>await</c> the customer fetch in <see cref="OnParametersSetAsync"/> — that would
+    /// hold the first render and leave the contract list unmounted. Instead we kick off the load
+    /// from <see cref="OnAfterRenderAsync"/> so the page paints with the header skeleton AND the
+    /// contract list together.
+    /// </remarks>
+    private bool _customerLoadStarted;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _customerLoadStarted) return;
+        _customerLoadStarted = true;
+        await LoadCustomerAsync();
+    }
+
+    private async Task LoadCustomerAsync()
+    {
+        _loading = true;
+        await InvokeAsync(StateHasChanged);
+
+        var result = await ScopedMediator.Send(new GetCustomerByIdQuery(CustomerId));
+        _customer = result.IsSuccess ? result.Value : null;
+        _loading = false;
+
+        if (_customer is null)
+            NotificationService.Notify(NotificationSeverity.Warning, "Not found", "Customer not found.");
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenEditCustomerDialogAsync()
+    {
+        if (_customer is null)
+            return;
+
+        var result = await DialogService.OpenAsync<CustomerUpdateDialog>(
+            "Edit customer",
+            new Dictionary<string, object?> { { nameof(CustomerUpdateDialog.ExistingItem), _customer } },
+            new DialogOptions
+            {
+                Width = "min(56rem, 95vw)",
+                Resizable = false,
+                Draggable = false,
+                CloseDialogOnOverlayClick = false,
+                ShowClose = false
+            });
+
+        if (result is true)
+        {
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "Customer updated.");
+            await LoadCustomerAsync();
+        }
+    }
+}

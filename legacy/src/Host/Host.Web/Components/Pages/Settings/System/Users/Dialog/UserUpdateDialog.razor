@@ -1,0 +1,133 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Roles lookup loaded after first paint.
+  ResendInvitation is exposed as a separate row-action on the grid; this dialog focuses
+  on the Save flow.
+*@
+@using Host.Web.Components.Pages.Settings.System.Users.Dialog
+@using Host.Web.Components.Pages.Settings.System.Users.Dialog.Sections
+@using Host.Web.Services
+@using Identity.Application.Commands.ResendInvitation
+@using Identity.Contracts.Features.Role
+@using Identity.Contracts.Features.User
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="UserFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_steps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@(IsDirty && !_roleOptionsLoading)"
+                 SidebarAriaLabel="Edit user sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the user"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <AccountSection Model="_model" UpdateMode="true" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 1:
+                    <RolesSection Model="_model"
+                                  Roles="_roleOptions"
+                                  RolesLoading="_roleOptionsLoading"
+                                  OnModelChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public UserDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Account", "Identity & access", "mail", IsRequired: true, Validate: () => true),
+        new("Roles", "Permissions", "lock", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<UserFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private UserFormModel _model = new();
+    private UserFormModel _snapshot = new();
+    private List<string> _errorMessages = new();
+
+    private List<RoleSelectOption> _roleOptions = [];
+    private bool _roleOptionsLoading = true;
+    private bool _lookupsLoadStarted;
+
+    private bool IsDirty =>
+        !string.Equals(_model.Email, _snapshot.Email, StringComparison.OrdinalIgnoreCase)
+        || _model.IsActive != _snapshot.IsActive
+        || !_model.RoleIds.OrderBy(g => g).SequenceEqual(_snapshot.RoleIds.OrderBy(g => g));
+
+    protected override void OnInitialized()
+    {
+        _model = UserFormModel.FromDto(ExistingItem);
+        _snapshot = _model.Clone();
+        _currentSection = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+        try { _roleOptions = (await LookupCache.GetRolesAsync(ScopedMediator)).ToList(); }
+        finally { _roleOptionsLoading = false; _snapshot = _model.Clone(); await InvokeAsync(StateHasChanged); }
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(UserFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToUpdateUserCommand(ExistingItem.Id));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save user", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

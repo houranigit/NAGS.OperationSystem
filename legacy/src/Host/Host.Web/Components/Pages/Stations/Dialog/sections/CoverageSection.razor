@@ -1,0 +1,124 @@
+@namespace Host.Web.Components.Pages.Stations.Dialog.Sections
+@using Core.Application.Features.Employee.Queries.GetPaginatedEmployees
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.License
+@using Host.Web.Components.Pages.Stations.Dialog
+@using Host.Web.Services
+@inject IScopedMediator ScopedMediator
+
+<h2 class="settings-section-title h6">Assigned employees</h2>
+@if (_loadError)
+{
+    <p class="text-danger small mb-2">Could not load employees.</p>
+}
+else if (!_employeesLoaded)
+{
+    <p class="text-secondary small mb-2">Loading employees…</p>
+}
+else
+{
+    <RadzenListBox TValue="IEnumerable<Guid>"
+                   Data="@_employees"
+                   TextProperty="@nameof(EmployeeDto.FullName)"
+                   ValueProperty="@nameof(EmployeeDto.Id)"
+                   Value="@_selectedIds"
+                   ValueChanged="@OnEmployeeSelectionChangedAsync"
+                   Multiple="true"
+                   AllowClear="true"
+                   AllowFiltering="true"
+                   FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                   Placeholder="Select employees for this station"
+                   Style="width: 100%; max-width: 100%; min-height: 14rem;"
+                   InputAttributes="@(new Dictionary<string, object> { { "aria-label", "Employees assigned to station" } })">
+        <Template>
+            @{
+                var e = (EmployeeDto)context!;
+            }
+            <span class="small">@e.FullName <span class="text-secondary">· @e.ManpowerTypeSnapshot.Name</span></span>
+        </Template>
+    </RadzenListBox>
+}
+
+<h2 class="settings-section-title h6 mt-3">Licenses held by selected employees</h2>
+<p class="text-secondary small mb-2">Read-only: union of licenses on the employees selected above.</p>
+@if (DisplayedLicenses.Count == 0)
+{
+    <p class="text-secondary small mb-0">No licenses for the current selection.</p>
+}
+else
+{
+    <ul class="list-unstyled small mb-0 rz-m-0">
+        @foreach (var lic in DisplayedLicenses)
+        {
+            <li><span class="font-monospace">@lic.Code</span></li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired] public StationFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private List<EmployeeDto> _employees = [];
+    private Dictionary<Guid, EmployeeDto> _employeeById = [];
+    private IEnumerable<Guid> _selectedIds = [];
+    private bool _employeesLoaded;
+    private bool _loadError;
+
+    private IReadOnlyList<LicenseSnapshot> DisplayedLicenses => GetLicensesForSelection();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmployeesAsync();
+        _selectedIds = Model.AssignedEmployees.Select(e => e.Id).ToList();
+    }
+
+    private async Task LoadEmployeesAsync()
+    {
+        _loadError = false;
+        var r = await ScopedMediator.Send(new GetPaginatedEmployeesQuery(1, 500));
+        if (r.IsSuccess)
+        {
+            _employees = r.Value.Items.ToList();
+            _employeeById = _employees.ToDictionary(e => e.Id);
+            _employeesLoaded = true;
+        }
+        else
+        {
+            _loadError = true;
+            _employeesLoaded = true;
+        }
+    }
+
+    private Task OnEmployeeSelectionChangedAsync(IEnumerable<Guid> value)
+    {
+        _selectedIds = value ?? [];
+        ApplySelectionToModel();
+        return OnModelChanged.InvokeAsync();
+    }
+
+    private void ApplySelectionToModel()
+    {
+        Model.AssignedEmployees.Clear();
+        foreach (var id in _selectedIds.Order())
+        {
+            if (!_employeeById.TryGetValue(id, out var dto))
+                continue;
+            Model.AssignedEmployees.Add(dto);
+        }
+    }
+
+    private IReadOnlyList<LicenseSnapshot> GetLicensesForSelection()
+    {
+        var set = new Dictionary<Guid, LicenseSnapshot>();
+        foreach (var id in _selectedIds)
+        {
+            if (!_employeeById.TryGetValue(id, out var dto))
+                continue;
+            foreach (var line in dto.Licenses)
+                set[line.LicenseSnapshot.LicenseId] = line.LicenseSnapshot;
+        }
+
+        return set.Values.OrderBy(l => l.Code).ToList();
+    }
+}

@@ -1,0 +1,151 @@
+@page "/login"
+@layout AuthLayout
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@inject IJSRuntime JSRuntime
+@inject IWebHostEnvironment WebHostEnvironment
+
+<PageTitle>Sign in</PageTitle>
+
+<div class="nags-auth-page">
+    <header class="nags-auth-hero" role="banner">
+        <div class="nags-auth-logo-shell">
+            <span class="app-brand-logo demo d-inline-flex align-items-center">
+                @if (HasPortalIcon)
+                {
+                    <img src="@PortalIconHref" alt="" class="auth-brand-logo-img auth-brand-logo-img--portal" width="118" height="118" decoding="async" />
+                }
+                else if (HasBrandingSvg)
+                {
+                    <img src="/branding/logo.svg" alt="" class="auth-brand-logo-img auth-brand-logo-img--hero" decoding="async" />
+                }
+                else
+                {
+                    <span class="auth-brand-mark" aria-hidden="true">OM</span>
+                }
+            </span>
+        </div>
+        <h1 class="nags-auth-hero__title">NAGS Operations</h1>
+        <p class="nags-auth-hero__tagline">Ground support, in your pocket.</p>
+    </header>
+
+    <div class="nags-auth-body">
+        <div class="nags-auth-panel">
+            <div class="nags-auth-sheet">
+                <div class="nags-auth-sheet__header">
+                    <h2 class="nags-auth-panel__title">Sign in</h2>
+                    <p class="nags-auth-panel__lead">Use your NAGS account to continue to the operations portal.</p>
+                </div>
+
+                @if (!string.IsNullOrEmpty(Error))
+                {
+                    <div class="nags-auth-alert mb-4" role="alert">@Error</div>
+                }
+
+                <form id="formAuthentication" class="nags-auth-form" method="post" action="/api/auth/cookie-login">
+                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+                    <div class="mb-3 mb-lg-4 form-control-validation">
+                        <label for="email" class="form-label">Email or username</label>
+                        <input type="text"
+                               class="form-control"
+                               id="email"
+                               name="email"
+                               placeholder="you@company.com"
+                               autocomplete="username"
+                               required
+                               autofocus />
+                    </div>
+
+                    <div class="mb-3 mb-lg-4 form-password-toggle form-control-validation">
+                        <label class="form-label" for="password">Password</label>
+                        <div class="input-group input-group-merge">
+                            <input type="password"
+                                   id="password"
+                                   class="form-control"
+                                   name="password"
+                                   placeholder="Enter your password"
+                                   autocomplete="current-password"
+                                   required
+                                   aria-describedby="password" />
+                            <span class="input-group-text cursor-pointer"
+                                  data-auth-password-toggle="password"
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Show password"
+                                  aria-pressed="false">
+                                <svg class="auth-eye-off" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+                                    <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+                                    <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+                                    <path d="m2 2 20 20" />
+                                </svg>
+                                <svg class="auth-eye d-none" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="nags-auth-remember-row">
+                        <div class="form-check mb-0">
+                            <input class="form-check-input" type="checkbox" id="remember-me" name="rememberMe" value="true" />
+                            <label class="form-check-label" for="remember-me">Stay signed in on this device</label>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary nags-auth-submit" type="submit">Sign in</button>
+                </form>
+
+                <footer class="nags-auth-sheet__footer">
+                    <div class="nags-auth-sheet__divider" aria-hidden="true"></div>
+                    <div class="nags-auth-cross-links">
+                        <span class="text-body-secondary small">Need an account?</span>
+                        <a href="/activate" class="nags-auth-cross-links__cta">Activate with invitation code</a>
+                    </div>
+                    <a href="/" class="nags-auth-back-home">← Home</a>
+                </footer>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool HasPortalIcon =>
+        PortalIconHref is not null;
+
+    /// <summary>Uses physical file casing on disk (<c>portal-icon.png</c>).</summary>
+    private string? PortalIconHref
+    {
+        get
+        {
+            var www = WebHostEnvironment.WebRootPath;
+            if (string.IsNullOrEmpty(www)) return null;
+
+            foreach (var name in PortalIconNames)
+            {
+                var full = Path.Combine(www, "branding", name);
+                if (File.Exists(full))
+                    return $"/branding/{name}";
+            }
+            return null;
+        }
+    }
+
+    private static readonly string[] PortalIconNames = ["portal-icon.png", "portal-icon.PNG"];
+
+    private bool HasBrandingSvg =>
+        File.Exists(Path.Combine(WebHostEnvironment.WebRootPath ?? "", "branding", "logo.svg"));
+
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JSRuntime.InvokeVoidAsync("loginAuth.init");
+    }
+}

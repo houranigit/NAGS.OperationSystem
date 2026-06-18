@@ -1,0 +1,213 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Snapshot-based dirty diff covers scope
+  fields + brackets list + shared block/billing.
+*@
+@using Core.Application.Features.ManpowerPricePlan.Commands.UpdateManpowerPricePlan
+@using Core.Contracts.Features.Pricing
+@using Core.Contracts.Features.Currency
+@using Core.Contracts.Features.ManpowerPricePlan
+@using Core.Contracts.Features.ManpowerType
+@using Core.Contracts.Features.OperationType
+@using Core.Domain.Enumerations
+@using Host.Web.Components.Pages.Settings.Pricing.ManpowerPricePlans.Dialog
+@using Host.Web.Components.Pages.Settings.Pricing.Shared
+@using Host.Web.Configuration
+@using Host.Web.Services
+@using Microsoft.Extensions.Options
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject IOptions<PlatformSettings> PlatformOptions
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_scopeForm" TItem="ManpowerPricePlanScopeFormModel" Data="@_scopeModel"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@(_ => {})">
+    <WizardShell Steps="@_wizardSteps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_wizardSteps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@(IsDirty && !_scopeLookupsIncomplete && string.IsNullOrWhiteSpace(_loadError) && BracketsValid())"
+                 SidebarAriaLabel="Edit manpower price plan sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the price plan"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <ManpowerPricePlanScopeSection Model="@_scopeModel"
+                                                   FreezeItemKey="true"
+                                                   OnModelChanged="OnFieldChangedAsync"
+                                                   LoadError="@_loadError"
+                                                   LoadingManpowerTypes="_loadingManpowerTypes"
+                                                   LoadingOperationTypes="_loadingOperationTypes"
+                                                   LoadingCurrencies="_loadingCurrencies"
+                                                   ManpowerTypes="@_manpowerTypes"
+                                                   OperationTypes="@_operationTypes"
+                                                   Currencies="@_currencies"
+                                                   BasisChanged="@OnBasisChanged" />
+                    break;
+                case 1:
+                    <PricePlanBracketsStepSection Basis="@_scopeModel.Basis"
+                                                  CurrencyDisplay="@SelectedCurrencyCode"
+                                                  Brackets="@_brackets"
+                                                  SharedBlockMinutes="@_sharedBlock"
+                                                  SharedBlockMinutesChanged="@OnSharedBlockChanged"
+                                                  SharedBillingMode="@_sharedBilling"
+                                                  SharedBillingModeChanged="@OnSharedBillingChanged"
+                                                  OnChanged="@OnBracketsFieldChangedAsync"
+                                                  BracketError="@_bracketError" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public ManpowerPricePlanDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _wizardSteps =
+    [
+        new("Plan", "Scopes & basis", "users", IsRequired: true, Validate: () => true),
+        new("Brackets", "Rates", "percent", IsRequired: true, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<ManpowerPricePlanScopeFormModel>? _scopeForm;
+    private int _currentSection;
+    private bool _saving;
+    private bool _loadingManpowerTypes = true, _loadingOperationTypes = true, _loadingCurrencies = true;
+    private string? _loadError;
+    private List<string> _errorMessages = new();
+
+    private List<ManpowerTypeSelectOption> _manpowerTypes = [];
+    private List<OperationTypeSelectOption> _operationTypes = [];
+    private List<CurrencySelectOption> _currencies = [];
+
+    private readonly ManpowerPricePlanScopeFormModel _scopeModel = new();
+    private List<PriceBracketRowState> _brackets = [];
+    private int _sharedBlock = 60;
+    private BracketBillingMode _sharedBilling = BracketBillingMode.ProRated;
+    private string? _bracketError;
+
+    private ManpowerPricePlanScopeFormModel _snapScope = new();
+    private List<PriceBracketRowState> _snapBrackets = [];
+    private int _snapSharedBlock = 60;
+    private BracketBillingMode _snapBilling = BracketBillingMode.ProRated;
+
+    private string PlatformCurrencyCode => PlatformOptions.Value.CurrencyCode?.Trim().ToUpperInvariant() ?? "SAR";
+    private string SelectedCurrencyCode => _currencies.FirstOrDefault(c => c.Id == _scopeModel.CurrencyId)?.Code ?? PlatformCurrencyCode;
+    private bool _scopeLookupsIncomplete => _loadingManpowerTypes || _loadingOperationTypes || _loadingCurrencies;
+
+    private bool IsDirty => !ScopeEquals(_snapScope, _scopeModel) || !BracketsEqual(_snapBrackets, _brackets) || _sharedBlock != _snapSharedBlock || _sharedBilling != _snapBilling;
+
+    protected override void OnInitialized()
+    {
+        HydrateFromExisting();
+        _currentSection = 0;
+    }
+
+    private bool _lookupsLoadStarted;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+        await Task.WhenAll(LoadManpowerTypesAsync(), LoadOperationTypesAsync(), LoadCurrenciesAsync());
+        CaptureBaseline();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool ScopeEquals(ManpowerPricePlanScopeFormModel a, ManpowerPricePlanScopeFormModel b) =>
+        a.ManpowerTypeId == b.ManpowerTypeId && a.OperationTypeId == b.OperationTypeId && a.CurrencyId == b.CurrencyId && a.Basis == b.Basis;
+
+    private static bool BracketsEqual(IReadOnlyList<PriceBracketRowState> a, IReadOnlyList<PriceBracketRowState> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+            if (a[i].MinMinutes != b[i].MinMinutes || a[i].MaxMinutes != b[i].MaxMinutes || a[i].Value != b[i].Value) return false;
+        return true;
+    }
+
+    private static List<PriceBracketRowState> CloneBrackets(IReadOnlyList<PriceBracketRowState> rows) =>
+        rows.Select(x => new PriceBracketRowState { MinMinutes = x.MinMinutes, MaxMinutes = x.MaxMinutes, Value = x.Value }).ToList();
+
+    private void CaptureBaseline()
+    {
+        _snapScope = new ManpowerPricePlanScopeFormModel { ManpowerTypeId = _scopeModel.ManpowerTypeId, OperationTypeId = _scopeModel.OperationTypeId, CurrencyId = _scopeModel.CurrencyId, Basis = _scopeModel.Basis };
+        _snapBrackets = CloneBrackets(_brackets);
+        _snapSharedBlock = _sharedBlock;
+        _snapBilling = _sharedBilling;
+    }
+
+    private void HydrateFromExisting()
+    {
+        _scopeModel.ManpowerTypeId = ExistingItem.ManpowerTypeSnapshot.ManpowerTypeId;
+        _scopeModel.OperationTypeId = ExistingItem.OperationTypeSnapshot.OperationTypeId;
+        _scopeModel.CurrencyId = ExistingItem.CurrencySnapshot.CurrencyId;
+        _scopeModel.Basis = ExistingItem.Basis;
+        _brackets = ExistingItem.Brackets.Select(b => new PriceBracketRowState { MinMinutes = b.MinMinutes, MaxMinutes = b.MaxMinutes, Value = b.Value }).ToList();
+        if (_brackets.Count == 0) _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = 0 });
+        else { _sharedBlock = ExistingItem.Brackets[0].BlockSize; _sharedBilling = ExistingItem.Brackets[0].BillingMode; }
+        if (_scopeModel.Basis == PricingBasis.Flat && _brackets.Count > 1) { var v = _brackets[0].Value; _brackets = [new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = v }]; }
+    }
+
+    private async Task LoadManpowerTypesAsync() { try { _manpowerTypes = (await LookupCache.GetManpowerTypesAsync(ScopedMediator)).ToList(); } catch (Exception ex) { _loadError ??= ex.Message; } finally { _loadingManpowerTypes = false; await InvokeAsync(StateHasChanged); } }
+    private async Task LoadOperationTypesAsync() { try { _operationTypes = (await LookupCache.GetOperationTypesAsync(ScopedMediator)).ToList(); } catch (Exception ex) { _loadError ??= ex.Message; } finally { _loadingOperationTypes = false; await InvokeAsync(StateHasChanged); } }
+    private async Task LoadCurrenciesAsync() { try { _currencies = (await LookupCache.GetCurrenciesAsync(ScopedMediator)).ToList(); } catch (Exception ex) { _loadError ??= ex.Message; } finally { _loadingCurrencies = false; await InvokeAsync(StateHasChanged); } }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task OnBasisChanged(PricingBasis b)
+    {
+        if (b == PricingBasis.Flat) { var v = _brackets.FirstOrDefault()?.Value ?? 0m; _brackets.Clear(); _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = v }); }
+        else if (_brackets.Count == 0) { _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = 0 }); }
+        return Task.CompletedTask;
+    }
+    private Task OnSharedBlockChanged(int v) { _sharedBlock = Math.Max(1, v); return Task.CompletedTask; }
+    private Task OnSharedBillingChanged(BracketBillingMode m) { _sharedBilling = m; return Task.CompletedTask; }
+    private Task OnBracketsFieldChangedAsync() { _bracketError = null; return InvokeAsync(StateHasChanged); }
+    private bool BracketsValid() => PricePlanBracketRules.IsValid(_scopeModel.Basis, _brackets, _sharedBlock, out _bracketError);
+
+    private Task<bool> ValidateCurrentStepAsync(int step)
+    {
+        if (step == 0) { var ok = _scopeForm?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+        if (step == 1) { var ok = BracketsValid(); if (ok) ClearErrors(); return Task.FromResult(ok); }
+        return Task.FromResult(true);
+    }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (_scopeForm?.EditContext is null || !_scopeForm.EditContext.Validate()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        if (!BracketsValid()) { NotificationService.Notify(NotificationSeverity.Warning, "Brackets", _bracketError ?? "Fix bracket rows."); return; }
+        await OnTemplateSubmitAsync(_scopeModel);
+    }
+
+    private async Task OnTemplateSubmitAsync(ManpowerPricePlanScopeFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var brackets = PricePlanBracketMapping.ToCommandBrackets(_scopeModel.Basis, _brackets, _sharedBlock, _sharedBilling);
+            var r = await ScopedMediator.Send(new UpdateManpowerPricePlanCommand(ExistingItem.Id, _scopeModel.ManpowerTypeId!.Value, _scopeModel.OperationTypeId!.Value, _scopeModel.CurrencyId!.Value, _scopeModel.Basis, brackets));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save plan", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

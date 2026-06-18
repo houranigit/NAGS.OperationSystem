@@ -1,0 +1,24 @@
+---
+description: Core guidance for the Operations System v1.0.0 rewrite
+alwaysApply: true
+---
+
+# Operations System v1.0.0 Core
+
+- Build a clean v1.0.0 rewrite from scratch. Do not refactor the old project in place.
+- Treat the old OperationsSystem project as a business reference only, not an architectural source.
+- Preserve correct business behavior while removing old technical debt, UI patterns, inconsistent naming, and client-specific logic.
+- Use an API-first modular monolith: one deployable backend, clear module boundaries, vertical slices inside modules, and pragmatic CQRS.
+- React web and the existing Android app must consume the same backend API and business rules.
+- Public business endpoints start with `/api/v1`; do not expose unversioned business endpoints.
+- Keep the API host thin. Business rules belong in domain models, value objects, domain services, or application handlers as appropriate.
+- Modules must not reference another module's internals or DbContexts. Use contracts, read models, integration events, or the API surface for cross-module communication.
+- Prefer simple, explicit code over clever abstractions. Add abstractions only when they remove real complexity or match an established local pattern.
+- The old Blazor solution lives under `legacy/` in this repo and is read-only business reference. Read the relevant old files before rewriting a feature and cite which files you used.
+- v1.0.0 is single-tenant. Do not build multi-tenant infrastructure, but do not bake in assumptions that would block adding tenancy later.
+- The product is bilingual (Arabic and English) with full right-to-left support. Do not hardcode user-facing strings; keep them localizable on both backend and frontend.
+- Store and exchange time in UTC; render in the user/operation time zone at the edges.
+- For architecture-level changes, read `docs/architecture/operations-system-v1.md` first and keep decisions aligned with its decisions log.
+- Track rewrite progress in `docs/architecture/migration-inventory.md` so strong old behavior is not lost.
+- Do not introduce new technologies without updating `docs/architecture/operations-system-v1.md` and recording the decision.
+- Add or update tests with meaningful business coverage for rewritten behavior.

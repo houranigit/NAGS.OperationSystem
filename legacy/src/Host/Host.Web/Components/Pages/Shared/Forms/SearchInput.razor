@@ -1,0 +1,43 @@
+
+<div class="search-input-wrapper">
+    <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <input type="search"
+           class="form-input search-input"
+           placeholder="@Placeholder"
+           value="@Value"
+           @oninput="OnInput" />
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string Placeholder { get; set; } = "Search...";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private System.Timers.Timer? debounceTimer;
+    private string? pendingValue;
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        pendingValue = e.Value?.ToString() ?? "";
+        debounceTimer?.Stop();
+        debounceTimer?.Dispose();
+        debounceTimer = new System.Timers.Timer(300);
+        debounceTimer.Elapsed += async (_, _) =>
+        {
+            debounceTimer?.Stop();
+            if (pendingValue is not null)
+                await InvokeAsync(() => ValueChanged.InvokeAsync(pendingValue));
+        };
+        debounceTimer.AutoReset = false;
+        debounceTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        debounceTimer?.Dispose();
+    }
+}

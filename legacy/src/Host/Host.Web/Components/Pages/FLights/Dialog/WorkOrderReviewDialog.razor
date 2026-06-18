@@ -1,0 +1,933 @@
+@*
+  REVIEW dialog. Renders the work order in two modes:
+    • View    – read-only summary (used for Approved / Rejected / Deleting).
+    • Edit    – fully editable wizard (Details / Worked crew / Services /
+                Corrective actions) for UnderReview work orders.
+  Footer actions adapt to the current status:
+    • UnderReview → Save / Approve / Reject / Delete
+    • Approved    → Revoke
+    • Deleting    → Read-only banner (revoke the related approval to restore)
+    • Rejected    → Close only
+  The same status mappers are used by the Flights grid; both display "Deleting"
+  with a distinct badge so operators can spot WOs that are about to be removed.
+*@
+@using System.Globalization
+@using BuildingBlocks.Application.Abstractions
+@using Core.Application.Features.AircraftType.Queries.GetPaginatedAircraftTypeSelectOptions
+@using Core.Application.Features.Employee.Queries.GetEmployeeSnapshotsAtStation
+@using Core.Contracts.Features.AircraftType
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.Service
+@using Core.Contracts.Readers
+@using Core.Contracts.Seeding
+@using Host.Web.Components.Pages.FLights.Dialog.Sections
+@using Host.Web.Services
+@using Operations.Application.Features.WorkOrder.Commands.ApproveWorkOrder
+@using Operations.Application.Features.WorkOrder.Commands.DeleteWorkOrder
+@using Operations.Application.Features.WorkOrder.Commands.RejectWorkOrder
+@using Operations.Application.Features.WorkOrder.Commands.RevokeWorkOrder
+@using Operations.Application.Features.WorkOrder.Commands.UpdateWorkOrder
+@using Operations.Application.Features.WorkOrder.Queries.GetWorkOrderById
+@using Operations.Application.Features.Flight.Queries.GetFlightById
+@using Operations.Contracts.Flight
+@using Operations.Contracts.WorkOrder
+@using Operations.Domain.Enumerations
+@using Radzen
+@using Store.Contracts.Features.GeneralSupport
+@using Store.Contracts.Features.Material
+@using Store.Contracts.Features.Tool
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+@inject ICurrentUserService CurrentUser
+@inject IEmployeeReader EmployeeReader
+
+@if (_loading)
+{
+    <div class="settings-wizard-host">
+        <div class="settings-wizard wo-review">
+            <section class="settings-wizard__content">
+                <div class="settings-wizard__main">
+                    <div class="settings-wizard__panel wo-review__panel">
+                        <p class="text-body-secondary small mb-0">Loading work order…</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+}
+else if (_workOrder is null)
+{
+    <div class="settings-wizard-host">
+        <div class="settings-wizard wo-review">
+            <section class="settings-wizard__content">
+                <div class="settings-wizard__main">
+                    <div class="settings-wizard__panel wo-review__panel">
+                        <p class="text-danger small mb-0">Work order not found.</p>
+                    </div>
+                </div>
+                <footer class="settings-wizard__footer">
+                    <div class="settings-wizard__footer-actions">
+                        <button type="button" class="settings-wizard-btn settings-wizard-btn--secondary" @onclick="CloseAsync">Close</button>
+                    </div>
+                </footer>
+            </section>
+        </div>
+    </div>
+}
+else if (_isEditing && _editModel is not null && _editFlight is not null)
+{
+    @* Editable wizard — same shell as WorkOrderAddDialog but with a Save action. *@
+    <RadzenTemplateForm @ref="_editForm"
+                        TItem="WorkOrderFormModel"
+                        Data="@_editModel"
+                        Submit="@SaveEditsAsync"
+                        InvalidSubmit="@OnInvalidSubmit">
+        <div class="settings-wizard-host">
+            <div class="settings-wizard">
+                <aside class="settings-wizard__sidebar" aria-label="Edit work order steps">
+                    @for (var i = 0; i < _editSteps.Length; i++)
+                    {
+                        var index = i;
+                        var step = _editSteps[index];
+                        var state = GetStepState(index);
+                        var stateClass = state switch
+                        {
+                            StepState.Active => "is-active",
+                            StepState.Completed => "is-completed",
+                            _ => "is-upcoming"
+                        };
+                        <button type="button"
+                                class="settings-wizard-step @stateClass"
+                                disabled="@_busy"
+                                @onclick="@(() => JumpTo(index))">
+                            <span class="settings-wizard-step__circle" aria-hidden="true">
+                                @if (state == StepState.Completed)
+                                {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                                }
+                                else
+                                {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+                                }
+                            </span>
+                            <span class="settings-wizard-step__label">
+                                <span class="settings-wizard-step__title">@step.Title</span>
+                                <span class="settings-wizard-step__subtitle">@step.Subtitle</span>
+                            </span>
+                        </button>
+                        @if (index < _editSteps.Length - 1)
+                        {
+                            <span class="settings-wizard-step__line" aria-hidden="true"></span>
+                        }
+                    }
+                </aside>
+                <section class="settings-wizard__content">
+                    <div class="settings-wizard__main">
+                        <div class="settings-wizard__panel">
+                            @switch (_currentStep)
+                            {
+                                case 0:
+                                    <WorkOrderHeaderSection Model="_editModel"
+                                                            Flight="_editFlight"
+                                                            AircraftTypes="_aircraftTypes"
+                                                            AircraftTypesLoading="_aircraftTypesLoading"
+                                                            OnModelChanged="MarkDirtyAsync" />
+                                    break;
+                                case 1:
+                                    <WorkOrderServiceLinesSection Model="_editModel"
+                                                                  Flight="_editFlight"
+                                                                  StationEmployees="_stationEmployees"
+                                                                  StationEmployeesLoading="_stationEmployeesLoading"
+                                                                  CurrentEmployeeId="_currentEmployeeId"
+                                                                  Services="_services"
+                                                                  ServicesLoading="_servicesLoading"
+                                                                  OnModelChanged="MarkDirtyAsync" />
+                                    break;
+                                default:
+                                    <WorkOrderTasksSection Model="_editModel"
+                                                           Flight="_editFlight"
+                                                           StationEmployees="_stationEmployees"
+                                                           StationEmployeesLoading="_stationEmployeesLoading"
+                                                           Tools="_tools"
+                                                           Materials="_materials"
+                                                           GeneralSupports="_generalSupports"
+                                                           StoreLookupsLoading="_storeLookupsLoading"
+                                                           OnModelChanged="MarkDirtyAsync" />
+                                    break;
+                            }
+                        </div>
+                    </div>
+                    <footer class="settings-wizard__footer">
+                        <div class="settings-wizard__footer-left">
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--secondary"
+                                    disabled="@(_currentStep == 0 || _busy)"
+                                    @onclick="Previous">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                                Previous
+                            </button>
+                        </div>
+                        <div class="settings-wizard__footer-actions">
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--secondary"
+                                    disabled="@_busy"
+                                    @onclick="ExitEditAsync">
+                                Cancel edit
+                            </button>
+                            @if (_currentStep < _editSteps.Length - 1)
+                            {
+                                <button type="button"
+                                        class="settings-wizard-btn settings-wizard-btn--commit"
+                                        disabled="@_busy"
+                                        @onclick="NextAsync">
+                                    Next
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="submit"
+                                        class="settings-wizard-btn settings-wizard-btn--commit"
+                                        disabled="@(_busy || _editModel is null || !_editModel.IsHeaderValid())">
+                                    @(_busy ? "Saving…" : "Save changes")
+                                </button>
+                            }
+                        </div>
+                    </footer>
+                </section>
+            </div>
+        </div>
+    </RadzenTemplateForm>
+}
+else
+{
+    var wo = _workOrder;
+    <div class="settings-wizard-host">
+        <div class="settings-wizard wo-review">
+            <section class="settings-wizard__content">
+                <div class="settings-wizard__main">
+                    <div class="settings-wizard__panel wo-review__panel">
+                        <div class="wo-review__header">
+                            <div>
+                                <span class="wo-review__eyebrow">Work order</span>
+                                <h2 class="wo-review__title">@(wo.WorkOrderNo ?? "Pending number")</h2>
+                                <span class="text-body-secondary small">Flight @wo.FlightNumber · @FormatDateTime(wo.CreatedAt)</span>
+                            </div>
+                            <span class="@WorkOrderStatusBadgeClass(wo.Status)">@WorkOrderStatusLabel(wo.Status)</span>
+                        </div>
+
+                        @* Status timeline — visual cue for the lifecycle stage. The "settled" step lights up
+                           green for Approved, red for Rejected/Deleting, and stays dim for Under review. *@
+                        <ol class="wo-review__timeline" aria-label="Work order lifecycle">
+                            @foreach (var step in BuildTimeline(wo))
+                            {
+                                <li class="wo-review__timeline-step @step.StateClass" title="@step.Tooltip">
+                                    <span class="wo-review__timeline-dot" aria-hidden="true">
+                                        @if (step.IsDone)
+                                        {
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                                        }
+                                    </span>
+                                    <span class="wo-review__timeline-label">
+                                        <span class="wo-review__timeline-title">@step.Title</span>
+                                        <span class="wo-review__timeline-sub">@step.Subtitle</span>
+                                    </span>
+                                </li>
+                            }
+                        </ol>
+
+                        @if (wo.Status == WorkOrderStatus.Deleting && wo.MarkedForDeletionAt is not null)
+                        {
+                            <div class="wo-review__deleting-banner">
+                                <strong>Pending deletion.</strong>
+                                Marked at @FormatDateTime(wo.MarkedForDeletionAt.Value).
+                                The deletion job hard-removes this work order after the configured grace period.
+                                Revoke the approval that caused this to restore it to Under review.
+                            </div>
+                        }
+
+                        <div class="wo-review__grid">
+                            <div class="wo-review__cell">
+                                <span class="wo-review__label">Customer</span>
+                                <span class="wo-review__value">@wo.CustomerSnapshot.Name</span>
+                                <span class="wo-review__sub">@wo.CustomerSnapshot.IataCode</span>
+                            </div>
+                            <div class="wo-review__cell">
+                                <span class="wo-review__label">Station</span>
+                                <span class="wo-review__value">@wo.StationSnapshot.IataCode</span>
+                                <span class="wo-review__sub">@wo.StationSnapshot.Name</span>
+                            </div>
+                            <div class="wo-review__cell">
+                                <span class="wo-review__label">Operation</span>
+                                <span class="wo-review__value">@wo.OperationTypeSnapshot.Name</span>
+                            </div>
+                            <div class="wo-review__cell">
+                                <span class="wo-review__label">Aircraft</span>
+                                <span class="wo-review__value">@(wo.AircraftTypeSnapshot?.Model ?? "—")</span>
+                                @if (!string.IsNullOrWhiteSpace(wo.AircraftTailNumber))
+                                {
+                                    <span class="wo-review__sub">Tail @wo.AircraftTailNumber</span>
+                                }
+                            </div>
+                            <div class="wo-review__cell">
+                                <span class="wo-review__label">STA / STD</span>
+                                <span class="wo-review__value">@FormatDateTime(wo.Sta)</span>
+                                <span class="wo-review__sub">@FormatDateTime(wo.Std)</span>
+                            </div>
+                            <div class="wo-review__cell">
+                                <span class="wo-review__label">ATA / ATD</span>
+                                <span class="wo-review__value">@(wo.Ata is null ? "—" : FormatDateTime(wo.Ata.Value))</span>
+                                <span class="wo-review__sub">@(wo.Atd is null ? "—" : FormatDateTime(wo.Atd.Value))</span>
+                            </div>
+                            <div class="wo-review__cell">
+                                <span class="wo-review__label">Cancellation</span>
+                                <span class="wo-review__value">@(wo.IsCanceled ? "Canceled" : "Operated")</span>
+                                @if (wo.IsCanceled && wo.CanceledAt is not null)
+                                {
+                                    <span class="wo-review__sub">@FormatDateTime(wo.CanceledAt.Value)</span>
+                                }
+                            </div>
+                        </div>
+
+                        @if (wo.ServiceLines.Count > 0)
+                        {
+                            <h3 class="settings-section-title h6 mt-3 mb-1">Services</h3>
+                            <div class="wo-review__lines wo-review__lines--svc">
+                                <div class="wo-review__lines-head">
+                                    <span>Service</span>
+                                    <span>Employee</span>
+                                    <span>From</span>
+                                    <span>To</span>
+                                    <span class="text-end">RTR</span>
+                                </div>
+                                @foreach (var line in wo.ServiceLines)
+                                {
+                                    <div class="wo-review__lines-row">
+                                        <span class="fw-semibold">@line.ServiceSnapshot.Name</span>
+                                        <span>@line.EmployeeSnapshot.FullName</span>
+                                        <span class="text-body-secondary small">@FormatDateTime(line.From)</span>
+                                        <span class="text-body-secondary small">@FormatDateTime(line.To)</span>
+                                        <span class="text-end">@(line.ReturnToRamp ? "Yes" : "No")</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @if (wo.Tasks.Count > 0)
+                        {
+                            <h3 class="settings-section-title h6 mt-3 mb-1">Tasks</h3>
+                            <div class="wo-review__lines wo-review__lines--ca">
+                                <div class="wo-review__lines-head">
+                                    <span>Type</span>
+                                    <span>From</span>
+                                    <span>To</span>
+                                    <span>Notes</span>
+                                    <span class="text-end">RTR</span>
+                                </div>
+                                @foreach (var task in wo.Tasks)
+                                {
+                                    <div class="wo-review__lines-row">
+                                        <span class="fw-semibold">@task.TaskType</span>
+                                        <span class="text-body-secondary small">@FormatDateTime(task.From)</span>
+                                        <span class="text-body-secondary small">@FormatDateTime(task.To)</span>
+                                        <span class="text-body-secondary small">@(task.Description ?? "—")</span>
+                                        <span class="text-end">@(task.ReturnToRamp ? "Yes" : "No")</span>
+                                    </div>
+                                    @if (task.Employees.Count > 0 || task.Tools.Count > 0 || task.Materials.Count > 0 || task.GeneralSupports.Count > 0 || task.Attachments.Count > 0)
+                                    {
+                                        <div class="wo-review__lines-row" style="grid-column: 1 / -1; padding-left: 1rem;">
+                                            <span class="text-body-secondary small" style="grid-column: 1 / -1;">
+                                                @if (task.Employees.Count > 0) { <text>Employees: @string.Join(", ", task.Employees.Select(e => e.FullName)). </text> }
+                                                @if (task.Tools.Count > 0) { <text>Tools: @string.Join(", ", task.Tools.Select(t => t.Name)). </text> }
+                                                @if (task.Materials.Count > 0) { <text>Materials: @string.Join(", ", task.Materials.Select(m => m.Name)). </text> }
+                                                @if (task.GeneralSupports.Count > 0) { <text>General supports: @string.Join(", ", task.GeneralSupports.Select(g => g.Name)). </text> }
+                                                @if (task.Attachments.Count > 0) { <text>Attachments: @task.Attachments.Count.</text> }
+                                            </span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+
+                        @if (wo.CustomerSignature is { Length: > 0 } sig)
+                        {
+                            <h3 class="settings-section-title h6 mt-3 mb-1">Customer signature</h3>
+                            <div class="wo-review__signature">
+                                <img src="@($"data:image/png;base64,{Convert.ToBase64String(sig)}")"
+                                     alt="Customer signature captured on the mobile app"
+                                     class="wo-review__signature-img" />
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <footer class="settings-wizard__footer">
+                    <div class="settings-wizard__footer-left">
+                        @if (wo.Status == WorkOrderStatus.Approved)
+                        {
+                            <span class="text-body-secondary small">Approved work orders settle the flight. Revoke to reopen the flight for editing.</span>
+                        }
+                        else if (wo.Status == WorkOrderStatus.Deleting)
+                        {
+                            <span class="text-body-secondary small">Pending deletion — revoke the related approval to restore.</span>
+                        }
+                    </div>
+                    <div class="settings-wizard__footer-actions">
+                        <button type="button"
+                                class="settings-wizard-btn settings-wizard-btn--secondary"
+                                disabled="@_busy"
+                                @onclick="CloseAsync">
+                            Close
+                        </button>
+
+                        @if (wo.Status == WorkOrderStatus.UnderReview)
+                        {
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--secondary"
+                                    disabled="@_busy"
+                                    @onclick="EnterEditAsync">
+                                Edit
+                            </button>
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--danger"
+                                    disabled="@_busy"
+                                    @onclick="DeleteAsync">
+                                @(_busy ? "Working…" : "Delete")
+                            </button>
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--danger"
+                                    disabled="@_busy"
+                                    @onclick="RejectAsync">
+                                @(_busy ? "Working…" : "Reject")
+                            </button>
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--commit"
+                                    disabled="@_busy"
+                                    @onclick="ApproveAsync">
+                                @(_busy ? "Working…" : "Approve")
+                            </button>
+                        }
+                        else if (wo.Status == WorkOrderStatus.Approved)
+                        {
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--danger"
+                                    disabled="@_busy"
+                                    @onclick="RevokeAsync">
+                                @(_busy ? "Working…" : "Revoke approval")
+                            </button>
+                        }
+                    </div>
+                </footer>
+            </section>
+        </div>
+    </div>
+}
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    [Parameter, EditorRequired] public Guid WorkOrderId { get; set; }
+
+    private WorkOrderDetailDto? _workOrder;
+    private bool _loading = true;
+    private bool _busy;
+    private ConfirmDialog _confirm = default!;
+
+    private bool _isEditing;
+    private bool _editDirty;
+    private FlightDto? _editFlight;
+    private WorkOrderFormModel? _editModel;
+    private RadzenTemplateForm<WorkOrderFormModel>? _editForm;
+    private int _currentStep;
+    private int _furthestReached;
+
+    private List<AircraftTypeSelectOption> _aircraftTypes = [];
+    private bool _aircraftTypesLoading = true;
+    /// <summary>Service catalog filtered to non-AOG entries — same rule as <c>WorkOrderAddDialog</c>.</summary>
+    private List<ServiceSelectOption> _services = [];
+    private bool _servicesLoading = true;
+    private IReadOnlyList<EmployeeSnapshot> _stationEmployees = Array.Empty<EmployeeSnapshot>();
+    private bool _stationEmployeesLoading = true;
+    private Guid? _currentEmployeeId;
+    private List<ToolSelectOption> _tools = [];
+    private List<MaterialSelectOption> _materials = [];
+    private List<GeneralSupportSelectOption> _generalSupports = [];
+    private bool _storeLookupsLoading = true;
+    private bool _lookupsLoaded;
+
+    private readonly StepDescriptor[] _editSteps =
+    [
+        new("Details", "Times & aircraft"),
+        new("Services", "Optional service lines"),
+        new("Tasks", "Optional tasks & findings")
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(new GetWorkOrderByIdQuery(WorkOrderId));
+            _workOrder = r.IsSuccess ? r.Value : null;
+        }
+        catch
+        {
+            _workOrder = null;
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task EnsureLookupsAsync()
+    {
+        if (_lookupsLoaded) return;
+        _lookupsLoaded = true;
+        try
+        {
+            var aircraftTask = LookupCache.GetAircraftTypesAsync(ScopedMediator);
+            var serviceTask = LookupCache.GetServicesAsync(ScopedMediator);
+            var toolsTask = LookupCache.GetToolsAsync(ScopedMediator);
+            var materialsTask = LookupCache.GetMaterialsAsync(ScopedMediator);
+            var generalSupportsTask = LookupCache.GetGeneralSupportsAsync(ScopedMediator);
+            // Station roster + current-user resolution happen here too so the edit wizard
+            // sees the same picker shape as the Add dialog.
+            var stationId = _editFlight?.StationSnapshot.StationId
+                ?? _workOrder?.StationSnapshot.StationId
+                ?? Guid.Empty;
+            Task<BuildingBlocks.Domain.Results.Result<IReadOnlyList<EmployeeSnapshot>>> stationEmployeesTask =
+                stationId == Guid.Empty
+                    ? Task.FromResult(BuildingBlocks.Domain.Results.Result<IReadOnlyList<EmployeeSnapshot>>.Success(Array.Empty<EmployeeSnapshot>()))
+                    : ScopedMediator.Send(new GetEmployeeSnapshotsAtStationQuery(stationId, Search: null, Take: 500));
+            Task<EmployeeSnapshot?> currentEmployeeTask = CurrentUser.UserId is { } userId
+                ? EmployeeReader.GetByLinkedUserIdAsync(userId)
+                : Task.FromResult<EmployeeSnapshot?>(null);
+
+            await Task.WhenAll(
+                aircraftTask, serviceTask, toolsTask, materialsTask,
+                generalSupportsTask, stationEmployeesTask, currentEmployeeTask);
+
+            _aircraftTypes = aircraftTask.Result.ToList();
+            _services = serviceTask.Result
+                .Where(s => s.Id != CoreSeedIds.AogService)
+                .ToList();
+            _tools = toolsTask.Result.ToList();
+            _materials = materialsTask.Result.ToList();
+            _generalSupports = generalSupportsTask.Result.ToList();
+            _stationEmployees = stationEmployeesTask.Result.IsSuccess
+                ? stationEmployeesTask.Result.Value!
+                : Array.Empty<EmployeeSnapshot>();
+            _currentEmployeeId = currentEmployeeTask.Result?.EmployeeId;
+        }
+        finally
+        {
+            _aircraftTypesLoading = false;
+            _servicesLoading = false;
+            _stationEmployeesLoading = false;
+            _storeLookupsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task EnterEditAsync()
+    {
+        if (_workOrder is null || _busy) return;
+        if (_workOrder.Status != WorkOrderStatus.UnderReview) return;
+        if (_workOrder.FlightSnapshot is null)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Cannot edit",
+                "Standalone work orders cannot be edited from this dialog.");
+            return;
+        }
+
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await EnsureLookupsAsync();
+
+            var flightR = await ScopedMediator.Send(new GetFlightByIdQuery(_workOrder.FlightSnapshot.FlightId));
+            if (flightR.IsFailure || flightR.Value is null)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Cannot edit",
+                    flightR.IsFailure ? flightR.Error.Description : "Flight not found.");
+                return;
+            }
+
+            _editFlight = flightR.Value;
+            _editModel = WorkOrderFormModel.ForExisting(_workOrder);
+            _editDirty = false;
+            _currentStep = 0;
+            _furthestReached = _editSteps.Length - 1; // user can jump anywhere; they're editing
+            _isEditing = true;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Could not enter edit mode", ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ExitEditAsync()
+    {
+        if (_editDirty)
+        {
+            var confirmed = await _confirm.ShowAsync(
+                title: "Discard changes",
+                message: "You have unsaved edits. Discard them and return to the summary?",
+                confirmText: "Discard",
+                cancelText: "Keep editing",
+                style: ConfirmDialog.DialogStyle.Danger);
+            if (!confirmed) return;
+        }
+
+        _isEditing = false;
+        _editDirty = false;
+        _editModel = null;
+    }
+
+    private Task MarkDirtyAsync()
+    {
+        _editDirty = true;
+        return Task.CompletedTask;
+    }
+
+    private StepState GetStepState(int index)
+    {
+        if (index == _currentStep) return StepState.Active;
+        if (index < _currentStep || index <= _furthestReached) return StepState.Completed;
+        return StepState.Upcoming;
+    }
+
+    private void JumpTo(int index)
+    {
+        if (index == _currentStep) return;
+        if (index > _furthestReached) return;
+        _currentStep = index;
+    }
+
+    private async Task NextAsync()
+    {
+        if (_busy || _currentStep >= _editSteps.Length - 1) return;
+        await Task.Yield();
+        if (_editForm?.EditContext is null || !_editForm.EditContext.Validate())
+            return;
+
+        _currentStep++;
+        _furthestReached = Math.Max(_furthestReached, _currentStep);
+    }
+
+    private void Previous()
+    {
+        if (_currentStep == 0) return;
+        _currentStep--;
+    }
+
+    private void OnInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task SaveEditsAsync(WorkOrderFormModel _)
+    {
+        if (_busy || _editModel is null) return;
+
+        if (!_editModel.IsHeaderValid())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Missing required fields",
+                "Flight number plus ATA and ATD (or cancellation time) are required.");
+            return;
+        }
+
+        if (!_editModel.AllLineRowsValid())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Incomplete row",
+                "Each row needs employee/service, From, and To filled in (To must be on or after From).");
+            return;
+        }
+
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            try
+            {
+                var r = await ScopedMediator.Send(_editModel.ToUpdateCommand());
+                if (r.IsFailure)
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Could not save", r.Error.Description);
+                    return;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Work order updated", "");
+                _isEditing = false;
+                _editDirty = false;
+                await LoadAsync();
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+            }
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (_workOrder is null || _busy) return;
+
+        var confirmed = await _confirm.ShowAsync(
+            title: "Approve work order?",
+            message: "Approving will settle the flight and move every other work order on this flight to Deleting.",
+            confirmText: "Approve",
+            cancelText: "Cancel");
+        if (!confirmed) return;
+
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            try
+            {
+                var r = await ScopedMediator.Send(new ApproveWorkOrderCommand(_workOrder.Id));
+                if (r.IsFailure)
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Could not approve", r.Error.Description);
+                    return;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Work order approved", "The flight has been settled.");
+                DialogService.Close(true);
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+            }
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RejectAsync()
+    {
+        if (_workOrder is null || _busy) return;
+
+        var confirmed = await _confirm.ShowAsync(
+            title: "Reject work order?",
+            message: "Rejected work orders stay attached to the flight but will not settle it.",
+            confirmText: "Reject",
+            cancelText: "Cancel",
+            style: ConfirmDialog.DialogStyle.Danger);
+        if (!confirmed) return;
+
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            try
+            {
+                var r = await ScopedMediator.Send(new RejectWorkOrderCommand(_workOrder.Id));
+                if (r.IsFailure)
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Could not reject", r.Error.Description);
+                    return;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Work order rejected", "");
+                DialogService.Close(true);
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+            }
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RevokeAsync()
+    {
+        if (_workOrder is null || _busy) return;
+
+        var confirmed = await _confirm.ShowAsync(
+            title: "Revoke approval?",
+            message: "The flight will return to In progress, this work order goes back to Under review, and any siblings still in Deleting will be restored.",
+            confirmText: "Revoke",
+            cancelText: "Cancel",
+            style: ConfirmDialog.DialogStyle.Danger);
+        if (!confirmed) return;
+
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            try
+            {
+                var r = await ScopedMediator.Send(new RevokeWorkOrderCommand(_workOrder.Id));
+                if (r.IsFailure)
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Could not revoke", r.Error.Description);
+                    return;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Approval revoked", "Flight reopened to In progress.");
+                DialogService.Close(true);
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+            }
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_workOrder is null || _busy) return;
+
+        var confirmed = await _confirm.ShowAsync(
+            title: "Delete work order?",
+            message: "This permanently removes the work order. The flight stays In progress so you can attach a different one.",
+            confirmText: "Delete",
+            cancelText: "Cancel",
+            style: ConfirmDialog.DialogStyle.Danger);
+        if (!confirmed) return;
+
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            try
+            {
+                var r = await ScopedMediator.Send(new DeleteWorkOrderCommand(_workOrder.Id));
+                if (r.IsFailure)
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Could not delete", r.Error.Description);
+                    return;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Work order deleted", "");
+                DialogService.Close(true);
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+            }
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task CloseAsync()
+    {
+        DialogService.Close(false);
+        return Task.CompletedTask;
+    }
+
+    private static string FormatDateTime(DateTimeOffset value) =>
+        value.ToLocalTime().ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture);
+
+    private static string WorkOrderStatusLabel(WorkOrderStatus status) => status switch
+    {
+        WorkOrderStatus.UnderReview => "Under review",
+        WorkOrderStatus.Approved => "Approved",
+        WorkOrderStatus.Rejected => "Rejected",
+        WorkOrderStatus.Deleting => "Deleting",
+        _ => status.ToString()
+    };
+
+    private static string WorkOrderStatusBadgeClass(WorkOrderStatus status) => status switch
+    {
+        WorkOrderStatus.UnderReview => "wo-review__status wo-review__status--inprogress",
+        WorkOrderStatus.Approved => "wo-review__status wo-review__status--completed",
+        WorkOrderStatus.Rejected => "wo-review__status wo-review__status--canceled",
+        WorkOrderStatus.Deleting => "wo-review__status wo-review__status--deleting",
+        _ => "wo-review__status"
+    };
+
+    /// <summary>
+    /// Lifecycle steps shown in the dialog header. Always three steps (Filed →
+    /// Under review → Settled). The third step turns green for Approved, red for
+    /// Rejected/Deleting, or stays inactive while the WO is still under review.
+    /// </summary>
+    private static IReadOnlyList<TimelineStep> BuildTimeline(WorkOrderDetailDto wo)
+    {
+        var filed = new TimelineStep(
+            Title: "Filed",
+            Subtitle: FormatDateTime(wo.CreatedAt),
+            StateClass: "is-done",
+            IsDone: true,
+            Tooltip: $"Created {FormatDateTime(wo.CreatedAt)}");
+
+        var review = wo.Status == WorkOrderStatus.UnderReview
+            ? new TimelineStep("Under review", "Awaiting decision", "is-active", false, "Awaiting reviewer")
+            : new TimelineStep("Reviewed", "Decision recorded", "is-done", true, "Reviewer acted on this work order");
+
+        var settled = wo.Status switch
+        {
+            WorkOrderStatus.Approved => new TimelineStep(
+                "Approved",
+                "Flight settled",
+                "is-done is-success",
+                true,
+                "Approval has settled the flight"),
+            WorkOrderStatus.Rejected => new TimelineStep(
+                "Rejected",
+                "Stays attached to flight",
+                "is-done is-danger",
+                true,
+                "Rejected work orders do not settle the flight"),
+            WorkOrderStatus.Deleting => new TimelineStep(
+                "Pending deletion",
+                "Will be removed",
+                "is-done is-danger",
+                true,
+                "Sibling approval marked this for deletion"),
+            _ => new TimelineStep(
+                "Settled",
+                "Awaiting reviewer",
+                "is-upcoming",
+                false,
+                "A reviewer must approve or reject")
+        };
+
+        return new[] { filed, review, settled };
+    }
+
+    private enum StepState { Upcoming, Active, Completed }
+
+    private sealed record StepDescriptor(string Title, string Subtitle);
+
+    private sealed record TimelineStep(string Title, string Subtitle, string StateClass, bool IsDone, string Tooltip);
+}

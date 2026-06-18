@@ -1,0 +1,74 @@
+/* Form fields — same tokens as other settings dialog sections (Component Rules.md §7). */
+.settings-field__row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: 100%;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.settings-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+@media (max-width: 768px) {
+    .settings-field__row2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Read-only flight context cards on top of the dialog */
+.wo-context-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.6rem;
+}
+
+.wo-context-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+    min-width: 0;
+}
+
+.wo-context-card__label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.wo-context-card__value {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wo-context-card__sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

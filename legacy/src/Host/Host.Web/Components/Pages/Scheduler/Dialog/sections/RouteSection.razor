@@ -1,0 +1,239 @@
+@*
+  Shared route section for flight dialogs (add / update / bulk route fields).
+  STA·STD pickers are omitted when <see cref="IncludeStaStdPickers"/> is false (bulk wizard uses BulkScheduleSection).
+  Pure presentation + validation: parent owns lookups and their loading flags.
+*@
+@namespace Host.Web.Components.Pages.Scheduler.Dialog.Sections
+@using Core.Contracts.Features.AircraftType
+@using Core.Contracts.Features.Customer
+@using Core.Contracts.Features.OperationType
+@using Core.Contracts.Features.Station
+@using Host.Web.Components.Pages.Scheduler.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Customer *</label>
+            @if (CustomersLoading)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading customers" />
+            }
+            else
+            {
+                <RadzenDropDown Name="FlightCustomer"
+                                TValue="Guid?"
+                                Data="@Customers"
+                                Value="@Model.CustomerId"
+                                ValueChanged="@(v => SetCustomer(v))"
+                                TextProperty="@nameof(CustomerDto.Name)"
+                                ValueProperty="@nameof(CustomerDto.Id)"
+                                AllowClear="false"
+                                AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Placeholder="Select customer"
+                                Disabled="@ReadOnly"
+                                Style="width:100%;" />
+                @if (!ReadOnly)
+                {
+                    <RadzenRequiredValidator Component="FlightCustomer" Text="Required" Popup="true" Style="position:absolute;" />
+                }
+            }
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Station *</label>
+            @if (StationsLoading)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading stations" />
+            }
+            else
+            {
+                <RadzenDropDown Name="FlightStation"
+                                TValue="Guid?"
+                                Data="@Stations"
+                                Value="@Model.StationId"
+                                ValueChanged="@(v => SetStation(v))"
+                                TextProperty="@nameof(StationSelectOption.Name)"
+                                ValueProperty="@nameof(StationSelectOption.Id)"
+                                AllowClear="false"
+                                AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Placeholder="Select station"
+                                Disabled="@ReadOnly"
+                                Style="width:100%;" />
+                @if (!ReadOnly)
+                {
+                    <RadzenRequiredValidator Component="FlightStation" Text="Required" Popup="true" Style="position:absolute;" />
+                }
+            }
+        </div>
+    </div>
+
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Operation type *</label>
+            @if (OperationTypesLoading)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading operation types" />
+            }
+            else
+            {
+                <RadzenDropDown Name="FlightOperationType"
+                                TValue="Guid?"
+                                Data="@OperationTypes"
+                                Value="@Model.OperationTypeId"
+                                ValueChanged="@(v => SetOperationType(v))"
+                                TextProperty="@nameof(OperationTypeSelectOption.Name)"
+                                ValueProperty="@nameof(OperationTypeSelectOption.Id)"
+                                AllowClear="false"
+                                AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Placeholder="Select operation type"
+                                Disabled="@ReadOnly"
+                                Style="width:100%;" />
+                @if (!ReadOnly)
+                {
+                    <RadzenRequiredValidator Component="FlightOperationType" Text="Required" Popup="true" Style="position:absolute;" />
+                }
+            }
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label">Aircraft type</label>
+            @if (AircraftTypesLoading)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading aircraft types" />
+            }
+            else
+            {
+                <RadzenDropDown TValue="Guid?"
+                                Data="@AircraftTypes"
+                                Value="@Model.AircraftTypeId"
+                                ValueChanged="@(v => SetAircraftType(v))"
+                                TextProperty="@nameof(AircraftTypeSelectOption.Model)"
+                                ValueProperty="@nameof(AircraftTypeSelectOption.Id)"
+                                AllowClear="true"
+                                AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Placeholder="Optional"
+                                Disabled="@ReadOnly"
+                                Style="width:100%;" />
+            }
+        </div>
+    </div>
+
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="route-flight-number">Flight number *</label>
+        <RadzenTextBox id="route-flight-number"
+                       Name="FlightNumber"
+                       @bind-Value="Model.FlightNumber"
+                       MaxLength="32"
+                       Change="@OnFlightNumberChanged"
+                       Disabled="@ReadOnly"
+                       Style="width:100%; text-transform: uppercase;" />
+        @if (!ReadOnly)
+        {
+            <RadzenRequiredValidator Component="FlightNumber" Text="Required" Popup="true" Style="position:absolute;" />
+        }
+    </div>
+
+    @if (IncludeStaStdPickers)
+    {
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">STA *</label>
+            <RadzenDatePicker Name="FlightSta"
+                              TValue="DateTime?"
+                              Value="@Model.StaLocal"
+                              ValueChanged="@(v => SetSta(v))"
+                              ShowTime="true"
+                              ShowSeconds="false"
+                              DateFormat="yyyy-MM-dd HH:mm"
+                              Disabled="@ReadOnly"
+                              Style="width:100%;" />
+            @if (!ReadOnly)
+            {
+                <RadzenRequiredValidator Component="FlightSta" Text="Required" Popup="true" Style="position:absolute;" />
+            }
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">STD *</label>
+            <RadzenDatePicker Name="FlightStd"
+                              TValue="DateTime?"
+                              Value="@Model.StdLocal"
+                              ValueChanged="@(v => SetStd(v))"
+                              ShowTime="true"
+                              ShowSeconds="false"
+                              DateFormat="yyyy-MM-dd HH:mm"
+                              Disabled="@ReadOnly"
+                              Style="width:100%;" />
+            @if (!ReadOnly)
+            {
+                <RadzenRequiredValidator Component="FlightStd" Text="Required" Popup="true" Style="position:absolute;" />
+            }
+        </div>
+    </div>
+    <p class="route-section__sta-std-hint">If STD is earlier than STA on the same calendar date, STD is moved to the next day.</p>
+    }
+
+    <ContractLookupPanel Show="@ShowContractLookupFeedback"
+                         ContractLookupInProgress="@ContractLookupInProgress"
+                         ContractVerified="@ContractVerified"
+                         ContractLookupError="@ContractLookupError"
+                         ResolvedContractNumber="@ResolvedContractNumber"
+                         ContractSuccessDetail="@ContractSuccessDetail"
+                         ContractReadinessFilled="@ContractReadinessFilled"
+                         ContractReadinessTotal="@ContractReadinessTotal"
+                         ContractReadinessMessage="@ContractReadinessMessage" />
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public FlightFormModel Model { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<CustomerDto> Customers { get; set; } = [];
+    [Parameter] public bool CustomersLoading { get; set; }
+
+    [Parameter] public IReadOnlyList<StationSelectOption> Stations { get; set; } = [];
+    [Parameter] public bool StationsLoading { get; set; }
+
+    [Parameter] public IReadOnlyList<OperationTypeSelectOption> OperationTypes { get; set; } = [];
+    [Parameter] public bool OperationTypesLoading { get; set; }
+
+    [Parameter] public IReadOnlyList<AircraftTypeSelectOption> AircraftTypes { get; set; } = [];
+    [Parameter] public bool AircraftTypesLoading { get; set; }
+
+    /// <summary>When true, route fields are display-only (e.g. flight not in <c>Scheduled</c> status).</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Set false on the bulk schedule wizard (STA·STD live in <c>BulkScheduleSection</c>).</summary>
+    [Parameter] public bool IncludeStaStdPickers { get; set; } = true;
+
+    /// <summary>When true (create-flight wizard), shows contract resolution loading / success / error under STA·STD.</summary>
+    [Parameter] public bool ShowContractLookupFeedback { get; set; }
+
+    [Parameter] public bool ContractLookupInProgress { get; set; }
+    /// <summary>True after <c>FindContractForFlightOutcome.Found</c> for the current station/customer/operation type/STA basis.</summary>
+    [Parameter] public bool ContractVerified { get; set; }
+    [Parameter] public string? ContractLookupError { get; set; }
+    [Parameter] public string? ResolvedContractNumber { get; set; }
+    /// <summary>Optional second line under success (e.g. AOG-only assignment hint).</summary>
+    [Parameter] public string? ContractSuccessDetail { get; set; }
+
+    [Parameter] public int ContractReadinessFilled { get; set; }
+    [Parameter] public int ContractReadinessTotal { get; set; } = 5;
+    [Parameter] public string ContractReadinessMessage { get; set; } = "";
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task SetCustomer(Guid? v) { Model.CustomerId = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetStation(Guid? v) { Model.StationId = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetOperationType(Guid? v) { Model.OperationTypeId = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetAircraftType(Guid? v) { Model.AircraftTypeId = v; return OnModelChanged.InvokeAsync(); }
+
+    private Task OnFlightNumberChanged()
+    {
+        Model.FlightNumber = (Model.FlightNumber ?? "").Trim().ToUpperInvariant();
+        return OnModelChanged.InvokeAsync();
+    }
+
+    private Task SetSta(DateTime? v) { Model.StaLocal = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetStd(DateTime? v) { Model.StdLocal = v; return OnModelChanged.InvokeAsync(); }
+}

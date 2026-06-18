@@ -1,0 +1,26 @@
+.customer-profile-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.customer-profile-page__back {
+    margin-bottom: -0.5rem;
+}
+
+.customer-profile-page__back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #64748b;
+    font-size: 0.875rem;
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    transition: background-color 0.12s, color 0.12s;
+}
+
+.customer-profile-page__back-link:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}

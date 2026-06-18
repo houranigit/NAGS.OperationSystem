@@ -1,0 +1,70 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Packages.props" />
+    <File Path="NuGet.Config" />
+  </Folder>
+  <Folder Name="/src/" />
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Application/BuildingBlocks.Application.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Infrastructure/BuildingBlocks.Infrastructure.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Contracts/BuildingBlocks.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Audit/">
+    <Project Path="src/Modules/Audit/Audit.Domain/Audit.Domain.csproj" />
+    <Project Path="src/Modules/Audit/Audit.Application/Audit.Application.csproj" />
+    <Project Path="src/Modules/Audit/Audit.Contracts/Audit.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/Identity.Domain/Identity.Domain.csproj" />
+    <Project Path="src/Modules/Identity/Identity.Application/Identity.Application.csproj" />
+    <Project Path="src/Modules/Identity/Identity.Infrastructure/Identity.Infrastructure.csproj" />
+    <Project Path="src/Modules/Identity/Identity.Presentation/Identity.Presentation.csproj" />
+    <Project Path="src/Modules/Identity/Identity.Contracts/Identity.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Core/">
+    <Project Path="src/Modules/Core/Core.Domain/Core.Domain.csproj" />
+    <Project Path="src/Modules/Core/Core.Application/Core.Application.csproj" />
+    <Project Path="src/Modules/Core/Core.Contracts/Core.Contracts.csproj" />
+    <Project Path="src/Modules/Core/Core.Infrastructure/Core.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Contracts/">
+    <Project Path="src/Modules/Contracts/Contracts.Domain/Contracts.Domain.csproj" />
+    <Project Path="src/Modules/Contracts/Contracts.Application/Contracts.Application.csproj" />
+    <Project Path="src/Modules/Contracts/Contracts.Contracts/Contracts.Contracts.csproj" />
+    <Project Path="src/Modules/Contracts/Contracts.Infrastructure/Contracts.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Operations/">
+    <Project Path="src/Modules/Operations/Operations.Domain/Operations.Domain.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Application/Operations.Application.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Infrastructure/Operations.Infrastructure.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Contracts/Operations.Contracts.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Presentation/Operations.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Notifications/">
+    <Project Path="src/Modules/Notifications/Notifications.Domain/Notifications.Domain.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Application/Notifications.Application.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Infrastructure/Notifications.Infrastructure.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Contracts/Notifications.Contracts.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Presentation/Notifications.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Store/">
+    <Project Path="src/Modules/Store/Store.Domain/Store.Domain.csproj" />
+    <Project Path="src/Modules/Store/Store.Application/Store.Application.csproj" />
+    <Project Path="src/Modules/Store/Store.Contracts/Store.Contracts.csproj" />
+    <Project Path="src/Modules/Store/Store.Infrastructure/Store.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Host/">
+    <Project Path="src/Host/Host.Web/Host.Web.csproj" Id="1b6de5ca-a005-4406-9042-49590793f13d" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Contracts/">
+    <Project Path="tests/Contracts.Architecture.Tests/Contracts.Architecture.Tests.csproj" />
+    <Project Path="tests/Contracts.Domain.Tests/Contracts.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Store/">
+    <Project Path="tests/Store.Architecture.Tests/Store.Architecture.Tests.csproj" />
+    <Project Path="tests/Store.Domain.Tests/Store.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

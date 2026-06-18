@@ -1,0 +1,186 @@
+@*
+  Contacts slice of the wizard/update form; repeats rows from CustomerFormModel.ContactLines.
+  No extra section headers — wizard sidebar carries step titles; fields use settings-field pattern inside cards.
+*@
+@namespace Host.Web.Components.Pages.Customers.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Dialog
+
+<RadzenStack Gap="1rem" class="contacts-brackets">
+        <div class="brackets-container">
+            @for (var i = 0; i < Model.ContactLines.Count; i++)
+            {
+                var idx = i;
+                <div class="bracket-card" @key="@idx">
+                    <div class="bracket-header">
+                        <span class="bracket-number">Contact @(idx + 1)</span>
+                        @if (Model.ContactLines.Count > 1)
+                        {
+                            <RadzenButton Icon="close"
+                                          ButtonStyle="ButtonStyle.Danger"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.ExtraSmall"
+                                          Click="@(() => RemoveAt(idx))"
+                                          ButtonType="ButtonType.Button"/>
+                        }
+                    </div>
+                    <div class="bracket-body">
+                        <div class="bracket-field-row">
+                            <div class="settings-field">
+                                <label class="settings-field__label" for="@($"ct-{idx}-name")">Name *</label>
+                                <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                    <RadzenTextBox Id="@($"ct-{idx}-name")"
+                                                   Name="@($"C{idx}_Name")"
+                                                   Value="@Model.ContactLines[idx].Name"
+                                                   ValueChanged="@(v => SetName(idx, v))"
+                                                   MaxLength="150"
+                                                   Style="width: 100%;"/>
+                                    <RadzenCustomValidator Component="@($"C{idx}_Name")"
+                                                           Text="Name is required for this contact (max 150 when email is set)"
+                                                           Validator="@(() => Model.IsContactNameInputValidForRow(idx))"
+                                                           Popup="true"
+                                                           Style="position: absolute"/>
+                                </div>
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-field__label" for="@($"ct-{idx}-email")">Email *</label>
+                                <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                    <RadzenTextBox Id="@($"ct-{idx}-email")"
+                                                   Name="@($"C{idx}_Email")"
+                                                   Value="@Model.ContactLines[idx].Email"
+                                                   ValueChanged="@(v => SetEmail(idx, v))"
+                                                   MaxLength="254"
+                                                   Style="width: 100%;"/>
+                                    <RadzenCustomValidator Component="@($"C{idx}_Email")"
+                                                           Text="Valid email is required for this contact"
+                                                           Validator="@(() => Model.IsContactEmailInputValidForRow(idx))"
+                                                           Popup="true"
+                                                           Style="position: absolute"/>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bracket-field-row">
+                            <div class="settings-field">
+                                <label class="settings-field__label" for="@($"ct-{idx}-job")">Job title</label>
+                                <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                    <RadzenTextBox Id="@($"ct-{idx}-job")"
+                                                   Name="@($"C{idx}_Job")"
+                                                   Value="@Model.ContactLines[idx].JobTitle"
+                                                   ValueChanged="@(v => SetJobTitle(idx, v))"
+                                                   MaxLength="100"
+                                                   Style="width: 100%;"/>
+                                    <RadzenCustomValidator Component="@($"C{idx}_Job")"
+                                                           Text="Must not exceed 100 characters"
+                                                           Validator="@(() => Model.IsContactJobTitleInputValidForRow(idx))"
+                                                           Popup="true"
+                                                           Style="position: absolute"/>
+                                </div>
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-field__label" for="@($"ct-{idx}-phone")">Phone</label>
+                                <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                    <RadzenTextBox Id="@($"ct-{idx}-phone")"
+                                                   Name="@($"C{idx}_Phone")"
+                                                   Value="@Model.ContactLines[idx].Phone"
+                                                   ValueChanged="@(v => SetPhone(idx, v))"
+                                                   MaxLength="50"
+                                                   Style="width: 100%;"/>
+                                    <RadzenCustomValidator Component="@($"C{idx}_Phone")"
+                                                           Text="Must not exceed 50 characters"
+                                                           Validator="@(() => Model.IsContactPhoneInputValidForRow(idx))"
+                                                           Popup="true"
+                                                           Style="position: absolute"/>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bracket-field-row bracket-field-row--full">
+                            <div class="settings-field">
+                                <label class="settings-field__label d-flex align-items-center gap-2 flex-wrap mb-0" style="cursor: pointer;">
+                                    <RadzenCheckBox TValue="bool"
+                                                    Value="@Model.ContactLines[idx].CreateUser"
+                                                    ValueChanged="@(v => SetCreateUser(idx, v))"
+                                                    Name="@($"C{idx}_CreateUser")"/>
+                                    <span>Create a user for this contact</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="ac-validate-wrap" style="position: relative; width: 0; height: 0; overflow: hidden; clip: rect(0,0,0,0);">
+                <RadzenTextBox Name="ContactDup"
+                               Value="x"
+                               ReadOnly="true"
+                               Style="position:absolute; width:1px; height:1px; opacity:0"/>
+                <RadzenCustomValidator Component="ContactDup"
+                                       Text="Each contact email must be unique"
+                                       Validator="@(() => Model.AreContactEmailAddressesUnique())"
+                                       Popup="true"
+                                       Style="position: absolute"/>
+            </div>
+
+            <div class="add-bracket-area">
+                <RadzenButton Text="Add contact"
+                              Icon="add_circle_outline"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Variant="Variant.Text"
+                              Size="ButtonSize.Small"
+                              Click="@AddRow"
+                              ButtonType="ButtonType.Button"/>
+            </div>
+        </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public CustomerFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private void SetName(int index, string? v)
+    {
+        Model.ContactLines[index].Name = v ?? string.Empty;
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetEmail(int index, string? v)
+    {
+        Model.ContactLines[index].Email = v ?? string.Empty;
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetJobTitle(int index, string? v)
+    {
+        Model.ContactLines[index].JobTitle = v;
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetPhone(int index, string? v)
+    {
+        Model.ContactLines[index].Phone = v;
+        _ = RaiseChangedAsync();
+    }
+
+    private Task SetCreateUser(int index, bool v)
+    {
+        Model.ContactLines[index].CreateUser = v;
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+
+    private Task RaiseChangedAsync() => OnModelChanged.InvokeAsync();
+
+    private Task AddRow()
+    {
+        Model.ContactLines.Add(new CustomerContactEditorLine());
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+
+    private Task RemoveAt(int index)
+    {
+        if (Model.ContactLines.Count <= 1) return Task.CompletedTask;
+        Model.ContactLines.RemoveAt(index);
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+}

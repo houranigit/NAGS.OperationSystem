@@ -1,0 +1,142 @@
+@*
+  Licenses slice of the wizard/update form; repeats rows from EmployeeFormModel.LicenseLines.
+  Layout mirrors ContactsSection (bracket cards + settings-field validators + Add row).
+  Outer wrapper is native HTML so scoped CSS attaches to .contacts-brackets (RadzenStack would not reliably receive the parent's isolation attribute).
+*@
+@namespace Host.Web.Components.Pages.Settings.System.Employees.Dialog.Sections
+@using Core.Contracts.Features.License
+@using Host.Web.Components.Pages.Settings.System.Employees.Dialog
+
+<div class="contacts-brackets">
+        <div class="brackets-container">
+            @for (var i = 0; i < Model.LicenseLines.Count; i++)
+            {
+                var idx = i;
+                <div class="bracket-card" @key="@Model.LicenseLines[idx].UiKey">
+                    <div class="bracket-header">
+                        <span class="bracket-number">License @(idx + 1)</span>
+                        @if (Model.LicenseLines.Count > 1)
+                        {
+                            <RadzenButton Icon="close"
+                                          ButtonStyle="ButtonStyle.Danger"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.ExtraSmall"
+                                          Click="@(() => RemoveAt(idx))"
+                                          ButtonType="ButtonType.Button"/>
+                        }
+                    </div>
+                    <div class="bracket-body">
+                        <div class="bracket-field-row">
+                            <div class="settings-field">
+                                <label class="settings-field__label" for="@($"lic-{idx}-type")">License type *</label>
+                                @if (LicensesLoading)
+                                {
+                                    <DropdownFieldSkeleton AriaLabel="Loading license types"/>
+                                }
+                                else
+                                {
+                                    <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                        <RadzenDropDown TValue="Guid?"
+                                                       Id="@($"lic-{idx}-type")"
+                                                       Name="@($"L{idx}_Type")"
+                                                       Value="@Model.LicenseLines[idx].LicenseTypeId"
+                                                       ValueChanged="@(v => SetLicenseType(idx, v))"
+                                                       Data="@Licenses"
+                                                       TextProperty="@nameof(LicenseSelectOption.Name)"
+                                                       ValueProperty="@nameof(LicenseSelectOption.Id)"
+                                                       AllowClear="true"
+                                                       Placeholder="Select license…"
+                                                       Style="width: 100%;"/>
+                                        <RadzenCustomValidator Component="@($"L{idx}_Type")"
+                                                               Text="License type is required for this row"
+                                                               Validator="@(() => Model.IsLicenseTypeInputValidForRow(idx))"
+                                                               Popup="true"
+                                                               Style="position: absolute"/>
+                                    </div>
+                                }
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-field__label" for="@($"lic-{idx}-num")">License number *</label>
+                                <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                    <RadzenTextBox Id="@($"lic-{idx}-num")"
+                                                   Name="@($"L{idx}_Number")"
+                                                   Value="@Model.LicenseLines[idx].LicenseNumber"
+                                                   ValueChanged="@(v => SetLicenseNumber(idx, v))"
+                                                   MaxLength="100"
+                                                   Style="width: 100%;"/>
+                                    <RadzenCustomValidator Component="@($"L{idx}_Number")"
+                                                           Text="Valid license number is required (max 100 characters)"
+                                                           Validator="@(() => Model.IsLicenseNumberInputValidForRow(idx))"
+                                                           Popup="true"
+                                                           Style="position: absolute"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="ac-validate-wrap" style="position: relative; width: 0; height: 0; overflow: hidden; clip: rect(0,0,0,0);">
+                <RadzenTextBox Name="LicenseDup"
+                               Value="x"
+                               ReadOnly="true"
+                               Style="position:absolute; width:1px; height:1px; opacity:0"/>
+                <RadzenCustomValidator Component="LicenseDup"
+                                       Text="Each license type may appear only once"
+                                       Validator="@(() => Model.AreFilledLicenseTypesUnique())"
+                                       Popup="true"
+                                       Style="position: absolute"/>
+            </div>
+
+            <div class="add-bracket-area">
+                <RadzenButton Text="Add license"
+                              Icon="add_circle_outline"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Variant="Variant.Text"
+                              Size="ButtonSize.Small"
+                              Click="@AddRow"
+                              ButtonType="ButtonType.Button"/>
+            </div>
+        </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public EmployeeFormModel Model { get; set; } = default!;
+
+    /// <summary>License lookup options (<c>GetPaginatedLicenseSelectOptionsQuery</c>).</summary>
+    [Parameter] public IReadOnlyList<LicenseSelectOption> Licenses { get; set; } = [];
+
+    [Parameter] public bool LicensesLoading { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private void SetLicenseType(int index, Guid? v)
+    {
+        Model.LicenseLines[index].LicenseTypeId = v;
+        StateHasChanged();
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetLicenseNumber(int index, string? v)
+    {
+        Model.LicenseLines[index].LicenseNumber = v ?? string.Empty;
+        _ = RaiseChangedAsync();
+    }
+
+    private Task RaiseChangedAsync() => OnModelChanged.InvokeAsync();
+
+    private Task AddRow()
+    {
+        Model.LicenseLines.Add(new EmployeeLicenseEditorLine());
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+
+    private Task RemoveAt(int index)
+    {
+        if (Model.LicenseLines.Count <= 1) return Task.CompletedTask;
+        Model.LicenseLines.RemoveAt(index);
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+}

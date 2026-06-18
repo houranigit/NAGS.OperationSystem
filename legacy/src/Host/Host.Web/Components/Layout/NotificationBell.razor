@@ -1,0 +1,163 @@
+@using BuildingBlocks.Application.Abstractions
+@using BuildingBlocks.Application.Pagination
+@using Host.Web.Services
+@using Notifications.Application.Abstractions
+@using Notifications.Application.Features.GetMyInbox
+@using Notifications.Application.Features.GetUnreadCount
+@using Notifications.Application.Features.MarkAllAsRead
+@using Notifications.Application.Features.MarkAsRead
+@using Notifications.Contracts.Notifications
+@using Notifications.Domain.Aggregates.Notification
+@implements IDisposable
+
+<AuthorizeView>
+    <Authorized>
+        <details class="ops-bell" @ref="_details">
+            <summary class="ops-bell__trigger" title="Notifications" aria-label="Notifications">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                @if (_unreadCount > 0)
+                {
+                    <span class="ops-bell__badge">@(_unreadCount > 99 ? "99+" : _unreadCount.ToString())</span>
+                }
+            </summary>
+            <div class="ops-bell__panel">
+                <div class="ops-bell__header">
+                    <span class="ops-bell__title">Notifications</span>
+                    @if (_unreadCount > 0)
+                    {
+                        <button type="button" class="ops-bell__action" @onclick="MarkAllAsReadAsync">Mark all as read</button>
+                    }
+                </div>
+                <div class="ops-bell__list">
+                    @if (_loading)
+                    {
+                        <div class="ops-bell__empty">Loading…</div>
+                    }
+                    else if (_recent.Count == 0)
+                    {
+                        <div class="ops-bell__empty">You're all caught up.</div>
+                    }
+                    else
+                    {
+                        @foreach (var n in _recent)
+                        {
+                            <button type="button" class="ops-bell__item @(n.IsRead ? null : "ops-bell__item--unread")" @onclick="@(() => OnItemClickAsync(n))">
+                                <span class="ops-bell__item-title">@n.Title</span>
+                                <span class="ops-bell__item-body">@n.Body</span>
+                                <span class="ops-bell__item-time">@n.CreatedAt.ToString("g")</span>
+                            </button>
+                        }
+                    }
+                </div>
+                <div class="ops-bell__footer">
+                    <a href="/notifications" class="ops-bell__link">View all</a>
+                </div>
+            </div>
+        </details>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [Inject] private IScopedMediator Mediator { get; set; } = default!;
+    [Inject] private ICurrentUserService CurrentUser { get; set; } = default!;
+    [Inject] private INotificationEventBus EventBus { get; set; } = default!;
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private ElementReference _details;
+    private List<NotificationDto> _recent = [];
+    private int _unreadCount;
+    private bool _loading;
+    private const int RecentCount = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        EventBus.NotificationCreated += OnNotificationCreated;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (CurrentUser.UserId is null) return;
+
+        _loading = true;
+        try
+        {
+            var inbox = await Mediator.Send(new GetMyInboxQuery(CurrentUser.UserId.Value, 1, RecentCount));
+            if (inbox.IsSuccess)
+                _recent = inbox.Value!.Items.ToList();
+
+            var unread = await Mediator.Send(new GetUnreadCountQuery(CurrentUser.UserId.Value));
+            if (unread.IsSuccess)
+                _unreadCount = unread.Value;
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async void OnNotificationCreated(Guid recipient, NotificationDto dto)
+    {
+        if (CurrentUser.UserId != recipient) return;
+        await InvokeAsync(async () =>
+        {
+            _recent.Insert(0, dto);
+            if (_recent.Count > RecentCount)
+                _recent.RemoveAt(_recent.Count - 1);
+            _unreadCount++;
+            StateHasChanged();
+            await Task.CompletedTask;
+        });
+    }
+
+    private async Task OnItemClickAsync(NotificationDto n)
+    {
+        if (!n.IsRead && CurrentUser.UserId is { } userId)
+        {
+            await Mediator.Send(new MarkAsReadCommand(userId, n.Id));
+            var idx = _recent.FindIndex(x => x.Id == n.Id);
+            if (idx >= 0)
+                _recent[idx] = n with { IsRead = true, ReadAt = DateTime.UtcNow };
+            if (_unreadCount > 0) _unreadCount--;
+        }
+
+        var deepLink = ResolveDeepLink(n);
+        if (!string.IsNullOrWhiteSpace(deepLink))
+            Navigation.NavigateTo(deepLink);
+        else
+            StateHasChanged();
+    }
+
+    private async Task MarkAllAsReadAsync()
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+        await Mediator.Send(new MarkAllAsReadCommand(userId));
+        _recent = _recent.Select(x => x with { IsRead = true, ReadAt = x.ReadAt ?? DateTime.UtcNow }).ToList();
+        _unreadCount = 0;
+        StateHasChanged();
+    }
+
+    private static string? ResolveDeepLink(NotificationDto n)
+    {
+        if (string.Equals(n.Kind, NotificationKind.EmployeeInvitedToFlight, StringComparison.Ordinal))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(n.PayloadJson);
+                if (doc.RootElement.TryGetProperty("flightId", out var fid))
+                    return $"/flights/{fid.GetGuid()}";
+            }
+            catch
+            {
+                // payload was not the shape we expected — fall through and let the user open the inbox
+            }
+        }
+        return null;
+    }
+
+    public void Dispose() => EventBus.NotificationCreated -= OnNotificationCreated;
+}

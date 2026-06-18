@@ -1,0 +1,102 @@
+@namespace Host.Web.Components.Pages.Settings.System.Employees.Dialog.Sections
+@using Core.Contracts.Features.ManpowerType
+@using Core.Contracts.Features.Station
+@using Host.Web.Components.Pages.Settings.System.Employees.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Full name</label>
+            <RadzenTextBox Name="EmpName" @bind-Value="Model.FullName" MaxLength="200" Change="@OnChg" Style="width:100%;" />
+            <RadzenRequiredValidator Component="EmpName" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Email</label>
+            <RadzenTextBox Name="EmpEmail" @bind-Value="Model.Email" MaxLength="256" Change="@OnChg" Style="width:100%;" />
+            <RadzenRequiredValidator Component="EmpEmail" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+    </div>
+    <div class="settings-field__row2">
+        <div class="settings-field">
+            <label class="settings-field__label">Manpower type</label>
+            @if (ManpowerTypesLoading)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading manpower types"/>
+            }
+            else
+            {
+                <RadzenDropDown TValue="Guid" @bind-Value="Model.ManpowerTypeId" Data="@ManpowerTypes" TextProperty="@nameof(ManpowerTypeSelectOption.Name)" ValueProperty="@nameof(ManpowerTypeSelectOption.Id)" Change="@OnChg" Style="width:100%;" />
+            }
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label">Station</label>
+            @if (StationsLoading)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading stations"/>
+            }
+            else
+            {
+                <RadzenDropDown TValue="Guid" @bind-Value="Model.StationId" Data="@Stations" TextProperty="@nameof(StationSelectOption.Name)" ValueProperty="@nameof(StationSelectOption.Id)" Change="@OnChg" Style="width:100%;" />
+            }
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(Model.UserTypeDisplay))
+    {
+        <div class="settings-field__row2">
+            <div class="settings-field">
+                <label class="settings-field__label">User type (read-only)</label>
+                <RadzenTextBox Value="@Model.UserTypeDisplay" Disabled="true" Style="width:100%;" />
+            </div>
+            <div class="settings-field">
+                <label class="settings-field__label">Identity status (read-only)</label>
+                <RadzenTextBox Value="@Model.UserStatusDisplay" Disabled="true" Style="width:100%;" />
+            </div>
+        </div>
+    }
+    <div class="settings-field">
+        <span class="settings-field__label">Status</span>
+        <RadzenSelectBar TValue="bool" @bind-Value="Model.IsActive" Change="@OnChg" Size="ButtonSize.Small">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+    @if (!Model.HasLinkedUser)
+    {
+        <div class="settings-field">
+            <label class="settings-field__label d-flex align-items-center gap-2 flex-wrap mb-0" style="cursor: pointer;">
+                <RadzenCheckBox TValue="bool"
+                                Value="@Model.CreateLinkedUser"
+                                ValueChanged="@(v => SetCreateUser(v))"
+                                Name="EmpCreateUser" />
+                <span>Make a user for this employee</span>
+            </label>
+            <span class="settings-field__hint">An invitation email will be sent to the email above.</span>
+        </div>
+    }
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public EmployeeFormModel Model { get; set; } = default!;
+
+    /// <summary>Manpower lookup options (<c>GetPaginatedManpowerTypeSelectOptionsQuery</c>).</summary>
+    [Parameter] public IReadOnlyList<ManpowerTypeSelectOption> ManpowerTypes { get; set; } = [];
+
+    [Parameter] public bool ManpowerTypesLoading { get; set; }
+
+    /// <summary>Station lookup options (<c>GetPaginatedStationSelectOptionsQuery</c>).</summary>
+    [Parameter] public IReadOnlyList<StationSelectOption> Stations { get; set; } = [];
+
+    [Parameter] public bool StationsLoading { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnChg() => OnModelChanged.InvokeAsync();
+
+    private Task SetCreateUser(bool v)
+    {
+        Model.CreateLinkedUser = v;
+        return OnModelChanged.InvokeAsync();
+    }
+}

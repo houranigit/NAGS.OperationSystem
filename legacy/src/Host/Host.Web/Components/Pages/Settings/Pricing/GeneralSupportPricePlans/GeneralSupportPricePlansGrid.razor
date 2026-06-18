@@ -1,0 +1,263 @@
+@*
+  Data page for general-support price plans: grid + Add/Update dialogs. Mirrors ToolPricePlansGrid.
+*@
+@using Store.Application.Features.GeneralSupportPricePlan.Queries.GetPaginatedGeneralSupportPricePlans
+@using Store.Contracts.Features.GeneralSupportPricePlan
+@using Host.Web.Components.Pages.Settings.Pricing.GeneralSupportPricePlans.Dialog
+@using PricingBasis = Store.Domain.Enumerations.PricingBasis
+@using BracketBillingMode = Store.Domain.Enumerations.BracketBillingMode
+@using Host.Web.Components.Shared.DataGrid
+@using Host.Web.Services
+@inherits GridSettingsComponentBase<GeneralSupportPricePlanDto>
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h1 class="h4 mb-1">General-support price plans</h1>
+        <p class="text-secondary small mb-0">One plan per general-support item — currency, basis, and bracket ladder.</p>
+    </div>
+    <button type="button"
+            class="btn btn-sm settings-grid-add-btn"
+            disabled="@IsLoading"
+            @onclick="OpenAddDialogAsync">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        Add New
+    </button>
+</div>
+
+@if (Data is null && !IsLoading)
+{
+    <TableSkeleton Rows="6" Columns="5" />
+}
+else
+{
+    <RadzenDataGrid @ref="Grid"
+                    TItem="GeneralSupportPricePlanDto"
+                    Data="@Data"
+                    Count="@Count"
+                    LoadData="@HandleLoadDataAsync"
+                    LoadSettings="@LoadSettings"
+                    @bind-Settings="Settings"
+                    PickedColumnsChanged="@OnPickedColumnsChanged"
+                    IsLoading="@IsLoading"
+                    Sort="@ShowLoadingAsync"
+                    Page="@ShowLoadingAsync"
+                    Filter="@ShowLoadingAsync"
+                    ColumnWidth="140px"
+                    Style="height: calc(100vh - 200px);"
+                    Density="GridDefaults.Density"
+                    FilterMode="GridDefaults.FilterMode"
+                    AllowPaging="GridDefaults.AllowPaging"
+                    PageSize="GridDefaults.DefaultPageSize"
+                    AllowSorting="GridDefaults.AllowSorting"
+                    AllowFiltering="GridDefaults.AllowFiltering"
+                    AllowColumnResize="GridDefaults.AllowColumnResize"
+                    AllowColumnPicking="GridDefaults.AllowColumnPicking"
+                    AllowColumnReorder="GridDefaults.AllowColumnReorder"
+                    AllowAlternatingRows="GridDefaults.AllowAlternatingRows"
+                    LogicalFilterOperator="GridDefaults.LogicalFilterOperator"
+                    FilterCaseSensitivity="GridDefaults.FilterCaseSensitivity"
+                    AllowVirtualization="false"
+                    ExpandMode="DataGridExpandMode.Multiple"
+                    ShowExpandAll="true"
+                    AllowRowSelectOnRowClick="false">
+        <HeaderTemplate>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="10px">
+                    <RadzenButton Icon="refresh"
+                                  Text="@($"Refresh ({GetTitleText()})")"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Variant="Variant.Filled"
+                                  Shade="Shade.Light"
+                                  Size="ButtonSize.Small"
+                                  Click="@RefreshAsync"
+                                  Disabled="@IsLoading" />
+                </RadzenStack>
+            </RadzenStack>
+        </HeaderTemplate>
+        <Columns>
+            <RadzenDataGridColumn TItem="GeneralSupportPricePlanDto" Title="General support" Filterable="false" Sortable="false">
+                <Template Context="r">
+                    <span class="fw-semibold">@r.GeneralSupportSnapshot.Name</span>
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="GeneralSupportPricePlanDto" Title="Currency" Filterable="false" Sortable="false">
+                <Template Context="r">@r.CurrencySnapshot.Code</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="GeneralSupportPricePlanDto" Property="@nameof(GeneralSupportPricePlanDto.Basis)" Title="Basis">
+                <Template Context="r">@BasisLabel(r.Basis)</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="GeneralSupportPricePlanDto"
+                                  Title="Actions"
+                                  Width="70px"
+                                  Frozen="true"
+                                  FrozenPosition="FrozenColumnPosition.Right"
+                                  Filterable="false"
+                                  Sortable="false"
+                                  Pickable="false"
+                                  Resizable="false"
+                                  Reorderable="false"
+                                  TextAlign="TextAlign.Center">
+                <Template Context="r">
+                    <button type="button"
+                            class="settings-grid-edit-btn"
+                            disabled="@IsLoading"
+                            title="Edit plan"
+                            @onclick="@(() => OpenEditDialogAsync(r))"
+                            @onclick:stopPropagation="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
+                        Edit
+                    </button>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+        <Template Context="plan">
+            <div class="mpp-brackets-detail">
+                @if (plan.Basis == PricingBasis.Flat)
+                {
+                    @if (plan.Brackets.Count > 0)
+                    {
+                        <span class="mpp-flat-rate">
+                            Flat rate: <strong>@plan.Brackets[0].Value.ToString("N2")</strong> @plan.CurrencySnapshot.Code per unit
+                        </span>
+                    }
+                    else
+                    {
+                        <p class="text-body-secondary small ms-1 my-1">No rate defined.</p>
+                    }
+                }
+                else
+                {
+                    @if (plan.Brackets.Count > 0)
+                    {
+                        <div class="mpp-bracket-table-ro">
+                            <div class="mpp-bracket-header-ro">
+                                <span>From (min)</span>
+                                <span>To (min)</span>
+                                <span>Block (min)</span>
+                                <span>Rate (@plan.CurrencySnapshot.Code)</span>
+                                <span>Billing mode</span>
+                            </div>
+                            @foreach (var b in plan.Brackets)
+                            {
+                                <div class="mpp-bracket-row-ro">
+                                    <span>@b.MinMinutes</span>
+                                    <span>@(b.MaxMinutes?.ToString() ?? "∞")</span>
+                                    <span>@b.BlockSize</span>
+                                    <span class="fw-semibold">@b.Value.ToString("N2")</span>
+                                    <span>@BillingModeLabel(b.BillingMode)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-body-secondary small ms-1 my-1">No brackets defined. Choose <strong>Edit</strong> to add brackets.</p>
+                    }
+                }
+            </div>
+        </Template>
+    </RadzenDataGrid>
+}
+
+@code {
+    private bool _expandRowsPending;
+
+    protected override string SettingsStorageKey => "GeneralSupportPricePlanList-Settings";
+
+    protected override async Task HandleLoadDataAsync(LoadDataArgs args)
+    {
+        await LoadDataAsync(args, LoadCore);
+        _expandRowsPending = Data is { Count: > 0 };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (!_expandRowsPending || Grid is null || Data is null || Data.Count == 0)
+            return;
+
+        _expandRowsPending = false;
+        await Grid.ExpandRows(Data);
+    }
+
+    private async Task LoadCore(LoadDataArgs a, int ps, int pn, IServiceProvider sp, CancellationToken ct)
+    {
+        var r = await ScopedMediator.Send(
+            new GetPaginatedGeneralSupportPricePlansQuery(pn, ps, a.Filter, a.OrderBy, GetVisibleColumnPropertyNames()),
+            ct);
+        if (r.IsSuccess)
+            SetGridResult(r.Value.Items, r.Value.TotalCount);
+        else
+            SetGridResult([], 0);
+    }
+
+    private string GetTitleText() => $"Total items {Count:N0}";
+
+    private async Task RefreshAsync()
+    {
+        await ShowLoadingAsync();
+        Grid?.Reload();
+    }
+
+    private static DialogOptions WizardDialogOptions { get; } = new()
+    {
+        Width = "min(56rem, 95vw)",
+        Resizable = false,
+        Draggable = false,
+        CloseDialogOnOverlayClick = false,
+        ShowClose = false
+    };
+
+    private Task OpenAddDialogAsync() => OpenDialogAsync(null);
+
+    private Task OpenEditDialogAsync(GeneralSupportPricePlanDto row) => OpenDialogAsync(row);
+
+    private async Task OpenDialogAsync(GeneralSupportPricePlanDto? existing)
+    {
+        var title = existing is null ? "New general-support price plan" : "Edit general-support price plan";
+        if (existing is null)
+        {
+            var addRes = await DialogService.OpenAsync<GeneralSupportPricePlanAddDialog>(
+                title,
+                null,
+                WizardDialogOptions);
+
+            if (addRes is true)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Saved", "General-support price plan created.");
+                await ReloadAndResetAsync();
+            }
+
+            return;
+        }
+
+        var editRes = await DialogService.OpenAsync<GeneralSupportPricePlanUpdateDialog>(
+            title,
+            new Dictionary<string, object?> { { nameof(GeneralSupportPricePlanUpdateDialog.ExistingItem), existing } },
+            WizardDialogOptions);
+
+        if (editRes is true)
+        {
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "General-support price plan updated.");
+            await ReloadAndResetAsync();
+        }
+    }
+
+    private static string BasisLabel(PricingBasis basis) => basis switch
+    {
+        PricingBasis.Flat => "Flat per unit",
+        PricingBasis.Duration => "Duration brackets",
+        _ => basis.ToString()
+    };
+
+    private static string BillingModeLabel(BracketBillingMode mode) => mode switch
+    {
+        BracketBillingMode.Floor => "Floor",
+        BracketBillingMode.Ceiling => "Ceiling",
+        BracketBillingMode.ProRated => "Pro-rated",
+        _ => mode.ToString()
+    };
+}

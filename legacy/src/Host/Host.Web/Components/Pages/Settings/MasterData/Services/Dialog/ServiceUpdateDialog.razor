@@ -1,0 +1,108 @@
+@*
+  UPDATE = free-nav via the shared WizardShell.
+*@
+@using Core.Contracts.Features.Service
+@using Host.Web.Components.Pages.Settings.MasterData.Services.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="ServiceFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_steps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@IsDirty"
+                 SidebarAriaLabel="Edit service sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the service"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <BasicDetailsSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public ServiceDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Basic details", "Code, name & description", "tools", IsRequired: true, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<ServiceFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private ServiceFormModel _model = new() { IsActive = true };
+    private ServiceFormModel _snapshot = new() { IsActive = true };
+    private List<string> _errorMessages = new();
+
+    private bool IsDirty =>
+        !string.Equals(_model.Name, _snapshot.Name, StringComparison.Ordinal)
+        || !string.Equals(_model.Description ?? "", _snapshot.Description ?? "", StringComparison.Ordinal)
+        || _model.IsActive != _snapshot.IsActive;
+
+    protected override void OnInitialized()
+    {
+        _model = ServiceFormModel.FromDto(ExistingItem);
+        _snapshot = _model.Clone();
+        _currentSection = 0;
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(ServiceFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToUpdateServiceCommand(ExistingItem.Id));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save service", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

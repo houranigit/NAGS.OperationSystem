@@ -1,0 +1,163 @@
+@*
+  Contacts-style bracket header; body is one row: "CODE" = [rate][to] ··· effective.
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Currencies.Dialog.Sections
+@using Core.Contracts.Features.Currency
+@using Host.Web.Components.Pages.Settings.MasterData.Currencies.Dialog
+
+<RadzenStack Gap="1rem" class="contacts-brackets exchange-rates-section">
+    <div class="brackets-container">
+        @for (var i = 0; i < Model.RateLines.Count; i++)
+        {
+            var idx = i;
+            var line = Model.RateLines[idx];
+            var baseLabel = !string.IsNullOrWhiteSpace(BaseCurrencyCode)
+                ? BaseCurrencyCode.Trim().ToUpperInvariant()
+                : "···";
+            <div class="bracket-card" @key="@($"{idx}-{line.PersistedRateId?.ToString() ?? "new"}")">
+                <div class="bracket-header">
+                    <span class="bracket-number">Exchange rate @(idx + 1)</span>
+                    <RadzenButton Icon="close"
+                                  ButtonStyle="ButtonStyle.Danger"
+                                  Variant="Variant.Text"
+                                  Size="ButtonSize.ExtraSmall"
+                                  Click="@(() => RemoveAt(idx))"
+                                  ButtonType="ButtonType.Button"/>
+                </div>
+                <div class="exchange-rate-single-row bracket-body bracket-body--inline">
+                    <span class="exchange-rate-base" title="Base currency ISO code">
+                        &quot;@baseLabel&quot;&nbsp;=
+                    </span>
+                    <div class="settings-field exchange-rate-field exchange-rate-field--rate">
+                        <label class="settings-field__label exchange-rate-sr-only" for="@($"er-{idx}-rate")">Rate</label>
+                        <div class="ac-validate-wrap exchange-rate-input-wrap">
+                            <RadzenNumeric TValue="decimal?"
+                                           inputAttributes="@(new Dictionary<string, object> { ["id"] = $"er-{idx}-rate" })"
+                                           Name="@($"Er{idx}_Rate")"
+                                           Value="@line.Rate"
+                                           ValueChanged="@(v => SetRate(idx, v))"
+                                           Format="n6"
+                                           Min="0m"
+                                           Max="1000000m"
+                                           Size="ButtonSize.Small"
+                                           Style="width: 100%; min-width: 0;"/>
+                            <RadzenCustomValidator Component="@($"Er{idx}_Rate")"
+                                                   Text="Enter a rate between 0 and 1,000,000 (exclusive of zero)"
+                                                   Validator="@(() => CurrencyOptionsLoading || Model.IsRateLineRateValidForRow(idx))"
+                                                   Popup="true"
+                                                   Style="position: absolute"/>
+                        </div>
+                    </div>
+                    <div class="settings-field exchange-rate-field exchange-rate-field--to">
+                        <label class="settings-field__label exchange-rate-sr-only" for="@($"er-{idx}-to")">To currency</label>
+                        @if (CurrencyOptionsLoading)
+                        {
+                            <DropdownFieldSkeleton AriaLabel="Loading currencies"/>
+                        }
+                        else
+                        {
+                            <div class="ac-validate-wrap exchange-rate-input-wrap">
+                                <RadzenDropDown TValue="Guid?"
+                                                inputAttributes="@(new Dictionary<string, object> { ["id"] = $"er-{idx}-to" })"
+                                                Name="@($"Er{idx}_To")"
+                                                Value="@line.ToCurrencyId"
+                                                ValueChanged="@(v => SetToCurrency(idx, v))"
+                                                Data="@FilteredOptions"
+                                                TextProperty="@nameof(CurrencySelectOption.Code)"
+                                                ValueProperty="@nameof(CurrencySelectOption.Id)"
+                                                AllowClear="true"
+                                                Placeholder="To"
+                                                Size="ButtonSize.Small"
+                                                Style="width: 100%; min-width: 0;"/>
+                                <RadzenCustomValidator Component="@($"Er{idx}_To")"
+                                                       Text="Target currency is required when a rate is entered"
+                                                       Validator="@(() => CurrencyOptionsLoading || Model.IsRateLineToCurrencyValidForRow(idx))"
+                                                       Popup="true"
+                                                       Style="position: absolute"/>
+                            </div>
+                        }
+                    </div>
+                    <div class="exchange-rate-gap" aria-hidden="true"></div>
+                    <span class="exchange-rate-effective text-secondary">
+                        @(line.PersistedEffectiveAtUtc is { } t
+                            ? $"Effective {t:MMM d, yyyy h:mm tt} UTC"
+                            : "Effective — pending save")
+                    </span>
+                </div>
+            </div>
+        }
+
+        <div class="ac-validate-wrap" style="position: relative; width: 0; height: 0; overflow: hidden; clip: rect(0,0,0,0);">
+            <RadzenTextBox Name="ExchangeRateDup"
+                           Value="x"
+                           ReadOnly="true"
+                           Style="position:absolute; width:1px; height:1px; opacity:0"/>
+            <RadzenCustomValidator Component="ExchangeRateDup"
+                                   Text="Each target currency must be used only once"
+                                   Validator="@(() => CurrencyOptionsLoading || Model.AreTargetCurrenciesUnique())"
+                                   Popup="true"
+                                   Style="position: absolute"/>
+        </div>
+
+        <div class="add-bracket-area">
+            <RadzenButton Text="Add exchange rate"
+                          Icon="add_circle_outline"
+                          ButtonStyle="ButtonStyle.Secondary"
+                          Variant="Variant.Text"
+                          Size="ButtonSize.Small"
+                          Disabled="@CurrencyOptionsLoading"
+                          Click="@AddRow"
+                          ButtonType="ButtonType.Button"/>
+        </div>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public CurrencyFormModel Model { get; set; } = default!;
+
+    /// <summary>Base (from) ISO code shown as quoted <c>"CODE"</c> before <c>=</c> in the bracket body.</summary>
+    [Parameter] public string? BaseCurrencyCode { get; set; }
+
+    [Parameter] public IReadOnlyList<CurrencySelectOption> CurrencyOptions { get; set; } = [];
+
+    [Parameter] public bool CurrencyOptionsLoading { get; set; }
+
+    /// <summary>Exclude the base (from) currency so users cannot rate to itself.</summary>
+    [Parameter] public Guid? ExcludeCurrencyId { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private IEnumerable<CurrencySelectOption> FilteredOptions =>
+        ExcludeCurrencyId is { } exclude
+            ? CurrencyOptions.Where(c => c.Id != exclude)
+            : CurrencyOptions;
+
+    private void SetToCurrency(int index, Guid? v)
+    {
+        Model.RateLines[index].ToCurrencyId = v;
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetRate(int index, decimal? v)
+    {
+        Model.RateLines[index].Rate = v;
+        _ = RaiseChangedAsync();
+    }
+
+    private Task RaiseChangedAsync() => OnModelChanged.InvokeAsync();
+
+    private Task AddRow()
+    {
+        Model.RateLines.Add(new CurrencyExchangeRateEditorLine());
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+
+    private Task RemoveAt(int index)
+    {
+        if (index < 0 || index >= Model.RateLines.Count) return Task.CompletedTask;
+        Model.RateLines.RemoveAt(index);
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+}

@@ -1,0 +1,359 @@
+/* Operations System shell — light dashboard (maroon brand + slate/blue chrome) */
+
+.ops-shell {
+    --ops-maroon: #722f37;
+    --ops-shell-rail-row: 4.25rem;
+    --ops-nav-active: #722f37;
+    --ops-border: #e2e8f0;
+    --ops-border-strong: #cbd5e1;
+    --ops-surface: #ffffff;
+    --ops-bg-page: #f1f5f9;
+    --ops-sidebar: #fafbfc;
+    --ops-text: #0f172a;
+    --ops-text-soft: #64748b;
+
+    display: flex;
+    height: 100dvh;
+    max-height: 100dvh;
+    width: 100%;
+    overflow: hidden;
+    background: var(--ops-bg-page);
+    color: var(--ops-text);
+    font-feature-settings: "kern" 1, "liga" 1;
+}
+
+.ops-shell__sidebar {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    align-self: stretch;
+    min-height: 0;
+    width: 200px;
+    overflow: hidden;
+    background: linear-gradient(188deg, #fbfcfd 0%, #ffffff 42%, #f6f9fc 100%);
+    border-right: 1px solid var(--ops-border);
+    box-shadow:
+        inset -1px 0 0 rgba(255, 255, 255, 0.7),
+        8px 0 32px -8px rgba(15, 23, 42, 0.06);
+    transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ops-shell--collapsed .ops-shell__sidebar {
+    width: 80px;
+}
+
+.ops-shell__brand {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+    border-bottom: 1px solid var(--ops-border);
+}
+
+.ops-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 0;
+    text-decoration: none;
+    color: var(--ops-text);
+    justify-content: center;
+    width: 100%;
+    border-radius: 14px;
+    padding: 1rem;
+    transition: background 0.18s ease, color 0.18s ease;
+    flex-wrap: wrap;
+}
+
+.ops-brand:hover {
+    color: var(--ops-maroon);
+    background: rgba(114, 47, 55, 0.04);
+    text-decoration: none;
+}
+
+.ops-brand__badge {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #fff 0%, #f4f8fc 100%);
+    box-shadow:
+        0 2px 4px rgba(15, 23, 42, 0.05),
+        0 0 0 1px rgba(226, 232, 240, 0.95);
+}
+
+.ops-brand__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    object-fit: contain;
+}
+
+.ops-brand__text {
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ops-shell--collapsed .ops-brand__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.ops-shell--collapsed .ops-brand {
+    justify-content: center;
+}
+
+.ops-shell--collapsed .ops-brand__badge {
+    width: 40px;
+    height: 40px;
+}
+
+/* Scroll area between brand and foot — keeps rail + header visually fixed */
+.ops-shell__sidebar-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.ops-shell__sidebar-foot {
+    flex-shrink: 0;
+    min-height: 0.75rem;
+}
+
+.ops-shell__column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.ops-shell__topbar {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem 0.95rem;
+    width: 100%;
+    min-height: 60px;
+    height: 60px;
+    padding: 0 1.35rem;
+    background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+    border-bottom: 1px solid var(--ops-border);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 1) inset, 0 8px 28px rgba(15, 23, 42, 0.045);
+    z-index: 20;
+}
+
+.ops-shell__rail-toggle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--ops-border);
+    border-radius: 12px;
+    background: #fff;
+    color: #475569;
+    cursor: pointer;
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.12s ease;
+}
+
+.ops-shell__rail-toggle:hover {
+    border-color: #cbd5e1;
+    color: var(--ops-nav-active);
+    box-shadow: 0 2px 12px rgba(114, 47, 55, 0.12);
+}
+
+.ops-shell__rail-toggle:active {
+    transform: scale(0.96);
+}
+
+.ops-shell__rail-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(114, 47, 55, 0.38);
+}
+
+.ops-shell__rail-toggle-icon {
+    display: block;
+}
+
+.ops-shell--collapsed .ops-shell__rail-toggle {
+    border-color: rgba(114, 47, 55, 0.28);
+    background: linear-gradient(180deg, #fef6f7 0%, #ffffff 100%);
+}
+
+.ops-shell__topbar-search {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 34rem;
+    position: relative;
+}
+
+.ops-shell__search-icon {
+    position: absolute;
+    left: 1.05rem;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--ops-text-soft);
+    pointer-events: none;
+    opacity: 0.82;
+}
+
+.ops-shell__search-input {
+    width: 100%;
+    height: 2.875rem;
+    padding: 0 1rem 0 2.9rem;
+    border: 1px solid var(--ops-border);
+    border-radius: 999px;
+    background: rgba(248, 250, 252, 0.85);
+    font-size: 0.9075rem;
+    color: var(--ops-text);
+    outline: none;
+    transition:
+        border-color 0.22s ease,
+        background 0.22s ease,
+        box-shadow 0.22s ease;
+}
+
+.ops-shell__search-input::placeholder {
+    color: #94a3b8;
+}
+
+.ops-shell__search-input:hover {
+    border-color: #cbd5e1;
+    background: var(--ops-surface);
+}
+
+.ops-shell__search-input:focus {
+    border-color: rgba(114, 47, 55, 0.45);
+    background: var(--ops-surface);
+    box-shadow: 0 0 0 3px rgba(114, 47, 55, 0.12);
+}
+
+.ops-shell__topbar-end {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* Groups bell + profile as one cohesive control strip */
+.ops-shell__end-tray {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 4px;
+    border-radius: 14px;
+    /*background: rgba(248, 250, 252, 0.9);
+    border: 1px solid #e8ecf1;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);*/
+}
+
+.ops-icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.875rem;
+    height: 2.875rem;
+    padding: 0;
+    border: none;
+    border-radius: 11px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, transform 0.1s ease;
+}
+
+.ops-icon-btn:hover {
+    background: #fff;
+    color: var(--ops-nav-active);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+
+.ops-icon-btn:active {
+    transform: scale(0.94);
+}
+
+.ops-icon-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #f8fafc, 0 0 0 4px rgba(114, 47, 55, 0.38);
+}
+
+.ops-icon-btn__dot {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ef4444;
+    border: 2px solid #f8fafc;
+}
+
+.ops-shell__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.3rem;
+}
+
+@media (max-width: 991.98px) {
+    .ops-shell__topbar {
+        flex-wrap: wrap;
+        row-gap: 0.65rem;
+        padding-inline: 1rem;
+    }
+
+    .ops-shell__rail-toggle {
+        order: 0;
+    }
+
+    .ops-shell__topbar-end {
+        order: 1;
+        margin-left: auto;
+    }
+
+    .ops-shell__topbar-search {
+        order: 2;
+        flex: 1 1 100%;
+        max-width: none;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .ops-shell__scroll {
+        padding: 1rem 1rem 1.5rem;
+    }
+}

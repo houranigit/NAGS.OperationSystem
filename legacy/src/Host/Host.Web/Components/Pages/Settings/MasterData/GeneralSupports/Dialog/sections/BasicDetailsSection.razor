@@ -1,0 +1,106 @@
+@*
+  Wizard / update shared section — Name, Unit, Duration flag, Note, Status.
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.GeneralSupports.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.GeneralSupports.Dialog
+@using Store.Contracts.Features.Unit
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="gs-name">Name</label>
+        <RadzenTextBox id="gs-name"
+                       Name="GeneralSupportName"
+                       @bind-Value="Model.Name"
+                       MaxLength="200"
+                       Placeholder="e.g. Storage Space, Iqama Renewal, Customs Clearance"
+                       Change="@OnFieldChangedAsync"
+                       Style="width: 100%;" />
+        <RadzenRequiredValidator Component="GeneralSupportName"
+                                 Text="Name is required."
+                                 Popup="true"
+                                 Style="position: absolute;" />
+        <RadzenLengthValidator Component="GeneralSupportName"
+                               Max="200"
+                               Text="Name must not exceed 200 characters."
+                               Popup="true"
+                               Style="position: absolute; top: 2.5rem;" />
+    </div>
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="gs-unit">Unit</label>
+            @if (LoadingUnits)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading units" />
+            }
+            else
+            {
+                <RadzenDropDown TValue="Guid?"
+                                id="gs-unit"
+                                Name="GeneralSupportUnit"
+                                @bind-Value="Model.UnitId"
+                                Data="@Units"
+                                TextProperty="@nameof(UnitSelectOption.Name)"
+                                ValueProperty="@nameof(UnitSelectOption.Id)"
+                                AllowClear="false"
+                                AllowFiltering="true"
+                                FilterOperator="StringFilterOperator.Contains"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Placeholder="Select…"
+                                Change="@OnFieldChangedAsync"
+                                Style="width: 100%;" />
+                <RadzenRequiredValidator Component="GeneralSupportUnit"
+                                         Text="Unit is required."
+                                         Popup="true"
+                                         Style="position: absolute;" />
+            }
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <span class="settings-field__label" id="gs-duration">Duration based</span>
+            <RadzenSelectBar TValue="bool"
+                             @bind-Value="Model.IsDuration"
+                             Change="@OnFieldChangedAsync"
+                             Size="ButtonSize.Small"
+                             aria-labelledby="gs-duration">
+                <Items>
+                    <RadzenSelectBarItem Text="Yes" Value="true" />
+                    <RadzenSelectBarItem Text="No" Value="false" />
+                </Items>
+            </RadzenSelectBar>
+        </div>
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="gs-note">Note</label>
+        <RadzenTextArea id="gs-note"
+                        @bind-Value="Model.Note"
+                        MaxLength="500"
+                        Rows="3"
+                        Placeholder="Optional notes (e.g. As per supplier invoice)"
+                        Change="@OnFieldChangedAsync"
+                        Style="width: 100%;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="gs-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="gs-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public GeneralSupportFormModel Model { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<UnitSelectOption> Units { get; set; } = [];
+
+    [Parameter] public bool LoadingUnits { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

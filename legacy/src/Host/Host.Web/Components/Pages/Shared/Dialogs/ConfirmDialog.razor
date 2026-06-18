@@ -1,0 +1,98 @@
+
+@if (_visible)
+{
+    <div class="dialog-overlay" role="presentation" @onclick="OnOverlayClick">
+        <div class="dialog" role="dialog" aria-labelledby="confirm-dialog-title" aria-modal="true"
+             @onclick:stopPropagation>
+            <div class="dialog-header">
+                <h3 id="confirm-dialog-title" class="dialog-title">@_title</h3>
+                @if (_showCloseButton)
+                {
+                    <button type="button" class="dialog-close" @onclick="Cancel" aria-label="Close">&times;</button>
+                }
+            </div>
+            <div class="dialog-body">
+                <p>@_message</p>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="Cancel">@_cancelText</button>
+                <button type="button" class="btn @ConfirmButtonClass btn-sm" @onclick="Confirm">@_confirmText</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private string _title = "";
+    private string _message = "";
+    private string _confirmText = "";
+    private string _cancelText = "";
+    private DialogStyle _style;
+    private bool _closeOnOverlayClick = true;
+    private bool _showCloseButton = true;
+    private TaskCompletionSource<bool>? _tcs;
+
+    /// <summary>Fallback title when <c>ShowAsync(title: null)</c>.</summary>
+    [Parameter] public string Title { get; set; } = "Confirm";
+
+    /// <summary>Fallback body when <c>ShowAsync(message: null)</c>.</summary>
+    [Parameter] public string Message { get; set; } = "Are you sure?";
+
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+
+    [Parameter] public string CancelText { get; set; } = "Cancel";
+
+    [Parameter] public DialogStyle Style { get; set; } = DialogStyle.Primary;
+
+    private string ConfirmButtonClass => _style switch
+    {
+        DialogStyle.Danger => "btn-danger",
+        _ => "btn-primary"
+    };
+
+    /// <summary>Returns <see langword="true"/> if the user chose the primary action.</summary>
+    public Task<bool> ShowAsync(
+        string? title = null,
+        string? message = null,
+        string? confirmText = null,
+        string? cancelText = null,
+        DialogStyle? style = null,
+        bool closeOnOverlayClick = true,
+        bool showCloseButton = true)
+    {
+        _title = title ?? Title;
+        _message = message ?? Message;
+        _confirmText = confirmText ?? ConfirmText;
+        _cancelText = cancelText ?? CancelText;
+        _style = style ?? Style;
+        _closeOnOverlayClick = closeOnOverlayClick;
+        _showCloseButton = showCloseButton;
+        _visible = true;
+        _tcs = new TaskCompletionSource<bool>();
+        StateHasChanged();
+        return _tcs.Task;
+    }
+
+    private void OnOverlayClick()
+    {
+        if (_closeOnOverlayClick)
+            Cancel();
+    }
+
+    private void Confirm()
+    {
+        _visible = false;
+        _tcs?.TrySetResult(true);
+        StateHasChanged();
+    }
+
+    private void Cancel()
+    {
+        _visible = false;
+        _tcs?.TrySetResult(false);
+        StateHasChanged();
+    }
+
+    public enum DialogStyle { Primary, Danger }
+}

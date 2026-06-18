@@ -1,0 +1,164 @@
+/* Mirrors PricePlanBracketsSection's "ac-bracket-line" look so cancellation/delay
+   plans, service brackets and tool/material brackets all share the same visual chord. */
+
+.contract-brackets-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.contract-brackets-editor__flat {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.contract-brackets-editor__flat-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.contract-brackets-editor__field-label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.contract-brackets-editor__prefix,
+.contract-brackets-editor__suffix {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.contract-brackets-editor__brackets-scroll {
+    max-height: min(40vh, 22rem);
+    overflow-y: auto;
+    padding-right: 0.2rem;
+}
+
+.contract-brackets-editor__lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.contract-brackets-editor__line {
+    position: relative;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.contract-brackets-editor__line:hover {
+    border-color: #cbd5e1;
+}
+
+.contract-brackets-editor__line--dismissible {
+    padding-top: 0.2rem;
+}
+
+.contract-brackets-editor__remove {
+    position: absolute;
+    top: 0.1rem;
+    right: 0.1rem;
+    z-index: 2;
+    line-height: 0;
+}
+
+.contract-brackets-editor__remove ::deep .rz-button {
+    min-width: 0;
+    padding: 0.15rem;
+}
+
+.contract-brackets-editor__line-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem 0.75rem;
+    padding: 0.55rem 0.65rem;
+}
+
+.contract-brackets-editor__line--dismissible .contract-brackets-editor__line-inner {
+    padding-right: 2rem;
+}
+
+.contract-brackets-editor__fromto {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.65rem;
+    align-items: flex-end;
+}
+
+.contract-brackets-editor__field {
+    min-width: 4.5rem;
+}
+
+.contract-brackets-editor__field--from {
+    width: 4.5rem;
+}
+
+.contract-brackets-editor__field--to {
+    width: 4.75rem;
+}
+
+.contract-brackets-editor__line-label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    margin-bottom: 0.2rem;
+}
+
+.contract-brackets-editor__spacer {
+    flex: 1 1 1rem;
+    min-width: 0.75rem;
+    height: 1px;
+    align-self: center;
+    background: linear-gradient(90deg, #e2e8f0 0%, transparent 100%);
+}
+
+.contract-brackets-editor__price {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.3rem 0.4rem;
+    min-width: 0;
+}
+
+.contract-brackets-editor__ccy {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.contract-brackets-editor__add {
+    margin-top: 0.45rem;
+}
+
+.contract-brackets-editor__hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #a8b0bd;
+    max-width: 52rem;
+}
+
+@media (max-width: 720px) {
+    .contract-brackets-editor__spacer {
+        display: none;
+    }
+}

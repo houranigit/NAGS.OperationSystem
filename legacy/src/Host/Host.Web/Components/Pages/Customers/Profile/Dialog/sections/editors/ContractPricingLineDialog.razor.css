@@ -1,0 +1,227 @@
+/* Pricing-line dialog: scope (left card) + pricing model (right card with basis,
+   shared billing/block above the brackets editor). Uses the same wine accent as the
+   wizard shell so the user feels they're still inside the same wizard surface. */
+
+.cpl-dialog {
+    --cpl-accent: #722f37;
+    --cpl-accent-soft: rgba(114, 47, 55, 0.10);
+    --cpl-accent-strong: rgba(114, 47, 55, 0.18);
+    --cpl-border: #e9edf4;
+    --cpl-text: #2f3349;
+    --cpl-text-muted: #64748b;
+    --cpl-text-subtle: #94a3b8;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+    max-height: min(85vh, 50rem);
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.cpl-dialog__body {
+    display: grid;
+    /* Left scope = compact (24rem on desktop), right pricing = the rest. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    gap: 1.1rem;
+    padding: 1.25rem 1.5rem 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    align-items: stretch;
+}
+
+.cpl-card {
+    border: 1px solid var(--cpl-border);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cpl-card__header {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--cpl-border);
+    background: linear-gradient(180deg, #fafbfd 0%, #ffffff 100%);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+}
+
+.cpl-card__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.95rem;
+    height: 1.95rem;
+    border-radius: 8px;
+    background: var(--cpl-accent-soft);
+    color: var(--cpl-accent);
+}
+
+.cpl-card__title {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--cpl-text);
+    letter-spacing: -0.005em;
+}
+
+.cpl-card__subtitle {
+    margin: 0.1rem 0 0;
+    font-size: 0.7188rem;
+    color: var(--cpl-text-subtle);
+    line-height: 1.4;
+}
+
+.cpl-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1rem;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.cpl-card--scope .cpl-card__body {
+    background: #fff;
+}
+
+/* Field helpers (shared between scope + pricing controls) */
+.cpl-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.cpl-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--cpl-text-muted);
+    line-height: 1.25;
+}
+
+.cpl-field__hint {
+    margin: 0;
+    font-size: 0.6875rem;
+    color: var(--cpl-text-subtle);
+    line-height: 1.45;
+}
+
+/* Pricing controls live in a small grid above the brackets — basis takes the full
+   width when Flat, then becomes 1fr next to billing+block when Duration. */
+.cpl-pricing-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 8rem;
+    gap: 0.65rem 0.85rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px dashed #eef1f6;
+}
+
+.cpl-pricing-controls > .cpl-field:only-child {
+    grid-column: 1 / -1;
+}
+
+/* Brackets sub-block (header + ContractPlanBracketsEditor below) */
+.cpl-brackets-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.cpl-brackets-block__header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.cpl-brackets-block__title {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--cpl-text);
+    letter-spacing: -0.005em;
+}
+
+.cpl-brackets-block__subtitle {
+    margin: 0;
+    font-size: 0.7188rem;
+    color: var(--cpl-text-subtle);
+    line-height: 1.4;
+}
+
+/* Footer */
+.cpl-dialog__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    padding: 0.85rem 1.5rem 1rem;
+    border-top: 1px solid var(--cpl-border);
+    background: #fff;
+    margin-top: 1rem;
+}
+
+.cpl-dialog__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 999px;
+    padding: 0.5rem 1.1rem;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+}
+
+.cpl-dialog__btn--secondary {
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #475569;
+}
+
+.cpl-dialog__btn--secondary:hover {
+    border-color: #cbd5e1;
+    color: #334155;
+    background: #f8fafc;
+}
+
+.cpl-dialog__btn--commit {
+    border: 1px solid var(--cpl-accent);
+    background: linear-gradient(180deg, #843742 0%, #5d2730 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(114, 47, 55, 0.25);
+}
+
+.cpl-dialog__btn--commit:hover {
+    background: linear-gradient(180deg, #722f37 0%, #4a1f26 100%);
+    box-shadow: 0 4px 12px rgba(114, 47, 55, 0.35);
+}
+
+.cpl-dialog__btn:active {
+    transform: scale(0.97);
+}
+
+@media (max-width: 900px) {
+    .cpl-dialog__body {
+        grid-template-columns: 1fr;
+    }
+
+    .cpl-pricing-controls {
+        grid-template-columns: 1fr;
+    }
+}

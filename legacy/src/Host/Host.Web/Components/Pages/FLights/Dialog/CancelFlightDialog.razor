@@ -1,0 +1,252 @@
+@*
+  Cancel-flight dialog. Files an empty cancel work order against the flight using
+  CancelFlightCommand. The work order enters UnderReview just like a normal WO
+  and follows the same Approve / Revoke flow — final cancellation only takes
+  effect when the cancel WO is approved.
+
+  UX notes:
+   - Top banner makes it crystal-clear this is a destructive (but reversible-via-revoke)
+     action, and shows the flight identity so the operator can verify they picked
+     the right row before continuing.
+   - Three time presets ("Now", "At STA", "At STD") cover the most common cases;
+     the date picker remains the override for everything else.
+   - Submit button stays disabled until the timestamp picker has a value AND the
+     operator ticks the "I understand" acknowledgement, mirroring how delete-style
+     confirmations work elsewhere in the system.
+*@
+@using System.Globalization
+@using Host.Web.Services
+@using Operations.Application.Features.Flight.Commands.CancelFlight
+@using Operations.Contracts.Flight
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+
+<div class="settings-wizard-host cancel-flight-host">
+    <div class="settings-wizard">
+        <section class="settings-wizard__content">
+            <div class="settings-wizard__main">
+                <div class="settings-wizard__panel">
+
+                    <header class="cancel-flight__hero" role="banner">
+                        <span class="cancel-flight__hero-icon" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </span>
+                        <div class="cancel-flight__hero-body">
+                            <span class="cancel-flight__hero-eyebrow">Cancel flight</span>
+                            <h2 class="cancel-flight__hero-title">@Flight.FlightNumber · @Flight.CustomerSnapshot.IataCode</h2>
+                            <p class="cancel-flight__hero-sub">
+                                This files a <strong>cancel work order</strong> for review. Cancellation
+                                only takes effect when an approver settles it — until then the flight
+                                stays in its current state and the action is fully reversible.
+                            </p>
+                        </div>
+                    </header>
+
+                    <section class="cancel-flight__context" aria-label="Flight summary">
+                        <div class="cancel-flight__context-cell">
+                            <span class="cancel-flight__context-label">Customer</span>
+                            <span class="cancel-flight__context-value">@Flight.CustomerSnapshot.Name</span>
+                        </div>
+                        <div class="cancel-flight__context-cell">
+                            <span class="cancel-flight__context-label">Station</span>
+                            <span class="cancel-flight__context-value">@Flight.StationSnapshot.IataCode · @Flight.StationSnapshot.Name</span>
+                        </div>
+                        <div class="cancel-flight__context-cell">
+                            <span class="cancel-flight__context-label">Operation</span>
+                            <span class="cancel-flight__context-value">@Flight.OperationTypeSnapshot.Name</span>
+                        </div>
+                        <div class="cancel-flight__context-cell">
+                            <span class="cancel-flight__context-label">STA → STD</span>
+                            <span class="cancel-flight__context-value">@FormatDateTime(Flight.Sta) → @FormatDateTime(Flight.Std)</span>
+                        </div>
+                    </section>
+
+                    <h3 class="cancel-flight__section-title">When was the flight canceled?</h3>
+
+                    <div class="cancel-flight__presets" role="group" aria-label="Cancellation time presets">
+                        <button type="button"
+                                class="cancel-flight__preset @PresetClass(Preset.Now)"
+                                disabled="@_busy"
+                                @onclick="@(() => ApplyPreset(Preset.Now))">
+                            Now
+                            <span class="cancel-flight__preset-sub">@FormatPresetTime(DateTime.Now)</span>
+                        </button>
+                        <button type="button"
+                                class="cancel-flight__preset @PresetClass(Preset.AtSta)"
+                                disabled="@_busy"
+                                @onclick="@(() => ApplyPreset(Preset.AtSta))">
+                            At STA
+                            <span class="cancel-flight__preset-sub">@FormatPresetTime(Flight.Sta.ToLocalTime().DateTime)</span>
+                        </button>
+                        <button type="button"
+                                class="cancel-flight__preset @PresetClass(Preset.AtStd)"
+                                disabled="@_busy"
+                                @onclick="@(() => ApplyPreset(Preset.AtStd))">
+                            At STD
+                            <span class="cancel-flight__preset-sub">@FormatPresetTime(Flight.Std.ToLocalTime().DateTime)</span>
+                        </button>
+                    </div>
+
+                    <div class="settings-field cancel-flight__picker">
+                        <label class="settings-field__label">Or pick a custom time</label>
+                        <RadzenDatePicker Name="CancelAtPicker"
+                                          TValue="DateTime?"
+                                          Value="@_canceledAtLocal"
+                                          ValueChanged="@(v => SetCustomTime(v))"
+                                          ShowTime="true"
+                                          ShowSeconds="false"
+                                          DateFormat="yyyy-MM-dd HH:mm"
+                                          Style="width:100%;" />
+                    </div>
+
+                    <label class="cancel-flight__ack">
+                        <input type="checkbox"
+                               class="cancel-flight__ack-input"
+                               checked="@_acknowledged"
+                               disabled="@_busy"
+                               @onchange="@OnAckChanged" />
+                        <span class="cancel-flight__ack-text">
+                            I understand this files a <strong>cancel work order</strong> for flight
+                            <strong>@Flight.FlightNumber</strong>. The flight will lock as
+                            <strong>Canceled</strong> only after the work order is approved.
+                        </span>
+                    </label>
+
+                    @if (_error is not null)
+                    {
+                        <p class="cancel-flight-dialog__error" role="alert">@_error</p>
+                    }
+                </div>
+            </div>
+
+            <footer class="settings-wizard__footer">
+                <div class="settings-wizard__footer-left cancel-flight__footer-hint">
+                    @if (_canceledAtLocal is { } t)
+                    {
+                        <span>Cancel time will be filed as <strong>@t.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture)</strong></span>
+                    }
+                </div>
+                <div class="settings-wizard__footer-actions">
+                    <button type="button"
+                            class="settings-wizard-btn settings-wizard-btn--secondary"
+                            disabled="@_busy"
+                            @onclick="CancelAsync">
+                        Keep flight
+                    </button>
+                    <button type="button"
+                            class="settings-wizard-btn settings-wizard-btn--danger"
+                            disabled="@(_busy || !_acknowledged || _canceledAtLocal is null)"
+                            @onclick="ConfirmAsync">
+                        @if (_busy)
+                        {
+                            <span>Submitting…</span>
+                        }
+                        else
+                        {
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                            <span>File cancel work order</span>
+                        }
+                    </button>
+                </div>
+            </footer>
+        </section>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FlightDto Flight { get; set; } = default!;
+
+    private enum Preset { None, Now, AtSta, AtStd }
+
+    private DateTime? _canceledAtLocal;
+    private Preset _activePreset = Preset.None;
+    private bool _acknowledged;
+    private bool _busy;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        ApplyPreset(Preset.Now);
+    }
+
+    private void ApplyPreset(Preset preset)
+    {
+        _activePreset = preset;
+        _canceledAtLocal = preset switch
+        {
+            Preset.Now => DateTime.Now,
+            Preset.AtSta => Flight.Sta.ToLocalTime().DateTime,
+            Preset.AtStd => Flight.Std.ToLocalTime().DateTime,
+            _ => _canceledAtLocal
+        };
+    }
+
+    private void SetCustomTime(DateTime? value)
+    {
+        _canceledAtLocal = value;
+        _activePreset = Preset.None;
+    }
+
+    private string PresetClass(Preset preset) =>
+        _activePreset == preset ? "cancel-flight__preset--active" : string.Empty;
+
+    private void OnAckChanged(ChangeEventArgs e)
+    {
+        _acknowledged = e.Value is bool b && b;
+    }
+
+    private static string FormatDateTime(DateTimeOffset value) =>
+        value.ToLocalTime().ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture);
+
+    private static string FormatPresetTime(DateTime value) =>
+        value.ToString("dd MMM HH:mm", CultureInfo.InvariantCulture);
+
+    private async Task ConfirmAsync()
+    {
+        if (_busy || _canceledAtLocal is null || !_acknowledged)
+            return;
+
+        _error = null;
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            try
+            {
+                var cmd = new CancelFlightCommand(
+                    Flight.Id,
+                    WorkOrderFormModel.AsWallClockUtc(_canceledAtLocal.Value));
+
+                var r = await ScopedMediator.Send(cmd);
+                if (r.IsFailure)
+                {
+                    _error = r.Error.Description;
+                    NotificationService.Notify(NotificationSeverity.Error, "Could not cancel flight", r.Error.Description);
+                    return;
+                }
+
+                NotificationService.Notify(NotificationSeverity.Success, "Cancel work order filed",
+                    "Approve it from the work-order list to lock the flight as Canceled.");
+                DialogService.Close(true);
+            }
+            catch (Exception ex)
+            {
+                _error = ex.Message;
+                NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+            }
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task CancelAsync()
+    {
+        DialogService.Close(false);
+        return Task.CompletedTask;
+    }
+}

@@ -1,0 +1,151 @@
+package com.nags.operations.ui.home
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.nags.operations.AppGraph
+import com.nags.operations.data.TokenStore
+import com.nags.operations.ui.AppViewModelFactory
+import com.nags.operations.ui.components.AppHeader
+import com.nags.operations.ui.components.BottomNavBar
+import com.nags.operations.ui.components.BottomNavDestination
+import com.nags.operations.ui.components.FlightSheetCallbacks
+import com.nags.operations.ui.adhoc.AdHocFlightsViewModel
+import com.nags.operations.ui.aog.AogFlightsViewModel
+import com.nags.operations.ui.flights.MyFlightsViewModel
+import com.nags.operations.ui.screens.AdHocFlightsTab
+import com.nags.operations.ui.screens.AogFlightsTab
+import com.nags.operations.ui.screens.MyFlightsTab
+import com.nags.operations.ui.screens.WorkOrderDraftsTab
+import com.nags.operations.ui.workorder.WorkOrderDraftsViewModel
+
+private fun matchesBottomNavDestination(route: String?, dest: BottomNavDestination): Boolean =
+    when (dest) {
+        BottomNavDestination.MyFlights -> route == BottomNavDestination.MyFlights.route
+        BottomNavDestination.Aog -> route == BottomNavDestination.Aog.route
+        BottomNavDestination.Create -> false
+        BottomNavDestination.AdHoc -> route == BottomNavDestination.AdHoc.route
+        BottomNavDestination.Drafts -> route == BottomNavDestination.Drafts.route
+    }
+
+/**
+ * Authenticated shell: branded [AppHeader], bottom navigation, and tab content
+ * (My flights / AOG / Create / Ad Hoc / Drafts) without a duplicate Material top app bar.
+ */
+@Composable
+fun MainShellScreen(
+    tokenStore: TokenStore,
+    graph: AppGraph,
+    factory: AppViewModelFactory,
+    onOpenSyncCenter: () -> Unit,
+    onLogout: () -> Unit,
+    onOpenWorkOrderDraft: (draftId: String) -> Unit,
+    onOpenCreateAdHocFlight: () -> Unit,
+    flightSheetCallbacks: FlightSheetCallbacks = FlightSheetCallbacks(),
+) {
+    val displayName by tokenStore.displayNameFlow
+        .collectAsStateWithLifecycle(initialValue = null)
+    val isOnline by graph.networkMonitor.isOnline.collectAsStateWithLifecycle()
+    val isSyncing by graph.syncCoordinator.isSyncing.collectAsStateWithLifecycle()
+
+    val innerNav = rememberNavController()
+    val innerEntry by innerNav.currentBackStackEntryAsState()
+    val selectedTab = when (innerEntry?.destination?.route) {
+        BottomNavDestination.Aog.route -> BottomNavDestination.Aog
+        BottomNavDestination.AdHoc.route -> BottomNavDestination.AdHoc
+        BottomNavDestination.Drafts.route -> BottomNavDestination.Drafts
+        else -> BottomNavDestination.MyFlights
+    }
+
+    Scaffold(
+        bottomBar = {
+            BottomNavBar(
+                selected = selectedTab,
+                onSelected = { dest ->
+                    if (dest == BottomNavDestination.Create) {
+                        onOpenCreateAdHocFlight()
+                        return@BottomNavBar
+                    }
+                    val route = innerEntry?.destination?.route
+                    if (!matchesBottomNavDestination(route, dest)) {
+                        innerNav.navigate(dest.route) {
+                            popUpTo(BottomNavDestination.MyFlights.route) {
+                                inclusive = false
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+        // Without a topBar, default scaffold top insets leave a gap above [AppHeader]; match Sync Center edge-to-edge.
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(WindowInsetsSides.Horizontal),
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            AppHeader(
+                displayName = displayName,
+                onLogout = onLogout,
+                onSyncCenterClick = onOpenSyncCenter,
+                isOnline = isOnline,
+                isSyncing = isSyncing,
+            )
+            NavHost(
+                navController = innerNav,
+                startDestination = BottomNavDestination.MyFlights.route,
+                modifier = Modifier.weight(1f),
+            ) {
+                composable(BottomNavDestination.MyFlights.route) {
+                    val vm: MyFlightsViewModel = viewModel(factory = factory)
+                    MyFlightsTab(
+                        viewModel = vm,
+                        sheetCallbacks = flightSheetCallbacks,
+                    )
+                }
+                composable(BottomNavDestination.Aog.route) {
+                    val vm: AogFlightsViewModel = viewModel(factory = factory)
+                    AogFlightsTab(
+                        viewModel = vm,
+                        sheetCallbacks = flightSheetCallbacks,
+                    )
+                }
+                composable(BottomNavDestination.AdHoc.route) {
+                    val vm: AdHocFlightsViewModel = viewModel(factory = factory)
+                    AdHocFlightsTab(
+                        viewModel = vm,
+                        sheetCallbacks = flightSheetCallbacks,
+                    )
+                }
+                composable(BottomNavDestination.Drafts.route) {
+                    val vm: WorkOrderDraftsViewModel = viewModel(factory = factory)
+                    WorkOrderDraftsTab(
+                        viewModel = vm,
+                        onOpenDraft = onOpenWorkOrderDraft,
+                    )
+                }
+            }
+        }
+    }
+}

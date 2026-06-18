@@ -1,0 +1,110 @@
+@*
+  Scope step for general-support price-plan dialogs — GeneralSupport / Currency / Basis.
+*@
+@namespace Host.Web.Components.Pages.Settings.Pricing.GeneralSupportPricePlans.Dialog.Sections
+@using Core.Contracts.Features.Currency
+@using Core.Domain.Enumerations
+@using Host.Web.Components.Pages.Settings.Pricing.GeneralSupportPricePlans.Dialog
+@using Host.Web.Components.Pages.Settings.Pricing.Shared
+@using Store.Contracts.Features.GeneralSupport
+
+@if (!string.IsNullOrWhiteSpace(LoadError))
+{
+    <p class="text-danger small mb-0">@LoadError</p>
+}
+else
+{
+    <RadzenStack Gap="1rem">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="gspp-gs">General support</label>
+            @if (LoadingGeneralSupports)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading general supports" />
+            }
+            else
+            {
+                <RadzenDropDown TValue="Guid?"
+                                id="gspp-gs"
+                                Name="GsppGs"
+                                @bind-Value="Model.GeneralSupportId"
+                                Data="@GeneralSupports"
+                                TextProperty="@nameof(GeneralSupportSelectOption.Name)"
+                                ValueProperty="@nameof(GeneralSupportSelectOption.Id)"
+                                AllowClear="false"
+                                AllowFiltering="true"
+                                FilterOperator="StringFilterOperator.Contains"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Disabled="@FreezeItemKey"
+                                Placeholder="Select…"
+                                Change="@OnChg"
+                                Style="width: 100%;" />
+                <RadzenRequiredValidator Component="GsppGs" Text="Required" Popup="true" Style="position:absolute;" />
+            }
+        </div>
+        <div class="settings-field__row2">
+            <div class="settings-field" style="position: relative;">
+                <label class="settings-field__label" for="gspp-currency">Currency</label>
+                @if (LoadingCurrencies)
+                {
+                    <DropdownFieldSkeleton AriaLabel="Loading currencies" />
+                }
+                else
+                {
+                    <RadzenDropDown TValue="Guid?"
+                                    id="gspp-currency"
+                                    Name="GsppCurrency"
+                                    @bind-Value="Model.CurrencyId"
+                                    Data="@Currencies"
+                                    TextProperty="@nameof(CurrencySelectOption.Code)"
+                                    ValueProperty="@nameof(CurrencySelectOption.Id)"
+                                    AllowClear="false"
+                                    Placeholder="Select…"
+                                    Change="@OnChg"
+                                    Style="width: 100%;" />
+                    <RadzenRequiredValidator Component="GsppCurrency" Text="Required" Popup="true" Style="position:absolute;" />
+                }
+            </div>
+            <div class="settings-field">
+                <label class="settings-field__label" for="gspp-basis">Pricing basis</label>
+                <RadzenDropDown TValue="PricingBasis"
+                                id="gspp-basis"
+                                Name="GsppBasis"
+                                Value="@Model.Basis"
+                                ValueChanged="@OnBasisChangedAsync"
+                                Data="@PricePlanBasisOptions.All"
+                                TextProperty="@nameof(PricePlanBasisOptions.Item.Label)"
+                                ValueProperty="@nameof(PricePlanBasisOptions.Item.Value)"
+                                Style="width: 100%;" />
+            </div>
+        </div>
+    </RadzenStack>
+}
+
+@code {
+    [Parameter, EditorRequired] public GeneralSupportPricePlanScopeFormModel Model { get; set; } = default!;
+
+    [Parameter] public bool FreezeItemKey { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    [Parameter] public string? LoadError { get; set; }
+
+    [Parameter] public bool LoadingGeneralSupports { get; set; }
+
+    [Parameter] public bool LoadingCurrencies { get; set; }
+
+    [Parameter] public IReadOnlyList<GeneralSupportSelectOption> GeneralSupports { get; set; } = [];
+
+    [Parameter] public IReadOnlyList<CurrencySelectOption> Currencies { get; set; } = [];
+
+    [Parameter] public EventCallback<PricingBasis> BasisChanged { get; set; }
+
+    private Task OnChg() => OnModelChanged.InvokeAsync();
+
+    private async Task OnBasisChangedAsync(PricingBasis b)
+    {
+        Model.Basis = b;
+        await BasisChanged.InvokeAsync(b);
+        await OnModelChanged.InvokeAsync();
+    }
+}

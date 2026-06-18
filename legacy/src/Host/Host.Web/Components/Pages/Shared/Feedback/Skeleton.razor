@@ -1,0 +1,9 @@
+
+<div class="skeleton @CssClass" style="width:@Width; height:@Height; border-radius:@BorderRadius;"></div>
+
+@code {
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "1rem";
+    [Parameter] public string BorderRadius { get; set; } = "4px";
+    [Parameter] public string? CssClass { get; set; }
+}

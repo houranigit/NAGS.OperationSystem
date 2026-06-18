@@ -1,0 +1,27 @@
+---
+description: Backend architecture rules for .NET modules, building blocks, host API, and project files
+globs: "{src/BuildingBlocks/**/*.cs,src/Modules/**/*.cs,src/Host/OperationsSystem.Api/**/*.cs,src/**/*.csproj,Directory.Packages.props}"
+alwaysApply: false
+---
+
+# Backend Architecture
+
+- Use .NET 10, ASP.NET Core Web API, Minimal APIs, EF Core, FluentValidation, MediatR, ProblemDetails, Serilog, OpenTelemetry, health checks, and HybridCache/in-memory caching where appropriate.
+- Use Central Package Management. Project files should not contain inline NuGet versions unless there is a documented exception.
+- Keep `OperationsSystem.Api` as the composition host only; it must not contain business logic.
+- Module Api projects own endpoint mapping for their module.
+- Organize module application code by vertical feature slices, for example `Features/ManpowerTypes/CreateManpowerType`.
+- Commands mutate state and represent one business transaction. Queries read and may project directly to read models.
+- Handlers orchestrate. They should not hide business rules that belong in domain models, value objects, or domain services.
+- Use EF Core directly for normal persistence. Avoid generic repositories and generic unit-of-work abstractions.
+- Repositories are allowed only when they add real aggregate or business value.
+- Do not call `SaveChanges` from random helpers or deep domain logic. Keep transaction boundaries explicit and predictable.
+- Use `TimeProvider` in application and infrastructure code. Avoid raw `DateTime.UtcNow` or `DateTime.Now` inside domain logic.
+- Use `Guid` identifiers by default for public entity ids and database primary keys. Do not expose strongly typed ID wrapper types through API contracts.
+- Simple reference/master-data entities do not need heavy DDD patterns unless they have real behavior.
+- Use optimistic concurrency on entities that multiple users can edit. Use a rowversion/concurrency token and surface conflicts as 409.
+- Store all timestamps in UTC using `DateTimeOffset`/UTC `DateTime`. Convert to a user/operation time zone only at the API or UI edge. Use `DateOnly`/`TimeOnly` for date-only or time-of-day values.
+- Money uses `decimal` with explicit precision and an explicit currency. Define rounding rules; never use `double`/`float` for money.
+- Keep user-facing validation and error messages localizable (Arabic and English). Do not hardcode display strings in handlers or validators.
+- Enable nullable reference types, treat warnings as errors, and apply a shared `.editorconfig` and analyzers across all projects.
+- Bootstrap foundation in this order when practical: solution structure, central package management, global errors, validation pipeline, auth foundation, observability, health checks, then business modules.

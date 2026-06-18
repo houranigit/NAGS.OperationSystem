@@ -1,0 +1,50 @@
+@namespace Host.Web.Components.Pages.Settings.MasterData.ManpowerTypes.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.ManpowerTypes.Dialog
+
+<RadzenStack Gap="1rem">
+        <div class="settings-field">
+            <label class="settings-field__label" for="mt-name">Name</label>
+            <RadzenTextBox id="mt-name"
+                           Name="ManpowerTypeName"
+                           @bind-Value="Model.Name"
+                           MaxLength="100"
+                           Placeholder="e.g. Engineering"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%;" />
+            <RadzenRequiredValidator Component="ManpowerTypeName"
+                                     Text="Name is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+        </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="mt-desc">Description</label>
+        <RadzenTextArea id="mt-desc"
+                        @bind-Value="Model.Description"
+                        MaxLength="500"
+                        Rows="3"
+                        Placeholder="Optional notes"
+                        Change="@OnFieldChangedAsync"
+                        Style="width: 100%;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="mt-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="mt-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public ManpowerTypeFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

@@ -1,0 +1,58 @@
+@*
+  Wizard / update shared section — Name, Description, Status.
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Tools.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.Tools.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="tool-name">Name</label>
+        <RadzenTextBox id="tool-name"
+                       Name="ToolName"
+                       @bind-Value="Model.Name"
+                       MaxLength="100"
+                       Placeholder="e.g. AIR COMPRESSOR, AXLE JACK 50 TON"
+                       Change="@OnFieldChangedAsync"
+                       Style="width: 100%;" />
+        <RadzenRequiredValidator Component="ToolName"
+                                 Text="Name is required."
+                                 Popup="true"
+                                 Style="position: absolute;" />
+        <RadzenLengthValidator Component="ToolName"
+                               Max="100"
+                               Text="Name must not exceed 100 characters."
+                               Popup="true"
+                               Style="position: absolute; top: 2.5rem;" />
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="tool-desc">Description</label>
+        <RadzenTextArea id="tool-desc"
+                        @bind-Value="Model.Description"
+                        MaxLength="500"
+                        Rows="3"
+                        Placeholder="Optional notes (e.g. tool number)"
+                        Change="@OnFieldChangedAsync"
+                        Style="width: 100%;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="tool-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="tool-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public ToolFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

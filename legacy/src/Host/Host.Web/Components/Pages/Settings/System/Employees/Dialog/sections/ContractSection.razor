@@ -1,0 +1,41 @@
+@namespace Host.Web.Components.Pages.Settings.System.Employees.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.System.Employees.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field">
+            <label class="settings-field__label">Contract from</label>
+            <RadzenDatePicker TValue="DateOnly?" @bind-Value="Model.ContractFrom" DateFormat="yyyy-MM-dd" Change="@OnChg" Style="width:100%;" />
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label">Contract to</label>
+            <RadzenDatePicker TValue="DateOnly?" @bind-Value="Model.ContractTo" DateFormat="yyyy-MM-dd" Change="@OnChg" Style="width:100%;" />
+        </div>
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label">Working days</label>
+        <RadzenCheckBoxList TValue="DayOfWeek"
+                            @bind-SelectedValues="Model.WorkingDays"
+                            Data="@_days"
+                            TextProperty="Label"
+                            ValueProperty="Value"
+                            Orientation="Orientation.Horizontal"
+                            Change="@OnChg"
+                            Style="width:100%;" />
+    </div>
+</RadzenStack>
+
+@code {
+    private static readonly DayItem[] _days =
+    [
+        new(DayOfWeek.Sunday, "Sun"), new(DayOfWeek.Monday, "Mon"), new(DayOfWeek.Tuesday, "Tue"),
+        new(DayOfWeek.Wednesday, "Wed"), new(DayOfWeek.Thursday, "Thu"), new(DayOfWeek.Friday, "Fri"),
+        new(DayOfWeek.Saturday, "Sat")
+    ];
+
+    [Parameter, EditorRequired] public EmployeeFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+    private Task OnChg() => OnModelChanged.InvokeAsync();
+
+    private sealed record DayItem(DayOfWeek Value, string Label);
+}

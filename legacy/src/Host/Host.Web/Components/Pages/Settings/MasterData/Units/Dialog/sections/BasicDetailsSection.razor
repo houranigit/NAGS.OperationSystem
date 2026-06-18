@@ -1,0 +1,67 @@
+@*
+  Wizard / update shared section — Code / Name / Status.
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Units.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.Units.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="unit-code">Code</label>
+        <RadzenTextBox id="unit-code"
+                       Name="UnitCode"
+                       @bind-Value="Model.Code"
+                       MaxLength="20"
+                       Placeholder="e.g. ROLL, KG, GAL"
+                       Change="@OnFieldChangedAsync"
+                       Style="width: 100%; text-transform: uppercase;" />
+        <RadzenRequiredValidator Component="UnitCode"
+                                 Text="Code is required."
+                                 Popup="true"
+                                 Style="position: absolute;" />
+        <RadzenLengthValidator Component="UnitCode"
+                               Max="20"
+                               Text="Code must not exceed 20 characters."
+                               Popup="true"
+                               Style="position: absolute; top: 2.5rem;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="unit-name">Name</label>
+        <RadzenTextBox id="unit-name"
+                       Name="UnitName"
+                       @bind-Value="Model.Name"
+                       MaxLength="100"
+                       Placeholder="e.g. Roll, Kilogram, Gallon"
+                       Change="@OnFieldChangedAsync"
+                       Style="width: 100%;" />
+        <RadzenRequiredValidator Component="UnitName"
+                                 Text="Name is required."
+                                 Popup="true"
+                                 Style="position: absolute;" />
+        <RadzenLengthValidator Component="UnitName"
+                               Max="100"
+                               Text="Name must not exceed 100 characters."
+                               Popup="true"
+                               Style="position: absolute; top: 2.5rem;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="unit-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="unit-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public UnitFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

@@ -1,0 +1,313 @@
+/* Stacked main-row cells (e.g. customer name + IATA below) */
+.flt-cell-stacked {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+
+/* Linked work-order count pill on the main row */
+.flt-wo-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Expanded row container — mirrors .mpp-brackets-detail */
+.flt-workorders-detail {
+    padding: 0.65rem 0.85rem 0.85rem;
+    min-width: 0;
+}
+
+.flt-workorders-detail__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0 0 0.55rem 0.1rem;
+    flex-wrap: wrap;
+}
+
+.flt-workorders-detail__heading {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.flt-workorders-detail__title {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #475569;
+}
+
+.flt-workorders-detail__count {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.flt-workorders-detail__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+/* Inline "Add work order" button next to the section title */
+.flt-workorders-detail__add {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(114, 47, 55, 0.35);
+    background: #fff;
+    color: #722f37;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+        border-color 0.16s ease,
+        color 0.16s ease,
+        background 0.16s ease,
+        box-shadow 0.16s ease,
+        transform 0.12s ease;
+}
+
+.flt-workorders-detail__add:hover {
+    border-color: rgba(114, 47, 55, 0.55);
+    background: rgba(114, 47, 55, 0.06);
+    box-shadow: 0 1px 4px rgba(114, 47, 55, 0.12);
+}
+
+.flt-workorders-detail__add:active {
+    transform: scale(0.97);
+}
+
+.flt-workorders-detail__add svg {
+    flex-shrink: 0;
+}
+
+/* Lock pill shown when an AcceptedWorkOrder settles the flight */
+.flt-workorders-locked {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+    background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.flt-workorders-locked svg {
+    color: #6b7280;
+}
+
+/* Work-order sub-table — same visual rhythm as .mpp-bracket-table-ro */
+.flt-wo-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.8125rem;
+}
+
+.flt-wo-header,
+.flt-wo-row {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1.4fr 1.4fr 1.2fr 1.6fr;
+    gap: 0.65rem;
+    align-items: center;
+}
+
+.flt-wo-header {
+    padding: 0 0.85rem;
+    color: var(--bs-secondary-color);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.flt-wo-row {
+    padding: 0.5rem 0.85rem;
+    background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Per-row action buttons (Review, Delete) */
+.flt-wo-row__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
+.flt-wo-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+        border-color 0.16s ease,
+        color 0.16s ease,
+        background 0.16s ease,
+        box-shadow 0.16s ease,
+        transform 0.12s ease;
+}
+
+.flt-wo-action:hover:not(:disabled) {
+    border-color: #cbd5e1;
+    color: #334155;
+    background: #f8fafc;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.flt-wo-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.flt-wo-action svg {
+    flex-shrink: 0;
+}
+
+.flt-wo-action--review {
+    border-color: rgba(114, 47, 55, 0.3);
+    color: #722f37;
+}
+
+.flt-wo-action--review:hover:not(:disabled) {
+    border-color: rgba(114, 47, 55, 0.5);
+    color: #722f37;
+    background: rgba(114, 47, 55, 0.06);
+    box-shadow: 0 1px 4px rgba(114, 47, 55, 0.12);
+}
+
+.flt-wo-action--delete {
+    border-color: rgba(220, 38, 38, 0.25);
+    color: #b91c1c;
+}
+
+.flt-wo-action--delete:hover:not(:disabled) {
+    border-color: rgba(220, 38, 38, 0.5);
+    color: #991b1b;
+    background: rgba(220, 38, 38, 0.06);
+    box-shadow: 0 1px 4px rgba(220, 38, 38, 0.14);
+}
+
+.text-end {
+    text-align: end;
+}
+
+/* Status badges — flight + work order share these classes for visual consistency */
+.flt-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.18rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.flt-status--scheduled {
+    background: #e3f2fd;
+    border-color: #bbdefb;
+    color: #0d47a1;
+}
+
+.flt-status--inprogress {
+    background: #fff4e0;
+    border-color: #ffd9a8;
+    color: #b45309;
+}
+
+.flt-status--completed {
+    background: #dcfce7;
+    border-color: #bbf7d0;
+    color: #166534;
+}
+
+.flt-status--canceled {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #475569;
+}
+
+/* Pending-deletion (Deleting) status: amber-red so operators can spot it instantly */
+.flt-status--deleting {
+    background: #fee2e2;
+    border-color: #fecaca;
+    color: #991b1b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Cancel-flight chip on the flight row header */
+.flt-flight-action-cancel {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    background: #fff;
+    color: #b91c1c;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+        border-color 0.16s ease,
+        color 0.16s ease,
+        background 0.16s ease,
+        box-shadow 0.16s ease,
+        transform 0.12s ease;
+}
+
+.flt-flight-action-cancel:hover:not(:disabled) {
+    border-color: rgba(220, 38, 38, 0.55);
+    color: #991b1b;
+    background: rgba(220, 38, 38, 0.06);
+    box-shadow: 0 1px 4px rgba(220, 38, 38, 0.14);
+}
+
+.flt-flight-action-cancel:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.flt-flight-action-cancel svg {
+    flex-shrink: 0;
+}

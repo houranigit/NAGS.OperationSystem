@@ -1,0 +1,168 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Three sections; country lookup loads
+  after first paint. IsDirty diff includes logo bytes + every contact-line field.
+*@
+@using Core.Contracts.Features.Country
+@using Core.Contracts.Features.Customer
+@using Host.Web.Components.Pages.Customers.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="CustomerFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_steps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@(IsDirty && !_countryOptionsLoading)"
+                 SidebarAriaLabel="Edit customer sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the customer"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <CompanySection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 1:
+                    <AddressSection Model="_model"
+                                    CountryOptions="_countryOptions"
+                                    CountryOptionsLoading="_countryOptionsLoading"
+                                    OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 2:
+                    <ContactsSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public CustomerDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Company", "Codes & registry", "building", IsRequired: true, Validate: () => true),
+        new("Address", "Billing / official", "pin", IsRequired: false, Validate: () => true),
+        new("Contacts", "Airline contacts", "users", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<CustomerFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private CustomerFormModel _model = new();
+    private CustomerFormModel _snapshot = new();
+    private List<string> _errorMessages = new();
+
+    private List<CountrySelectOption> _countryOptions = [];
+    private bool _countryOptionsLoading = true;
+    private bool _lookupsLoadStarted;
+
+    private bool IsDirty =>
+        !BytesEqual(_model.LogoBytes, _snapshot.LogoBytes)
+        || !string.Equals(_model.IataCode, _snapshot.IataCode, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(_model.IcaoCode ?? "", _snapshot.IcaoCode ?? "", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(_model.Name, _snapshot.Name, StringComparison.Ordinal)
+        || !string.Equals(_model.OfficialEmail ?? "", _snapshot.OfficialEmail ?? "", StringComparison.Ordinal)
+        || !string.Equals(_model.OfficialPhone ?? "", _snapshot.OfficialPhone ?? "", StringComparison.Ordinal)
+        || _model.IsActive != _snapshot.IsActive
+        || !string.Equals(_model.AddressLine1 ?? "", _snapshot.AddressLine1 ?? "", StringComparison.Ordinal)
+        || !string.Equals(_model.AddressLine2 ?? "", _snapshot.AddressLine2 ?? "", StringComparison.Ordinal)
+        || !string.Equals(_model.City ?? "", _snapshot.City ?? "", StringComparison.Ordinal)
+        || !string.Equals(_model.PostalCode ?? "", _snapshot.PostalCode ?? "", StringComparison.Ordinal)
+        || _model.AddressCountryId != _snapshot.AddressCountryId
+        || !ContactLinesEqual(_model.ContactLines, _snapshot.ContactLines);
+
+    private static bool BytesEqual(byte[]? a, byte[]? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+        return a.AsSpan().SequenceEqual(b);
+    }
+
+    private static bool ContactLinesEqual(IReadOnlyList<CustomerContactEditorLine> a, IReadOnlyList<CustomerContactEditorLine> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+        {
+            var x = a[i]; var y = b[i];
+            if (x.Id != y.Id) return false;
+            if (x.IsActive != y.IsActive) return false;
+            if (x.CreateUser != y.CreateUser) return false;
+            if (!string.Equals((x.Name ?? "").Trim(), (y.Name ?? "").Trim(), StringComparison.Ordinal)) return false;
+            if (!string.Equals((x.Email ?? "").Trim(), (y.Email ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals((x.JobTitle ?? "").Trim(), (y.JobTitle ?? "").Trim(), StringComparison.Ordinal)) return false;
+            if (!string.Equals((x.Phone ?? "").Trim(), (y.Phone ?? "").Trim(), StringComparison.Ordinal)) return false;
+        }
+        return true;
+    }
+
+    protected override void OnInitialized()
+    {
+        _model = CustomerFormModel.FromDto(ExistingItem);
+        _snapshot = _model.Clone();
+        _currentSection = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+        try { _countryOptions = (await LookupCache.GetCountriesAsync(ScopedMediator)).ToList(); }
+        finally { _countryOptionsLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(CustomerFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToUpdateCustomerCommand(ExistingItem.Id));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save customer", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

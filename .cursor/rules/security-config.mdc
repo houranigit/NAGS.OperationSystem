@@ -1,0 +1,17 @@
+---
+description: Secrets, configuration, token handling, and API hardening rules
+globs: "{src/Host/**/*.cs,src/Modules/**/*.cs,src/Host/**/appsettings*.json,src/Host/**/*.json}"
+alwaysApply: false
+---
+
+# Security And Configuration
+
+- No secrets in source control. Use user-secrets locally and environment variables or a secrets store in deployed environments.
+- Configuration is environment-driven. Do not hardcode connection strings, keys, or endpoints.
+- Never log secrets: passwords, access tokens, refresh tokens, connection strings, private keys, or raw credentials.
+- JWT access tokens are short-lived; refresh tokens are rotated and revocable. Store password hashes with a strong algorithm.
+- Validate and constrain all input at the boundary. Trust no client-provided id, role, or permission.
+- Apply rate limiting to authentication and abuse-prone endpoints.
+- Set safe defaults: HTTPS only, restrictive CORS allow-list, and standard security headers.
+- Authorization is enforced server-side per endpoint by permission. Client-side checks are UX only and never the source of truth.
+- File uploads (e.g. work-order attachments) must validate type and size and must not be served from a trusted execution path.

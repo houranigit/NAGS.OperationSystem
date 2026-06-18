@@ -1,0 +1,59 @@
+@*
+  Reusable avatar-group used by contract cards (stations / operation types / services).
+  First N avatars render their `ShortLabel` inside a pill; overflow becomes "+M" with the
+  remaining names listed in its tooltip — same pattern as the vuexy "teams" page.
+*@
+
+@if (Items is not null && Items.Count > 0)
+{
+    <div class="avatar-group d-flex align-items-center" role="list">
+        @{
+            var visibleCount = Math.Min(Items.Count, MaxVisible);
+            var overflow = Items.Count - visibleCount;
+        }
+        @for (var i = 0; i < visibleCount; i++)
+        {
+            var item = Items[i];
+            <div class="avatar avatar-sm pull-up contract-card__avatar"
+                 role="listitem"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="@item.FullName">
+                <span class="avatar-initial rounded-circle bg-label-primary contract-card__avatar-initial">
+                    @item.ShortLabel
+                </span>
+            </div>
+        }
+        @if (overflow > 0)
+        {
+            <div class="avatar avatar-sm pull-up contract-card__avatar contract-card__avatar--overflow"
+                 role="listitem"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="@OverflowTitle()">
+                <span class="avatar-initial rounded-circle bg-label-secondary contract-card__avatar-initial">
+                    +@overflow
+                </span>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <span class="text-muted small contract-card__empty">@EmptyText</span>
+}
+
+@code {
+    public sealed record AvatarItem(string ShortLabel, string FullName);
+
+    [Parameter, EditorRequired] public IReadOnlyList<AvatarItem> Items { get; set; } = Array.Empty<AvatarItem>();
+    [Parameter] public int MaxVisible { get; set; } = 3;
+    [Parameter] public string EmptyText { get; set; } = "—";
+
+    private string OverflowTitle()
+    {
+        if (Items.Count <= MaxVisible) return string.Empty;
+        var rest = Items.Skip(MaxVisible).Select(x => x.FullName);
+        return string.Join(", ", rest);
+    }
+}

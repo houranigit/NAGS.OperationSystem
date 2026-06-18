@@ -1,0 +1,36 @@
+---
+description: Stable technical decisions and decision-log discipline for Operations System v1.0.0
+alwaysApply: false
+---
+
+# Operations Decisions
+
+The long-form architecture source of truth is `docs/architecture/operations-system-v1.md`.
+
+Current decisions:
+
+- Old project is business reference only.
+- SQL Server is the v1.0.0 database.
+- MediatR is the initial mediator.
+- Public API routes start with `/api/v1`.
+- Redis is not included by default in v1.0.0.
+- Quartz.NET is the v1.0.0 background job scheduler.
+- List endpoints use explicit query parameters.
+- Permission names use `module.resource.action`.
+- Users have exactly one role in v1.0.0.
+- Transactional integration events use outbox/inbox processing.
+- Central Package Management is required.
+- v1.0.0 is single-tenant; tenancy is deferred but not designed out.
+- The product is bilingual (Arabic and English) with full RTL support.
+- The old Blazor solution is copied under `legacy/` as read-only business reference.
+- Timestamps are stored and exchanged in UTC; localization happens at the edges.
+- Editable records use optimistic concurrency (rowversion + ETag/`If-Match`, 409 on conflict).
+- Web stores the access token in memory with an httpOnly refresh-token cookie.
+- No secrets in source; configuration is environment-driven.
+- Rewrite progress is tracked in `docs/architecture/migration-inventory.md`.
+
+Decision discipline:
+
+- Do not introduce a new technology, hosting model, persistence strategy, API convention, authorization model, or module dependency pattern without updating the architecture document.
+- When changing a decision, record the date, decision, and reason in the decisions log.
+- Keep future flexibility in mind, but do not add infrastructure before there is a real business or measured operational need.

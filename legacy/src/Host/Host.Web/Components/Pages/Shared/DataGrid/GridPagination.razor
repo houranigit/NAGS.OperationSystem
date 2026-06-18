@@ -1,0 +1,21 @@
+
+@if (TotalPages > 1)
+{
+    <nav class="grid-pagination" aria-label="Pagination">
+        <button class="pagination-btn" disabled="@(CurrentPage <= 1)"
+                @onclick="() => OnPageChanged.InvokeAsync(CurrentPage - 1)">
+            &laquo; Prev
+        </button>
+        <span class="pagination-info">Page @CurrentPage of @TotalPages</span>
+        <button class="pagination-btn" disabled="@(CurrentPage >= TotalPages)"
+                @onclick="() => OnPageChanged.InvokeAsync(CurrentPage + 1)">
+            Next &raquo;
+        </button>
+    </nav>
+}
+
+@code {
+    [Parameter, EditorRequired] public int CurrentPage { get; set; }
+    [Parameter, EditorRequired] public int TotalPages { get; set; }
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+}

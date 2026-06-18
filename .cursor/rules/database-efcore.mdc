@@ -1,0 +1,28 @@
+---
+description: EF Core database, migrations, indexing, and lifecycle rules
+globs: "{src/Modules/**/*DbContext*.cs,src/Modules/**/*Configuration*.cs,src/Modules/**/Migrations/**/*.cs,src/BuildingBlocks/**/*DbContext*.cs,src/BuildingBlocks/**/*Configuration*.cs,src/**/*.sql}"
+alwaysApply: false
+---
+
+# Database And EF Core
+
+- Use EF Core migrations for schema changes. Never make manual schema changes outside migrations.
+- Development may apply migrations directly. Production must use reviewed SQL migration scripts and backups.
+- Each module owns its schema and tables.
+- Database constraints should enforce real business invariants where possible.
+- Add indexes for common filters, lookups, foreign keys, and uniqueness rules.
+- Avoid loading full tables into memory for filtering, sorting, or paging.
+- Avoid N+1 query patterns; use projections, joins, includes, or separate optimized queries intentionally.
+- Prefer deactivate, archive, or status-based lifecycle behavior for business records that must remain historically visible.
+- Master/reference data usually uses `IsActive`.
+- Users use a status-based lifecycle.
+- Contracts, flights, and work orders use explicit business statuses.
+- Hard delete only when the data is temporary, incorrect before use, a draft with no business impact, or explicitly safe to remove.
+- Do not add a generic `IsDeleted` column to every table by default.
+- Soft delete and deactivation rules must be visible in domain/application behavior, not hidden only in queries.
+- Add a rowversion/concurrency token to entities that multiple users can edit concurrently.
+- Store timestamps in UTC. Use appropriate types for date-only and time-only values rather than forcing everything into full timestamps.
+- Money columns use `decimal` with explicit precision/scale and store the currency explicitly.
+- v1.0.0 is single-tenant: do not add tenant columns now, but keep keys and schema choices from blocking a future tenant boundary.
+- For bilingual data, decide per field whether a value is localized (store per-language) or language-neutral, and keep that choice consistent within a module.
+- Use async EF operations and pass cancellation tokens through request and database calls.

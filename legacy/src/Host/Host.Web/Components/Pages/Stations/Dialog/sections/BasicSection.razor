@@ -1,0 +1,40 @@
+@namespace Host.Web.Components.Pages.Stations.Dialog.Sections
+@using Host.Web.Components.Pages.Stations.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="st-iata">IATA</label>
+            <RadzenTextBox id="st-iata" Name="StIata" @bind-Value="Model.IataCode" MaxLength="3" Change="@OnChg" Style="width:100%; text-transform:uppercase" />
+            <RadzenRequiredValidator Component="StIata" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label" for="st-icao">ICAO</label>
+            <RadzenTextBox id="st-icao" @bind-Value="Model.IcaoCode" MaxLength="4" Change="@OnChg" Style="width:100%; text-transform:uppercase" />
+        </div>
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="st-name">Name</label>
+        <RadzenTextBox id="st-name" Name="StName" @bind-Value="Model.Name" MaxLength="200" Change="@OnChg" Style="width:100%;" />
+        <RadzenRequiredValidator Component="StName" Text="Required" Popup="true" Style="position:absolute;" />
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="st-city">City</label>
+        <RadzenTextBox id="st-city" @bind-Value="Model.City" MaxLength="120" Change="@OnChg" Style="width:100%;" />
+    </div>
+    <div class="settings-field">
+        <span class="settings-field__label">Status</span>
+        <RadzenSelectBar TValue="bool" @bind-Value="Model.IsActive" Change="@OnChg" Size="ButtonSize.Small">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public StationFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+    private Task OnChg() => OnModelChanged.InvokeAsync();
+}

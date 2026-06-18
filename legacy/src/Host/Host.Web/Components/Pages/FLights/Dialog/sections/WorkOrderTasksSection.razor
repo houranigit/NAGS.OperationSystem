@@ -1,0 +1,284 @@
+@*
+  Tasks slice of the WorkOrder Add/Edit dialog. Replaces the legacy EmployeeLines +
+  CorrectiveActions sections with a unified card-per-task layout: severity, period,
+  description, RTR flag, plus participating employees (multi-select) and optional
+  store usage. Attachment authoring is mobile-only — the portal only displays
+  existing attachments via the Review dialog.
+*@
+@namespace Host.Web.Components.Pages.FLights.Dialog.Sections
+@using Core.Contracts.Features.Employee
+@using Host.Web.Components.Pages.FLights.Dialog
+@using Operations.Contracts.Flight
+@using Operations.Domain.Enumerations
+@using Radzen
+@using Radzen.Blazor
+@using Store.Contracts.Features.GeneralSupport
+@using Store.Contracts.Features.Material
+@using Store.Contracts.Features.Tool
+
+<RadzenStack Gap="1rem">
+    @if (Model.Tasks.Count == 0)
+    {
+        <p class="text-muted m-0">No tasks added yet. Tasks capture findings, corrective work, store usage and attachments — they are optional.</p>
+    }
+    @for (var i = 0; i < Model.Tasks.Count; i++)
+    {
+        var idx = i;
+        var row = Model.Tasks[idx];
+        <div class="bracket-card" @key="@idx">
+            <div class="bracket-header">
+                <span class="bracket-number">Task @(idx + 1)</span>
+                <RadzenButton Icon="close"
+                              ButtonStyle="ButtonStyle.Danger"
+                              Variant="Variant.Text"
+                              Size="ButtonSize.ExtraSmall"
+                              Click="@(() => RemoveAt(idx))"
+                              ButtonType="ButtonType.Button"/>
+            </div>
+            <div class="bracket-body">
+                <div class="bracket-field-row">
+                    <div class="settings-field">
+                        <label class="settings-field__label">Type *</label>
+                        <RadzenDropDown TValue="TaskType"
+                                        Value="@row.TaskType"
+                                        Data="@_taskTypes"
+                                        ValueChanged="@(v => SetType(idx, (TaskType)v))"
+                                        Style="width: 100%;"/>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-field__label">Return-to-ramp</label>
+                        <RadzenSwitch TValue="bool"
+                                      Value="@row.ReturnToRamp"
+                                      ValueChanged="@(v => SetRtr(idx, v))"/>
+                    </div>
+                </div>
+
+                <div class="bracket-field-row">
+                    <div class="settings-field">
+                        <label class="settings-field__label">From *</label>
+                        <RadzenDatePicker @bind-Value="row.FromLocal"
+                                          ShowTime="true"
+                                          Change="@(_ => RaiseChangedAsync())"
+                                          Style="width: 100%;"/>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-field__label">To *</label>
+                        <RadzenDatePicker @bind-Value="row.ToLocal"
+                                          ShowTime="true"
+                                          Change="@(_ => RaiseChangedAsync())"
+                                          Style="width: 100%;"/>
+                    </div>
+                </div>
+
+                <div class="bracket-field-row">
+                    <div class="settings-field">
+                        <label class="settings-field__label">Description</label>
+                        <RadzenTextArea Rows="2"
+                                        @bind-Value="row.Description"
+                                        Change="@(_ => RaiseChangedAsync())"
+                                        Style="width: 100%;"/>
+                    </div>
+                </div>
+
+                <div class="bracket-field-row">
+                    <div class="settings-field">
+                        <label class="settings-field__label">Employees</label>
+                        @if (StationEmployeesLoading)
+                        {
+                            <DropdownFieldSkeleton AriaLabel="Loading station employees" />
+                        }
+                        else
+                        {
+                            <RadzenDropDown TValue="IEnumerable<Guid>"
+                                            Value="@row.EmployeeIds"
+                                            Multiple="true"
+                                            Chips="true"
+                                            AllowFiltering="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="Pick station employees"
+                                            Data="@StationEmployees"
+                                            TextProperty="@nameof(EmployeeSnapshot.FullName)"
+                                            ValueProperty="@nameof(EmployeeSnapshot.EmployeeId)"
+                                            Change="@(v => SetEmployees(idx, v))"
+                                            Style="width: 100%;"/>
+                        }
+                    </div>
+                </div>
+
+                @* Tools / materials / general supports — store usage that happened on this
+                   task. Each list is a free multi-select (no quantities — domain models them
+                   as "used" / "not used"; consumption tracking lives in the Store module). *@
+                <div class="bracket-field-row">
+                    <div class="settings-field">
+                        <label class="settings-field__label">Tools</label>
+                        @if (StoreLookupsLoading)
+                        {
+                            <DropdownFieldSkeleton AriaLabel="Loading tools" />
+                        }
+                        else
+                        {
+                            <RadzenDropDown TValue="IEnumerable<Guid>"
+                                            Value="@row.ToolIds"
+                                            Multiple="true"
+                                            Chips="true"
+                                            AllowFiltering="true"
+                                            AllowClear="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="Tools used (optional)"
+                                            Data="@Tools"
+                                            TextProperty="@nameof(ToolSelectOption.Name)"
+                                            ValueProperty="@nameof(ToolSelectOption.Id)"
+                                            Change="@(v => SetTools(idx, v))"
+                                            Style="width: 100%;"/>
+                        }
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-field__label">Materials</label>
+                        @if (StoreLookupsLoading)
+                        {
+                            <DropdownFieldSkeleton AriaLabel="Loading materials" />
+                        }
+                        else
+                        {
+                            <RadzenDropDown TValue="IEnumerable<Guid>"
+                                            Value="@row.MaterialIds"
+                                            Multiple="true"
+                                            Chips="true"
+                                            AllowFiltering="true"
+                                            AllowClear="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="Materials used (optional)"
+                                            Data="@Materials"
+                                            TextProperty="@nameof(MaterialSelectOption.Name)"
+                                            ValueProperty="@nameof(MaterialSelectOption.Id)"
+                                            Change="@(v => SetMaterials(idx, v))"
+                                            Style="width: 100%;"/>
+                        }
+                    </div>
+                </div>
+                <div class="bracket-field-row bracket-field-row--full">
+                    <div class="settings-field">
+                        <label class="settings-field__label">General supports</label>
+                        @if (StoreLookupsLoading)
+                        {
+                            <DropdownFieldSkeleton AriaLabel="Loading general supports" />
+                        }
+                        else
+                        {
+                            <RadzenDropDown TValue="IEnumerable<Guid>"
+                                            Value="@row.GeneralSupportIds"
+                                            Multiple="true"
+                                            Chips="true"
+                                            AllowFiltering="true"
+                                            AllowClear="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Placeholder="General support items used (optional)"
+                                            Data="@GeneralSupports"
+                                            TextProperty="@nameof(GeneralSupportSelectOption.Name)"
+                                            ValueProperty="@nameof(GeneralSupportSelectOption.Id)"
+                                            Change="@(v => SetGeneralSupports(idx, v))"
+                                            Style="width: 100%;"/>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="add-bracket-area">
+        <RadzenButton Text="Add task"
+                      Icon="add_circle_outline"
+                      ButtonStyle="ButtonStyle.Secondary"
+                      Variant="Variant.Text"
+                      Size="ButtonSize.Small"
+                      Click="@AddRow"
+                      ButtonType="ButtonType.Button"/>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public WorkOrderFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public FlightDto Flight { get; set; } = default!;
+    /// <summary>
+    /// Every active employee at the flight's station — work orders may record work performed
+    /// by anyone at the station, not just the flight's assigned crew.
+    /// </summary>
+    [Parameter] public IReadOnlyList<EmployeeSnapshot> StationEmployees { get; set; } = Array.Empty<EmployeeSnapshot>();
+    [Parameter] public bool StationEmployeesLoading { get; set; }
+    /// <summary>Active store catalogs feeding the per-task multi-selects.</summary>
+    [Parameter] public IReadOnlyList<ToolSelectOption> Tools { get; set; } = Array.Empty<ToolSelectOption>();
+    [Parameter] public IReadOnlyList<MaterialSelectOption> Materials { get; set; } = Array.Empty<MaterialSelectOption>();
+    [Parameter] public IReadOnlyList<GeneralSupportSelectOption> GeneralSupports { get; set; } = Array.Empty<GeneralSupportSelectOption>();
+    [Parameter] public bool StoreLookupsLoading { get; set; }
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private static readonly TaskType[] _taskTypes = Enum.GetValues<TaskType>();
+
+    private void SetType(int index, TaskType type)
+    {
+        Model.Tasks[index].TaskType = type;
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetRtr(int index, bool value)
+    {
+        Model.Tasks[index].ReturnToRamp = value;
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetEmployees(int index, object? value)
+    {
+        Model.Tasks[index].EmployeeIds = value switch
+        {
+            IEnumerable<Guid> ids => ids.ToList(),
+            _ => new List<Guid>()
+        };
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetTools(int index, object? value)
+    {
+        Model.Tasks[index].ToolIds = value switch
+        {
+            IEnumerable<Guid> ids => ids.ToList(),
+            _ => new List<Guid>()
+        };
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetMaterials(int index, object? value)
+    {
+        Model.Tasks[index].MaterialIds = value switch
+        {
+            IEnumerable<Guid> ids => ids.ToList(),
+            _ => new List<Guid>()
+        };
+        _ = RaiseChangedAsync();
+    }
+
+    private void SetGeneralSupports(int index, object? value)
+    {
+        Model.Tasks[index].GeneralSupportIds = value switch
+        {
+            IEnumerable<Guid> ids => ids.ToList(),
+            _ => new List<Guid>()
+        };
+        _ = RaiseChangedAsync();
+    }
+
+    private Task RaiseChangedAsync() => OnModelChanged.InvokeAsync();
+
+    private Task AddRow()
+    {
+        Model.Tasks.Add(new WorkOrderTaskRow());
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+
+    private Task RemoveAt(int index)
+    {
+        Model.Tasks.RemoveAt(index);
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+}

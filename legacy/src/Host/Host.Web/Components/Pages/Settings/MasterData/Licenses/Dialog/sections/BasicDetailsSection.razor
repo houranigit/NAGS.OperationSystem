@@ -1,0 +1,73 @@
+@*
+  Wizard / update shared section — settings-field* markup (Component Rules), aligned with Currency sections and domain limits (code 2–10, name ≤100, description ≤500).
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Licenses.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.Licenses.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="lic-code">Code</label>
+            <RadzenTextBox id="lic-code"
+                           Name="LicenseCode"
+                           @bind-Value="Model.Code"
+                           MaxLength="10"
+                           Placeholder="e.g. EASA"
+                           ReadOnly="@CodeReadOnly"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%; text-transform: uppercase;" />
+            <RadzenRequiredValidator Component="LicenseCode"
+                                     Text="Code is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="lic-name">Name</label>
+            <RadzenTextBox id="lic-name"
+                           Name="LicenseName"
+                           @bind-Value="Model.Name"
+                           MaxLength="100"
+                           Placeholder="Display name"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%;" />
+            <RadzenRequiredValidator Component="LicenseName"
+                                     Text="Name is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+        </div>
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="lic-desc">Description</label>
+        <RadzenTextArea id="lic-desc"
+                        @bind-Value="Model.Description"
+                        MaxLength="500"
+                        Rows="3"
+                        Placeholder="Optional notes"
+                        Change="@OnFieldChangedAsync"
+                        Style="width: 100%;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="lic-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="lic-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public LicenseFormModel Model { get; set; } = default!;
+
+    /// <summary>Registration code cannot change once persisted (aggregate invariant).</summary>
+    [Parameter] public bool CodeReadOnly { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

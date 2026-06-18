@@ -1,0 +1,112 @@
+@*
+  Scope step for tool price-plan dialogs — Tool / Currency / Basis (no OperationType / AircraftType).
+  Mirrors ManpowerPricePlanScopeSection layout but trimmed to the Store flat-pricing dimensions.
+*@
+@namespace Host.Web.Components.Pages.Settings.Pricing.ToolPricePlans.Dialog.Sections
+@using Core.Contracts.Features.Currency
+@using Core.Domain.Enumerations
+@using Host.Web.Components.Pages.Settings.Pricing.ToolPricePlans.Dialog
+@using Host.Web.Components.Pages.Settings.Pricing.Shared
+@using Store.Contracts.Features.Tool
+
+@if (!string.IsNullOrWhiteSpace(LoadError))
+{
+    <p class="text-danger small mb-0">@LoadError</p>
+}
+else
+{
+    <RadzenStack Gap="1rem">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="tpp-tool">Tool</label>
+            @if (LoadingTools)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading tools" />
+            }
+            else
+            {
+                <RadzenDropDown TValue="Guid?"
+                                id="tpp-tool"
+                                Name="TppTool"
+                                @bind-Value="Model.ToolId"
+                                Data="@Tools"
+                                TextProperty="@nameof(ToolSelectOption.Name)"
+                                ValueProperty="@nameof(ToolSelectOption.Id)"
+                                AllowClear="false"
+                                AllowFiltering="true"
+                                FilterOperator="StringFilterOperator.Contains"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Disabled="@FreezeItemKey"
+                                Placeholder="Select…"
+                                Change="@OnChg"
+                                Style="width: 100%;" />
+                <RadzenRequiredValidator Component="TppTool" Text="Required" Popup="true" Style="position:absolute;" />
+            }
+        </div>
+        <div class="settings-field__row2">
+            <div class="settings-field" style="position: relative;">
+                <label class="settings-field__label" for="tpp-currency">Currency</label>
+                @if (LoadingCurrencies)
+                {
+                    <DropdownFieldSkeleton AriaLabel="Loading currencies" />
+                }
+                else
+                {
+                    <RadzenDropDown TValue="Guid?"
+                                    id="tpp-currency"
+                                    Name="TppCurrency"
+                                    @bind-Value="Model.CurrencyId"
+                                    Data="@Currencies"
+                                    TextProperty="@nameof(CurrencySelectOption.Code)"
+                                    ValueProperty="@nameof(CurrencySelectOption.Id)"
+                                    AllowClear="false"
+                                    Placeholder="Select…"
+                                    Change="@OnChg"
+                                    Style="width: 100%;" />
+                    <RadzenRequiredValidator Component="TppCurrency" Text="Required" Popup="true" Style="position:absolute;" />
+                }
+            </div>
+            <div class="settings-field">
+                <label class="settings-field__label" for="tpp-basis">Pricing basis</label>
+                <RadzenDropDown TValue="PricingBasis"
+                                id="tpp-basis"
+                                Name="TppBasis"
+                                Value="@Model.Basis"
+                                ValueChanged="@OnBasisChangedAsync"
+                                Data="@PricePlanBasisOptions.All"
+                                TextProperty="@nameof(PricePlanBasisOptions.Item.Label)"
+                                ValueProperty="@nameof(PricePlanBasisOptions.Item.Value)"
+                                Style="width: 100%;" />
+            </div>
+        </div>
+    </RadzenStack>
+}
+
+@code {
+    [Parameter, EditorRequired] public ToolPricePlanScopeFormModel Model { get; set; } = default!;
+
+    /// <summary>When true, the tool dropdown is locked (one plan per tool — invariant after creation).</summary>
+    [Parameter] public bool FreezeItemKey { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    [Parameter] public string? LoadError { get; set; }
+
+    [Parameter] public bool LoadingTools { get; set; }
+
+    [Parameter] public bool LoadingCurrencies { get; set; }
+
+    [Parameter] public IReadOnlyList<ToolSelectOption> Tools { get; set; } = [];
+
+    [Parameter] public IReadOnlyList<CurrencySelectOption> Currencies { get; set; } = [];
+
+    [Parameter] public EventCallback<PricingBasis> BasisChanged { get; set; }
+
+    private Task OnChg() => OnModelChanged.InvokeAsync();
+
+    private async Task OnBasisChangedAsync(PricingBasis b)
+    {
+        Model.Basis = b;
+        await BasisChanged.InvokeAsync(b);
+        await OnModelChanged.InvokeAsync();
+    }
+}

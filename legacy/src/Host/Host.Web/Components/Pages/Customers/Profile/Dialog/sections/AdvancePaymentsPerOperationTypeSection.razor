@@ -1,0 +1,52 @@
+@*
+  Per-operation-type advance-payments section. Stacks one AdvancePaymentSection card
+  for every OT picked on the Setup step. The form model keeps an inactive row for each
+  OT (see ContractFormModel.SyncAdvancePaymentRowsWithOperationTypes) so the cards
+  always render — toggling the per-card switch flips the row to active and feeds the
+  command on Save.
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+
+<div class="advance-per-ot">
+    @if (Model.OperationTypeIds.Count == 0)
+    {
+        <div class="advance-per-ot__empty" role="status">
+            <p class="m-0">Pick at least one operation type on the Setup step before configuring advance payments.</p>
+        </div>
+    }
+    else
+    {
+        @foreach (var ot in Model.OperationTypeIds)
+        {
+            var otId = ot;
+            var row = Model.AdvancePayments.FirstOrDefault(r => r.OperationTypeId == otId);
+            if (row is null) continue;
+            var name = OperationTypes.FirstOrDefault(o => o.Id == otId)?.Name ?? "—";
+            <div @key="otId">
+                <AdvancePaymentSection Row="row"
+                                       OperationTypeName="@name"
+                                       CurrencyDisplay="@CurrencyDisplay"
+                                       OnModelChanged="OnModelChanged" />
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContractFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<ContractDialogLookups.DropdownOption> OperationTypes { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter] public string CurrencyDisplay { get; set; } = "—";
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    /// <summary>
+    /// Keep the per-OT row list in sync with the Setup step on every render: when the
+    /// user adds/removes an OT, the missing rows get injected (or the orphaned ones are
+    /// dropped) before we paint the cards. The host dialogs also call Sync explicitly on
+    /// the OT-changed callback, but this guard handles the very first render too.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        Model.SyncAdvancePaymentRowsWithOperationTypes();
+    }
+}

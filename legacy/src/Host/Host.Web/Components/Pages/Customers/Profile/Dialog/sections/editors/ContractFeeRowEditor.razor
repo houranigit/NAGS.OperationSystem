@@ -1,0 +1,74 @@
+@*
+  Single contract-wide fee/discount row (Admin / Disbursement / Holiday / Night / RTR / Other).
+  Renders title + a compact "% / currency" toggle + numeric value with inline validation.
+  Mirrors the ".create-contract-fee-field" style from OperationsManager Step 3.
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections.Editors
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using FeeType = Contracts.Domain.Enumerations.FeeType
+
+<div class="contract-fee-field">
+    <label class="contract-fee-field__label" for="@_inputId">@Title</label>
+    <div class="contract-fee-field__controls" style="position: relative;">
+        <RadzenSelectBar TValue="FeeType"
+                         Name="@_typeName"
+                         Value="@Row.Type"
+                         ValueChanged="@OnTypeChangedAsync"
+                         Size="ButtonSize.Small"
+                         Class="contract-fee-field__type">
+            <Items>
+                <RadzenSelectBarItem Text="%" Value="FeeType.Percentage" />
+                <RadzenSelectBarItem Text="@CurrencyDisplay" Value="FeeType.Fixed" />
+            </Items>
+        </RadzenSelectBar>
+        <RadzenNumeric id="@_inputId"
+                       Name="@_valueName"
+                       TValue="decimal"
+                       Value="@Row.Value"
+                       ValueChanged="@OnValueChangedAsync"
+                       Min="0"
+                       Max="@(Row.Type == FeeType.Percentage ? 100m : decimal.MaxValue)"
+                       Format="g"
+                       Class="contract-fee-field__numeric"
+                       aria-label="Value" />
+        <RadzenCustomValidator Component="@_valueName"
+                               Text="Use 0–100% or a non-negative fixed amount."
+                               Validator="@(() => Model.IsFeeInputValid(Row))"
+                               Popup="true"
+                               Style="position: absolute;" />
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public ContractFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public ContractFormModel.FeeRow Row { get; set; } = default!;
+    [Parameter, EditorRequired] public string Key { get; set; } = "fee";
+    [Parameter] public string CurrencyDisplay { get; set; } = "Fixed";
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string _inputId = $"fee-{Guid.NewGuid():N}";
+    private string _typeName = $"fee-type-{Guid.NewGuid():N}";
+    private string _valueName = $"fee-val-{Guid.NewGuid():N}";
+
+    protected override void OnParametersSet()
+    {
+        // Stable IDs for the lifetime of the component, but unique per "Key" the host gave us.
+        _inputId = $"fee-input-{Key}";
+        _typeName = $"FeeType_{Key}";
+        _valueName = $"FeeVal_{Key}";
+    }
+
+    private async Task OnTypeChangedAsync(FeeType type)
+    {
+        Row.Type = type;
+        if (type == FeeType.Percentage && Row.Value > 100m) Row.Value = 100m;
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+
+    private async Task OnValueChangedAsync(decimal value)
+    {
+        Row.Value = value;
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+}

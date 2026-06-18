@@ -1,0 +1,16 @@
+
+<ConfirmDialog @ref="dialog"
+               Title="@Title"
+               Message="@Message"
+               ConfirmText="Delete"
+               Style="ConfirmDialog.DialogStyle.Danger" />
+
+@code {
+    private ConfirmDialog dialog = default!;
+
+    [Parameter] public string Title { get; set; } = "Delete";
+    [Parameter] public string Message { get; set; } = "This action cannot be undone. Are you sure?";
+
+    public Task<bool> ShowAsync(string? title = null, string? message = null) =>
+        dialog.ShowAsync(title, message);
+}

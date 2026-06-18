@@ -1,0 +1,664 @@
+/* Scoped to auth routes: theme tokens + Vuexy auth layout (from OperationsSystem page-auth + core snippets).
+   Bootstrap base components load from CDN in App.razor; this file fills Vuexy-specific pieces. */
+
+.auth-layout-vuexy {
+    /* NAGS brand — aligned with MobileApplication Theme.kt / Color.kt (not legacy Vuexy blue) */
+    --nags-red-dark: #5a0e0e;
+    --nags-red: #7e1414;
+    --nags-red-light: #a52828;
+    --nags-surface-warm: #fffafa;
+    --nags-on-surface: #1a1416;
+    --nags-on-surface-variant: #5c4b4d;
+    --bs-primary: var(--nags-red);
+    --bs-primary-rgb: 126, 20, 20;
+    --bs-primary-bg-subtle: color-mix(in sRGB, var(--bs-paper-bg) 82%, var(--nags-red));
+    --bs-primary-border-subtle: rgba(126, 20, 20, 0.35);
+    --bs-primary-contrast: #fff;
+    /* Vuexy light surface tokens (subset of core.dist.css) */
+    --bs-paper-bg: #fff;
+    --bs-paper-bg-rgb: 255, 255, 255;
+    --bs-body-bg: var(--nags-surface-warm);
+    --bs-body-color: #6d6b77;
+    --bs-heading-color: var(--nags-on-surface);
+    --bs-border-color: #e3d5d5;
+    --bs-link-color: var(--nags-red);
+    --bs-link-hover-color: var(--nags-red-dark);
+    --bs-secondary-color: #acaab1;
+    min-height: 100vh;
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.375;
+}
+
+/* ── Vuexy page-auth (page-auth.dist.css) ── */
+.auth-layout-vuexy ::deep .authentication-wrapper {
+    --bs-auth-basic-inner-max-width: 460px;
+    display: flex;
+    flex-basis: 100%;
+    inline-size: 100%;
+    min-block-size: 100vh;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .authentication-bg {
+    background-color: var(--bs-paper-bg);
+}
+
+@media (max-width: 1199.98px) {
+    .auth-layout-vuexy ::deep .authentication-wrapper:not(.authentication-basic) .authentication-inner {
+        block-size: 100vh;
+    }
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .authentication-inner {
+    block-size: 100%;
+    inline-size: 100%;
+    margin-block: auto;
+    margin-inline: 0;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .authentication-inner .auth-cover-bg {
+    position: relative;
+    block-size: 100vh;
+    inline-size: 100%;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .authentication-inner .auth-cover-bg .auth-illustration {
+    z-index: 1;
+    max-block-size: 65%;
+    max-inline-size: 65%;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .authentication-inner .platform-bg {
+    position: absolute;
+    block-size: 35%;
+    inline-size: 100%;
+    inset-block-end: 0%;
+    inset-inline-start: 0%;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .authentication-inner .auth-multisteps-bg-height {
+    block-size: 100vh;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .authentication-inner .auth-multisteps-bg-height > img:first-child {
+    z-index: 1;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic {
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner {
+    position: relative;
+    max-inline-size: var(--bs-auth-basic-inner-max-width);
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner::before {
+    position: absolute;
+    background: var(--bs-primary);
+    block-size: 233px;
+    content: " ";
+    inline-size: 238px;
+    inset-block-start: -35px;
+    inset-inline-start: -45px;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg width='238' height='233' viewBox='0 0 238 233' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='88.5605' y='0.700195' width='149' height='149' rx='19.5' stroke='%237367F0' stroke-opacity='0.16'/%3E%3Crect x='0.621094' y='33.761' width='200' height='200' rx='10' fill='%237367F0' fill-opacity='0.08'/%3E%3C/svg%3E%0A");
+    mask-image: url("data:image/svg+xml,%3Csvg width='238' height='233' viewBox='0 0 238 233' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='88.5605' y='0.700195' width='149' height='149' rx='19.5' stroke='%237367F0' stroke-opacity='0.16'/%3E%3Crect x='0.621094' y='33.761' width='200' height='200' rx='10' fill='%237367F0' fill-opacity='0.08'/%3E%3C/svg%3E%0A");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+}
+
+@media (max-width: 575.98px) {
+    .auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner::before {
+        display: none;
+    }
+}
+
+.auth-layout-vuexy ::deep :dir(rtl) .authentication-wrapper.authentication-basic .authentication-inner::before {
+    inset-inline-start: -70px;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner::after {
+    position: absolute;
+    z-index: -1;
+    background: var(--bs-primary);
+    block-size: 180px;
+    content: " ";
+    inline-size: 180px;
+    inset-block-end: -30px;
+    inset-inline-end: -56px;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg width='180' height='180' viewBox='0 0 180 180' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1.30469' y='1.44312' width='178' height='178' rx='19' stroke='%237367F0' stroke-opacity='0.16' stroke-width='2' stroke-dasharray='8 8'/%3E%3Crect x='22.8047' y='22.9431' width='135' height='135' rx='10' fill='%237367F0' fill-opacity='0.08'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg width='180' height='180' viewBox='0 0 180 180' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1.30469' y='1.44312' width='178' height='178' rx='19' stroke='%237367F0' stroke-opacity='0.16' stroke-width='2' stroke-dasharray='8 8'/%3E%3Crect x='22.8047' y='22.9431' width='135' height='135' rx='10' fill='%237367F0' fill-opacity='0.08'/%3E%3C/svg%3E");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+}
+
+@media (max-width: 575.98px) {
+    .auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner::after {
+        display: none;
+    }
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner .card {
+    z-index: 1;
+}
+
+@media (min-width: 576px) {
+    .auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner .card {
+        padding: 1.5rem;
+    }
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper.authentication-basic .authentication-inner .card .app-brand {
+    margin-block-end: 1.5rem;
+}
+
+.auth-layout-vuexy ::deep .authentication-wrapper .auth-input-wrapper .auth-input {
+    font-size: 150%;
+    max-inline-size: 50px;
+    padding-inline: 0.4rem;
+}
+
+@media (max-width: 575.98px) {
+    .auth-layout-vuexy ::deep .authentication-wrapper .auth-input-wrapper .auth-input {
+        font-size: 1.125rem;
+    }
+}
+
+.auth-layout-vuexy ::deep .auth-cover-brand {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 2.5rem;
+    inset-inline-start: 1.5rem;
+}
+
+/* ── App brand + merge input (Vuexy core.dist.css excerpts) ── */
+.auth-layout-vuexy ::deep .app-brand {
+    display: flex;
+    flex-grow: 0;
+    flex-shrink: 0;
+    align-items: center;
+    line-height: 1;
+}
+
+.auth-layout-vuexy ::deep .app-brand .app-brand-text {
+    margin-inline-start: 0.75rem;
+    opacity: 1;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.auth-layout-vuexy ::deep .app-brand-link {
+    display: flex;
+    align-items: center;
+}
+
+.auth-layout-vuexy ::deep .text-heading {
+    --bs-text-opacity: 1;
+    color: var(--bs-heading-color) !important;
+}
+
+.auth-layout-vuexy ::deep .input-group.input-group-merge > :not(:first-child):not(.dropdown-menu):not(.valid-tooltip):not(.valid-feedback):not(.invalid-tooltip):not(.invalid-feedback) {
+    margin-inline: 0;
+}
+
+.auth-layout-vuexy ::deep .input-group.input-group-merge:not(.disabled) > :not(:first-child):not(.dropdown-menu):not(.btn):not(.dropdown-menu + .form-control):not(.btn + .form-control):not(.valid-tooltip):not(.valid-feedback):not(.invalid-tooltip):not(.invalid-feedback) {
+    margin-inline-start: -2px;
+}
+
+.auth-layout-vuexy ::deep .input-group.input-group-merge .input-group-text,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .input-group-text:focus,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .input-group-text:focus-within,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-control,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-control:focus,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-control:focus-within,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-select,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-select:focus,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-select:focus-within {
+    box-shadow: none;
+}
+
+.auth-layout-vuexy ::deep .input-group.input-group-merge .input-group-text:first-child,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-control:first-child,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-select:first-child {
+    border-inline-end: 0;
+}
+
+.auth-layout-vuexy ::deep .input-group.input-group-merge .input-group-text:last-child,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-control:last-child,
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-select:last-child {
+    border-inline-start: 0;
+}
+
+.auth-layout-vuexy ::deep .input-group.input-group-merge .input-group-text:not(:first-child),
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-control:not(:first-child),
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-select:not(:first-child) {
+    border-inline-start: 0;
+    padding-inline-start: 0;
+}
+
+.auth-layout-vuexy ::deep .input-group.input-group-merge .input-group-text:not(:last-child),
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-control:not(:last-child),
+.auth-layout-vuexy ::deep .input-group.input-group-merge .form-select:not(:last-child) {
+    border-inline-end: 0;
+}
+
+.auth-layout-vuexy ::deep .input-group:focus-within .form-control:focus,
+.auth-layout-vuexy ::deep .input-group:focus-within .form-select:focus {
+    border-color: var(--bs-primary);
+}
+
+/* Vuexy spacing utilities used by auth markup */
+.auth-layout-vuexy ::deep .mb-6 {
+    margin-block-end: 1.5rem !important;
+}
+
+.auth-layout-vuexy ::deep .py-6 {
+    padding-block-start: 1.5rem !important;
+    padding-block-end: 1.5rem !important;
+}
+
+.auth-layout-vuexy ::deep .my-8 {
+    margin-block-start: 2rem !important;
+    margin-block-end: 2rem !important;
+}
+
+.auth-layout-vuexy ::deep .container-p-y:not([class^="pt-"], [class*=" pt-"]) {
+    padding-block-start: 1.5rem !important;
+}
+
+.auth-layout-vuexy ::deep .container-p-y:not([class^="pb-"], [class*=" pb-"]) {
+    padding-block-end: 1.5rem !important;
+}
+
+.auth-layout-vuexy ::deep .cursor-pointer {
+    cursor: pointer !important;
+}
+
+/* Branding + password icons (was auth-brand.css) */
+.auth-layout-vuexy ::deep .auth-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border-radius: 0.5rem;
+    background: var(--bs-primary);
+    color: var(--bs-primary-contrast);
+    font-weight: 700;
+    font-size: 0.875rem;
+    letter-spacing: -0.02em;
+}
+
+.auth-layout-vuexy ::deep .auth-brand-logo-img {
+    block-size: 2.5rem;
+    inline-size: auto;
+    max-inline-size: 12rem;
+    object-fit: contain;
+}
+
+.auth-layout-vuexy ::deep [data-auth-password-toggle] {
+    user-select: none;
+}
+
+.auth-layout-vuexy ::deep [data-auth-password-toggle] svg {
+    display: block;
+    color: var(--bs-secondary-color);
+}
+
+/* ── NAGS auth shell — mobile-aligned brand + polished responsive layout ── */
+.auth-layout-vuexy ::deep .nags-auth-page {
+    --nags-outline-soft: #e3d5d5;
+    --nags-focus-ring: color-mix(in srgb, var(--nags-red) 28%, transparent);
+    --auth-field-radius: 0.875rem;
+    display: flex;
+    flex-direction: column;
+    min-block-size: 100vh;
+    min-block-size: 100dvh;
+}
+
+/* Brand rail gradient (BrandRedDark → BrandRed → BrandRedLight) */
+.auth-layout-vuexy ::deep .nags-auth-hero {
+    position: relative;
+    background: linear-gradient(
+        180deg,
+        var(--nags-red-dark) 0%,
+        var(--nags-red) 48%,
+        var(--nags-red-light) 100%
+    );
+    color: #fff;
+    padding: 2rem 1.5rem 2.75rem;
+    text-align: center;
+    isolation: isolate;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 140% 80% at 50% -20%, rgba(255, 255, 255, 0.12) 0%, transparent 62%);
+    z-index: 0;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-hero > * {
+    position: relative;
+    z-index: 1;
+}
+
+@media (max-width: 991.98px) {
+    .auth-layout-vuexy ::deep .nags-auth-body {
+        flex: 1;
+        margin-block-start: -1rem;
+        padding: 0 1rem 2.25rem;
+        background: transparent;
+    }
+}
+
+@media (min-width: 992px) {
+    .auth-layout-vuexy ::deep .nags-auth-page {
+        flex-direction: row;
+        align-items: stretch;
+    }
+
+    .auth-layout-vuexy ::deep .nags-auth-hero {
+        flex: 0 1 clamp(520px, 56vw, 760px);
+        min-block-size: 100vh;
+        min-block-size: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: clamp(2rem, 5vh, 3.5rem) clamp(1.5rem, 3vw, 2.75rem);
+    }
+
+    .auth-layout-vuexy ::deep .nags-auth-body {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: clamp(1.75rem, 4vh, 3rem) clamp(1.25rem, 4vw, 3rem);
+        background:
+            radial-gradient(ellipse 85% 55% at 10% -5%, rgba(126, 20, 20, 0.06) 0%, transparent 55%),
+            linear-gradient(158deg, #ffffff 0%, var(--nags-surface-warm) 100%);
+    }
+}
+
+.auth-layout-vuexy ::deep .nags-auth-logo-shell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-inline: auto;
+    padding: 0.5rem clamp(1.1rem, 3vw, 1.375rem);
+    min-block-size: 5rem;
+    border-radius: 1.75rem;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-logo-shell .auth-brand-mark {
+    background: rgba(255, 255, 255, 0.28);
+    color: #fff;
+    border-radius: 0.7rem;
+    inline-size: 3.375rem;
+    block-size: 3.375rem;
+    font-size: 1.0625rem;
+    font-weight: 800;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-logo-shell .auth-brand-logo-img {
+    block-size: 4.375rem;
+    max-inline-size: 15rem;
+    object-fit: contain;
+}
+
+/* portal-icon.png — original colors */
+.auth-layout-vuexy ::deep .auth-brand-logo-img--portal {
+    filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.1));
+}
+
+/* SVG logo as white silhouette on gradient */
+.auth-layout-vuexy ::deep .auth-brand-logo-img--hero {
+    filter: brightness(0) invert(1);
+    opacity: 0.94;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-hero__title {
+    margin: 0.9rem 0 0;
+    font-size: clamp(1.4rem, 2.8vw, 1.75rem);
+    font-weight: 700;
+    line-height: 1.22;
+    letter-spacing: -0.025em;
+    color: #fff;
+    max-inline-size: 18rem;
+    margin-inline: auto;
+    text-wrap: balance;
+    text-shadow: 0 1px 24px rgba(0, 0, 0, 0.12);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-hero__tagline {
+    margin: 0.45rem auto 0;
+    font-size: 0.9375rem;
+    line-height: 1.47;
+    color: rgba(255, 255, 255, 0.9);
+    max-inline-size: 17rem;
+    text-wrap: balance;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-panel {
+    max-inline-size: 26rem;
+    margin-inline: auto;
+    inline-size: 100%;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-panel--wide {
+    max-inline-size: 28.5rem;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-sheet {
+    background: var(--bs-paper-bg);
+    border: 1px solid color-mix(in srgb, var(--nags-outline-soft) 70%, transparent);
+    border-radius: 1.25rem;
+    box-shadow:
+        0 4px 6px -1px rgba(26, 20, 22, 0.05),
+        0 16px 32px -8px rgba(90, 14, 14, 0.1),
+        0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+    padding: clamp(1.5rem, 4vw, 2.125rem) clamp(1.25rem, 4vw, 2rem) clamp(1.35rem, 4vw, 1.85rem);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-sheet__header .nags-auth-panel__title {
+    margin: 0 0 0.375rem;
+    font-size: 1.375rem;
+    font-weight: 600;
+    color: var(--nags-on-surface);
+    letter-spacing: -0.03em;
+    line-height: 1.25;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-sheet__header .nags-auth-panel__lead {
+    margin: 0 0 1.375rem;
+    font-size: 0.9215rem;
+    line-height: 1.53;
+    color: var(--nags-on-surface-variant);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-sheet__divider {
+    block-size: 1px;
+    margin: 1.25rem 0 1rem;
+    background: linear-gradient(90deg, transparent, rgba(227, 213, 213, 0.85), transparent);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-sheet__footer {
+    text-align: center;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-helper {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--nags-on-surface-variant);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-helper strong {
+    color: color-mix(in srgb, var(--nags-on-surface-variant) 45%, var(--nags-on-surface));
+    font-weight: 600;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-cross-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem 0.5rem;
+    margin-block-end: 0.875rem;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-cross-links__cta {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--nags-red);
+    text-decoration: none;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-cross-links__cta:hover {
+    color: var(--nags-red-dark);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-back-home {
+    display: inline-block;
+    margin-block-start: 0.125rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-back-home:hover {
+    color: var(--nags-on-surface-variant);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-alert {
+    padding: 0.875rem 1rem;
+    border-radius: var(--auth-field-radius);
+    font-size: 0.8835rem;
+    line-height: 1.45;
+    color: #7f1d1d;
+    background-color: rgba(253, 230, 230, 0.94);
+    border: 1px solid rgba(197, 36, 36, 0.2);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-form {
+    display: flex;
+    flex-direction: column;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .form-label {
+    margin-block-end: 0.375rem;
+    font-size: 0.8375rem;
+    font-weight: 600;
+    color: var(--nags-on-surface);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .form-control {
+    min-block-size: 3rem;
+    padding-block: 0.595rem;
+    padding-inline: 1rem;
+    border-radius: var(--auth-field-radius);
+    border: 1px solid var(--nags-outline-soft);
+    background-color: #fffefc;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .form-control:focus {
+    border-color: var(--nags-red);
+    box-shadow: 0 0 0 3px var(--nags-focus-ring);
+    background-color: #fff;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .form-control::placeholder {
+    color: #a89496;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .input-group-merge .input-group-text {
+    border-color: var(--nags-outline-soft);
+    border-radius: 0 var(--auth-field-radius) var(--auth-field-radius) 0;
+    background-color: #fffefc;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .input-group-merge .form-control:first-child {
+    border-radius: var(--auth-field-radius) 0 0 var(--auth-field-radius);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .input-group.input-group-merge:focus-within .form-control,
+.auth-layout-vuexy ::deep .nags-auth-page .input-group.input-group-merge:focus-within .input-group-text {
+    border-color: var(--nags-red);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .input-group-merge:focus-within .form-control {
+    box-shadow: none;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .input-group-merge:focus-within .form-control:focus {
+    box-shadow: none;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-page .input-group-merge:focus-within {
+    box-shadow: 0 0 0 3px var(--nags-focus-ring);
+    border-radius: var(--auth-field-radius);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-remember-row {
+    margin-block: 0.5rem 1.375rem;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-remember-row .form-check-label {
+    font-size: 0.875rem;
+    color: var(--nags-on-surface-variant);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-remember-row .form-check-input {
+    border-radius: 0.35rem;
+    border-color: var(--nags-outline-soft);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-remember-row .form-check-input:checked {
+    background-color: var(--nags-red);
+    border-color: var(--nags-red);
+}
+
+/* CDN Bootstrap fixes .btn-primary to blue — enforce NAGS brand on submit buttons */
+.auth-layout-vuexy ::deep .nags-auth-submit.btn-primary {
+    width: 100%;
+    min-block-size: 3.375rem;
+    border-radius: var(--auth-field-radius);
+    font-weight: 600;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+    background-color: var(--nags-red) !important;
+    border: 1px solid color-mix(in srgb, var(--nags-red-dark) 88%, black) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 6px rgba(90, 14, 14, 0.22);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-submit.btn-primary:hover {
+    background-color: var(--nags-red-dark) !important;
+    border-color: var(--nags-red-dark) !important;
+    color: #fff !important;
+}
+
+.auth-layout-vuexy ::deep .nags-auth-submit.btn-primary:active {
+    background-color: #4f0f0f !important;
+    border-color: #421010 !important;
+    transform: translateY(1px);
+}
+
+.auth-layout-vuexy ::deep .nags-auth-submit.btn-primary:focus-visible {
+    outline: none !important;
+    box-shadow:
+        0 2px 6px rgba(90, 14, 14, 0.18),
+        0 0 0 3px var(--nags-focus-ring) !important;
+}

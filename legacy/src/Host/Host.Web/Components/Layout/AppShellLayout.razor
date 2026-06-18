@@ -1,0 +1,123 @@
+@rendermode InteractiveServer
+@implements IDisposable
+@using Identity.Domain.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Nav
+
+<div class="ops-shell @(_sidebarCollapsed ? "ops-shell--collapsed" : null)">
+    <aside class="ops-shell__sidebar" aria-label="Main navigation">
+        <div class="ops-shell__brand">
+            <a href="@_homeHref" class="ops-brand" title="Operations System">
+                <span class="ops-brand__badge">
+                    <img src="/branding/portal-icon.png"
+                         alt=""
+                         class="ops-brand__icon"
+                         width="36"
+                         height="36"
+                         loading="eager" />
+                </span>
+                <span class="ops-brand__text">Operations System</span>
+            </a>
+        </div>
+        <div class="ops-shell__sidebar-nav">
+            <SideMenu Collapsed="@_sidebarCollapsed" />
+        </div>
+        <div class="ops-shell__sidebar-foot" aria-hidden="true"></div>
+    </aside>
+
+    <div class="ops-shell__column">
+        <header class="ops-shell__topbar">
+            <button type="button"
+                    class="ops-shell__rail-toggle"
+                    aria-expanded="@(!_sidebarCollapsed)"
+                    aria-controls="ops-shell-sidebar-nav"
+                    aria-label="@(_sidebarCollapsed ? "Expand navigation" : "Collapse navigation")"
+                    @onclick="ToggleSidebar">
+                <svg class="ops-shell__rail-toggle-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+            <div class="ops-shell__topbar-search">
+                <span class="ops-shell__search-icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+                </span>
+                <input type="search"
+                       class="ops-shell__search-input"
+                       placeholder="Search..."
+                       autocomplete="off"
+                       aria-label="Search" />
+            </div>
+            <div class="ops-shell__topbar-end">
+                <div class="ops-shell__end-tray">
+                    <NotificationBell />
+                    <TopBarProfileMenu />
+                </div>
+            </div>
+        </header>
+        <div class="ops-shell__scroll">
+            @ChildContent
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private bool _sidebarCollapsed;
+    private string _homeHref = "/";
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private void ToggleSidebar() => _sidebarCollapsed = !_sidebarCollapsed;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ApplyPortalRouteGuardAsync();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _ = InvokeAsync(ApplyPortalRouteGuardAsync);
+    }
+
+    private async Task ApplyPortalRouteGuardAsync()
+    {
+        if (AuthenticationStateTask is null)
+            return;
+
+        var user = (await AuthenticationStateTask).User;
+        var canManagePortal = user.HasClaim("permissions", Permissions.Portal.Manage);
+        var canViewScheduler = user.HasClaim("permissions", Permissions.Scheduler.Read);
+
+        _homeHref = canManagePortal ? "/" : "/scheduler";
+        if (canManagePortal)
+            return;
+
+        var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+        var isAllowed = string.Equals(path, "scheduler", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path, "access-denied", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path, "not-found", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path, "Error", StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrEmpty(path) && canViewScheduler)
+        {
+            Nav.NavigateTo("/scheduler", replace: true);
+            return;
+        }
+
+        if (!isAllowed)
+            Nav.NavigateTo("/access-denied", replace: true);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

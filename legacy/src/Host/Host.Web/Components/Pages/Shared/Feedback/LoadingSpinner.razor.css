@@ -1,0 +1,35 @@
+.spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.spinner-ring {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 3px solid #e2e8f0;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+.spinner-sm .spinner-ring {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-width: 2px;
+}
+
+.spinner-sm {
+    padding: 0.5rem;
+}
+
+.spinner-lg .spinner-ring {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-width: 4px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

@@ -1,0 +1,131 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Snapshot diff includes the assigned-staff list.
+*@
+@using Core.Application.Features.Station.Commands.UpdateStation
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.Station
+@using Host.Web.Components.Pages.Stations.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="StationFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_steps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@IsDirty"
+                 SidebarAriaLabel="Edit station sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the station"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <BasicSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 1:
+                    <CoverageSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public StationDto ExistingItem { get; set; } = default!;
+
+    private static readonly Guid DefaultStationCountryId = Guid.Parse("e1000001-0000-4000-8000-000000000001");
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Airport", "IATA & name", "pin", IsRequired: true, Validate: () => true),
+        new("Coverage", "Assign staff", "users", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<StationFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private StationFormModel _model = new();
+    private StationFormModel _snap = new();
+    private List<string> _errorMessages = new();
+
+    private bool IsDirty =>
+        !string.Equals(_model.IataCode, _snap.IataCode, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(_model.IcaoCode ?? "", _snap.IcaoCode ?? "", StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(_model.Name, _snap.Name, StringComparison.Ordinal)
+        || !string.Equals(_model.City ?? "", _snap.City ?? "", StringComparison.Ordinal)
+        || _model.IsActive != _snap.IsActive
+        || !AssignedEmployeeIdsMatch(_model.AssignedEmployees, _snap.AssignedEmployees);
+
+    private static bool AssignedEmployeeIdsMatch(IReadOnlyList<EmployeeDto> a, IReadOnlyList<EmployeeDto> b)
+        => a.Select(e => e.Id).Order().SequenceEqual(b.Select(e => e.Id).Order());
+
+    protected override void OnInitialized()
+    {
+        _model = StationFormModel.FromDto(ExistingItem);
+        _snap = _model.Clone();
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(StationFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var cmd = new UpdateStationCommand(
+                ExistingItem.Id,
+                _model.IataCode.Trim(),
+                string.IsNullOrWhiteSpace(_model.IcaoCode) ? null : _model.IcaoCode.Trim(),
+                _model.Name.Trim(),
+                string.IsNullOrWhiteSpace(_model.City) ? null : _model.City.Trim(),
+                DefaultStationCountryId,
+                _model.IsActive,
+                _model.AssignedEmployees.Select(e => e.Id).ToList(),
+                []);
+            var r = await ScopedMediator.Send(cmd);
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save station", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

@@ -1,0 +1,35 @@
+@if (!string.IsNullOrWhiteSpace(Title) || Actions is not null || !string.IsNullOrWhiteSpace(Description))
+{
+    <header class="page-header">
+        <div class="page-header__titles">
+            @if (!string.IsNullOrWhiteSpace(Title))
+            {
+                <h1 class="page-header__title">@Title</h1>
+            }
+            @if (!string.IsNullOrWhiteSpace(Description))
+            {
+                <p class="page-header__description">@Description</p>
+            }
+        </div>
+        @if (Actions is not null)
+        {
+            <div class="page-header__toolbar">
+                @Actions
+            </div>
+        }
+    </header>
+}
+
+@code {
+    /// <summary>Displayed as the main page heading.</summary>
+    [Parameter]
+    public string? Title { get; set; }
+
+    /// <summary>Optional subtitle shown under the title.</summary>
+    [Parameter]
+    public string? Description { get; set; }
+
+    /// <summary>Right-aligned actions (buttons, filters, etc.).</summary>
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+}

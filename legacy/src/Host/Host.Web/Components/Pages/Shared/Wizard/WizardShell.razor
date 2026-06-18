@@ -1,0 +1,401 @@
+@*
+  Shared wizard chrome for every dialog in the system. Owns the sidebar stepper, the
+  per-step content panel, and the footer (Previous / Skip / Next / Save). Each host
+  dialog passes in: the steps list, a validate callback per step (drives badge state),
+  the body content (RenderFragment<int>), and the cancel / save callbacks.
+
+  Two flavours:
+   - Wizard mode (Add, Duplicate): Next button validates current step before advancing;
+     Save is only visible on the last step. Sidebar lets the user re-visit any step
+     they've already touched (furthest-reached gating). Optional steps show "Skip".
+   - Free-nav mode (Edit): every step is reachable from any other; Save lives in the
+     footer at all times. Sidebar badges turn red when a step's model lambda fails.
+
+  Common features (works in both modes):
+   - Inline error alert above the step body (host-supplied messages, dismissable).
+   - Active-step counter chip in the sidebar.
+   - Animated footer progress bar.
+   - Ghost / secondary / primary / commit button variants.
+   - Built-in unsaved-changes confirm on Cancel (toggle via ConfirmCancelOnDirty).
+
+  This shell intentionally has no business logic — every Save / Validate / Cancel
+  callback flows back to the host dialog so each feature can keep its own commands,
+  validators and submit shape.
+*@
+@namespace Host.Web.Components.Pages.Shared.Wizard
+@using Host.Web.Components.Pages.Shared.Dialogs
+@using Radzen
+
+<div class="wizard-host">
+    <div class="wizard">
+        <aside class="wizard__sidebar" aria-label="@SidebarAriaLabel">
+            @for (var i = 0; i < Steps.Length; i++)
+            {
+                var index = i;
+                var step = Steps[index];
+                var state = GetStepState(index);
+                var stateClass = state switch
+                {
+                    WizardStepState.Active => "is-active",
+                    WizardStepState.Completed => "is-completed",
+                    WizardStepState.Invalid => "is-invalid",
+                    _ => "is-upcoming"
+                };
+                var canJump = CanJumpTo(index);
+
+                <button type="button"
+                        class="wizard-step @stateClass"
+                        disabled="@(!canJump || IsBusy)"
+                        @onclick="@(() => JumpToAsync(index))">
+                    <span class="wizard-step__circle" aria-hidden="true">
+                        @if (state == WizardStepState.Completed)
+                        {
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        }
+                        else if (state == WizardStepState.Invalid)
+                        {
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        }
+                        else
+                        {
+                            <WizardStepIcon Name="@step.Icon" />
+                        }
+                    </span>
+                    <span class="wizard-step__label">
+                        <span class="wizard-step__title">
+                            @step.Title
+                            @if (!step.IsRequired)
+                            {
+                                <span class="wizard-step__optional" title="Optional">·</span>
+                            }
+                        </span>
+                        <span class="wizard-step__subtitle">@step.Subtitle</span>
+                    </span>
+                    @if (state == WizardStepState.Active && Steps.Length > 1)
+                    {
+                        <span class="wizard-step__counter" aria-hidden="true">@(index + 1)/@Steps.Length</span>
+                    }
+                </button>
+
+                @if (index < Steps.Length - 1)
+                {
+                    <span class="wizard-step__line" aria-hidden="true"></span>
+                }
+            }
+        </aside>
+
+        <section class="wizard__content">
+            <div class="wizard__main">
+                @if (Steps.Length > 0)
+                {
+                    <header class="wizard__header">
+                        <h3 class="wizard__header-title">@Steps[CurrentStep].Title</h3>
+                        <p class="wizard__header-subtitle">@Steps[CurrentStep].Subtitle</p>
+                    </header>
+                }
+
+                <div class="wizard__panel">
+                    @if (ErrorMessages is { Count: > 0 })
+                    {
+                        <div class="wizard__alert" role="alert">
+                            <span class="wizard__alert-icon" aria-hidden="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            </span>
+                            <div class="wizard__alert-body">
+                                <p class="wizard__alert-title">@AlertTitle</p>
+                                @if (ErrorMessages.Count == 1)
+                                {
+                                    <p class="wizard__alert-message">@ErrorMessages[0]</p>
+                                }
+                                else
+                                {
+                                    <ul class="wizard__alert-list">
+                                        @foreach (var msg in ErrorMessages)
+                                        {
+                                            <li>@msg</li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+                            <button type="button"
+                                    class="wizard__alert-close"
+                                    title="Dismiss"
+                                    aria-label="Dismiss alert"
+                                    @onclick="DismissAlertInternalAsync">×</button>
+                        </div>
+                    }
+
+                    @if (StepContent is not null)
+                    {
+                        @StepContent(CurrentStep)
+                    }
+                </div>
+            </div>
+
+            <footer class="wizard__footer">
+                <div class="wizard__footer-left">
+                    @if (Steps.Length > 1)
+                    {
+                        <div class="wizard__footer-progress" aria-hidden="true">
+                            <span class="wizard__footer-progress-text">Step @(CurrentStep + 1) of @Steps.Length</span>
+                            <div class="wizard__footer-progress-bar">
+                                <div class="wizard__footer-progress-bar-fill"
+                                     style="@($"width: {((CurrentStep + 1) * 100.0 / Steps.Length).ToString("0", System.Globalization.CultureInfo.InvariantCulture)}%")"></div>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="wizard__footer-actions">
+                    @if (CurrentStep > 0)
+                    {
+                        <button type="button"
+                                class="wizard-btn wizard-btn--secondary"
+                                disabled="@IsBusy"
+                                @onclick="PreviousAsync">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                            Previous
+                        </button>
+                    }
+
+                    <button type="button"
+                            class="wizard-btn wizard-btn--ghost"
+                            disabled="@IsBusy"
+                            @onclick="CancelInternalAsync">
+                        Cancel
+                    </button>
+
+                    @if (Mode == WizardMode.Wizard && CurrentStep < Steps.Length - 1)
+                    {
+                        @if (!Steps[CurrentStep].IsRequired)
+                        {
+                            <button type="button"
+                                    class="wizard-btn wizard-btn--secondary"
+                                    disabled="@IsBusy"
+                                    @onclick="SkipAsync"
+                                    title="Skip this optional step">
+                                Skip
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                            </button>
+                        }
+                        <button type="button"
+                                class="wizard-btn wizard-btn--primary"
+                                disabled="@IsBusy"
+                                @onclick="NextAsync">
+                            Next
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                class="wizard-btn wizard-btn--commit"
+                                disabled="@(IsBusy || !CanSave)"
+                                @onclick="SaveInternalAsync">
+                            @if (IsBusy)
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="wizard-btn__spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                                <span>@SavingLabel</span>
+                            }
+                            else
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                <span>@SaveLabel</span>
+                            }
+                        </button>
+                    }
+                </div>
+            </footer>
+        </section>
+    </div>
+</div>
+
+<ConfirmDialog @ref="_unsavedConfirm"/>
+
+@code {
+    [Parameter, EditorRequired] public WizardStep[] Steps { get; set; } = Array.Empty<WizardStep>();
+
+    /// <summary>Currently-active step (0-based). Two-way bound from the host dialog.</summary>
+    [Parameter] public int CurrentStep { get; set; }
+    [Parameter] public EventCallback<int> CurrentStepChanged { get; set; }
+
+    /// <summary>Highest step the user has visited so far. Drives sidebar gating in wizard mode.</summary>
+    [Parameter] public int FurthestReached { get; set; }
+    [Parameter] public EventCallback<int> FurthestReachedChanged { get; set; }
+
+    /// <summary>Wizard or free-nav. Wizard validates per Next; free-nav validates on Save.</summary>
+    [Parameter] public WizardMode Mode { get; set; } = WizardMode.Wizard;
+
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>True while the dirty-tracking host believes there is something worth saving.</summary>
+    [Parameter] public bool CanSave { get; set; } = true;
+
+    [Parameter] public string SidebarAriaLabel { get; set; } = "Wizard steps";
+
+    [Parameter] public string SaveLabel { get; set; } = "Save";
+    [Parameter] public string SavingLabel { get; set; } = "Saving…";
+
+    /// <summary>Heading shown above the error list. Defaults to a generic "Couldn't save" line.</summary>
+    [Parameter] public string AlertTitle { get; set; } = "Couldn't save";
+
+    [Parameter, EditorRequired] public RenderFragment<int>? StepContent { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+
+    /// <summary>If set, called whenever the active step changes (lets host run analytics / autosave hooks).</summary>
+    [Parameter] public EventCallback<int> OnStepChanged { get; set; }
+
+    /// <summary>
+    /// Optional host-supplied validator invoked on Next. Returning <c>false</c> blocks the move
+    /// AND lets the host run <c>EditContext.Validate()</c> so RadzenCustomValidator popups light
+    /// up next to the offending fields. When not set, the shell falls back to the lightweight
+    /// model lambda on <see cref="WizardStep.Validate"/> (which doesn't surface popups).
+    /// </summary>
+    [Parameter] public Func<int, Task<bool>>? OnRequestStepValidationAsync { get; set; }
+
+    /// <summary>
+    /// Optional list of error messages to surface in an inline alert above the active step.
+    /// The host sets this when a command (Create / Update) returns a failure result, so the
+    /// user reads the actual server message instead of only the toast that fades away.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string>? ErrorMessages { get; set; }
+
+    /// <summary>Fired when the user dismisses the alert (close button). Host should clear its error list.</summary>
+    [Parameter] public EventCallback OnDismissError { get; set; }
+
+    /// <summary>
+    /// True when the parent has unsaved changes — controls whether Cancel pops the
+    /// "discard?" confirm. The Edit dialog passes <c>true</c> always; Add tracks dirty state.
+    /// </summary>
+    [Parameter] public bool ConfirmCancelOnDirty { get; set; }
+
+    private ConfirmDialog _unsavedConfirm = default!;
+
+    private WizardStepState GetStepState(int index)
+    {
+        if (index == CurrentStep) return WizardStepState.Active;
+
+        if (Mode == WizardMode.FreeNav)
+        {
+            // In edit mode every step is reachable; the badge reflects validity, not visit history.
+            try
+            {
+                return Steps[index].Validate() ? WizardStepState.Completed : WizardStepState.Invalid;
+            }
+            catch
+            {
+                return WizardStepState.Completed;
+            }
+        }
+
+        if (index < CurrentStep || index <= FurthestReached) return WizardStepState.Completed;
+        return WizardStepState.Upcoming;
+    }
+
+    private bool CanJumpTo(int index)
+    {
+        if (index == CurrentStep) return false;
+        if (Mode == WizardMode.FreeNav) return true;
+        return index <= FurthestReached;
+    }
+
+    private async Task JumpToAsync(int index)
+    {
+        if (!CanJumpTo(index)) return;
+        await SetCurrentStepAsync(index);
+    }
+
+    private async Task NextAsync()
+    {
+        if (IsBusy) return;
+        if (CurrentStep >= Steps.Length - 1) return;
+
+        // Prefer the host-supplied validator (drives EditContext.Validate so popups appear).
+        // Fallback to the lightweight model lambda for hosts that don't wire one up.
+        if (OnRequestStepValidationAsync is not null)
+        {
+            bool hostOk;
+            try
+            {
+                hostOk = await OnRequestStepValidationAsync(CurrentStep);
+            }
+            catch
+            {
+                hostOk = true;
+            }
+            if (!hostOk) return;
+        }
+        else if (Mode == WizardMode.Wizard && Steps[CurrentStep].IsRequired)
+        {
+            try
+            {
+                if (!Steps[CurrentStep].Validate())
+                    return;
+            }
+            catch { /* Throwing validator → let the user proceed; submit-time check still runs. */ }
+        }
+
+        await SetCurrentStepAsync(CurrentStep + 1, advanceFurthest: true);
+    }
+
+    private async Task SkipAsync()
+    {
+        // Optional steps can be advanced past without running their validator.
+        if (IsBusy || CurrentStep >= Steps.Length - 1) return;
+        await SetCurrentStepAsync(CurrentStep + 1, advanceFurthest: true);
+    }
+
+    private async Task PreviousAsync()
+    {
+        if (IsBusy || CurrentStep == 0) return;
+        await SetCurrentStepAsync(CurrentStep - 1);
+    }
+
+    private async Task SetCurrentStepAsync(int next, bool advanceFurthest = false)
+    {
+        if (next < 0 || next >= Steps.Length) return;
+
+        CurrentStep = next;
+        if (CurrentStepChanged.HasDelegate) await CurrentStepChanged.InvokeAsync(CurrentStep);
+
+        if (advanceFurthest && CurrentStep > FurthestReached)
+        {
+            FurthestReached = CurrentStep;
+            if (FurthestReachedChanged.HasDelegate) await FurthestReachedChanged.InvokeAsync(FurthestReached);
+        }
+
+        if (OnStepChanged.HasDelegate) await OnStepChanged.InvokeAsync(CurrentStep);
+    }
+
+    private async Task SaveInternalAsync()
+    {
+        if (!OnSave.HasDelegate) return;
+        await OnSave.InvokeAsync();
+    }
+
+    private async Task DismissAlertInternalAsync()
+    {
+        if (OnDismissError.HasDelegate) await OnDismissError.InvokeAsync();
+    }
+
+    private async Task CancelInternalAsync()
+    {
+        if (!ConfirmCancelOnDirty)
+        {
+            if (OnCancel.HasDelegate) await OnCancel.InvokeAsync();
+            return;
+        }
+
+        var confirmed = await _unsavedConfirm.ShowAsync(
+            title: "Discard Changes",
+            message: "You have unsaved changes. Discard them and close?",
+            confirmText: "Discard",
+            cancelText: "Keep Editing",
+            style: ConfirmDialog.DialogStyle.Danger);
+
+        if (confirmed && OnCancel.HasDelegate)
+            await OnCancel.InvokeAsync();
+    }
+}

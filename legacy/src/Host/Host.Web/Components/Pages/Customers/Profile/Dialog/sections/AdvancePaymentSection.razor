@@ -1,0 +1,159 @@
+@*
+  One advance-payment card scoped to a single operation type. Toggling the switch off
+  keeps the row in the form model but flags it inactive — the form's
+  BuildAdvancePayments() drops inactive rows on send.
+  All numeric fields become mandatory once the switch is on (mirroring the domain VO).
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+
+<div class="advance-section">
+    <article class="advance-section__card">
+        <header class="advance-section__card-header">
+            <div class="d-flex align-items-center gap-3">
+                <span class="advance-section__icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+                </span>
+                <div>
+                    <h6 class="advance-section__title">Scheduled advance payment — @OperationTypeName</h6>
+                    <p class="advance-section__subtitle">Optional pre-paid flight package backed by a security deposit.</p>
+                </div>
+            </div>
+            <RadzenSwitch Value="@Row.HasAdvancePayment"
+                          ValueChanged="@OnToggleAsync"
+                          TValue="bool" />
+        </header>
+
+        @if (Row.HasAdvancePayment)
+        {
+            <div class="advance-section__amounts-banner">
+                <span class="advance-section__amounts-banner-prefix">Amounts in</span>
+                <span class="advance-section__amounts-banner-currency">@CurrencyDisplay</span>
+            </div>
+
+            <div class="advance-section__grid">
+                <div class="advance-section__field" style="position: relative;">
+                    <label class="advance-section__field-label" for="@FlightsId">Flights count *</label>
+                    <RadzenNumeric id="@FlightsId"
+                                   Name="@FlightsValidatorName"
+                                   Value="@Row.FlightsCount"
+                                   ValueChanged="@OnFlightsChangedAsync"
+                                   TValue="int"
+                                   Min="0"
+                                   Style="width: 100%;" />
+                    <RadzenCustomValidator Component="@FlightsValidatorName"
+                                           Text="Flights count must be greater than zero."
+                                           Validator="@(() => !Row.HasAdvancePayment || Row.FlightsCount > 0)"
+                                           Popup="true"
+                                           Style="position: absolute;" />
+                </div>
+
+                <div class="advance-section__field" style="position: relative;">
+                    <label class="advance-section__field-label" for="@FlightCostId">Flight cost *</label>
+                    <div class="advance-section__numeric-prefixed">
+                        <span class="advance-section__numeric-prefix">@CurrencyDisplay</span>
+                        <RadzenNumeric id="@FlightCostId"
+                                       Name="@FlightCostValidatorName"
+                                       Value="@Row.FlightCost"
+                                       ValueChanged="@OnFlightCostChangedAsync"
+                                       TValue="decimal"
+                                       Min="0"
+                                       Format="n2"
+                                       Style="flex: 1; min-width: 0; width: 100%;" />
+                    </div>
+                    <RadzenCustomValidator Component="@FlightCostValidatorName"
+                                           Text="Flight cost must be greater than zero."
+                                           Validator="@(() => !Row.HasAdvancePayment || Row.FlightCost > 0m)"
+                                           Popup="true"
+                                           Style="position: absolute;" />
+                </div>
+
+                <div class="advance-section__field" style="position: relative;">
+                    <label class="advance-section__field-label" for="@BalanceId">Balance *</label>
+                    <div class="advance-section__numeric-prefixed">
+                        <span class="advance-section__numeric-prefix">@CurrencyDisplay</span>
+                        <RadzenNumeric id="@BalanceId"
+                                       Name="@BalanceValidatorName"
+                                       Value="@Row.Balance"
+                                       ValueChanged="@OnBalanceChangedAsync"
+                                       TValue="decimal"
+                                       Min="0"
+                                       Format="n2"
+                                       Style="flex: 1; min-width: 0; width: 100%;" />
+                    </div>
+                    <RadzenCustomValidator Component="@BalanceValidatorName"
+                                           Text="Balance must be greater than zero."
+                                           Validator="@(() => !Row.HasAdvancePayment || Row.Balance > 0m)"
+                                           Popup="true"
+                                           Style="position: absolute;" />
+                </div>
+
+                <div class="advance-section__field" style="position: relative;">
+                    <label class="advance-section__field-label" for="@DepositId">Deposit</label>
+                    <div class="advance-section__numeric-prefixed">
+                        <span class="advance-section__numeric-prefix">@CurrencyDisplay</span>
+                        <RadzenNumeric id="@DepositId"
+                                       Name="@DepositValidatorName"
+                                       Value="@Row.Deposit"
+                                       ValueChanged="@OnDepositChangedAsync"
+                                       TValue="decimal"
+                                       Min="0"
+                                       Format="n2"
+                                       Style="flex: 1; min-width: 0; width: 100%;" />
+                    </div>
+                    <RadzenCustomValidator Component="@DepositValidatorName"
+                                           Text="Deposit cannot be negative."
+                                           Validator="@(() => !Row.HasAdvancePayment || Row.Deposit >= 0m)"
+                                           Popup="true"
+                                           Style="position: absolute;" />
+                </div>
+            </div>
+
+            <p class="advance-section__hint">
+                Balance and deposit are the figures the customer's wallet starts with on this contract for this operation type.
+                Remaining balance and remaining deposit are tracked by the system once the contract is active.
+            </p>
+        }
+        else
+        {
+            <p class="advance-section__placeholder">Switch on to configure a pre-paid balance and security deposit for this operation type.</p>
+        }
+    </article>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContractFormModel.AdvancePaymentRow Row { get; set; } = default!;
+    [Parameter] public string OperationTypeName { get; set; } = "—";
+    [Parameter] public string CurrencyDisplay { get; set; } = "—";
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    // Distinct DOM ids per OT card — the wizard renders many of these stacked, and Radzen's
+    // CustomValidator wires by Component name. Without a per-OT suffix, validators from
+    // different cards collide (and only the first one fires).
+    private string IdSuffix => Row.OperationTypeId.ToString("N");
+    private string FlightsId => $"ap-flights-{IdSuffix}";
+    private string FlightsValidatorName => $"ap-flights-{IdSuffix}-name";
+    private string FlightCostId => $"ap-flight-cost-{IdSuffix}";
+    private string FlightCostValidatorName => $"ap-cost-{IdSuffix}-name";
+    private string BalanceId => $"ap-balance-{IdSuffix}";
+    private string BalanceValidatorName => $"ap-balance-{IdSuffix}-name";
+    private string DepositId => $"ap-deposit-{IdSuffix}";
+    private string DepositValidatorName => $"ap-deposit-{IdSuffix}-name";
+
+    private async Task OnToggleAsync(bool value)
+    {
+        Row.HasAdvancePayment = value;
+        if (value && Row.FlightsCount <= 0)
+            Row.FlightsCount = 1;
+        await NotifyAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnFlightsChangedAsync(int v)        { Row.FlightsCount = Math.Max(0, v); await NotifyAsync(); }
+    private async Task OnFlightCostChangedAsync(decimal v) { Row.FlightCost = v; await NotifyAsync(); }
+    private async Task OnBalanceChangedAsync(decimal v)    { Row.Balance = v; await NotifyAsync(); }
+    private async Task OnDepositChangedAsync(decimal v)    { Row.Deposit = v; await NotifyAsync(); }
+
+    private Task NotifyAsync() =>
+        OnModelChanged.HasDelegate ? OnModelChanged.InvokeAsync() : Task.CompletedTask;
+}

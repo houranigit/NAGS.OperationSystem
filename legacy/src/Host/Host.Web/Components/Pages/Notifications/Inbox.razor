@@ -1,0 +1,159 @@
+@page "/notifications"
+@using BuildingBlocks.Application.Abstractions
+@using BuildingBlocks.Application.Pagination
+@using Host.Web.Components.Shared
+@using Host.Web.Services
+@using global::Notifications.Application.Abstractions
+@using global::Notifications.Application.Features.GetMyInbox
+@using global::Notifications.Application.Features.MarkAllAsRead
+@using global::Notifications.Application.Features.MarkAsRead
+@using global::Notifications.Contracts.Notifications
+@using global::Notifications.Domain.Aggregates.Notification
+@implements IDisposable
+
+<PageTitle>Inbox</PageTitle>
+
+<PageHeader Title="Inbox" Description="Notifications routed to you across the platform.">
+    <Actions>
+        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ToggleUnreadOnlyAsync">
+            @(_unreadOnly ? "Showing unread" : "All notifications")
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary text-white" @onclick="MarkAllAsReadAsync">
+            Mark all as read
+        </button>
+    </Actions>
+</PageHeader>
+
+<section class="ops-inbox">
+    @if (_loading)
+    {
+        <div class="ops-inbox__empty">Loading…</div>
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="ops-inbox__empty">No notifications to show.</div>
+    }
+    else
+    {
+        @foreach (var n in _items)
+        {
+            <article class="ops-inbox__item @(n.IsRead ? null : "ops-inbox__item--unread")">
+                <header class="ops-inbox__item-header">
+                    <span class="ops-inbox__item-kind">@KindLabel(n.Kind)</span>
+                    <span class="ops-inbox__item-time">@n.CreatedAt.ToString("g")</span>
+                </header>
+                <h3 class="ops-inbox__item-title">@n.Title</h3>
+                <p class="ops-inbox__item-body">@n.Body</p>
+                <div class="ops-inbox__item-actions">
+                    @if (!n.IsRead)
+                    {
+                        <button type="button" class="btn btn-sm btn-link" @onclick="@(() => MarkAsReadAsync(n))">Mark as read</button>
+                    }
+                </div>
+            </article>
+        }
+
+        <nav class="ops-inbox__pager">
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(_page <= 1)" @onclick="PreviousAsync">Previous</button>
+            <span class="ops-inbox__pager-info">Page @_page of @TotalPages</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(_page >= TotalPages)" @onclick="NextAsync">Next</button>
+        </nav>
+    }
+</section>
+
+@code {
+    [Inject] private IScopedMediator Mediator { get; set; } = default!;
+    [Inject] private ICurrentUserService CurrentUser { get; set; } = default!;
+    [Inject] private INotificationEventBus EventBus { get; set; } = default!;
+
+    private List<NotificationDto> _items = [];
+    private int _total;
+    private int _page = 1;
+    private const int PageSize = 20;
+    private bool _unreadOnly;
+    private bool _loading;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_total / (double)PageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        EventBus.NotificationCreated += OnNotificationCreated;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (CurrentUser.UserId is null) return;
+        _loading = true;
+        try
+        {
+            var result = await Mediator.Send(new GetMyInboxQuery(CurrentUser.UserId.Value, _page, PageSize, _unreadOnly));
+            if (result.IsSuccess)
+            {
+                _items = result.Value!.Items.ToList();
+                _total = result.Value!.TotalCount;
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleUnreadOnlyAsync()
+    {
+        _unreadOnly = !_unreadOnly;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        if (_page <= 1) return;
+        _page--;
+        await LoadAsync();
+    }
+
+    private async Task NextAsync()
+    {
+        if (_page >= TotalPages) return;
+        _page++;
+        await LoadAsync();
+    }
+
+    private async Task MarkAsReadAsync(NotificationDto n)
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+        await Mediator.Send(new MarkAsReadCommand(userId, n.Id));
+        var idx = _items.FindIndex(x => x.Id == n.Id);
+        if (idx >= 0)
+            _items[idx] = n with { IsRead = true, ReadAt = DateTime.UtcNow };
+        StateHasChanged();
+    }
+
+    private async Task MarkAllAsReadAsync()
+    {
+        if (CurrentUser.UserId is not { } userId) return;
+        await Mediator.Send(new MarkAllAsReadCommand(userId));
+        _items = _items.Select(x => x with { IsRead = true, ReadAt = x.ReadAt ?? DateTime.UtcNow }).ToList();
+        StateHasChanged();
+    }
+
+    private async void OnNotificationCreated(Guid recipient, NotificationDto dto)
+    {
+        if (CurrentUser.UserId != recipient) return;
+        await InvokeAsync(LoadAsync);
+    }
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        NotificationKind.EmployeeInvitedToFlight => "Flight invite",
+        NotificationKind.WorkOrderApproved => "Work order approved",
+        NotificationKind.WorkOrderRejected => "Work order rejected",
+        NotificationKind.WorkOrderRevoked => "Work order revoked",
+        _ => kind
+    };
+
+    public void Dispose() => EventBus.NotificationCreated -= OnNotificationCreated;
+}

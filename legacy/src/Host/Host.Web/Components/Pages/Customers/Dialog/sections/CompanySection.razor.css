@@ -1,0 +1,144 @@
+.ac-validate-wrap {
+    position: relative;
+    width: 100%;
+}
+
+/* Logo upload — matches Operations Manager add-customer step 1 */
+.customer-logo-picker {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 1.25rem;
+}
+
+.customer-logo-picker__dropzone {
+    flex: 0 0 auto;
+    width: 7.5rem;
+    height: 7.5rem;
+    border-radius: 1rem;
+    border: 2px dashed #cbd5e1;
+    background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.customer-logo-picker__dropzone:hover {
+    border-color: #94a3b8;
+    background: linear-gradient(145deg, #f1f5f9 0%, #e2e8f0 100%);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.customer-logo-picker__image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.customer-logo-picker__placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    text-align: center;
+    color: #64748b;
+    pointer-events: none;
+}
+
+.customer-logo-picker__placeholder-icon {
+    width: 2rem;
+    height: 2rem;
+    opacity: 0.65;
+}
+
+.customer-logo-picker__placeholder-text {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.customer-logo-picker__side {
+    flex: 1 1 200px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.customer-logo-picker__hint {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+.customer-logo-picker__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* Form fields */
+.settings-field__row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: 100%;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.settings-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+.settings-section-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #334155;
+    margin: 0 0 0.5rem;
+}
+
+.settings-subtle-table {
+    width: 100%;
+    font-size: 0.8125rem;
+    border-collapse: collapse;
+}
+
+.settings-subtle-table th,
+.settings-subtle-table td {
+    border-bottom: 1px solid #eef1f6;
+    padding: 0.5rem 0.35rem;
+    text-align: left;
+}
+
+.settings-subtle-table th {
+    color: #64748b;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .settings-field__row2 {
+        grid-template-columns: 1fr;
+    }
+}

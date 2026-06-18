@@ -1,0 +1,218 @@
+@*
+  Data page: grid + Add opens OperationTypeAddDialog; row edit opens OperationTypeUpdateDialog.
+  See Component Rules.md — Customer is the golden reference for this layout.
+*@
+@using Core.Application.Features.OperationType.Queries.GetPaginatedOperationTypes
+@using Core.Contracts.Features.OperationType
+@using Host.Web.Components.Pages.Shared.Badges
+@using Host.Web.Components.Shared.DataGrid
+@using Host.Web.Services
+@inherits GridSettingsComponentBase<OperationTypeDto>
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject ILookupCache LookupCache
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h1 class="h4 mb-1">Operation Types</h1>
+        <p class="text-secondary small mb-0">Hajj, Umrah, scheduled rotations, and other operational categories.</p>
+    </div>
+    <button type="button"
+            class="btn btn-sm settings-grid-add-btn"
+            disabled="@IsLoading"
+            @onclick="OpenAddDialogAsync">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        Add New
+    </button>
+</div>
+
+@if (Data is null && !IsLoading)
+{
+    <TableSkeleton Rows="10" Columns="5" />
+}
+else
+{
+    <RadzenDataGrid @ref="Grid"
+                    TItem="OperationTypeDto"
+                    Data="@Data"
+                    Count="@Count"
+                    LoadData="@HandleLoadDataAsync"
+                    LoadSettings="@LoadSettings"
+                    @bind-Settings="Settings"
+                    PickedColumnsChanged="@OnPickedColumnsChanged"
+                    IsLoading="@IsLoading"
+                    Sort="@ShowLoadingAsync"
+                    Page="@ShowLoadingAsync"
+                    Group="@ShowLoadingAsync"
+                    Filter="@ShowLoadingAsync"
+                    ColumnWidth="140px"
+                    Style="height: calc(100vh - 200px);"
+                    Density="GridDefaults.Density"
+                    FilterMode="GridDefaults.FilterMode"
+                    AllowPaging="GridDefaults.AllowPaging"
+                    PageSize="GridDefaults.DefaultPageSize"
+                    AllowSorting="GridDefaults.AllowSorting"
+                    AllowFiltering="GridDefaults.AllowFiltering"
+                    AllowColumnResize="GridDefaults.AllowColumnResize"
+                    AllowColumnPicking="GridDefaults.AllowColumnPicking"
+                    AllowColumnReorder="GridDefaults.AllowColumnReorder"
+                    AllowAlternatingRows="GridDefaults.AllowAlternatingRows"
+                    LogicalFilterOperator="GridDefaults.LogicalFilterOperator"
+                    FilterCaseSensitivity="GridDefaults.FilterCaseSensitivity"
+                    AllowVirtualization="GridDefaults.AllowVirtualization"
+                    VirtualizationOverscanCount="GridDefaults.VirtualizationOverscanCount"
+                    AllowRowSelectOnRowClick="true"
+                    RowClick="@(() => Task.CompletedTask)">
+        <HeaderTemplate>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="10px">
+                    <RadzenButton Icon="refresh"
+                                  Text="@($"Refresh ({GetTitleText()})")"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Variant="Variant.Filled"
+                                  Shade="Shade.Light"
+                                  Size="ButtonSize.Small"
+                                  Click="@RefreshAsync"
+                                  Disabled="@IsLoading" />
+                </RadzenStack>
+            </RadzenStack>
+        </HeaderTemplate>
+        <Columns>
+            <RadzenDataGridColumn TItem="OperationTypeDto"
+                                  Property="@nameof(OperationTypeDto.IsActive)"
+                                  Title="Active"
+                                  Width="60px">
+                <Template Context="row">
+                    <Status IsActive="row.IsActive" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="OperationTypeDto"
+                                  Property="@nameof(OperationTypeDto.Name)"
+                                  FilterOperator="FilterOperator.Contains"
+                                  Title="Name"
+                                  Width="160px" />
+            <RadzenDataGridColumn TItem="OperationTypeDto"
+                                  Property="@nameof(OperationTypeDto.Description)"
+                                  Title="Description"
+                                  Width="400px" />
+            <RadzenDataGridColumn TItem="OperationTypeDto"
+                                  Property="@nameof(OperationTypeDto.CreatedAt)"
+                                  Title="Created At"
+                                  Visible="false" />
+            <RadzenDataGridColumn TItem="OperationTypeDto"
+                                  Property="@nameof(OperationTypeDto.UpdatedAt)"
+                                  Title="Updated At"
+                                  Visible="false" />
+            <RadzenDataGridColumn TItem="OperationTypeDto"
+                                  Title="Actions"
+                                  Frozen="true"
+                                  FrozenPosition="FrozenColumnPosition.Right"
+                                  Width="70px"
+                                  Filterable="false"
+                                  Sortable="false"
+                                  Pickable="false"
+                                  Resizable="false"
+                                  Reorderable="false"
+                                  TextAlign="TextAlign.Center">
+                <Template Context="row">
+                    <button type="button"
+                            class="settings-grid-edit-btn"
+                            disabled="@IsLoading"
+                            @onclick="@(() => OpenEditDialogAsync(row))"
+                            @onclick:stopPropagation="true"
+                            title="Edit operation type">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
+                        Edit
+                    </button>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+}
+
+@code {
+    protected override string SettingsStorageKey => "OperationTypeList-Settings";
+
+    protected override Task HandleLoadDataAsync(LoadDataArgs args) =>
+        LoadDataAsync(args, LoadAsync);
+
+    private async Task LoadAsync(
+        LoadDataArgs args, int pageSize, int pageNumber, IServiceProvider sp, CancellationToken ct)
+    {
+        var visibleColumns = GetVisibleColumnPropertyNames();
+
+        var result = await ScopedMediator.Send(
+            new GetPaginatedOperationTypesQuery(
+                pageNumber,
+                pageSize,
+                args.Filter,
+                args.OrderBy,
+                visibleColumns),
+            ct);
+
+        if (result.IsSuccess)
+            SetGridResult(result.Value.Items, result.Value.TotalCount);
+        else
+            SetGridResult([], 0);
+    }
+
+    private string GetTitleText() => $"Total Items {Count:N0}";
+
+    private async Task RefreshAsync()
+    {
+        await ShowLoadingAsync();
+        Grid?.Reload();
+    }
+
+    private async Task OpenAddDialogAsync() => await OpenDialogAsync(null);
+
+    private async Task OpenEditDialogAsync(OperationTypeDto row) => await OpenDialogAsync(row);
+
+    private async Task OpenDialogAsync(OperationTypeDto? existing)
+    {
+        var title = existing is null ? "New operation type" : "Edit operation type";
+        if (existing is null)
+        {
+            var resultAdd = await DialogService.OpenAsync<OperationTypeAddDialog>(
+                title,
+                null,
+                new DialogOptions
+                {
+                    Width = "min(56rem, 95vw)",
+                    Resizable = false,
+                    Draggable = false,
+                    CloseDialogOnOverlayClick = false,
+                    ShowClose = false,
+                });
+
+            if (resultAdd is true)
+            {
+                LookupCache.Invalidate<OperationTypeSelectOption>();
+                NotificationService.Notify(NotificationSeverity.Success, "Saved", "Operation type saved.");
+                await ReloadAndResetAsync();
+            }
+        }
+        else
+        {
+            var resultEdit = await DialogService.OpenAsync<OperationTypeUpdateDialog>(
+                title,
+                new Dictionary<string, object?> { { nameof(OperationTypeUpdateDialog.ExistingItem), existing } },
+                new DialogOptions
+                {
+                    Width = "min(56rem, 95vw)",
+                    Resizable = false,
+                    Draggable = false,
+                    CloseDialogOnOverlayClick = false,
+                    ShowClose = false,
+                });
+
+            if (resultEdit is true)
+            {
+                LookupCache.Invalidate<OperationTypeSelectOption>();
+                NotificationService.Notify(NotificationSeverity.Success, "Saved", "Operation type saved.");
+                await ReloadAndResetAsync();
+            }
+        }
+    }
+}

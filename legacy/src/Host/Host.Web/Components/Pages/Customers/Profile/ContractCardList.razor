@@ -1,0 +1,504 @@
+@*
+  Paginated grid of contract cards for one customer. Header shows status + contract
+  number, created date, 3-dot menu; body has period; footer shows stations plus one
+  row per operation type (OT name as label, services linked to that OT as chips —
+  not priced contract services).
+*@
+@using Contracts.Application.Features.Contract.Commands.ActivateContract
+@using Contracts.Application.Features.Contract.Queries.GetPaginatedContracts
+@using Contracts.Contracts.Contract
+@using Contracts.Domain.Enumerations
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using Host.Web.Services
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<section class="contract-card-list" @onclick="CloseMenu">
+    <header class="contract-card-list__header" aria-labelledby="contract-card-section-title">
+        <div class="contract-card-list__heading">
+            <h2 id="contract-card-section-title" class="contract-card-list__title">Contracts</h2>
+            <p class="contract-card-list__subtitle">
+                All contracts for <span class="contract-card-list__customer-name">@CustomerName</span>.
+            </p>
+        </div>
+        <button type="button"
+                class="btn btn-sm contract-card-list__add"
+                disabled="@_loading"
+                @onclick="OpenAddDialogAsync">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Add new contract
+        </button>
+    </header>
+
+    @if (_loading && _contracts.Count == 0)
+    {
+        <div class="row g-4">
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="col-12 col-md-6 col-xl-4">
+                    <div class="card contract-card contract-card--skeleton h-100">
+                        <div class="card-body">
+                            <Skeleton Height="2.5rem" Width="55%" />
+                            <Skeleton Height="0.9rem" Width="35%" CssClass="mt-2" />
+                            <Skeleton Height="3.5rem" Width="100%" CssClass="mt-3" />
+                            <Skeleton Height="0.5rem" Width="100%" CssClass="mt-3" />
+                            <Skeleton Height="2rem" Width="80%" CssClass="mt-3" />
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (_contracts.Count == 0)
+    {
+        <div class="contract-card-list__empty">
+            <div class="contract-card-list__empty-icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+            </div>
+            <h6 class="contract-card-list__empty-title">No contracts yet</h6>
+            <p class="contract-card-list__empty-text">Click "Add new contract" to create the first one.</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var contract in _contracts)
+            {
+                var totalDays = ComputeTotalDays(contract);
+                var daysLeft = ComputeDaysLeft(contract);
+                var (statusPillClass, statusText) = ComputeStatusBadge(contract);
+                var (remainingPillClass, remainingDaysText) = ComputeRemainingDaysBadge(contract, daysLeft, totalDays);
+
+                <div class="col-12 col-md-6 col-xl-4">
+                    <div class="card contract-card h-100">
+                        <div class="card-header contract-card__header">
+                            <div class="contract-card__title-block">
+                                <div class="contract-card__heading">
+                                    <div class="contract-card__title-row">
+                                        <span class="contract-card__pill @statusPillClass">@statusText</span>
+                                        <h6 class="contract-card__no" title="@contract.ContractNo">#@contract.ContractNo</h6>
+                                    </div>
+                                    <div class="contract-card__meta">
+                                        <span class="contract-card__created">Created at @contract.CreatedAt.ToString("dd MMM yyyy")</span>
+                                    </div>
+                                </div>
+                            </div>
+                            @{
+                                var menuOpen = _openMenuContractId == contract.Id;
+                            }
+                            <div class="contract-card__menu-wrap @(menuOpen ? "is-open" : "")">
+                                <button type="button"
+                                        class="btn-icon contract-card__menu"
+                                        title="Actions"
+                                        aria-haspopup="menu"
+                                        aria-expanded="@(menuOpen ? "true" : "false")"
+                                        @onclick="@(() => ToggleMenu(contract.Id))"
+                                        @onclick:stopPropagation="true">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                                </button>
+                                @if (menuOpen)
+                                {
+                                    <div class="contract-card__menu-list" role="menu" @onclick:stopPropagation="true">
+                                        @if (CanEdit(contract))
+                                        {
+                                            <button type="button" class="contract-card__menu-item" role="menuitem"
+                                                    @onclick="@(() => OnMenuActionAsync(MenuAction.Edit, contract))">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
+                                                Edit contract
+                                            </button>
+                                        }
+                                        <button type="button" class="contract-card__menu-item" role="menuitem"
+                                                @onclick="@(() => OnMenuActionAsync(MenuAction.Duplicate, contract))">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                            Duplicate as new
+                                        </button>
+                                        <button type="button" class="contract-card__menu-item" role="menuitem"
+                                                @onclick="@(() => OnMenuActionAsync(MenuAction.DuplicateForOtherCustomer, contract))">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                                            Duplicate for another customer
+                                        </button>
+                                        @if (CanSuspend(contract))
+                                        {
+                                            <button type="button" class="contract-card__menu-item contract-card__menu-item--warning" role="menuitem"
+                                                    @onclick="@(() => OnMenuActionAsync(MenuAction.Suspend, contract))">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/></svg>
+                                                Suspend
+                                            </button>
+                                        }
+                                        @if (CanResume(contract))
+                                        {
+                                            <button type="button" class="contract-card__menu-item contract-card__menu-item--success" role="menuitem"
+                                                    @onclick="@(() => OnMenuActionAsync(MenuAction.Resume, contract))">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                                Resume
+                                            </button>
+                                        }
+                                        @if (CanTerminate(contract))
+                                        {
+                                            <button type="button" class="contract-card__menu-item contract-card__menu-item--danger" role="menuitem"
+                                                    @onclick="@(() => OnMenuActionAsync(MenuAction.Terminate, contract))">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                                                Terminate
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="card-body contract-card__body">
+                            <div class="contract-card__period">
+                                <div class="contract-card__period-block">
+                                    <p class="contract-card__period-label">Contract period</p>
+                                    <p class="contract-card__period-range">
+                                        <span>@contract.Period.StartDate.ToString("dd MMM yyyy")</span>
+                                        <span class="contract-card__period-arrow" aria-hidden="true">→</span>
+                                        <span>@contract.Period.ExpiryDate.ToString("dd MMM yyyy")</span>
+                                    </p>
+                                </div>
+                                <div class="contract-card__period-meta">
+                                    <span class="contract-card__pill @remainingPillClass">@remainingDaysText</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-body contract-card__tags-block">
+                            <div class="contract-card__tags-group">
+                                <span class="contract-card__tags-label">Stations</span>
+                                <div class="contract-card__chips">
+                                    @foreach (var s in contract.Stations.OrderBy(x => x.IataCode, StringComparer.OrdinalIgnoreCase))
+                                    {
+                                        <span class="contract-card__chip" title="@($"{s.IataCode} — {s.Name}")">@s.IataCode</span>
+                                    }
+                                </div>
+                            </div>
+                            @foreach (var ot in contract.OperationTypes.OrderBy(x => x.OperationType.Name, StringComparer.OrdinalIgnoreCase))
+                            {
+                                <div class="contract-card__tags-group">
+                                    <span class="contract-card__tags-label contract-card__tags-label--natural">@ot.OperationType.Name</span>
+                                    <div class="contract-card__chips">
+                                        @foreach (var svc in ot.Services
+                                            .GroupBy(s => s.ServiceId)
+                                            .Select(g => g.First())
+                                            .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+                                        {
+                                            <span class="contract-card__chip" title="@svc.Name">@svc.Name</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (_total > _pageSize)
+        {
+            <nav class="contract-card-list__pager" aria-label="Contracts pages">
+                <RadzenPager Count="_total"
+                             PageSize="_pageSize"
+                             PageNumbersCount="5"
+                             PageChanged="@OnPageChanged" />
+            </nav>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid CustomerId { get; set; }
+    [Parameter] public string CustomerName { get; set; } = "this customer";
+
+    private const int _pageSize = 9;
+    private int _page = 1;
+    private int _total;
+    private bool _loading = true;
+    private List<ContractDto> _contracts = new();
+
+    /// <summary>
+    /// Bootstrap's data-bs-toggle="dropdown" requires Bootstrap JS to be initialized for these
+    /// elements; in Blazor SSR/Interactive that isn't always reliable. We track open state in
+    /// component state and close on any outside click via the section's <c>@@onclick</c>.
+    /// </summary>
+    private Guid? _openMenuContractId;
+
+    private enum MenuAction { Edit, Duplicate, DuplicateForOtherCustomer, Suspend, Resume, Terminate }
+
+    /// <summary>
+    /// Edit is offered only while the contract is mutable. Domain mirror of
+    /// <c>Contract.Update</c>'s "Cannot update a terminated/expired contract" guard so
+    /// users don't open a dialog they cannot save.
+    /// </summary>
+    private static bool CanEdit(ContractDto contract) =>
+        contract.Status is ContractStatus.Draft or ContractStatus.Active or ContractStatus.Suspended;
+
+    private static bool CanSuspend(ContractDto contract) =>
+        contract.Status == ContractStatus.Active;
+
+    private static bool CanResume(ContractDto contract) =>
+        contract.Status == ContractStatus.Suspended;
+
+    /// <summary>
+    /// Terminate is offered while the contract is alive (not already Terminated or
+    /// Expired). Mirrors <c>Contract.Terminate</c>'s domain guard; the UI lets the user
+    /// terminate from Active OR Suspended.
+    /// </summary>
+    private static bool CanTerminate(ContractDto contract) =>
+        contract.Status is ContractStatus.Draft or ContractStatus.Active or ContractStatus.Suspended;
+
+    private void ToggleMenu(Guid contractId)
+    {
+        _openMenuContractId = _openMenuContractId == contractId ? null : contractId;
+    }
+
+    private void CloseMenu()
+    {
+        if (_openMenuContractId is not null)
+            _openMenuContractId = null;
+    }
+
+    private async Task OnMenuActionAsync(MenuAction action, ContractDto contract)
+    {
+        _openMenuContractId = null;
+        switch (action)
+        {
+            case MenuAction.Edit:
+                await OpenEditDialogAsync(contract);
+                break;
+            case MenuAction.Duplicate:
+                await OpenDuplicateDialogAsync(contract);
+                break;
+            case MenuAction.DuplicateForOtherCustomer:
+                await OpenDuplicateForOtherCustomerDialogAsync(contract);
+                break;
+            case MenuAction.Suspend:
+                await OpenSuspendDialogAsync(contract);
+                break;
+            case MenuAction.Resume:
+                await ConfirmResumeAsync(contract);
+                break;
+            case MenuAction.Terminate:
+                await OpenTerminateDialogAsync(contract);
+                break;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var query = new GetPaginatedContractsQuery(
+            Page: _page,
+            PageSize: _pageSize,
+            CustomerId: CustomerId);
+
+        var result = await ScopedMediator.Send(query);
+        if (result.IsSuccess)
+        {
+            _contracts = result.Value.Items.ToList();
+            _total = result.Value.TotalCount;
+        }
+        else
+        {
+            _contracts = new List<ContractDto>();
+            _total = 0;
+            NotificationService.Notify(NotificationSeverity.Error, "Error", result.Error.Description);
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task OnPageChanged(PagerEventArgs args)
+    {
+        _page = args.PageIndex + 1;
+        await ReloadAsync();
+    }
+
+    private static int ComputeTotalDays(ContractDto c)
+    {
+        var span = c.Period.ExpiryDate - c.Period.StartDate;
+        return Math.Max(0, (int)Math.Ceiling(span.TotalDays));
+    }
+
+    private static int ComputeDaysLeft(ContractDto c)
+    {
+        var span = c.Period.ExpiryDate - DateTimeOffset.UtcNow;
+        return (int)Math.Ceiling(span.TotalDays);
+    }
+
+    /// <summary>Scoped pill modifiers — colors defined in ContractCardList.razor.css (reliable vs theme bg-label utilities).</summary>
+    private static (string pillModifierClass, string text) ComputeStatusBadge(ContractDto c) => c.Status switch
+    {
+        ContractStatus.Draft => ("contract-card__pill--info", "Draft"),
+        ContractStatus.Active => ("contract-card__pill--success", "Active"),
+        ContractStatus.Suspended => ("contract-card__pill--warning", "Suspended"),
+        ContractStatus.Expired => ("contract-card__pill--danger", "Expired"),
+        ContractStatus.Terminated => ("contract-card__pill--neutral", "Terminated"),
+        _ => ("contract-card__pill--neutral", c.Status.ToString())
+    };
+
+    /// <summary>
+    /// Remaining / period badge: draft shows total period days (gray); suspended and terminated show
+    /// days-to-expiry (gray); active uses green / orange (alert window) / red (past end); expired is red.
+    /// </summary>
+    private static (string pillModifierClass, string text) ComputeRemainingDaysBadge(ContractDto c, int daysLeft, int totalDays)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var isPastEnd = now > c.Period.ExpiryDate;
+
+        if (c.Status == ContractStatus.Draft)
+            return ("contract-card__pill--neutral", $"{totalDays} days");
+
+        if (c.Status is ContractStatus.Suspended or ContractStatus.Terminated)
+            return ("contract-card__pill--neutral", FormatDaysLeftLabel(daysLeft));
+
+        if (c.Status == ContractStatus.Expired)
+            return ("contract-card__pill--danger", FormatDaysLeftLabel(daysLeft));
+
+        if (isPastEnd)
+            return ("contract-card__pill--danger", FormatDaysLeftLabel(daysLeft));
+
+        if (c.Period.ExpiryAlertDays > 0 && daysLeft <= c.Period.ExpiryAlertDays)
+            return ("contract-card__pill--warning", $"{daysLeft} Days left");
+
+        return ("contract-card__pill--success", $"{daysLeft} Days left");
+    }
+
+    private static string FormatDaysLeftLabel(int daysLeft)
+    {
+        if (daysLeft < 0)
+            return $"{Math.Abs(daysLeft)} days overdue";
+        return $"{daysLeft} Days left";
+    }
+
+    private static string FormatPaymentTerms(PaymentTerms terms) => terms switch
+    {
+        PaymentTerms.DueOnReceipt => "Due on receipt",
+        PaymentTerms.Net15 => "Net 15",
+        PaymentTerms.Net30 => "Net 30",
+        PaymentTerms.Net45 => "Net 45",
+        PaymentTerms.Net60 => "Net 60",
+        PaymentTerms.Net90 => "Net 90",
+        PaymentTerms.Prepaid => "Prepaid",
+        _ => terms.ToString()
+    };
+
+    private async Task OpenAddDialogAsync()
+    {
+        var result = await DialogService.OpenAsync<ContractAddDialog>(
+            "New contract",
+            new Dictionary<string, object?> { { nameof(ContractAddDialog.CustomerId), CustomerId } },
+            new DialogOptions { Width = "min(70rem, 95vw)", Resizable = false, Draggable = false, CloseDialogOnOverlayClick = false, ShowClose = false });
+
+        if (result is true)
+        {
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "Contract saved.");
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OpenEditDialogAsync(ContractDto contract)
+    {
+        var result = await DialogService.OpenAsync<ContractEditDialog>(
+            "Edit contract",
+            new Dictionary<string, object?> { { nameof(ContractEditDialog.Existing), contract } },
+            new DialogOptions { Width = "min(70rem, 95vw)", Resizable = false, Draggable = false, CloseDialogOnOverlayClick = false, ShowClose = false });
+
+        if (result is true)
+        {
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "Contract updated.");
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OpenDuplicateDialogAsync(ContractDto contract)
+    {
+        var result = await DialogService.OpenAsync<ContractDuplicateDialog>(
+            "Duplicate contract",
+            new Dictionary<string, object?> { { nameof(ContractDuplicateDialog.Source), contract } },
+            new DialogOptions { Width = "min(70rem, 95vw)", Resizable = false, Draggable = false, CloseDialogOnOverlayClick = false, ShowClose = false });
+
+        if (result is true)
+        {
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "Contract duplicated.");
+            await ReloadAsync();
+        }
+    }
+
+    /// <summary>
+    /// Variant of the duplicate flow that lets the user pick a different destination
+    /// customer. Re-uses <see cref="ContractDuplicateDialog"/> with the customer picker
+    /// turned on so the copied contract is created under another customer profile.
+    /// </summary>
+    private async Task OpenDuplicateForOtherCustomerDialogAsync(ContractDto contract)
+    {
+        var result = await DialogService.OpenAsync<ContractDuplicateDialog>(
+            "Duplicate contract for another customer",
+            new Dictionary<string, object?>
+            {
+                { nameof(ContractDuplicateDialog.Source), contract },
+                { nameof(ContractDuplicateDialog.AllowCustomerOverride), true }
+            },
+            new DialogOptions { Width = "min(70rem, 95vw)", Resizable = false, Draggable = false, CloseDialogOnOverlayClick = false, ShowClose = false });
+
+        if (result is true)
+        {
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "Contract duplicated for the selected customer.");
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OpenSuspendDialogAsync(ContractDto contract)
+    {
+        var result = await DialogService.OpenAsync<SuspendContractDialog>(
+            "Suspend contract",
+            new Dictionary<string, object?> { { nameof(SuspendContractDialog.Contract), contract } },
+            new DialogOptions { Width = "min(36rem, 95vw)", Resizable = false, Draggable = false, CloseDialogOnOverlayClick = false, ShowClose = false });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private async Task OpenTerminateDialogAsync(ContractDto contract)
+    {
+        var result = await DialogService.OpenAsync<TerminateContractDialog>(
+            "Terminate contract",
+            new Dictionary<string, object?> { { nameof(TerminateContractDialog.Contract), contract } },
+            new DialogOptions { Width = "min(36rem, 95vw)", Resizable = false, Draggable = false, CloseDialogOnOverlayClick = false, ShowClose = false });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    /// <summary>
+    /// Resume is a one-line action — show a Radzen confirm rather than a full dialog so
+    /// the user is one click away from reactivating a Suspended contract.
+    /// </summary>
+    private async Task ConfirmResumeAsync(ContractDto contract)
+    {
+        var confirmed = await DialogService.Confirm(
+            "Resume this contract? Its automatic status (Active / Draft / Expired) will be recomputed from the contract period.",
+            "Resume contract?",
+            new ConfirmOptions { OkButtonText = "Resume", CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        var r = await ScopedMediator.Send(new ActivateContractCommand(contract.Id));
+        if (r.IsFailure)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Could not resume contract", r.Error.Description);
+            return;
+        }
+
+        NotificationService.Notify(NotificationSeverity.Success, "Contract resumed", "Status recomputed from the contract period.");
+        await ReloadAsync();
+    }
+}

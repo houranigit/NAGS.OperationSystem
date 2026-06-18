@@ -1,0 +1,393 @@
+@*
+  UPDATE = free section navigation + dirty confirm + Saving pattern (Component Rules.md — mirror CustomerUpdateDialog).
+*@
+@using Core.Application.Features.ServicePricePlan.Commands.UpdateServicePricePlan
+@using Core.Contracts.Features.Pricing
+@using Core.Contracts.Features.AircraftType
+@using Core.Contracts.Features.Currency
+@using Core.Contracts.Features.OperationType
+@using Core.Contracts.Features.Service
+@using Core.Contracts.Features.ServicePricePlan
+@using Core.Domain.Enumerations
+@using Host.Web.Components.Pages.Settings.Pricing.ServicePricePlans.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.Pricing.Shared
+@using Host.Web.Configuration
+@using Host.Web.Services
+@using Microsoft.Extensions.Options
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject IOptions<PlatformSettings> PlatformOptions
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form"
+                    TItem="ServicePricePlanScopeFormModel"
+                    Data="@_scopeModel"
+                    Submit="@OnTemplateSubmitAsync"
+                    InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_wizardSteps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_wizardSteps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@(IsDirty && !_scopeLookupsIncomplete && string.IsNullOrWhiteSpace(_loadError) && BracketsValid())"
+                 SidebarAriaLabel="Edit price plan sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the price plan"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <ServicePricePlanScopeSection Model="@_scopeModel"
+                                                  OnModelChanged="OnFieldChangedAsync"
+                                                  LoadError="@_loadError"
+                                                  LoadingServices="_loadingServices"
+                                                  LoadingOperationTypes="_loadingOperationTypes"
+                                                  LoadingAircraftTypes="_loadingAircraftTypes"
+                                                  LoadingCurrencies="_loadingCurrencies"
+                                                  Services="@_services"
+                                                  OperationTypes="@_operationTypes"
+                                                  AircraftTypes="@_aircraftTypes"
+                                                  Currencies="@_currencies"
+                                                  BasisChanged="@OnBasisChanged" />
+                    break;
+                case 1:
+                    <PricePlanBracketsStepSection Basis="@_scopeModel.Basis"
+                                                  CurrencyDisplay="@SelectedCurrencyCode"
+                                                  Brackets="@_brackets"
+                                                  SharedBlockMinutes="@_sharedBlock"
+                                                  SharedBlockMinutesChanged="@OnSharedBlockChanged"
+                                                  SharedBillingMode="@_sharedBilling"
+                                                  SharedBillingModeChanged="@OnSharedBillingChanged"
+                                                  OnChanged="@BracketsTouch"
+                                                  BracketError="@_bracketError" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public ServicePricePlanDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _wizardSteps =
+    [
+        new("Plan", "Scopes & basis", "tools", IsRequired: true, Validate: () => true),
+        new("Brackets", "Rates", "percent", IsRequired: true, Validate: () => true)
+    ];
+
+    private int _currentSection;
+    private bool _saving;
+    private bool _loadingServices = true;
+    private bool _loadingOperationTypes = true;
+    private bool _loadingAircraftTypes = true;
+    private bool _loadingCurrencies = true;
+    private string? _loadError;
+
+    private List<ServiceSelectOption> _services = [];
+    private List<OperationTypeSelectOption> _operationTypes = [];
+    private List<AircraftTypeSelectOption> _aircraftTypes = [];
+    private List<CurrencySelectOption> _currencies = [];
+
+    private readonly ServicePricePlanScopeFormModel _scopeModel = new();
+
+    private List<PriceBracketRowState> _brackets = [];
+    private int _sharedBlock = 60;
+    private BracketBillingMode _sharedBilling = BracketBillingMode.ProRated;
+    private string? _bracketError;
+
+    private PlanEditSnapshot _snapshot = default!;
+
+    private RadzenTemplateForm<ServicePricePlanScopeFormModel>? _form;
+    private List<string> _errorMessages = new();
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+
+    private Task<bool> ValidateCurrentStepAsync(int step)
+    {
+        if (step == 0)
+        {
+            var ok = _form?.EditContext?.Validate() ?? true;
+            if (ok) ClearErrors();
+            return Task.FromResult(ok);
+        }
+        if (step == 1)
+        {
+            var ok = BracketsValid();
+            if (ok) ClearErrors();
+            return Task.FromResult(ok);
+        }
+        return Task.FromResult(true);
+    }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!BracketsValid()) { NotificationService.Notify(NotificationSeverity.Warning, "Brackets", _bracketError ?? "Fix bracket rows."); return; }
+        await OnTemplateSubmitAsync(_scopeModel);
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+
+    private string PlatformCurrencyCode => PlatformOptions.Value.CurrencyCode?.Trim().ToUpperInvariant() ?? "SAR";
+
+    private string SelectedCurrencyCode =>
+        _currencies.FirstOrDefault(c => c.Id == _scopeModel.CurrencyId)?.Code ?? PlatformCurrencyCode;
+
+    private bool _scopeLookupsIncomplete =>
+        _loadingServices || _loadingOperationTypes || _loadingAircraftTypes || _loadingCurrencies;
+
+    private bool IsDirty => !SnapshotEquals(_snapshot, CaptureSnapshot());
+
+    /// <remarks>
+    /// Only synchronous hydration runs here so the dialog shell (and dropdown skeletons) can paint
+    /// immediately. The lookup fetches — the heavy part — run in <see cref="OnAfterRenderAsync"/>.
+    /// Baseline snapshot is captured now (non-null guard for <see cref="IsDirty"/>) and re-captured
+    /// after loads to mirror <c>ManpowerPricePlanUpdateDialog</c>.
+    /// </remarks>
+    protected override void OnInitialized()
+    {
+        HydrateFromExisting();
+        _snapshot = CaptureSnapshot();
+        _currentSection = 0;
+    }
+
+    private bool _lookupsLoadStarted;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted)
+            return;
+
+        _lookupsLoadStarted = true;
+
+        await Task.WhenAll(
+            LoadServicesAsync(),
+            LoadOperationTypesAsync(),
+            LoadAircraftTypesAsync(),
+            LoadCurrenciesAsync());
+
+        _snapshot = CaptureSnapshot();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void HydrateFromExisting()
+    {
+        _scopeModel.ServiceId = ExistingItem.ServiceTypeSnapshot.ServiceId;
+        _scopeModel.OperationTypeId = ExistingItem.OperationTypeSnapshot.OperationTypeId;
+        _scopeModel.AircraftTypeId = ExistingItem.AircraftTypeSnapshot?.AircraftTypeId;
+        _scopeModel.CurrencyId = ExistingItem.CurrencySnapshot.CurrencyId;
+        _scopeModel.Basis = ExistingItem.Basis;
+
+        _brackets = ExistingItem.Brackets.Select(b => new PriceBracketRowState
+        {
+            MinMinutes = b.MinMinutes,
+            MaxMinutes = b.MaxMinutes,
+            Value = b.Value
+        }).ToList();
+
+        if (_brackets.Count == 0)
+            _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = 0 });
+        else
+        {
+            _sharedBlock = ExistingItem.Brackets[0].BlockSize;
+            _sharedBilling = ExistingItem.Brackets[0].BillingMode;
+        }
+
+        if (_scopeModel.Basis == PricingBasis.Flat && _brackets.Count > 1)
+        {
+            var v = _brackets[0].Value;
+            _brackets = [new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = v }];
+        }
+    }
+
+    private async Task LoadServicesAsync()
+    {
+        try
+        {
+            _services = (await LookupCache.GetServicesAsync(ScopedMediator)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _loadError ??= ex.Message;
+        }
+        finally
+        {
+            _loadingServices = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadOperationTypesAsync()
+    {
+        try
+        {
+            _operationTypes = (await LookupCache.GetOperationTypesAsync(ScopedMediator)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _loadError ??= ex.Message;
+        }
+        finally
+        {
+            _loadingOperationTypes = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadAircraftTypesAsync()
+    {
+        try
+        {
+            _aircraftTypes = (await LookupCache.GetAircraftTypesAsync(ScopedMediator)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _loadError ??= ex.Message;
+        }
+        finally
+        {
+            _loadingAircraftTypes = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadCurrenciesAsync()
+    {
+        try
+        {
+            _currencies = (await LookupCache.GetCurrenciesAsync(ScopedMediator)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _loadError ??= ex.Message;
+        }
+        finally
+        {
+            _loadingCurrencies = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnTemplateSubmitAsync(ServicePricePlanScopeFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        if (_scopeModel.ServiceId is not { } sid ||
+            _scopeModel.OperationTypeId is not { } ot ||
+            _scopeModel.CurrencyId is not { } cur)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Plan", "Select service, operation type, and currency.");
+            return;
+        }
+
+        _saving = true; ClearErrors();
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var brackets = PricePlanBracketMapping.ToCommandBrackets(_scopeModel.Basis, _brackets, _sharedBlock, _sharedBilling);
+            var r = await ScopedMediator.Send(new UpdateServicePricePlanCommand(ExistingItem.Id, sid, ot, _scopeModel.AircraftTypeId, cur, _scopeModel.Basis, brackets));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save plan", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private Task OnBasisChanged(PricingBasis b)
+    {
+        if (b == PricingBasis.Flat)
+        {
+            var v = _brackets.FirstOrDefault()?.Value ?? 0m;
+            _brackets.Clear();
+            _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = v });
+        }
+        else if (_brackets.Count == 0)
+        {
+            _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = 0 });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task OnSharedBlockChanged(int v)
+    {
+        _sharedBlock = Math.Max(1, v);
+        return Task.CompletedTask;
+    }
+
+    private Task OnSharedBillingChanged(BracketBillingMode mode)
+    {
+        _sharedBilling = mode;
+        return Task.CompletedTask;
+    }
+
+    private Task BracketsTouch()
+    {
+        _bracketError = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private bool BracketsValid() =>
+        PricePlanBracketRules.IsValid(_scopeModel.Basis, _brackets, _sharedBlock, out _bracketError);
+
+    private static bool SnapshotEquals(PlanEditSnapshot a, PlanEditSnapshot b) =>
+        a.ServiceId == b.ServiceId
+        && a.OperationTypeId == b.OperationTypeId
+        && a.AircraftTypeId == b.AircraftTypeId
+        && a.CurrencyId == b.CurrencyId
+        && a.Basis == b.Basis
+        && a.SharedBlock == b.SharedBlock
+        && a.SharedBilling == b.SharedBilling
+        && BracketRowsEqual(a.Brackets, b.Brackets);
+
+    private static bool BracketRowsEqual(IReadOnlyList<(int Min, int? Max, decimal Value)> a, IReadOnlyList<(int Min, int? Max, decimal Value)> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (a[i].Min != b[i].Min || a[i].Max != b[i].Max || a[i].Value != b[i].Value)
+                return false;
+        }
+
+        return true;
+    }
+
+    private PlanEditSnapshot CaptureSnapshot()
+    {
+        var rows = _brackets.Select(b => (b.MinMinutes, b.MaxMinutes, b.Value)).ToList();
+        return new PlanEditSnapshot(
+            _scopeModel.ServiceId,
+            _scopeModel.OperationTypeId,
+            _scopeModel.AircraftTypeId,
+            _scopeModel.CurrencyId,
+            _scopeModel.Basis,
+            _sharedBlock,
+            _sharedBilling,
+            rows);
+    }
+
+    private sealed record PlanEditSnapshot(
+        Guid? ServiceId,
+        Guid? OperationTypeId,
+        Guid? AircraftTypeId,
+        Guid? CurrencyId,
+        PricingBasis Basis,
+        int SharedBlock,
+        BracketBillingMode SharedBilling,
+        IReadOnlyList<(int Min, int? Max, decimal Value)> Brackets);
+
+}

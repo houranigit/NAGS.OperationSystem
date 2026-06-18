@@ -1,0 +1,322 @@
+@*
+  Reusable bracket ladder editor for contract penalty (cancellation/delay) plans.
+  Visual + behavioural twin of PricePlanBracketsSection — single flat-value mode plus a
+  duration-bracket mode with auto-resyncing min minutes and "last bracket open-ended" rule.
+  Lives under the contract dialog so we can keep the contract types decoupled from the
+  Settings/Pricing module's PriceBracketRowState.
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections.Editors
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using FeeType = Contracts.Domain.Enumerations.FeeType
+
+<div class="contract-brackets-editor">
+    @if (IsFlat)
+    {
+        <div class="contract-brackets-editor__flat">
+            <label class="contract-brackets-editor__field-label" for="@_flatId">@FlatLabel *</label>
+            <div class="contract-brackets-editor__flat-row">
+                @if (ChargeType == FeeType.Percentage)
+                {
+                    <RadzenNumeric InputAttributes="@(new Dictionary<string, object> { ["id"] = _flatId })"
+                                   TValue="decimal"
+                                   Format="n2"
+                                   Value="@GetFlatValue()"
+                                   ValueChanged="@OnFlatValueChangedAsync"
+                                   Min="0"
+                                   Max="100"
+                                   Style="flex: 1; min-width: 0; width: 100%;" />
+                    <span class="contract-brackets-editor__suffix">%</span>
+                }
+                else
+                {
+                    <span class="contract-brackets-editor__prefix">@CurrencyDisplay —</span>
+                    <RadzenNumeric InputAttributes="@(new Dictionary<string, object> { ["id"] = _flatId })"
+                                   TValue="decimal"
+                                   Format="n2"
+                                   Value="@GetFlatValue()"
+                                   ValueChanged="@OnFlatValueChangedAsync"
+                                   Min="0"
+                                   Style="flex: 1; min-width: 0; width: 100%;" />
+                }
+            </div>
+        </div>
+        @if (ShowPackagePrice)
+        {
+            <div class="contract-brackets-editor__flat">
+                <label class="contract-brackets-editor__field-label" for="@_flatPackageId">Package price *</label>
+                <div class="contract-brackets-editor__flat-row">
+                    <span class="contract-brackets-editor__prefix">@CurrencyDisplay —</span>
+                    <RadzenNumeric InputAttributes="@(new Dictionary<string, object> { ["id"] = _flatPackageId })"
+                                   TValue="decimal"
+                                   Format="n2"
+                                   Value="@GetFlatPackageValue()"
+                                   ValueChanged="@OnFlatPackageValueChangedAsync"
+                                   Min="0"
+                                   Max="@GetFlatValue()"
+                                   Style="flex: 1; min-width: 0; width: 100%;" />
+                </div>
+                <p class="contract-brackets-editor__hint">Special price applied while the package balance is positive. Must be ≤ the standard price.</p>
+            </div>
+        }
+        <p class="contract-brackets-editor__hint">@FlatHint</p>
+    }
+    else
+    {
+        <div class="contract-brackets-editor__brackets-scroll">
+            <div class="contract-brackets-editor__lines">
+                @for (var i = 0; i < Brackets.Count; i++)
+                {
+                    var idx = i;
+                    <div class="contract-brackets-editor__line@(Brackets.Count > 1 ? " contract-brackets-editor__line--dismissible" : "")">
+                        @if (Brackets.Count > 1)
+                        {
+                            <div class="contract-brackets-editor__remove">
+                                <RadzenButton Icon="close"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Variant="Variant.Text"
+                                              Size="ButtonSize.ExtraSmall"
+                                              title="Remove bracket"
+                                              Click="@(() => RemoveBracketRowAsync(idx))"
+                                              ButtonType="ButtonType.Button" />
+                            </div>
+                        }
+                        <div class="contract-brackets-editor__line-inner">
+                            <div class="contract-brackets-editor__fromto">
+                                <div class="contract-brackets-editor__field contract-brackets-editor__field--from">
+                                    <span class="contract-brackets-editor__line-label">From (min)</span>
+                                    <RadzenNumeric TValue="int"
+                                                   Value="@Brackets[idx].MinMinutes"
+                                                   Disabled="true"
+                                                   Style="width: 100%;" />
+                                </div>
+                                <div class="contract-brackets-editor__field contract-brackets-editor__field--to">
+                                    <span class="contract-brackets-editor__line-label">To (min)</span>
+                                    @if (IsLastBracket(idx))
+                                    {
+                                        <RadzenNumeric TValue="int?"
+                                                       Value="@Brackets[idx].MaxMinutes"
+                                                       ValueChanged="@(v => OnMaxMinutesChangedAsync(idx, v))"
+                                                       Min="@(Brackets[idx].MinMinutes + 1)"
+                                                       Placeholder="∞"
+                                                       Style="width: 100%;" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenNumeric TValue="int"
+                                                       Value="@(Brackets[idx].MaxMinutes ?? Brackets[idx].MinMinutes + 1)"
+                                                       ValueChanged="@(v => OnMaxMinutesChangedMiddleAsync(idx, v))"
+                                                       Min="@(Brackets[idx].MinMinutes + 1)"
+                                                       Style="width: 100%;" />
+                                    }
+                                </div>
+                            </div>
+                            <div class="contract-brackets-editor__spacer" aria-hidden="true"></div>
+                            <div class="contract-brackets-editor__price">
+                                @if (ShowPackagePrice)
+                                {
+                                    <span class="contract-brackets-editor__line-label">Standard</span>
+                                }
+                                @if (ChargeType == FeeType.Percentage)
+                                {
+                                    <RadzenNumeric TValue="decimal"
+                                                   Format="n2"
+                                                   Value="@Brackets[idx].Value"
+                                                   ValueChanged="@(v => OnRowValueChangedAsync(idx, v))"
+                                                   Min="0"
+                                                   Max="100"
+                                                   Style="width: 6rem; min-width: 0;" />
+                                    <span class="contract-brackets-editor__suffix">%</span>
+                                }
+                                else
+                                {
+                                    <span class="contract-brackets-editor__ccy">@CurrencyDisplay</span>
+                                    <RadzenNumeric TValue="decimal"
+                                                   Format="n2"
+                                                   Value="@Brackets[idx].Value"
+                                                   ValueChanged="@(v => OnRowValueChangedAsync(idx, v))"
+                                                   Min="0"
+                                                   Style="width: 6rem; min-width: 0;" />
+                                }
+                            </div>
+                            @if (ShowPackagePrice)
+                            {
+                                <div class="contract-brackets-editor__price">
+                                    <span class="contract-brackets-editor__line-label">Package</span>
+                                    <span class="contract-brackets-editor__ccy">@CurrencyDisplay</span>
+                                    <RadzenNumeric TValue="decimal"
+                                                   Format="n2"
+                                                   Value="@(Brackets[idx].PackageValue ?? 0m)"
+                                                   ValueChanged="@(v => OnRowPackageValueChangedAsync(idx, v))"
+                                                   Min="0"
+                                                   Max="@Brackets[idx].Value"
+                                                   Style="width: 6rem; min-width: 0;" />
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="contract-brackets-editor__add">
+                <RadzenButton Text="Add bracket"
+                              Icon="add_circle_outline"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Variant="Variant.Text"
+                              Size="ButtonSize.Small"
+                              Click="@AddBracketRowAsync"
+                              Disabled="@(!CanAddBracket())"
+                              ButtonType="ButtonType.Button" />
+            </div>
+        </div>
+        <p class="contract-brackets-editor__hint">@DurationHint</p>
+    }
+</div>
+
+@code {
+    [Parameter] public bool IsFlat { get; set; }
+
+    [Parameter] public FeeType ChargeType { get; set; } = FeeType.Fixed;
+
+    /// <summary>The contract currency code (e.g. "SAR"); fed into both flat & bracket prefixes.</summary>
+    [Parameter] public string CurrencyDisplay { get; set; } = "—";
+
+    [Parameter, EditorRequired] public List<ContractFormModel.PlanBracketRow> Brackets { get; set; } = default!;
+
+    /// <summary>Override label for the flat input (defaults to "Flat charge").</summary>
+    [Parameter] public string FlatLabel { get; set; } = "Flat charge";
+
+    [Parameter] public string FlatHint { get; set; } = "One charge applied per event regardless of duration.";
+
+    [Parameter] public string DurationHint { get; set; } =
+        "First tier starts at 0 minutes. Each tier's “To” becomes the next tier's “From”. Open-ended “To” (∞) closes the ladder.";
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>
+    /// When true, the editor renders an extra "Package" price column (or row, in flat mode)
+    /// alongside the standard price. Backed by <see cref="ContractFormModel.PlanBracketRow.PackageValue"/>.
+    /// Used by the contract pricing line dialog when the line has a non-zero
+    /// PackagePaidBalance — the package price is what the customer pays while the package
+    /// wallet still has balance.
+    /// </summary>
+    [Parameter] public bool ShowPackagePrice { get; set; }
+
+    private string _flatId = $"flat-{Guid.NewGuid():N}";
+    private string _flatPackageId = $"flat-pkg-{Guid.NewGuid():N}";
+
+    protected override void OnParametersSet()
+    {
+        ResyncMinChain();
+    }
+
+    private bool IsLastBracket(int idx) => idx == Brackets.Count - 1;
+
+    private decimal GetFlatValue() => Brackets.FirstOrDefault()?.Value ?? 0m;
+
+    private decimal GetFlatPackageValue() => Brackets.FirstOrDefault()?.PackageValue ?? 0m;
+
+    private bool CanAddBracket()
+    {
+        if (Brackets.Count == 0) return false;
+        var last = Brackets[^1];
+        return last.MaxMinutes is int mx && mx > last.MinMinutes;
+    }
+
+    private async Task OnFlatValueChangedAsync(decimal value)
+    {
+        if (Brackets.Count == 0)
+            Brackets.Add(new ContractFormModel.PlanBracketRow { MinMinutes = 0, MaxMinutes = 0, Value = value });
+        else
+        {
+            Brackets[0].MinMinutes = 0;
+            Brackets[0].MaxMinutes = 0;
+            Brackets[0].Value = value;
+            // Keep PackageValue ≤ Value to satisfy the domain invariant.
+            if (ShowPackagePrice && Brackets[0].PackageValue is { } pv && pv > value)
+                Brackets[0].PackageValue = value;
+        }
+
+        while (Brackets.Count > 1)
+            Brackets.RemoveAt(Brackets.Count - 1);
+
+        await NotifyAsync();
+    }
+
+    private async Task OnMaxMinutesChangedAsync(int idx, int? value)
+    {
+        if (!IsLastBracket(idx)) return;
+        Brackets[idx].MaxMinutes = value;
+        ResyncMinChain();
+        await NotifyAsync();
+    }
+
+    private async Task OnMaxMinutesChangedMiddleAsync(int idx, int value)
+    {
+        if (IsLastBracket(idx)) return;
+        Brackets[idx].MaxMinutes = value;
+        ResyncMinChain();
+        await NotifyAsync();
+    }
+
+    private async Task OnRowValueChangedAsync(int idx, decimal value)
+    {
+        Brackets[idx].Value = value;
+        // Clamp package price down so it never exceeds the standard price after a drop.
+        if (ShowPackagePrice && Brackets[idx].PackageValue is { } pv && pv > value)
+            Brackets[idx].PackageValue = value;
+        await NotifyAsync();
+    }
+
+    private async Task OnRowPackageValueChangedAsync(int idx, decimal value)
+    {
+        var capped = Math.Clamp(value, 0m, Brackets[idx].Value);
+        Brackets[idx].PackageValue = capped;
+        await NotifyAsync();
+    }
+
+    private async Task OnFlatPackageValueChangedAsync(decimal value)
+    {
+        if (Brackets.Count == 0)
+            Brackets.Add(new ContractFormModel.PlanBracketRow { MinMinutes = 0, MaxMinutes = 0, Value = 0m });
+
+        var capped = Math.Clamp(value, 0m, Brackets[0].Value);
+        Brackets[0].PackageValue = capped;
+        await NotifyAsync();
+    }
+
+    private void ResyncMinChain()
+    {
+        if (Brackets.Count == 0) return;
+        Brackets[0].MinMinutes = 0;
+        for (var i = 1; i < Brackets.Count; i++)
+        {
+            var prevMax = Brackets[i - 1].MaxMinutes;
+            Brackets[i].MinMinutes = prevMax ?? Brackets[i - 1].MinMinutes;
+        }
+    }
+
+    private async Task AddBracketRowAsync()
+    {
+        if (!CanAddBracket()) return;
+        var last = Brackets[^1];
+        var start = last.MaxMinutes!.Value;
+        Brackets.Add(new ContractFormModel.PlanBracketRow
+        {
+            MinMinutes = start,
+            MaxMinutes = null,
+            Value = 0m
+        });
+        ResyncMinChain();
+        await NotifyAsync();
+    }
+
+    private async Task RemoveBracketRowAsync(int index)
+    {
+        if (Brackets.Count <= 1) return;
+        Brackets.RemoveAt(index);
+        if (Brackets.Count > 0) Brackets[^1].MaxMinutes = null;
+        ResyncMinChain();
+        await NotifyAsync();
+    }
+
+    private Task NotifyAsync() => OnChanged.HasDelegate ? OnChanged.InvokeAsync() : Task.CompletedTask;
+}

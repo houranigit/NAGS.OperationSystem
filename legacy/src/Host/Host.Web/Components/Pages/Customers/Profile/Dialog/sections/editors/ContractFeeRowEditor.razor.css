@@ -1,0 +1,30 @@
+.contract-fee-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.contract-fee-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    line-height: 1.25;
+}
+
+.contract-fee-field__controls {
+    display: flex;
+    align-items: stretch;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.contract-fee-field__type {
+    flex-shrink: 0;
+}
+
+.contract-fee-field__numeric {
+    flex: 1 1 auto;
+    min-width: 0;
+}

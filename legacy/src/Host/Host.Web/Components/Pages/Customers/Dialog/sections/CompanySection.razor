@@ -1,0 +1,171 @@
+@*
+  First wizard section (Company). Shared by Add dialog; Update uses same section with free navigation.
+*@
+@namespace Host.Web.Components.Pages.Customers.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="customer-logo-picker">
+        <label class="customer-logo-picker__dropzone" for="cu-company-logo-file">
+            @if (!string.IsNullOrEmpty(_logoPreviewUrl))
+            {
+                <img src="@_logoPreviewUrl" alt="" class="customer-logo-picker__image"/>
+            }
+            else
+            {
+                <span class="customer-logo-picker__placeholder" aria-hidden="true">
+                    <svg class="customer-logo-picker__placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"/>
+                    </svg>
+                    <span class="customer-logo-picker__placeholder-text">Choose image</span>
+                </span>
+            }
+        </label>
+        <InputFile style="display: none" id="cu-company-logo-file" OnChange="OnLogoFileSelectedAsync" accept="image/*"/>
+        <div class="customer-logo-picker__side">
+            <p class="customer-logo-picker__hint">Optional · square images work best. Max 2&nbsp;MB.</p>
+            <div class="ac-validate-wrap" style="position: relative; width: 100%; min-height: 0;">
+                <div class="customer-logo-picker__actions">
+                    <RadzenTextBox Name="CuLogoFileError"
+                                   Value="@(Model.LogoFileError ?? string.Empty)"
+                                   ReadOnly="true"
+                                   class="d-none"/>
+                    <RadzenCustomValidator Component="CuLogoFileError"
+                                           Text="File must be 2 MB or smaller"
+                                           Validator="@(() => Model.IsLogoFileInputValid())"
+                                           Popup="true"
+                                           Style="position: absolute"/>
+                    @if (Model.LogoBytes is { Length: > 0 })
+                    {
+                        <RadzenButton Text="Remove image"
+                                      Icon="undo"
+                                      ButtonStyle="ButtonStyle.Base"
+                                      Variant="Variant.Text"
+                                      Size="ButtonSize.Small"
+                                      Click="ClearLogo"
+                                      ButtonType="ButtonType.Button"/>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="cu-iata">IATA</label>
+            <RadzenTextBox id="cu-iata" Name="CuIata" @bind-Value="Model.IataCode" MaxLength="2" Change="@OnIataChangedAsync" Style="width: 100%; text-transform: uppercase;"/>
+            <RadzenRequiredValidator Component="CuIata" Text="IATA code required." Popup="true" Style="position: absolute;"/>
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label" for="cu-icao">ICAO (optional)</label>
+            <RadzenTextBox id="cu-icao" @bind-Value="Model.IcaoCode" MaxLength="3" Change="@OnIcaoChangedAsync" Style="width: 100%; text-transform: uppercase;"/>
+        </div>
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="cu-name">Legal name</label>
+        <RadzenTextBox id="cu-name" Name="CuName" @bind-Value="Model.Name" MaxLength="200" Change="@OnFieldChangedAsync" Style="width: 100%;"/>
+        <RadzenRequiredValidator Component="CuName" Text="Name required." Popup="true" Style="position: absolute;"/>
+    </div>
+    <div class="settings-field__row2">
+        <div class="settings-field">
+            <label class="settings-field__label" for="cu-email">Official email</label>
+            <RadzenTextBox id="cu-email" @bind-Value="Model.OfficialEmail" MaxLength="256" Change="@OnFieldChangedAsync" Style="width: 100%;"/>
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label" for="cu-phone">Official phone</label>
+            <RadzenTextBox id="cu-phone" @bind-Value="Model.OfficialPhone" MaxLength="32" Change="@OnFieldChangedAsync" Style="width: 100%;"/>
+        </div>
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label">Status</span>
+        <RadzenSelectBar TValue="bool" @bind-Value="Model.IsActive" Change="@OnFieldChangedAsync" Size="ButtonSize.Small">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true"/>
+                <RadzenSelectBarItem Text="Inactive" Value="false"/>
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    private const long MaxLogoBytes = 2_000_000;
+
+    [Parameter, EditorRequired] public CustomerFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private string? _logoPreviewUrl;
+
+    protected override void OnParametersSet()
+    {
+        SyncPreviewFromModel();
+    }
+
+    private void SyncPreviewFromModel()
+    {
+        _logoPreviewUrl = Model.LogoBytes is { Length: > 0 }
+            ? $"data:image/*;base64,{Convert.ToBase64String(Model.LogoBytes)}"
+            : null;
+    }
+
+    private async Task OnLogoFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        Model.LogoFileError = null;
+        var file = e.File;
+        if (file is null) return;
+
+        await NotifyChangedAsync(async () =>
+        {
+            if (file.Size > MaxLogoBytes)
+            {
+                Model.LogoFileError = "Logo file must be 2 MB or smaller.";
+                Model.LogoBytes = null;
+                _logoPreviewUrl = null;
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(MaxLogoBytes);
+            await using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            Model.LogoBytes = ms.ToArray();
+            _logoPreviewUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(Model.LogoBytes)}";
+        });
+    }
+
+    private Task ClearLogo() =>
+        NotifyChangedAsync(() =>
+        {
+            Model.LogoFileError = null;
+            Model.LogoBytes = null;
+            _logoPreviewUrl = null;
+        });
+
+    private async Task NotifyChangedAsync(Func<Task> mutate)
+    {
+        await mutate();
+        await OnModelChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task NotifyChangedAsync(Action mutate)
+    {
+        mutate();
+        await OnModelChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnIataChangedAsync(string? v)
+    {
+        Model.IataCode = (v ?? string.Empty).ToUpperInvariant();
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnIcaoChangedAsync(string? v)
+    {
+        Model.IcaoCode = string.IsNullOrEmpty(v) ? v : v.ToUpperInvariant();
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

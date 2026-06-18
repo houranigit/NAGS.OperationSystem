@@ -1,0 +1,164 @@
+@*
+  Operation types step. Card-per-row layout (mirrors ContactsSection). Each card holds
+  two dropdowns: a single-select OT picker (excluding AdHoc + already-used OTs) and a
+  multi-select services picker. A hidden field + validator requires ≥ 1 row before Next;
+  each row uses RadzenRequiredValidator on the OT picker (like stations) and custom
+  validators on services for count + AOG/duplicate rules. The contract aggregate re-validates on Save.
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using Radzen
+@using Radzen.Blazor
+
+<RadzenStack Gap="1rem" class="contacts-brackets">
+    <div class="brackets-container">
+        @if (Model.OperationTypeRows.Count == 0)
+        {
+            <p class="text-muted m-0">Add the operation types this contract covers and the services applicable to flights under each.</p>
+        }
+        @for (var i = 0; i < Model.OperationTypeRows.Count; i++)
+        {
+            var idx = i;
+            var row = Model.OperationTypeRows[idx];
+            <div class="bracket-card" @key="@idx">
+                <div class="bracket-header">
+                    <span class="bracket-number">Operation type @(idx + 1)</span>
+                    <RadzenButton Icon="close"
+                                  ButtonStyle="ButtonStyle.Danger"
+                                  Variant="Variant.Text"
+                                  Size="ButtonSize.ExtraSmall"
+                                  Click="@(() => RemoveAt(idx))"
+                                  ButtonType="ButtonType.Button"/>
+                </div>
+                <div class="bracket-body">
+                    <div class="bracket-field-row">
+                        <div class="settings-field">
+                            <label class="settings-field__label" for="@($"ot-{idx}-type")">Operation type *</label>
+                            <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                <RadzenDropDown Id="@($"ot-{idx}-type")"
+                                                Name="@($"OT{idx}_Type")"
+                                                TValue="Guid"
+                                                @bind-Value="Model.OperationTypeRows[idx].OperationTypeId"
+                                                @bind-Value:after="RaiseChangedAsync"
+                                                Data="@AvailableOperationTypesFor(idx)"
+                                                ValueProperty="Id"
+                                                TextProperty="Name"
+                                                AllowFiltering="true"
+                                                AllowClear="false"
+                                                Placeholder="Pick an operation type"
+                                                Style="width: 100%;"/>
+                                <RadzenRequiredValidator Component="@($"OT{idx}_Type")"
+                                                         DefaultValue="@Guid.Empty"
+                                                         Text="Required"
+                                                         Popup="true"
+                                                         Style="position: absolute;"/>
+                            </div>
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-field__label" for="@($"ot-{idx}-svcs")">Services *</label>
+                            <div class="ac-validate-wrap" style="position: relative; width: 100%; display: block;">
+                                <RadzenDropDown Id="@($"ot-{idx}-svcs")"
+                                                Name="@($"OT{idx}_Svcs")"
+                                                TValue="IEnumerable<Guid>"
+                                                Value="@Model.OperationTypeRows[idx].ServiceIds"
+                                                ValueChanged="@(v => OnRowServiceIdsChangedAsync(idx, v))"
+                                                Data="@Services"
+                                                ValueProperty="Id"
+                                                TextProperty="Name"
+                                                Multiple="true"
+                                                Chips="true"
+                                                AllowFiltering="true"
+                                                AllowClear="true"
+                                                Placeholder="Pick the services this OT covers"
+                                                Style="width: 100%;"/>
+                                <RadzenCustomValidator Component="@($"OT{idx}_Svcs")"
+                                                       Text="Select at least one service."
+                                                       Validator="@(() => Model.IsOperationTypeRowServicesCountValid(row))"
+                                                       Popup="true"
+                                                       Style="position: absolute;"/>
+                                <RadzenCustomValidator Component="@($"OT{idx}_Svcs")"
+                                                       Text="Use each service once. AOG cannot be mixed with other services."
+                                                       Validator="@(() => Model.IsOperationTypeRowServicesExtrasValid(row))"
+                                                       Popup="true"
+                                                       CssClass="operation-types__validator-popup--stacked"/>
+                            </div>
+                        </div>
+                    </div>
+                    @if (row.ServiceIds.Contains(ContractFormModel.AogServiceId))
+                    {
+                        <p class="text-body-secondary small m-0">AOG-only — flights under this OT do not require assigned employees.</p>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="add-bracket-area" style="position: relative;">
+            <div class="ac-validate-wrap ot-step-min-row-gate" style="position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0);">
+                <RadzenTextBox Name="OtStep_MinOneRow"
+                               Value="@($"n:{Model.OperationTypeRows.Count}")"
+                               ReadOnly="true"
+                               Style="position: absolute; width: 1px; height: 1px; opacity: 0; padding: 0; border: 0;"/>
+                <RadzenCustomValidator Component="OtStep_MinOneRow"
+                                       Text="Add at least one operation type."
+                                       Validator="@(() => Model.OperationTypeRows.Count >= 1)"
+                                       Popup="true"
+                                       Style="position: absolute;"/>
+            </div>
+            <RadzenButton Text="Add operation type"
+                          Icon="add_circle_outline"
+                          ButtonStyle="ButtonStyle.Secondary"
+                          Variant="Variant.Text"
+                          Size="ButtonSize.Small"
+                          Click="@AddRow"
+                          ButtonType="ButtonType.Button"/>
+        </div>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public ContractFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<ContractDialogLookups.DropdownOption> OperationTypes { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter, EditorRequired] public IReadOnlyList<ContractDialogLookups.DropdownOption> Services { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    /// <summary>
+    /// Returns the OT options the row at <paramref name="rowIndex"/> may pick from — every
+    /// active OT minus the ones already chosen on other rows. Keeps the row's own current
+    /// selection in the list so the dropdown still shows it.
+    /// </summary>
+    private IEnumerable<ContractDialogLookups.DropdownOption> AvailableOperationTypesFor(int rowIndex)
+    {
+        var current = Model.OperationTypeRows[rowIndex].OperationTypeId;
+        var taken = Model.OperationTypeRows
+            .Select(r => r.OperationTypeId)
+            .Where(id => id != Guid.Empty && id != current)
+            .ToHashSet();
+        return OperationTypes.Where(o => !taken.Contains(o.Id));
+    }
+
+    private Task RaiseChangedAsync() => OnModelChanged.InvokeAsync();
+
+    private Task OnRowServiceIdsChangedAsync(int index, IEnumerable<Guid>? value)
+    {
+        Model.OperationTypeRows[index].ServiceIds = value switch
+        {
+            IEnumerable<Guid> ids => ids.Distinct().ToList(),
+            _ => new List<Guid>()
+        };
+        return RaiseChangedAsync();
+    }
+
+    private Task AddRow()
+    {
+        Model.OperationTypeRows.Add(new ContractFormModel.OperationTypeRow());
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+
+    private Task RemoveAt(int index)
+    {
+        Model.OperationTypeRows.RemoveAt(index);
+        StateHasChanged();
+        return RaiseChangedAsync();
+    }
+}

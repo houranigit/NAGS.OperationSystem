@@ -1,0 +1,16 @@
+<div class="@HostClass" role="status" aria-live="polite">
+    @if (!string.IsNullOrEmpty(AriaLabel))
+    {
+        <span class="rz-sr-only">@AriaLabel</span>
+    }
+    <Skeleton Width="100%" Height="1rem" BorderRadius="var(--rz-border-radius)" CssClass="@InnerClass" />
+</div>
+
+@code {
+    /// <summary>Announced while the matching dropdown is loading options.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    [Parameter] public string HostClass { get; set; } = "";
+
+    [Parameter] public string InnerClass { get; set; } = "";
+}

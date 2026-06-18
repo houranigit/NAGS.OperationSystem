@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Operations.Contracts</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Contracts\BuildingBlocks.Contracts.csproj" />
+    <ProjectReference Include="..\..\Core\Core.Contracts\Core.Contracts.csproj" />
+    <ProjectReference Include="..\..\Store\Store.Contracts\Store.Contracts.csproj" />
+    <ProjectReference Include="..\Operations.Domain\Operations.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

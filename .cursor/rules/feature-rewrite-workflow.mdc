@@ -1,0 +1,37 @@
+---
+description: Workflow for rewriting features from the old OperationsSystem project
+alwaysApply: true
+---
+
+# Feature Rewrite Workflow
+
+Use this workflow whenever a feature is rewritten from the old OperationsSystem project. The old Blazor solution is read-only reference under `legacy/`. Track status in `docs/architecture/migration-inventory.md`.
+
+1. Locate the old feature files under `legacy/` and state which files were used as reference.
+2. Extract business facts: fields, relationships, invariants, validation, workflows, permissions, database constraints, API/mobile expectations, and edge cases.
+3. Do not copy the old architecture, Blazor/Radzen patterns, technical debt, naming mistakes, or client-specific business logic.
+4. Decide the clean v1.0.0 API, domain model, module boundary, persistence shape, and permission requirements.
+5. Implement the feature using the new architecture and focused rules.
+6. Add domain tests for business rules and API/integration tests for important workflows.
+7. Compare behavior against the old project where needed.
+8. Complete the checklist before calling the feature done.
+
+Feature checklist:
+
+- Old-project reference notes created.
+- Domain model or value objects updated where needed.
+- Business rules captured and tested.
+- Domain events and integration events identified where needed.
+- Caching needs reviewed for frequently requested, low-volatility data.
+- Request and response DTOs created where applicable.
+- Validator added for write requests where applicable.
+- EF configuration and migration added where applicable.
+- Minimal API endpoint added under `/api/v1` where applicable.
+- ProblemDetails and error mapping verified.
+- Permission requirements applied where applicable.
+- OpenAPI contract visible for public API changes.
+- Frontend API types, functions, hooks, pages, or components added where applicable.
+- Domain tests added for behavior-heavy rules.
+- API/integration tests added for important workflows.
+- Old-project reference files documented in the work notes.
+- `docs/architecture/migration-inventory.md` updated with the feature's new status.

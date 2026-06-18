@@ -1,0 +1,105 @@
+@*
+  Assigned employees section — shared by single-flight and bulk dialogs.
+  Uses RadzenListBox (same pattern as Stations CoverageSection) instead of a dropdown so users
+  see and filter the full crew at once. Assignment is optional unless the parent sets
+  AssignmentOptional to false.
+*@
+@namespace Host.Web.Components.Pages.Scheduler.Dialog.Sections
+@using Core.Contracts.Features.Employee
+@using Host.Web.Components.Pages.Scheduler.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label">@(ReadOnly || AssignmentOptional ? "Assigned employees" : "Assigned employees *")</label>
+        @if (EmployeesLoading)
+        {
+            <DropdownFieldSkeleton AriaLabel="Loading employees" />
+        }
+        else
+        {
+            <RadzenListBox Name="FlightCrew"
+                           TValue="IEnumerable<Guid>"
+                           Data="@Employees"
+                           Value="@Model.AssignedEmployeeIds"
+                           ValueChanged="@(v => SetCrew(v))"
+                           TextProperty="@nameof(EmployeeDto.FullName)"
+                           ValueProperty="@nameof(EmployeeDto.Id)"
+                           Multiple="true"
+                           AllowClear="true"
+                           AllowFiltering="true"
+                           FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                           Placeholder="@CrewPlaceholder"
+                           Disabled="@ReadOnly"
+                           Style="width: 100%; max-width: 100%; min-height: 14rem;"
+                           InputAttributes="@(new Dictionary<string, object> { { "aria-label", "Employees assigned to flight" } })">
+                <Template>
+                    @{
+                        var e = (EmployeeDto)context!;
+                    }
+                    <span class="small">@e.FullName <span class="text-secondary">· @e.ManpowerTypeSnapshot.Name</span></span>
+                </Template>
+            </RadzenListBox>
+            @if (!ReadOnly && !AssignmentOptional)
+            {
+                <RadzenCustomValidator Component="FlightCrew"
+                                       Text="Select at least one employee"
+                                       Validator="@(() => Model.HasAssignedEmployees())"
+                                       Popup="true"
+                                       Style="position: absolute" />
+            }
+        }
+        @if (ReadOnly)
+        {
+            <p class="form-hint text-body-secondary small mb-0">View only — assignments cannot be changed for this flight.</p>
+        }
+        else if (AssignmentOptional && IsAogOnlyContract)
+        {
+            <p class="form-hint text-body-secondary small mb-0">Optional — this AOG flight is visible to every employee at the station and any of them can claim it.</p>
+        }
+        else if (AssignmentOptional)
+        {
+            <p class="form-hint text-body-secondary small mb-0">Optional — assign employees now or update the flight later.</p>
+        }
+        else
+        {
+            <p class="form-hint text-body-secondary small mb-0">At least one employee is required for every flight.</p>
+        }
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public FlightFormModel Model { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<EmployeeDto> Employees { get; set; } = [];
+    [Parameter] public bool EmployeesLoading { get; set; }
+
+    /// <summary>
+    /// When true, the crew list may be left empty. Create/update flight dialogs pass true;
+    /// legacy callers may still require at least one assignee by leaving this false.
+    /// </summary>
+    [Parameter] public bool AssignmentOptional { get; set; }
+
+    /// <summary>
+    /// True when the resolved contract's only OT-service is AOG. Used for AOG-specific hint
+    /// text when assignment is optional.
+    /// </summary>
+    [Parameter] public bool IsAogOnlyContract { get; set; }
+
+    /// <summary>When true, crew selection is display-only.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private string CrewPlaceholder => AssignmentOptional switch
+    {
+        true when IsAogOnlyContract => "Optional — leave empty for AOG self-claim",
+        true => "Optional — select employees if ready",
+        _ => "Select one or more employees"
+    };
+
+    private Task SetCrew(IEnumerable<Guid> v)
+    {
+        Model.AssignedEmployeeIds = v?.ToList() ?? [];
+        return OnModelChanged.InvokeAsync();
+    }
+}

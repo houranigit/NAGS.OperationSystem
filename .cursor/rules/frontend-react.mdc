@@ -1,0 +1,26 @@
+---
+description: React, TypeScript, Vite, Tailwind, shadcn/ui, forms, and API client rules
+globs: "src/Host/OperationsSystem.Web/**/*.{ts,tsx,css,json}"
+alwaysApply: false
+---
+
+# Frontend React
+
+- The React app is an operational product UI, not a marketing site. Prioritize clarity, density, speed, and repeatable workflows.
+- Use React, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, React Hook Form, Zod, and React Router.
+- Organize frontend code by feature. Feature folders own their API functions, components, pages, hooks, schemas, and types.
+- Use shared folders only for truly reusable primitives and app-wide services.
+- Prefer OpenAPI-generated TypeScript API types and clients when practical.
+- Avoid hand-written anonymous API response shapes in UI code.
+- Avoid direct `fetch` calls scattered through components. Use typed API functions and TanStack Query hooks.
+- TanStack Query hooks should wrap the typed API client and own server-state behavior.
+- Forms use React Hook Form plus Zod schemas for validation.
+- Keep business rules in the backend. Frontend validation improves UX but must not be the only enforcement.
+- Use Tailwind and shadcn/ui conventions. Avoid random one-off styling unless the feature truly requires it.
+- Generated API clients/types should be reproducible, should not be hand-edited, and should have the generation command documented once it exists.
+- React web and Android consume the same backend API; do not request web-only backend behavior unless it is a true product requirement.
+- The UI is bilingual (Arabic and English). Do not hardcode user-facing strings; use the i18n layer with translation keys and send `Accept-Language` to the API.
+- Support full right-to-left layout. Use logical CSS properties and direction-aware components so both LTR and RTL render correctly.
+- Render times in the user's time zone and locale; send/receive UTC ISO-8601 to the API.
+- Every data view handles loading, empty, and error states explicitly and consistently.
+- Store the access token in memory and use an httpOnly refresh-token cookie. Do not persist access tokens in localStorage.

@@ -1,0 +1,14 @@
+dotnet ef migrations add Operations_Initial --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext --output-dir Persistence/Migrations
+dotnet ef database update --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext
+
+# After adding the WorkOrder.MarkedForDeletionAt column + composite (Status, MarkedForDeletionAt) index:
+dotnet ef migrations add Operations_AddWorkOrderDeletingStatus --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext --output-dir Persistence/Migrations
+dotnet ef database update --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext
+
+# After adding WorkOrder.Remarks + WorkOrder.CreatedByEmployeeId for the mobile flow:
+dotnet ef migrations add Operations_AddWorkOrderRemarksAndCreatedBy --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext --output-dir Persistence/Migrations
+dotnet ef database update --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext
+
+# After adding WorkOrder.CustomerSignature (PNG bytes captured by the mobile signature pad):
+dotnet ef migrations add Operations_AddWorkOrderCustomerSignature --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext --output-dir Persistence/Migrations
+dotnet ef database update --project src/Modules/Operations/Operations.Infrastructure --startup-project src/Host/Host.Web --context OperationsDbContext

@@ -1,0 +1,60 @@
+@*
+  Dialog section: receives CustomerFormModel + lookup props from parent. Dropdown pattern — skeleton while loading, then RadzenDropDown.
+  Replicate for other features; parallel-load multiple lookups from the dialog (not sequentially).
+*@
+@namespace Host.Web.Components.Pages.Customers.Dialog.Sections
+@using Core.Contracts.Features.Country
+@using Host.Web.Components.Pages.Customers.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field">
+        <label class="settings-field__label" for="ad1">Address line 1</label>
+        <RadzenTextBox id="ad1" @bind-Value="Model.AddressLine1" MaxLength="200" Change="@OnFieldChangedAsync" Style="width: 100%;" />
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="ad2">Address line 2</label>
+        <RadzenTextBox id="ad2" @bind-Value="Model.AddressLine2" MaxLength="200" Change="@OnFieldChangedAsync" Style="width: 100%;" />
+    </div>
+    <div class="settings-field__row2">
+        <div class="settings-field">
+            <label class="settings-field__label" for="adcity">City</label>
+            <RadzenTextBox id="adcity" @bind-Value="Model.City" MaxLength="120" Change="@OnFieldChangedAsync" Style="width: 100%;" />
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label" for="adpc">Postal code</label>
+            <RadzenTextBox id="adpc" @bind-Value="Model.PostalCode" MaxLength="20" Change="@OnFieldChangedAsync" Style="width: 100%;" />
+        </div>
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="adctry">Country</label>
+        @if (CountryOptionsLoading)
+        {
+            <DropdownFieldSkeleton AriaLabel="Loading countries"/>
+        }
+        else
+        {
+            <RadzenDropDown TValue="Guid?"
+                            inputAttributes="@(new Dictionary<string, object> { ["id"] = "adctry" })"
+                            @bind-Value="Model.AddressCountryId"
+                            Data="@CountryOptions"
+                            TextProperty="@nameof(CountrySelectOption.DisplayLabel)"
+                            ValueProperty="@nameof(CountrySelectOption.Id)"
+                            AllowClear="true"
+                            Change="@OnFieldChangedAsync"
+                            Style="width: 100%;"/>
+        }
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public CustomerFormModel Model { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<CountrySelectOption> CountryOptions { get; set; } = [];
+
+    [Parameter] public bool CountryOptionsLoading { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}
+

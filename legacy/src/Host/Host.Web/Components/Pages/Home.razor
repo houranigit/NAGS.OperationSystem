@@ -1,0 +1,595 @@
+﻿@page "/"
+@using Core.Application.Features.Dashboard.Queries.GetCatalogDashboard
+@using Core.Contracts.Features.Dashboard
+@using Host.Web.Services
+@using Operations.Application.Features.Dashboard.Queries.GetOperationsDashboard
+@using Operations.Contracts.Dashboard
+@using System.Globalization
+@inject ICurrentUserService CurrentUser
+@inject IScopedMediator ScopedMediator
+
+<PageTitle>Dashboard</PageTitle>
+
+<PageHeader Title="@WelcomeTitle"
+            Description="@WelcomeDescription">
+    <Actions>
+        <div class="dash-window-toggle btn-group" role="group" aria-label="Lookback window">
+            @foreach (var window in _windowOptions)
+            {
+                var w = window;
+                var active = w.Days == _lookBackDays;
+                <button type="button"
+                        class="btn btn-sm @(active ? "dash-window-toggle__active" : "dash-window-toggle__idle")"
+                        disabled="@_loading"
+                        @onclick="@(() => SetWindow(w.Days))">
+                    @w.Label
+                </button>
+            }
+        </div>
+        <button type="button" class="btn btn-sm dash-refresh-btn" disabled="@_loading" @onclick="ReloadAsync">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+            <span class="ms-1">@(_loading ? "Refreshing…" : "Refresh")</span>
+        </button>
+    </Actions>
+</PageHeader>
+
+@if (_loading && _ops is null)
+{
+    <div class="dash-grid">
+        @for (var i = 0; i < 8; i++)
+        {
+            <article class="dash-card dash-card--skeleton" aria-hidden="true">
+                <div class="dash-skeleton-bar"></div>
+                <div class="dash-skeleton-bar dash-skeleton-bar--short"></div>
+                <div class="dash-skeleton-bar dash-skeleton-bar--big"></div>
+            </article>
+        }
+    </div>
+}
+else if (_loadError is not null)
+{
+    <div class="dash-error" role="alert">
+        <strong>Couldn't load dashboard.</strong>
+        <span>@_loadError</span>
+        <button type="button" class="btn btn-sm dash-error__retry" @onclick="ReloadAsync">Try again</button>
+    </div>
+}
+else if (_ops is not null && _catalog is not null)
+{
+    var ops = _ops;
+    var cat = _catalog;
+    var maxDay = Math.Max(1, ops.FlightsByDay.Count == 0 ? 1 : ops.FlightsByDay.Max(d => d.Count));
+    var maxStation = ops.TopStations.Count == 0 ? 1 : Math.Max(1, ops.TopStations.Max(x => x.Count));
+    var maxCustomer = ops.TopCustomers.Count == 0 ? 1 : Math.Max(1, ops.TopCustomers.Max(x => x.Count));
+    var maxEmpStation = cat.EmployeesByStation.Count == 0 ? 1 : Math.Max(1, cat.EmployeesByStation.Max(x => x.Count));
+    var maxLicense = cat.LicenseDistribution.Count == 0 ? 1 : Math.Max(1, cat.LicenseDistribution.Max(x => x.EmployeeCount));
+    var maxManpower = cat.EmployeesByManpower.Count == 0 ? 1 : Math.Max(1, cat.EmployeesByManpower.Max(x => x.Count));
+
+    <div class="dash-grid">
+
+        @* Hero — gradient operational overview *@
+        <article class="dash-card dash-card--hero">
+            <div class="dash-hero__layout">
+                <div class="dash-hero__intro">
+                    <span class="dash-hero__eyebrow">Operations overview · last @ops.LookBackDays days</span>
+                    <h2 class="dash-hero__title">@ops.TotalFlights flights handled</h2>
+                    <p class="dash-hero__sub">
+                        @ops.FlightsToday scheduled today · @ops.FlightsInProgress currently in progress ·
+                        <span class="dash-hero__rate">@FormatPct(ops.CompletionRatePct) settled completion</span>
+                    </p>
+                </div>
+                <div class="dash-hero__stats">
+                    <div class="dash-hero__stat">
+                        <span class="dash-hero__stat-label">Scheduled</span>
+                        <span class="dash-hero__stat-value">@ops.FlightsScheduled</span>
+                    </div>
+                    <div class="dash-hero__stat">
+                        <span class="dash-hero__stat-label">In progress</span>
+                        <span class="dash-hero__stat-value">@ops.FlightsInProgress</span>
+                    </div>
+                    <div class="dash-hero__stat">
+                        <span class="dash-hero__stat-label">Completed</span>
+                        <span class="dash-hero__stat-value">@ops.FlightsCompleted</span>
+                    </div>
+                    <div class="dash-hero__stat">
+                        <span class="dash-hero__stat-label">Canceled</span>
+                        <span class="dash-hero__stat-value">@ops.FlightsCanceled</span>
+                    </div>
+                </div>
+            </div>
+        </article>
+
+        @* KPI tiles row *@
+        <article class="dash-card dash-card--kpi">
+            <div class="dash-kpi__head">
+                <span class="dash-kpi__icon dash-kpi__icon--violet" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+                </span>
+                <span class="dash-kpi__label">Flights today</span>
+            </div>
+            <p class="dash-kpi__value">@ops.FlightsToday</p>
+            <span class="dash-kpi__sub">@FormatToday()</span>
+        </article>
+
+        <article class="dash-card dash-card--kpi">
+            <div class="dash-kpi__head">
+                <span class="dash-kpi__icon dash-kpi__icon--amber" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+                </span>
+                <span class="dash-kpi__label">WO under review</span>
+            </div>
+            <p class="dash-kpi__value">@ops.WorkOrdersUnderReview</p>
+            <span class="dash-kpi__sub">@ops.WorkOrdersApproved approved · @ops.WorkOrdersRejected rejected</span>
+        </article>
+
+        <article class="dash-card dash-card--kpi">
+            <div class="dash-kpi__head">
+                <span class="dash-kpi__icon dash-kpi__icon--teal" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </span>
+                <span class="dash-kpi__label">Active employees</span>
+            </div>
+            <p class="dash-kpi__value">@cat.ActiveEmployees</p>
+            <span class="dash-kpi__sub">@cat.TotalEmployees on roster</span>
+        </article>
+
+        <article class="dash-card dash-card--kpi">
+            <div class="dash-kpi__head">
+                <span class="dash-kpi__icon dash-kpi__icon--rose" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>
+                </span>
+                <span class="dash-kpi__label">Stations covered</span>
+            </div>
+            <p class="dash-kpi__value">@cat.TotalStations</p>
+            <span class="dash-kpi__sub">@cat.TotalCountries countries</span>
+        </article>
+
+        @* Flights by status — donut + breakdown *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">Flight mix</h3>
+                    <p class="dash-card__muted">Distribution of @ops.TotalFlights flights by lifecycle</p>
+                </div>
+                <span class="dash-chip dash-chip--accent">@ops.LookBackDays days</span>
+            </div>
+
+            @if (ops.TotalFlights == 0)
+            {
+                <div class="dash-empty">No flights logged in this window yet.</div>
+            }
+            else
+            {
+                <div class="dash-donut-wrap">
+                    <div class="dash-donut" style="@DonutStyle(ops)">
+                        <div class="dash-donut__center">
+                            <span class="dash-donut__big">@FormatPct(ops.CompletionRatePct)</span>
+                            <span class="dash-donut__sub">Completion</span>
+                        </div>
+                    </div>
+                    <ul class="dash-legend">
+                        @foreach (var seg in StatusBreakdown(ops))
+                        {
+                            <li>
+                                <span class="dash-legend__dot" style="@($"background:{seg.Color};")"></span>
+                                <span class="dash-legend__label">@seg.Label</span>
+                                <span class="dash-legend__value">@seg.Count</span>
+                                <span class="dash-legend__pct">@FormatPct(seg.Pct)</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </article>
+
+        @* Daily volume sparkline-style bar chart *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">Daily flight volume</h3>
+                    <p class="dash-card__muted">Trailing 14 days · scheduled arrivals (UTC)</p>
+                </div>
+                <span class="dash-chip">@ops.FlightsByDay.Sum(x => x.Count) flights</span>
+            </div>
+            <div class="dash-bars" role="img" aria-label="Daily flight volume bar chart">
+                @foreach (var day in ops.FlightsByDay)
+                {
+                    var ratio = (double)day.Count / maxDay;
+                    var pct = Math.Max(4, (int)(ratio * 100));
+                    <div class="dash-bars__col" title="@($"{day.Date:ddd dd MMM} · {day.Count} flights")">
+                        <span class="dash-bars__count">@day.Count</span>
+                        <span class="dash-bars__bar" style="@($"height:{pct}%;")"></span>
+                        <span class="dash-bars__label">@day.Date.ToString("dd", CultureInfo.InvariantCulture)</span>
+                    </div>
+                }
+            </div>
+        </article>
+
+        @* Top stations *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">Busiest stations</h3>
+                    <p class="dash-card__muted">By flight volume in the window</p>
+                </div>
+                <span class="dash-chip">Top @ops.TopStations.Count</span>
+            </div>
+            @if (ops.TopStations.Count == 0)
+            {
+                <div class="dash-empty">No station activity yet.</div>
+            }
+            else
+            {
+                <ul class="dash-list">
+                    @foreach (var st in ops.TopStations)
+                    {
+                        var pct = (int)Math.Max(4, (double)st.Count / maxStation * 100);
+                        <li class="dash-list__row">
+                            <span class="dash-list__avatar dash-list__avatar--accent">@st.IataCode</span>
+                            <div class="dash-list__body">
+                                <div class="dash-list__title">
+                                    <span>@st.Name</span>
+                                    <strong>@st.Count</strong>
+                                </div>
+                                <div class="dash-list__bar">
+                                    <span class="dash-list__bar-fill dash-list__bar-fill--accent" style="@($"width:{pct}%;")"></span>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </article>
+
+        @* Top customers *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">Top customers</h3>
+                    <p class="dash-card__muted">Airlines we served the most</p>
+                </div>
+                <span class="dash-chip">Top @ops.TopCustomers.Count</span>
+            </div>
+            @if (ops.TopCustomers.Count == 0)
+            {
+                <div class="dash-empty">No customer activity yet.</div>
+            }
+            else
+            {
+                <ul class="dash-list">
+                    @foreach (var c in ops.TopCustomers)
+                    {
+                        var pct = (int)Math.Max(4, (double)c.Count / maxCustomer * 100);
+                        <li class="dash-list__row">
+                            <span class="dash-list__avatar dash-list__avatar--violet">@c.IataCode</span>
+                            <div class="dash-list__body">
+                                <div class="dash-list__title">
+                                    <span>@c.Name</span>
+                                    <strong>@c.Count</strong>
+                                </div>
+                                <div class="dash-list__bar">
+                                    <span class="dash-list__bar-fill dash-list__bar-fill--violet" style="@($"width:{pct}%;")"></span>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </article>
+
+        @* Crew at stations *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">Crew distribution</h3>
+                    <p class="dash-card__muted">Active employees per station</p>
+                </div>
+                <span class="dash-chip">@cat.ActiveEmployees crew</span>
+            </div>
+            @if (cat.EmployeesByStation.Count == 0)
+            {
+                <div class="dash-empty">No active crew assigned to stations yet.</div>
+            }
+            else
+            {
+                <ul class="dash-list">
+                    @foreach (var s in cat.EmployeesByStation)
+                    {
+                        var pct = (int)Math.Max(4, (double)s.Count / maxEmpStation * 100);
+                        <li class="dash-list__row">
+                            <span class="dash-list__avatar dash-list__avatar--teal">@s.IataCode</span>
+                            <div class="dash-list__body">
+                                <div class="dash-list__title">
+                                    <span>@s.Name</span>
+                                    <strong>@s.Count</strong>
+                                </div>
+                                <div class="dash-list__bar">
+                                    <span class="dash-list__bar-fill dash-list__bar-fill--teal" style="@($"width:{pct}%;")"></span>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </article>
+
+        @* License coverage *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">License coverage</h3>
+                    <p class="dash-card__muted">Active employees holding each license</p>
+                </div>
+                <span class="dash-chip">@cat.TotalLicenses types</span>
+            </div>
+            @if (cat.LicenseDistribution.Count == 0)
+            {
+                <div class="dash-empty">No licenses on record yet.</div>
+            }
+            else
+            {
+                <ul class="dash-list">
+                    @foreach (var l in cat.LicenseDistribution)
+                    {
+                        var pct = (int)Math.Max(4, (double)l.EmployeeCount / maxLicense * 100);
+                        <li class="dash-list__row">
+                            <span class="dash-list__avatar dash-list__avatar--amber">@l.Code</span>
+                            <div class="dash-list__body">
+                                <div class="dash-list__title">
+                                    <span>@l.Name</span>
+                                    <strong>@l.EmployeeCount</strong>
+                                </div>
+                                <div class="dash-list__bar">
+                                    <span class="dash-list__bar-fill dash-list__bar-fill--amber" style="@($"width:{pct}%;")"></span>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </article>
+
+        @* Manpower mix *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">Manpower mix</h3>
+                    <p class="dash-card__muted">Active crew by manpower type</p>
+                </div>
+                <span class="dash-chip">@cat.ActiveManpowerTypes types</span>
+            </div>
+            @if (cat.EmployeesByManpower.Count == 0)
+            {
+                <div class="dash-empty">No active crew yet.</div>
+            }
+            else
+            {
+                <ul class="dash-mp-grid">
+                    @foreach (var mp in cat.EmployeesByManpower)
+                    {
+                        var pct = (int)Math.Max(8, (double)mp.Count / maxManpower * 100);
+                        <li class="dash-mp">
+                            <span class="dash-mp__count">@mp.Count</span>
+                            <span class="dash-mp__name" title="@mp.Name">@mp.Name</span>
+                            <span class="dash-mp__bar"><span class="dash-mp__bar-fill" style="@($"width:{pct}%;")"></span></span>
+                        </li>
+                    }
+                </ul>
+            }
+        </article>
+
+        @* Catalog at a glance *@
+        <article class="dash-card dash-card--span2">
+            <div class="dash-card__head">
+                <div>
+                    <h3 class="dash-card__title">Catalog at a glance</h3>
+                    <p class="dash-card__muted">What we sell and operate against</p>
+                </div>
+                <span class="dash-chip">Live</span>
+            </div>
+            <div class="dash-mini-grid">
+                <div class="dash-mini">
+                    <span class="dash-mini__label">Customers</span>
+                    <span class="dash-mini__value">@cat.TotalCustomers</span>
+                    <span class="dash-mini__sub">@cat.ActiveCustomers active</span>
+                </div>
+                <div class="dash-mini">
+                    <span class="dash-mini__label">Services</span>
+                    <span class="dash-mini__value">@cat.TotalServices</span>
+                    <span class="dash-mini__sub">@cat.ActiveServices active</span>
+                </div>
+                <div class="dash-mini">
+                    <span class="dash-mini__label">Manpower types</span>
+                    <span class="dash-mini__value">@cat.TotalManpowerTypes</span>
+                    <span class="dash-mini__sub">@cat.ActiveManpowerTypes active</span>
+                </div>
+                <div class="dash-mini">
+                    <span class="dash-mini__label">Aircraft types</span>
+                    <span class="dash-mini__value">@cat.TotalAircraftTypes</span>
+                    <span class="dash-mini__sub">In fleet catalog</span>
+                </div>
+                <div class="dash-mini">
+                    <span class="dash-mini__label">Licenses</span>
+                    <span class="dash-mini__value">@cat.TotalLicenses</span>
+                    <span class="dash-mini__sub">Tracked types</span>
+                </div>
+                <div class="dash-mini">
+                    <span class="dash-mini__label">Stations</span>
+                    <span class="dash-mini__value">@cat.TotalStations</span>
+                    <span class="dash-mini__sub">@cat.TotalCountries countries</span>
+                </div>
+            </div>
+        </article>
+
+        @* Coming soon — Contracts module *@
+        <article class="dash-card dash-card--soon">
+            <span class="dash-soon__badge">Coming soon</span>
+            <h3 class="dash-card__title">Contract performance</h3>
+            <p class="dash-card__muted">Customer contracts, agreed service levels and burn-down — wired up after the contracts module ships.</p>
+            <ul class="dash-soon__list">
+                <li>SLA delivery vs target</li>
+                <li>Contract utilization by station</li>
+                <li>Auto-renewal queue</li>
+            </ul>
+        </article>
+
+        @* Coming soon — Revenue *@
+        <article class="dash-card dash-card--soon">
+            <span class="dash-soon__badge">Coming soon</span>
+            <h3 class="dash-card__title">Revenue snapshot</h3>
+            <p class="dash-card__muted">Once invoicing is live this card replays priced work orders with month-on-month deltas.</p>
+            <ul class="dash-soon__list">
+                <li>Billable hours (manpower)</li>
+                <li>Service revenue mix</li>
+                <li>Top revenue customers</li>
+            </ul>
+        </article>
+
+        @* Coming soon — Mobile field activity *@
+        <article class="dash-card dash-card--soon">
+            <span class="dash-soon__badge">Coming soon</span>
+            <h3 class="dash-card__title">Field activity</h3>
+            <p class="dash-card__muted">Live presence from the mobile app — punches, RTRs and crew handovers.</p>
+            <ul class="dash-soon__list">
+                <li>Crew on duty right now</li>
+                <li>Open RTR alerts</li>
+                <li>Average time to settle</li>
+            </ul>
+        </article>
+
+    </div>
+}
+
+@code {
+    private OperationsDashboardDto? _ops;
+    private CatalogDashboardDto? _catalog;
+    private bool _loading = true;
+    private string? _loadError;
+    private int _lookBackDays = 30;
+
+    private readonly (int Days, string Label)[] _windowOptions =
+    [
+        (7, "7 days"),
+        (30, "30 days"),
+        (90, "90 days")
+    ];
+
+    private string WelcomeTitle =>
+        CurrentUser.UserName != null && CurrentUser.IsAuthenticated
+            ? $"Welcome back, {CurrentUser.UserName}"
+            : "Operations dashboard";
+
+    private string WelcomeDescription
+    {
+        get
+        {
+            var role = DisplayRole();
+            var today = DateTime.Now.ToString("dddd, dd MMMM yyyy", CultureInfo.InvariantCulture);
+            return CurrentUser.IsAuthenticated
+                ? $"{today} · signed in as {role}"
+                : $"{today} · live snapshot of your operations";
+        }
+    }
+
+    private string DisplayRole()
+    {
+        var t = CurrentUser.UserType;
+        if (string.IsNullOrWhiteSpace(t))
+            return "viewer";
+        if (t.Length == 1)
+            return t.ToUpperInvariant();
+        return char.ToUpperInvariant(t[0]) + t[1..].ToLowerInvariant();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await ReloadAsync();
+    }
+
+    private async Task SetWindow(int days)
+    {
+        if (_lookBackDays == days || _loading) return;
+        _lookBackDays = days;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // Fire both queries in parallel. ScopedMediator creates a fresh DI scope per
+            // Send, so each handler gets its own DbContext + SqlConnection — there is no
+            // EF concurrency conflict and the dashboard waits for the slower of the two
+            // (typically Operations) instead of their sum.
+            var opsTask = ScopedMediator.Send(new GetOperationsDashboardQuery(_lookBackDays));
+            var catTask = ScopedMediator.Send(new GetCatalogDashboardQuery());
+            await Task.WhenAll(opsTask, catTask);
+
+            var opsResult = await opsTask;
+            var catResult = await catTask;
+
+            if (opsResult.IsSuccess) _ops = opsResult.Value;
+            if (catResult.IsSuccess) _catalog = catResult.Value;
+
+            if (opsResult.IsFailure)
+                _loadError = opsResult.Error.Description;
+            else if (catResult.IsFailure)
+                _loadError = catResult.Error.Description;
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string FormatPct(decimal pct) =>
+        pct.ToString("0.#", CultureInfo.InvariantCulture) + "%";
+
+    private static string FormatToday() =>
+        DateTime.Now.ToString("dddd, dd MMM", CultureInfo.InvariantCulture);
+
+    private static IReadOnlyList<DonutSegment> StatusBreakdown(OperationsDashboardDto ops)
+    {
+        var total = Math.Max(1, ops.TotalFlights);
+        return new List<DonutSegment>
+        {
+            new("Scheduled", ops.FlightsScheduled, ops.FlightsScheduled * 100m / total, "#94a3b8"),
+            new("In progress", ops.FlightsInProgress, ops.FlightsInProgress * 100m / total, "#f59e0b"),
+            new("Completed", ops.FlightsCompleted, ops.FlightsCompleted * 100m / total, "#10b981"),
+            new("Canceled", ops.FlightsCanceled, ops.FlightsCanceled * 100m / total, "#dc2626")
+        };
+    }
+
+    private static string DonutStyle(OperationsDashboardDto ops)
+    {
+        // Pure-CSS donut via conic-gradient. Order matches StatusBreakdown so the legend
+        // colors line up with the wedges going clockwise from 12 o'clock.
+        var total = Math.Max(1, ops.TotalFlights);
+        var sched = ops.FlightsScheduled * 360m / total;
+        var prog = ops.FlightsInProgress * 360m / total;
+        var done = ops.FlightsCompleted * 360m / total;
+
+        var p1 = sched;
+        var p2 = sched + prog;
+        var p3 = sched + prog + done;
+
+        var grad = $"conic-gradient(" +
+                   $"#94a3b8 0deg {p1.ToString("0.##", CultureInfo.InvariantCulture)}deg," +
+                   $"#f59e0b {p1.ToString("0.##", CultureInfo.InvariantCulture)}deg {p2.ToString("0.##", CultureInfo.InvariantCulture)}deg," +
+                   $"#10b981 {p2.ToString("0.##", CultureInfo.InvariantCulture)}deg {p3.ToString("0.##", CultureInfo.InvariantCulture)}deg," +
+                   $"#dc2626 {p3.ToString("0.##", CultureInfo.InvariantCulture)}deg 360deg)";
+        return $"background:{grad};";
+    }
+
+    private sealed record DonutSegment(string Label, int Count, decimal Pct, string Color);
+}

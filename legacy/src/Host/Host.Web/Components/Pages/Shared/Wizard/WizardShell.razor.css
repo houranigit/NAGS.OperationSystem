@@ -1,0 +1,557 @@
+/* Shared wizard shell — used by every contract / customer / employee / master-data /
+   pricing / station / user dialog in the system. Wine accent (#722f37), rounded button
+   language, sidebar stepper with active-counter chip, animated footer progress bar, and
+   inline error alert above the panel. Single-step dialogs hide the counter + progress bar
+   automatically (Steps.Length checks in the host). */
+
+.wizard-host {
+    --cw-accent: #722f37;
+    --cw-accent-soft: rgba(114, 47, 55, 0.10);
+    --cw-accent-strong: rgba(114, 47, 55, 0.18);
+    --cw-accent-ring: rgba(114, 47, 55, 0.20);
+    --cw-success: #16a34a;
+    --cw-success-soft: rgba(22, 163, 74, 0.12);
+    --cw-warn: #b45309;
+    --cw-warn-soft: rgba(180, 83, 9, 0.12);
+    --cw-danger: #dc2626;
+    --cw-danger-soft: rgba(220, 38, 38, 0.12);
+    --cw-surface: #ffffff;
+    --cw-sidebar-bg: #f7f8fb;
+    --cw-border: #e9edf4;
+    --cw-text: #2f3349;
+    --cw-text-muted: #64748b;
+    --cw-text-subtle: #94a3b8;
+
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    width: 100%;
+    min-height: 22rem;
+    max-height: min(88vh, 56rem);
+    overflow: hidden;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+.wizard {
+    display: grid;
+    grid-template-columns: 296px 1fr;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    width: 100%;
+    background: var(--cw-surface);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--cw-border);
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.wizard__sidebar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    padding: 1.5rem 1rem 1.5rem 1.25rem;
+    gap: 0;
+    background: var(--cw-sidebar-bg);
+    border-right: 1px solid var(--cw-border);
+}
+
+.wizard-step {
+    all: unset;
+    position: relative;
+    display: grid;
+    grid-template-columns: 2.5rem 1fr auto;
+    align-items: center;
+    column-gap: 0.85rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.wizard-step:not(:disabled):hover {
+    background: var(--cw-accent-soft);
+}
+
+.wizard-step:focus-visible {
+    outline: 2px solid var(--cw-accent);
+    outline-offset: 2px;
+}
+
+.wizard-step:disabled {
+    cursor: not-allowed;
+}
+
+.wizard-step__circle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid #d9dee3;
+    color: #a3aab8;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.wizard-step__circle svg {
+    flex-shrink: 0;
+}
+
+.wizard-step__label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    text-align: start;
+}
+
+.wizard-step__title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--cw-text);
+    line-height: 1.2;
+    letter-spacing: -0.005em;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25rem;
+}
+
+.wizard-step__optional {
+    color: var(--cw-text-subtle);
+    font-weight: 700;
+}
+
+.wizard-step__subtitle {
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--cw-text-subtle);
+    line-height: 1.3;
+}
+
+.wizard-step__counter {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--cw-accent);
+    background: var(--cw-accent-soft);
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+}
+
+.wizard-step__line {
+    display: block;
+    width: 1px;
+    height: 0.85rem;
+    margin-left: 1.9rem;
+    background: linear-gradient(180deg, #d9dee3 0%, #e9edf4 100%);
+}
+
+.wizard-step.is-upcoming .wizard-step__title {
+    color: #6e7485;
+}
+
+.wizard-step.is-active .wizard-step__circle {
+    background: var(--cw-accent);
+    border-color: var(--cw-accent);
+    color: #fff;
+    box-shadow: 0 0 0 4px var(--cw-accent-ring);
+}
+
+.wizard-step.is-active .wizard-step__title {
+    color: var(--cw-accent);
+}
+
+.wizard-step.is-completed .wizard-step__circle {
+    background: var(--cw-accent-soft);
+    border-color: var(--cw-accent-strong);
+    color: var(--cw-accent);
+}
+
+.wizard-step.is-invalid .wizard-step__circle {
+    background: var(--cw-danger-soft);
+    border-color: rgba(220, 38, 38, 0.4);
+    color: var(--cw-danger);
+}
+
+.wizard-step.is-invalid .wizard-step__title {
+    color: var(--cw-danger);
+}
+
+/* ── Content panel ─────────────────────────────────────────────────────────── */
+.wizard__content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0;
+    flex: 1 1 auto;
+    align-self: stretch;
+}
+
+.wizard__main {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    padding: 1.4rem 1.5rem 0.6rem;
+    gap: 0.85rem;
+}
+
+.wizard__header {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid var(--cw-border);
+}
+
+.wizard__header-title {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--cw-text);
+    letter-spacing: -0.01em;
+}
+
+.wizard__header-subtitle {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--cw-text-muted);
+    line-height: 1.45;
+}
+
+.wizard__panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    padding-right: 0.4rem;
+    padding-bottom: 0.5rem;
+}
+
+/* Inline error alert — surfaces command failures so the user keeps the message in view
+   instead of relying on a fading toast. The host (each dialog) owns the message list. */
+.wizard__alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.75rem 0.85rem;
+    margin-bottom: 0.85rem;
+    background: rgba(220, 38, 38, 0.06);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    border-left: 3px solid var(--cw-danger);
+    border-radius: 10px;
+    color: #7f1d1d;
+    animation: cw-alert-pop 0.18s ease-out;
+}
+
+@keyframes cw-alert-pop {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.wizard__alert-icon {
+    flex-shrink: 0;
+    color: var(--cw-danger);
+    margin-top: 0.05rem;
+}
+
+.wizard__alert-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.wizard__alert-title {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--cw-danger);
+    letter-spacing: -0.005em;
+}
+
+.wizard__alert-message {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #7f1d1d;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.wizard__alert-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.8125rem;
+    color: #7f1d1d;
+    line-height: 1.55;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.wizard__alert-close {
+    flex-shrink: 0;
+    background: transparent;
+    border: 0;
+    color: var(--cw-danger);
+    font-size: 1.25rem;
+    line-height: 1;
+    padding: 0 0.35rem;
+    cursor: pointer;
+    border-radius: 6px;
+    opacity: 0.7;
+    transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.wizard__alert-close:hover {
+    opacity: 1;
+    background: rgba(220, 38, 38, 0.1);
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.wizard__footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 1rem;
+    flex-shrink: 0;
+    padding: 0.85rem 1.5rem 1rem;
+    border-top: 1px solid var(--cw-border);
+    background: var(--cw-surface);
+}
+
+.wizard__footer-left {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.wizard__footer-progress {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+    min-width: 0;
+    width: 100%;
+    max-width: 16rem;
+}
+
+.wizard__footer-progress-text {
+    font-size: 0.6875rem;
+    color: var(--cw-text-subtle);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.wizard__footer-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: #f1f5f9;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.wizard__footer-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--cw-accent) 0%, #a14f57 100%);
+    transition: width 0.3s ease;
+    border-radius: 999px;
+}
+
+.wizard__footer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* Buttons (matches the customer dialog rounded-pill language) */
+.wizard-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 999px;
+    padding: 0.5rem 1.1rem;
+    cursor: pointer;
+    transition:
+        border-color 0.16s ease,
+        background 0.16s ease,
+        color 0.16s ease,
+        box-shadow 0.16s ease,
+        transform 0.12s ease;
+}
+
+.wizard-btn svg {
+    flex-shrink: 0;
+    opacity: 0.95;
+}
+
+.wizard-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(51, 65, 85, 0.28);
+}
+
+.wizard-btn:disabled {
+    opacity: 0.52;
+    cursor: not-allowed;
+}
+
+.wizard-btn--ghost {
+    border: none;
+    background: transparent;
+    color: var(--cw-text-muted);
+}
+
+.wizard-btn--ghost:hover:not(:disabled) {
+    background: #f1f5f9;
+    color: var(--cw-text);
+}
+
+.wizard-btn--secondary {
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #475569;
+    box-shadow: none;
+}
+
+.wizard-btn--secondary:hover:not(:disabled) {
+    border-color: #cbd5e1;
+    color: #334155;
+    background: #f8fafc;
+}
+
+.wizard-btn--secondary:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.wizard-btn--primary {
+    border: 1px solid var(--cw-accent);
+    background: var(--cw-accent);
+    color: #fff;
+    box-shadow: 0 1px 4px rgba(114, 47, 55, 0.18);
+}
+
+.wizard-btn--primary:hover:not(:disabled) {
+    background: #5d2730;
+    border-color: #5d2730;
+    box-shadow: 0 2px 8px rgba(114, 47, 55, 0.28);
+}
+
+.wizard-btn--primary:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.wizard-btn--commit {
+    border: 1px solid var(--cw-accent);
+    background: linear-gradient(180deg, #843742 0%, #5d2730 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(114, 47, 55, 0.25);
+}
+
+.wizard-btn--commit:hover:not(:disabled) {
+    background: linear-gradient(180deg, #722f37 0%, #4a1f26 100%);
+    box-shadow: 0 4px 12px rgba(114, 47, 55, 0.35);
+}
+
+.wizard-btn--commit:focus-visible {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--cw-accent-ring);
+}
+
+.wizard-btn--commit:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.wizard-btn__spin {
+    animation: cw-spin 0.85s linear infinite;
+}
+
+@keyframes cw-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+    .wizard {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+    }
+
+    .wizard__sidebar {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        max-height: none;
+        padding: 0.6rem 1rem;
+        border-right: none;
+        border-bottom: 1px solid var(--cw-border);
+    }
+
+    .wizard-step {
+        grid-template-columns: 2.25rem auto;
+        flex: 0 0 auto;
+        min-width: 8rem;
+        padding: 0.45rem 0.55rem;
+    }
+
+    .wizard-step__counter {
+        display: none;
+    }
+
+    .wizard-step__subtitle {
+        display: none;
+    }
+
+    .wizard-step__line {
+        flex: 0 0 1rem;
+        height: 1px;
+        width: 1rem;
+        margin: 0 0.15rem;
+        align-self: center;
+        background: linear-gradient(90deg, #d9dee3 0%, #e9edf4 100%);
+    }
+
+    .wizard__footer {
+        grid-template-columns: 1fr;
+        row-gap: 0.5rem;
+    }
+
+    .wizard__footer-progress {
+        max-width: none;
+    }
+
+    .wizard__footer-actions {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+}

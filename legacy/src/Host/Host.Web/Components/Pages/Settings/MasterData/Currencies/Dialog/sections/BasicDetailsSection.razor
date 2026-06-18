@@ -1,0 +1,68 @@
+@*
+  Wizard / update shared section — Currency codes and status. Mirrors Company-style settings-field markup (Component Rules.md).
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Currencies.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.Currencies.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="cur-code">ISO code</label>
+            <RadzenTextBox id="cur-code"
+                           Name="CurrencyCode"
+                           @bind-Value="Model.Code"
+                           MaxLength="3"
+                           Placeholder="SAR"
+                           ReadOnly="@CodeReadOnly"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%; text-transform: uppercase;" />
+            <RadzenRequiredValidator Component="CurrencyCode"
+                                     Text="Code is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+            <RadzenLengthValidator Component="CurrencyCode"
+                                   Min="3"
+                                   Max="3"
+                                   Text="Use 3-letter ISO 4217 code."
+                                   Popup="true"
+                                   Style="position: absolute; top: 2.5rem;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="cur-name">Name</label>
+            <RadzenTextBox id="cur-name"
+                           Name="CurrencyName"
+                           @bind-Value="Model.Name"
+                           MaxLength="100"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%;" />
+            <RadzenRequiredValidator Component="CurrencyName"
+                                     Text="Name is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+        </div>
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="cur-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="cur-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public CurrencyFormModel Model { get; set; } = default!;
+
+    /// <summary>ISO code is immutable once a currency exists (domain + API).</summary>
+    [Parameter] public bool CodeReadOnly { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

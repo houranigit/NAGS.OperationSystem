@@ -1,0 +1,11 @@
+/* Loading state for the brief moment before the full ContractDto re-fetch lands. */
+.contract-edit-loading {
+    padding: 1.5rem 1.75rem;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px #e9edf4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 18rem;
+}

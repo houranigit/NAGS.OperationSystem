@@ -1,0 +1,168 @@
+@*
+  Step 1 of WorkOrderAddDialog. Top half: read-only flight summary cards (locked
+  shared properties — customer / station / operation / STA / STD). Bottom half:
+  editable work-order fields (flight number, aircraft type, tail, ATA, ATD).
+
+  Cancellations are filed via the dedicated "Cancel" button on the flight row, so
+  the IsCanceled toggle is intentionally not exposed here. When an existing cancel
+  work order is loaded for editing, the cancellation timestamp picker replaces the
+  ATA/ATD pair so operators can still tweak the time without flipping a flag.
+*@
+@namespace Host.Web.Components.Pages.FLights.Dialog.Sections
+@using System.Globalization
+@using Core.Contracts.Features.AircraftType
+@using Host.Web.Components.Pages.FLights.Dialog
+@using Operations.Contracts.Flight
+
+<RadzenStack Gap="1rem">
+    <h2 class="settings-section-title h6 mb-1">Inherited from flight</h2>
+    <div class="wo-context-grid">
+        <div class="wo-context-card">
+            <span class="wo-context-card__label">Customer</span>
+            <span class="wo-context-card__value">@Flight.CustomerSnapshot.Name</span>
+            <span class="wo-context-card__sub">@Flight.CustomerSnapshot.IataCode</span>
+        </div>
+        <div class="wo-context-card">
+            <span class="wo-context-card__label">Station</span>
+            <span class="wo-context-card__value">@Flight.StationSnapshot.IataCode</span>
+            <span class="wo-context-card__sub">@Flight.StationSnapshot.Name</span>
+        </div>
+        <div class="wo-context-card">
+            <span class="wo-context-card__label">Operation</span>
+            <span class="wo-context-card__value">@Flight.OperationTypeSnapshot.Name</span>
+            <span class="wo-context-card__sub">&nbsp;</span>
+        </div>
+        <div class="wo-context-card">
+            <span class="wo-context-card__label">STA</span>
+            <span class="wo-context-card__value">@FormatDateTime(Flight.Sta)</span>
+            <span class="wo-context-card__sub">Scheduled arrival</span>
+        </div>
+        <div class="wo-context-card">
+            <span class="wo-context-card__label">STD</span>
+            <span class="wo-context-card__value">@FormatDateTime(Flight.Std)</span>
+            <span class="wo-context-card__sub">Scheduled departure</span>
+        </div>
+    </div>
+
+    <h2 class="settings-section-title h6 mt-2 mb-1">Work order details</h2>
+
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Flight number *</label>
+            <RadzenTextBox Name="WoFlightNumber"
+                           Value="@Model.FlightNumber"
+                           ValueChanged="@(v => SetFlightNumber(v))"
+                           MaxLength="32"
+                           Style="width:100%; text-transform: uppercase;" />
+            <RadzenRequiredValidator Component="WoFlightNumber" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+        <div class="settings-field">
+            <label class="settings-field__label">Aircraft type</label>
+            @if (AircraftTypesLoading)
+            {
+                <DropdownFieldSkeleton AriaLabel="Loading aircraft types" />
+            }
+            else
+            {
+                <RadzenDropDown TValue="Guid?"
+                                Data="@AircraftTypes"
+                                Value="@Model.AircraftTypeId"
+                                ValueChanged="@(v => SetAircraftType(v))"
+                                TextProperty="@nameof(AircraftTypeSelectOption.Model)"
+                                ValueProperty="@nameof(AircraftTypeSelectOption.Id)"
+                                AllowClear="true"
+                                AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                Placeholder="Optional"
+                                Style="width:100%;" />
+            }
+        </div>
+    </div>
+
+    <div class="settings-field__row2">
+        <div class="settings-field">
+            <label class="settings-field__label">Aircraft tail number</label>
+            <RadzenTextBox Value="@Model.AircraftTailNumber"
+                           ValueChanged="@(v => SetTail(v))"
+                           MaxLength="20"
+                           Style="width:100%; text-transform: uppercase;" />
+        </div>
+        @if (Model.IsCanceled)
+        {
+            @* Editing an existing cancel work order — keep the cancellation time field next to the tail. *@
+            <div class="settings-field" style="position: relative;">
+                <label class="settings-field__label">Cancellation time *</label>
+                <RadzenDatePicker Name="WoCancellationAt"
+                                  TValue="DateTime?"
+                                  Value="@Model.CancellationAtLocal"
+                                  ValueChanged="@(v => SetCancellation(v))"
+                                  ShowTime="true"
+                                  ShowSeconds="false"
+                                  DateFormat="yyyy-MM-dd HH:mm"
+                                  Style="width:100%;" />
+                <RadzenRequiredValidator Component="WoCancellationAt" Text="Required" Popup="true" Style="position:absolute;" />
+            </div>
+        }
+    </div>
+
+    @if (Model.IsCanceled)
+    {
+        <p class="form-hint text-body-secondary small mb-0">
+            This is a cancellation work order — ATA / ATD are not collected. Approving it locks the flight as <strong>Canceled</strong>.
+        </p>
+    }
+    else
+    {
+        <div class="settings-field__row2">
+            <div class="settings-field" style="position: relative;">
+                <label class="settings-field__label">ATA *</label>
+                <RadzenDatePicker Name="WoAta"
+                                  TValue="DateTime?"
+                                  Value="@Model.AtaLocal"
+                                  ValueChanged="@(v => SetAta(v))"
+                                  ShowTime="true"
+                                  ShowSeconds="false"
+                                  DateFormat="yyyy-MM-dd HH:mm"
+                                  Style="width:100%;" />
+                <RadzenRequiredValidator Component="WoAta" Text="Required" Popup="true" Style="position:absolute;" />
+            </div>
+            <div class="settings-field" style="position: relative;">
+                <label class="settings-field__label">ATD *</label>
+                <RadzenDatePicker Name="WoAtd"
+                                  TValue="DateTime?"
+                                  Value="@Model.AtdLocal"
+                                  ValueChanged="@(v => SetAtd(v))"
+                                  ShowTime="true"
+                                  ShowSeconds="false"
+                                  DateFormat="yyyy-MM-dd HH:mm"
+                                  Style="width:100%;" />
+                <RadzenRequiredValidator Component="WoAtd" Text="Required" Popup="true" Style="position:absolute;" />
+                <RadzenCustomValidator Component="WoAtd"
+                                       Text="ATD must be on or after ATA"
+                                       Validator="@(() => !Model.AtaLocal.HasValue || !Model.AtdLocal.HasValue || Model.AtdLocal.Value >= Model.AtaLocal.Value)"
+                                       Popup="true"
+                                       Style="position:absolute;" />
+            </div>
+        </div>
+    }
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public WorkOrderFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public FlightDto Flight { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<AircraftTypeSelectOption> AircraftTypes { get; set; } = [];
+    [Parameter] public bool AircraftTypesLoading { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private static string FormatDateTime(DateTimeOffset value) =>
+        value.ToLocalTime().ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture);
+
+    private Task SetFlightNumber(string v) { Model.FlightNumber = (v ?? "").ToUpperInvariant(); return OnModelChanged.InvokeAsync(); }
+    private Task SetAircraftType(Guid? v) { Model.AircraftTypeId = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetTail(string v) { Model.AircraftTailNumber = (v ?? "").ToUpperInvariant(); return OnModelChanged.InvokeAsync(); }
+    private Task SetCancellation(DateTime? v) { Model.CancellationAtLocal = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetAta(DateTime? v) { Model.AtaLocal = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetAtd(DateTime? v) { Model.AtdLocal = v; return OnModelChanged.InvokeAsync(); }
+}

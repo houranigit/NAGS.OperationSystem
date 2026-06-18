@@ -1,0 +1,192 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Three sections; lookups load in parallel.
+  IsDirty diff includes working-days set + license editor lines (LicenseEditorLinesEqual).
+*@
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.License
+@using Core.Contracts.Features.ManpowerType
+@using Core.Contracts.Features.Station
+@using Host.Web.Components.Pages.Settings.System.Employees.Dialog
+@using Host.Web.Components.Pages.Settings.System.Employees.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="EmployeeFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_steps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@(IsDirty && !AnyLookupLoading)"
+                 SidebarAriaLabel="Edit employee sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the employee"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <ProfileSection Model="_model"
+                                    ManpowerTypes="_manpowerOptions"
+                                    Stations="_stationOptions"
+                                    ManpowerTypesLoading="_manpowerOptionsLoading"
+                                    StationsLoading="_stationOptionsLoading"
+                                    OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 1:
+                    <ContractSection Model="_model" OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 2:
+                    <LicensesSection Model="_model"
+                                     Licenses="_licenseOptions"
+                                     LicensesLoading="_licenseOptionsLoading"
+                                     OnModelChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public EmployeeDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Profile", "Identity & placement", "users", IsRequired: true, Validate: () => true),
+        new("Contract", "Dates & schedule", "calendar", IsRequired: true, Validate: () => true),
+        new("Licenses", "Certifications", "shield", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<EmployeeFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private EmployeeFormModel _model = new();
+    private EmployeeFormModel _snapshot = new();
+    private List<string> _errorMessages = new();
+
+    private List<ManpowerTypeSelectOption> _manpowerOptions = [];
+    private List<StationSelectOption> _stationOptions = [];
+    private List<LicenseSelectOption> _licenseOptions = [];
+    private bool _manpowerOptionsLoading = true;
+    private bool _stationOptionsLoading = true;
+    private bool _licenseOptionsLoading = true;
+    private bool _lookupsLoadStarted;
+
+    private bool AnyLookupLoading => _manpowerOptionsLoading || _stationOptionsLoading || _licenseOptionsLoading;
+
+    private bool IsDirty =>
+        !string.Equals(_model.FullName, _snapshot.FullName, StringComparison.Ordinal)
+        || !string.Equals(_model.Email, _snapshot.Email, StringComparison.OrdinalIgnoreCase)
+        || _model.ManpowerTypeId != _snapshot.ManpowerTypeId
+        || _model.StationId != _snapshot.StationId
+        || _model.IsActive != _snapshot.IsActive
+        || _model.ContractFrom != _snapshot.ContractFrom
+        || _model.ContractTo != _snapshot.ContractTo
+        || _model.CreateLinkedUser != _snapshot.CreateLinkedUser
+        || !_model.WorkingDays.OrderBy(d => d).SequenceEqual(_snapshot.WorkingDays.OrderBy(d => d))
+        || !LicenseEditorLinesEqual(_model.LicenseLines, _snapshot.LicenseLines);
+
+    private static bool LicenseEditorLinesEqual(IReadOnlyList<EmployeeLicenseEditorLine> a, IReadOnlyList<EmployeeLicenseEditorLine> b)
+    {
+        if (a.Count != b.Count) return false;
+        var orderedA = a.OrderBy(x => x.LicenseTypeId ?? Guid.Empty).ThenBy(x => x.LicenseNumber ?? "", StringComparer.Ordinal).ToList();
+        var orderedB = b.OrderBy(x => x.LicenseTypeId ?? Guid.Empty).ThenBy(x => x.LicenseNumber ?? "", StringComparer.Ordinal).ToList();
+        for (var i = 0; i < orderedA.Count; i++)
+        {
+            var x = orderedA[i];
+            var y = orderedB[i];
+            if (x.Id != y.Id) return false;
+            if (x.LicenseTypeId != y.LicenseTypeId) return false;
+            if (!string.Equals(x.LicenseNumber, y.LicenseNumber, StringComparison.Ordinal)) return false;
+        }
+        return true;
+    }
+
+    protected override void OnInitialized()
+    {
+        _model = EmployeeFormModel.FromDto(ExistingItem);
+        _snapshot = _model.Clone();
+        _currentSection = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+        await Task.WhenAll(
+            LoadManpowerOptionsAsync(),
+            LoadStationOptionsAsync(),
+            LoadLicenseOptionsAsync());
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadManpowerOptionsAsync()
+    {
+        try { _manpowerOptions = (await LookupCache.GetManpowerTypesAsync(ScopedMediator)).ToList(); }
+        finally { _manpowerOptionsLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task LoadStationOptionsAsync()
+    {
+        try { _stationOptions = (await LookupCache.GetStationsAsync(ScopedMediator)).ToList(); }
+        finally { _stationOptionsLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task LoadLicenseOptionsAsync()
+    {
+        try { _licenseOptions = (await LookupCache.GetLicensesAsync(ScopedMediator)).ToList(); }
+        finally { _licenseOptionsLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(EmployeeFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToUpdateEmployeeCommand(ExistingItem.Id));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save employee", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

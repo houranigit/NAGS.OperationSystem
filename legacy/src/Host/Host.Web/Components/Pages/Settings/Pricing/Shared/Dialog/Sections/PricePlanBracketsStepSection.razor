@@ -1,0 +1,35 @@
+@using Core.Domain.Enumerations
+@using Host.Web.Components.Pages.Settings.Pricing.Shared
+
+<PricePlanBracketsSection Basis="@Basis"
+                          CurrencyDisplay="@CurrencyDisplay"
+                          Brackets="@Brackets"
+                          SharedBlockMinutes="@SharedBlockMinutes"
+                          SharedBlockMinutesChanged="@SharedBlockMinutesChanged"
+                          SharedBillingMode="@SharedBillingMode"
+                          SharedBillingModeChanged="@SharedBillingModeChanged"
+                          OnChanged="@OnChanged" />
+@if (!string.IsNullOrWhiteSpace(BracketError))
+{
+    <p class="price-plan-brackets-step__error">@BracketError</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public PricingBasis Basis { get; set; }
+
+    [Parameter, EditorRequired] public string CurrencyDisplay { get; set; } = "—";
+
+    [Parameter, EditorRequired] public List<PriceBracketRowState> Brackets { get; set; } = null!;
+
+    [Parameter] public int SharedBlockMinutes { get; set; } = 60;
+
+    [Parameter] public EventCallback<int> SharedBlockMinutesChanged { get; set; }
+
+    [Parameter] public BracketBillingMode SharedBillingMode { get; set; } = BracketBillingMode.ProRated;
+
+    [Parameter] public EventCallback<BracketBillingMode> SharedBillingModeChanged { get; set; }
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    [Parameter] public string? BracketError { get; set; }
+}

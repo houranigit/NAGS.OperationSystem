@@ -1,0 +1,29 @@
+/* Scope step — General-support / Currency / Basis fields. Mirrors ManpowerPricePlanScopeSection. */
+.settings-field__row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: 100%;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.settings-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+@media (max-width: 768px) {
+    .settings-field__row2 {
+        grid-template-columns: 1fr;
+    }
+}

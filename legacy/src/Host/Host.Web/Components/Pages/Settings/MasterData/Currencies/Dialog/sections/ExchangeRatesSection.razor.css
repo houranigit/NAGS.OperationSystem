@@ -1,0 +1,146 @@
+/* Shared with ContactsSection-style cards */
+.contacts-brackets .settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.contacts-brackets .settings-field__label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+.contacts-brackets .brackets-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.contacts-brackets .bracket-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+
+.contacts-brackets .bracket-card:hover {
+    border-color: #cbd5e1;
+}
+
+.contacts-brackets .bracket-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.contacts-brackets .bracket-number {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.contacts-brackets .bracket-body {
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.contacts-brackets .bracket-field-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+}
+
+.contacts-brackets .bracket-field-row.bracket-field-row--full {
+    grid-template-columns: 1fr;
+}
+
+.contacts-brackets .add-bracket-area {
+    display: flex;
+    justify-content: center;
+    padding: 0.5rem 0;
+}
+
+/* One row in bracket body: "CODE" = [rate][to] … effective */
+.exchange-rates-section .exchange-rate-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.exchange-rates-section .bracket-body--inline {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.65rem;
+}
+
+.exchange-rates-section .exchange-rate-input-wrap {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+.exchange-rates-section .exchange-rate-base {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #475569;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.exchange-rates-section .exchange-rate-field--rate {
+    width: auto;
+    max-width: 7.25rem;
+    flex: 0 0 auto;
+}
+
+.exchange-rates-section .exchange-rate-field--to {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: 4.75rem;
+    max-width: 7.5rem;
+}
+
+.exchange-rates-section .exchange-rate-gap {
+    flex: 1 1 auto;
+    min-width: 1.25rem;
+    max-width: 4rem;
+    height: 1px;
+}
+
+.exchange-rates-section .exchange-rate-effective {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+@media (max-width: 620px) {
+    .exchange-rates-section .exchange-rate-gap {
+        flex-basis: 100%;
+        max-width: none;
+        min-height: 0;
+        height: 0;
+    }
+
+    .exchange-rates-section .exchange-rate-effective {
+        width: 100%;
+    }
+}

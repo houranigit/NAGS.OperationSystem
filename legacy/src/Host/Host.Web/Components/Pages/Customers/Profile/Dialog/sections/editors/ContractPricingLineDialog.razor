@@ -1,0 +1,777 @@
+@*
+  Add / edit ONE contract pricing line. Generic across Service / Manpower / Tool / Material /
+  GeneralSupport — the host passes Kind + ItemLookup + ParentList + EditIndex. The dialog
+  draftcopies the row, lets the user edit it, validates, then writes back to the parent list
+  on Save.
+
+  Layout (matches the user's preferred information hierarchy):
+    LEFT  → "Scope" card        : operation type, item, optional aircraft type
+    RIGHT → "Pricing model" card: basis dropdown, (when Duration) billing mode + block size,
+                                   then the brackets table directly underneath.
+*@
+@namespace Host.Web.Components.Pages.Customers.Profile.Dialog.Sections.Editors
+@using Host.Web.Components.Pages.Customers.Profile.Dialog
+@using Host.Web.Services
+@using PricingBasis = Contracts.Domain.Enumerations.PricingBasis
+@using BracketBillingMode = Contracts.Domain.Enumerations.BracketBillingMode
+@using FeeType = Contracts.Domain.Enumerations.FeeType
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<div class="cpl-dialog">
+    <div class="cpl-dialog__body">
+
+        @* ── LEFT: scope ───────────────────────────────────────────────── *@
+        <section class="cpl-card cpl-card--scope">
+            <header class="cpl-card__header">
+                <span class="cpl-card__icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                </span>
+                <div>
+                    <h6 class="cpl-card__title">Scope</h6>
+                    <p class="cpl-card__subtitle">What this rate applies to.</p>
+                </div>
+            </header>
+
+            <div class="cpl-card__body">
+                <div class="cpl-field">
+                    <label class="cpl-field__label">Operation type *</label>
+                    <RadzenDropDown TValue="Guid"
+                                    Value="@_draft.OperationTypeId"
+                                    ValueChanged="@OnOperationTypeChangedAsync"
+                                    Data="@OperationTypes"
+                                    ValueProperty="Id"
+                                    TextProperty="Name"
+                                    Placeholder="Select operation type"
+                                    AllowFiltering="true"
+                                    Disabled="@(FixedOperationTypeId is not null)"
+                                    Style="width: 100%;" />
+                    @if (FixedOperationTypeId is not null)
+                    {
+                        <p class="cpl-field__hint">Operation type is locked to this card's tab.</p>
+                    }
+                </div>
+
+                <div class="cpl-field">
+                    <label class="cpl-field__label">@_singularNoun *</label>
+                    <RadzenDropDown TValue="Guid"
+                                    Value="@_draft.ItemId"
+                                    ValueChanged="@OnItemChangedAsync"
+                                    Data="@ItemLookup"
+                                    ValueProperty="Id"
+                                    TextProperty="DisplayLabel"
+                                    Placeholder="@($"Select {_singularNoun.ToLowerInvariant()}")"
+                                    AllowFiltering="true"
+                                    Style="width: 100%;" />
+                </div>
+
+                @if (HasAircraft)
+                {
+                    <div class="cpl-field">
+                        <label class="cpl-field__label">Aircraft type</label>
+                        <RadzenDropDown TValue="Guid?"
+                                        Value="@_draft.AircraftTypeId"
+                                        ValueChanged="@OnAircraftChangedAsync"
+                                        Data="@AircraftTypes"
+                                        ValueProperty="Id"
+                                        TextProperty="Name"
+                                        Placeholder="All aircraft"
+                                        AllowClear="true"
+                                        AllowFiltering="true"
+                                        Style="width: 100%;" />
+                        <p class="cpl-field__hint">Leave empty to apply this rate to every aircraft on the contract.</p>
+                    </div>
+                }
+            </div>
+        </section>
+
+        @* ── RIGHT: pricing model (basis + billing/block + brackets) ──── *@
+        <section class="cpl-card cpl-card--pricing">
+            <header class="cpl-card__header">
+                <span class="cpl-card__icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+                </span>
+                <div>
+                    <h6 class="cpl-card__title">Pricing model</h6>
+                    <p class="cpl-card__subtitle">Choose the basis, then set rate(s) below.</p>
+                </div>
+            </header>
+
+            <div class="cpl-card__body">
+                <div class="cpl-pricing-controls">
+                    <div class="cpl-field">
+                        <label class="cpl-field__label">Basis *</label>
+                        <RadzenDropDown TValue="PricingBasis"
+                                        Value="@_draft.Basis"
+                                        ValueChanged="@OnBasisChangedAsync"
+                                        Data="@_basisOptions"
+                                        ValueProperty="Value"
+                                        TextProperty="Label"
+                                        Style="width: 100%;" />
+                        <p class="cpl-field__hint">@(_draft.Basis == PricingBasis.Flat ? "One flat charge per unit." : "A ladder of rates by duration.")</p>
+                    </div>
+
+                    @if (_draft.Basis == PricingBasis.Duration)
+                    {
+                        <div class="cpl-field">
+                            <label class="cpl-field__label">Billing mode *</label>
+                            <RadzenDropDown TValue="BracketBillingMode"
+                                            Value="@_billingMode"
+                                            ValueChanged="@OnBillingModeChangedAsync"
+                                            Data="@_billingModeOptions"
+                                            ValueProperty="Value"
+                                            TextProperty="Label"
+                                            Style="width: 100%;" />
+                            <p class="cpl-field__hint">Applies to every bracket below.</p>
+                        </div>
+                        <div class="cpl-field">
+                            <label class="cpl-field__label">Block size (min) *</label>
+                            <RadzenNumeric TValue="int"
+                                           Value="@_blockMinutes"
+                                           ValueChanged="@OnBlockMinutesChangedAsync"
+                                           Min="1"
+                                           Style="width: 100%;" />
+                            <p class="cpl-field__hint">Applies to every bracket below.</p>
+                        </div>
+                    }
+                </div>
+
+                <div class="cpl-pricing-controls">
+                    <div class="cpl-field">
+                        <label class="cpl-field__label">Package paid balance</label>
+                        <div class="cpl-numeric-prefixed" style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span class="cpl-numeric-prefix">@CurrencyDisplay</span>
+                            <RadzenNumeric TValue="decimal"
+                                           Value="@(_draft.PackagePaidBalance ?? 0m)"
+                                           ValueChanged="@OnPackagePaidBalanceChangedAsync"
+                                           Min="0"
+                                           Format="n2"
+                                           Style="flex: 1; min-width: 0; width: 100%;" />
+                        </div>
+                        <p class="cpl-field__hint">Optional. Leave at zero unless the customer has pre-paid this line — set the amount to unlock a special package price per bracket.</p>
+                    </div>
+                </div>
+
+                <div class="cpl-brackets-block">
+                    <div class="cpl-brackets-block__header">
+                        <h6 class="cpl-brackets-block__title">@(_draft.Basis == PricingBasis.Flat ? "Flat price" : "Price brackets")</h6>
+                        <p class="cpl-brackets-block__subtitle">
+                            @(_draft.Basis == PricingBasis.Flat
+                                ? "Set the per-unit price below."
+                                : "Set From / To and price for each tier — the editor keeps the chain consistent.")
+                        </p>
+                        @if (_planAppliedHint)
+                        {
+                            <p class="cpl-brackets-block__hint" style="color: var(--bs-info, #0d6efd); font-size: 0.85em;">
+                                Defaulted from system price plan — adjust as needed.
+                            </p>
+                        }
+                        @if (_appliedFromOtherCurrency is { } src)
+                        {
+                            @if (src.RateMissing)
+                            {
+                                <p class="cpl-brackets-block__hint" style="color: #b45309; font-size: 0.85em;">
+                                    No exchange rate from @src.Code to @CurrencyDisplay was found — defaulted prices were copied 1:1. Please overwrite them.
+                                </p>
+                            }
+                            else
+                            {
+                                <p class="cpl-brackets-block__hint" style="color: #b45309; font-size: 0.85em;">
+                                    Defaulted prices were converted from @src.Code at rate @src.Rate.ToString("0.####") into @CurrencyDisplay — review them.
+                                </p>
+                            }
+                        }
+                        @if (HasPackagePaid)
+                        {
+                            <p class="cpl-brackets-block__hint" style="color: var(--bs-info, #0d6efd); font-size: 0.85em;">
+                                Package balance set — fill the package price for each bracket (must be ≤ the standard price).
+                            </p>
+                        }
+                    </div>
+
+                    <ContractPlanBracketsEditor IsFlat="@(_draft.Basis == PricingBasis.Flat)"
+                                                ChargeType="FeeType.Fixed"
+                                                CurrencyDisplay="@CurrencyDisplay"
+                                                Brackets="_planBrackets"
+                                                FlatLabel="Flat price per unit"
+                                                FlatHint="One charge per unit regardless of duration."
+                                                ShowPackagePrice="@HasPackagePaid"
+                                                OnChanged="OnBracketsChangedAsync" />
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer class="cpl-dialog__footer">
+        <button type="button" class="cpl-dialog__btn cpl-dialog__btn--secondary" @onclick="CancelAsync">Cancel</button>
+        <button type="button" class="cpl-dialog__btn cpl-dialog__btn--commit" @onclick="SaveAsync">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            @(IsEdit ? "Update line" : "Add line")
+        </button>
+    </footer>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContractPricingLineKind Kind { get; set; }
+    [Parameter, EditorRequired] public List<ContractFormModel.PricingLineRow> ParentList { get; set; } = default!;
+    [Parameter] public int? EditIndex { get; set; }
+
+    [Parameter, EditorRequired] public IReadOnlyList<ContractDialogLookups.DropdownOption> ItemLookup { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter, EditorRequired] public IReadOnlyList<ContractDialogLookups.DropdownOption> OperationTypes { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+    [Parameter] public IReadOnlyList<ContractDialogLookups.DropdownOption> AircraftTypes { get; set; } = Array.Empty<ContractDialogLookups.DropdownOption>();
+
+    [Parameter] public string CurrencyDisplay { get; set; } = "—";
+
+    /// <summary>
+    /// When set, the dialog locks the OT dropdown to this id (used by the per-OT services
+    /// section so each card edits its own OT only).
+    /// </summary>
+    [Parameter] public Guid? FixedOperationTypeId { get; set; }
+
+    /// <summary>
+    /// Resolves the system-default plans for a given item id (host-neutral DTOs). When
+    /// the user picks an item the dialog calls this to find the best-matching plan and
+    /// auto-fill brackets.
+    /// </summary>
+    [Parameter] public Func<Guid, IReadOnlyList<DialogPricePlanScopeOption>>? GetItemPlans { get; set; }
+
+    /// <summary>
+    /// "plan currency id → multiplier into the contract currency". When a default plan's
+    /// currency matches the contract currency the rate is <c>1m</c>; otherwise the value
+    /// is the host's resolved exchange rate. Currencies missing from the map fall back
+    /// to <c>1m</c> and the user is expected to overwrite.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<Guid, decimal>? RateMap { get; set; }
+
+    /// <summary>
+    /// Currency id of the parent contract — used to detect that the matched system price
+    /// plan's currency differs from the contract's, which triggers the "converted from X at
+    /// rate Y" hint above the brackets.
+    /// </summary>
+    [Parameter] public Guid? ContractCurrencyId { get; set; }
+
+    /// <summary>
+    /// Currency id → 3-letter code (e.g. <c>USD</c>). Optional. When supplied, the
+    /// cross-currency hint shows the source currency code; otherwise it shows
+    /// <c>"another currency"</c>.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<Guid, string>? CurrencyCodes { get; set; }
+
+    private bool IsEdit => EditIndex is not null;
+    private bool HasAircraft => Kind is ContractPricingLineKind.Service or ContractPricingLineKind.Tool;
+
+    /// <summary>
+    /// True when the user has set a non-zero package paid balance on the line. Drives the
+    /// extra "Package" price column on the brackets editor and the per-bracket
+    /// PackagePriceValue requirement at save time. Mirrors the domain rule:
+    /// PackagePriceValue must be set (and 0 ≤ PackagePriceValue ≤ PriceValue) iff
+    /// PackagePaidBalance &gt; 0.
+    /// </summary>
+    private bool HasPackagePaid => _draft.PackagePaidBalance is { } v && v > 0m;
+
+    /// <summary>
+    /// One-shot UI hint shown above the brackets after we successfully auto-fill from a
+    /// system-default plan. Cleared as soon as the user changes the item again.
+    /// </summary>
+    private bool _planAppliedHint;
+
+    /// <summary>
+    /// Set when a default plan was applied but its source currency differs from the
+    /// contract currency. Drives an extra hint warning the user that prices were converted
+    /// (or, when <c>RateMissing</c>, that no rate was found and 1:1 was used).
+    /// </summary>
+    private (string Code, decimal Rate, bool RateMissing)? _appliedFromOtherCurrency;
+
+    private string _singularNoun = "Item";
+    private string ArticleNoun => _singularNoun.ToLowerInvariant() switch
+    {
+        var n when n.StartsWith("a") || n.StartsWith("e") || n.StartsWith("i") || n.StartsWith("o") || n.StartsWith("u") => $"an {n}",
+        var n => $"a {n}"
+    };
+
+    private ContractFormModel.PricingLineRow _draft = new();
+    private int _blockMinutes = 60;
+    private BracketBillingMode _billingMode = BracketBillingMode.ProRated;
+
+    /// <summary>
+    /// Plan-bracket projection used by the bracket editor (which only carries Min/Max/Value).
+    /// We hold a parallel <see cref="ContractFormModel.PriceBracketRow"/> list internally and
+    /// project to <see cref="ContractFormModel.PlanBracketRow"/> for the editor; on save we
+    /// rehydrate the per-row BlockSize/BillingMode using the shared values.
+    /// </summary>
+    private List<ContractFormModel.PlanBracketRow> _planBrackets = new();
+
+    private sealed record EnumOption<T>(T Value, string Label) where T : struct, Enum;
+
+    private static readonly EnumOption<PricingBasis>[] _basisOptions =
+    [
+        new(PricingBasis.Flat,     "Flat per unit"),
+        new(PricingBasis.Duration, "Duration brackets")
+    ];
+
+    private static readonly EnumOption<BracketBillingMode>[] _billingModeOptions =
+    [
+        new(BracketBillingMode.ProRated, "Pro-rated"),
+        new(BracketBillingMode.Floor,    "Floor (round down)"),
+        new(BracketBillingMode.Ceiling,  "Ceiling (round up)")
+    ];
+
+    protected override void OnParametersSet()
+    {
+        _singularNoun = Kind switch
+        {
+            ContractPricingLineKind.Service => "Service",
+            ContractPricingLineKind.Manpower => "Manpower type",
+            ContractPricingLineKind.Tool => "Tool",
+            ContractPricingLineKind.Material => "Material",
+            ContractPricingLineKind.GeneralSupport => "General support",
+            _ => "Item"
+        };
+
+        // Clone the source row (or seed a brand-new one) into the local draft so cancel
+        // doesn't leak edits into the parent list.
+        if (EditIndex is int i && i >= 0 && i < ParentList.Count)
+        {
+            _draft = ParentList[i].Clone();
+        }
+        else
+        {
+            _draft = new ContractFormModel.PricingLineRow
+            {
+                // Per-OT services step pre-locks the OT — bake it into the draft so save
+                // doesn't fail validation with Guid.Empty if the user never touched the
+                // (disabled) dropdown.
+                OperationTypeId = FixedOperationTypeId ?? Guid.Empty,
+                Basis = PricingBasis.Flat,
+                Brackets = new List<ContractFormModel.PriceBracketRow>
+                {
+                    new() { MinMinutes = 0, MaxMinutes = null, BlockSize = 1, PriceValue = 0m, BillingMode = BracketBillingMode.ProRated }
+                }
+            };
+        }
+
+        SeedSharedFromBrackets();
+        ProjectToPlanBrackets();
+    }
+
+    private void SeedSharedFromBrackets()
+    {
+        var first = _draft.Brackets.FirstOrDefault();
+        if (first is not null)
+        {
+            _blockMinutes = Math.Max(1, first.BlockSize);
+            _billingMode = first.BillingMode;
+        }
+    }
+
+    private void ProjectToPlanBrackets()
+    {
+        _planBrackets = _draft.Brackets
+            .Select(b => new ContractFormModel.PlanBracketRow
+            {
+                MinMinutes = b.MinMinutes,
+                MaxMinutes = b.MaxMinutes,
+                Value = b.PriceValue,
+                PackageValue = b.PackagePriceValue,
+            })
+            .ToList();
+    }
+
+    private void RehydrateDraftFromPlanBrackets()
+    {
+        // Flat mode is special-cased to satisfy ContractPricePlanValidator.ValidateFlat:
+        // exactly one row, MinMinutes=0, MaxMinutes=null, BlockSize=1, BillingMode=ProRated.
+        // The shared bracket editor stores a flat row as (Min=0,Max=0) which is fine for
+        // cancellation/delay plans but is rejected by the price-plan validator — so we
+        // override the shape here instead of patching the editor (which would break the
+        // other plans).
+        if (_draft.Basis == PricingBasis.Flat)
+        {
+            var src = _planBrackets.FirstOrDefault();
+            _draft.Brackets = new List<ContractFormModel.PriceBracketRow>
+            {
+                new()
+                {
+                    MinMinutes = 0,
+                    MaxMinutes = null,
+                    BlockSize = 1,
+                    PriceValue = src?.Value ?? 0m,
+                    PackagePriceValue = HasPackagePaid ? (src?.PackageValue ?? 0m) : null,
+                    BillingMode = BracketBillingMode.ProRated,
+                }
+            };
+            return;
+        }
+
+        // Duration: copy through the editor's rows but enforce the ladder invariants the
+        // domain validator expects (first row Min=0, last row Max=null). The editor's
+        // ResyncMinChain already gives us monotonic Min values; we only need to clamp the
+        // edges so a partial save can't produce an invalid ladder.
+        var rows = _planBrackets.ToList();
+        if (rows.Count == 0)
+        {
+            rows.Add(new ContractFormModel.PlanBracketRow { MinMinutes = 0, MaxMinutes = null, Value = 0m });
+        }
+        else
+        {
+            rows[0].MinMinutes = 0;
+            rows[^1].MaxMinutes = null;
+        }
+
+        _draft.Brackets = rows
+            .Select(b => new ContractFormModel.PriceBracketRow
+            {
+                MinMinutes = b.MinMinutes,
+                MaxMinutes = b.MaxMinutes,
+                BlockSize = Math.Max(1, _blockMinutes),
+                PriceValue = b.Value,
+                // Domain invariant: PackagePriceValue is set iff PackagePaidBalance > 0.
+                // The editor only writes PackageValue when ShowPackagePrice is on, but a
+                // user can flip the toggle off by clearing the balance — wipe the field
+                // so the form payload doesn't carry a stale package price.
+                PackagePriceValue = HasPackagePaid ? (b.PackageValue ?? 0m) : null,
+                BillingMode = _billingMode,
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Step 1 of the package-paid toggle: writing a non-zero balance unlocks the
+    /// per-bracket package-price column on the editor and seeds each row's PackageValue
+    /// from the current standard price (so the user lands on a sane default). Clearing
+    /// the balance back to zero scrubs the package values so we never send a stale
+    /// PackagePriceValue with no balance.
+    /// </summary>
+    private async Task OnPackagePaidBalanceChangedAsync(decimal value)
+    {
+        var sanitized = value < 0m ? 0m : value;
+        var hadPackage = HasPackagePaid;
+        _draft.PackagePaidBalance = sanitized > 0m ? sanitized : null;
+        var nowPackage = HasPackagePaid;
+
+        if (!hadPackage && nowPackage)
+        {
+            // Just turned on — give every bracket a starting package price equal to its
+            // standard price, so the user only edits the ones that need a discount.
+            foreach (var b in _planBrackets)
+                b.PackageValue ??= b.Value;
+        }
+        else if (hadPackage && !nowPackage)
+        {
+            foreach (var b in _planBrackets)
+                b.PackageValue = null;
+        }
+
+        await Task.CompletedTask;
+        StateHasChanged();
+    }
+
+    private async Task OnOperationTypeChangedAsync(Guid value)
+    {
+        if (_draft.OperationTypeId == value) return;
+        _draft.OperationTypeId = value;
+        // Plan match for Service depends on (OT, AircraftType) — re-apply if we already
+        // have an item picked.
+        if (!IsEdit && _draft.ItemId != Guid.Empty)
+            ApplyDefaultPlanIfAny();
+        await Task.CompletedTask;
+    }
+
+    private async Task OnItemChangedAsync(Guid value)
+    {
+        if (_draft.ItemId == value) return;
+        _draft.ItemId = value;
+        // Auto-fill defaults only on Add — Edit keeps stored brackets untouched.
+        if (!IsEdit && value != Guid.Empty)
+        {
+            ApplyDefaultPlanIfAny();
+        }
+        else
+        {
+            _planAppliedHint = false;
+            _appliedFromOtherCurrency = null;
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task OnAircraftChangedAsync(Guid? value)
+    {
+        if (_draft.AircraftTypeId == value) return;
+        _draft.AircraftTypeId = value;
+        if (!IsEdit && _draft.ItemId != Guid.Empty)
+            ApplyDefaultPlanIfAny();
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Looks up the system-default plan(s) for the current item (and OT/AircraftType
+    /// combination, where applicable), picks the most specific match, converts each
+    /// bracket value into the contract currency via <see cref="RateMap"/>, and writes the
+    /// result onto the draft. No-op when <see cref="GetItemPlans"/> wasn't supplied or the
+    /// item has no plans.
+    /// </summary>
+    /// <remarks>
+    /// Specificity order:
+    /// <list type="number">
+    /// <item>Service: OT + AircraftType match → OT match with null aircraft → first OT match.</item>
+    /// <item>Manpower: OT match.</item>
+    /// <item>Tool / Material / GeneralSupport: first plan (Store plans aren't OT-scoped).</item>
+    /// </list>
+    /// </remarks>
+    private void ApplyDefaultPlanIfAny()
+    {
+        if (GetItemPlans is null) return;
+        var plans = GetItemPlans(_draft.ItemId);
+        if (plans.Count == 0) { _planAppliedHint = false; return; }
+
+        DialogPricePlanScopeOption? match = Kind switch
+        {
+            ContractPricingLineKind.Service =>
+                plans.FirstOrDefault(p => p.OperationTypeId == _draft.OperationTypeId
+                    && p.AircraftTypeId == _draft.AircraftTypeId)
+                ?? plans.FirstOrDefault(p => p.OperationTypeId == _draft.OperationTypeId
+                    && p.AircraftTypeId is null)
+                ?? plans.FirstOrDefault(p => p.OperationTypeId == _draft.OperationTypeId),
+            ContractPricingLineKind.Manpower =>
+                plans.FirstOrDefault(p => p.OperationTypeId == _draft.OperationTypeId),
+            // Store plans (Tool / Material / GeneralSupport) ignore OT — first plan wins.
+            ContractPricingLineKind.Tool
+            or ContractPricingLineKind.Material
+            or ContractPricingLineKind.GeneralSupport =>
+                plans.FirstOrDefault(),
+            _ => null
+        };
+
+        if (match is null) { _planAppliedHint = false; _appliedFromOtherCurrency = null; return; }
+
+        decimal rate = 1m;
+        var rateFound = false;
+        if (RateMap is not null && RateMap.TryGetValue(match.CurrencyId, out var resolved))
+        {
+            rate = resolved;
+            rateFound = true;
+        }
+
+        _draft.Basis = match.Basis;
+        _draft.Brackets = match.Brackets
+            .Select(b => new ContractFormModel.PriceBracketRow
+            {
+                MinMinutes = b.MinMinutes,
+                MaxMinutes = b.MaxMinutes,
+                BlockSize = b.BlockSize <= 0 ? 1 : b.BlockSize,
+                PriceValue = decimal.Round(b.Value * rate, 4, MidpointRounding.AwayFromZero),
+                BillingMode = b.BillingMode,
+            })
+            .ToList();
+
+        SeedSharedFromBrackets();
+        ProjectToPlanBrackets();
+        _planAppliedHint = true;
+
+        // Cross-currency hint: only fires when we know the contract currency AND the source
+        // plan's currency is different. RateMissing distinguishes "we converted at X" from
+        // "no rate available, defaulted to 1:1 — please overwrite".
+        if (ContractCurrencyId is { } cid && match.CurrencyId != cid)
+        {
+            var code = CurrencyCodes is not null && CurrencyCodes.TryGetValue(match.CurrencyId, out var c)
+                ? c
+                : "another currency";
+            _appliedFromOtherCurrency = (code, rate, RateMissing: !rateFound);
+        }
+        else
+        {
+            _appliedFromOtherCurrency = null;
+        }
+    }
+
+    private async Task OnBasisChangedAsync(PricingBasis basis)
+    {
+        if (basis == _draft.Basis) return;
+        _draft.Basis = basis;
+
+        if (basis == PricingBasis.Flat)
+        {
+            // Collapse to a single flat row; preserve whatever flat value was last set.
+            // The editor renders this as Max=0 internally (its flat shape), but
+            // RehydrateDraftFromPlanBrackets normalises it to Max=null on save so the
+            // domain's ValidateFlat is satisfied.
+            var src = _planBrackets.FirstOrDefault();
+            _planBrackets = new List<ContractFormModel.PlanBracketRow>
+            {
+                new()
+                {
+                    MinMinutes = 0,
+                    MaxMinutes = 0,
+                    Value = src?.Value ?? 0m,
+                    PackageValue = HasPackagePaid ? (src?.PackageValue ?? src?.Value ?? 0m) : null,
+                }
+            };
+            // Flat ladder is fixed: BlockSize=1, BillingMode=ProRated. Reset the shared
+            // controls so the next switch back to Duration starts from a clean state.
+            _blockMinutes = 1;
+            _billingMode = BracketBillingMode.ProRated;
+        }
+        else
+        {
+            // Expand to a single open-ended starter row when we were flat (or empty);
+            // keep the existing ladder otherwise so the user doesn't lose their work.
+            var wasFlat = _planBrackets.Count == 1
+                && _planBrackets[0].MinMinutes == 0
+                && (_planBrackets[0].MaxMinutes is null || _planBrackets[0].MaxMinutes == 0);
+
+            if (_planBrackets.Count == 0 || wasFlat)
+            {
+                var seed = _planBrackets.FirstOrDefault();
+                _planBrackets = new List<ContractFormModel.PlanBracketRow>
+                {
+                    new()
+                    {
+                        MinMinutes = 0,
+                        MaxMinutes = null,
+                        Value = seed?.Value ?? 0m,
+                        PackageValue = HasPackagePaid ? (seed?.PackageValue ?? seed?.Value ?? 0m) : null,
+                    }
+                };
+            }
+            else
+            {
+                // Make sure the last row is open-ended so the ladder validates even if
+                // the user never touches it again.
+                _planBrackets[^1].MaxMinutes = null;
+            }
+
+            // Sensible default block size so the user isn't forced into 1-minute granularity
+            // unless they pick it.
+            if (_blockMinutes <= 1) _blockMinutes = 60;
+        }
+
+        await Task.CompletedTask;
+        StateHasChanged();
+    }
+
+    private async Task OnBlockMinutesChangedAsync(int v)
+    {
+        _blockMinutes = Math.Max(1, v);
+        await Task.CompletedTask;
+    }
+
+    private async Task OnBillingModeChangedAsync(BracketBillingMode v)
+    {
+        _billingMode = v;
+        await Task.CompletedTask;
+    }
+
+    private Task OnBracketsChangedAsync()
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task CancelAsync()
+    {
+        DialogService.Close(false);
+        await Task.CompletedTask;
+    }
+
+    private async Task SaveAsync()
+    {
+        RehydrateDraftFromPlanBrackets();
+
+        var error = ValidateDraft();
+        if (error is not null)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", error);
+            return;
+        }
+
+        if (EditIndex is int i && i >= 0 && i < ParentList.Count)
+            ParentList[i] = _draft.Clone();
+        else
+            ParentList.Add(_draft.Clone());
+
+        DialogService.Close(true);
+        await Task.CompletedTask;
+    }
+
+    private string? ValidateDraft()
+    {
+        if (_draft.OperationTypeId == Guid.Empty)
+            return "Pick an operation type.";
+        if (_draft.ItemId == Guid.Empty)
+            return $"Pick {ArticleNoun}.";
+
+        if (_draft.PackagePaidBalance is { } pkg && pkg < 0m)
+            return "Package paid balance cannot be negative.";
+
+        if (_draft.Basis == PricingBasis.Flat)
+        {
+            if (_draft.Brackets.Count != 1)
+                return "Flat pricing must have exactly one row.";
+            if (_draft.Brackets[0].PriceValue < 0m)
+                return "Flat price cannot be negative.";
+        }
+        else
+        {
+            if (_draft.Brackets.Count == 0)
+                return "Add at least one duration bracket.";
+            if (_draft.Brackets[0].MinMinutes != 0)
+                return "First bracket must start at 0 minutes.";
+
+            for (var idx = 0; idx < _draft.Brackets.Count; idx++)
+            {
+                var row = _draft.Brackets[idx];
+                var isLast = idx == _draft.Brackets.Count - 1;
+                if (row.PriceValue < 0m) return $"Bracket {idx + 1}: price cannot be negative.";
+                if (row.BlockSize <= 0) return $"Bracket {idx + 1}: block size must be greater than zero.";
+                if (row.MinMinutes < 0) return $"Bracket {idx + 1}: minimum cannot be negative.";
+                if (row.MaxMinutes is int mx)
+                {
+                    if (mx <= row.MinMinutes) return $"Bracket {idx + 1}: maximum must be greater than minimum.";
+                    if (row.BlockSize > mx - row.MinMinutes)
+                        return $"Bracket {idx + 1}: block size exceeds the bracket span.";
+                }
+                if (!isLast && row.MaxMinutes is null)
+                    return "Only the last bracket may be open-ended (∞).";
+                if (idx > 0 && _draft.Brackets[idx - 1].MaxMinutes is int prevMax && row.MinMinutes < prevMax)
+                    return $"Bracket {idx + 1}: \"From\" must be ≥ previous \"To\" ({prevMax} min).";
+            }
+        }
+
+        // Mirror Contract domain invariant: PackagePriceValue must be present iff a
+        // PackagePaidBalance is set, and 0 ≤ PackagePriceValue ≤ PriceValue.
+        for (var idx = 0; idx < _draft.Brackets.Count; idx++)
+        {
+            var row = _draft.Brackets[idx];
+            if (HasPackagePaid)
+            {
+                if (row.PackagePriceValue is not { } ppv)
+                    return $"Bracket {idx + 1}: package price is required when a package paid balance is set.";
+                if (ppv < 0m) return $"Bracket {idx + 1}: package price cannot be negative.";
+                if (ppv > row.PriceValue) return $"Bracket {idx + 1}: package price cannot exceed the standard price.";
+            }
+            else if (row.PackagePriceValue is not null)
+            {
+                return $"Bracket {idx + 1}: package price is set but the line has no package paid balance.";
+            }
+        }
+
+        // Duplicate guard: same item + (when applicable) same aircraft already on the
+        // SAME operation type. Comparing OperationTypeId matters because each OT has its
+        // own pricing — e.g. AOG can legitimately appear once for HAJJ and once for
+        // SCHEDULED, and deleting the AOG row from one OT must not be blocked by another
+        // OT's AOG row (which is invisible in the per-OT card).
+        for (var i = 0; i < ParentList.Count; i++)
+        {
+            if (EditIndex is int idx && i == idx) continue;
+            var other = ParentList[i];
+            if (other.OperationTypeId != _draft.OperationTypeId) continue;
+            if (other.ItemId != _draft.ItemId) continue;
+            if (HasAircraft && other.AircraftTypeId != _draft.AircraftTypeId) continue;
+            return HasAircraft
+                ? $"This {_singularNoun.ToLowerInvariant()} with the same aircraft type is already on this operation type."
+                : $"This {_singularNoun.ToLowerInvariant()} is already on this operation type.";
+        }
+
+        return null;
+    }
+}

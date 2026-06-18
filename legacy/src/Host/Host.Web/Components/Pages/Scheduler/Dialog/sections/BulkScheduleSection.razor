@@ -1,0 +1,106 @@
+@*
+  Bulk-only: period + weekday pattern + daily clock times for Schedule Flights.
+  Exact dates are confirmed in BulkConfirmDaysSection before the batch command is dispatched.
+*@
+@namespace Host.Web.Components.Pages.Scheduler.Dialog.Sections
+@using Host.Web.Components.Pages.Scheduler.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Period from *</label>
+            <RadzenDatePicker Name="BulkPeriodFrom"
+                              TValue="DateTime?"
+                              Value="@Model.PeriodFrom"
+                              ValueChanged="@(v => SetPeriodFrom(v))"
+                              DateFormat="yyyy-MM-dd"
+                              Style="width:100%;" />
+            <RadzenRequiredValidator Component="BulkPeriodFrom" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Period to *</label>
+            <RadzenDatePicker Name="BulkPeriodTo"
+                              TValue="DateTime?"
+                              Value="@Model.PeriodTo"
+                              ValueChanged="@(v => SetPeriodTo(v))"
+                              DateFormat="yyyy-MM-dd"
+                              Style="width:100%;" />
+            <RadzenCustomValidator Component="BulkPeriodTo"
+                                   Text="End date must be on or after start date"
+                                   Validator="@(() => Model.PeriodFrom is null || Model.PeriodTo is null || Model.PeriodTo.Value.Date >= Model.PeriodFrom.Value.Date)"
+                                   Popup="true"
+                                   Style="position: absolute" />
+        </div>
+    </div>
+
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Arrival (STA) *</label>
+            <RadzenDatePicker Name="BulkArrival"
+                              TValue="DateTime?"
+                              Value="@Model.ArrivalTimeClock"
+                              ValueChanged="@(v => SetArrival(v))"
+                              ShowTime="true"
+                              ShowSeconds="false"
+                              DateFormat="HH:mm"
+                              Style="width:100%;" />
+            <RadzenRequiredValidator Component="BulkArrival" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label">Departure (STD) *</label>
+            <RadzenDatePicker Name="BulkDeparture"
+                              TValue="DateTime?"
+                              Value="@Model.DepartureTimeClock"
+                              ValueChanged="@(v => SetDeparture(v))"
+                              ShowTime="true"
+                              ShowSeconds="false"
+                              DateFormat="HH:mm"
+                              Style="width:100%;" />
+            <RadzenRequiredValidator Component="BulkDeparture" Text="Required" Popup="true" Style="position:absolute;" />
+        </div>
+    </div>
+    <p class="form-hint text-body-secondary small mb-0">If STD is earlier than STA, departure is set to the next day for each date.</p>
+
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label d-block">Days in period *</label>
+        <RadzenSelectBar Name="BulkWeekdays"
+                         TValue="IEnumerable<int>"
+                         Value="@Model.Weekdays"
+                         ValueChanged="@(v => SetWeekdays(v))"
+                         Multiple="true"
+                         Size="ButtonSize.Small"
+                         class="d-flex flex-wrap">
+            <Items>
+                <RadzenSelectBarItem Text="Sun" Value="@(0)" />
+                <RadzenSelectBarItem Text="Mon" Value="@(1)" />
+                <RadzenSelectBarItem Text="Tue" Value="@(2)" />
+                <RadzenSelectBarItem Text="Wed" Value="@(3)" />
+                <RadzenSelectBarItem Text="Thu" Value="@(4)" />
+                <RadzenSelectBarItem Text="Fri" Value="@(5)" />
+                <RadzenSelectBarItem Text="Sat" Value="@(6)" />
+            </Items>
+        </RadzenSelectBar>
+        <RadzenCustomValidator Component="BulkWeekdays"
+                               Text="Select at least one weekday"
+                               Validator="@(() => Model.Weekdays is { Count: > 0 })"
+                               Popup="true"
+                               Style="position: absolute" />
+        <p class="form-hint text-body-secondary small mt-1">One flight per selected weekday; refine exact dates in the last step.</p>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public FlightFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task SetPeriodFrom(DateTime? v) { Model.PeriodFrom = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetPeriodTo(DateTime? v) { Model.PeriodTo = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetArrival(DateTime? v) { Model.ArrivalTimeClock = v; return OnModelChanged.InvokeAsync(); }
+    private Task SetDeparture(DateTime? v) { Model.DepartureTimeClock = v; return OnModelChanged.InvokeAsync(); }
+
+    private Task SetWeekdays(IEnumerable<int> v)
+    {
+        Model.Weekdays = v?.ToList() ?? [];
+        return OnModelChanged.InvokeAsync();
+    }
+}

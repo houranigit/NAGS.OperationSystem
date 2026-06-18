@@ -1,0 +1,140 @@
+@*
+  ADD = wizard via the shared WizardShell. Three steps: company + address + contacts.
+  Country lookup loaded after first paint (the heavy bit) so the shell paints first.
+*@
+@using Core.Contracts.Features.Country
+@using Core.Contracts.Features.Customer
+@using Host.Web.Components.Pages.Customers.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="CustomerFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentStep"
+                 CurrentStepChanged="@(s => _currentStep = s)"
+                 FurthestReached="_furthestReached"
+                 FurthestReachedChanged="@(r => _furthestReached = r)"
+                 Mode="WizardMode.Wizard"
+                 IsBusy="_saving"
+                 CanSave="@(_hasChangedInAddMode && !_countryOptionsLoading)"
+                 SidebarAriaLabel="New customer steps"
+                 SaveLabel="Save"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't save the customer"
+                 ConfirmCancelOnDirty="@_hasChangedInAddMode"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <CompanySection Model="_model" OnModelChanged="OnFormFieldChangedAsync" />
+                    break;
+                case 1:
+                    <AddressSection Model="_model"
+                                    CountryOptions="_countryOptions"
+                                    CountryOptionsLoading="_countryOptionsLoading"
+                                    OnModelChanged="OnFormFieldChangedAsync" />
+                    break;
+                case 2:
+                    <ContactsSection Model="_model" OnModelChanged="OnFormFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    private static readonly Guid PreferredDefaultCountryId = Guid.Parse("e1000001-0000-4000-8000-000000000001");
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Company", "Codes & registry", "building", IsRequired: true, Validate: () => true),
+        new("Address", "Billing / official", "pin", IsRequired: false, Validate: () => true),
+        new("Contacts", "Airline contacts", "users", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<CustomerFormModel>? _form;
+    private int _currentStep, _furthestReached;
+    private bool _saving, _hasChangedInAddMode;
+    private CustomerFormModel _model = new() { IsActive = true };
+    private List<string> _errorMessages = new();
+
+    private List<CountrySelectOption> _countryOptions = [];
+    private bool _countryOptionsLoading = true;
+    private bool _lookupsLoadStarted;
+
+    protected override void OnInitialized()
+    {
+        _model = new CustomerFormModel { IsActive = true, AddressCountryId = PreferredDefaultCountryId };
+        _hasChangedInAddMode = false;
+        _currentStep = 0;
+        _furthestReached = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+        try { _countryOptions = (await LookupCache.GetCountriesAsync(ScopedMediator)).ToList(); }
+        finally { _countryOptionsLoading = false; EnsureCountryIdsValid(); await InvokeAsync(StateHasChanged); }
+    }
+
+    private void EnsureCountryIdsValid()
+    {
+        if (_countryOptions.Count == 0) return;
+        if (_model.AddressCountryId is not { } id || _countryOptions.All(c => c.Id != id))
+        {
+            _model.AddressCountryId = _countryOptions.FirstOrDefault(c => c.Id == PreferredDefaultCountryId)?.Id
+                ?? _countryOptions[0].Id;
+        }
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFormFieldChangedAsync() { _hasChangedInAddMode = true; StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentStep;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentStep = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentStep = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(CustomerFormModel _)
+    {
+        if (_saving) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToCreateCustomerCommand());
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save customer", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

@@ -1,0 +1,68 @@
+@*
+  Shared contract-resolution banner for flight dialogs (single-flight RouteSection + bulk schedule wizard).
+*@
+@namespace Host.Web.Components.Pages.Scheduler.Dialog.Sections
+
+@if (Show)
+{
+    @if (ContractLookupInProgress)
+    {
+        <div class="route-section__contract route-section__contract--loading" role="status" aria-live="polite">
+            <LoadingSpinner Size="@LoadingSpinner.SpinnerSize.Small" />
+            <span>Fetching contract for your selection…</span>
+        </div>
+    }
+    else if (ContractVerified && !string.IsNullOrEmpty(ResolvedContractNumber))
+    {
+        <div class="route-section__contract route-section__contract--success" role="status">
+            <span class="route-section__contract-icon route-section__contract-icon--success" aria-hidden="true">✓</span>
+            <div>
+                @if (BulkScheduleMode)
+                {
+                    <span>Contract <strong>@ResolvedContractNumber</strong> covers flights built from this route for the period-start date and arrival time you chose.</span>
+                }
+                else
+                {
+                    <span>Contract <strong>@ResolvedContractNumber</strong> applies to this flight.</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(ContractSuccessDetail))
+                {
+                    <p class="route-section__contract-body">@ContractSuccessDetail</p>
+                }
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(ContractLookupError))
+    {
+        <div class="route-section__contract route-section__contract--error" role="alert">
+            <span class="route-section__contract-icon" aria-hidden="true">!</span>
+            <span>@ContractLookupError</span>
+        </div>
+    }
+    else
+    {
+        <div class="route-section__contract route-section__contract--info" role="status" aria-live="polite">
+            <span class="route-section__contract-icon route-section__contract-icon--info" aria-hidden="true">i</span>
+            <div>
+                <p class="route-section__contract-title">Contract @ContractReadinessFilled/@ContractReadinessTotal</p>
+                <p class="route-section__contract-body">@ContractReadinessMessage</p>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+
+    /// <summary>Alternate success copy for bulk scheduling (period + arrival anchor).</summary>
+    [Parameter] public bool BulkScheduleMode { get; set; }
+
+    [Parameter] public bool ContractLookupInProgress { get; set; }
+    [Parameter] public bool ContractVerified { get; set; }
+    [Parameter] public string? ContractLookupError { get; set; }
+    [Parameter] public string? ResolvedContractNumber { get; set; }
+    [Parameter] public string? ContractSuccessDetail { get; set; }
+    [Parameter] public int ContractReadinessFilled { get; set; }
+    [Parameter] public int ContractReadinessTotal { get; set; } = 5;
+    [Parameter] public string ContractReadinessMessage { get; set; } = "";
+}

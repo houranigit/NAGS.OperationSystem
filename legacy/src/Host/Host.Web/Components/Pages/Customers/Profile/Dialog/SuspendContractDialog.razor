@@ -1,0 +1,161 @@
+@*
+  Suspend-contract dialog. Sends SuspendContractCommand for the supplied contract and
+  closes with `true` on success so the host can refresh the card list.
+
+  UX notes (mirrors CancelFlightDialog so the visual language matches the rest of the
+  destructive-action dialogs):
+   - Top "warning" hero gives the action context and identifies the contract.
+   - Contract context grid lets the operator double-check they picked the right card
+     before typing a reason.
+   - Submit stays disabled until the reason has at least 1 trimmed character (matches
+     SuspendContractCommandValidator's NotEmpty rule).
+*@
+@using Contracts.Application.Features.Contract.Commands.SuspendContract
+@using Contracts.Contracts.Contract
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+
+<div class="settings-wizard-host suspend-contract-host">
+    <div class="settings-wizard">
+        <section class="settings-wizard__content">
+            <div class="settings-wizard__main">
+                <div class="settings-wizard__panel">
+
+                    <header class="suspend-contract__hero" role="banner">
+                        <span class="suspend-contract__hero-icon" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/></svg>
+                        </span>
+                        <div class="suspend-contract__hero-body">
+                            <span class="suspend-contract__hero-eyebrow">Suspend contract</span>
+                            <h2 class="suspend-contract__hero-title">#@Contract.ContractNo · @Contract.Customer.Name</h2>
+                            <p class="suspend-contract__hero-sub">
+                                The contract will be paused — billing and operational use can resume the
+                                moment you click <strong>Resume</strong> from its card. Existing balances
+                                and lines stay intact.
+                            </p>
+                        </div>
+                    </header>
+
+                    <section class="suspend-contract__context" aria-label="Contract summary">
+                        <div class="suspend-contract__context-cell">
+                            <span class="suspend-contract__context-label">Customer</span>
+                            <span class="suspend-contract__context-value">@Contract.Customer.IataCode · @Contract.Customer.Name</span>
+                        </div>
+                        <div class="suspend-contract__context-cell">
+                            <span class="suspend-contract__context-label">Currency</span>
+                            <span class="suspend-contract__context-value">@Contract.Currency.Code</span>
+                        </div>
+                        <div class="suspend-contract__context-cell">
+                            <span class="suspend-contract__context-label">Period</span>
+                            <span class="suspend-contract__context-value">@FormatPeriod()</span>
+                        </div>
+                    </section>
+
+                    <h3 class="suspend-contract__section-title">Why is the contract being suspended?</h3>
+
+                    <div class="settings-field suspend-contract__reason">
+                        <label class="settings-field__label" for="@_reasonId">Reason *</label>
+                        <textarea id="@_reasonId"
+                                  class="suspend-contract__reason-input"
+                                  rows="4"
+                                  maxlength="500"
+                                  placeholder="Add a short note for the audit log (max 500 characters)…"
+                                  disabled="@_busy"
+                                  @bind="_reason"
+                                  @bind:event="oninput"></textarea>
+                        <div class="suspend-contract__reason-meta">
+                            <span class="suspend-contract__reason-counter">@(_reason?.Length ?? 0) / 500</span>
+                        </div>
+                    </div>
+
+                    @if (_error is not null)
+                    {
+                        <p class="suspend-contract-dialog__error" role="alert">@_error</p>
+                    }
+                </div>
+            </div>
+
+            <footer class="settings-wizard__footer">
+                <div class="settings-wizard__footer-actions">
+                    <button type="button"
+                            class="settings-wizard-btn settings-wizard-btn--secondary"
+                            disabled="@_busy"
+                            @onclick="CancelAsync">
+                        Keep active
+                    </button>
+                    <button type="button"
+                            class="settings-wizard-btn settings-wizard-btn--warning"
+                            disabled="@(_busy || !HasValidReason)"
+                            @onclick="ConfirmAsync">
+                        @if (_busy)
+                        {
+                            <span>Suspending…</span>
+                        }
+                        else
+                        {
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/></svg>
+                            <span>Suspend contract</span>
+                        }
+                    </button>
+                </div>
+            </footer>
+        </section>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContractDto Contract { get; set; } = default!;
+
+    private readonly string _reasonId = $"suspend-reason-{Guid.NewGuid():N}";
+    private string? _reason;
+    private bool _busy;
+    private string? _error;
+
+    private bool HasValidReason => !string.IsNullOrWhiteSpace(_reason);
+
+    private string FormatPeriod() =>
+        $"{Contract.Period.StartDate:dd MMM yyyy} → {Contract.Period.ExpiryDate:dd MMM yyyy}";
+
+    private async Task ConfirmAsync()
+    {
+        if (_busy || !HasValidReason) return;
+
+        _error = null;
+        _busy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var cmd = new SuspendContractCommand(Contract.Id, _reason!.Trim());
+            var r = await ScopedMediator.Send(cmd);
+            if (r.IsFailure)
+            {
+                _error = r.Error.Description;
+                NotificationService.Notify(NotificationSeverity.Error, "Could not suspend contract", r.Error.Description);
+                return;
+            }
+
+            NotificationService.Notify(NotificationSeverity.Success, "Contract suspended",
+                "The contract is now paused. Use Resume to reactivate it.");
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task CancelAsync()
+    {
+        DialogService.Close(false);
+        return Task.CompletedTask;
+    }
+}

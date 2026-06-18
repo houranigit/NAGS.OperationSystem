@@ -1,0 +1,204 @@
+@*
+  Optional service rows in the work-order Add / Update dialogs. Card-per-row layout
+  matches Customers/Dialog/sections/ContactsSection.razor — bracket-card / bracket-header
+  / bracket-body / bracket-field-row. Service and employee dropdowns share the row;
+  date pickers occupy the second row, description spans the third, and the return-to-ramp
+  checkbox closes the card.
+
+  The employee picker is scoped to every active employee at the flight's station — a work
+  order can record work performed by anyone at the station, not just assigned crew. The
+  service picker excludes the AOG service (filtered upstream); AOG is a contract-level
+  marker, never a billable work-order line.
+*@
+@namespace Host.Web.Components.Pages.FLights.Dialog.Sections
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.Service
+@using Host.Web.Components.Pages.FLights.Dialog
+@using Operations.Contracts.Flight
+
+<RadzenStack Gap="1rem" class="wo-lines-brackets">
+    <p class="form-hint text-body-secondary small mb-0">
+        Services are optional. Add a row for each billable service that was performed; the
+        employee dropdown lists every active employee at this flight's station.
+    </p>
+
+    <div class="brackets-container">
+        @if (StationEmployeesLoading)
+        {
+            <div class="bracket-card bracket-card--empty">
+                <div class="bracket-body">
+                    <p class="text-body-secondary small mb-0">Loading station employees…</p>
+                </div>
+            </div>
+        }
+        else if (StationEmployees.Count == 0)
+        {
+            <div class="bracket-card bracket-card--empty">
+                <div class="bracket-body">
+                    <p class="text-body-secondary small mb-0">
+                        No active employees at this station — services need an employee row, so onboard
+                        an employee in Settings → Employees first.
+                    </p>
+                </div>
+            </div>
+        }
+        else
+        {
+            @for (var i = 0; i < Model.ServiceLines.Count; i++)
+            {
+                var idx = i;
+                var row = Model.ServiceLines[idx];
+                <div class="bracket-card" @key="@idx">
+                    <div class="bracket-header">
+                        <span class="bracket-number">Service @(idx + 1)</span>
+                        <RadzenButton Icon="close"
+                                      ButtonStyle="ButtonStyle.Danger"
+                                      Variant="Variant.Text"
+                                      Size="ButtonSize.ExtraSmall"
+                                      Click="@(() => RemoveRow(idx))"
+                                      ButtonType="ButtonType.Button" />
+                    </div>
+                    <div class="bracket-body">
+                        <div class="bracket-field-row">
+                            <div class="settings-field">
+                                <label class="settings-field__label">Service *</label>
+                                @if (ServicesLoading)
+                                {
+                                    <DropdownFieldSkeleton AriaLabel="Loading services" />
+                                }
+                                else
+                                {
+                                    <RadzenDropDown TValue="Guid?"
+                                                    Data="@Services"
+                                                    Value="@row.ServiceId"
+                                                    ValueChanged="@(v => SetService(idx, v))"
+                                                    TextProperty="@nameof(ServiceSelectOption.Name)"
+                                                    ValueProperty="@nameof(ServiceSelectOption.Id)"
+                                                    AllowFiltering="true"
+                                                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                    Placeholder="Select service"
+                                                    Style="width:100%;" />
+                                }
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-field__label">Employee *</label>
+                                <RadzenDropDown TValue="Guid?"
+                                                Data="@StationEmployees"
+                                                Value="@row.EmployeeId"
+                                                ValueChanged="@(v => SetEmployee(idx, v))"
+                                                TextProperty="@nameof(EmployeeSnapshot.FullName)"
+                                                ValueProperty="@nameof(EmployeeSnapshot.EmployeeId)"
+                                                AllowFiltering="true"
+                                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                Placeholder="Select employee"
+                                                Style="width:100%;" />
+                            </div>
+                        </div>
+                        <div class="bracket-field-row">
+                            <div class="settings-field">
+                                <label class="settings-field__label">From *</label>
+                                <RadzenDatePicker TValue="DateTime?"
+                                                  Value="@row.FromLocal"
+                                                  ValueChanged="@(v => SetFrom(idx, v))"
+                                                  ShowTime="true"
+                                                  ShowSeconds="false"
+                                                  DateFormat="yyyy-MM-dd HH:mm"
+                                                  Style="width:100%;" />
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-field__label">To *</label>
+                                <RadzenDatePicker TValue="DateTime?"
+                                                  Value="@row.ToLocal"
+                                                  ValueChanged="@(v => SetTo(idx, v))"
+                                                  ShowTime="true"
+                                                  ShowSeconds="false"
+                                                  DateFormat="yyyy-MM-dd HH:mm"
+                                                  Style="width:100%;" />
+                            </div>
+                        </div>
+                        <div class="bracket-field-row bracket-field-row--full">
+                            <div class="settings-field">
+                                <label class="settings-field__label">Description</label>
+                                <RadzenTextBox Value="@row.Description"
+                                               ValueChanged="@(v => SetDescription(idx, v))"
+                                               MaxLength="200"
+                                               Placeholder="Notes (optional)"
+                                               Style="width:100%;" />
+                            </div>
+                        </div>
+                        <div class="bracket-field-row bracket-field-row--full">
+                            <label class="settings-field__label d-flex align-items-center gap-2 flex-wrap mb-0" style="cursor: pointer;">
+                                <RadzenCheckBox TValue="bool"
+                                                Value="@row.ReturnToRamp"
+                                                ValueChanged="@(v => SetReturnToRamp(idx, v))" />
+                                <span>Return to ramp after this service</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="add-bracket-area">
+                <RadzenButton Text="Add service"
+                              Icon="add_circle_outline"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Variant="Variant.Text"
+                              Size="ButtonSize.Small"
+                              Click="@AddRow"
+                              Disabled="@ServicesLoading"
+                              ButtonType="ButtonType.Button" />
+            </div>
+        }
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public WorkOrderFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public FlightDto Flight { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<EmployeeSnapshot> StationEmployees { get; set; } = [];
+    [Parameter] public bool StationEmployeesLoading { get; set; }
+    /// <summary>
+    /// Logged-in portal user's employee id. Used as the default "Performed by" employee on
+    /// every fresh row — the user can override before saving. <c>null</c> means the user
+    /// isn't linked to an employee record (no default applied).
+    /// </summary>
+    [Parameter] public Guid? CurrentEmployeeId { get; set; }
+    [Parameter] public IReadOnlyList<ServiceSelectOption> Services { get; set; } = [];
+    [Parameter] public bool ServicesLoading { get; set; }
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private async Task AddRow()
+    {
+        // Default employee = current portal user (if linked); otherwise first station employee
+        // so the row remains valid by default and the user just overrides if needed.
+        var defaultEmployeeId = CurrentEmployeeId is { } me && StationEmployees.Any(e => e.EmployeeId == me)
+            ? me
+            : StationEmployees.FirstOrDefault()?.EmployeeId;
+
+        Model.ServiceLines.Add(new WorkOrderServiceLineRow
+        {
+            ServiceId = Services.FirstOrDefault()?.Id,
+            EmployeeId = defaultEmployeeId,
+            FromLocal = Model.AtaLocal ?? Flight.Sta.LocalDateTime,
+            ToLocal = Model.AtdLocal ?? Flight.Std.LocalDateTime
+        });
+        StateHasChanged();
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task RemoveRow(int index)
+    {
+        if (index < 0 || index >= Model.ServiceLines.Count) return;
+        Model.ServiceLines.RemoveAt(index);
+        StateHasChanged();
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private Task SetService(int index, Guid? value) { Model.ServiceLines[index].ServiceId = value; return OnModelChanged.InvokeAsync(); }
+    private Task SetEmployee(int index, Guid? value) { Model.ServiceLines[index].EmployeeId = value; return OnModelChanged.InvokeAsync(); }
+    private Task SetFrom(int index, DateTime? value) { Model.ServiceLines[index].FromLocal = value; return OnModelChanged.InvokeAsync(); }
+    private Task SetTo(int index, DateTime? value) { Model.ServiceLines[index].ToLocal = value; return OnModelChanged.InvokeAsync(); }
+    private Task SetDescription(int index, string value) { Model.ServiceLines[index].Description = value; return OnModelChanged.InvokeAsync(); }
+    private Task SetReturnToRamp(int index, bool value) { Model.ServiceLines[index].ReturnToRamp = value; return OnModelChanged.InvokeAsync(); }
+}

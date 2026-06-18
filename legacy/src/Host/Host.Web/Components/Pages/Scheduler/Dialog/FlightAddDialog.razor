@@ -1,0 +1,633 @@
+@*
+  ADD = wizard: Route → Crew. Sidebar jump only to reached steps.
+  Shell matches CustomerAddDialog / EmployeeAddDialog (Component Rules.md).
+  Step header ships a Title (dialog title header owns "Create flight"; each step shows its own section title).
+*@
+@using System.Globalization
+@using Contracts.Application.Features.Contract.Queries.FindContractForFlight
+@using Contracts.Contracts.Contract
+@using Core.Application.Features.Customer.Queries.GetPaginatedCustomers
+@using Core.Application.Features.Employee.Queries.GetPaginatedEmployees
+@using Core.Contracts.Features.AircraftType
+@using Core.Contracts.Features.Customer
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.OperationType
+@using Core.Contracts.Features.Station
+@using Core.Contracts.Seeding
+@using Host.Web.Components.Pages.Scheduler.Dialog.Sections
+@using Host.Web.Services
+@using Identity.Domain.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Radzen
+
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form"
+                    TItem="FlightFormModel"
+                    Data="@_model"
+                    Submit="@OnTemplateSubmitAsync"
+                    InvalidSubmit="@OnTemplateInvalidSubmit">
+    <div class="settings-wizard-host">
+        <div class="settings-wizard">
+            <aside class="settings-wizard__sidebar" aria-label="New flight wizard steps">
+                @for (var i = 0; i < _steps.Length; i++)
+                {
+                    var index = i;
+                    var step = _steps[index];
+                    var state = GetStepState(index);
+                    var stateClass = state switch
+                    {
+                        StepState.Active => "is-active",
+                        StepState.Completed => "is-completed",
+                        _ => "is-upcoming"
+                    };
+                    var canJump = state != StepState.Upcoming;
+
+                    <button type="button"
+                            class="settings-wizard-step @stateClass"
+                            disabled="@(!canJump || _saving)"
+                            @onclick="@(() => JumpTo(index))">
+                        <span class="settings-wizard-step__circle" aria-hidden="true">
+                            @if (state == StepState.Completed)
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                            }
+                            else
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+                            }
+                        </span>
+                        <span class="settings-wizard-step__label">
+                            <span class="settings-wizard-step__title">@step.Title</span>
+                            <span class="settings-wizard-step__subtitle">@step.Subtitle</span>
+                        </span>
+                    </button>
+
+                    @if (index < _steps.Length - 1)
+                    {
+                        <span class="settings-wizard-step__line" aria-hidden="true"></span>
+                    }
+                }
+            </aside>
+
+            <section class="settings-wizard__content">
+                <div class="settings-wizard__main">
+                    <div class="settings-wizard__panel">
+                        @switch (_currentStep)
+                        {
+                            case 0:
+                                @* Route step owns customer, station, operation type, flight number, STA/STD,
+                                   and inline contract lookup feedback (loading / success / error). *@
+                                @* Razor quoted attrs without @ are string literals — bind expressions explicitly. *@
+                                <RouteSection Model="@_model"
+                                              Customers="@_customers"
+                                              CustomersLoading="@_customersLoading"
+                                              Stations="@_stationOptions"
+                                              StationsLoading="@_stationsLoading"
+                                              OperationTypes="@_operationTypeOptions"
+                                              OperationTypesLoading="@_operationTypesLoading"
+                                              AircraftTypes="@_aircraftTypeOptions"
+                                              AircraftTypesLoading="@_aircraftTypesLoading"
+                                              ShowContractLookupFeedback="true"
+                                              ContractLookupInProgress="@_contractLookupInProgress"
+                                              ContractVerified="@_routeContractVerified"
+                                              ContractLookupError="@_contractLookupError"
+                                              ResolvedContractNumber="@_resolvedContractNumber"
+                                              ContractSuccessDetail="@_contractSuccessDetail"
+                                              ContractReadinessFilled="@ContractReadinessFilled()"
+                                              ContractReadinessTotal="5"
+                                              ContractReadinessMessage="@ContractReadinessMessage()"
+                                              OnModelChanged="@MarkDirtyAsync" />
+                                break;
+                            default:
+                                <CrewSection Model="@_model"
+                                             Employees="@_employees"
+                                             EmployeesLoading="@_employeesLoading"
+                                             AssignmentOptional="true"
+                                             IsAogOnlyContract="@_isAogOnlyContract"
+                                             OnModelChanged="@MarkDirtyAsync" />
+                                break;
+                        }
+                    </div>
+
+                </div>
+
+                <footer class="settings-wizard__footer">
+                    <div class="settings-wizard__footer-left">
+                        <button type="button"
+                                class="settings-wizard-btn settings-wizard-btn--secondary"
+                                disabled="@(_currentStep == 0 || _saving)"
+                                @onclick="Previous">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                            Previous
+                        </button>
+                    </div>
+                    <div class="settings-wizard__footer-actions">
+                        <button type="button"
+                                class="settings-wizard-btn settings-wizard-btn--secondary"
+                                disabled="@_saving"
+                                @onclick="CancelAsync">
+                            Cancel
+                        </button>
+                        @if (_currentStep < _steps.Length - 1)
+                        {
+                            <button type="button"
+                                    class="settings-wizard-btn settings-wizard-btn--commit"
+                                    disabled="@(_saving || IsCurrentStepStillLoading() || _contractLookupInProgress || !_routeContractVerified)"
+                                    @onclick="NextAsync">
+                                Next
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="submit"
+                                    class="settings-wizard-btn settings-wizard-btn--commit"
+                                    disabled="@(!_canCreateFlights || _saving || !_isDirty || _customersLoading || _stationsLoading || _operationTypesLoading || _aircraftTypesLoading || _employeesLoading)">
+                                @if (_saving)
+                                {
+                                    <span>Saving…</span>
+                                }
+                                else
+                                {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                    <span>Create flight</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                </footer>
+            </section>
+        </div>
+    </div>
+</RadzenTemplateForm>
+
+<ConfirmDialog @ref="_unsavedConfirm" />
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    [Parameter] public string? CalendarDateIso { get; set; }
+
+    private readonly StepDescriptor[] _steps =
+    [
+        new("Route", "Customer, flight number & schedule"),
+        new("Crew", "Assigned employees")
+    ];
+
+    private RadzenTemplateForm<FlightFormModel>? _form;
+    private ConfirmDialog _unsavedConfirm = default!;
+    private int _currentStep;
+    private int _furthestReached;
+    private bool _saving;
+    private bool _isDirty;
+    private bool _canCreateFlights;
+
+    /// <summary>
+    /// Cached outcome of <see cref="FindContractForFlightQuery"/> resolved automatically once the
+    /// route step has customer, station, operation type, STA, and STD. When the contract's only
+    /// OT-service is AOG, employee assignment becomes optional on the Crew step.
+    /// </summary>
+    private bool _isAogOnlyContract;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthenticationStateTask is null)
+            return;
+
+        var user = (await AuthenticationStateTask).User;
+        _canCreateFlights = user.HasClaim("permissions", Permissions.Flights.Create);
+    }
+
+    /// <summary>
+    /// Resolved contract number (sourced from <see cref="FindContractForFlightDto"/>) so we
+    /// can show the user which contract their flight is being billed against before they
+    /// commit. Persisted on the flight as a snapshot column.
+    /// </summary>
+    private string? _resolvedContractNumber;
+
+    /// <summary>
+    /// Inline error surface after a failed automatic contract lookup.
+    /// </summary>
+    private string? _contractLookupError;
+
+    private bool _contractLookupInProgress;
+
+    /// <summary>
+    /// True only after <see cref="FindContractForFlightOutcome.Found"/> for the current
+    /// customer / station / operation type / STA / STD basis (see <see cref="ContractBasisFingerprint"/>).
+    /// </summary>
+    private bool _routeContractVerified;
+
+    /// <summary>Fingerprint of the five contract-driving fields when <see cref="_routeContractVerified"/> last succeeded.</summary>
+    private string? _basisFingerprintWhenResolved;
+
+    private string? _contractSuccessDetail;
+
+    private int _contractResolveGeneration;
+
+    private FlightFormModel _model = new();
+
+    private List<CustomerDto> _customers = [];
+    private List<StationSelectOption> _stationOptions = [];
+    private List<OperationTypeSelectOption> _operationTypeOptions = [];
+    private List<AircraftTypeSelectOption> _aircraftTypeOptions = [];
+    private List<EmployeeDto> _employees = [];
+
+    private bool _customersLoading = true;
+    private bool _stationsLoading = true;
+    private bool _operationTypesLoading = true;
+    private bool _aircraftTypesLoading = true;
+    private bool _employeesLoading = true;
+
+    protected override void OnInitialized()
+    {
+        var baseDay = DateTime.Today;
+        if (!string.IsNullOrEmpty(CalendarDateIso)
+            && DateTimeOffset.TryParse(CalendarDateIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+        {
+            baseDay = parsed.DateTime.Date;
+        }
+
+        _model = FlightFormModel.NewForAdd(baseDay);
+        _currentStep = 0;
+        _furthestReached = 0;
+    }
+
+    private bool _lookupsLoadStarted;
+
+    /// <remarks>
+    /// Lookup fetches are deferred to <see cref="OnAfterRenderAsync"/> so the dialog shell (sidebar + dropdown skeletons)
+    /// paints before we touch DI / MediatR / EF. Each list flips its own loading flag independently so fields light up
+    /// as their data arrives — this is the same pattern as <c>CustomerAddDialog</c>.
+    /// </remarks>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted)
+            return;
+
+        _lookupsLoadStarted = true;
+
+        await Task.WhenAll(
+            LoadCustomersAsync(),
+            LoadStationsAsync(),
+            LoadOperationTypesAsync(),
+            LoadAircraftTypesAsync(),
+            LoadEmployeesAsync());
+
+        ScheduleDebouncedContractLookup();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadCustomersAsync()
+    {
+        try
+        {
+            var r = await ScopedMediator.Send(new GetPaginatedCustomersQuery(1, 500, null, null, null));
+            if (r.IsSuccess)
+                _customers = r.Value!.Items.Where(c => c.IsActive).ToList();
+        }
+        finally
+        {
+            _customersLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadStationsAsync()
+    {
+        try
+        {
+            _stationOptions = (await LookupCache.GetStationsAsync(ScopedMediator)).ToList();
+        }
+        finally
+        {
+            _stationsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadOperationTypesAsync()
+    {
+        try
+        {
+            // Ad Hoc OT is reserved for the mobile "create from scratch" flow — never
+            // selectable when scheduling a flight here. Server-side guard in
+            // FlightCreateHelpers also rejects it as a defence-in-depth.
+            _operationTypeOptions = (await LookupCache.GetOperationTypesAsync(ScopedMediator))
+                .Where(o => o.Id != CoreSeedIds.AdHocOperationType)
+                .ToList();
+        }
+        finally
+        {
+            _operationTypesLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadAircraftTypesAsync()
+    {
+        try
+        {
+            _aircraftTypeOptions = (await LookupCache.GetAircraftTypesAsync(ScopedMediator)).ToList();
+        }
+        finally
+        {
+            _aircraftTypesLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadEmployeesAsync()
+    {
+        try
+        {
+            var r = await ScopedMediator.Send(new GetPaginatedEmployeesQuery(1, 500, null, null));
+            if (r.IsSuccess)
+                _employees = r.Value!.Items.Where(e => e.IsActive).ToList();
+        }
+        finally
+        {
+            _employeesLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task MarkDirtyAsync()
+    {
+        _isDirty = true;
+
+        var fp = ContractBasisFingerprint(_model);
+        if (_routeContractVerified && string.Equals(_basisFingerprintWhenResolved, fp, StringComparison.Ordinal))
+            return Task.CompletedTask;
+
+        InvalidateContractResolutionForBasisChange();
+        ScheduleDebouncedContractLookup();
+        return Task.CompletedTask;
+    }
+
+    private void InvalidateContractResolutionForBasisChange()
+    {
+        _routeContractVerified = false;
+        _basisFingerprintWhenResolved = null;
+        _resolvedContractNumber = null;
+        _contractLookupError = null;
+        _contractSuccessDetail = null;
+        _isAogOnlyContract = false;
+        _contractLookupInProgress = false;
+    }
+
+    private static string ContractBasisFingerprint(FlightFormModel m) =>
+        $"{m.CustomerId}|{m.StationId}|{m.OperationTypeId}|{m.StaLocal?.Ticks}|{m.StdLocal?.Ticks}";
+
+    private int ContractReadinessFilled() =>
+        (_model.CustomerId.HasValue ? 1 : 0)
+        + (_model.StationId.HasValue ? 1 : 0)
+        + (_model.OperationTypeId.HasValue ? 1 : 0)
+        + (_model.StaLocal.HasValue ? 1 : 0)
+        + (_model.StdLocal.HasValue ? 1 : 0);
+
+    private string ContractReadinessMessage()
+    {
+        const int total = 5;
+        var filled = ContractReadinessFilled();
+        if (filled >= total)
+            return "All five billing inputs are set — searching for an active contract.";
+
+        var missing = new List<string>(total);
+        if (!_model.StaLocal.HasValue) missing.Add("STA");
+        if (!_model.StdLocal.HasValue) missing.Add("STD");
+        if (!_model.CustomerId.HasValue) missing.Add("customer");
+        if (!_model.StationId.HasValue) missing.Add("station");
+        if (!_model.OperationTypeId.HasValue) missing.Add("operation type");
+
+        var tail = missing.Count == 0
+            ? ""
+            : $" Still to choose: {string.Join(", ", missing)}.";
+        return $"STA, STD, customer, station, and operation type are needed before billing can be verified ({filled}/{total}).{tail}";
+    }
+
+    private void ScheduleDebouncedContractLookup()
+    {
+        var gen = ++_contractResolveGeneration;
+        _ = DebouncedResolveContractAsync(gen);
+    }
+
+    private async Task DebouncedResolveContractAsync(int generation)
+    {
+        await Task.Delay(450);
+        await InvokeAsync(async () =>
+        {
+            if (generation != _contractResolveGeneration)
+                return;
+            await ExecuteContractLookupAsync(generation);
+        });
+    }
+
+    private async Task ExecuteContractLookupAsync(int generationAtSchedule)
+    {
+        if (ContractReadinessFilled() < 5)
+        {
+            _contractLookupInProgress = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _contractLookupInProgress = true;
+        _routeContractVerified = false;
+        _basisFingerprintWhenResolved = null;
+        _resolvedContractNumber = null;
+        _contractLookupError = null;
+        _contractSuccessDetail = null;
+        await InvokeAsync(StateHasChanged);
+
+        if (_model.CustomerId is not { } customerId
+            || _model.StationId is not { } stationId
+            || _model.OperationTypeId is not { } operationTypeId
+            || _model.StaLocal is not { } sta)
+        {
+            _contractLookupInProgress = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // Radzen pickers often yield DateTimeKind.Local — DateTimeOffset(dt, TimeSpan.Zero) throws.
+        var staForContract = new DateTimeOffset(DateTime.SpecifyKind(sta, DateTimeKind.Unspecified), TimeSpan.Zero);
+        var query = new FindContractForFlightQuery(customerId, stationId, operationTypeId, staForContract);
+
+        try
+        {
+            var result = await ScopedMediator.Send(query);
+
+            if (generationAtSchedule != _contractResolveGeneration)
+                return;
+
+            if (result.IsFailure || result.Value is null)
+            {
+                _contractLookupError = result.IsFailure
+                    ? $"Could not verify a contract right now: {result.Error.Description}"
+                    : "Could not verify a contract — the server returned no data.";
+                return;
+            }
+
+            var dto = result.Value;
+            switch (dto.Outcome)
+            {
+                case FindContractForFlightOutcome.Found:
+                    _isAogOnlyContract = dto.IsAogOnly;
+                    _resolvedContractNumber = dto.ContractNumber;
+                    _routeContractVerified = true;
+                    _basisFingerprintWhenResolved = ContractBasisFingerprint(_model);
+                    _contractLookupError = null;
+                    _contractSuccessDetail = dto.IsAogOnly
+                        ? "Crew assignment is optional for this contract (AOG-only services)."
+                        : "Crew assignment is optional — you can assign employees later.";
+                    break;
+                case FindContractForFlightOutcome.Ambiguous:
+                    _contractLookupError = "Multiple active contracts match this station, customer, operation type, and STA. Resolve duplicates in the Contracts module.";
+                    break;
+                default:
+                    _contractLookupError = "No active contract covers this station, customer, operation type, and STA.";
+                    break;
+            }
+        }
+        finally
+        {
+            if (generationAtSchedule == _contractResolveGeneration)
+                _contractLookupInProgress = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private StepState GetStepState(int index)
+    {
+        if (index == _currentStep) return StepState.Active;
+        if (index < _currentStep || index <= _furthestReached) return StepState.Completed;
+        return StepState.Upcoming;
+    }
+
+    private void JumpTo(int index)
+    {
+        if (index == _currentStep) return;
+        if (index > _furthestReached) return;
+        _currentStep = index;
+    }
+
+    private bool IsCurrentStepStillLoading() => _currentStep switch
+    {
+        0 => _customersLoading || _stationsLoading || _operationTypesLoading || _aircraftTypesLoading,
+        1 => _employeesLoading,
+        _ => false
+    };
+
+    private async Task NextAsync()
+    {
+        if (_saving || _currentStep >= _steps.Length - 1) return;
+        await Task.Yield();
+        if (_form?.EditContext is null || !_form.EditContext.Validate())
+            return;
+
+        // Contract verification runs automatically when the five billing inputs are complete.
+        if (_currentStep == 0 && !_routeContractVerified)
+            return;
+
+        _currentStep++;
+        _furthestReached = Math.Max(_furthestReached, _currentStep);
+    }
+
+    private void Previous()
+    {
+        if (_currentStep == 0) return;
+        _currentStep--;
+    }
+
+    private async Task<bool> ValidateEachStepRenderedAsync()
+    {
+        var back = _currentStep;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++)
+            {
+                _currentStep = s;
+                await InvokeAsync(StateHasChanged);
+                await Task.Yield();
+                if (_form?.EditContext is null || !_form.EditContext.Validate())
+                    return false;
+            }
+
+            return true;
+        }
+        finally
+        {
+            _currentStep = back;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnTemplateSubmitAsync(FlightFormModel _)
+    {
+        if (_saving || !_isDirty) return;
+        if (!_canCreateFlights)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Could not create flight", "You do not have permission to create flights.");
+            return;
+        }
+
+        _saving = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            if (!await ValidateEachStepRenderedAsync())
+                return;
+
+            var route = _model.ResolveRoute(_customers, _stationOptions, _operationTypeOptions, _aircraftTypeOptions);
+            var crew = _model.ResolveAssignedCrew(_employees);
+            var cmd = _model.ToCreateFlightCommand(route, crew);
+
+            var r = await ScopedMediator.Send(cmd);
+            if (r.IsFailure)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Could not create flight", r.Error.Description);
+                return;
+            }
+
+            NotificationService.Notify(NotificationSeverity.Success, "Flight created", "The flight was added.");
+            DialogService.Close(true);
+        }
+        finally
+        {
+            _saving = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (!_isDirty)
+        {
+            DialogService.Close(false);
+            return;
+        }
+
+        var confirmed = await _unsavedConfirm.ShowAsync(
+            title: "Discard Changes",
+            message: "You have unsaved changes. Discard them and close?",
+            confirmText: "Discard",
+            cancelText: "Keep Editing",
+            style: ConfirmDialog.DialogStyle.Danger);
+
+        if (confirmed)
+            DialogService.Close(false);
+    }
+
+    private enum StepState { Upcoming, Active, Completed }
+    private sealed record StepDescriptor(string Title, string Subtitle);
+}

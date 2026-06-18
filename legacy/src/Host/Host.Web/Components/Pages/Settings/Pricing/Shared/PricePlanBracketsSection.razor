@@ -1,0 +1,514 @@
+@using Core.Domain.Enumerations
+
+<div class="ppp-brackets-section">
+    @if (Basis == PricingBasis.Flat)
+    {
+        <div class="per-landing-card">
+            <div class="settings-field mb-0">
+                <label class="settings-field__label" for="ppp-flat-price">Flat price per unit *</label>
+                <div class="price-numeric-wrap">
+                    <span class="price-numeric-wrap__prefix">@CurrencyDisplay —</span>
+                    <RadzenNumeric InputAttributes="@(new Dictionary<string, object> { ["id"] = "ppp-flat-price" })"
+                                   TValue="decimal"
+                                   Format="n2"
+                                   Value="@GetFlatValue()"
+                                   ValueChanged="@OnFlatValueChanged"
+                                   Min="0"
+                                   Style="flex: 1; min-width: 0; width: 100%;" />
+                </div>
+            </div>
+        </div>
+        <p class="price-plan-brackets-hint price-plan-brackets-hint--after-box">Flat pricing uses one rate per unit; billing mode and block still apply for downstream consistency.</p>
+    }
+    else
+    {
+        <div class="ppp-shared-row">
+            <div class="settings-field mb-0 ppp-shared-field">
+                <span class="settings-field__label">Billing mode *</span>
+                <RadzenDropDown TValue="BracketBillingMode"
+                                Value="@SharedBillingMode"
+                                ValueChanged="@OnSharedBillingChanged"
+                                Data="@(BracketBillingModeItems)"
+                                TextProperty="@nameof(BillModeItem.Label)"
+                                ValueProperty="@nameof(BillModeItem.Mode)"
+                                Style="width: 100%;" />
+            </div>
+            <div class="settings-field mb-0 ppp-shared-field">
+                <span class="settings-field__label">Block size (minutes) *</span>
+                <RadzenNumeric TValue="int"
+                               Value="@SharedBlockMinutes"
+                               ValueChanged="@OnSharedBlockChanged"
+                               Min="1"
+                               Max="@GetSharedBlockMaxCap()"
+                               Style="width: 100%;" />
+            </div>
+        </div>
+        @if (_blockWarning is not null)
+        {
+            <p class="price-plan-brackets-hint price-plan-brackets-hint--warning">@_blockWarning</p>
+        }
+
+        <div class="ac-manpower-pricing-panel__brackets-scroll">
+            <div class="ac-bracket-lines">
+                @for (var i = 0; i < Brackets.Count; i++)
+                {
+                    var idx = i;
+                    <div class="ac-bracket-line@(Brackets.Count > 1 ? " ac-bracket-line--dismissible" : "")">
+                        @if (Brackets.Count > 1)
+                        {
+                            <div class="ac-bracket-line__remove">
+                                <RadzenButton Icon="close"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Variant="Variant.Text"
+                                              Size="ButtonSize.ExtraSmall"
+                                              title="Remove bracket"
+                                              Click="@(() => RemoveBracketRow(idx))"
+                                              ButtonType="ButtonType.Button" />
+                            </div>
+                        }
+                        <div class="ac-bracket-line__inner">
+                            <div class="ac-bracket-line__fromto">
+                                <div class="ac-bracket-line__field ac-bracket-line__field--from">
+                                    <span class="ac-bracket-line__label">From (min)</span>
+                                    <RadzenNumeric TValue="int"
+                                                   Value="@Brackets[idx].MinMinutes"
+                                                   Disabled="true"
+                                                   Style="width: 100%;" />
+                                </div>
+                                <div class="ac-bracket-line__field ac-bracket-line__field--to">
+                                    <span class="ac-bracket-line__label">To (min)</span>
+                                    @if (IsLastBracket(idx))
+                                    {
+                                        <RadzenNumeric TValue="int?"
+                                                       Value="@Brackets[idx].MaxMinutes"
+                                                       ValueChanged="@(v => OnMaxMinutesChanged(idx, v))"
+                                                       Min="@(Brackets[idx].MinMinutes + 1)"
+                                                       Placeholder="∞"
+                                                       Style="width: 100%;" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenNumeric TValue="int"
+                                                       Value="@(Brackets[idx].MaxMinutes ?? Brackets[idx].MinMinutes + 1)"
+                                                       ValueChanged="@(v => OnMaxMinutesChangedMiddle(idx, v))"
+                                                       Min="@(Brackets[idx].MinMinutes + 1)"
+                                                       Style="width: 100%;" />
+                                    }
+                                </div>
+                            </div>
+                            <div class="ac-bracket-line__spacer" aria-hidden="true"></div>
+                            <div class="ac-bracket-line__price">
+                                <span class="ac-bracket-line__ccy">@CurrencyDisplay</span>
+                                <RadzenNumeric TValue="decimal"
+                                               Format="n2"
+                                               Value="@Brackets[idx].Value"
+                                               ValueChanged="@(v => OnRowValueChanged(idx, v))"
+                                               Min="0"
+                                               Style="width: 5.5rem; min-width: 0;" />
+                                <span class="ac-bracket-line__slash">/</span>
+                                <span class="ac-bracket-line__blocktext">@SharedBlockMinutes min</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="add-bracket-area">
+                <RadzenButton Text="Add bracket"
+                              Icon="add_circle_outline"
+                              ButtonStyle="ButtonStyle.Secondary"
+                              Variant="Variant.Text"
+                              Size="ButtonSize.Small"
+                              Click="@OnAddBracketRow"
+                              Disabled="@(!PricePlanBracketRules.CanAddBracket(Brackets))"
+                              ButtonType="ButtonType.Button" />
+            </div>
+        </div>
+        <p class="price-plan-brackets-hint price-plan-brackets-hint--after-scroll">@DurationHint</p>
+    }
+</div>
+
+<style>
+    .ppp-brackets-section .settings-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-width: 0;
+    }
+
+    .ppp-brackets-section .settings-field__label {
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        line-height: 1.25;
+    }
+
+    .price-plan-brackets-hint {
+        margin: 0;
+        font-size: 0.6875rem;
+        font-weight: 400;
+        line-height: 1.5;
+        color: #a8b0bd;
+        max-width: 52rem;
+    }
+
+    .price-plan-brackets-hint--after-box {
+        margin-top: 0.85rem;
+    }
+
+    .price-plan-brackets-hint--after-scroll {
+        margin-top: 1rem;
+        padding-top: 0.15rem;
+    }
+
+    .price-plan-brackets-hint--warning {
+        margin: 0.5rem 0 0;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #b45309;
+    }
+
+    .per-landing-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+    }
+
+    .price-numeric-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-width: 0;
+    }
+
+    .price-numeric-wrap__prefix {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    .ppp-shared-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1rem;
+        margin-bottom: 0.65rem;
+    }
+
+    .ppp-shared-field {
+        flex: 1 1 12rem;
+        min-width: 10rem;
+    }
+
+    .ac-manpower-pricing-panel__brackets-scroll {
+        max-height: min(52vh, 28rem);
+        overflow-y: auto;
+        padding-right: 0.2rem;
+    }
+
+    .ac-bracket-lines {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+
+    .ac-bracket-line {
+        position: relative;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+    }
+
+    .ac-bracket-line--dismissible {
+        padding-top: 0.15rem;
+    }
+
+    .ac-bracket-line__remove {
+        position: absolute;
+        top: 0.1rem;
+        right: 0.1rem;
+        z-index: 2;
+        line-height: 0;
+    }
+
+    .ac-bracket-line__remove .rz-button {
+        min-width: 0;
+        padding: 0.15rem;
+    }
+
+    .ac-bracket-line__inner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 0.5rem 0.75rem;
+        padding: 0.45rem 0.5rem;
+    }
+
+    .ac-bracket-line--dismissible .ac-bracket-line__inner {
+        padding-right: 2rem;
+    }
+
+    .ac-bracket-line__fromto {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem 0.65rem;
+        align-items: flex-end;
+    }
+
+    .ac-bracket-line__field {
+        min-width: 4.5rem;
+    }
+
+    .ac-bracket-line__field--from {
+        width: 4.25rem;
+    }
+
+    .ac-bracket-line__field--to {
+        width: 4.5rem;
+    }
+
+    .ac-bracket-line__label {
+        display: block;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+        margin-bottom: 0.2rem;
+    }
+
+    .ac-bracket-line__spacer {
+        flex: 1 1 1rem;
+        min-width: 0.75rem;
+        height: 1px;
+        align-self: center;
+    }
+
+    .ac-bracket-line__price {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.27rem 0.35rem;
+        min-width: 0;
+    }
+
+    .ac-bracket-line__ccy {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    .ac-bracket-line__slash {
+        color: #94a3b8;
+        font-weight: 600;
+        font-size: 0.9rem;
+        line-height: 1;
+    }
+
+    .ac-bracket-line__blocktext {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #334155;
+        white-space: nowrap;
+    }
+
+    .add-bracket-area {
+        margin-top: 0.35rem;
+    }
+
+    @@media (max-width: 720px) {
+        .ac-bracket-line__spacer {
+            display: none;
+        }
+    }
+</style>
+
+@code {
+    private sealed record BillModeItem(BracketBillingMode Mode, string Label);
+
+    private static readonly IReadOnlyList<BillModeItem> BracketBillingModeItems =
+    [
+        new(BracketBillingMode.Floor, "Floor"),
+        new(BracketBillingMode.Ceiling, "Ceiling"),
+        new(BracketBillingMode.ProRated, "Pro-rated")
+    ];
+
+    private string? _blockWarning;
+
+    [Parameter, EditorRequired] public PricingBasis Basis { get; set; }
+
+    [Parameter, EditorRequired] public string CurrencyDisplay { get; set; } = "—";
+
+    [Parameter, EditorRequired] public List<PriceBracketRowState> Brackets { get; set; } = null!;
+
+    [Parameter] public int SharedBlockMinutes { get; set; } = 60;
+
+    [Parameter] public EventCallback<int> SharedBlockMinutesChanged { get; set; }
+
+    [Parameter] public BracketBillingMode SharedBillingMode { get; set; } = BracketBillingMode.ProRated;
+
+    [Parameter] public EventCallback<BracketBillingMode> SharedBillingModeChanged { get; set; }
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private static string DurationHint =>
+        "First tier starts at 0. Each tier’s “To” becomes the next tier’s “From” (exactly). Open-ended “To” (∞) closes the ladder — you cannot add another tier. Block size must fit inside each finite tier (from → to).";
+
+    protected override void OnParametersSet()
+    {
+        ResyncAllMinsFromChain();
+        UpdateBlockWarning();
+    }
+
+    private bool IsLastBracket(int idx) => idx == Brackets.Count - 1;
+
+    private decimal GetFlatValue() =>
+        Brackets.FirstOrDefault() is { } b ? b.Value : 0m;
+
+    private int GetSharedBlockMaxCap()
+    {
+        var cap = int.MaxValue;
+        foreach (var row in Brackets)
+        {
+            if (row.MaxMinutes is int mx)
+            {
+                var span = mx - row.MinMinutes;
+                if (span > 0 && span < cap)
+                    cap = span;
+            }
+        }
+
+        return cap == int.MaxValue ? 10_000 : Math.Max(1, cap);
+    }
+
+    private void UpdateBlockWarning()
+    {
+        if (Basis != PricingBasis.Duration || Brackets.Count == 0)
+        {
+            _blockWarning = null;
+            return;
+        }
+
+        foreach (var row in Brackets)
+        {
+            if (row.MaxMinutes is int mx)
+            {
+                var span = mx - row.MinMinutes;
+                if (SharedBlockMinutes > span)
+                {
+                    _blockWarning =
+                        $"Block size ({SharedBlockMinutes}) is larger than at least one bracket span. Lower the block or widen the tier.";
+                    return;
+                }
+            }
+        }
+
+        _blockWarning = null;
+    }
+
+    private async Task OnSharedBlockChanged(int v)
+    {
+        var n = Math.Max(1, v);
+        if (SharedBlockMinutesChanged.HasDelegate)
+            await SharedBlockMinutesChanged.InvokeAsync(n);
+        else
+            SharedBlockMinutes = n;
+        UpdateBlockWarning();
+        await Notify();
+    }
+
+    private async Task OnSharedBillingChanged(BracketBillingMode mode)
+    {
+        if (SharedBillingModeChanged.HasDelegate)
+            await SharedBillingModeChanged.InvokeAsync(mode);
+        await Notify();
+    }
+
+    private async Task OnFlatValueChanged(decimal value)
+    {
+        if (Brackets.Count == 0)
+            Brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = value });
+        else
+        {
+            Brackets[0].MinMinutes = 0;
+            Brackets[0].MaxMinutes = null;
+            Brackets[0].Value = value;
+        }
+
+        while (Brackets.Count > 1)
+            Brackets.RemoveAt(Brackets.Count - 1);
+
+        await Notify();
+    }
+
+    private async Task OnMaxMinutesChanged(int idx, int? value)
+    {
+        if (!IsLastBracket(idx)) return;
+        Brackets[idx].MaxMinutes = value;
+        ResyncAllMinsFromChain();
+        UpdateBlockWarning();
+        await Notify();
+    }
+
+    private async Task OnMaxMinutesChangedMiddle(int idx, int value)
+    {
+        if (IsLastBracket(idx)) return;
+        Brackets[idx].MaxMinutes = value;
+        ResyncAllMinsFromChain();
+        UpdateBlockWarning();
+        await Notify();
+    }
+
+    private async Task OnRowValueChanged(int idx, decimal value)
+    {
+        Brackets[idx].Value = value;
+        await Notify();
+    }
+
+    private void ResyncAllMinsFromChain()
+    {
+        if (Brackets.Count == 0) return;
+        Brackets[0].MinMinutes = 0;
+        for (var i = 1; i < Brackets.Count; i++)
+        {
+            var prevMax = Brackets[i - 1].MaxMinutes;
+            Brackets[i].MinMinutes = prevMax ?? Brackets[i - 1].MinMinutes;
+        }
+    }
+
+    private async Task OnAddBracketRow()
+    {
+        if (!PricePlanBracketRules.CanAddBracket(Brackets)) return;
+
+        var last = Brackets[^1];
+        var start = last.MaxMinutes!.Value;
+        Brackets.Add(new PriceBracketRowState
+        {
+            MinMinutes = start,
+            MaxMinutes = null,
+            Value = 0
+        });
+        ResyncAllMinsFromChain();
+        UpdateBlockWarning();
+        await Notify();
+    }
+
+    private async Task RemoveBracketRow(int index)
+    {
+        if (Brackets.Count <= 1) return;
+        Brackets.RemoveAt(index);
+        if (Brackets.Count > 0)
+            Brackets[^1].MaxMinutes = null;
+        ResyncAllMinsFromChain();
+        UpdateBlockWarning();
+        await Notify();
+    }
+
+    private async Task Notify()
+    {
+        if (OnChanged.HasDelegate)
+            await OnChanged.InvokeAsync();
+    }
+}

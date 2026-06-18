@@ -1,0 +1,68 @@
+@using BuildingBlocks.Application.Abstractions
+
+<AuthorizeView>
+    <Authorized>
+        <details class="ops-profile">
+            <summary class="ops-profile__trigger">
+                <span class="ops-profile__avatar" aria-hidden="true">@Initials()</span>
+                <span class="ops-profile__preview">
+                    <span class="ops-profile__preview-name">@DisplayName()</span>
+                    <span class="ops-profile__preview-role">@DisplayRole()</span>
+                </span>
+                <svg class="ops-profile__chev" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m7 10 5 5 5-5z" /></svg>
+            </summary>
+            <div class="ops-profile__panel">
+                <div class="ops-profile__identity">
+                    <span class="ops-profile__avatar ops-profile__avatar--large" aria-hidden="true">@Initials()</span>
+                    <div class="ops-profile__text">
+                        <div class="ops-profile__name">@DisplayName()</div>
+                        <div class="ops-profile__role">@DisplayRole()</div>
+                    </div>
+                </div>
+                <a class="ops-profile__logout" href="/api/auth/cookie-logout">Log out</a>
+            </div>
+        </details>
+    </Authorized>
+    <NotAuthorized>
+        <a class="ops-profile__signin" href="@SignInHref">Sign in</a>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Inject]
+    private ICurrentUserService CurrentUser { get; set; } = default!;
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    private string SignInHref =>
+        $"/login?returnUrl={Uri.EscapeDataString(Navigation.Uri)}";
+
+    private string DisplayName() =>
+        !string.IsNullOrWhiteSpace(CurrentUser.UserName)
+            ? CurrentUser.UserName!
+            : "User";
+
+    private string DisplayRole()
+    {
+        var t = CurrentUser.UserType;
+        if (string.IsNullOrWhiteSpace(t))
+            return "Viewer";
+        return t.Length switch
+        {
+            <= 1 => t.ToUpperInvariant(),
+            _ => char.ToUpperInvariant(t[0]) + t[1..].ToLowerInvariant()
+        };
+    }
+
+    private string Initials()
+    {
+        var name = DisplayName().Trim();
+        if (name.Length == 0)
+            return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return string.Concat(parts[0].AsSpan(0, 1), parts[^1].AsSpan(0, 1)).ToUpperInvariant();
+        return name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+}

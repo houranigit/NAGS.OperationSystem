@@ -1,0 +1,162 @@
+@*
+  Bulk-only: calendar confirmation of the exact flight days within the chosen period.
+  Parent calls RebuildFromPeriod() (or passes the period via parameters) to seed selections.
+*@
+@namespace Host.Web.Components.Pages.Scheduler.Dialog.Sections
+@using System.Globalization
+@using Host.Web.Components.Pages.Scheduler.Dialog
+
+<div class="flight-schedule-calendar-dialog">
+    <p class="flight-schedule-calendar-dialog__intro">
+        All days in your period are shown below. Flight days are highlighted. Click a day to add or remove it,
+        then schedule to create flights for the selected days only.
+    </p>
+    <div class="flight-schedule-calendar-dialog__legend">
+        <span class="flight-schedule-calendar-dialog__legend-item">
+            <span class="flight-schedule-calendar-dialog__swatch flight-schedule-calendar-dialog__swatch--selected"></span>
+            Flight scheduled
+        </span>
+        <span class="flight-schedule-calendar-dialog__legend-item">
+            <span class="flight-schedule-calendar-dialog__swatch flight-schedule-calendar-dialog__swatch--in-range"></span>
+            In period (not selected)
+        </span>
+        <span class="flight-schedule-calendar-dialog__legend-item">
+            <span class="flight-schedule-calendar-dialog__swatch flight-schedule-calendar-dialog__swatch--out"></span>
+            Outside period
+        </span>
+    </div>
+    <p class="flight-schedule-calendar-dialog__count mb-2" aria-live="polite">
+        @Model.SelectedDays.Count flight day(s) selected
+    </p>
+    <div class="flight-schedule-calendar-dialog__months">
+        @foreach (var monthStart in _monthsInRange)
+        {
+            <div class="flight-schedule-calendar-dialog__month">
+                <h3 class="flight-schedule-calendar-dialog__month-title">@monthStart.ToString("MMMM yyyy", CultureInfo.CurrentCulture)</h3>
+                <div class="flight-schedule-calendar-dialog__weekday-row" aria-hidden="true">
+                    @foreach (var wd in _weekdayLabels)
+                    {
+                        <span class="flight-schedule-calendar-dialog__weekday-label">@wd</span>
+                    }
+                </div>
+                <div class="flight-schedule-calendar-dialog__grid">
+                    @foreach (var cell in GetMonthCells(monthStart))
+                    {
+                        if (cell is null)
+                        {
+                            <span class="flight-schedule-calendar-dialog__cell flight-schedule-calendar-dialog__cell--pad"></span>
+                        }
+                        else
+                        {
+                            var date = cell.Value;
+                            var inPeriod = date >= _periodFrom && date <= _periodTo;
+                            var selected = Model.SelectedDays.Contains(date);
+                            var css = "flight-schedule-calendar-dialog__cell";
+                            if (!inPeriod) css += " flight-schedule-calendar-dialog__cell--out";
+                            else if (selected) css += " flight-schedule-calendar-dialog__cell--selected";
+                            else css += " flight-schedule-calendar-dialog__cell--in-range";
+                            <button type="button"
+                                    class="@css"
+                                    disabled="@(!inPeriod)"
+                                    @onclick="() => ToggleDay(date)"
+                                    aria-pressed="@(inPeriod && selected)">
+                                <span class="flight-schedule-calendar-dialog__day-num">@date.Day</span>
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FlightFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private static readonly string[] _weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    private List<DateOnly> _monthsInRange = [];
+    private DateOnly _periodFrom;
+    private DateOnly _periodTo;
+
+    protected override void OnParametersSet()
+    {
+        if (Model.PeriodFrom is null || Model.PeriodTo is null)
+        {
+            _monthsInRange = [];
+            return;
+        }
+
+        var from = DateOnly.FromDateTime(Model.PeriodFrom.Value.Date);
+        var to = DateOnly.FromDateTime(Model.PeriodTo.Value.Date);
+
+        if (from != _periodFrom || to != _periodTo || _monthsInRange.Count == 0)
+        {
+            _periodFrom = from;
+            _periodTo = to;
+            _monthsInRange = EnumerateMonths(from, to);
+        }
+    }
+
+    /// <summary>
+    /// Seeds <see cref="FlightFormModel.SelectedDays"/> from the period+weekdays, clearing any manual edits.
+    /// Parent calls this when it transitions to this step.
+    /// </summary>
+    public void RebuildFromPeriod()
+    {
+        if (Model.PeriodFrom is null || Model.PeriodTo is null) return;
+
+        var from = DateOnly.FromDateTime(Model.PeriodFrom.Value.Date);
+        var to = DateOnly.FromDateTime(Model.PeriodTo.Value.Date);
+        _periodFrom = from;
+        _periodTo = to;
+        _monthsInRange = EnumerateMonths(from, to);
+
+        var weekdayIndices = Model.Weekdays?.ToList() ?? [];
+        Model.SelectedDays = ExpandWeekdaysToDates(from, to, weekdayIndices);
+    }
+
+    private void ToggleDay(DateOnly date)
+    {
+        if (date < _periodFrom || date > _periodTo) return;
+        if (!Model.SelectedDays.Add(date))
+            Model.SelectedDays.Remove(date);
+        _ = OnModelChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private static List<DateOnly> EnumerateMonths(DateOnly from, DateOnly to)
+    {
+        var months = new List<DateOnly>();
+        var start = new DateOnly(from.Year, from.Month, 1);
+        var end = new DateOnly(to.Year, to.Month, 1);
+        for (var m = start; m <= end; m = m.AddMonths(1))
+            months.Add(m);
+        return months;
+    }
+
+    private static HashSet<DateOnly> ExpandWeekdaysToDates(DateOnly from, DateOnly to, IReadOnlyList<int> weekdayIndices)
+    {
+        var set = new HashSet<DateOnly>();
+        if (weekdayIndices.Count == 0) return set;
+
+        var allowed = weekdayIndices.Select(i => (DayOfWeek)i).ToHashSet();
+        for (var d = from; d <= to; d = d.AddDays(1))
+        {
+            if (allowed.Contains(d.DayOfWeek))
+                set.Add(d);
+        }
+        return set;
+    }
+
+    private IEnumerable<DateOnly?> GetMonthCells(DateOnly monthStart)
+    {
+        var first = new DateOnly(monthStart.Year, monthStart.Month, 1);
+        var daysInMonth = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
+        var pad = (int)first.DayOfWeek;
+        for (var i = 0; i < pad; i++)
+            yield return null;
+        for (var day = 1; day <= daysInMonth; day++)
+            yield return new DateOnly(monthStart.Year, monthStart.Month, day);
+    }
+}

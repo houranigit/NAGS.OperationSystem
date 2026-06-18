@@ -1,0 +1,118 @@
+@using Core.Application.Features.Station.Queries.GetPaginatedStations
+@using Core.Contracts.Features.Station
+@using Host.Web.Components.Pages.Shared.Badges
+@using Host.Web.Components.Shared.DataGrid
+@using Host.Web.Services
+@inherits GridSettingsComponentBase<StationDto>
+@inject IScopedMediator ScopedMediator
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject ILookupCache LookupCache
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h1 class="h4 mb-1">Stations</h1>
+        <p class="text-secondary small mb-0">Airport bases, coverage, and assigned crew (seed).</p>
+    </div>
+    <button type="button" class="btn btn-sm settings-grid-add-btn" disabled="@IsLoading" @onclick="OpenAddDialogAsync">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        Add New
+    </button>
+</div>
+
+@if (Data is null && !IsLoading)
+{
+    <TableSkeleton Rows="8" Columns="6" />
+}
+else
+{
+    <RadzenDataGrid @ref="Grid" TItem="StationDto" Data="@Data" Count="@Count" LoadData="@HandleLoadDataAsync"
+                    LoadSettings="@LoadSettings" @bind-Settings="Settings" PickedColumnsChanged="@OnPickedColumnsChanged"
+                    IsLoading="@IsLoading" Sort="@ShowLoadingAsync" Page="@ShowLoadingAsync" Filter="@ShowLoadingAsync"
+                    Style="height: calc(100vh - 200px);" Density="GridDefaults.Density" FilterMode="GridDefaults.FilterMode"
+                    AllowPaging="GridDefaults.AllowPaging" PageSize="GridDefaults.DefaultPageSize" AllowSorting="GridDefaults.AllowSorting"
+                    AllowFiltering="GridDefaults.AllowFiltering" AllowColumnResize="GridDefaults.AllowColumnResize"
+                    AllowColumnPicking="GridDefaults.AllowColumnPicking" AllowColumnReorder="GridDefaults.AllowColumnReorder"
+                    AllowAlternatingRows="GridDefaults.AllowAlternatingRows" LogicalFilterOperator="GridDefaults.LogicalFilterOperator"
+                    FilterCaseSensitivity="GridDefaults.FilterCaseSensitivity" AllowVirtualization="GridDefaults.AllowVirtualization"
+                    VirtualizationOverscanCount="GridDefaults.VirtualizationOverscanCount" AllowRowSelectOnRowClick="true"
+                    RowClick="@(() => Task.CompletedTask)">
+        <HeaderTemplate>
+            <RadzenButton Icon="refresh" Text="@($"Refresh ({Count:N0})")" ButtonStyle="ButtonStyle.Light" Variant="Variant.Filled" Shade="Shade.Light" Size="ButtonSize.Small" Click="@RefreshAsync" Disabled="@IsLoading" />
+        </HeaderTemplate>
+        <Columns>
+            <RadzenDataGridColumn TItem="StationDto" Property="@nameof(StationDto.IsActive)" Title="Active" Width="64px">
+                <Template Context="row"><Status IsActive="row.IsActive" /></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="StationDto" Property="@nameof(StationDto.IataCode)" Title="IATA" Width="72px" />
+            <RadzenDataGridColumn TItem="StationDto" Property="@nameof(StationDto.Name)" Title="Name" />
+            <RadzenDataGridColumn TItem="StationDto" Property="@nameof(StationDto.City)" Title="City" />
+            <RadzenDataGridColumn TItem="StationDto" Title="Staff" Width="72px" Filterable="false" Sortable="false">
+                <Template Context="row">@row.AssignedEmployees.Count</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="StationDto" Title="Actions" Frozen="true" FrozenPosition="FrozenColumnPosition.Right" Width="70px" Filterable="false" Sortable="false" Pickable="false" TextAlign="TextAlign.Center">
+                <Template Context="row">
+                    <button type="button" class="settings-grid-edit-btn" disabled="@IsLoading" @onclick="@(() => OpenEditAsync(row))" @onclick:stopPropagation="true">Edit</button>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+}
+
+@code {
+    protected override string SettingsStorageKey => "StationList-Settings";
+
+    // StationDto field name → Station entity property path. The DTO exposes a flat string,
+    // but the entity stores it as an OwnsOne VO whose underlying column is reached via
+    // IataCode.Value (see StationConfiguration). The base class rewrites args.Filter / args.OrderBy
+    // through this map before the handler runs Where on IQueryable<Station>.
+    protected override IReadOnlyDictionary<string, string> FilterPropertyMap { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["IataCode"] = "IataCode.Value",
+        };
+
+    protected override Task HandleLoadDataAsync(LoadDataArgs args) => LoadDataAsync(args, LoadCore);
+
+    private async Task LoadCore(LoadDataArgs args, int pageSize, int pageNumber, IServiceProvider sp, CancellationToken ct)
+    {
+        var r = await ScopedMediator.Send(new GetPaginatedStationsQuery(pageNumber, pageSize, args.Filter, args.OrderBy, GetVisibleColumnPropertyNames()), ct);
+        if (r.IsSuccess) SetGridResult(r.Value.Items, r.Value.TotalCount);
+        else SetGridResult([], 0);
+    }
+
+    private async Task RefreshAsync() { await ShowLoadingAsync(); Grid?.Reload(); }
+
+    private Task OpenAddDialogAsync() => OpenDlg(null);
+    private Task OpenEditAsync(StationDto row) => OpenDlg(row);
+
+    private async Task OpenDlg(StationDto? row)
+    {
+        if (row is null)
+        {
+            var resAdd = await DialogService.OpenAsync<StationAddDialog>(
+                "New station",
+                null,
+                new DialogOptions { Width = "min(56rem, 95vw)", ShowClose = false, CloseDialogOnOverlayClick = false });
+            if (resAdd is true)
+            {
+                LookupCache.Invalidate<StationSelectOption>();
+                NotificationService.Notify(NotificationSeverity.Success, "Saved", "Station saved.");
+                await ReloadAndResetAsync();
+            }
+
+            return;
+        }
+
+        var res = await DialogService.OpenAsync<StationUpdateDialog>(
+            "Edit station",
+            new Dictionary<string, object?> { { nameof(StationUpdateDialog.ExistingItem), row } },
+            new DialogOptions { Width = "min(56rem, 95vw)", ShowClose = false, CloseDialogOnOverlayClick = false });
+        if (res is true)
+        {
+            LookupCache.Invalidate<StationSelectOption>();
+            NotificationService.Notify(NotificationSeverity.Success, "Saved", "Station saved.");
+            await ReloadAndResetAsync();
+        }
+    }
+}

@@ -1,0 +1,29 @@
+---
+description: API contract, endpoint, DTO, auth, and ProblemDetails rules
+globs: "{src/Modules/**/*Endpoint*.cs,src/Modules/**/*Endpoints*.cs,src/Modules/**/*Request*.cs,src/Modules/**/*Response*.cs,src/Modules/**/*Dto*.cs,src/Modules/**/*Contract*.cs,src/Modules/**/Contracts/**/*.cs,src/Modules/**/*Authorization*.cs,src/Modules/**/*Problem*.cs,src/Host/OperationsSystem.Api/**/*.cs}"
+alwaysApply: false
+---
+
+# API Contracts
+
+- The API is the primary contract for React, Android, and future integrations. Do not create client-specific business behavior.
+- Public business routes start with `/api/v1`.
+- Endpoints stay thin: bind input, call application logic, and map results to standard HTTP responses.
+- Request and response DTOs must be explicit and stable. Do not leak EF entities or internal strongly typed IDs.
+- Single-item responses return the DTO directly. List endpoints return `PagedResult<T>`.
+- Create endpoints return `201 Created` with the created DTO or created id.
+- Update endpoints return `204 No Content` unless the UI truly needs the updated DTO.
+- Delete, deactivate, and archive endpoints return `204 No Content`.
+- List endpoints use server-side pagination with 1-based `page`, default `pageSize` of 20, and maximum `pageSize` of 100 unless documented otherwise.
+- Filtering uses explicit typed query parameters. Avoid OData and generic dynamic query languages for v1.0.0.
+- Sorting uses `field:direction`, for example `name:asc` or `createdAt:desc`.
+- Use consistent ProblemDetails responses: validation 400, auth 401, authorization 403, missing resources 404, business conflicts 409, unexpected exceptions 500.
+- ProblemDetails should include `type`, `title`, `status`, `detail`, `instance`, `traceId`, and an application error code when available.
+- Use permission-based authorization. Avoid role-only checks.
+- Permission names use lowercase dot format, for example `core.manpower-types.view` or `operations.work-orders.approve`.
+- Breaking API changes require explicit review because Android and React share the same contract.
+- Use optimistic concurrency on update endpoints via ETag/`If-Match`. Return 409 on a concurrency conflict.
+- Support idempotency keys on create/mutating endpoints so retrying mobile clients do not create duplicates.
+- Exchange time in UTC ISO-8601. Honor `Accept-Language` (Arabic/English) for localized validation and error messages.
+- Apply rate limiting to authentication and other abuse-prone public endpoints.
+- Treat OpenAPI as a first-class artifact. Generated clients/types should be reproducible and should not be hand-edited.

@@ -1,0 +1,62 @@
+@namespace Host.Web.Components.Pages.Settings.MasterData.Countries.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.Countries.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field__row2">
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="cc-code">ISO code</label>
+            <RadzenTextBox id="cc-code"
+                           Name="CountryCode"
+                           @bind-Value="Model.Code"
+                           MaxLength="2"
+                           Placeholder="SA"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%; text-transform: uppercase;" />
+            <RadzenRequiredValidator Component="CountryCode"
+                                     Text="Code is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+            <RadzenLengthValidator Component="CountryCode"
+                                   Min="2"
+                                   Max="2"
+                                   Text="Use 2-letter ISO code."
+                                   Popup="true"
+                                   Style="position: absolute; top: 2.5rem;" />
+        </div>
+        <div class="settings-field" style="position: relative;">
+            <label class="settings-field__label" for="cc-name">Name</label>
+            <RadzenTextBox id="cc-name"
+                           Name="CountryName"
+                           @bind-Value="Model.Name"
+                           MaxLength="120"
+                           Placeholder="Country name"
+                           Change="@OnFieldChangedAsync"
+                           Style="width: 100%;" />
+            <RadzenRequiredValidator Component="CountryName"
+                                     Text="Name is required."
+                                     Popup="true"
+                                     Style="position: absolute;" />
+        </div>
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="cc-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="cc-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public CountryFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

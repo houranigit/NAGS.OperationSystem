@@ -1,0 +1,149 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Two sections (basics + exchange rates).
+  Snapshot diff includes the rate-line list to detect bracket-level changes too.
+*@
+@using Core.Contracts.Features.Currency
+@using Host.Web.Components.Pages.Settings.MasterData.Currencies.Dialog
+@using Host.Web.Components.Pages.Settings.MasterData.Currencies.Dialog.Sections
+@using Host.Web.Services
+@using Radzen
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_form" TItem="CurrencyFormModel" Data="@_model"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_steps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_steps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@(IsDirty && !_currencyOptionsLoading)"
+                 SidebarAriaLabel="Edit currency sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the currency"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <BasicDetailsSection Model="_model"
+                                         CodeReadOnly="true"
+                                         OnModelChanged="OnFieldChangedAsync" />
+                    break;
+                case 1:
+                    <ExchangeRatesSection Model="_model"
+                                          BaseCurrencyCode="@ExistingItem.Code"
+                                          CurrencyOptions="_currencyOptions"
+                                          CurrencyOptionsLoading="_currencyOptionsLoading"
+                                          ExcludeCurrencyId="ExistingItem.Id"
+                                          OnModelChanged="OnFieldChangedAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public CurrencyDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _steps =
+    [
+        new("Basic details", "ISO code & name", "tag", IsRequired: true, Validate: () => true),
+        new("Exchange rates", "Cross-rates from this currency", "wallet", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<CurrencyFormModel>? _form;
+    private int _currentSection;
+    private bool _saving;
+    private CurrencyFormModel _model = new() { IsActive = true };
+    private CurrencyFormModel _snapshot = new() { IsActive = true };
+    private List<string> _errorMessages = new();
+
+    private List<CurrencySelectOption> _currencyOptions = [];
+    private bool _currencyOptionsLoading = true;
+    private bool _lookupsLoadStarted;
+
+    private bool IsDirty =>
+        !string.Equals(_model.Code, _snapshot.Code, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(_model.Name, _snapshot.Name, StringComparison.Ordinal)
+        || _model.IsActive != _snapshot.IsActive
+        || !RateLinesEqual(_model.RateLines, _snapshot.RateLines);
+
+    private static bool RateLinesEqual(IReadOnlyList<CurrencyExchangeRateEditorLine> a, IReadOnlyList<CurrencyExchangeRateEditorLine> b)
+    {
+        if (a.Count != b.Count) return false;
+        var xa = a.OrderBy(l => l.PersistedRateId).ThenBy(l => l.ToCurrencyId).ToList();
+        var xb = b.OrderBy(l => l.PersistedRateId).ThenBy(l => l.ToCurrencyId).ToList();
+        for (var i = 0; i < xa.Count; i++)
+        {
+            if (xa[i].PersistedRateId != xb[i].PersistedRateId) return false;
+            if (xa[i].ToCurrencyId != xb[i].ToCurrencyId) return false;
+            if (xa[i].Rate != xb[i].Rate) return false;
+        }
+        return true;
+    }
+
+    protected override void OnInitialized()
+    {
+        _model = CurrencyFormModel.FromDto(ExistingItem);
+        _snapshot = _model.Clone();
+        _currentSection = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+        try { _currencyOptions = (await LookupCache.GetCurrenciesAsync(ScopedMediator)).ToList(); }
+        finally { _currencyOptionsLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (!await ValidateAllStepsRenderedAsync()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentSection;
+        try
+        {
+            for (var s = 0; s < _steps.Length; s++) { _currentSection = s; await InvokeAsync(StateHasChanged); await Task.Yield(); if (_form?.EditContext is null || !_form.EditContext.Validate()) return false; }
+            return true;
+        }
+        finally { _currentSection = back; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnTemplateSubmitAsync(CurrencyFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var r = await ScopedMediator.Send(_model.ToUpdateCurrencyCommand(ExistingItem.Id));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save currency", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

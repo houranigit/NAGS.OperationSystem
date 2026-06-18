@@ -1,0 +1,53 @@
+@*
+  Wizard / update shared section — mirrors Currency BasicDetailsSection markup (Component Rules.md).
+*@
+@namespace Host.Web.Components.Pages.Settings.MasterData.OperationTypes.Dialog.Sections
+@using Host.Web.Components.Pages.Settings.MasterData.OperationTypes.Dialog
+
+<RadzenStack Gap="1rem">
+    <div class="settings-field" style="position: relative;">
+        <label class="settings-field__label" for="ot-name">Name</label>
+        <RadzenTextBox id="ot-name"
+                       Name="OperationTypeName"
+                       @bind-Value="Model.Name"
+                       MaxLength="100"
+                       Placeholder="e.g. Hajj"
+                       Change="@OnFieldChangedAsync"
+                       Style="width: 100%;" />
+        <RadzenRequiredValidator Component="OperationTypeName"
+                                 Text="Name is required."
+                                 Popup="true"
+                                 Style="position: absolute;" />
+    </div>
+    <div class="settings-field">
+        <label class="settings-field__label" for="ot-desc">Description</label>
+        <RadzenTextArea id="ot-desc"
+                        @bind-Value="Model.Description"
+                        MaxLength="500"
+                        Rows="3"
+                        Placeholder="Optional notes"
+                        Change="@OnFieldChangedAsync"
+                        Style="width: 100%;" />
+    </div>
+    <div class="settings-field" style="position: relative;">
+        <span class="settings-field__label" id="ot-status">Status</span>
+        <RadzenSelectBar TValue="bool"
+                         @bind-Value="Model.IsActive"
+                         Change="@OnFieldChangedAsync"
+                         Size="ButtonSize.Small"
+                         aria-labelledby="ot-status">
+            <Items>
+                <RadzenSelectBarItem Text="Active" Value="true" />
+                <RadzenSelectBarItem Text="Inactive" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+    </div>
+</RadzenStack>
+
+@code {
+    [Parameter, EditorRequired] public OperationTypeFormModel Model { get; set; } = default!;
+
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Task OnFieldChangedAsync() => OnModelChanged.InvokeAsync();
+}

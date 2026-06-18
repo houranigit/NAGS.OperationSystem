@@ -1,0 +1,372 @@
+.ops-nav {
+    --ops-nav-pad-x: 0.85rem;
+    --ops-nav-gap-section: 0.2rem;
+    /* Vertical gap between tier-1 rows — primary + settings use the same rhythm */
+    --ops-nav-gap-t1-rows: 0.55rem;
+    /* Shared tier-1 row layout: same icon↔label gap and insets for primary + settings */
+    --ops-nav-t1-icon-text-gap: 1rem;
+    --ops-nav-t1-pad-y: 0.5rem;
+    --ops-nav-t1-pad-x-start: 0.5rem;
+    --ops-nav-t1-pad-x-end: 0.65rem;
+    --ops-nav-brand: #722f37;
+    --ops-nav-accent: #8f414c;
+    --ops-nav-accent-deep: #5c2830;
+    --ops-nav-accent-soft: rgba(114, 47, 55, 0.09);
+    --ops-nav-tile-bg: linear-gradient(180deg, #fcfcfc 0%, #f6f7f9 100%);
+    --ops-nav-tile-ring: rgba(208, 213, 219, 0.88);
+    --ops-nav-muted: #616b7a;
+    --ops-nav-fg: #374151;
+
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ops-nav-gap-section);
+    padding: 0.5rem var(--ops-nav-pad-x) 1.35rem;
+}
+
+.ops-nav-separator {
+    flex-shrink: 0;
+    height: 0;
+    margin: 0.35rem 0.35rem 0.45rem;
+    border: 0;
+    border-top: 1px solid rgba(209, 213, 219, 0.95);
+}
+
+/* One vertical stack: all tier-1 rows share identical gaps (no primary/settings wrapper mismatch) */
+.ops-nav-stack {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+.ops-nav-stack ::deep .ops-nav-t1 {
+    min-height: 2.875rem;
+}
+
+.ops-nav--collapsed .ops-nav-stack {
+    gap: 0.35rem;
+}
+
+.ops-nav--collapsed .ops-nav-stack ::deep .ops-nav-t1 {
+    gap: 0;
+    padding: 0.4rem;
+    min-height: 2.75rem;
+}
+
+.ops-nav-settings__title {
+    box-sizing: border-box;
+    align-self: stretch;
+    margin: 0;
+    padding: 4px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ops-nav-muted);
+    opacity: 0.92;
+}
+
+#ops-shell-sidebar-nav {
+    --bs-link-color-rgb: 71, 78, 90;
+    --bs-link-hover-color-rgb: 30, 41, 59;
+    --bs-link-decoration: none;
+    --bs-link-hover-decoration: none;
+}
+
+#ops-shell-sidebar-nav a:is(:link, :visited, :hover, :focus, :active),
+#ops-shell-sidebar-nav a[class*="ops-sublink"],
+#ops-shell-sidebar-nav a.ops-nav-t1 {
+    text-decoration: none !important;
+    text-decoration-line: none !important;
+    text-underline-offset: unset !important;
+}
+
+/* ── Tier 1: leaf NavLinks + accordion headers — ::deep so NavLink's <a> gets same rules as authored <a> ── */
+::deep .ops-nav-t1 {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    min-height: 2.625rem;
+    margin: 0;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: rgba(252, 252, 252, 0.35);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.33;
+    letter-spacing: -0.014em;
+    color: var(--ops-nav-fg);
+    text-align: left;
+    text-decoration: none !important;
+    transition:
+        background 0.18s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        color 0.18s ease;
+}
+
+::deep .ops-nav-t1:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(229, 231, 235, 0.95);
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    color: var(--ops-nav-fg);
+}
+
+::deep .ops-nav-t1--selected,
+.ops-nav-section--branch-active ::deep > .ops-nav-t1 {
+    background: linear-gradient(
+        138deg,
+        rgba(253, 250, 250, 0.98) 0%,
+        rgba(247, 242, 242, 0.97) 100%
+    );
+    border-color: rgba(205, 170, 175, 0.55);
+    box-shadow:
+        0 1px 2px rgba(114, 47, 55, 0.06),
+        inset 0 1px 0 rgba(255, 253, 253, 0.85);
+}
+
+::deep .ops-nav-t1--selected .ops-nav-t1__glyph,
+.ops-nav-section--branch-active ::deep > .ops-nav-t1 .ops-nav-t1__glyph {
+    background: linear-gradient(
+        148deg,
+        #a85c66 0%,
+        var(--ops-nav-accent) 46%,
+        var(--ops-nav-accent-deep) 100%
+    );
+    color: #fffdfc;
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow:
+        0 2px 11px rgba(114, 47, 55, 0.24),
+        0 1px 0 rgba(255, 255, 255, 0.12) inset;
+}
+
+::deep .ops-nav-t1:active .ops-nav-t1__glyph {
+    transform: scale(0.98);
+}
+
+::deep .ops-nav-t1:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(114, 47, 55, 0.2);
+}
+
+.ops-nav-t1__content {
+    box-sizing: border-box;
+    display: inline-flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: var(--ops-nav-t1-icon-text-gap);
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ops-nav-t1__inner {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    min-width: 36px;
+}
+
+.ops-nav-t1__glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--ops-nav-tile-bg);
+    border: 1px solid var(--ops-nav-tile-ring);
+    color: #9a5962;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    transition:
+        background 0.18s ease,
+        color 0.18s ease,
+        transform 0.14s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
+}
+
+.ops-nav-t1__label {
+    flex: 1;
+    min-width: 0;
+    text-align: start;
+}
+
+/* Collapsed sidebar: rail */
+::deep .ops-nav-t1--rail {
+    position: relative;
+    justify-content: center;
+    align-items: center;
+    padding-inline: 0.4rem;
+    min-height: 2.75rem;
+}
+
+::deep .ops-nav-t1--rail .ops-nav-t1__content {
+    flex: 0 0 auto;
+    justify-content: center;
+}
+
+::deep .ops-nav-t1--rail .ops-nav-t1__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ── Sections (accordion container only; no chrome difference vs plain rows) ── */
+.ops-nav-section {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    transition: none;
+}
+
+.ops-nav-section--open ::deep > .ops-nav-t1 .ops-nav-t1__glyph {
+    /* optional micro hint when expanded — barely visible, keeps parity */
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.93);
+}
+
+.ops-nav-section__panel {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.28rem 0 0;
+    padding: 0.18rem 0 0.4rem;
+    padding-left: 1rem;
+    margin-left: 1rem;
+    border-left: 2px solid rgba(217, 220, 227, 0.95);
+    transition: border-color 0.2s ease;
+}
+
+.ops-nav-section--branch-active .ops-nav-section__panel {
+    border-left-color: rgba(143, 65, 76, 0.38);
+}
+
+.ops-sublink {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.55rem;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.38;
+    letter-spacing: -0.012em;
+    color: var(--ops-nav-muted);
+    cursor: pointer;
+    text-decoration: none !important;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.ops-sublink:hover {
+    background: var(--ops-nav-accent-soft);
+    color: var(--ops-nav-fg);
+}
+
+.ops-sublink__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: inherit;
+    opacity: 0.72;
+}
+
+.ops-sublink:hover .ops-sublink__icon {
+    opacity: 0.92;
+}
+
+.ops-sublink__icon svg {
+    display: block;
+    flex-shrink: 0;
+}
+
+.ops-sublink__text {
+    flex: 1;
+    min-width: 0;
+    font-size: small
+}
+
+.ops-sublink--active,
+.ops-sublink--active:link,
+.ops-sublink--active:visited,
+.ops-sublink--active:hover {
+    background: rgba(255, 255, 255, 0.97);
+    color: var(--ops-nav-accent-deep) !important;
+    font-weight: 600;
+    box-shadow:
+        inset 3px 0 0 0 var(--ops-nav-accent),
+        0 0 0 1px rgba(220, 200, 204, 0.55),
+        0 2px 5px rgba(114, 47, 55, 0.05);
+    text-decoration: none !important;
+}
+
+.ops-sublink--active .ops-sublink__icon {
+    opacity: 1;
+    color: var(--ops-nav-accent);
+}
+
+.ops-sublink--active .ops-sublink__text {
+    opacity: 1;
+    color: var(--ops-nav-accent);
+}
+
+.ops-sublink:focus-visible {
+    outline: none;
+    box-shadow:
+        inset 3px 0 0 0 var(--ops-nav-accent),
+        0 0 0 2px rgba(114, 47, 55, 0.18);
+}
+
+.ops-sublink:not(.ops-sublink--active):focus-visible {
+    box-shadow: 0 0 0 2px rgba(114, 47, 55, 0.2);
+}
+
+.ops-nav--collapsed .ops-nav-section__panel {
+    display: none;
+}

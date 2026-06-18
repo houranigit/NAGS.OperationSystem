@@ -1,0 +1,25 @@
+.table-skeleton {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+}
+
+.table-skeleton-header {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0.85rem 1rem;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.table-skeleton-row {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.table-skeleton-row:last-child {
+    border-bottom: none;
+}

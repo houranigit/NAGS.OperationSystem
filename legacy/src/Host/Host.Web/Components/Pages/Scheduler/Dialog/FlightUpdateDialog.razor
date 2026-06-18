@@ -1,0 +1,383 @@
+@*
+  UPDATE = free section navigation (same shell as CustomerUpdateDialog / EmployeeUpdateDialog).
+  Each section is rendered at all times so validators run across the whole form on submit; only the active one is visible.
+*@
+@using Core.Application.Features.Customer.Queries.GetPaginatedCustomers
+@using Core.Application.Features.Employee.Queries.GetPaginatedEmployees
+@using Core.Contracts.Features.AircraftType
+@using Core.Contracts.Features.Customer
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.OperationType
+@using Core.Contracts.Features.Station
+@using Core.Contracts.Seeding
+@using Host.Web.Components.Pages.Scheduler.Dialog.Sections
+@using Host.Web.Services
+@using Identity.Domain.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Operations.Application.Features.Flight.Queries.GetFlightById
+@using Operations.Contracts.Flight
+@using Operations.Domain.Enumerations
+@using Radzen
+
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm TItem="FlightFormModel"
+                    Data="@_model"
+                    Submit="@OnTemplateSubmitAsync"
+                    InvalidSubmit="@OnTemplateInvalidSubmit">
+    <div class="settings-wizard-host">
+        <div class="settings-wizard">
+            <aside class="settings-wizard__sidebar" aria-label="Flight sections">
+                @for (var i = 0; i < _sections.Length; i++)
+                {
+                    var index = i;
+                    var sec = _sections[index];
+                    var isActive = index == _currentSection;
+                    <button type="button"
+                            class="settings-wizard-step @(isActive ? "is-active" : "is-completed")"
+                            disabled="@_saving"
+                            @onclick="@(() => JumpTo(index))">
+                        <span class="settings-wizard-step__circle" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+                        </span>
+                        <span class="settings-wizard-step__label">
+                            <span class="settings-wizard-step__title">@sec.Title</span>
+                            <span class="settings-wizard-step__subtitle">@sec.Subtitle</span>
+                        </span>
+                    </button>
+
+                    @if (index < _sections.Length - 1)
+                    {
+                        <span class="settings-wizard-step__line" aria-hidden="true"></span>
+                    }
+                }
+            </aside>
+
+            <section class="settings-wizard__content">
+                <div class="settings-wizard__main">
+                    @if (_flightLoading)
+                    {
+                        <div class="settings-wizard__panel"><p class="text-body-secondary mb-0">Loading flight…</p></div>
+                    }
+                    else if (_flightNotFound)
+                    {
+                        <div class="settings-wizard__panel"><p class="text-danger mb-0">Flight not found.</p></div>
+                    }
+                    else
+                    {
+                        <div class="settings-wizard__panel">
+                            @if (IsViewOnlyFlight)
+                            {
+                                <div class="alert alert-secondary mb-3 py-2" role="status">
+                                    <strong>View only.</strong> @ViewOnlyReason()
+                                </div>
+                            }
+                            <div style="@SectionDisplay(0)">
+                                @* Route section includes STA·STD together with customer, station, and flight number. *@
+                                <RouteSection Model="@_model"
+                                              Customers="@_customers"
+                                              CustomersLoading="@_customersLoading"
+                                              Stations="@_stationOptions"
+                                              StationsLoading="@_stationsLoading"
+                                              OperationTypes="@_operationTypeOptions"
+                                              OperationTypesLoading="@_operationTypesLoading"
+                                              AircraftTypes="@_aircraftTypeOptions"
+                                              AircraftTypesLoading="@_aircraftTypesLoading"
+                                              ReadOnly="@IsViewOnlyFlight"
+                                              OnModelChanged="@OnFieldChangedAsync" />
+                            </div>
+                            <div style="@SectionDisplay(1)">
+                                <CrewSection Model="@_model"
+                                             Employees="@_employees"
+                                             EmployeesLoading="@_employeesLoading"
+                                             AssignmentOptional="true"
+                                             ReadOnly="@IsViewOnlyFlight"
+                                             OnModelChanged="@OnFieldChangedAsync" />
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <footer class="settings-wizard__footer">
+                    <div class="settings-wizard__footer-actions">
+                        <button type="button"
+                                class="settings-wizard-btn settings-wizard-btn--secondary"
+                                disabled="@_saving"
+                                @onclick="CancelAsync">
+                            Cancel
+                        </button>
+                        @if (!IsViewOnlyFlight)
+                        {
+                            <button type="submit"
+                                    class="settings-wizard-btn settings-wizard-btn--commit"
+                                    disabled="@(_saving || _flightLoading || _flightNotFound || !IsDirty || _customersLoading || _stationsLoading || _operationTypesLoading || _aircraftTypesLoading || _employeesLoading)">
+                                @if (_saving)
+                                {
+                                    <span>Saving…</span>
+                                }
+                                else
+                                {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                    <span>Save</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                </footer>
+            </section>
+        </div>
+    </div>
+</RadzenTemplateForm>
+
+<ConfirmDialog @ref="_unsavedConfirm" />
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    [Parameter, EditorRequired] public Guid FlightId { get; set; }
+
+    private readonly SectionDescriptor[] _sections =
+    [
+        new("Route", "Customer, flight number & schedule"),
+        new("Crew", "Assigned employees")
+    ];
+
+    private int _currentSection;
+    private bool _saving;
+    private bool _flightLoading = true;
+    private bool _flightNotFound;
+    private FlightFormModel _model = new();
+    private FlightFormModel _snapshot = new();
+    private ConfirmDialog _unsavedConfirm = default!;
+
+    private List<CustomerDto> _customers = [];
+    private List<StationSelectOption> _stationOptions = [];
+    private List<OperationTypeSelectOption> _operationTypeOptions = [];
+    private List<AircraftTypeSelectOption> _aircraftTypeOptions = [];
+    private List<EmployeeDto> _employees = [];
+
+    private bool _customersLoading = true;
+    private bool _stationsLoading = true;
+    private bool _operationTypesLoading = true;
+    private bool _aircraftTypesLoading = true;
+    private bool _employeesLoading = true;
+
+    private bool IsDirty => SnapshotDiffers();
+
+    private bool SnapshotDiffers() =>
+        _model.CustomerId != _snapshot.CustomerId
+        || _model.StationId != _snapshot.StationId
+        || _model.OperationTypeId != _snapshot.OperationTypeId
+        || _model.AircraftTypeId != _snapshot.AircraftTypeId
+        || !string.Equals(_model.FlightNumber?.Trim(), _snapshot.FlightNumber?.Trim(), StringComparison.Ordinal)
+        || _model.StaLocal != _snapshot.StaLocal
+        || _model.StdLocal != _snapshot.StdLocal
+        || !_model.AssignedEmployeeIds.OrderBy(x => x).SequenceEqual(_snapshot.AssignedEmployeeIds.OrderBy(x => x));
+
+    private bool _lookupsLoadStarted;
+    private bool _flightHydrated;
+    private FlightStatus _flightStatus;
+    private bool _canUpdateFlights;
+
+    /// <summary>True when the loaded flight cannot be edited by business rule or permission.</summary>
+    private bool IsViewOnlyFlight => _flightHydrated && !_flightNotFound && (!_canUpdateFlights || _flightStatus != FlightStatus.Scheduled);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthenticationStateTask is null)
+            return;
+
+        var user = (await AuthenticationStateTask).User;
+        _canUpdateFlights = user.HasClaim("permissions", Permissions.Flights.Update);
+    }
+
+    /// <remarks>
+    /// Lookups + flight hydration run off first render so the dialog shell + skeletons paint immediately.
+    /// Dropdowns flip their individual loading flags as each request completes.
+    /// </remarks>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted)
+            return;
+
+        _lookupsLoadStarted = true;
+
+        await Task.WhenAll(
+            LoadCustomersAsync(),
+            LoadStationsAsync(),
+            LoadOperationTypesAsync(),
+            LoadAircraftTypesAsync(),
+            LoadEmployeesAsync(),
+            LoadFlightAsync());
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadCustomersAsync()
+    {
+        try
+        {
+            var r = await ScopedMediator.Send(new GetPaginatedCustomersQuery(1, 500, null, null, null));
+            if (r.IsSuccess)
+                _customers = r.Value!.Items.Where(c => c.IsActive).ToList();
+        }
+        finally
+        {
+            _customersLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadStationsAsync()
+    {
+        try { _stationOptions = (await LookupCache.GetStationsAsync(ScopedMediator)).ToList(); }
+        finally { _stationsLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task LoadOperationTypesAsync()
+    {
+        try
+        {
+            // Ad Hoc OT is reserved for the mobile "create from scratch" flow — never
+            // selectable when scheduling a flight here.
+            _operationTypeOptions = (await LookupCache.GetOperationTypesAsync(ScopedMediator))
+                .Where(o => o.Id != CoreSeedIds.AdHocOperationType)
+                .ToList();
+        }
+        finally { _operationTypesLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task LoadAircraftTypesAsync()
+    {
+        try { _aircraftTypeOptions = (await LookupCache.GetAircraftTypesAsync(ScopedMediator)).ToList(); }
+        finally { _aircraftTypesLoading = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task LoadEmployeesAsync()
+    {
+        try
+        {
+            var r = await ScopedMediator.Send(new GetPaginatedEmployeesQuery(1, 500, null, null));
+            if (r.IsSuccess)
+                _employees = r.Value!.Items.Where(e => e.IsActive).ToList();
+        }
+        finally
+        {
+            _employeesLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadFlightAsync()
+    {
+        try
+        {
+            var r = await ScopedMediator.Send(new GetFlightByIdQuery(FlightId));
+            if (r.IsSuccess && r.Value is FlightDto dto)
+            {
+                _model = FlightFormModel.FromDto(dto);
+                _snapshot = _model.Clone();
+                _flightHydrated = true;
+                _flightStatus = dto.Status;
+            }
+            else
+            {
+                _flightNotFound = true;
+            }
+        }
+        finally
+        {
+            _flightLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string SectionDisplay(int sectionIndex) =>
+        _currentSection == sectionIndex ? "" : "display:none;";
+
+    private void JumpTo(int index)
+    {
+        if (index == _currentSection) return;
+        _currentSection = index;
+    }
+
+    private Task OnFieldChangedAsync() => Task.CompletedTask;
+
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnTemplateSubmitAsync(FlightFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        if (!_canUpdateFlights)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Could not update flight", "You do not have permission to update flights.");
+            return;
+        }
+
+        if (IsViewOnlyFlight) return;
+
+        _saving = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var route = _model.ResolveRoute(_customers, _stationOptions, _operationTypeOptions, _aircraftTypeOptions);
+            var crew = _model.ResolveAssignedCrew(_employees);
+            var cmd = _model.ToUpdateFlightCommand(FlightId, route, crew);
+
+            var r = await ScopedMediator.Send(cmd);
+            if (r.IsFailure)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Could not update flight", r.Error.Description);
+                return;
+            }
+
+            NotificationService.Notify(NotificationSeverity.Success, "Flight saved", "Changes were applied.");
+            DialogService.Close(true);
+        }
+        finally
+        {
+            _saving = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        if (!IsDirty)
+        {
+            DialogService.Close(false);
+            return;
+        }
+
+        var confirmed = await _unsavedConfirm.ShowAsync(
+            title: "Discard Changes",
+            message: "You have unsaved changes. Discard them and close?",
+            confirmText: "Discard",
+            cancelText: "Keep Editing",
+            style: ConfirmDialog.DialogStyle.Danger);
+
+        if (confirmed)
+            DialogService.Close(false);
+    }
+
+    private static string FlightStatusPhrase(FlightStatus s) => s switch
+    {
+        FlightStatus.InProgress => "in progress",
+        FlightStatus.Completed => "completed",
+        FlightStatus.Canceled => "canceled",
+        _ => "not in Scheduled status"
+    };
+
+    private string ViewOnlyReason() =>
+        !_canUpdateFlights
+            ? "You do not have permission to update flights."
+            : $"This flight is {FlightStatusPhrase(_flightStatus)} — only flights in Scheduled status can be edited here.";
+
+    private sealed record SectionDescriptor(string Title, string Subtitle);
+}

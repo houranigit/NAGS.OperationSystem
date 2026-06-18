@@ -1,0 +1,17 @@
+.search-input-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 0.65rem;
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.search-input {
+    padding-left: 2.25rem !important;
+    min-width: 220px;
+}

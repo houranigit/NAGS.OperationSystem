@@ -1,0 +1,234 @@
+@using System.Globalization
+@using Core.Contracts.Features.Customer
+@using Host.Web.Components.Pages.Shared.Feedback
+
+@if (IsLoading)
+{
+    <header class="customer-profile-header" aria-busy="true" aria-label="Loading customer">
+        <div class="customer-profile-header__row">
+            <div class="customer-profile-header__logo-wrap">
+                <div class="customer-profile-header__avatar customer-profile-header__avatar--skeleton" aria-hidden="true">
+                    <Skeleton Height="100%" Width="100%" BorderRadius="50%" />
+                </div>
+            </div>
+            <div class="customer-profile-header__middle">
+                <div class="customer-profile-header__cols">
+                    <div class="customer-profile-header__identity">
+                        <div class="customer-profile-header__title-row">
+                            <Skeleton Height="1.75rem" Width="min(14rem, 45%)" />
+                            <Skeleton Height="1.5rem" Width="4.5rem" BorderRadius="999px" />
+                        </div>
+                        <Skeleton Height="0.95rem" Width="min(18rem, 70%)" BorderRadius="999px" />
+                        <Skeleton Height="0.9rem" Width="min(28rem, 85%)" />
+                        <Skeleton Height="0.85rem" Width="min(16rem, 55%)" BorderRadius="6px" />
+                    </div>
+                    <div class="customer-profile-header__contact" role="group">
+                        <div class="customer-profile-header__contact-stack">
+                            <div class="customer-profile-header__contact-block">
+                                <Skeleton Height="0.75rem" Width="5rem" />
+                                <Skeleton Height="1rem" Width="min(18rem, 100%)" />
+                            </div>
+                            <div class="customer-profile-header__contact-block">
+                                <Skeleton Height="0.75rem" Width="6.5rem" />
+                                <Skeleton Height="1rem" Width="min(14rem, 100%)" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+}
+else if (Customer is not null)
+{
+    <header class="customer-profile-header">
+        <div class="customer-profile-header__row">
+            <div class="customer-profile-header__logo-wrap">
+                <div class="customer-profile-header__avatar">
+                    @if (Customer.Logo is { Length: > 0 } logoBytes)
+                    {
+                        <img class="customer-profile-header__logo"
+                             src="@LogoDataUrl(logoBytes)"
+                             alt="@($"{Customer.Name} logo")" />
+                    }
+                    else
+                    {
+                        <div class="customer-profile-header__logo-placeholder" aria-hidden="true">
+                            @LogoPlaceholderText(Customer.Name)
+                        </div>
+                    }
+                    <span class="@StatusDotClass"
+                          role="img"
+                          aria-label="@StatusAriaLabel"></span>
+                </div>
+            </div>
+
+            <div class="customer-profile-header__middle">
+                <div class="customer-profile-header__cols">
+                    <div class="customer-profile-header__identity">
+                        <div class="customer-profile-header__title-row">
+                            <h1 class="customer-profile-header__name">@Customer.Name</h1>
+                            <RadzenButton Icon="edit"
+                                          ButtonStyle="ButtonStyle.Base"
+                                          Variant="Variant.Text"
+                                          Size="ButtonSize.Small"
+                                          Click="@OnEdit"
+                                          title="Edit customer"
+                                          ButtonType="ButtonType.Button"
+                                          class="customer-profile-header__inline-btn" />
+                        </div>
+                        <p class="customer-profile-header__meta" role="group" aria-label="Airline codes">
+                            <span class="customer-profile-header__code customer-profile-header__code--iata">
+                                <span class="customer-profile-header__code-kind">IATA</span>
+                                <span class="customer-profile-header__code-value">@Customer.IataCode</span>
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(Customer.IcaoCode))
+                            {
+                                <span class="customer-profile-header__code customer-profile-header__code--icao">
+                                    <span class="customer-profile-header__code-kind">ICAO</span>
+                                    <span class="customer-profile-header__code-value">@Customer.IcaoCode</span>
+                                </span>
+                            }
+                        </p>
+                        <div class="customer-profile-header__address-row">
+                            @if (string.IsNullOrWhiteSpace(Customer.Address?.Line1))
+                            {
+                                <svg class="customer-profile-header__address-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 7a2.5 2.5 0 0 1 0 5z" />
+                                </svg>
+                                <span class="customer-profile-header__address customer-profile-header__address-empty">No available address</span>
+                            }
+                            else
+                            {
+                                <svg class="customer-profile-header__address-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 7a2.5 2.5 0 0 1 0 5z" />
+                                </svg>
+                                <p class="customer-profile-header__address">@FormatAddress(Customer)</p>
+                            }
+                        </div>
+                        <div class="customer-profile-header__created-row">
+                            <svg class="customer-profile-header__created-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zM5 8V6h14v2H5z" />
+                            </svg>
+                            <span class="customer-profile-header__created-text">Created at @FormatCreatedAt(Customer.CreatedAt)</span>
+                        </div>
+                    </div>
+
+                    <div class="customer-profile-header__contact" role="group" aria-label="Official contact">
+                        <div class="customer-profile-header__contact-stack">
+                            <div class="customer-profile-header__contact-block">
+                                <div class="customer-profile-header__contact-label-row">
+                                    <svg class="customer-profile-header__contact-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5L4 8V6l8 5 8-5v2z" />
+                                    </svg>
+                                    <span class="customer-profile-header__contact-label">Email address</span>
+                                </div>
+                                @if (string.IsNullOrWhiteSpace(Customer.OfficialEmail))
+                                {
+                                    <span class="customer-profile-header__contact-value customer-profile-header__contact-muted">—</span>
+                                }
+                                else
+                                {
+                                    <a class="customer-profile-header__contact-value customer-profile-header__contact-link"
+                                       href="@($"mailto:{Customer.OfficialEmail}")">@Customer.OfficialEmail</a>
+                                }
+                            </div>
+                            <div class="customer-profile-header__contact-block">
+                                <div class="customer-profile-header__contact-label-row">
+                                    <svg class="customer-profile-header__contact-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
+                                    </svg>
+                                    <span class="customer-profile-header__contact-label">Phone number</span>
+                                </div>
+                                @if (string.IsNullOrWhiteSpace(Customer.OfficialPhone))
+                                {
+                                    <span class="customer-profile-header__contact-value customer-profile-header__contact-muted">—</span>
+                                }
+                                else
+                                {
+                                    <a class="customer-profile-header__contact-value customer-profile-header__contact-link"
+                                       href="@($"tel:{SanitizeTelHref(Customer.OfficialPhone)}")">@Customer.OfficialPhone</a>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+}
+
+@code {
+    [Parameter] public CustomerDto? Customer { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+
+    private string StatusDotClass =>
+        Customer!.IsActive
+            ? "customer-profile-header__status-dot customer-profile-header__status-dot--active"
+            : "customer-profile-header__status-dot customer-profile-header__status-dot--inactive";
+
+    private string StatusAriaLabel =>
+        Customer!.IsActive ? "Active customer" : "Inactive customer";
+
+    private static string FormatCreatedAt(DateTime createdAt)
+    {
+        var utc = createdAt.Kind switch
+        {
+            DateTimeKind.Utc => createdAt,
+            DateTimeKind.Local => createdAt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(createdAt, DateTimeKind.Utc)
+        };
+        return utc.ToLocalTime().ToString("dd MMM yyyy", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatAddress(CustomerDto c)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(c.Address?.Line1))
+            parts.Add(c.Address!.Line1!.Trim());
+        if (!string.IsNullOrWhiteSpace(c.Address?.Line2))
+            parts.Add(c.Address!.Line2!.Trim());
+        if (!string.IsNullOrWhiteSpace(c.Address?.City))
+            parts.Add(c.Address!.City!.Trim());
+        if (!string.IsNullOrWhiteSpace(c.Address?.PostalCode))
+            parts.Add(c.Address!.PostalCode!.Trim());
+        if (!string.IsNullOrWhiteSpace(c.Address?.Country?.Name))
+            parts.Add(c.Address!.Country!.Name.Trim());
+
+        return parts.Count == 0 ? "—" : string.Join(", ", parts);
+    }
+
+    private static string LogoPlaceholderText(string name)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+            return "?";
+
+        var words = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length >= 2)
+            return string.Concat(words[0].AsSpan(0, 1), words[1].AsSpan(0, 1)).ToUpperInvariant();
+
+        return trimmed.Length >= 2
+            ? trimmed[..2].ToUpperInvariant()
+            : trimmed[..1].ToUpperInvariant();
+    }
+
+    private static string SanitizeTelHref(string raw)
+    {
+        var filtered = new string(raw.Where(static c => char.IsDigit(c) || c == '+').ToArray());
+        return filtered.Length > 0 ? filtered : raw.Trim();
+    }
+
+    private static string LogoDataUrl(byte[] bytes)
+    {
+        var mime = bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF
+            ? "image/jpeg"
+            : bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G'
+                ? "image/png"
+                : bytes.Length >= 6 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F'
+                    ? "image/gif"
+                    : "image/png";
+        return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+    }
+}

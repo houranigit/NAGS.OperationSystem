@@ -1,0 +1,205 @@
+@*
+  UPDATE = free-nav via the shared WizardShell. Tool-scoped pricing plan; tool key is frozen.
+*@
+@using Core.Contracts.Features.Currency
+@using Core.Domain.Enumerations
+@using Host.Web.Components.Pages.Settings.Pricing.Shared
+@using Host.Web.Components.Pages.Settings.Pricing.ToolPricePlans.Dialog
+@using Host.Web.Components.Pages.Settings.Pricing.ToolPricePlans.Dialog.Sections
+@using Host.Web.Configuration
+@using Host.Web.Services
+@using Microsoft.Extensions.Options
+@using Radzen
+@using Store.Application.Features.ToolPricePlan.Commands.UpdateToolPricePlan
+@using Store.Contracts.Features.Tool
+@using Store.Contracts.Features.ToolPricePlan
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject IOptions<PlatformSettings> PlatformOptions
+@inject NotificationService NotificationService
+
+<RadzenTemplateForm @ref="_scopeForm" TItem="ToolPricePlanScopeFormModel" Data="@_scopeModel"
+                    Submit="@OnTemplateSubmitAsync" InvalidSubmit="@(_ => {})">
+    <WizardShell Steps="@_wizardSteps"
+                 CurrentStep="_currentSection"
+                 CurrentStepChanged="@(s => _currentSection = s)"
+                 FurthestReached="@(_wizardSteps.Length - 1)"
+                 Mode="WizardMode.FreeNav"
+                 IsBusy="_saving"
+                 CanSave="@(IsDirty && _scopeReady && BracketsValid())"
+                 SidebarAriaLabel="Edit tool price plan sections"
+                 SaveLabel="Save changes"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't update the price plan"
+                 ConfirmCancelOnDirty="@IsDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <ToolPricePlanScopeSection Model="@_scopeModel"
+                                               FreezeItemKey="true"
+                                               OnModelChanged="OnFieldChangedAsync"
+                                               LoadError="@_loadError"
+                                               LoadingTools="_loadingTools"
+                                               LoadingCurrencies="_loadingCurrencies"
+                                               Tools="@_tools"
+                                               Currencies="@_currencies"
+                                               BasisChanged="@OnBasisChanged" />
+                    break;
+                case 1:
+                    <PricePlanBracketsStepSection Basis="@_scopeModel.Basis"
+                                                  CurrencyDisplay="@SelectedCurrencyCode"
+                                                  Brackets="@_brackets"
+                                                  SharedBlockMinutes="@_sharedBlock"
+                                                  SharedBlockMinutesChanged="@OnSharedBlockChanged"
+                                                  SharedBillingMode="@_sharedBilling"
+                                                  SharedBillingModeChanged="@OnSharedBillingChanged"
+                                                  OnChanged="@OnBracketsFieldChangedAsync"
+                                                  BracketError="@_bracketError" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public ToolPricePlanDto ExistingItem { get; set; } = default!;
+
+    private readonly WizardStep[] _wizardSteps =
+    [
+        new("Plan", "Tool & basis", "tools", IsRequired: true, Validate: () => true),
+        new("Brackets", "Rates", "percent", IsRequired: true, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<ToolPricePlanScopeFormModel>? _scopeForm;
+    private int _currentSection;
+    private bool _saving;
+    private bool _loadingTools = true, _loadingCurrencies = true;
+    private string? _loadError;
+    private List<string> _errorMessages = new();
+
+    private List<ToolSelectOption> _tools = [];
+    private List<CurrencySelectOption> _currencies = [];
+
+    private readonly ToolPricePlanScopeFormModel _scopeModel = new();
+    private List<PriceBracketRowState> _brackets = [];
+    private int _sharedBlock = 60;
+    private BracketBillingMode _sharedBilling = BracketBillingMode.ProRated;
+    private string? _bracketError;
+
+    private ToolPricePlanScopeFormModel _snapScope = new();
+    private List<PriceBracketRowState> _snapBrackets = [];
+    private int _snapSharedBlock = 60;
+    private BracketBillingMode _snapBilling = BracketBillingMode.ProRated;
+
+    private string PlatformCurrencyCode => PlatformOptions.Value.CurrencyCode?.Trim().ToUpperInvariant() ?? "SAR";
+    private string SelectedCurrencyCode => _currencies.FirstOrDefault(c => c.Id == _scopeModel.CurrencyId)?.Code ?? PlatformCurrencyCode;
+    private bool _scopeReady => !_loadingTools && !_loadingCurrencies && string.IsNullOrWhiteSpace(_loadError);
+
+    private bool IsDirty =>
+        _snapScope.ToolId != _scopeModel.ToolId
+        || _snapScope.CurrencyId != _scopeModel.CurrencyId
+        || _snapScope.Basis != _scopeModel.Basis
+        || !BracketsEqual(_snapBrackets, _brackets)
+        || _sharedBlock != _snapSharedBlock
+        || _sharedBilling != _snapBilling;
+
+    protected override void OnInitialized() { HydrateFromExisting(); _currentSection = 0; }
+
+    private bool _lookupsLoadStarted;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted) return;
+        _lookupsLoadStarted = true;
+        await Task.WhenAll(LoadToolsAsync(), LoadCurrenciesAsync());
+        CaptureBaseline();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool BracketsEqual(IReadOnlyList<PriceBracketRowState> a, IReadOnlyList<PriceBracketRowState> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++) if (a[i].MinMinutes != b[i].MinMinutes || a[i].MaxMinutes != b[i].MaxMinutes || a[i].Value != b[i].Value) return false;
+        return true;
+    }
+
+    private static List<PriceBracketRowState> CloneBrackets(IReadOnlyList<PriceBracketRowState> rows) =>
+        rows.Select(x => new PriceBracketRowState { MinMinutes = x.MinMinutes, MaxMinutes = x.MaxMinutes, Value = x.Value }).ToList();
+
+    private void CaptureBaseline()
+    {
+        _snapScope = new ToolPricePlanScopeFormModel { ToolId = _scopeModel.ToolId, CurrencyId = _scopeModel.CurrencyId, Basis = _scopeModel.Basis };
+        _snapBrackets = CloneBrackets(_brackets);
+        _snapSharedBlock = _sharedBlock;
+        _snapBilling = _sharedBilling;
+    }
+
+    private void HydrateFromExisting()
+    {
+        _scopeModel.ToolId = ExistingItem.ToolSnapshot.ToolId;
+        _scopeModel.CurrencyId = ExistingItem.CurrencySnapshot.CurrencyId;
+        _scopeModel.Basis = StorePricePlanBracketMapping.ToCoreBasis(ExistingItem.Basis);
+        _brackets = ExistingItem.Brackets.Select(b => new PriceBracketRowState { MinMinutes = b.MinMinutes, MaxMinutes = b.MaxMinutes, Value = b.Value }).ToList();
+        if (_brackets.Count == 0) _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = 0 });
+        else { _sharedBlock = ExistingItem.Brackets[0].BlockSize; _sharedBilling = StorePricePlanBracketMapping.ToCoreBilling(ExistingItem.Brackets[0].BillingMode); }
+        if (_scopeModel.Basis == PricingBasis.Flat && _brackets.Count > 1) { var v = _brackets[0].Value; _brackets = [new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = v }]; }
+    }
+
+    private async Task LoadToolsAsync() { try { _tools = (await LookupCache.GetToolsAsync(ScopedMediator)).ToList(); } catch (Exception ex) { _loadError ??= ex.Message; } finally { _loadingTools = false; await InvokeAsync(StateHasChanged); } }
+    private async Task LoadCurrenciesAsync() { try { _currencies = (await LookupCache.GetCurrenciesAsync(ScopedMediator)).ToList(); } catch (Exception ex) { _loadError ??= ex.Message; } finally { _loadingCurrencies = false; await InvokeAsync(StateHasChanged); } }
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+
+    private Task OnFieldChangedAsync() { StateHasChanged(); return Task.CompletedTask; }
+    private Task OnBasisChanged(PricingBasis b)
+    {
+        if (b == PricingBasis.Flat) { var v = _brackets.FirstOrDefault()?.Value ?? 0m; _brackets.Clear(); _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = v }); }
+        else if (_brackets.Count == 0) _brackets.Add(new PriceBracketRowState { MinMinutes = 0, MaxMinutes = null, Value = 0 });
+        return Task.CompletedTask;
+    }
+    private Task OnSharedBlockChanged(int v) { _sharedBlock = Math.Max(1, v); return Task.CompletedTask; }
+    private Task OnSharedBillingChanged(BracketBillingMode m) { _sharedBilling = m; return Task.CompletedTask; }
+    private Task OnBracketsFieldChangedAsync() { _bracketError = null; return InvokeAsync(StateHasChanged); }
+    private bool BracketsValid() => PricePlanBracketRules.IsValid(_scopeModel.Basis, _brackets, _sharedBlock, out _bracketError);
+
+    private Task<bool> ValidateCurrentStepAsync(int step)
+    {
+        if (step == 0) { var ok = _scopeForm?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+        if (step == 1) { var ok = BracketsValid(); if (ok) ClearErrors(); return Task.FromResult(ok); }
+        return Task.FromResult(true);
+    }
+
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving || !IsDirty) return;
+        if (_scopeForm?.EditContext is null || !_scopeForm.EditContext.Validate()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        if (!BracketsValid()) { NotificationService.Notify(NotificationSeverity.Warning, "Brackets", _bracketError ?? "Fix bracket rows."); return; }
+        await OnTemplateSubmitAsync(_scopeModel);
+    }
+
+    private async Task OnTemplateSubmitAsync(ToolPricePlanScopeFormModel _)
+    {
+        if (_saving || !IsDirty) return;
+        _saving = true; ClearErrors(); await InvokeAsync(StateHasChanged);
+        try
+        {
+            var brackets = StorePricePlanBracketMapping.ToStoreCommandBrackets(_scopeModel.Basis, _brackets, _sharedBlock, _sharedBilling);
+            var storeBasis = StorePricePlanBracketMapping.ToStoreBasis(_scopeModel.Basis);
+            var r = await ScopedMediator.Send(new UpdateToolPricePlanCommand(ExistingItem.Id, _scopeModel.CurrencyId!.Value, storeBasis, brackets));
+            if (r.IsFailure) { SetCommandError(r.Error.Description); NotificationService.Notify(NotificationSeverity.Error, "Could not save plan", r.Error.Description); return; }
+            DialogService.Close(true);
+        }
+        catch (Exception ex) { SetCommandError(ex.Message); NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message); }
+        finally { _saving = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+}

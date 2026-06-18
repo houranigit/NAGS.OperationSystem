@@ -1,0 +1,302 @@
+@*
+  ADD wizard for work orders. Steps: Details → Services → Tasks. Customer / station /
+  operation / STA / STD are inherited from the flight; the user only fills
+  WO-specific fields. Both line collections are optional aggregate-side.
+*@
+@using System.Globalization
+@using BuildingBlocks.Application.Abstractions
+@using Core.Application.Features.AircraftType.Queries.GetPaginatedAircraftTypeSelectOptions
+@using Core.Application.Features.Employee.Queries.GetEmployeeSnapshotsAtStation
+@using Core.Contracts.Features.AircraftType
+@using Core.Contracts.Features.Employee
+@using Core.Contracts.Features.Service
+@using Core.Contracts.Readers
+@using Core.Contracts.Seeding
+@using Host.Web.Components.Pages.FLights.Dialog.Sections
+@using Host.Web.Services
+@using Operations.Application.Features.WorkOrder.Commands.CreateWorkOrderForFlight
+@using Operations.Contracts.Flight
+@using Radzen
+@using Store.Contracts.Features.GeneralSupport
+@using Store.Contracts.Features.Material
+@using Store.Contracts.Features.Tool
+@inject DialogService DialogService
+@inject IScopedMediator ScopedMediator
+@inject ILookupCache LookupCache
+@inject NotificationService NotificationService
+@inject ICurrentUserService CurrentUser
+@inject IEmployeeReader EmployeeReader
+
+<RadzenTemplateForm @ref="_form"
+                    TItem="WorkOrderFormModel"
+                    Data="@_model"
+                    Submit="@OnTemplateSubmitAsync"
+                    InvalidSubmit="@OnTemplateInvalidSubmit">
+    <WizardShell Steps="@_wizardSteps"
+                 CurrentStep="_currentStep"
+                 CurrentStepChanged="@(s => _currentStep = s)"
+                 FurthestReached="_furthestReached"
+                 FurthestReachedChanged="@(r => _furthestReached = r)"
+                 Mode="WizardMode.Wizard"
+                 IsBusy="_saving"
+                 CanSave="@(_isDirty && _model.IsHeaderValid())"
+                 SidebarAriaLabel="New work order steps"
+                 SaveLabel="Create work order"
+                 SavingLabel="Saving…"
+                 AlertTitle="Couldn't save the work order"
+                 ConfirmCancelOnDirty="@_isDirty"
+                 ErrorMessages="@_errorMessages"
+                 OnSave="OnSaveClickedAsync"
+                 OnCancel="OnCancelAsync"
+                 OnRequestStepValidationAsync="ValidateCurrentStepAsync"
+                 OnDismissError="ClearErrors">
+        <StepContent Context="step">
+            @switch (step)
+            {
+                case 0:
+                    <WorkOrderHeaderSection Model="_model"
+                                            Flight="Flight"
+                                            AircraftTypes="_aircraftTypes"
+                                            AircraftTypesLoading="_aircraftTypesLoading"
+                                            OnModelChanged="MarkDirtyAsync" />
+                    break;
+                case 1:
+                    <WorkOrderServiceLinesSection Model="_model"
+                                                  Flight="Flight"
+                                                  StationEmployees="_stationEmployees"
+                                                  StationEmployeesLoading="_stationEmployeesLoading"
+                                                  CurrentEmployeeId="_currentEmployeeId"
+                                                  Services="_services"
+                                                  ServicesLoading="_servicesLoading"
+                                                  OnModelChanged="MarkDirtyAsync" />
+                    break;
+                default:
+                    <WorkOrderTasksSection Model="_model"
+                                           Flight="Flight"
+                                           StationEmployees="_stationEmployees"
+                                           StationEmployeesLoading="_stationEmployeesLoading"
+                                           Tools="_tools"
+                                           Materials="_materials"
+                                           GeneralSupports="_generalSupports"
+                                           StoreLookupsLoading="_storeLookupsLoading"
+                                           OnModelChanged="MarkDirtyAsync" />
+                    break;
+            }
+        </StepContent>
+    </WizardShell>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter, EditorRequired] public FlightDto Flight { get; set; } = default!;
+
+    private readonly WizardStep[] _wizardSteps =
+    [
+        new("Details", "Times & aircraft", "tag", IsRequired: true, Validate: () => true),
+        new("Services", "Optional service lines", "tools", IsRequired: false, Validate: () => true),
+        new("Tasks", "Optional tasks & findings", "list", IsRequired: false, Validate: () => true)
+    ];
+
+    private RadzenTemplateForm<WorkOrderFormModel>? _form;
+    private int _currentStep;
+    private int _furthestReached;
+    private bool _saving;
+    private bool _isDirty;
+    private List<string> _errorMessages = new();
+
+    private void ClearErrors() { if (_errorMessages.Count > 0) { _errorMessages = new(); StateHasChanged(); } }
+    private void SetCommandError(string d) { _errorMessages = d.Split([';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(s => s.Length > 0).ToList(); if (_errorMessages.Count == 0) _errorMessages.Add(d); }
+    private Task<bool> ValidateCurrentStepAsync(int _) { var ok = _form?.EditContext?.Validate() ?? true; if (ok) ClearErrors(); return Task.FromResult(ok); }
+    private async Task OnSaveClickedAsync()
+    {
+        if (_saving) return;
+        if (_form?.EditContext is null || !_form.EditContext.Validate()) { NotificationService.Notify(NotificationSeverity.Warning, "Cannot save", "Please fix the highlighted issues before saving."); return; }
+        await OnTemplateSubmitAsync(_model);
+    }
+    private async Task OnCancelAsync() { DialogService.Close(false); await Task.CompletedTask; }
+
+    private WorkOrderFormModel _model = new();
+
+    private List<AircraftTypeSelectOption> _aircraftTypes = [];
+    private bool _aircraftTypesLoading = true;
+
+    /// <summary>
+    /// Service catalog filtered to <em>non-AOG</em> services. AOG is a contract-level marker
+    /// that says "this OT exists purely so the customer can use this station's runway"; we
+    /// never bill it as a work-order line, so it must not appear in the dropdown.
+    /// </summary>
+    private List<ServiceSelectOption> _services = [];
+    private bool _servicesLoading = true;
+
+    /// <summary>
+    /// Every active employee at the flight's station — work orders may record work performed
+    /// by anyone at the station, not just the flight's assigned crew. Loaded once when the
+    /// dialog opens.
+    /// </summary>
+    private IReadOnlyList<EmployeeSnapshot> _stationEmployees = Array.Empty<EmployeeSnapshot>();
+    private bool _stationEmployeesLoading = true;
+
+    /// <summary>
+    /// The portal user's <em>employee</em> id (resolved via <see cref="IEmployeeReader.GetByLinkedUserIdAsync"/>).
+    /// Used as the default "Performed by" employee when the user adds a fresh service-line row.
+    /// <c>null</c> when the portal user is not linked to an employee record.
+    /// </summary>
+    private Guid? _currentEmployeeId;
+
+    /// <summary>
+    /// Store catalogs cached per circuit and consumed by the Tasks section's tool /
+    /// material / general-support multi-selects. Loaded once when the dialog opens.
+    /// </summary>
+    private List<ToolSelectOption> _tools = [];
+    private List<MaterialSelectOption> _materials = [];
+    private List<GeneralSupportSelectOption> _generalSupports = [];
+    private bool _storeLookupsLoading = true;
+
+    protected override void OnInitialized()
+    {
+        _model = WorkOrderFormModel.ForFlight(Flight);
+        _currentStep = 0;
+        _furthestReached = 0;
+    }
+
+    private bool _lookupsLoadStarted;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _lookupsLoadStarted)
+            return;
+
+        _lookupsLoadStarted = true;
+        try
+        {
+            // Lookups + station roster + current user resolution + store catalogs all run
+            // in parallel so the dialog only blocks for the slowest of them on a cold cache.
+            var aircraftTask = LookupCache.GetAircraftTypesAsync(ScopedMediator);
+            var serviceTask = LookupCache.GetServicesAsync(ScopedMediator);
+            var toolsTask = LookupCache.GetToolsAsync(ScopedMediator);
+            var materialsTask = LookupCache.GetMaterialsAsync(ScopedMediator);
+            var generalSupportsTask = LookupCache.GetGeneralSupportsAsync(ScopedMediator);
+            var stationEmployeesTask = ScopedMediator.Send(
+                new GetEmployeeSnapshotsAtStationQuery(Flight.StationSnapshot.StationId, Search: null, Take: 500));
+            // Resolve the portal user's employee id so we can pre-select them on every new
+            // service-line row. If the user isn't linked to an employee (admin without an
+            // employee profile, say) the dialog still works — rows just default to "no
+            // employee" and the user picks one explicitly.
+            Task<EmployeeSnapshot?> currentEmployeeTask = CurrentUser.UserId is { } userId
+                ? EmployeeReader.GetByLinkedUserIdAsync(userId)
+                : Task.FromResult<EmployeeSnapshot?>(null);
+
+            await Task.WhenAll(
+                aircraftTask, serviceTask, toolsTask, materialsTask,
+                generalSupportsTask, stationEmployeesTask, currentEmployeeTask);
+
+            _aircraftTypes = aircraftTask.Result.ToList();
+            // Strip the AOG service from the work-order picker — it's a contract-level marker,
+            // not a billable WO line.
+            _services = serviceTask.Result
+                .Where(s => s.Id != CoreSeedIds.AogService)
+                .ToList();
+            _tools = toolsTask.Result.ToList();
+            _materials = materialsTask.Result.ToList();
+            _generalSupports = generalSupportsTask.Result.ToList();
+            var stationEmployees = stationEmployeesTask.Result.IsSuccess
+                ? stationEmployeesTask.Result.Value!
+                : Array.Empty<EmployeeSnapshot>();
+            _stationEmployees = stationEmployees;
+            _currentEmployeeId = currentEmployeeTask.Result?.EmployeeId;
+        }
+        finally
+        {
+            _aircraftTypesLoading = false;
+            _servicesLoading = false;
+            _stationEmployeesLoading = false;
+            _storeLookupsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task MarkDirtyAsync()
+    {
+        _isDirty = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task<bool> ValidateAllStepsRenderedAsync()
+    {
+        var back = _currentStep;
+        try
+        {
+            for (var s = 0; s < _wizardSteps.Length; s++)
+            {
+                _currentStep = s;
+                await InvokeAsync(StateHasChanged);
+                await Task.Yield();
+                if (_form?.EditContext is null || !_form.EditContext.Validate())
+                    return false;
+            }
+            return true;
+        }
+        finally
+        {
+            _currentStep = back;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnTemplateInvalidSubmit(FormInvalidSubmitEventArgs _) { }
+
+    private async Task OnTemplateSubmitAsync(WorkOrderFormModel _)
+    {
+        if (_saving)
+            return;
+
+        // Lines (employees / services / corrective actions) are all optional, so the
+        // "ready to submit" gate is just a valid header (flight number + ATA/ATD or
+        // cancellation timestamp) plus any rows the user did add being individually valid.
+        if (!_model.IsHeaderValid())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Missing required fields",
+                "Flight number plus ATA and ATD (or cancellation time) are required.");
+            return;
+        }
+
+        if (!_model.AllLineRowsValid())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Incomplete row",
+                "Each row needs employee/service, From, and To filled in (To must be on or after From).");
+            return;
+        }
+
+        _saving = true; ClearErrors();
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            if (!await ValidateAllStepsRenderedAsync()) return;
+
+            var cmd = _model.ToCreateCommand();
+            var r = await ScopedMediator.Send(cmd);
+            if (r.IsFailure)
+            {
+                SetCommandError(r.Error.Description);
+                NotificationService.Notify(NotificationSeverity.Error, "Could not create work order", r.Error.Description);
+                return;
+            }
+
+            NotificationService.Notify(NotificationSeverity.Success, "Work order created", "The work order is now under review.");
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            SetCommandError(ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Unexpected error", ex.Message);
+        }
+        finally
+        {
+            _saving = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string FormatDateTime(DateTimeOffset value) =>
+        value.ToLocalTime().ToString("dd MMM HH:mm", CultureInfo.InvariantCulture);
+}

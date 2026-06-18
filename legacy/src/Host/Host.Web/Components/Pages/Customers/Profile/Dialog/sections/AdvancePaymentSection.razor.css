@@ -1,0 +1,133 @@
+.advance-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.advance-section__card {
+    border: 1px solid #e9edf4;
+    border-radius: 14px;
+    padding: 1rem 1.15rem 1.1rem;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.advance-section__card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.advance-section__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 10px;
+    background: rgba(114, 47, 55, 0.10);
+    color: #722f37;
+}
+
+.advance-section__title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #2f3349;
+    letter-spacing: -0.005em;
+}
+
+.advance-section__subtitle {
+    margin: 0.1rem 0 0;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.advance-section__amounts-banner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    align-self: flex-start;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    background: rgba(114, 47, 55, 0.08);
+    color: #722f37;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.advance-section__amounts-banner-prefix {
+    color: #94a3b8;
+}
+
+.advance-section__amounts-banner-currency {
+    color: #722f37;
+}
+
+.advance-section__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1rem;
+}
+
+.advance-section__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.advance-section__field-label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+.advance-section__numeric-prefixed {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.advance-section__numeric-prefix {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.advance-section__hint {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    line-height: 1.5;
+}
+
+.advance-section__placeholder {
+    margin: 0;
+    padding: 1.25rem 1rem;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.875rem;
+    border: 1px dashed #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+@media (max-width: 720px) {
+    .advance-section__grid {
+        grid-template-columns: 1fr;
+    }
+}

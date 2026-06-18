@@ -1,0 +1,47 @@
+@using Host.Web.Services
+@implements IDisposable
+@inject ToastService ToastService
+
+<div class="toast-container" aria-live="polite">
+    @foreach (var toast in toasts)
+    {
+        <div class="toast toast-@toast.Severity.ToString().ToLowerInvariant()">
+            <span class="toast-message">@toast.Message</span>
+            <button type="button" class="toast-close" @onclick="() => Remove(toast)">&times;</button>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<ToastItem> toasts = [];
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnShow += ShowToast;
+    }
+
+    private async void ShowToast(Services.ToastMessage message)
+    {
+        var item = new ToastItem(message.Severity, message.Message);
+        toasts.Add(item);
+        await InvokeAsync(StateHasChanged);
+
+        _ = Task.Delay(4000).ContinueWith(async _ =>
+        {
+            toasts.Remove(item);
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void Remove(ToastItem item)
+    {
+        toasts.Remove(item);
+    }
+
+    public void Dispose()
+    {
+        ToastService.OnShow -= ShowToast;
+    }
+
+    private record ToastItem(Services.ToastSeverity Severity, string Message);
+}
