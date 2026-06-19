@@ -9,7 +9,7 @@ alwaysApply: true
 - Treat the old OperationsSystem project as a business reference only, not an architectural source.
 - Preserve correct business behavior while removing old technical debt, UI patterns, inconsistent naming, and client-specific logic.
 - Use an API-first modular monolith: one deployable backend, clear module boundaries, vertical slices inside modules, and pragmatic CQRS.
-- React web and the existing Android app must consume the same backend API and business rules.
+- The Blazor web portal and the existing Android app must consume the same backend API and business rules.
 - Public business endpoints start with `/api/v1`; do not expose unversioned business endpoints.
 - Keep the API host thin. Business rules belong in domain models, value objects, domain services, or application handlers as appropriate.
 - Modules must not reference another module's internals or DbContexts. Use contracts, read models, integration events, or the API surface for cross-module communication.

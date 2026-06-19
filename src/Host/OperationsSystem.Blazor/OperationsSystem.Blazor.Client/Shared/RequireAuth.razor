@@ -1,0 +1,16 @@
+@* Wraps protected page content: shows a loading state while auth resolves, redirects anonymous users. *@
+<AuthorizeView>
+    <Authorizing>
+        <LoadingCard />
+    </Authorizing>
+    <Authorized>
+        @ChildContent
+    </Authorized>
+    <NotAuthorized>
+        <RedirectToLogin />
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

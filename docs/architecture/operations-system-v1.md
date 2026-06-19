@@ -23,7 +23,7 @@ Use the old project to understand:
 Do not blindly copy:
 
 - Old architecture
-- Blazor/Radzen UI patterns
+- The legacy's specific Blazor/Radzen UI patterns and component conventions (v1.0.0 is also Blazor/Radzen, but follows the new `frontend-blazor.mdc` shells, tokens, and recipes)
 - Technical debt
 - Naming mistakes
 - Overcomplicated abstractions
@@ -60,21 +60,17 @@ For every rewritten feature, first extract the business facts from the old proje
 
 ### Frontend
 
-- React
-- TypeScript
-- Vite
-- Tailwind CSS
-- shadcn/ui
-- TanStack Query
-- React Hook Form
-- Zod
-- React Router
-- Orval for OpenAPI-generated types and TanStack Query hooks
+- Blazor Web App (.NET 10) with the Interactive Auto render mode (server prerender + WebAssembly)
+- Radzen.Blazor as the only UI component library, using the Material3 theme
+- Design tokens (`wwwroot/tokens.css`, `--os-*` CSS variables); no hardcoded colors in components
+- A typed API client layered over `BrowserApiClient` (JS `fetch` proxied through the host to `/api/v1`); DTOs mirror the application contracts
+- Built-in localization (`IStringLocalizer`/resource-based) for Arabic/English with full RTL
+- No React, Vite, Tailwind, shadcn/ui, TanStack Query, or Orval
 
 ### Mobile
 
 - Existing Android app remains an important API consumer
-- React web and Android must consume the same backend API
+- The Blazor web portal and Android must consume the same backend API
 - Avoid web-only or mobile-only business rules in the backend
 
 ## 4. Architecture Direction
@@ -118,7 +114,9 @@ src/
 
   Host/
     OperationsSystem.Api/
-    OperationsSystem.Web/
+    OperationsSystem.Blazor/
+      OperationsSystem.Blazor/         (server host)
+      OperationsSystem.Blazor.Client/  (WASM + shared interactive components)
 tests/
   Identity.UnitTests/
   Identity.IntegrationTests/
@@ -136,31 +134,26 @@ Features/
     SearchManpowerTypes/
 ```
 
-Recommended frontend layout:
+Recommended frontend layout (in `OperationsSystem.Blazor.Client`):
 
 ```text
-src/
-  app/
-  features/
-    manpower-types/
-      api/
-      components/
-      pages/
-      hooks/
-      schemas/
-      types/
-  shared/
-    ui/
-    api/
-    auth/
-    layout/
+Api/            (BrowserApiClient + typed feature clients + client DTOs)
+Auth/           (AuthSession, AuthenticationStateProvider, token store)
+Shared/         (AuthLayout, PageHeader, LoadingCard, EmptyState, DetailField, RequireAuth, RequirePermission)
+Features/
+  Users/
+    Pages/
+    Components/
+  Roles/
+    Pages/
+    Components/
 ```
 
 - The API host composes modules but must not contain business logic.
 - Module Api projects own endpoint mapping for their module.
 - Contracts projects contain cross-module DTOs, read models, events, or public contracts only.
-- Frontend feature folders own feature-specific API hooks, schemas, pages, and components.
-- Shared frontend folders are for truly reusable primitives and app-wide services only.
+- Blazor feature folders own feature-specific pages, components, and any feature-only client helpers.
+- Shared client folders are for truly reusable primitives (shells, layouts, guards) and app-wide services only.
 
 ## 6. Module Dependency Rules
 
@@ -240,20 +233,17 @@ src/
 
 ## 11. Frontend Rules
 
-- The React app is an operational product UI, not a marketing site.
+- The Blazor portal is an operational product UI, not a marketing site.
 - Prioritize clarity, density, speed, and repeatable workflows.
-- Use feature-based organization.
-- Use shared UI components intentionally, not as a dumping ground.
-- Forms use React Hook Form plus Zod.
-- Server state uses TanStack Query.
-- Styling uses Tailwind and shadcn/ui conventions.
-- Avoid random one-off styling unless the feature truly requires it.
-- OpenAPI is the preferred source for frontend API types and clients.
-- Generate TypeScript API types/client from the backend OpenAPI contract when practical.
-- TanStack Query hooks should wrap the typed API client.
-- Avoid hand-written anonymous API response shapes in frontend code.
-- Avoid direct fetch calls scattered through components.
-- Frontend features should have typed API functions/hooks owned by the feature or a shared API layer.
+- Use feature-based organization under `OperationsSystem.Blazor.Client/Features`.
+- Use shared shells/components intentionally (`Shared/`), not as a dumping ground.
+- Use Radzen.Blazor (Material3) as the only component library; do not add Bootstrap, Tailwind, or another library.
+- Styling uses design tokens (`--os-*`) in `tokens.css` and Radzen layout primitives; no hardcoded hex/rgb in `.razor`/`.razor.css`.
+- Every data view handles loading, empty, and error states explicitly via the shared shells.
+- The detailed Blazor/Radzen UI conventions live in `.cursor/rules/frontend-blazor.mdc`.
+- Avoid hand-written anonymous API response shapes in components; use typed DTOs.
+- Avoid raw `HttpClient`/`fetch` scattered through components; go through the typed API client over `BrowserApiClient`.
+- Features should have typed API client methods owned by a feature or shared API layer.
 
 ## 12. Database Rules
 
@@ -311,7 +301,7 @@ src/
 ## 14. API Contract Rules
 
 - The API is the primary contract.
-- React, Android, and future integrations consume the same API.
+- The Blazor web portal, Android, and future integrations consume the same API.
 - Do not create special business behavior for a specific client.
 - Endpoints must use stable request/response DTOs.
 - Errors must be consistent and documented.
@@ -434,8 +424,8 @@ Feature completion checklist:
 - ProblemDetails/error mapping verified
 - Permission requirements applied
 - OpenAPI contract visible
-- Frontend API type/function/hook added where applicable
-- React page/component added where applicable
+- Blazor typed API client method/DTO added where applicable
+- Blazor page/component added where applicable
 - Domain tests added
 - API/integration tests added for important workflows
 - Old-project reference files documented in the work notes
@@ -460,9 +450,9 @@ Implement using the new v1.0.0 architecture rules in this document.
 ### Localization And RTL
 
 - The product is bilingual: Arabic and English, with full right-to-left support.
-- No hardcoded user-facing strings. Frontend uses an i18n layer; backend keeps validation/error messages localizable and honors `Accept-Language`.
+- No hardcoded user-facing strings. The Blazor portal uses a localization layer (`IStringLocalizer`/resources, or a centralized `UiStrings` until fully wired); backend keeps validation/error messages localizable and honors `Accept-Language`.
 - Decide per data field whether it is localized (stored per language) or language-neutral, and keep that consistent within a module.
-- Frontend uses logical CSS properties and direction-aware components so LTR and RTL both render correctly.
+- The frontend uses logical CSS properties (`margin-inline`, `padding-inline`) and direction-aware components so LTR and RTL both render correctly.
 
 ### Time, Money, And Units
 
@@ -596,5 +586,7 @@ Use this section to record decisions as they become final.
 | 2026-06-18 | Passwords hashed with ASP.NET Core PasswordHasher (PBKDF2) | Battle-tested, no extra dependency |
 | 2026-06-18 | Tests use xUnit + Shouldly/FluentAssertions + NSubstitute + Testcontainers | Consistent, well-supported test stack |
 | 2026-06-18 | DTO mapping is manual and explicit | Avoids mapping-library magic and debugging pain |
-| 2026-06-18 | Frontend API types/hooks generated with Orval | Typed TanStack Query hooks + Zod from OpenAPI, reproducible |
 | 2026-06-18 | MediatR pinned to last free/MIT version (12.4.x) | Avoids the commercial-license change in newer versions |
+| 2026-06-19 | Web client is a Blazor Web App (Interactive Auto) with Radzen.Blazor (Material3) as the only UI library | Single .NET stack across backend and web; reuses C# domain knowledge; supersedes the React/Vite/Tailwind/shadcn/Orval frontend decision |
+| 2026-06-19 | The React project (`src/Host/OperationsSystem.Web`) is retired and removed | Frontend consolidated on Blazor; avoids maintaining two parallel web clients |
+| 2026-06-19 | Blazor calls the API through a hand-written typed client over `BrowserApiClient` (no Orval/TanStack Query/Zod) | Generated TS clients no longer apply; typed C# client keeps DTOs explicit and shared with the contracts |

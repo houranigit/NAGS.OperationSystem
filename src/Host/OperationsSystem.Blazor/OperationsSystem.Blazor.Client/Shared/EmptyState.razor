@@ -1,0 +1,18 @@
+<RadzenCard>
+    <RadzenStack AlignItems="AlignItems.Center" Gap="0.5rem" class="os-empty-state">
+        <RadzenIcon Icon="@Icon" />
+        <strong>@Title</strong>
+        @if (!string.IsNullOrWhiteSpace(Description))
+        {
+            <span class="os-muted">@Description</span>
+        }
+        @ChildContent
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [Parameter] public string Title { get; set; } = UiStrings.Common.NoData;
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string Icon { get; set; } = "inbox";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

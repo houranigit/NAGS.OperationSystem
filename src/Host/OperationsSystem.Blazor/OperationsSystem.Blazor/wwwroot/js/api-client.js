@@ -1,5 +1,13 @@
 window.operationsSystem = window.operationsSystem || {};
 
+window.operationsSystem.dom = {
+  setDirection(direction, language) {
+    const root = document.documentElement;
+    root.setAttribute("dir", direction === "rtl" ? "rtl" : "ltr");
+    root.setAttribute("lang", language || "en");
+  },
+};
+
 window.operationsSystem.api = {
   async request(method, path, body, accessToken, language) {
     const headers = {

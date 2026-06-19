@@ -1,0 +1,56 @@
+@inject IdentityApiClient Identity
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="EditModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenFormField Text="@UiStrings.Users.DisplayName" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.DisplayName" Name="displayName" Style="width: 100%;" />
+        </RadzenFormField>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+    [Parameter] public string DisplayName { get; set; } = string.Empty;
+
+    private EditModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override void OnInitialized() => model = new EditModel { DisplayName = DisplayName };
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+        isSubmitting = true;
+
+        try
+        {
+            await Identity.UpdateUserAsync(UserId, new UpdateUserRequest(model.DisplayName.Trim()));
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class EditModel
+    {
+        public string DisplayName { get; set; } = string.Empty;
+    }
+}

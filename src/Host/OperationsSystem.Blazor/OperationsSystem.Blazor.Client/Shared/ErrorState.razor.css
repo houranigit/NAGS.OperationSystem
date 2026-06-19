@@ -1,0 +1,9 @@
+.os-error-state {
+    padding-block: var(--os-space-6);
+    text-align: center;
+}
+
+.os-error-state ::deep .rz-icon {
+    font-size: 2.5rem;
+    color: var(--os-color-danger);
+}

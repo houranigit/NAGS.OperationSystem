@@ -1,0 +1,15 @@
+<RadzenCard>
+    <RadzenStack AlignItems="AlignItems.Center" Gap="0.75rem" class="os-error-state">
+        <RadzenIcon Icon="error_outline" />
+        <strong>@Message</strong>
+        @if (OnRetry.HasDelegate)
+        {
+            <RadzenButton Text="@UiStrings.Common.Refresh" ButtonStyle="ButtonStyle.Light" Icon="refresh" Click="@OnRetry" />
+        }
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [Parameter] public string Message { get; set; } = UiStrings.Errors.LoadFailed;
+    [Parameter] public EventCallback OnRetry { get; set; }
+}

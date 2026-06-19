@@ -1,0 +1,10 @@
+<RadzenCard>
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+        <span class="os-muted">@Message</span>
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [Parameter] public string Message { get; set; } = UiStrings.Common.Loading;
+}

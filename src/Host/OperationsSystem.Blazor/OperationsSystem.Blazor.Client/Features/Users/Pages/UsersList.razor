@@ -1,0 +1,146 @@
+@page "/users"
+@inject IdentityApiClient Identity
+@inject DialogService DialogService
+@inject NavigationManager Navigation
+
+<PageTitle>@UiStrings.Users.Title</PageTitle>
+
+<RequirePermission Permission="@IdentityPermissions.UsersView">
+    <PageHeader Title="@UiStrings.Users.Title" Description="@UiStrings.Users.Description">
+        <Actions>
+            <AuthorizeView Context="invite">
+                @if (invite.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersInvite))
+                {
+                    <RadzenButton Text="@UiStrings.Users.Invite" Icon="person_add" ButtonStyle="ButtonStyle.Primary" Click="@OpenInviteAsync" />
+                }
+            </AuthorizeView>
+        </Actions>
+    </PageHeader>
+
+    <RadzenCard>
+        <RadzenStack Gap="1rem">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.Center">
+                <RadzenTextBox @bind-Value="searchTerm" Placeholder="@UiStrings.Common.Search"
+                               Change="@(async _ => await ReloadAsync())" Style="min-width: 16rem;" />
+                <RadzenDropDown @bind-Value="statusFilter" Data="@statusOptions" TextProperty="Label" ValueProperty="Value"
+                                Change="@(async _ => await ReloadAsync())" Style="min-width: 12rem;" />
+                <RadzenButton Text="@UiStrings.Common.Search" Icon="search" ButtonStyle="ButtonStyle.Light" Click="@ReloadAsync" />
+            </RadzenStack>
+
+            @if (loadError)
+            {
+                <ErrorState OnRetry="@ReloadAsync" />
+            }
+            else
+            {
+                <RadzenDataGrid @ref="grid" Data="@users" Count="@totalCount" TItem="UserListItem" IsLoading="@isLoading"
+                                AllowPaging="true" PageSize="20" PagerHorizontalAlign="HorizontalAlign.Right"
+                                LoadData="@LoadDataAsync" EmptyText="@UiStrings.Users.Empty"
+                                RowClick="@(args => OpenUser(args.Data!.Id))" class="os-clickable-grid">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="UserListItem" Property="DisplayName" Title="@UiStrings.Users.DisplayName" />
+                        <RadzenDataGridColumn TItem="UserListItem" Property="Email" Title="@UiStrings.Users.Email" />
+                        <RadzenDataGridColumn TItem="UserListItem" Title="@UiStrings.Users.Status" Sortable="false" Width="140px">
+                            <Template Context="user">
+                                @if (user.IsLockedOut)
+                                {
+                                    <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
+                                }
+                                else
+                                {
+                                    <StatusBadge Label="@user.Status" Tone="@StatusTone(user.Status)" />
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserListItem" Property="RoleName" Title="@UiStrings.Users.Role" />
+                        <RadzenDataGridColumn TItem="UserListItem" Title="@UiStrings.Users.LastLogin" Sortable="false" Width="160px">
+                            <Template Context="user">
+                                @(user.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenStack>
+    </RadzenCard>
+</RequirePermission>
+
+@code {
+    private RadzenDataGrid<UserListItem>? grid;
+    private IReadOnlyList<UserListItem> users = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 20;
+    private bool isLoading;
+    private bool loadError;
+
+    private string searchTerm = string.Empty;
+    private string? statusFilter;
+
+    private readonly List<StatusOption> statusOptions =
+    [
+        new(UiStrings.Users.AllStatuses, null),
+        new("Invited", "Invited"),
+        new("Active", "Active"),
+        new("Deactivated", "Deactivated")
+    ];
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? 20;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Identity.GetUsersAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, statusFilter);
+            users = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (grid is not null)
+            await grid.Reload();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenInviteAsync()
+    {
+        var result = await DialogService.OpenAsync<InviteUserDialog>(UiStrings.Users.InviteTitle);
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void OpenUser(Guid id) => Navigation.NavigateTo($"/users/{id}");
+
+    private static string StatusTone(string status) => status switch
+    {
+        "Active" => "success",
+        "Invited" => "warning",
+        "Deactivated" => "neutral",
+        _ => "neutral"
+    };
+
+    private sealed record StatusOption(string Label, string? Value);
+}

@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿@using Microsoft.AspNetCore.Components.Web
+<!DOCTYPE html>
 <html lang="en" dir="ltr">
 
 <head>
@@ -7,14 +8,15 @@
     <base href="/" />
     <ResourcePreloader />
     <RadzenTheme Theme="default" />
+    <link rel="stylesheet" href="@Assets["tokens.css"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["OperationsSystem.Blazor.styles.css"]" />
     <ImportMap />
-    <HeadOutlet />
+    <HeadOutlet @rendermode="PageRenderMode" />
 </head>
 
 <body>
-    <Routes />
+    <Routes @rendermode="PageRenderMode" />
     <ReconnectModal />
     <script src="@Assets["_content/Radzen.Blazor/Radzen.Blazor.js"]"></script>
     <script src="@Assets["js/api-client.js"]"></script>
@@ -22,3 +24,10 @@
 </body>
 
 </html>
+
+@code {
+    // Global Interactive Auto. Prerender is disabled so the in-memory access token / refresh-cookie
+    // auth flow (which relies on JS interop) runs only in the interactive runtime, and protected
+    // content never flashes during a static prerender.
+    private static readonly IComponentRenderMode PageRenderMode = new InteractiveAutoRenderMode(prerender: false);
+}

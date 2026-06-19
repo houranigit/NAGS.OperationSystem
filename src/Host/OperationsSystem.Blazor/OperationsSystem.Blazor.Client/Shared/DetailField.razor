@@ -1,0 +1,17 @@
+<div class="os-detail-field">
+    <span class="os-muted">@Label</span>
+    @if (ChildContent is not null)
+    {
+        <div>@ChildContent</div>
+    }
+    else
+    {
+        <strong>@Value</strong>
+    }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

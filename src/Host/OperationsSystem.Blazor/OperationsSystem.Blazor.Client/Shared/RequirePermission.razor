@@ -1,0 +1,24 @@
+@* Like RequireAuth, but also requires a specific permission claim before rendering content. *@
+<AuthorizeView>
+    <Authorizing>
+        <LoadingCard />
+    </Authorizing>
+    <Authorized Context="auth">
+        @if (auth.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, Permission))
+        {
+            @ChildContent
+        }
+        else
+        {
+            <ErrorState Message="@UiStrings.Errors.Forbidden" />
+        }
+    </Authorized>
+    <NotAuthorized>
+        <RedirectToLogin />
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter, EditorRequired] public string Permission { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

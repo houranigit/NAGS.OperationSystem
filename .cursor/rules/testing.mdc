@@ -1,6 +1,6 @@
 ---
 description: Testing expectations for rewritten backend and frontend behavior
-globs: "{tests/**/*.cs,src/**/*.Tests/**/*.cs,src/BuildingBlocks/**/*.cs,src/Modules/**/*.cs,src/Host/OperationsSystem.Api/**/*.cs,src/Host/OperationsSystem.Web/**/*.{test,spec}.{ts,tsx}}"
+globs: "{tests/**/*.cs,src/**/*.Tests/**/*.cs,src/BuildingBlocks/**/*.cs,src/Modules/**/*.cs,src/Host/OperationsSystem.Api/**/*.cs,src/Host/OperationsSystem.Blazor/**/*.{razor,cs}}"
 alwaysApply: false
 ---
 

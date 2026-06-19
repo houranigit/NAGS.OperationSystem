@@ -1,0 +1,32 @@
+.os-auth-shell {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: var(--os-space-5);
+    background: var(--os-color-bg);
+}
+
+.os-auth-main {
+    width: min(100%, 26rem);
+    display: grid;
+    gap: var(--os-space-5);
+}
+
+.os-auth-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+    font-weight: 700;
+    color: var(--os-color-text);
+}
+
+.os-auth-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--os-radius-lg);
+    background: var(--os-color-primary);
+    color: var(--os-color-primary-contrast);
+    font-weight: 700;
+}

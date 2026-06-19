@@ -1,0 +1,112 @@
+@page "/login"
+@layout AuthLayout
+@implements IDisposable
+@inject AuthSession Auth
+@inject NavigationManager Navigation
+
+<PageTitle>@UiStrings.Auth.SignInTitle</PageTitle>
+
+<RadzenCard>
+    <RadzenStack Gap="1.25rem">
+        <div>
+            <h1 class="os-page-title">@UiStrings.Auth.SignInTitle</h1>
+            <p class="os-muted">@UiStrings.Auth.SignInSubtitle</p>
+        </div>
+
+        @if (Auth.Status is AuthStatus.Loading)
+        {
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        }
+        else
+        {
+            <RadzenTemplateForm TItem="LoginModel" Data="@model" Submit="@SubmitAsync">
+                <RadzenStack Gap="1rem">
+                    <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined">
+                        <RadzenTextBox @bind-Value="model.Email" Name="email" autofocus Style="width: 100%;" />
+                    </RadzenFormField>
+
+                    <RadzenFormField Text="@UiStrings.Auth.Password" Variant="Variant.Outlined">
+                        <RadzenPassword @bind-Value="model.Password" Name="password" Style="width: 100%;" />
+                    </RadzenFormField>
+
+                    @if (!string.IsNullOrWhiteSpace(errorMessage))
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                            @errorMessage
+                        </RadzenAlert>
+                    }
+
+                    <RadzenButton ButtonType="ButtonType.Submit"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@isSubmitting"
+                                  Text="@UiStrings.Auth.SignInButton"
+                                  Style="width: 100%;" />
+                </RadzenStack>
+            </RadzenTemplateForm>
+        }
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")] private string? ReturnUrl { get; set; }
+
+    private readonly LoginModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await Auth.InitializeAsync();
+
+        if (Auth.Status is AuthStatus.Authenticated)
+            NavigateAfterLogin();
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
+        {
+            errorMessage = UiStrings.Auth.CredentialsRequired;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            await Auth.LoginAsync(model.Email, model.Password);
+            NavigateAfterLogin();
+        }
+        catch (ApiException)
+        {
+            errorMessage = UiStrings.Auth.InvalidCredentials;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void NavigateAfterLogin()
+    {
+        var target = string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl;
+        Navigation.NavigateTo(target, replace: true);
+    }
+
+    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+
+    private sealed class LoginModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}

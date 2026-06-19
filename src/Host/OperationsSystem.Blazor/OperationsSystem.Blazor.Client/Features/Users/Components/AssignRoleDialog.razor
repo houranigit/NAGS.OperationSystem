@@ -1,0 +1,71 @@
+@inject IdentityApiClient Identity
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="AssignModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenFormField Text="@UiStrings.Users.Role" Variant="Variant.Outlined">
+            <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleListItem.Name)"
+                            ValueProperty="@nameof(RoleListItem.Id)" Style="width: 100%;" />
+        </RadzenFormField>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+    [Parameter] public Guid CurrentRoleId { get; set; }
+
+    private AssignModel model = new();
+    private IReadOnlyList<RoleListItem> roles = [];
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        model = new AssignModel { RoleId = CurrentRoleId };
+
+        try
+        {
+            var result = await Identity.GetRolesAsync(1, 100, null);
+            roles = result.Items;
+        }
+        catch (ApiException)
+        {
+            errorMessage = UiStrings.Errors.LoadFailed;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+        isSubmitting = true;
+
+        try
+        {
+            await Identity.AssignRoleAsync(UserId, new AssignRoleRequest(model.RoleId));
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class AssignModel
+    {
+        public Guid RoleId { get; set; }
+    }
+}

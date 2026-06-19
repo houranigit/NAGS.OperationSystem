@@ -1,0 +1,257 @@
+@page "/account"
+@implements IDisposable
+@inject AuthSession Auth
+@inject IdentityApiClient Identity
+@inject NavigationManager Navigation
+@inject NotificationService Notifications
+
+<PageTitle>@UiStrings.Account.Title</PageTitle>
+
+<RequireAuth>
+    @if (Auth.User is { } user)
+    {
+        <PageHeader Title="@UiStrings.Account.Title" Description="@user.Email" />
+
+        <RadzenStack Gap="1.5rem">
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <h3>@UiStrings.Account.Profile</h3>
+                    <RadzenRow RowGap="1rem">
+                        <RadzenColumn Size="12" SizeMD="6">
+                            <DetailField Label="@UiStrings.Account.DisplayName" Value="@user.DisplayName" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="12" SizeMD="6">
+                            <DetailField Label="@UiStrings.Auth.Email" Value="@user.Email" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="12" SizeMD="6">
+                            <DetailField Label="@UiStrings.Account.Role" Value="@user.RoleName" />
+                        </RadzenColumn>
+                        <RadzenColumn Size="12" SizeMD="6">
+                            <DetailField Label="@UiStrings.Account.Permissions" Value="@user.Permissions.Count.ToString()" />
+                        </RadzenColumn>
+                    </RadzenRow>
+                </RadzenStack>
+            </RadzenCard>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <h3>@UiStrings.Account.ChangePassword</h3>
+                    <RadzenTemplateForm TItem="PasswordModel" Data="@password" Submit="@ChangePasswordAsync">
+                        <RadzenStack Gap="1rem">
+                            <RadzenRow RowGap="1rem">
+                                <RadzenColumn Size="12" SizeMD="4">
+                                    <RadzenFormField Text="@UiStrings.Account.CurrentPassword" Variant="Variant.Outlined">
+                                        <RadzenPassword @bind-Value="password.Current" Style="width: 100%;" />
+                                    </RadzenFormField>
+                                </RadzenColumn>
+                                <RadzenColumn Size="12" SizeMD="4">
+                                    <RadzenFormField Text="@UiStrings.Auth.NewPassword" Variant="Variant.Outlined">
+                                        <RadzenPassword @bind-Value="password.New" Style="width: 100%;" />
+                                    </RadzenFormField>
+                                </RadzenColumn>
+                                <RadzenColumn Size="12" SizeMD="4">
+                                    <RadzenFormField Text="@UiStrings.Auth.ConfirmPassword" Variant="Variant.Outlined">
+                                        <RadzenPassword @bind-Value="password.Confirm" Style="width: 100%;" />
+                                    </RadzenFormField>
+                                </RadzenColumn>
+                            </RadzenRow>
+
+                            @if (!string.IsNullOrWhiteSpace(passwordError))
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                                    @passwordError
+                                </RadzenAlert>
+                            }
+
+                            <div>
+                                <RadzenButton ButtonType="ButtonType.Submit" ButtonStyle="ButtonStyle.Primary"
+                                              Disabled="@isChangingPassword" Text="@UiStrings.Account.ChangePassword" />
+                            </div>
+                        </RadzenStack>
+                    </RadzenTemplateForm>
+                </RadzenStack>
+            </RadzenCard>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
+                        <div>
+                            <h3>@UiStrings.Account.Sessions</h3>
+                            <p class="os-muted">@UiStrings.Account.SessionsDescription</p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Account.SignOutOthers" ButtonStyle="ButtonStyle.Light" Icon="devices"
+                                      Disabled="@(sessions is null || sessions.Count <= 1)" Click="@RevokeOthersAsync" />
+                    </RadzenStack>
+
+                    @if (sessionsLoading)
+                    {
+                        <LoadingCard />
+                    }
+                    else if (sessionsError)
+                    {
+                        <ErrorState OnRetry="@LoadSessionsAsync" />
+                    }
+                    else if (sessions is null || sessions.Count == 0)
+                    {
+                        <EmptyState Title="@UiStrings.Sessions.Empty" Icon="devices" />
+                    }
+                    else
+                    {
+                        <RadzenDataGrid Data="@sessions" TItem="UserSession" AllowPaging="false" GridLines="DataGridGridLines.Horizontal">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
+                                    <Template Context="session">
+                                        @(string.IsNullOrWhiteSpace(session.UserAgent) ? "—" : session.UserAgent)
+                                        @if (session.IsCurrent)
+                                        {
+                                            <span>&nbsp;</span>
+                                            <StatusBadge Label="@UiStrings.Account.ThisDevice" Tone="success" />
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" />
+                                <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created">
+                                    <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="120px">
+                                    <Template Context="session">
+                                        @if (session.IsActive)
+                                        {
+                                            <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
+                                        }
+                                        else
+                                        {
+                                            <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="neutral" />
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="UserSession" Title="" Width="110px" Sortable="false" TextAlign="TextAlign.End">
+                                    <Template Context="session">
+                                        @if (session is { IsActive: true, IsCurrent: false })
+                                        {
+                                            <RadzenButton Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
+                                                          Text="@UiStrings.Account.RevokeSession" Click="@(() => RevokeSessionAsync(session.Id))" />
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenStack>
+    }
+</RequireAuth>
+
+@code {
+    private readonly PasswordModel password = new();
+    private bool isChangingPassword;
+    private string? passwordError;
+
+    private IReadOnlyList<UserSession>? sessions;
+    private bool sessionsLoading = true;
+    private bool sessionsError;
+
+    protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await LoadSessionsAsync();
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        sessionsLoading = true;
+        sessionsError = false;
+        StateHasChanged();
+
+        try
+        {
+            sessions = await Identity.GetMySessionsAsync();
+        }
+        catch (ApiException)
+        {
+            sessionsError = true;
+        }
+        finally
+        {
+            sessionsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        passwordError = null;
+
+        if (password.New.Length < 8)
+        {
+            passwordError = UiStrings.Auth.PasswordTooShort;
+            return;
+        }
+
+        if (password.New != password.Confirm)
+        {
+            passwordError = UiStrings.Auth.PasswordsDoNotMatch;
+            return;
+        }
+
+        isChangingPassword = true;
+
+        try
+        {
+            await Identity.ChangePasswordAsync(new ChangePasswordRequest(password.Current, password.New));
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Account.PasswordChanged);
+            await Auth.LogoutAsync();
+            Navigation.NavigateTo("/login", replace: true);
+        }
+        catch (ApiException ex)
+        {
+            passwordError = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isChangingPassword = false;
+        }
+    }
+
+    private async Task RevokeSessionAsync(Guid sessionId)
+    {
+        try
+        {
+            await Identity.RevokeMySessionAsync(sessionId);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Account.RevokeSession);
+            await LoadSessionsAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private async Task RevokeOthersAsync()
+    {
+        try
+        {
+            await Identity.RevokeMyOtherSessionsAsync();
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Account.SignOutOthers);
+            await LoadSessionsAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+
+    private sealed class PasswordModel
+    {
+        public string Current { get; set; } = string.Empty;
+        public string New { get; set; } = string.Empty;
+        public string Confirm { get; set; } = string.Empty;
+    }
+}

@@ -30,7 +30,7 @@ Feature checklist:
 - ProblemDetails and error mapping verified.
 - Permission requirements applied where applicable.
 - OpenAPI contract visible for public API changes.
-- Frontend API types, functions, hooks, pages, or components added where applicable.
+- Blazor typed API client methods, DTOs, pages, or components added where applicable.
 - Domain tests added for behavior-heavy rules.
 - API/integration tests added for important workflows.
 - Old-project reference files documented in the work notes.

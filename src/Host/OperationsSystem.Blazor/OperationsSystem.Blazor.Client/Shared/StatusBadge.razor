@@ -1,0 +1,8 @@
+<span class="os-pill os-pill--@Tone">@Label</span>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+
+    /// <summary>One of: success, warning, danger, neutral.</summary>
+    [Parameter] public string Tone { get; set; } = "neutral";
+}

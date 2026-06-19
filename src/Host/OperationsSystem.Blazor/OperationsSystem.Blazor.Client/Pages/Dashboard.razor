@@ -1,0 +1,58 @@
+@page "/"
+@implements IDisposable
+@inject AuthSession Auth
+@inject NavigationManager Navigation
+
+<PageTitle>@UiStrings.Nav.Dashboard</PageTitle>
+
+<RequireAuth>
+    @if (Auth.User is { } user)
+    {
+        <PageHeader Eyebrow="@UiStrings.Dashboard.WelcomeBack" Title="@user.DisplayName" Description="@user.RoleName" />
+
+        <div class="os-cards-grid">
+            <RadzenCard>
+                <p class="os-eyebrow">@UiStrings.Dashboard.IdentityCard</p>
+                <h3>@user.Email</h3>
+                <p class="os-muted">@user.RoleName</p>
+            </RadzenCard>
+
+            <RadzenCard>
+                <p class="os-eyebrow">@UiStrings.Dashboard.PermissionsCard</p>
+                <h3>@user.Permissions.Count</h3>
+                <p class="os-muted">@UiStrings.Account.Permissions</p>
+            </RadzenCard>
+
+            <RadzenCard>
+                <p class="os-eyebrow">@UiStrings.App.Name</p>
+                <h3>@UiStrings.App.Version</h3>
+                <p class="os-muted">@UiStrings.App.BlazorPortal</p>
+            </RadzenCard>
+        </div>
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" class="os-dashboard-actions">
+            <AuthorizeView Context="usersLink">
+                @if (usersLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
+                {
+                    <RadzenButton Text="@UiStrings.Dashboard.ManageUsers" Icon="group" ButtonStyle="ButtonStyle.Primary"
+                                  Click="@(() => Navigation.NavigateTo("/users"))" />
+                }
+            </AuthorizeView>
+            <AuthorizeView Context="rolesLink">
+                @if (rolesLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
+                {
+                    <RadzenButton Text="@UiStrings.Dashboard.ManageRoles" Icon="shield" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => Navigation.NavigateTo("/roles"))" />
+                }
+            </AuthorizeView>
+        </RadzenStack>
+    }
+</RequireAuth>
+
+@code {
+    protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
+
+    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+}

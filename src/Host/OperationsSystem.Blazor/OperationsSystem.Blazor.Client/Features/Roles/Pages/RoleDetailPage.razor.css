@@ -1,0 +1,19 @@
+.os-perm-group {
+    display: grid;
+    gap: var(--os-space-2);
+    padding-block: var(--os-space-3);
+    border-top: 1px solid var(--os-color-border);
+}
+
+.os-perm-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: var(--os-space-2);
+}
+
+.os-perm-item {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    cursor: pointer;
+}

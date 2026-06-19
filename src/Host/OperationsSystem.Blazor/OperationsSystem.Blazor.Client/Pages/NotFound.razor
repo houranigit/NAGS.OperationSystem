@@ -1,0 +1,12 @@
+@page "/not-found"
+
+<PageTitle>Not found</PageTitle>
+
+<PageHeader Title="Page not found" Description="The content you are looking for does not exist." />
+
+<RadzenButton Text="Back to dashboard" ButtonStyle="ButtonStyle.Primary" Icon="home"
+              Click="@(() => Navigation.NavigateTo("/"))" />
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+}

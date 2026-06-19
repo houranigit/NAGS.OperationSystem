@@ -1,0 +1,3 @@
+.os-clickable-grid ::deep .rz-data-row {
+    cursor: pointer;
+}

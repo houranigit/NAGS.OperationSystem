@@ -1,0 +1,9 @@
+.os-empty-state {
+    padding-block: var(--os-space-6);
+    text-align: center;
+}
+
+.os-empty-state ::deep .rz-icon {
+    font-size: 2.5rem;
+    color: var(--os-color-text-muted);
+}

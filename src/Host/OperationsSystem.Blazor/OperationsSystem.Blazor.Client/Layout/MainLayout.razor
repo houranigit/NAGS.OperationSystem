@@ -1,0 +1,118 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthSession Auth
+@inject LocaleState Locale
+@inject NavigationManager Navigation
+
+<RadzenDialog />
+<RadzenNotification />
+<RadzenTooltip />
+<RadzenContextMenu />
+
+<div class="os-shell">
+    <aside class="os-sidebar" aria-label="Primary navigation">
+        <div class="os-brand">
+            <span class="os-brand-mark">OS</span>
+            <span>
+                <strong>@UiStrings.App.Name</strong>
+                <small>@UiStrings.App.BlazorPortal</small>
+            </span>
+        </div>
+
+        <nav class="os-nav">
+            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link">
+                <RadzenIcon Icon="dashboard" />
+                <span>@UiStrings.Nav.Dashboard</span>
+            </NavLink>
+
+            <AuthorizeView Context="users">
+                @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
+                {
+                    <NavLink href="/users" class="os-nav-link">
+                        <RadzenIcon Icon="group" />
+                        <span>@UiStrings.Nav.Users</span>
+                    </NavLink>
+                }
+            </AuthorizeView>
+
+            <AuthorizeView Context="roles">
+                @if (roles.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
+                {
+                    <NavLink href="/roles" class="os-nav-link">
+                        <RadzenIcon Icon="shield" />
+                        <span>@UiStrings.Nav.Roles</span>
+                    </NavLink>
+                }
+            </AuthorizeView>
+
+            <NavLink href="/account" class="os-nav-link">
+                <RadzenIcon Icon="account_circle" />
+                <span>@UiStrings.Nav.Account</span>
+            </NavLink>
+        </nav>
+    </aside>
+
+    <main class="os-main">
+        <header class="os-topbar">
+            <div>
+                <span class="os-eyebrow">@UiStrings.App.Version</span>
+                <h1>@UiStrings.App.Portal</h1>
+            </div>
+
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
+                <RadzenButton Variant="Variant.Text"
+                              ButtonStyle="ButtonStyle.Light"
+                              Text="@LanguageLabel"
+                              Icon="translate"
+                              Click="@ToggleLanguageAsync" />
+
+                @if (Auth.User is not null)
+                {
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
+                        <div class="os-topbar-user">
+                            <strong>@Auth.User.DisplayName</strong>
+                            <small class="os-muted">@Auth.User.RoleName</small>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Common.SignOut" ButtonStyle="ButtonStyle.Light" Icon="logout" Click="@LogoutAsync" />
+                    </RadzenStack>
+                }
+            </RadzenStack>
+        </header>
+
+        <section class="os-content">
+            @Body
+        </section>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
+
+    protected override void OnInitialized()
+    {
+        Auth.StateChanged += OnStateChanged;
+        Locale.Changed += OnStateChanged;
+    }
+
+    private async Task ToggleLanguageAsync() => await Locale.ToggleAsync();
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Auth.StateChanged -= OnStateChanged;
+        Locale.Changed -= OnStateChanged;
+    }
+}

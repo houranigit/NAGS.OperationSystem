@@ -43,7 +43,8 @@ Current decisions:
 - Passwords are hashed with the ASP.NET Core `PasswordHasher` (PBKDF2); no extra hashing dependency.
 - Tests use xUnit + Shouldly/FluentAssertions + NSubstitute, with Testcontainers for integration tests.
 - DTO mapping is manual and explicit; no mapping library.
-- Frontend API types/hooks are generated from OpenAPI with Orval (typed TanStack Query hooks + Zod schemas).
+- The web client is a Blazor Web App (.NET, Interactive Auto render mode) using Radzen.Blazor (Material3 theme) as the only UI component library; no React/Vite/Tailwind/Orval. (Changed 2026-06-19; was React/Vite/Tailwind/shadcn/Orval.)
+- The Blazor portal calls the API through a typed client over `BrowserApiClient` (no hand-written anonymous response shapes in components); DTOs mirror the application contracts.
 - MediatR is pinned to the last free/MIT version (12.4.x); revisit only if a licensing or feature need forces it.
 
 Decision discipline:

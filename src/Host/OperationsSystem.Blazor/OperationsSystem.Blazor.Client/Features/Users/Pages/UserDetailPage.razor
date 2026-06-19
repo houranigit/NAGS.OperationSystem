@@ -1,0 +1,306 @@
+@page "/users/{Id:guid}"
+@inject IdentityApiClient Identity
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+
+<PageTitle>@(user?.DisplayName ?? UiStrings.Users.Title)</PageTitle>
+
+<RequirePermission Permission="@IdentityPermissions.UsersView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (user is { } u)
+    {
+        <PageHeader Eyebrow="@UiStrings.Users.Title" Title="@u.DisplayName" Description="@u.Email">
+            <Actions>
+                <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => Navigation.NavigateTo("/users"))" />
+                <AuthorizeView Context="ctx">
+                    @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersUpdate))
+                    {
+                        <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
+                    }
+                    @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersAssignRole))
+                    {
+                        <RadzenButton Text="@UiStrings.Users.AssignRole" Icon="badge" ButtonStyle="ButtonStyle.Light" Click="@OpenAssignRoleAsync" />
+                    }
+                    @if (u.Status == "Invited" && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersInvite))
+                    {
+                        <RadzenButton Text="@UiStrings.Users.ResendInvitation" Icon="mail" ButtonStyle="ButtonStyle.Light" Click="@ResendInvitationAsync" />
+                    }
+                    @if (u.IsLockedOut && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersUnlock))
+                    {
+                        <RadzenButton Text="@UiStrings.Users.Unlock" Icon="lock_open" ButtonStyle="ButtonStyle.Light" Click="@UnlockAsync" />
+                    }
+                    else if (!u.IsLockedOut && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersLock))
+                    {
+                        <RadzenButton Text="@UiStrings.Users.Lock" Icon="lock" ButtonStyle="ButtonStyle.Light" Click="@LockAsync" />
+                    }
+                    @if (u.Status != "Deactivated" && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersDeactivate))
+                    {
+                        <RadzenButton Text="@UiStrings.Users.Deactivate" Icon="person_off" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <RadzenStack Gap="1.5rem">
+            <RadzenCard>
+                <RadzenRow RowGap="1rem">
+                    <RadzenColumn Size="12" SizeMD="6">
+                        <DetailField Label="@UiStrings.Users.Status">
+                            <ChildContent>
+                                @if (u.IsLockedOut)
+                                {
+                                    <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
+                                }
+                                else
+                                {
+                                    <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
+                                }
+                            </ChildContent>
+                        </DetailField>
+                    </RadzenColumn>
+                    <RadzenColumn Size="12" SizeMD="6">
+                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="12" SizeMD="6">
+                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="12" SizeMD="6">
+                        <DetailField Label="@UiStrings.Users.LastLogin" Value="@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)" />
+                    </RadzenColumn>
+                </RadzenRow>
+            </RadzenCard>
+
+            <AuthorizeView Context="sessionCtx">
+                @if (sessionCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.SessionsView))
+                {
+                    <RadzenCard>
+                        <RadzenStack Gap="1rem">
+                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
+                                <h3>@UiStrings.Sessions.Title</h3>
+                                @if (sessionCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.SessionsRevoke))
+                                {
+                                    <RadzenButton Text="@UiStrings.Sessions.RevokeAll" ButtonStyle="ButtonStyle.Light" Icon="block"
+                                                  Disabled="@(!HasActiveSessions)" Click="@RevokeAllAsync" />
+                                }
+                            </RadzenStack>
+
+                            @if (sessionsLoading)
+                            {
+                                <LoadingCard />
+                            }
+                            else if (sessionsError)
+                            {
+                                <ErrorState OnRetry="@LoadSessionsAsync" />
+                            }
+                            else if (sessions is null || sessions.Count == 0)
+                            {
+                                <EmptyState Title="@UiStrings.Sessions.Empty" Icon="devices" />
+                            }
+                            else
+                            {
+                                <RadzenDataGrid Data="@sessions" TItem="UserSession" AllowPaging="false" GridLines="DataGridGridLines.Horizontal">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
+                                            <Template Context="session">@(string.IsNullOrWhiteSpace(session.UserAgent) ? "—" : session.UserAgent)</Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" />
+                                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created">
+                                            <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="120px">
+                                            <Template Context="session">
+                                                @if (session.IsActive)
+                                                {
+                                                    <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
+                                                }
+                                                else
+                                                {
+                                                    <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="neutral" />
+                                                }
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="UserSession" Title="" Width="110px" Sortable="false" TextAlign="TextAlign.End">
+                                            <Template Context="session">
+                                                @if (session.IsActive && sessionCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.SessionsRevoke))
+                                                {
+                                                    <RadzenButton Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
+                                                                  Text="@UiStrings.Account.RevokeSession" Click="@(() => RevokeSessionAsync(session.Id))" />
+                                                }
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                            }
+                        </RadzenStack>
+                    </RadzenCard>
+                }
+            </AuthorizeView>
+        </RadzenStack>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private UserDetail? user;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    private IReadOnlyList<UserSession>? sessions;
+    private bool sessionsLoading;
+    private bool sessionsError;
+
+    private bool HasActiveSessions => sessions?.Any(s => s.IsActive) ?? false;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            user = await Identity.GetUserAsync(Id);
+            await LoadSessionsAsync();
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.IsNotFound ? UiStrings.Errors.NotFound : ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        sessionsLoading = true;
+        sessionsError = false;
+        StateHasChanged();
+
+        try
+        {
+            sessions = await Identity.GetUserSessionsAsync(Id);
+        }
+        catch (ApiException)
+        {
+            sessionsError = true;
+        }
+        finally
+        {
+            sessionsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        if (user is null)
+            return;
+
+        var result = await DialogService.OpenAsync<EditUserDialog>(UiStrings.Users.EditTitle,
+            new Dictionary<string, object?> { [nameof(EditUserDialog.UserId)] = user.Id, [nameof(EditUserDialog.DisplayName)] = user.DisplayName });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task OpenAssignRoleAsync()
+    {
+        if (user is null)
+            return;
+
+        var result = await DialogService.OpenAsync<AssignRoleDialog>(UiStrings.Users.AssignRoleTitle,
+            new Dictionary<string, object?> { [nameof(AssignRoleDialog.UserId)] = user.Id, [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private Task ResendInvitationAsync() =>
+        RunActionAsync(() => Identity.ResendInvitationAsync(Id), UiStrings.Users.ResendInvitation);
+
+    private Task UnlockAsync() =>
+        RunActionAsync(() => Identity.UnlockUserAsync(Id), UiStrings.Users.Unlock);
+
+    private async Task LockAsync()
+    {
+        if (await Confirm(UiStrings.Users.ConfirmLock))
+            await RunActionAsync(() => Identity.LockUserAsync(Id), UiStrings.Users.Lock);
+    }
+
+    private async Task DeactivateAsync()
+    {
+        if (await Confirm(UiStrings.Users.ConfirmDeactivate))
+            await RunActionAsync(() => Identity.DeactivateUserAsync(Id), UiStrings.Users.Deactivate);
+    }
+
+    private async Task RevokeSessionAsync(Guid sessionId)
+    {
+        try
+        {
+            await Identity.RevokeSessionAsync(sessionId);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Account.RevokeSession);
+            await LoadSessionsAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private async Task RevokeAllAsync()
+    {
+        try
+        {
+            await Identity.RevokeUserSessionsAsync(Id);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Sessions.RevokeAll);
+            await LoadSessionsAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private async Task RunActionAsync(Func<Task> action, string successMessage)
+    {
+        try
+        {
+            await action();
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private async Task<bool> Confirm(string message) =>
+        await DialogService.Confirm(message, UiStrings.Common.Confirm,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+    private static string StatusTone(string status) => status switch
+    {
+        "Active" => "success",
+        "Invited" => "warning",
+        "Deactivated" => "neutral",
+        _ => "neutral"
+    };
+}

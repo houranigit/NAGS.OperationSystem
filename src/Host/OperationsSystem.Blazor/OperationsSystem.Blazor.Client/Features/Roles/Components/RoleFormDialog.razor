@@ -1,0 +1,77 @@
+@inject IdentityApiClient Identity
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="RoleModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenFormField Text="@UiStrings.Roles.Name" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" />
+        </RadzenFormField>
+
+        <RadzenFormField Text="@UiStrings.Roles.RoleDescription" Variant="Variant.Outlined">
+            <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" />
+        </RadzenFormField>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@(RoleId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid? RoleId { get; set; }
+    [Parameter] public string Name { get; set; } = string.Empty;
+    [Parameter] public string? Description { get; set; }
+
+    private RoleModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override void OnInitialized() =>
+        model = new RoleModel { Name = Name, Description = Description };
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = UiStrings.Roles.Name;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            var description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+
+            if (RoleId is { } id)
+                await Identity.UpdateRoleAsync(id, new UpdateRoleRequest(model.Name.Trim(), description));
+            else
+                await Identity.CreateRoleAsync(new CreateRoleRequest(model.Name.Trim(), description, []));
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class RoleModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+    }
+}

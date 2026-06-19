@@ -1,0 +1,198 @@
+@page "/roles/{Id:guid}"
+@inject IdentityApiClient Identity
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+
+<PageTitle>@(role?.Name ?? UiStrings.Roles.Title)</PageTitle>
+
+<RequirePermission Permission="@IdentityPermissions.RolesView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (role is { } r)
+    {
+        <PageHeader Eyebrow="@UiStrings.Roles.Title" Title="@r.Name" Description="@r.Description">
+            <Actions>
+                <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => Navigation.NavigateTo("/roles"))" />
+                @if (!r.IsSystem)
+                {
+                    <AuthorizeView Context="ctx">
+                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
+                        }
+                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesDelete))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Delete" Icon="delete" ButtonStyle="ButtonStyle.Danger" Click="@DeleteAsync" />
+                        }
+                    </AuthorizeView>
+                }
+            </Actions>
+        </PageHeader>
+
+        @if (r.IsSystem)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                @UiStrings.Roles.SystemRoleLocked
+            </RadzenAlert>
+        }
+
+        <RadzenCard class="os-role-card">
+            <AuthorizeView Context="permCtx">
+                @{
+                    var canManage = !r.IsSystem && permCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesManagePermissions);
+                }
+                <RadzenStack Gap="1.25rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
+                        <div>
+                            <h3>@UiStrings.Roles.Permissions</h3>
+                            <p class="os-muted">@UiStrings.Roles.PermissionsDescription</p>
+                        </div>
+                        @if (canManage)
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Save" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Disabled="@isSaving" Click="@SavePermissionsAsync" />
+                        }
+                    </RadzenStack>
+
+                    @foreach (var group in catalog)
+                    {
+                        <div class="os-perm-group">
+                            <strong>@group.Resource</strong>
+                            <div class="os-perm-list">
+                                @foreach (var permission in group.Permissions)
+                                {
+                                    <label class="os-perm-item">
+                                        <RadzenCheckBox TValue="bool" Value="@selected.Contains(permission)" Disabled="@(!canManage)"
+                                                        Change="@(value => TogglePermission(permission, value))" />
+                                        <span>@ActionLabel(permission)</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </RadzenStack>
+            </AuthorizeView>
+        </RadzenCard>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private RoleDetail? role;
+    private IReadOnlyList<PermissionGroup> catalog = [];
+    private HashSet<string> selected = [];
+    private bool isLoading = true;
+    private bool loadError;
+    private bool isSaving;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var roleTask = Identity.GetRoleAsync(Id);
+            var catalogTask = Identity.GetPermissionCatalogAsync();
+            await Task.WhenAll(roleTask, catalogTask);
+
+            role = roleTask.Result;
+            catalog = catalogTask.Result;
+            selected = [.. role.Permissions];
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.IsNotFound ? UiStrings.Errors.NotFound : ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void TogglePermission(string permission, bool isChecked)
+    {
+        if (isChecked)
+            selected.Add(permission);
+        else
+            selected.Remove(permission);
+    }
+
+    private async Task SavePermissionsAsync()
+    {
+        isSaving = true;
+
+        try
+        {
+            await Identity.UpdateRolePermissionsAsync(Id, new UpdateRolePermissionsRequest([.. selected]));
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.PermissionsSaved);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        if (role is null)
+            return;
+
+        var result = await DialogService.OpenAsync<RoleFormDialog>(UiStrings.Roles.EditTitle,
+            new Dictionary<string, object?>
+            {
+                [nameof(RoleFormDialog.RoleId)] = role.Id,
+                [nameof(RoleFormDialog.Name)] = role.Name,
+                [nameof(RoleFormDialog.Description)] = role.Description
+            });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        var confirmed = await DialogService.Confirm(UiStrings.Roles.ConfirmDelete, UiStrings.Common.Delete,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        try
+        {
+            await Identity.DeleteRoleAsync(Id);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.Deleted);
+            Navigation.NavigateTo("/roles");
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private static string ActionLabel(string permission)
+    {
+        var lastDot = permission.LastIndexOf('.');
+        return lastDot >= 0 && lastDot < permission.Length - 1 ? permission[(lastDot + 1)..] : permission;
+    }
+}

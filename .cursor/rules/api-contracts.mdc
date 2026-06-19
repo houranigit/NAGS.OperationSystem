@@ -6,7 +6,7 @@ alwaysApply: false
 
 # API Contracts
 
-- The API is the primary contract for React, Android, and future integrations. Do not create client-specific business behavior.
+- The API is the primary contract for the Blazor web portal, Android, and future integrations. Do not create client-specific business behavior.
 - Public business routes start with `/api/v1`.
 - Endpoints stay thin: bind input, call application logic, and map results to standard HTTP responses.
 - Request and response DTOs must be explicit and stable. Do not leak EF entities or internal strongly typed IDs.
@@ -24,9 +24,9 @@ alwaysApply: false
 - Enforce data scope (e.g. station scoping) server-side in addition to permission checks; never rely on the client to filter what a user may see.
 - Permission names use lowercase dot format, for example `core.manpower-types.view` or `operations.work-orders.approve`.
 - The API is the single shared contract. The mobile client is deferred for v1.0.0 (no mobile BFF, mobile JWT policy, or offline-sync endpoints now), but keep business rules in the domain/application so a future mobile surface reuses them without web-only assumptions.
-- Breaking API changes require explicit review because future mobile and the React web will share the same contract.
+- Breaking API changes require explicit review because future mobile and the Blazor web portal share the same contract.
 - Use optimistic concurrency on update endpoints via ETag/`If-Match`. Return 409 on a concurrency conflict.
 - Support idempotency keys on create/mutating endpoints so retrying clients do not create duplicates.
 - Exchange time in UTC ISO-8601. Honor `Accept-Language` (Arabic/English) for localized validation and error messages.
 - Apply rate limiting to authentication and other abuse-prone public endpoints.
-- Treat OpenAPI as a first-class artifact. Generated clients/types should be reproducible and should not be hand-edited.
+- Treat OpenAPI as a first-class artifact (exposed via Scalar) so the contract stays inspectable for the Blazor portal, future mobile, and integrations.

@@ -1,8 +1,6 @@
 using OperationsSystem.Blazor.Api;
-using OperationsSystem.Blazor.Client.Api;
-using OperationsSystem.Blazor.Client.Auth;
+using OperationsSystem.Blazor.Client;
 using OperationsSystem.Blazor.Components;
-using Radzen;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,12 +8,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents();
-builder.Services.AddRadzenComponents();
+
 builder.Services.AddHttpClient("ApiProxy");
 builder.Services.Configure<ApiProxyOptions>(builder.Configuration.GetSection(ApiProxyOptions.SectionName));
-builder.Services.AddScoped<AuthTokenStore>();
-builder.Services.AddScoped<BrowserApiClient>();
-builder.Services.AddScoped<AuthSession>();
+
+// Shared portal client services (Radzen, API client, auth/locale state) so prerender and the
+// interactive-server render use the same services as the WebAssembly runtime.
+builder.Services.AddPortalClientServices();
 
 var app = builder.Build();
 
@@ -30,7 +29,7 @@ else
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseStatusCodePagesWithReExecute("/not-found");
 app.UseHttpsRedirection();
 
 app.UseAntiforgery();

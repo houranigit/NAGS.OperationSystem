@@ -1,27 +1,36 @@
 using System.Text.Json;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Auth;
+using OperationsSystem.Blazor.Client.State;
 
 namespace OperationsSystem.Blazor.Client.Api;
 
-public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenStore)
+/// <summary>
+/// Transport for the backend API. Requests are issued through a browser <c>fetch</c> helper so the
+/// httpOnly refresh cookie is sent automatically (server prerender is disabled, so JS interop is
+/// always available). The in-memory access token is attached as a Bearer header.
+/// </summary>
+public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenStore, LocaleState locale)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<TResponse> GetAsync<TResponse>(string path, CancellationToken cancellationToken = default) =>
-        await SendAsync<TResponse>(HttpMethod.Get, path, body: null, cancellationToken);
+    public Task<TResponse> GetAsync<TResponse>(string path, CancellationToken cancellationToken = default) =>
+        SendAsync<TResponse>(HttpMethod.Get, path, body: null, cancellationToken);
 
-    public async Task<TResponse> PostAsync<TRequest, TResponse>(
-        string path,
-        TRequest body,
-        CancellationToken cancellationToken = default) =>
-        await SendAsync<TResponse>(HttpMethod.Post, path, body, cancellationToken);
+    public Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest body, CancellationToken cancellationToken = default) =>
+        SendAsync<TResponse>(HttpMethod.Post, path, body, cancellationToken);
 
-    public async Task PostAsync<TRequest>(string path, TRequest body, CancellationToken cancellationToken = default) =>
-        await SendAsync(HttpMethod.Post, path, body, cancellationToken);
+    public Task PostAsync<TRequest>(string path, TRequest body, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Post, path, body, cancellationToken);
 
-    public async Task PostAsync(string path, CancellationToken cancellationToken = default) =>
-        await SendAsync(HttpMethod.Post, path, body: null, cancellationToken);
+    public Task PostAsync(string path, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Post, path, body: null, cancellationToken);
+
+    public Task PutAsync<TRequest>(string path, TRequest body, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, path, body, cancellationToken);
+
+    public Task DeleteAsync(string path, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Delete, path, body: null, cancellationToken);
 
     private async Task<TResponse> SendAsync<TResponse>(
         HttpMethod method,
@@ -49,7 +58,7 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
                 path,
                 body,
                 tokenStore.AccessToken,
-                "en");
+                locale.Language);
         }
         catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
         {
