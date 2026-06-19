@@ -1,0 +1,73 @@
+@implements IDisposable
+@inject AuthSession Auth
+@inject NavigationManager Navigation
+
+@if (Auth.Status is AuthStatus.Loading)
+{
+    <RadzenCard>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <span>Checking your session...</span>
+        </RadzenStack>
+    </RadzenCard>
+}
+else if (Auth.User is not null)
+{
+    <RadzenStack Gap="1.5rem">
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem" class="dashboard-hero">
+                <div>
+                    <p class="eyebrow">Welcome back</p>
+                    <h2>@Auth.User.DisplayName</h2>
+                    <p class="muted">@Auth.User.RoleName</p>
+                </div>
+                <RadzenButton Text="Sign out" ButtonStyle="ButtonStyle.Light" Click="@LogoutAsync" />
+            </RadzenStack>
+        </RadzenCard>
+
+        <div class="dashboard-grid">
+            <RadzenCard>
+                <p class="eyebrow">Identity</p>
+                <h3>Account access</h3>
+                <p class="muted">Signed in as @Auth.User.Email.</p>
+            </RadzenCard>
+
+            <RadzenCard>
+                <p class="eyebrow">Permissions</p>
+                <h3>@Auth.User.Permissions.Count permissions</h3>
+                <p class="muted">Navigation will become permission-gated as modules move into Blazor.</p>
+            </RadzenCard>
+
+            <RadzenCard>
+                <p class="eyebrow">Frontend</p>
+                <h3>Blazor Auto</h3>
+                <p class="muted">This portal uses Radzen components and the same `/api/v1` backend as React.</p>
+            </RadzenCard>
+        </div>
+    </RadzenStack>
+}
+
+@code {
+    protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await Auth.InitializeAsync();
+
+        if (Auth.Status is AuthStatus.Anonymous)
+            Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+}

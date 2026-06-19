@@ -1,0 +1,67 @@
+---
+description: Blazor/Radzen UI standards, design tokens, and page templates for the Operations portal
+globs: "src/Host/OperationsSystem.Blazor/**/*.{razor,css,cs}"
+alwaysApply: false
+---
+
+# Frontend Blazor
+
+- The Blazor portal is an operational product UI (same bar as React): clarity, density, repeatable workflows — not a marketing site.
+- Use **Radzen.Blazor** with the **Material3** theme (`RadzenTheme Theme="material3"` in `App.razor`). Do not add Bootstrap, Tailwind, or another component library.
+- **Design tokens first.** Colors, spacing, radius, and typography live in `wwwroot/tokens.css` as CSS variables (`--os-*`). Never hardcode hex/rgb in `.razor` or `.razor.css` files. Layout shell styles in `MainLayout.razor.css` must use tokens too.
+- **Shared shells, not one-off pages.** Build pages from components under `OperationsSystem.Blazor.Client/Shared/`:
+  - `PageHeader` — title, optional description, actions slot
+  - `AuthLayout` — centered card for login/activation
+  - `LoadingCard` — spinner + message
+  - `EmptyState` — icon/title/description for no data
+  - `DetailField` — label + value grid cell (replaces raw `.detail-field` divs)
+- **Page recipes.** Every feature page follows one of these shapes:
+  1. **List** — `PageHeader` + toolbar (search/filters) + `RadzenDataGrid` + pagination
+  2. **Detail** — `PageHeader` + `RadzenCard` sections + `DetailField` grid
+  3. **Form** — `PageHeader` + `RadzenTemplateForm` inside `RadzenCard`; primary action right/bottom
+  4. **Auth** — `AuthLayout` only; no `MainLayout` chrome
+- **Radzen defaults.** Prefer Radzen layout primitives over custom CSS:
+  - `RadzenStack` / `RadzenRow` / `RadzenColumn` for spacing and responsive grids
+  - `RadzenCard` for grouped content
+  - `RadzenFormField` wrapping inputs (never bare `RadzenTextBox` without a field label)
+  - `Gap="1rem"` or `Gap="1.5rem"` — do not invent random gap values
+  - `ButtonStyle.Primary` for main actions, `ButtonStyle.Light` for secondary, `ButtonStyle.Danger` for destructive
+- **States are mandatory.** Every data view handles loading, empty, and error explicitly using the shared shells — copy the React portal behavior, not ad-hoc `@if` blocks per page.
+- **No inline `Style=`** on Radzen components except `width: 100%` on full-width inputs inside forms. Use tokens, component parameters, or scoped CSS classes prefixed with `os-`.
+- **i18n and RTL.** Do not hardcode user-facing strings. Use the localization layer once wired; until then, centralize strings in a static `UiStrings` class — never scatter literals. Support RTL with logical properties (`margin-inline`, `padding-inline`, `border-inline`) and test `[dir="rtl"]`.
+- **Auth guard pattern.** Protected pages use a single wrapper (e.g. `RequireAuth`) instead of duplicating `Auth.InitializeAsync` + redirect logic in every panel.
+- **API access.** Use `BrowserApiClient` / typed clients — no raw `HttpClient` in components.
+- When adding a new page, **copy an existing recipe** from `Shared/Templates/` (or the nearest sibling page) and adapt content — do not invent a new layout pattern.
+
+## Example — list page skeleton
+
+```razor
+<PageHeader Title="@T["users.title"]" Description="@T["users.description"]">
+    <Actions>
+        <RadzenButton Text="@T["users.invite"]" ButtonStyle="ButtonStyle.Primary" Click="@OpenInvite" />
+    </Actions>
+</PageHeader>
+
+@if (isLoading) { <LoadingCard Message="@T["common.loading"]" /> }
+else if (items.Count == 0) { <EmptyState Title="@T["users.empty"]" /> }
+else
+{
+    <RadzenCard>
+        <RadzenDataGrid Data="@items" TItem="UserRow" AllowPaging="true" PageSize="20">
+            ...
+        </RadzenDataGrid>
+    </RadzenCard>
+}
+```
+
+## Anti-patterns
+
+```razor
+@* BAD: hardcoded color, inline style, custom layout class *@
+<p style="color: #64748b">Welcome</p>
+<div class="dashboard-grid">...</div>
+
+@* GOOD: token class + Radzen layout *@
+<p class="os-muted">@T["dashboard.welcome"]</p>
+<RadzenRow Gap="1rem">...</RadzenRow>
+```

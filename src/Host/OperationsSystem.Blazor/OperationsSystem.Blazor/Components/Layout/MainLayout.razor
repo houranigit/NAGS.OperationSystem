@@ -1,6 +1,44 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<RadzenDialog />
+<RadzenNotification />
+<RadzenTooltip />
+<RadzenContextMenu />
+
+<div class="app-shell">
+    <aside class="app-sidebar" aria-label="Primary navigation">
+        <div class="app-brand">
+            <span class="app-brand-mark">OS</span>
+            <span>
+                <strong>Operations System</strong>
+                <small>Blazor portal</small>
+            </span>
+        </div>
+
+        <nav class="app-nav">
+            <NavLink href="/" Match="NavLinkMatch.All">
+                <span>Dashboard</span>
+            </NavLink>
+            <NavLink href="/account">
+                <span>Account</span>
+            </NavLink>
+        </nav>
+    </aside>
+
+    <main class="app-main">
+        <header class="app-topbar">
+            <div>
+                <span class="app-eyebrow">v1.0.0</span>
+                <h1>Operations Portal</h1>
+            </div>
+            <span class="app-locale">EN / العربية</span>
+        </header>
+
+        <section class="app-content">
+            @Body
+        </section>
+    </main>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

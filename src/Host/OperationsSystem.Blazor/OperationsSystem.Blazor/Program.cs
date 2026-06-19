@@ -1,4 +1,8 @@
+using OperationsSystem.Blazor.Api;
+using OperationsSystem.Blazor.Client.Api;
+using OperationsSystem.Blazor.Client.Auth;
 using OperationsSystem.Blazor.Components;
+using Radzen;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,6 +10,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents();
+builder.Services.AddRadzenComponents();
+builder.Services.AddHttpClient("ApiProxy");
+builder.Services.Configure<ApiProxyOptions>(builder.Configuration.GetSection(ApiProxyOptions.SectionName));
+builder.Services.AddScoped<AuthTokenStore>();
+builder.Services.AddScoped<BrowserApiClient>();
+builder.Services.AddScoped<AuthSession>();
 
 var app = builder.Build();
 
@@ -26,6 +36,7 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapApiProxy();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()

@@ -1,0 +1,67 @@
+@implements IDisposable
+@inject AuthSession Auth
+@inject NavigationManager Navigation
+
+@if (Auth.Status is AuthStatus.Loading)
+{
+    <RadzenCard>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <span>Loading account...</span>
+        </RadzenStack>
+    </RadzenCard>
+}
+else if (Auth.User is not null)
+{
+    <RadzenCard>
+        <RadzenStack Gap="1rem">
+            <div>
+                <p class="eyebrow">Account</p>
+                <h2>@Auth.User.DisplayName</h2>
+                <p class="muted">@Auth.User.Email</p>
+            </div>
+
+            <RadzenRow>
+                <RadzenColumn Size="12" SizeMD="6">
+                    <div class="detail-field">
+                        <span>Role</span>
+                        <strong>@Auth.User.RoleName</strong>
+                    </div>
+                </RadzenColumn>
+                <RadzenColumn Size="12" SizeMD="6">
+                    <div class="detail-field">
+                        <span>Permissions</span>
+                        <strong>@Auth.User.Permissions.Count</strong>
+                    </div>
+                </RadzenColumn>
+            </RadzenRow>
+
+            <RadzenButton Text="Sign out" ButtonStyle="ButtonStyle.Light" Click="@LogoutAsync" />
+        </RadzenStack>
+    </RadzenCard>
+}
+
+@code {
+    protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await Auth.InitializeAsync();
+
+        if (Auth.Status is AuthStatus.Anonymous)
+            Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+}

@@ -1,0 +1,102 @@
+@implements IDisposable
+@inject AuthSession Auth
+@inject NavigationManager Navigation
+
+<div class="auth-page">
+    <RadzenCard class="auth-card">
+        <RadzenStack Gap="1.25rem">
+            <div>
+                <p class="eyebrow">Operations System</p>
+                <h2>Sign in</h2>
+                <p class="muted">Use your portal account to continue.</p>
+            </div>
+
+            @if (Auth.Status is AuthStatus.Loading)
+            {
+                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            }
+            else
+            {
+                <RadzenStack Gap="1rem">
+                    <RadzenFormField Text="Email">
+                        <RadzenTextBox @bind-Value="model.Email" Style="width: 100%;" />
+                    </RadzenFormField>
+
+                    <RadzenFormField Text="Password">
+                        <RadzenPassword @bind-Value="model.Password" Style="width: 100%;" />
+                    </RadzenFormField>
+
+                    @if (!string.IsNullOrWhiteSpace(errorMessage))
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat">
+                            @errorMessage
+                        </RadzenAlert>
+                    }
+
+                    <RadzenButton ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@isSubmitting"
+                                  Text="Sign in"
+                                  Click="@SubmitAsync"
+                                  Style="width: 100%;" />
+                </RadzenStack>
+            }
+        </RadzenStack>
+    </RadzenCard>
+</div>
+
+@code {
+    private readonly LoginFormModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await Auth.InitializeAsync();
+
+        if (Auth.Status is AuthStatus.Authenticated)
+            Navigation.NavigateTo("/");
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
+        {
+            errorMessage = "Email and password are required.";
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            await Auth.LoginAsync(model.Email, model.Password);
+            Navigation.NavigateTo("/");
+        }
+        catch (ApiException)
+        {
+            errorMessage = "The email or password is incorrect.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+
+    private sealed class LoginFormModel
+    {
+        public string Email { get; set; } = string.Empty;
+
+        public string Password { get; set; } = string.Empty;
+    }
+}
