@@ -28,6 +28,23 @@ Current decisions:
 - Web stores the access token in memory with an httpOnly refresh-token cookie.
 - No secrets in source; configuration is environment-driven.
 - Rewrite progress is tracked in `docs/architecture/migration-inventory.md`.
+- Domain/application use the Result/Error pattern; one central mapper converts errors to ProblemDetails.
+- Cross-module references use immutable point-in-time snapshots, not live foreign keys into other modules.
+- Business numbers (contract/work-order) use an explicit, scoped, concurrency-safe sequence (the documented exception to optimistic concurrency).
+- Aggregate updates may rebuild child graphs but must preserve derived/consumed state (balances, history) by stable id.
+- Seed data uses fixed stable GUIDs; a fixed `SystemUserId` is the actor for automated/background actions.
+- Web real-time is delivered via SignalR; notification delivery sits behind a composite pusher abstraction so mobile push (FCM) can be added later.
+- Attachments are stored in object/file storage (local filesystem in v1.0.0, cloud-ready); the database stores only metadata.
+- Instants standardize on `DateTimeOffset`.
+- Authorization has two axes: permission checks and station-based data scoping (row-level), both enforced server-side.
+- The auth foundation supports cookie (web) and Bearer (future mobile) schemes, selected per endpoint.
+- The mobile client (BFF, offline sync, FCM push, mobile JWT policy) is deferred for v1.0.0 but not designed out.
+- Identity is implemented with custom DDD aggregates (User/Role/UserSession), not the ASP.NET Core Identity framework.
+- Passwords are hashed with the ASP.NET Core `PasswordHasher` (PBKDF2); no extra hashing dependency.
+- Tests use xUnit + Shouldly/FluentAssertions + NSubstitute, with Testcontainers for integration tests.
+- DTO mapping is manual and explicit; no mapping library.
+- Frontend API types/hooks are generated from OpenAPI with Orval (typed TanStack Query hooks + Zod schemas).
+- MediatR is pinned to the last free/MIT version (12.4.x); revisit only if a licensing or feature need forces it.
 
 Decision discipline:
 

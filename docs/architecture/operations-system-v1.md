@@ -42,14 +42,21 @@ For every rewritten feature, first extract the business facts from the old proje
 - Entity Framework Core
 - SQL Server for v1.0.0
 - FluentValidation
-- MediatR for commands, queries, and pipeline behaviors
+- MediatR (pinned to the last free/MIT version, 12.4.x) for commands, queries, and pipeline behaviors
+- Custom DDD Identity (User/Role/UserSession); passwords hashed with ASP.NET Core `PasswordHasher` (PBKDF2)
+- Manual DTO mapping (no mapping library)
+- Tests: xUnit + Shouldly/FluentAssertions + NSubstitute + Testcontainers
 - ProblemDetails for API errors
 - Serilog for structured logging
 - OpenTelemetry for traces and metrics
 - Health checks
 - HybridCache/in-memory caching for frequently requested data
 - Central Package Management with Directory.Packages.props
+- SignalR for web real-time updates (notifications and live data)
+- A storage abstraction for binary files/attachments (local filesystem in v1.0.0, designed to swap to S3/Azure Blob later)
+- A notification delivery abstraction (composite pusher) so a mobile push provider (FCM) can be added later without rework
 - Redis is not part of v1.0.0 unless a measured distributed-caching need appears
+- Mobile push (FCM), the mobile BFF, and the mobile offline-sync protocol are deferred with the mobile client (see Section 26)
 
 ### Frontend
 
@@ -62,6 +69,7 @@ For every rewritten feature, first extract the business facts from the old proje
 - React Hook Form
 - Zod
 - React Router
+- Orval for OpenAPI-generated types and TanStack Query hooks
 
 ### Mobile
 
@@ -209,6 +217,9 @@ src/
 
 ## 9. Result and Error Mapping
 
+- Domain and application code express expected failures with a `Result`/`Result<T>` type carrying a typed `Error` (with an error code and a category such as Validation, NotFound, Conflict, Unauthorized, Failure). Preserve this pattern from the legacy `BuildingBlocks.Domain.Results`.
+- Do not throw exceptions for expected business/validation failures. Reserve exceptions for truly exceptional conditions and programmer errors.
+- A single centralized mapper at the API edge translates `Error` categories to ProblemDetails/HTTP status codes. Endpoints and handlers must not hand-map errors ad hoc.
 - Domain and application failures must map to consistent ProblemDetails responses.
 - Validation errors map to 400 Bad Request with validation details.
 - Authentication failures map to 401 Unauthorized.
@@ -275,6 +286,27 @@ src/
 - Each user has exactly one role for v1.0.0.
 - Users cannot have multiple roles unless this rule is explicitly changed in the decisions log.
 - Keep future SSO/external-provider support in mind, but do not overbuild it early.
+
+### Authentication Schemes
+
+- The web app uses an in-memory access token plus an httpOnly, secure, rotated refresh-token cookie.
+- The backend auth foundation must support Bearer tokens as a first-class scheme so the deferred mobile client can authenticate without redesign.
+- Endpoints select their scheme/policy explicitly. Do not assume a single global scheme.
+
+### Identity And Employee Linkage
+
+- Identity owns authentication users, roles, and permissions.
+- The operational Employee concept (a person who performs work, scoped to a station) is a Core concern.
+- A User may be linked to an Employee. This link drives data scoping and, later, the mobile client's "current employee" context.
+- Keep the link explicit and cross-module-safe (contracts/read models), not a hidden foreign key into another module's internals.
+
+### Data Scoping (Row-Level Authorization)
+
+- Authorization has two axes: permission checks (can the user perform this action?) and data scope (which records may the user see/act on?).
+- v1.0.0 supports station-based data scoping for operational data (a user/employee is scoped to one or more stations).
+- Data scoping is enforced server-side in queries and command guards, not only hidden in the UI.
+- Scope rules must be explicit, testable, and consistent across endpoints; do not scatter ad-hoc station filters through random handlers.
+- A System Admin (or an explicit all-stations scope) may bypass station scoping where the business requires it.
 
 ## 14. API Contract Rules
 
@@ -435,8 +467,9 @@ Implement using the new v1.0.0 architecture rules in this document.
 ### Time, Money, And Units
 
 - Store and exchange time in UTC ISO-8601; render in the user/operation time zone at the edges.
-- Use date-only and time-only types where a full timestamp is not meaningful.
+- Standardize on `DateTimeOffset` for instants across domain, persistence, and contracts to avoid the legacy `DateTime`/`DateTimeOffset` mix. Use `DateOnly`/`TimeOnly` where a full timestamp is not meaningful.
 - Money uses `decimal` with explicit precision and an explicit currency, with defined rounding. Never use floating point for money.
+- Reuse a single `Money` value object across modules rather than re-implementing money handling per feature.
 
 ### Concurrency
 
@@ -449,7 +482,9 @@ Implement using the new v1.0.0 architecture rules in this document.
 
 ### Attachments
 
-- Work-order and similar attachments validate type and size, are stored outside the executable path, and are access-controlled by permission.
+- Binary files (work-order attachments, contract documents, customer signatures) are stored in object/file storage through a storage abstraction: local filesystem in v1.0.0, designed to swap to S3/Azure Blob later without touching callers.
+- The database stores only attachment metadata (id, content type, size, storage key/path, owning entity, uploaded-by, timestamps), never the bytes. This is a deliberate change from the legacy `varbinary(max)` blobs.
+- Attachments validate content type and size at the boundary, are stored outside the executable/served path, and are access-controlled by permission and data scope.
 
 ## 23. Data Migration And Cutover
 
@@ -467,7 +502,60 @@ Implement using the new v1.0.0 architecture rules in this document.
 - Keep changes aligned with the module and feature being worked on.
 - Add or update tests with meaningful business coverage.
 
-## 25. Decisions Log
+## 25. Foundational Patterns To Preserve From The Legacy
+
+The legacy is already a DDD modular monolith with strong patterns. Preserve these deliberately; do not lose them in the rewrite.
+
+### Result / Error
+
+- See Section 9. Domain and application return `Result`/`Error`; one central mapper converts to ProblemDetails.
+
+### Snapshots And Cross-Module Denormalization
+
+- When an aggregate references data owned by another module (customer, currency, station, operation type, aircraft type), capture an immutable point-in-time snapshot value object inside the aggregate instead of a live foreign key into the other module.
+- Snapshots preserve historical correctness: editing a customer in Core must not retroactively change the customer details printed on an old contract or work order.
+- A snapshot contains the source id plus the fields the owning aggregate needs (e.g. names, codes). For bilingual fields, capture both languages (or a language-neutral key), consistent with the localization rules.
+- Snapshots are normally immutable for the life of the record. If a business case requires refreshing a snapshot, that refresh must be an explicit, intentional operation, never an implicit live join.
+- Reference-by-id is still correct for same-module relationships and for cheap, non-historical lookups; snapshots are for cross-module, historically significant data.
+
+### Business Number Sequences
+
+- Human-readable business identifiers (contract numbers, work order numbers) are generated through an explicit numbering mechanism, separate from the surrogate `Guid` primary key.
+- Define each sequence's scope (e.g. per-station, optionally per-year), format, and reset behavior explicitly.
+- Allocation must be concurrency-safe and gap-aware as the business requires; this is an explicit exception to the default optimistic-concurrency rule (a serializable transaction or database sequence is acceptable for allocation).
+- The numbering scheme is a documented business rule, not an incidental implementation detail.
+
+### Aggregate Update Semantics
+
+- For aggregates with large child graphs (e.g. Contract pricing lines, Work Order tasks/service lines), the update operation may clear and rebuild child collections from validated input/draft DTOs.
+- When rebuilding, deliberately preserve derived/consumed state that must survive an edit (e.g. consumed advance-payment balances, package remaining balances) by re-applying it by stable id.
+- Reuse existing child entity ids on rebuild where history or downstream foreign keys depend on them; do not orphan rows with a blind clear-and-insert.
+- These preservation rules are business rules and must be covered by tests.
+
+### Seed Data, Well-Known Ids, And The System Actor
+
+- Reference/master data that the system always needs is seeded deterministically.
+- Well-known seed entities (currencies, default country, the Ad Hoc operation type, AOG/On-Call services, etc.) use fixed, stable GUIDs that are identical across all environments and never regenerated. Domain rules may depend on these ids.
+- A fixed `SystemUserId` represents the system as the actor for automated/background actions.
+- Automated/system-performed actions (background status transitions, scheduled jobs, seeders) record the `SystemUserId` as the actor in audit, since there is no human user.
+
+## 26. Real-Time And Notifications
+
+- v1.0.0 delivers in-app and live updates to the web client via SignalR.
+- Notifications persist to a store (so users have an inbox/history with read/archive state) and are pushed live through a delivery abstraction.
+- The delivery abstraction is a composite pusher: each transport (SignalR now; a mobile push provider such as FCM later) implements a common interface, and a failure in one transport must not block the others.
+- When a notification is raised as a consequence of a business event, prefer raising it off domain/integration events (and the outbox where the event is transactional) rather than inline side effects.
+- Device-token registration and mobile push (FCM/APNS) are deferred with the mobile client, but the pusher abstraction must allow adding them without reworking notification producers.
+- Real-time delivery is best-effort and must never be the only path to a state change; the authoritative state is always the persisted data, re-fetchable via the API.
+
+## 27. Mobile Strategy (Deferred For v1.0.0)
+
+- v1.0.0 focuses on the web client and the shared backend API. The mobile client is deferred.
+- Do not build the mobile BFF, the mobile offline-sync protocol, mobile-specific JWT policies, or FCM push in v1.0.0.
+- Do not design them out either: keep business rules in the domain/application (never web-only), keep a Bearer auth scheme possible, keep the notification pusher abstraction, and keep the Identity-User-to-Employee link in mind.
+- When mobile returns, it gets a dedicated BFF/read + offline-sync surface that reuses the same domain and business rules; it does not get its own business logic. Record that decision and its API/versioning shape here when it happens.
+
+## 28. Decisions Log
 
 Use this section to record decisions as they become final.
 
@@ -493,3 +581,20 @@ Use this section to record decisions as they become final.
 | 2026-06-18 | No secrets in source; environment-driven configuration | Standard secure configuration hygiene |
 | 2026-06-18 | Old Blazor solution copied under legacy/ as read-only reference | Makes business reference reliably accessible to the rewrite |
 | 2026-06-18 | Migration progress tracked in migration-inventory.md | Prevents losing strong old behavior during gradual rewrite |
+| 2026-06-18 | Domain/application use the Result/Error pattern; one central mapper to ProblemDetails | Preserves the legacy pattern and avoids mixing exceptions with result objects |
+| 2026-06-18 | Cross-module references use immutable point-in-time snapshots, not live foreign keys | Preserves historical correctness and respects module boundaries |
+| 2026-06-18 | Business numbers (contract/work-order) use an explicit, scoped, concurrency-safe sequence | Sequence allocation is the documented exception to optimistic concurrency |
+| 2026-06-18 | Aggregate updates may rebuild child graphs but must preserve derived/consumed state by id | Prevents lost balances/history on edit |
+| 2026-06-18 | Seed data uses fixed stable GUIDs; a fixed SystemUserId is the actor for automated actions | Domain rules depend on well-known ids; audit needs a system actor |
+| 2026-06-18 | Web real-time via SignalR; notification delivery behind a composite pusher abstraction | Live web updates now, mobile push (FCM) addable later without rework |
+| 2026-06-18 | Attachments stored in object/file storage (filesystem now, cloud-ready); DB holds metadata only | Replaces legacy varbinary blobs; keeps DB lean and storage swappable |
+| 2026-06-18 | Standardize on DateTimeOffset for instants | Removes the legacy DateTime/DateTimeOffset inconsistency |
+| 2026-06-18 | Station-based data scoping (row-level) in addition to permission checks | Operational data must be scoped per station, not only gated by permission |
+| 2026-06-18 | Auth foundation supports cookie (web) and Bearer (future mobile) schemes; per-endpoint selection | Avoids a single-scheme assumption that would block mobile later |
+| 2026-06-18 | Mobile client deferred for v1.0.0 but not designed out | Focus web + API first; keep domain/API mobile-ready |
+| 2026-06-18 | Identity uses custom DDD aggregates, not ASP.NET Core Identity | Full control, matches the legacy model and DDD rules |
+| 2026-06-18 | Passwords hashed with ASP.NET Core PasswordHasher (PBKDF2) | Battle-tested, no extra dependency |
+| 2026-06-18 | Tests use xUnit + Shouldly/FluentAssertions + NSubstitute + Testcontainers | Consistent, well-supported test stack |
+| 2026-06-18 | DTO mapping is manual and explicit | Avoids mapping-library magic and debugging pain |
+| 2026-06-18 | Frontend API types/hooks generated with Orval | Typed TanStack Query hooks + Zod from OpenAPI, reproducible |
+| 2026-06-18 | MediatR pinned to last free/MIT version (12.4.x) | Avoids the commercial-license change in newer versions |

@@ -1,0 +1,16 @@
+---
+description: Real-time (SignalR), notifications, and the push delivery abstraction
+globs: "{src/Modules/Notifications/**/*.cs,src/Host/**/*Hub*.cs,src/Host/OperationsSystem.Web/**/*realtime*.ts,src/Host/OperationsSystem.Web/**/*notification*.{ts,tsx}}"
+alwaysApply: false
+---
+
+# Real-Time And Notifications
+
+- v1.0.0 delivers live updates and in-app notifications to the web client via SignalR.
+- Notifications persist to a store so users have an inbox/history with read and archive state; pushing live is in addition to, not instead of, persistence.
+- Notification delivery goes through a composite pusher: each transport implements a common pusher interface, and a failure in one transport must not block the others.
+- SignalR is the only transport for v1.0.0. Mobile push (FCM/APNS) and device-token registration are deferred with the mobile client, but the abstraction must let them be added without changing notification producers.
+- Prefer raising notifications from domain/integration events (and via the outbox when the triggering event is transactional) rather than inline side effects inside command handlers.
+- Real-time delivery is best-effort. The authoritative state is always the persisted data, re-fetchable through the API; clients must reconcile (e.g. refetch/invalidate caches) and never treat a pushed payload as the sole source of truth.
+- Scope real-time delivery to the correct audience (recipient user, and where relevant the station/data scope); do not broadcast data a recipient is not authorized to see.
+- Device push tokens are credentials: store them scoped to the user, never log them, and revoke on logout/unregister.

@@ -17,13 +17,16 @@ alwaysApply: false
 - List endpoints use server-side pagination with 1-based `page`, default `pageSize` of 20, and maximum `pageSize` of 100 unless documented otherwise.
 - Filtering uses explicit typed query parameters. Avoid OData and generic dynamic query languages for v1.0.0.
 - Sorting uses `field:direction`, for example `name:asc` or `createdAt:desc`.
+- Handlers return `Result`/`Error`; a single central mapper converts error categories to ProblemDetails. Endpoints must not hand-roll error shapes or status codes.
 - Use consistent ProblemDetails responses: validation 400, auth 401, authorization 403, missing resources 404, business conflicts 409, unexpected exceptions 500.
 - ProblemDetails should include `type`, `title`, `status`, `detail`, `instance`, `traceId`, and an application error code when available.
 - Use permission-based authorization. Avoid role-only checks.
+- Enforce data scope (e.g. station scoping) server-side in addition to permission checks; never rely on the client to filter what a user may see.
 - Permission names use lowercase dot format, for example `core.manpower-types.view` or `operations.work-orders.approve`.
-- Breaking API changes require explicit review because Android and React share the same contract.
+- The API is the single shared contract. The mobile client is deferred for v1.0.0 (no mobile BFF, mobile JWT policy, or offline-sync endpoints now), but keep business rules in the domain/application so a future mobile surface reuses them without web-only assumptions.
+- Breaking API changes require explicit review because future mobile and the React web will share the same contract.
 - Use optimistic concurrency on update endpoints via ETag/`If-Match`. Return 409 on a concurrency conflict.
-- Support idempotency keys on create/mutating endpoints so retrying mobile clients do not create duplicates.
+- Support idempotency keys on create/mutating endpoints so retrying clients do not create duplicates.
 - Exchange time in UTC ISO-8601. Honor `Accept-Language` (Arabic/English) for localized validation and error messages.
 - Apply rate limiting to authentication and other abuse-prone public endpoints.
 - Treat OpenAPI as a first-class artifact. Generated clients/types should be reproducible and should not be hand-edited.

@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+*.user
+artifacts/
+[Tt]est[Rr]esults/
+*.trx
+.vs/
+
+# Rider / VS
+.idea/
+
+# Node / React
+node_modules/
+dist/
+.vite/
+*.local
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+
+# OS
+.DS_Store
+Thumbs.db

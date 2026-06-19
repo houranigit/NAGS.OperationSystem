@@ -20,8 +20,11 @@ alwaysApply: false
 - Hard delete only when the data is temporary, incorrect before use, a draft with no business impact, or explicitly safe to remove.
 - Do not add a generic `IsDeleted` column to every table by default.
 - Soft delete and deactivation rules must be visible in domain/application behavior, not hidden only in queries.
-- Add a rowversion/concurrency token to entities that multiple users can edit concurrently.
-- Store timestamps in UTC. Use appropriate types for date-only and time-only values rather than forcing everything into full timestamps.
+- Add a rowversion/concurrency token to entities that multiple users can edit concurrently. Sequence/counter allocation (e.g. per-station work-order numbers) is the explicit exception and may use a serializable transaction or a database sequence instead.
+- Capture cross-module reference data as owned snapshot value objects/columns (point-in-time), not foreign keys into another module's tables. Snapshots preserve historical correctness.
+- Do not store binary file contents in the database. Persist attachment/signature bytes in object/file storage and keep only metadata (id, content type, size, storage key, owner, timestamps) in the database. This replaces the legacy `varbinary(max)` blobs.
+- Store timestamps in UTC and standardize on `DateTimeOffset` for instants. Use `DateOnly`/`TimeOnly` for date-only and time-only values rather than forcing everything into full timestamps.
+- Operational data carries the scope key(s) (e.g. station) needed to enforce row-level data scoping efficiently; index those columns.
 - Money columns use `decimal` with explicit precision/scale and store the currency explicitly.
 - v1.0.0 is single-tenant: do not add tenant columns now, but keep keys and schema choices from blocking a future tenant boundary.
 - For bilingual data, decide per field whether a value is localized (store per-language) or language-neutral, and keep that choice consistent within a module.

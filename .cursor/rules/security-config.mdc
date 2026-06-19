@@ -9,9 +9,11 @@ alwaysApply: false
 - No secrets in source control. Use user-secrets locally and environment variables or a secrets store in deployed environments.
 - Configuration is environment-driven. Do not hardcode connection strings, keys, or endpoints.
 - Never log secrets: passwords, access tokens, refresh tokens, connection strings, private keys, or raw credentials.
-- JWT access tokens are short-lived; refresh tokens are rotated and revocable. Store password hashes with a strong algorithm.
+- JWT access tokens are short-lived; refresh tokens are rotated and revocable. Hash passwords with the ASP.NET Core `PasswordHasher` (PBKDF2).
 - Validate and constrain all input at the boundary. Trust no client-provided id, role, or permission.
 - Apply rate limiting to authentication and abuse-prone endpoints.
 - Set safe defaults: HTTPS only, restrictive CORS allow-list, and standard security headers.
-- Authorization is enforced server-side per endpoint by permission. Client-side checks are UX only and never the source of truth.
-- File uploads (e.g. work-order attachments) must validate type and size and must not be served from a trusted execution path.
+- Authorization is enforced server-side per endpoint by permission and by data scope (e.g. station-based row-level scoping). Client-side checks are UX only and never the source of truth.
+- The auth foundation supports cookie-based auth for the web app and a Bearer scheme for the future mobile client, selected explicitly per endpoint. Do not assume a single global scheme.
+- File uploads (work-order attachments, contract documents, signatures) validate content type and size, are stored in object/file storage (not the database, not a served execution path), and are access-controlled by permission and data scope.
+- Mobile push device tokens (added later with the mobile client) are credentials: store them scoped to the user, never log them, and revoke them on logout/unregister.

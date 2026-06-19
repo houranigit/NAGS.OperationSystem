@@ -10,7 +10,7 @@ alwaysApply: false
 - Use React, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, React Hook Form, Zod, and React Router.
 - Organize frontend code by feature. Feature folders own their API functions, components, pages, hooks, schemas, and types.
 - Use shared folders only for truly reusable primitives and app-wide services.
-- Prefer OpenAPI-generated TypeScript API types and clients when practical.
+- Generate TypeScript API types and TanStack Query hooks from the backend OpenAPI document with Orval (it can also emit Zod schemas). Treat generated files as reproducible build output; do not hand-edit them, and document the generation command.
 - Avoid hand-written anonymous API response shapes in UI code.
 - Avoid direct `fetch` calls scattered through components. Use typed API functions and TanStack Query hooks.
 - TanStack Query hooks should wrap the typed API client and own server-state behavior.
@@ -24,3 +24,5 @@ alwaysApply: false
 - Render times in the user's time zone and locale; send/receive UTC ISO-8601 to the API.
 - Every data view handles loading, empty, and error states explicitly and consistently.
 - Store the access token in memory and use an httpOnly refresh-token cookie. Do not persist access tokens in localStorage.
+- Live updates and notifications use a single SignalR connection wrapped in a shared service; components subscribe through it and never open ad-hoc connections. Treat real-time as best-effort: reconcile against API data (e.g. invalidate TanStack Query caches) rather than trusting pushed payloads as the source of truth.
+- Gate UI by both permission and data scope (e.g. station). Client-side gating is UX only; the server remains authoritative.
