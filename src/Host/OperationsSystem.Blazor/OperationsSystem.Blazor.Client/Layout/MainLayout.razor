@@ -9,12 +9,14 @@
 <RadzenTooltip />
 <RadzenContextMenu />
 
-<div class="os-shell @(navOpen ? "os-shell--nav-open" : null)">
+<div class="os-shell @(navOpen ? "os-shell--nav-open" : null) @(railCollapsed ? "os-shell--rail" : null)">
     <div class="os-scrim" @onclick="CloseNav"></div>
 
     <aside class="os-sidebar" aria-label="Primary navigation">
         <div class="os-brand">
-            <span class="os-brand-mark">OS</span>
+            <span class="os-brand-mark">
+                <img src="/branding/portal-icon.png" alt="@UiStrings.App.Name" width="28" height="28" />
+            </span>
             <span class="os-brand-text">
                 <strong>@UiStrings.App.Name</strong>
                 <small>@UiStrings.App.BlazorPortal</small>
@@ -23,7 +25,7 @@
 
         <nav class="os-nav">
             <p class="os-nav-section">@UiStrings.Nav.Overview</p>
-            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link" @onclick="CloseNav">
+            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link" title="@UiStrings.Nav.Dashboard" @onclick="CloseNav">
                 <RadzenIcon Icon="dashboard" />
                 <span>@UiStrings.Nav.Dashboard</span>
             </NavLink>
@@ -35,25 +37,19 @@
                 }
                 @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
                 {
-                    <NavLink href="/users" class="os-nav-link" @onclick="CloseNav">
+                    <NavLink href="/users" class="os-nav-link" title="@UiStrings.Nav.Users" @onclick="CloseNav">
                         <RadzenIcon Icon="group" />
                         <span>@UiStrings.Nav.Users</span>
                     </NavLink>
                 }
                 @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
                 {
-                    <NavLink href="/roles" class="os-nav-link" @onclick="CloseNav">
+                    <NavLink href="/roles" class="os-nav-link" title="@UiStrings.Nav.Roles" @onclick="CloseNav">
                         <RadzenIcon Icon="shield" />
                         <span>@UiStrings.Nav.Roles</span>
                     </NavLink>
                 }
             </AuthorizeView>
-
-            <p class="os-nav-section">@UiStrings.Nav.Account</p>
-            <NavLink href="/account" class="os-nav-link" @onclick="CloseNav">
-                <RadzenIcon Icon="account_circle" />
-                <span>@UiStrings.Nav.Account</span>
-            </NavLink>
         </nav>
 
         <div class="os-sidebar-foot">
@@ -64,6 +60,10 @@
     <div class="os-main">
         <header class="os-topbar">
             <div class="os-topbar-lead">
+                <button type="button" class="os-icon-btn os-rail-toggle" aria-label="@UiStrings.Nav.ToggleMenu"
+                        aria-expanded="@(!railCollapsed)" @onclick="ToggleRail">
+                    <RadzenIcon Icon="menu" />
+                </button>
                 <button type="button" class="os-icon-btn os-nav-toggle" aria-label="@UiStrings.Nav.ToggleMenu" @onclick="ToggleNav">
                     <RadzenIcon Icon="menu" />
                 </button>
@@ -76,18 +76,41 @@
                     <span>@LanguageLabel</span>
                 </button>
 
-                @if (Auth.User is not null)
+                @if (Auth.User is { } current)
                 {
-                    <div class="os-user-chip">
-                        <span class="os-avatar">@Initials(Auth.User.DisplayName)</span>
-                        <span class="os-user-meta">
-                            <strong>@Auth.User.DisplayName</strong>
-                            <small class="os-muted">@Auth.User.RoleName</small>
-                        </span>
+                    <div class="os-profile @(profileOpen ? "os-profile--open" : null)">
+                        <button type="button" class="os-user-chip" @onclick="ToggleProfile"
+                                aria-haspopup="true" aria-expanded="@profileOpen">
+                            <span class="os-avatar">@Initials(current.DisplayName)</span>
+                            <span class="os-user-meta">
+                                <strong>@current.DisplayName</strong>
+                                <small class="os-muted">@current.RoleName</small>
+                            </span>
+                            <RadzenIcon Icon="expand_more" class="os-profile-chev" />
+                        </button>
+
+                        <div class="os-profile-backdrop" @onclick="CloseProfile"></div>
+
+                        <div class="os-profile-panel">
+                            <div class="os-profile-identity">
+                                <span class="os-avatar os-avatar--lg">@Initials(current.DisplayName)</span>
+                                <div class="os-profile-identity-text">
+                                    <strong>@current.DisplayName</strong>
+                                    <small class="os-muted">@current.Email</small>
+                                </div>
+                            </div>
+                            <div class="os-profile-menu">
+                                <button type="button" class="os-profile-item" @onclick="GoToAccountAsync">
+                                    <RadzenIcon Icon="account_circle" />
+                                    <span>@UiStrings.Account.Title</span>
+                                </button>
+                                <button type="button" class="os-profile-item os-profile-item--danger" @onclick="LogoutAsync">
+                                    <RadzenIcon Icon="logout" />
+                                    <span>@UiStrings.Common.SignOut</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <button type="button" class="os-icon-btn" aria-label="@UiStrings.Common.SignOut" @onclick="LogoutAsync">
-                        <RadzenIcon Icon="logout" />
-                    </button>
                 }
             </div>
         </header>
@@ -108,6 +131,8 @@
 
 @code {
     private bool navOpen;
+    private bool railCollapsed;
+    private bool profileOpen;
 
     private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
 
@@ -124,10 +149,24 @@
 
     private void CloseNav() => navOpen = false;
 
+    private void ToggleRail() => railCollapsed = !railCollapsed;
+
+    private void ToggleProfile() => profileOpen = !profileOpen;
+
+    private void CloseProfile() => profileOpen = false;
+
+    private async Task GoToAccountAsync()
+    {
+        profileOpen = false;
+        Navigation.NavigateTo("/account");
+        await Task.CompletedTask;
+    }
+
     private async Task ToggleLanguageAsync() => await Locale.ToggleAsync();
 
     private async Task LogoutAsync()
     {
+        profileOpen = false;
         await Auth.LogoutAsync();
         Navigation.NavigateTo("/login", replace: true);
     }

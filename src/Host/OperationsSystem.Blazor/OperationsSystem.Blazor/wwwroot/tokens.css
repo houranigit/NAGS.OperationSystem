@@ -75,6 +75,7 @@
 
     /* Layout */
     --os-sidebar-width: 16.5rem;
+    --os-sidebar-rail: 4.75rem;
     --os-topbar-height: 4.25rem;
     --os-content-max: 84rem;
 }
