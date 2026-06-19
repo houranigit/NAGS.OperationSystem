@@ -1,32 +1,151 @@
-.os-auth-shell {
+.os-auth {
     min-height: 100vh;
     display: grid;
-    place-items: center;
-    padding: var(--os-space-5);
+    grid-template-columns: 1.05fr 1fr;
     background: var(--os-color-bg);
 }
 
-.os-auth-main {
-    width: min(100%, 26rem);
-    display: grid;
-    gap: var(--os-space-5);
+/* --- Brand panel --------------------------------------------------------- */
+.os-auth-brand {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: var(--os-space-6);
+    padding: var(--os-space-8) var(--os-space-7);
+    color: var(--os-color-text-inverse);
+    background:
+        radial-gradient(120% 90% at 0% 0%, rgba(37, 99, 235, 0.45) 0%, rgba(37, 99, 235, 0) 55%),
+        linear-gradient(160deg, var(--os-color-sidebar) 0%, var(--os-color-sidebar-accent) 100%);
+    overflow: hidden;
 }
 
-.os-auth-brand {
+.os-auth-brand::after {
+    content: "";
+    position: absolute;
+    inset-block-end: -30%;
+    inset-inline-end: -15%;
+    width: 28rem;
+    height: 28rem;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(37, 99, 235, 0.35) 0%, rgba(37, 99, 235, 0) 70%);
+    pointer-events: none;
+}
+
+.os-auth-brand-head {
     display: flex;
     align-items: center;
     gap: var(--os-space-3);
+    position: relative;
+    z-index: 1;
+}
+
+.os-auth-brand-name {
     font-weight: 700;
-    color: var(--os-color-text);
+    font-size: var(--os-text-lg);
+    color: #fff;
 }
 
 .os-auth-mark {
     display: inline-grid;
     place-items: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: var(--os-radius-lg);
-    background: var(--os-color-primary);
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: var(--os-radius-md);
+    background: linear-gradient(135deg, var(--os-color-primary), var(--os-color-primary-strong));
     color: var(--os-color-primary-contrast);
-    font-weight: 700;
+    font-weight: 800;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.5);
+}
+
+.os-auth-brand-body {
+    position: relative;
+    z-index: 1;
+    max-width: 30rem;
+}
+
+.os-auth-brand-body h2 {
+    margin: 0 0 var(--os-space-3);
+    font-size: 2.25rem;
+    line-height: 1.15;
+    color: #fff;
+}
+
+.os-auth-brand-body p {
+    margin: 0 0 var(--os-space-6);
+    color: var(--os-color-sidebar-text);
+    font-size: var(--os-text-lg);
+    line-height: 1.6;
+}
+
+.os-auth-points {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--os-space-3);
+}
+
+.os-auth-points li {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+    color: var(--os-color-text-inverse);
+    font-size: var(--os-text-sm);
+}
+
+.os-auth-points .rz-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: var(--os-radius-sm);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+.os-auth-copy {
+    position: relative;
+    z-index: 1;
+    color: var(--os-color-sidebar-muted);
+    font-size: var(--os-text-xs);
+}
+
+/* --- Form panel ---------------------------------------------------------- */
+.os-auth-main {
+    display: grid;
+    place-items: center;
+    padding: var(--os-space-6);
+}
+
+.os-auth-card {
+    width: min(100%, 25rem);
+}
+
+.os-auth-mobile-brand {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--os-space-3);
+    margin-bottom: var(--os-space-5);
+}
+
+.os-auth-mobile-brand .os-auth-brand-name {
+    color: var(--os-color-text);
+}
+
+/* --- Responsive ---------------------------------------------------------- */
+@media (max-width: 860px) {
+    .os-auth {
+        grid-template-columns: 1fr;
+    }
+
+    .os-auth-brand {
+        display: none;
+    }
+
+    .os-auth-mobile-brand {
+        display: flex;
+    }
 }

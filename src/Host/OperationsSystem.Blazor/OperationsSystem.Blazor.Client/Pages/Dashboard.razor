@@ -8,48 +8,65 @@
 <RequireAuth>
     @if (Auth.User is { } user)
     {
-        <PageHeader Eyebrow="@UiStrings.Dashboard.WelcomeBack" Title="@user.DisplayName" Description="@user.RoleName" />
+        <PageHeader Eyebrow="@UiStrings.Dashboard.WelcomeBack" Title="@user.DisplayName" Description="@user.Email" />
 
-        <div class="os-cards-grid">
-            <RadzenCard>
-                <p class="os-eyebrow">@UiStrings.Dashboard.IdentityCard</p>
-                <h3>@user.Email</h3>
-                <p class="os-muted">@user.RoleName</p>
+        <div class="os-cards-grid os-stats">
+            <RadzenCard class="os-stat">
+                <span class="os-stat-icon os-stat-icon--blue"><RadzenIcon Icon="badge" /></span>
+                <div class="os-stat-body">
+                    <p class="os-stat-label">@UiStrings.Account.Role</p>
+                    <p class="os-stat-value">@user.RoleName</p>
+                </div>
             </RadzenCard>
 
-            <RadzenCard>
-                <p class="os-eyebrow">@UiStrings.Dashboard.PermissionsCard</p>
-                <h3>@user.Permissions.Count</h3>
-                <p class="os-muted">@UiStrings.Account.Permissions</p>
+            <RadzenCard class="os-stat">
+                <span class="os-stat-icon os-stat-icon--green"><RadzenIcon Icon="key" /></span>
+                <div class="os-stat-body">
+                    <p class="os-stat-label">@UiStrings.Dashboard.PermissionsCard</p>
+                    <p class="os-stat-value">@user.Permissions.Count</p>
+                </div>
             </RadzenCard>
 
-            <RadzenCard>
-                <p class="os-eyebrow">@UiStrings.App.Name</p>
-                <h3>@UiStrings.App.Version</h3>
-                <p class="os-muted">@UiStrings.App.BlazorPortal</p>
+            <RadzenCard class="os-stat">
+                <span class="os-stat-icon os-stat-icon--amber"><RadzenIcon Icon="mail" /></span>
+                <div class="os-stat-body">
+                    <p class="os-stat-label">@UiStrings.Dashboard.IdentityCard</p>
+                    <p class="os-stat-value os-stat-value--sm">@user.Email</p>
+                </div>
             </RadzenCard>
         </div>
 
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" class="os-dashboard-actions">
-            <AuthorizeView Context="usersLink">
-                @if (usersLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
-                {
-                    <RadzenButton Text="@UiStrings.Dashboard.ManageUsers" Icon="group" ButtonStyle="ButtonStyle.Primary"
-                                  Click="@(() => Navigation.NavigateTo("/users"))" />
-                }
-            </AuthorizeView>
-            <AuthorizeView Context="rolesLink">
-                @if (rolesLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
-                {
-                    <RadzenButton Text="@UiStrings.Dashboard.ManageRoles" Icon="shield" ButtonStyle="ButtonStyle.Light"
-                                  Click="@(() => Navigation.NavigateTo("/roles"))" />
-                }
-            </AuthorizeView>
-        </RadzenStack>
+        @if (HasQuickActions)
+        {
+            <RadzenCard class="os-quick">
+                <p class="os-eyebrow">@UiStrings.Dashboard.Overview</p>
+                <h3 class="os-quick-title">@UiStrings.Common.Actions</h3>
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" Wrap="FlexWrap.Wrap" class="os-quick-actions">
+                    <AuthorizeView Context="usersLink">
+                        @if (usersLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
+                        {
+                            <RadzenButton Text="@UiStrings.Dashboard.ManageUsers" Icon="group" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@(() => Navigation.NavigateTo("/users"))" />
+                        }
+                    </AuthorizeView>
+                    <AuthorizeView Context="rolesLink">
+                        @if (rolesLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
+                        {
+                            <RadzenButton Text="@UiStrings.Dashboard.ManageRoles" Icon="shield" ButtonStyle="ButtonStyle.Light"
+                                          Click="@(() => Navigation.NavigateTo("/roles"))" />
+                        }
+                    </AuthorizeView>
+                    <RadzenButton Text="@UiStrings.Account.Title" Icon="account_circle" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => Navigation.NavigateTo("/account"))" />
+                </RadzenStack>
+            </RadzenCard>
+        }
     }
 </RequireAuth>
 
 @code {
+    private bool HasQuickActions => true;
+
     protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
 
     private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);

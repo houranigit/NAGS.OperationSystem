@@ -1,9 +1,21 @@
 .os-empty-state {
-    padding-block: var(--os-space-6);
+    padding-block: var(--os-space-7);
     text-align: center;
 }
 
 .os-empty-state ::deep .rz-icon {
-    font-size: 2.5rem;
-    color: var(--os-color-text-muted);
+    display: inline-grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background: var(--os-color-surface-muted);
+    border: 1px solid var(--os-color-border);
+    color: var(--os-color-text-subtle);
+    font-size: 1.75rem;
+    margin-bottom: var(--os-space-2);
+}
+
+.os-empty-state strong {
+    font-size: var(--os-text-lg);
 }

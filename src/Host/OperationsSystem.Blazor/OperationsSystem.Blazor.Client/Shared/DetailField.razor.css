@@ -3,6 +3,20 @@
     gap: var(--os-space-1);
     padding: var(--os-space-4);
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-lg);
+    border-radius: var(--os-radius-md);
     background: var(--os-color-surface-muted);
+    height: 100%;
+}
+
+.os-detail-field > span {
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.os-detail-field strong {
+    font-size: var(--os-text-base);
+    color: var(--os-color-text);
+    word-break: break-word;
 }

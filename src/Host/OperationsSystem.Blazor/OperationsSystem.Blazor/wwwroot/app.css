@@ -1,19 +1,123 @@
-h1:focus {
-    outline: none;
+/* ==========================================================================
+   Operations System — global styles
+   Token-driven. Maps Radzen (Material3) component variables onto --os-* brand
+   tokens so every Radzen control matches the portal design language.
+   ========================================================================== */
+
+/* --- Radzen theme variable mapping -------------------------------------- */
+:root {
+    --rz-primary: var(--os-color-primary);
+    --rz-primary-light: var(--os-color-primary);
+    --rz-primary-lighter: var(--os-color-primary-soft);
+    --rz-primary-dark: var(--os-color-primary-strong);
+    --rz-primary-darker: var(--os-color-primary-strong);
+    --rz-on-primary: var(--os-color-primary-contrast);
+    --rz-primary-contrast-text: var(--os-color-primary-contrast);
+
+    --rz-success: var(--os-color-success);
+    --rz-warning: var(--os-color-warning);
+    --rz-danger: var(--os-color-danger);
+    --rz-info: var(--os-color-info);
+
+    --rz-text-color: var(--os-color-text);
+    --rz-text-secondary-color: var(--os-color-text-muted);
+    --rz-text-tertiary-color: var(--os-color-text-subtle);
+    --rz-text-disabled-color: var(--os-color-text-subtle);
+
+    --rz-base-background-color: var(--os-color-bg);
+    --rz-body-background-color: var(--os-color-bg);
+    --rz-content-background-color: var(--os-color-surface);
+    --rz-panel-background-color: var(--os-color-surface);
+
+    --rz-border-radius: var(--os-radius-md);
+    --rz-border-color: var(--os-color-border);
+    --rz-text-font-family: var(--os-font-sans);
+    --rz-body-font-family: var(--os-font-sans);
+
+    --rz-card-background-color: var(--os-color-surface);
+    --rz-card-border-radius: var(--os-radius-lg);
+    --rz-card-box-shadow: var(--os-shadow-sm);
+    --rz-card-padding: var(--os-space-5);
+
+    --rz-input-border-radius: var(--os-radius-sm);
+    --rz-input-background-color: var(--os-color-surface);
+    --rz-input-focus-border: var(--os-color-primary);
+
+    --rz-dialog-border-radius: var(--os-radius-lg);
+    --rz-grid-header-background-color: var(--os-color-surface-muted);
+}
+
+/* --- Base ---------------------------------------------------------------- */
+html {
+    box-sizing: border-box;
+    -webkit-text-size-adjust: 100%;
+}
+
+*, *::before, *::after {
+    box-sizing: inherit;
 }
 
 body {
     margin: 0;
     font-family: var(--os-font-sans);
+    font-size: var(--os-text-base);
+    line-height: 1.55;
     background: var(--os-color-bg);
     color: var(--os-color-text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
 }
 
-/* Shared utility classes (token-driven). Prefixed os- per the frontend rules. */
+h1, h2, h3, h4 {
+    color: var(--os-color-text);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+}
+
+h1:focus, h2:focus, h3:focus {
+    outline: none;
+}
+
+a {
+    color: var(--os-color-primary);
+}
+
+/* Visible keyboard focus for accessibility */
+:focus-visible {
+    outline: none;
+    box-shadow: var(--os-ring);
+    border-radius: var(--os-radius-sm);
+}
+
+/* Refined scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--os-color-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--os-color-border-strong);
+    border-radius: var(--os-radius-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--os-color-text-subtle);
+    background-clip: padding-box;
+}
+
+/* --- Shared utility classes (token-driven, os- prefixed) ----------------- */
 .os-eyebrow {
     margin: 0 0 var(--os-space-1);
     color: var(--os-color-primary);
-    font-size: 0.78rem;
+    font-size: var(--os-text-xs);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -25,48 +129,72 @@ body {
 
 .os-page-title {
     margin: var(--os-space-1) 0 0;
-    font-size: 1.5rem;
+    font-size: var(--os-text-2xl);
 }
 
+/* Responsive auto-fit card grid (no overflow at any width) */
 .os-cards-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
     gap: var(--os-space-4);
-}
-
-@media (max-width: 900px) {
-    .os-cards-grid {
-        grid-template-columns: 1fr;
-    }
 }
 
 /* Status pills */
 .os-pill {
     display: inline-flex;
     align-items: center;
-    padding: 0.15rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.78rem;
+    gap: var(--os-space-1);
+    padding: 0.2rem 0.65rem;
+    border-radius: var(--os-radius-pill);
+    font-size: var(--os-text-xs);
     font-weight: 600;
     line-height: 1.5;
+    white-space: nowrap;
+}
+
+.os-pill::before {
+    content: "";
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.85;
 }
 
 .os-pill--success { background: var(--os-color-success-bg); color: var(--os-color-success); }
 .os-pill--warning { background: var(--os-color-warning-bg); color: var(--os-color-warning); }
 .os-pill--danger { background: var(--os-color-danger-bg); color: var(--os-color-danger); }
+.os-pill--info { background: var(--os-color-info-bg); color: var(--os-color-info); }
 .os-pill--neutral { background: var(--os-color-neutral-bg); color: var(--os-color-text-muted); }
 
-/* Blazor framework error UI */
+/* Cards lift slightly on hover for interactive lists */
+.rz-card {
+    border: 1px solid var(--os-color-border);
+    transition: box-shadow var(--os-transition), border-color var(--os-transition);
+}
+
+/* DataGrid polish */
+.os-clickable-grid .rz-data-row {
+    cursor: pointer;
+    transition: background var(--os-transition);
+}
+
+.os-clickable-grid .rz-data-row:hover td {
+    background: var(--os-color-surface-hover);
+}
+
+/* --- Blazor framework error UI ------------------------------------------ */
 .valid.modified:not([type=checkbox]) {
-    outline: 1px solid #26b050;
+    outline: 1px solid var(--os-color-success);
 }
 
 .invalid {
-    outline: 1px solid #e50000;
+    outline: 1px solid var(--os-color-danger);
 }
 
 .validation-message {
-    color: #e50000;
+    color: var(--os-color-danger);
+    font-size: var(--os-text-sm);
 }
 
 #blazor-error-ui {
@@ -91,7 +219,7 @@ body {
     }
 
 .blazor-error-boundary {
-    background: #b32121;
+    background: var(--os-color-danger);
     padding: 1rem;
     color: white;
     border-radius: var(--os-radius-md);

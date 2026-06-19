@@ -55,6 +55,13 @@ public static class UiStrings
         public const string PasswordsDoNotMatch = "The passwords do not match.";
         public const string PasswordTooShort = "Use at least 8 characters.";
         public const string GoToSignIn = "Go to sign in";
+
+        public const string BrandHeadline = "Operations, under control.";
+        public const string BrandSubtext = "Manage your people, roles, and access from one secure, bilingual portal.";
+        public const string BrandPointAccess = "Granular role-based access control";
+        public const string BrandPointSessions = "Live session and device management";
+        public const string BrandPointBilingual = "Full Arabic and English support";
+        public const string Copyright = "© 2026 Operations System. All rights reserved.";
     }
 
     public static class Nav
@@ -63,6 +70,10 @@ public static class UiStrings
         public const string Users = "Users";
         public const string Roles = "Roles";
         public const string Account = "Account";
+        public const string Overview = "Overview";
+        public const string Administration = "Administration";
+        public const string ToggleMenu = "Toggle navigation";
+        public const string Language = "Language";
     }
 
     public static class Dashboard

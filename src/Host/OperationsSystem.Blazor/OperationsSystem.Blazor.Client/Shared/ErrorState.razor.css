@@ -1,9 +1,20 @@
 .os-error-state {
-    padding-block: var(--os-space-6);
+    padding-block: var(--os-space-7);
     text-align: center;
 }
 
 .os-error-state ::deep .rz-icon {
-    font-size: 2.5rem;
+    display: inline-grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background: var(--os-color-danger-bg);
     color: var(--os-color-danger);
+    font-size: 1.75rem;
+    margin-bottom: var(--os-space-2);
+}
+
+.os-error-state strong {
+    font-size: var(--os-text-lg);
 }

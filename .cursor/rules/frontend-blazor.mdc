@@ -7,7 +7,7 @@ alwaysApply: false
 # Frontend Blazor
 
 - The Blazor portal is the operational product UI: clarity, density, repeatable workflows — not a marketing site.
-- Use **Radzen.Blazor** with the **Material3** theme (`RadzenTheme Theme="material3"` in `App.razor`). Do not add Bootstrap, Tailwind, or another component library.
+- Use **Radzen.Blazor** with the free **default** theme (`RadzenTheme Theme="default"` in `App.razor`). Material3 and other premium themes are paid and must not be used. Brand the default theme by mapping Radzen `--rz-*` variables onto the `--os-*` tokens in `app.css`. Do not add Bootstrap, Tailwind, or another component library.
 - **Design tokens first.** Colors, spacing, radius, and typography live in `wwwroot/tokens.css` as CSS variables (`--os-*`). Never hardcode hex/rgb in `.razor` or `.razor.css` files. Layout shell styles in `MainLayout.razor.css` must use tokens too.
 - **Shared shells, not one-off pages.** Build pages from components under `OperationsSystem.Blazor.Client/Shared/`:
   - `PageHeader` — title, optional description, actions slot

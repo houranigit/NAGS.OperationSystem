@@ -9,80 +9,95 @@
 <RadzenTooltip />
 <RadzenContextMenu />
 
-<div class="os-shell">
+<div class="os-shell @(navOpen ? "os-shell--nav-open" : null)">
+    <div class="os-scrim" @onclick="CloseNav"></div>
+
     <aside class="os-sidebar" aria-label="Primary navigation">
         <div class="os-brand">
             <span class="os-brand-mark">OS</span>
-            <span>
+            <span class="os-brand-text">
                 <strong>@UiStrings.App.Name</strong>
                 <small>@UiStrings.App.BlazorPortal</small>
             </span>
         </div>
 
         <nav class="os-nav">
-            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link">
+            <p class="os-nav-section">@UiStrings.Nav.Overview</p>
+            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link" @onclick="CloseNav">
                 <RadzenIcon Icon="dashboard" />
                 <span>@UiStrings.Nav.Dashboard</span>
             </NavLink>
 
             <AuthorizeView Context="users">
+                @if (HasNav)
+                {
+                    <p class="os-nav-section">@UiStrings.Nav.Administration</p>
+                }
                 @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
                 {
-                    <NavLink href="/users" class="os-nav-link">
+                    <NavLink href="/users" class="os-nav-link" @onclick="CloseNav">
                         <RadzenIcon Icon="group" />
                         <span>@UiStrings.Nav.Users</span>
                     </NavLink>
                 }
-            </AuthorizeView>
-
-            <AuthorizeView Context="roles">
-                @if (roles.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
+                @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
                 {
-                    <NavLink href="/roles" class="os-nav-link">
+                    <NavLink href="/roles" class="os-nav-link" @onclick="CloseNav">
                         <RadzenIcon Icon="shield" />
                         <span>@UiStrings.Nav.Roles</span>
                     </NavLink>
                 }
             </AuthorizeView>
 
-            <NavLink href="/account" class="os-nav-link">
+            <p class="os-nav-section">@UiStrings.Nav.Account</p>
+            <NavLink href="/account" class="os-nav-link" @onclick="CloseNav">
                 <RadzenIcon Icon="account_circle" />
                 <span>@UiStrings.Nav.Account</span>
             </NavLink>
         </nav>
+
+        <div class="os-sidebar-foot">
+            <span class="os-version-tag">@UiStrings.App.Version</span>
+        </div>
     </aside>
 
-    <main class="os-main">
+    <div class="os-main">
         <header class="os-topbar">
-            <div>
-                <span class="os-eyebrow">@UiStrings.App.Version</span>
-                <h1>@UiStrings.App.Portal</h1>
+            <div class="os-topbar-lead">
+                <button type="button" class="os-icon-btn os-nav-toggle" aria-label="@UiStrings.Nav.ToggleMenu" @onclick="ToggleNav">
+                    <RadzenIcon Icon="menu" />
+                </button>
+                <span class="os-topbar-title">@UiStrings.App.Portal</span>
             </div>
 
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
-                <RadzenButton Variant="Variant.Text"
-                              ButtonStyle="ButtonStyle.Light"
-                              Text="@LanguageLabel"
-                              Icon="translate"
-                              Click="@ToggleLanguageAsync" />
+            <div class="os-topbar-actions">
+                <button type="button" class="os-lang-btn" @onclick="ToggleLanguageAsync">
+                    <RadzenIcon Icon="translate" />
+                    <span>@LanguageLabel</span>
+                </button>
 
                 @if (Auth.User is not null)
                 {
-                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
-                        <div class="os-topbar-user">
+                    <div class="os-user-chip">
+                        <span class="os-avatar">@Initials(Auth.User.DisplayName)</span>
+                        <span class="os-user-meta">
                             <strong>@Auth.User.DisplayName</strong>
                             <small class="os-muted">@Auth.User.RoleName</small>
-                        </div>
-                        <RadzenButton Text="@UiStrings.Common.SignOut" ButtonStyle="ButtonStyle.Light" Icon="logout" Click="@LogoutAsync" />
-                    </RadzenStack>
+                        </span>
+                    </div>
+                    <button type="button" class="os-icon-btn" aria-label="@UiStrings.Common.SignOut" @onclick="LogoutAsync">
+                        <RadzenIcon Icon="logout" />
+                    </button>
                 }
-            </RadzenStack>
+            </div>
         </header>
 
         <section class="os-content">
-            @Body
+            <div class="os-content-inner">
+                @Body
+            </div>
         </section>
-    </main>
+    </div>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
@@ -92,7 +107,12 @@
 </div>
 
 @code {
+    private bool navOpen;
+
     private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
+
+    private bool HasNav => Auth.User?.Permissions.Any(p =>
+        p == IdentityPermissions.UsersView || p == IdentityPermissions.RolesView) ?? false;
 
     protected override void OnInitialized()
     {
@@ -100,12 +120,30 @@
         Locale.Changed += OnStateChanged;
     }
 
+    private void ToggleNav() => navOpen = !navOpen;
+
+    private void CloseNav() => navOpen = false;
+
     private async Task ToggleLanguageAsync() => await Locale.ToggleAsync();
 
     private async Task LogoutAsync()
     {
         await Auth.LogoutAsync();
         Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "?";
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
+        };
     }
 
     private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);

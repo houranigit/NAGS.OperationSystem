@@ -1,40 +1,80 @@
 /* Operations System design tokens. All --os-* variables; never hardcode colors in components. */
 :root {
-    --os-color-bg: #f5f7fb;
+    /* Surfaces & text */
+    --os-color-bg: #eef1f6;
     --os-color-surface: #ffffff;
     --os-color-surface-muted: #f8fafc;
-    --os-color-border: #e2e8f0;
-    --os-color-text: #172033;
-    --os-color-text-muted: #64748b;
-    --os-color-text-inverse: #e5edf8;
+    --os-color-surface-hover: #f1f5f9;
+    --os-color-border: #e3e8ef;
+    --os-color-border-strong: #cbd5e1;
+    --os-color-text: #101729;
+    --os-color-text-muted: #5b6678;
+    --os-color-text-subtle: #94a3b8;
+    --os-color-text-inverse: #e8eefb;
 
+    /* Brand */
     --os-color-primary: #2563eb;
+    --os-color-primary-strong: #1d4ed8;
+    --os-color-primary-soft: #eaf1ff;
+    --os-color-primary-soft-border: #cdddff;
     --os-color-primary-contrast: #ffffff;
-    --os-color-sidebar: #0f172a;
-    --os-color-sidebar-text: #cbd5e1;
-    --os-color-sidebar-muted: #94a3b8;
 
+    /* Sidebar */
+    --os-color-sidebar: #0b1222;
+    --os-color-sidebar-accent: #131d34;
+    --os-color-sidebar-text: #aeb9cc;
+    --os-color-sidebar-muted: #6f7c93;
+    --os-color-sidebar-active: rgba(37, 99, 235, 0.18);
+    --os-color-sidebar-active-text: #ffffff;
+
+    /* Status */
     --os-color-success: #15803d;
     --os-color-success-bg: #dcfce7;
     --os-color-warning: #b45309;
     --os-color-warning-bg: #fef3c7;
     --os-color-danger: #b91c1c;
     --os-color-danger-bg: #fee2e2;
-    --os-color-neutral-bg: #e2e8f0;
+    --os-color-info: #1d4ed8;
+    --os-color-info-bg: #e0ecff;
+    --os-color-neutral-bg: #e8edf4;
 
+    /* Spacing scale */
     --os-space-1: 0.25rem;
     --os-space-2: 0.5rem;
     --os-space-3: 0.75rem;
     --os-space-4: 1rem;
     --os-space-5: 1.5rem;
     --os-space-6: 2rem;
+    --os-space-7: 2.75rem;
+    --os-space-8: 3.5rem;
 
+    /* Radius */
     --os-radius-sm: 0.5rem;
     --os-radius-md: 0.75rem;
-    --os-radius-lg: 0.875rem;
+    --os-radius-lg: 1rem;
+    --os-radius-xl: 1.25rem;
+    --os-radius-pill: 999px;
 
-    --os-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --os-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+    /* Typography */
+    --os-font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --os-text-xs: 0.75rem;
+    --os-text-sm: 0.875rem;
+    --os-text-base: 0.95rem;
+    --os-text-lg: 1.125rem;
+    --os-text-xl: 1.375rem;
+    --os-text-2xl: 1.75rem;
 
-    --os-sidebar-width: 17rem;
+    /* Elevation */
+    --os-shadow-sm: 0 1px 2px rgba(16, 23, 41, 0.06), 0 1px 3px rgba(16, 23, 41, 0.04);
+    --os-shadow-md: 0 4px 12px rgba(16, 23, 41, 0.08), 0 2px 4px rgba(16, 23, 41, 0.04);
+    --os-shadow-lg: 0 18px 40px rgba(16, 23, 41, 0.14), 0 6px 14px rgba(16, 23, 41, 0.08);
+    --os-ring: 0 0 0 3px rgba(37, 99, 235, 0.28);
+
+    /* Motion */
+    --os-transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Layout */
+    --os-sidebar-width: 16.5rem;
+    --os-topbar-height: 4.25rem;
+    --os-content-max: 84rem;
 }

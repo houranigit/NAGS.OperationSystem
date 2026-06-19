@@ -2,12 +2,33 @@
 
 <RadzenNotification />
 
-<div class="os-auth-shell">
-    <main class="os-auth-main">
-        <div class="os-auth-brand">
+<div class="os-auth">
+    <aside class="os-auth-brand">
+        <div class="os-auth-brand-head">
             <span class="os-auth-mark">OS</span>
-            <span>@UiStrings.App.Name</span>
+            <span class="os-auth-brand-name">@UiStrings.App.Name</span>
         </div>
-        @Body
+
+        <div class="os-auth-brand-body">
+            <h2>@UiStrings.Auth.BrandHeadline</h2>
+            <p>@UiStrings.Auth.BrandSubtext</p>
+            <ul class="os-auth-points">
+                <li><RadzenIcon Icon="verified_user" /> <span>@UiStrings.Auth.BrandPointAccess</span></li>
+                <li><RadzenIcon Icon="devices" /> <span>@UiStrings.Auth.BrandPointSessions</span></li>
+                <li><RadzenIcon Icon="translate" /> <span>@UiStrings.Auth.BrandPointBilingual</span></li>
+            </ul>
+        </div>
+
+        <small class="os-auth-copy">@UiStrings.Auth.Copyright</small>
+    </aside>
+
+    <main class="os-auth-main">
+        <div class="os-auth-card">
+            <div class="os-auth-mobile-brand">
+                <span class="os-auth-mark">OS</span>
+                <span class="os-auth-brand-name">@UiStrings.App.Name</span>
+            </div>
+            @Body
+        </div>
     </main>
 </div>
