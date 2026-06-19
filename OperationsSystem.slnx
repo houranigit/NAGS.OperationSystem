@@ -8,6 +8,8 @@
   </Folder>
   <Folder Name="/src/Host/">
     <Project Path="src/Host/OperationsSystem.Api/OperationsSystem.Api.csproj" />
+    <Project Path="src/Host/OperationsSystem.Blazor/OperationsSystem.Blazor.Client/OperationsSystem.Blazor.Client.csproj" Id="11acd5cb-e36d-4fec-80f7-3f65cee20d2e" />
+    <Project Path="src/Host/OperationsSystem.Blazor/OperationsSystem.Blazor/OperationsSystem.Blazor.csproj" Id="518e9676-3e78-47f3-9723-2876aee1e6cf" />
   </Folder>
   <Folder Name="/src/Modules/" />
   <Folder Name="/src/Modules/Identity/">
