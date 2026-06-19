@@ -10,6 +10,7 @@ interface AuthContextValue {
   user: AuthenticatedUser | null
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>
   hasPermission: (permission: string) => boolean
 }
 
@@ -61,6 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
           setStatus('anonymous')
         }
+      },
+      refreshUser: async () => {
+        const me = await authApi.me()
+        setUser(me)
       },
       hasPermission: (permission) => user?.permissions.includes(permission) ?? false,
     }),

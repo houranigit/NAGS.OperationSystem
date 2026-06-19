@@ -1,6 +1,55 @@
 import { useState } from 'react'
-import { Badge, Button, Card, EmptyState, Input, Select, Spinner } from '@/shared/ui'
+import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import {
+  EllipsisVerticalIcon,
+  EyeIcon,
+  LockIcon,
+  LockOpenIcon,
+  MailIcon,
+  ShieldIcon,
+  UserPlusIcon,
+  UserXIcon,
+} from 'lucide-react'
 import { useAuth } from '@/shared/auth/auth-context'
+import { useLanguage } from '@/i18n/LanguageProvider'
+import { formatDateTime } from '@/shared/format'
+import { toastError, toastSuccess } from '@/shared/toast'
+import { PageHeader } from '@/shared/components/PageHeader'
+import { Pagination } from '@/shared/components/Pagination'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import type { UserListItem, UserStatus } from '@/shared/api/types'
 import {
   useDeactivateUser,
   useLockUser,
@@ -10,23 +59,25 @@ import {
 } from './api'
 import { InviteUserDialog } from './InviteUserDialog'
 import { AssignRoleDialog } from './AssignRoleDialog'
-import type { UserListItem, UserStatus } from '@/shared/api/types'
-import { extractApiError } from '@/shared/api/error'
+import { UserStatusBadge } from './UserStatusBadge'
 
-function statusTone(status: UserStatus): 'green' | 'amber' | 'slate' {
-  if (status === 'Active') return 'green'
-  if (status === 'Invited') return 'amber'
-  return 'slate'
-}
+const ALL_STATUSES = 'all'
+const PAGE_SIZE = 20
 
 export function UsersPage() {
+  const { t } = useTranslation()
+  const { language } = useLanguage()
   const { hasPermission } = useAuth()
+  const navigate = useNavigate()
+
+  const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<UserStatus | ''>('')
-  const { data, isLoading } = useUsers(search, status)
+  const { data, isLoading } = useUsers({ page, pageSize: PAGE_SIZE, search, status })
 
   const [showInvite, setShowInvite] = useState(false)
   const [assignUser, setAssignUser] = useState<UserListItem | null>(null)
+  const [deactivateTarget, setDeactivateTarget] = useState<UserListItem | null>(null)
 
   const lockUser = useLockUser()
   const unlockUser = useUnlockUser()
@@ -39,99 +90,200 @@ export function UsersPage() {
   const canUnlock = hasPermission('identity.users.unlock')
   const canDeactivate = hasPermission('identity.users.deactivate')
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const resetPage = () => setPage(1)
+
+  const run = async (fn: () => Promise<unknown>, successMessage: string) => {
     try {
       await fn()
+      toastSuccess(successMessage)
     } catch (error) {
-      alert(extractApiError(error))
+      toastError(error)
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Users</h1>
-        {canInvite && <Button onClick={() => setShowInvite(true)}>Invite user</Button>}
-      </div>
+  const confirmDeactivate = async () => {
+    if (!deactivateTarget) return
+    const target = deactivateTarget
+    setDeactivateTarget(null)
+    await run(() => deactivateUser.mutateAsync(target.id), t('users.userDeactivated'))
+  }
 
-      <div className="flex gap-2">
-        <Input placeholder="Search users…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        <Select value={status} onChange={(e) => setStatus(e.target.value as UserStatus | '')} className="max-w-[160px]">
-          <option value="">All statuses</option>
-          <option value="Active">Active</option>
-          <option value="Invited">Invited</option>
-          <option value="Deactivated">Deactivated</option>
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t('users.title')}
+        actions={
+          canInvite ? (
+            <Button onClick={() => setShowInvite(true)}>
+              <UserPlusIcon data-icon="inline-start" />
+              {t('users.invite')}
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <div className="flex flex-wrap gap-2">
+        <Input
+          placeholder={t('users.searchPlaceholder')}
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            resetPage()
+          }}
+          className="h-8 max-w-xs"
+        />
+        <Select
+          value={status === '' ? ALL_STATUSES : status}
+          onValueChange={(value) => {
+            setStatus(value === ALL_STATUSES ? '' : (value as UserStatus))
+            resetPage()
+          }}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder={t('users.allStatuses')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value={ALL_STATUSES}>{t('users.allStatuses')}</SelectItem>
+              <SelectItem value="Active">{t('users.statusActive')}</SelectItem>
+              <SelectItem value="Invited">{t('users.statusInvited')}</SelectItem>
+              <SelectItem value="Deactivated">{t('users.statusDeactivated')}</SelectItem>
+            </SelectGroup>
+          </SelectContent>
         </Select>
       </div>
 
-      <Card>
+      <Card className="p-0">
         {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Spinner />
+          <div className="flex flex-col gap-2 p-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
           </div>
         ) : !data || data.items.length === 0 ? (
-          <EmptyState message="No users found." />
+          <Empty className="border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <UserPlusIcon />
+              </EmptyMedia>
+              <EmptyTitle>{t('users.empty')}</EmptyTitle>
+              <EmptyDescription>{t('users.emptyHint')}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Role</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('users.columnName')}</TableHead>
+                <TableHead>{t('users.columnEmail')}</TableHead>
+                <TableHead>{t('users.columnRole')}</TableHead>
+                <TableHead>{t('users.columnStatus')}</TableHead>
+                <TableHead>{t('users.columnLastLogin')}</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.items.map((user) => (
-                <tr key={user.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-3 font-medium text-slate-900">{user.displayName}</td>
-                  <td className="px-4 py-3 text-slate-600">{user.email}</td>
-                  <td className="px-4 py-3 text-slate-600">{user.roleName}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <Badge tone={statusTone(user.status)}>{user.status}</Badge>
-                      {user.isLockedOut && <Badge tone="red">locked</Badge>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {canAssign && (
-                        <Button variant="ghost" onClick={() => setAssignUser(user)}>
-                          Role
+                <TableRow
+                  key={user.id}
+                  className="cursor-pointer"
+                  onClick={() => navigate(`/users/${user.id}`)}
+                >
+                  <TableCell className="font-medium">{user.displayName}</TableCell>
+                  <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                  <TableCell className="text-muted-foreground">{user.roleName}</TableCell>
+                  <TableCell>
+                    <UserStatusBadge status={user.status} isLockedOut={user.isLockedOut} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDateTime(user.lastLoginAtUtc, language) ?? t('common.never')}
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={t('common.actions')}>
+                          <EllipsisVerticalIcon />
                         </Button>
-                      )}
-                      {canUnlock && user.isLockedOut && (
-                        <Button variant="ghost" onClick={() => run(() => unlockUser.mutateAsync(user.id))}>
-                          Unlock
-                        </Button>
-                      )}
-                      {canLock && !user.isLockedOut && user.status === 'Active' && (
-                        <Button variant="ghost" onClick={() => run(() => lockUser.mutateAsync(user.id))}>
-                          Lock
-                        </Button>
-                      )}
-                      {canInvite && user.status === 'Invited' && (
-                        <Button variant="ghost" onClick={() => run(() => resendInvitation.mutateAsync(user.id))}>
-                          Resend
-                        </Button>
-                      )}
-                      {canDeactivate && user.status !== 'Deactivated' && (
-                        <Button variant="ghost" className="text-red-600" onClick={() => run(() => deactivateUser.mutateAsync(user.id))}>
-                          Deactivate
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem onSelect={() => navigate(`/users/${user.id}`)}>
+                            <EyeIcon />
+                            {t('users.view')}
+                          </DropdownMenuItem>
+                          {canAssign && (
+                            <DropdownMenuItem onSelect={() => setAssignUser(user)}>
+                              <ShieldIcon />
+                              {t('users.changeRole')}
+                            </DropdownMenuItem>
+                          )}
+                          {canUnlock && user.isLockedOut && (
+                            <DropdownMenuItem
+                              onSelect={() => run(() => unlockUser.mutateAsync(user.id), t('users.userUnlocked'))}
+                            >
+                              <LockOpenIcon />
+                              {t('users.unlock')}
+                            </DropdownMenuItem>
+                          )}
+                          {canLock && !user.isLockedOut && user.status === 'Active' && (
+                            <DropdownMenuItem
+                              onSelect={() => run(() => lockUser.mutateAsync(user.id), t('users.userLocked'))}
+                            >
+                              <LockIcon />
+                              {t('users.lock')}
+                            </DropdownMenuItem>
+                          )}
+                          {canInvite && user.status === 'Invited' && (
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                run(() => resendInvitation.mutateAsync(user.id), t('users.invitationResent'))
+                              }
+                            >
+                              <MailIcon />
+                              {t('users.resendInvitation')}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuGroup>
+                        {canDeactivate && user.status !== 'Deactivated' && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onSelect={() => setDeactivateTarget(user)}>
+                              <UserXIcon />
+                              {t('users.deactivate')}
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </Card>
 
+      {data && data.items.length > 0 && <Pagination result={data} onPageChange={setPage} />}
+
       {showInvite && <InviteUserDialog onClose={() => setShowInvite(false)} />}
       {assignUser && <AssignRoleDialog user={assignUser} onClose={() => setAssignUser(null)} />}
+
+      <AlertDialog open={!!deactivateTarget} onOpenChange={(open) => !open && setDeactivateTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('users.deactivateTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('users.deactivateConfirm', { name: deactivateTarget?.displayName })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDeactivate}>
+              {t('users.deactivate')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

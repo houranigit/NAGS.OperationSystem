@@ -7,5 +7,7 @@ export const authApi = {
   logout: () => api.post('/identity/auth/logout').then(() => undefined),
   changePassword: (currentPassword: string, newPassword: string) =>
     api.post('/identity/auth/change-password', { currentPassword, newPassword }).then(() => undefined),
+  activate: (email: string, invitationToken: string, newPassword: string) =>
+    api.post('/identity/auth/activate', { email, invitationToken, newPassword }).then(() => undefined),
   me: () => api.get<AuthenticatedUser>('/identity/me').then((r) => r.data),
 }

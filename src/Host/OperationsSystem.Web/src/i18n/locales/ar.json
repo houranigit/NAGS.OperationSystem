@@ -1,0 +1,14 @@
+{
+  "common": {
+    "appName": "نظام العمليات"
+  },
+  "nav": {
+    "users": "المستخدمون",
+    "roles": "الأدوار",
+    "account": "حسابي",
+    "signOut": "تسجيل الخروج",
+    "language": "اللغة",
+    "english": "English",
+    "arabic": "العربية"
+  }
+}

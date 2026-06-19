@@ -1,4 +1,5 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
+import { getStoredLanguage } from '@/i18n/config'
 
 // Access token is kept in memory only (never localStorage). The refresh token lives in an
 // httpOnly cookie set by the API.
@@ -19,6 +20,7 @@ api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
+  config.headers['Accept-Language'] = getStoredLanguage()
   return config
 })
 

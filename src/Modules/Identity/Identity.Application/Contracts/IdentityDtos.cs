@@ -60,3 +60,18 @@ public sealed record UserDto(
 
 /// <summary>Returned by InviteUser. The token is surfaced for dev/testing; production delivers it by email only.</summary>
 public sealed record InvitedUserDto(Guid Id, string Email, Guid InvitationToken);
+
+/// <summary>
+/// A refresh-token session. <see cref="IsCurrent"/> marks the session backing the caller's
+/// current refresh-token cookie (only meaningful for self-service "my sessions" queries).
+/// </summary>
+public sealed record UserSessionDto(
+    Guid Id,
+    Guid UserId,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset ExpiresAtUtc,
+    DateTimeOffset? RevokedAtUtc,
+    bool IsActive,
+    bool IsCurrent,
+    string? CreatedByIp,
+    string? UserAgent);

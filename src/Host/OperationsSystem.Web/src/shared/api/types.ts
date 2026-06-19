@@ -60,8 +60,34 @@ export interface UserListItem {
   lastLoginAtUtc: string | null
 }
 
+export interface User {
+  id: string
+  email: string
+  displayName: string
+  status: UserStatus
+  isLockedOut: boolean
+  lockoutEndUtc: string | null
+  roleId: string
+  roleName: string
+  createdAtUtc: string
+  updatedAtUtc: string | null
+  lastLoginAtUtc: string | null
+}
+
 export interface InvitedUser {
   id: string
   email: string
   invitationToken: string
+}
+
+export interface UserSession {
+  id: string
+  userId: string
+  createdAtUtc: string
+  expiresAtUtc: string
+  revokedAtUtc: string | null
+  isActive: boolean
+  isCurrent: boolean
+  createdByIp: string | null
+  userAgent: string | null
 }

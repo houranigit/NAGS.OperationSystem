@@ -1,12 +1,31 @@
 import { useState } from 'react'
-import { Button, Label, Modal, Select } from '@/shared/ui'
+import { useTranslation } from 'react-i18next'
 import { useAssignRole } from './api'
-import { useRoles } from '@/features/roles/api'
-import type { UserListItem } from '@/shared/api/types'
+import { useAllRoles } from '@/features/roles/api'
+import { toastSuccess } from '@/shared/toast'
 import { extractApiError } from '@/shared/api/error'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Alert, AlertTitle } from '@/components/ui/alert'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-export function AssignRoleDialog({ user, onClose }: { user: UserListItem; onClose: () => void }) {
-  const roles = useRoles('')
+interface AssignRoleTarget {
+  id: string
+  displayName: string
+  roleId: string
+}
+
+export function AssignRoleDialog({ user, onClose }: { user: AssignRoleTarget; onClose: () => void }) {
+  const { t } = useTranslation()
+  const roles = useAllRoles()
   const assignRole = useAssignRole()
   const [roleId, setRoleId] = useState(user.roleId)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -15,36 +34,51 @@ export function AssignRoleDialog({ user, onClose }: { user: UserListItem; onClos
     setServerError(null)
     try {
       await assignRole.mutateAsync({ id: user.id, roleId })
+      toastSuccess(t('users.roleAssigned'))
       onClose()
     } catch (error) {
-      setServerError(extractApiError(error))
+      setServerError(extractApiError(error, t('common.somethingWentWrong')))
     }
   }
 
   return (
-    <Modal
-      title={`Assign role — ${user.displayName}`}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('users.changeRoleTitle', { name: user.displayName })}</DialogTitle>
+        </DialogHeader>
+        <Field>
+          <FieldLabel htmlFor="role">{t('users.role')}</FieldLabel>
+          <Select value={roleId} onValueChange={setRoleId}>
+            <SelectTrigger id="role" className="w-full">
+              <SelectValue placeholder={t('users.selectRole')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {roles.data?.map((role) => (
+                  <SelectItem key={role.id} value={role.id}>
+                    {role.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        {serverError && (
+          <Alert variant="destructive">
+            <AlertTitle>{serverError}</AlertTitle>
+          </Alert>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
           </Button>
           <Button onClick={save} disabled={assignRole.isPending}>
-            {assignRole.isPending ? 'Saving…' : 'Save'}
+            {assignRole.isPending && <Spinner data-icon="inline-start" />}
+            {t('common.save')}
           </Button>
-        </>
-      }
-    >
-      <Label htmlFor="role">Role</Label>
-      <Select id="role" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
-        {roles.data?.items.map((role) => (
-          <option key={role.id} value={role.id}>
-            {role.name}
-          </option>
-        ))}
-      </Select>
-      {serverError && <p className="mt-2 text-sm text-red-600">{serverError}</p>}
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

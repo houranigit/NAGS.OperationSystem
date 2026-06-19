@@ -1,19 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
-import type { InvitedUser, PagedResult, UserListItem, UserStatus } from '@/shared/api/types'
+import type { InvitedUser, PagedResult, User, UserListItem, UserStatus } from '@/shared/api/types'
 
 const USERS_KEY = 'users'
 
-export function useUsers(search: string, status: UserStatus | '') {
+export interface UsersQueryParams {
+  page: number
+  pageSize: number
+  search: string
+  status: UserStatus | ''
+}
+
+export function useUsers({ page, pageSize, search, status }: UsersQueryParams) {
   return useQuery({
-    queryKey: [USERS_KEY, { search, status }],
+    queryKey: [USERS_KEY, { page, pageSize, search, status }],
     queryFn: () =>
       api
         .get<PagedResult<UserListItem>>('/identity/users', {
-          params: { pageSize: 100, search: search || undefined, status: status || undefined },
+          params: { page, pageSize, search: search || undefined, status: status || undefined },
         })
         .then((r) => r.data),
   })
+}
+
+export function useUser(id: string | undefined) {
+  return useQuery({
+    queryKey: [USERS_KEY, id],
+    queryFn: () => api.get<User>(`/identity/users/${id}`).then((r) => r.data),
+    enabled: !!id,
+  })
+}
+
+function invalidateUsers(qc: ReturnType<typeof useQueryClient>) {
+  return qc.invalidateQueries({ queryKey: [USERS_KEY] })
 }
 
 export function useInviteUser() {
@@ -21,7 +40,7 @@ export function useInviteUser() {
   return useMutation({
     mutationFn: (body: { email: string; displayName: string; roleId: string }) =>
       api.post<InvitedUser>('/identity/users/invite', body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [USERS_KEY] }),
+    onSuccess: () => invalidateUsers(qc),
   })
 }
 
@@ -30,7 +49,7 @@ export function useUpdateUser() {
   return useMutation({
     mutationFn: ({ id, displayName }: { id: string; displayName: string }) =>
       api.put(`/identity/users/${id}`, { displayName }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [USERS_KEY] }),
+    onSuccess: () => invalidateUsers(qc),
   })
 }
 
@@ -39,7 +58,7 @@ export function useAssignRole() {
   return useMutation({
     mutationFn: ({ id, roleId }: { id: string; roleId: string }) =>
       api.put(`/identity/users/${id}/role`, { roleId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [USERS_KEY] }),
+    onSuccess: () => invalidateUsers(qc),
   })
 }
 
@@ -47,7 +66,7 @@ function useUserAction(action: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => api.post(`/identity/users/${id}/${action}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [USERS_KEY] }),
+    onSuccess: () => invalidateUsers(qc),
   })
 }
 

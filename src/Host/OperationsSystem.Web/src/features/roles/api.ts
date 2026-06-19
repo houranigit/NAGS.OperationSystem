@@ -4,13 +4,30 @@ import type { PagedResult, PermissionGroup, Role, RoleListItem } from '@/shared/
 
 const ROLES_KEY = 'roles'
 
-export function useRoles(search: string) {
+export interface RolesQueryParams {
+  page: number
+  pageSize: number
+  search: string
+}
+
+export function useRoles({ page, pageSize, search }: RolesQueryParams) {
   return useQuery({
-    queryKey: [ROLES_KEY, { search }],
+    queryKey: [ROLES_KEY, { page, pageSize, search }],
     queryFn: () =>
       api
-        .get<PagedResult<RoleListItem>>('/identity/roles', { params: { pageSize: 100, search: search || undefined } })
+        .get<PagedResult<RoleListItem>>('/identity/roles', {
+          params: { page, pageSize, search: search || undefined },
+        })
         .then((r) => r.data),
+  })
+}
+
+/** All roles (first 100) for selectors and dropdowns. */
+export function useAllRoles() {
+  return useQuery({
+    queryKey: [ROLES_KEY, 'all'],
+    queryFn: () =>
+      api.get<PagedResult<RoleListItem>>('/identity/roles', { params: { page: 1, pageSize: 100 } }).then((r) => r.data.items),
   })
 }
 
@@ -29,12 +46,16 @@ export function usePermissionCatalog() {
   })
 }
 
+function invalidateRoles(qc: ReturnType<typeof useQueryClient>) {
+  return qc.invalidateQueries({ queryKey: [ROLES_KEY] })
+}
+
 export function useCreateRole() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { name: string; description: string | null; permissions: string[] }) =>
       api.post('/identity/roles', body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROLES_KEY] }),
+    onSuccess: () => invalidateRoles(qc),
   })
 }
 
@@ -43,7 +64,7 @@ export function useUpdateRole() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string; name: string; description: string | null }) =>
       api.put(`/identity/roles/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROLES_KEY] }),
+    onSuccess: () => invalidateRoles(qc),
   })
 }
 
@@ -52,7 +73,7 @@ export function useUpdateRolePermissions() {
   return useMutation({
     mutationFn: ({ id, permissions }: { id: string; permissions: string[] }) =>
       api.put(`/identity/roles/${id}/permissions`, { permissions }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROLES_KEY] }),
+    onSuccess: () => invalidateRoles(qc),
   })
 }
 
@@ -60,6 +81,6 @@ export function useDeleteRole() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => api.delete(`/identity/roles/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [ROLES_KEY] }),
+    onSuccess: () => invalidateRoles(qc),
   })
 }

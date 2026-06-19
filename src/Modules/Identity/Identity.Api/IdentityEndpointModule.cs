@@ -15,5 +15,6 @@ public sealed class IdentityEndpointModule : IEndpointModule
         AuthEndpoints.Map(group);
         RoleEndpoints.Map(group);
         UserEndpoints.Map(group);
+        SessionEndpoints.Map(group);
     }
 }
