@@ -85,6 +85,8 @@
         new("Deactivated", "Deactivated")
     ];
 
+    protected override async Task OnInitializedAsync() => await LoadDataAsync(new LoadDataArgs());
+
     private async Task LoadDataAsync(LoadDataArgs args)
     {
         currentPageSize = args.Top ?? 20;
