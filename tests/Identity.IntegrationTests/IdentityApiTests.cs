@@ -7,26 +7,19 @@ namespace Identity.IntegrationTests;
 
 public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFactory>
 {
-    private const string Base = "/api/v1/identity";
+    private const string Base = IdentityApiTestData.Base;
 
     private sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);
     private sealed record InvitedResponse(Guid Id, string Email, Guid InvitationToken);
-
-    private async Task<string> LoginAsAdminAsync(HttpClient client)
-    {
-        var response = await client.PostAsJsonAsync($"{Base}/auth/login",
-            new { email = IdentityApiFactory.AdminEmail, password = IdentityApiFactory.AdminPassword });
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
-        return token!.AccessToken;
-    }
+    private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
+    private sealed record RoleItem(Guid Id, string Name);
 
     [Fact]
     public async Task Login_with_valid_admin_credentials_returns_access_token()
     {
         var client = factory.CreateClient();
 
-        var token = await LoginAsAdminAsync(client);
+        var token = await IdentityApiTestData.LoginAsAdminAsync(client);
 
         token.ShouldNotBeNullOrWhiteSpace();
     }
@@ -55,25 +48,21 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     [Fact]
     public async Task Admin_can_create_and_list_roles()
     {
-        var client = factory.CreateClient();
-        var token = await LoginAsAdminAsync(client);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
 
         var roleName = $"Role-{Guid.NewGuid():N}";
         var create = await client.PostAsJsonAsync($"{Base}/roles",
             new { name = roleName, description = "test", permissions = new[] { "identity.roles.view" } });
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        var list = await client.GetFromJsonAsync<PagedRoles>($"{Base}/roles?pageSize=100");
+        var list = await client.GetFromJsonAsync<PagedList<RoleItem>>($"{Base}/roles?pageSize=100");
         list!.Items.ShouldContain(r => r.Name == roleName);
     }
 
     [Fact]
     public async Task User_without_required_permission_gets_403()
     {
-        var client = factory.CreateClient();
-        var adminToken = await LoginAsAdminAsync(client);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+        var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
 
         // A role with no permissions.
         var roleName = $"NoPerms-{Guid.NewGuid():N}";
@@ -102,6 +91,59 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         forbidden.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
-    private sealed record PagedRoles(List<RoleItem> Items);
-    private sealed record RoleItem(Guid Id, string Name);
+    [Fact]
+    public async Task Seeded_demo_data_supports_multi_page_users_and_roles_lists()
+    {
+        var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+
+        var rolesBefore = await client.GetFromJsonAsync<PagedList<RoleItem>>($"{Base}/roles?page=1&pageSize=1");
+        var usersBefore = await client.GetFromJsonAsync<PagedList<UserItem>>($"{Base}/users?page=1&pageSize=1");
+
+        await IdentityApiTestData.SeedDemoRolesAsync(client);
+        var userRoleId = await IdentityApiTestData.EnsureDemoUserRoleAsync(client);
+        await IdentityApiTestData.SeedDemoUsersAsync(client, userRoleId);
+
+        const int pageSize = 20;
+        var expectedRoleTotal = rolesBefore!.TotalCount + IdentityApiTestData.DemoRoleCount + 1; // Shared demo user role.
+        var expectedUserTotal = usersBefore!.TotalCount + IdentityApiTestData.DemoUserCount;
+
+        var rolesPage1 = await client.GetFromJsonAsync<PagedList<RoleItem>>($"{Base}/roles?page=1&pageSize={pageSize}");
+        rolesPage1!.TotalCount.ShouldBe(expectedRoleTotal);
+        rolesPage1.Items.Count.ShouldBe(pageSize);
+        rolesPage1.Page.ShouldBe(1);
+        rolesPage1.PageSize.ShouldBe(pageSize);
+
+        var rolesPage2 = await client.GetFromJsonAsync<PagedList<RoleItem>>($"{Base}/roles?page=2&pageSize={pageSize}");
+        rolesPage2!.TotalCount.ShouldBe(expectedRoleTotal);
+        rolesPage2.Items.Count.ShouldBe(pageSize);
+
+        var rolesLastPage = (int)Math.Ceiling(expectedRoleTotal / (double)pageSize);
+        var rolesFinalPageSize = (int)(expectedRoleTotal - (pageSize * (rolesLastPage - 1)));
+        var rolesPageLast = await client.GetFromJsonAsync<PagedList<RoleItem>>(
+            $"{Base}/roles?page={rolesLastPage}&pageSize={pageSize}");
+        rolesPageLast!.TotalCount.ShouldBe(expectedRoleTotal);
+        rolesPageLast.Items.Count.ShouldBe(rolesFinalPageSize);
+
+        var usersPage1 = await client.GetFromJsonAsync<PagedList<UserItem>>($"{Base}/users?page=1&pageSize={pageSize}");
+        usersPage1!.TotalCount.ShouldBe(expectedUserTotal);
+        usersPage1.Items.Count.ShouldBe(pageSize);
+
+        var usersPage2 = await client.GetFromJsonAsync<PagedList<UserItem>>($"{Base}/users?page=2&pageSize={pageSize}");
+        usersPage2!.TotalCount.ShouldBe(expectedUserTotal);
+        usersPage2.Items.Count.ShouldBe(pageSize);
+
+        var usersLastPage = (int)Math.Ceiling(expectedUserTotal / (double)pageSize);
+        var usersFinalPageSize = (int)(expectedUserTotal - (pageSize * (usersLastPage - 1)));
+        var usersPageLast = await client.GetFromJsonAsync<PagedList<UserItem>>(
+            $"{Base}/users?page={usersLastPage}&pageSize={pageSize}");
+        usersPageLast!.TotalCount.ShouldBe(expectedUserTotal);
+        usersPageLast.Items.Count.ShouldBe(usersFinalPageSize);
+
+        var search = await client.GetFromJsonAsync<PagedList<UserItem>>(
+            $"{Base}/users?page=1&pageSize={pageSize}&search=Demo%20User%20042");
+        search!.TotalCount.ShouldBe(1);
+        search.Items.Single().DisplayName.ShouldBe(IdentityApiTestData.DemoUserDisplayName(42));
+    }
+
+    private sealed record UserItem(Guid Id, string Email, string DisplayName);
 }

@@ -13,6 +13,7 @@ public sealed class IdentityModuleOptions
     public int InvitationExpiryHours { get; set; } = 72;
 
     public AdminBootstrapOptions Admin { get; set; } = new();
+    public DemoDataOptions DemoData { get; set; } = new();
 }
 
 public sealed class JwtOptions
@@ -27,4 +28,12 @@ public sealed class AdminBootstrapOptions
     public string Email { get; set; } = "admin@nags.sa";
     public string DisplayName { get; set; } = "System Administrator";
     public string Password { get; set; } = string.Empty;
+}
+
+/// <summary>Development-only bulk data for exercising pagination in the portal.</summary>
+public sealed class DemoDataOptions
+{
+    public bool Enabled { get; set; }
+    public int RoleCount { get; set; } = 55;
+    public int UserCount { get; set; } = 55;
 }

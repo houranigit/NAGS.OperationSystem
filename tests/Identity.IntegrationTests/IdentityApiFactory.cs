@@ -24,6 +24,9 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
 
         var connectionString = _sql.GetConnectionString().Replace("Database=master", "Database=IdentityTests");
 
+        builder.UseSetting("ConnectionStrings:Default", connectionString);
+        builder.UseSetting("Identity:DemoData:Enabled", "false");
+
         builder.ConfigureAppConfiguration((_, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -34,7 +37,8 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
                 ["Identity:Jwt:SigningKey"] = "integration-tests-signing-key-must-be-long-enough-1234567890",
                 ["Identity:Admin:Email"] = AdminEmail,
                 ["Identity:Admin:DisplayName"] = "System Administrator",
-                ["Identity:Admin:Password"] = AdminPassword
+                ["Identity:Admin:Password"] = AdminPassword,
+                ["Identity:DemoData:Enabled"] = "false"
             });
         });
     }
