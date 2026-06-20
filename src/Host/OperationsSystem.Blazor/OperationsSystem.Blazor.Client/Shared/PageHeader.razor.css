@@ -5,6 +5,7 @@
     justify-content: space-between;
     gap: var(--os-space-4);
     margin-bottom: 0;
+    padding: 0px 10px;
 }
 
 .os-page-header h1 {

@@ -58,7 +58,7 @@
             <RadzenDataGrid @ref="grid" TItem="TItem" Data="@Data" Count="@Count" IsLoading="@IsLoading"
                             AllowPaging="true" PageSize="@PageSize" PageSizeChanged="@OnPageSizeChangedAsync"
                             PageSizeOptions="@PageSizeOptions" PageSizeText="@(PageSizeText ?? UiStrings.Common.ItemsPerPage)"
-                            PagerHorizontalAlign="HorizontalAlign.Justify"
+                            PagerHorizontalAlign="HorizontalAlign.Left"
                             PageNumbersCount="5" ShowPagingSummary="true" PagingSummaryFormat="@PagingSummaryFormat"
                             AllowSorting="@AllowSorting" LoadData="@LoadData" EmptyText="@(EmptyText ?? UiStrings.Common.NoData)"
                             SelectionMode="DataGridSelectionMode.Single" @bind-Value="@selection"
