@@ -1,19 +1,18 @@
 @*
-    Standard hero header for detail pages: a back link, an avatar/icon, the entity
-    title + subtitle, inline meta (badges), and an actions slot. Replaces the plain
-    PageHeader on /{entity}/{id} pages for a denser, more professional look.
+    Standard hero header for detail pages: an optional back link, an avatar/icon,
+    the entity title + subtitle, inline metadata (badges) and an actions slot.
+    A slim tone accent runs along the top edge; the avatar and eyebrow pick up the
+    same tone so each entity type reads consistently across the portal.
 *@
 
 <RadzenCard class="@($"os-hero os-hero--{Tone}")">
-    <div class="os-hero-band">
-        @if (OnBack.HasDelegate)
-        {
-            <button type="button" class="os-hero-back" @onclick="OnBack" aria-label="@UiStrings.Common.Back">
-                <RadzenIcon Icon="arrow_back" />
-                <span>@UiStrings.Common.Back</span>
-            </button>
-        }
-    </div>
+    @if (OnBack.HasDelegate)
+    {
+        <button type="button" class="os-hero-back" @onclick="OnBack" aria-label="@UiStrings.Common.Back">
+            <RadzenIcon Icon="arrow_back" />
+            <span>@UiStrings.Common.Back</span>
+        </button>
+    }
 
     <div class="os-hero-body">
         <span class="os-hero-avatar @($"os-hero-avatar--{Tone}")">

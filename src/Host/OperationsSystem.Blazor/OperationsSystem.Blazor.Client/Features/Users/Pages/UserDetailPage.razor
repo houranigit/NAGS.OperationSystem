@@ -17,6 +17,7 @@
     }
     else if (user is { } u)
     {
+        <RadzenStack Gap="1rem" class="os-detail-stack">
         <DetailHero Eyebrow="@UiStrings.Users.Title" Title="@u.DisplayName" Subtitle="@u.Email"
                     Initials="@Initials(u.DisplayName)" Tone="@HeroTone(u)" OnBack="@GoBack">
             <Metadata>
@@ -60,7 +61,6 @@
             </Actions>
         </DetailHero>
 
-        <RadzenStack Gap="1.5rem" class="os-detail-stack">
             <RadzenCard>
                 <h3 class="os-section-title">@UiStrings.Common.Details</h3>
                 <RadzenRow RowGap="1rem">

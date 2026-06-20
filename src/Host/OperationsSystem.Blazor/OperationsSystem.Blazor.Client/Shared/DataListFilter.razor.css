@@ -1,19 +1,8 @@
-/* A filter that visually matches the search box: pill-framed control with a
-   leading icon. The icon overlays the dropdown so the two read as one field. */
+/* A filter that visually matches the search box: a framed dropdown control. */
 .os-filter {
-    position: relative;
     display: inline-flex;
     align-items: center;
     min-width: 12rem;
-}
-
-.os-filter-icon {
-    position: absolute;
-    inset-inline-start: 0.7rem;
-    color: var(--os-color-text-subtle);
-    font-size: 1.15rem;
-    pointer-events: none;
-    z-index: 1;
 }
 
 .os-filter-select {
@@ -37,12 +26,6 @@
 .os-filter ::deep .rz-dropdown:focus-within {
     border-color: var(--os-color-primary);
     box-shadow: var(--os-ring);
-}
-
-/* Leave room for the leading icon. */
-.os-filter ::deep .rz-dropdown .rz-dropdown-label,
-.os-filter ::deep .rz-dropdown .rz-placeholder {
-    padding-inline-start: 2.4rem;
 }
 
 /* Placeholder reads as muted, selected value reads as normal text. */

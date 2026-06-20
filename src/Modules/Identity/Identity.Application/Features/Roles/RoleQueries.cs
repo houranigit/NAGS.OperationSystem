@@ -4,6 +4,7 @@ using BuildingBlocks.Domain.Results;
 using Identity.Application.Abstractions;
 using Identity.Application.Contracts;
 using Identity.Domain.Authorization;
+using Identity.Domain.Roles;
 using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Application.Features.Roles;
@@ -28,7 +29,7 @@ public sealed class GetPermissionCatalogQueryHandler
 
 // --- Paged list -----------------------------------------------------------
 
-public sealed record GetRolesQuery(int Page = 1, int PageSize = 20, string? Search = null)
+public sealed record GetRolesQuery(int Page = 1, int PageSize = 20, string? Search = null, string? Sort = null)
     : IQuery<PagedResult<RoleListItemDto>>;
 
 public sealed class GetRolesQueryHandler(IIdentityDbContext db)
@@ -49,8 +50,7 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
 
         var total = await query.LongCountAsync(cancellationToken);
 
-        var roles = await query
-            .OrderBy(r => r.Name)
+        var roles = await ApplySort(query, db, request.Sort)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -71,6 +71,22 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
             userCounts.GetValueOrDefault(r.Id))).ToList();
 
         return new PagedResult<RoleListItemDto>(items, page, pageSize, total);
+    }
+
+    private static IQueryable<Role> ApplySort(IQueryable<Role> query, IIdentityDbContext db, string? sort)
+    {
+        if (SortSpec.Parse(sort) is not { } spec)
+            return query.OrderBy(r => r.Name);
+
+        return spec.Field switch
+        {
+            "name" => spec.Descending ? query.OrderByDescending(r => r.Name) : query.OrderBy(r => r.Name),
+            "description" => spec.Descending ? query.OrderByDescending(r => r.Description) : query.OrderBy(r => r.Description),
+            "usercount" => spec.Descending
+                ? query.OrderByDescending(r => db.Users.Count(u => u.RoleId == r.Id))
+                : query.OrderBy(r => db.Users.Count(u => u.RoleId == r.Id)),
+            _ => query.OrderBy(r => r.Name)
+        };
     }
 }
 

@@ -10,7 +10,10 @@
     display: flex;
     flex-direction: column;
     padding: 0;
-    overflow: hidden;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    overflow: visible;
 }
 
 /* --- Toolbar ------------------------------------------------------------- */
@@ -20,9 +23,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--os-space-3);
-    padding: var(--os-space-4) var(--os-space-5);
-    border-bottom: 1px solid var(--os-color-border);
-    background: var(--os-color-surface);
+    margin-bottom: 10px;
     flex-shrink: 0;
 }
 
@@ -40,31 +41,23 @@
     gap: var(--os-space-3);
 }
 
-/* --- Search box ---------------------------------------------------------- */
+/* --- Search box (RadzenFormField with a leading search icon) ------------- */
 .os-search {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
+    width: 22rem;
+    max-width: 100%;
 }
 
-.os-search-icon {
-    position: absolute;
-    inset-inline-start: 0.7rem;
+/* Leading icon reads as muted, matching the placeholder. */
+.os-search ::deep .rz-form-field-start .rz-icon {
     color: var(--os-color-text-subtle);
-    font-size: 1.15rem;
-    pointer-events: none;
+    font-size: 1.2rem;
 }
 
 .os-search ::deep .rz-textbox {
-    width: 20rem;
-    max-width: 100%;
-    padding-inline-start: 2.4rem;
-    padding-inline-end: 2.1rem;
+    width: 100%;
 }
 
 .os-search-clear {
-    position: absolute;
-    inset-inline-end: 0.4rem;
     display: inline-grid;
     place-items: center;
     width: 1.5rem;
@@ -116,10 +109,13 @@
     padding: var(--os-space-5);
 }
 
-/* Strip the grid's own border/radius so it merges into the card frame. */
+/* The grid is the visible "card": rounded, bordered, and clips its own corners. */
 .os-list-grid ::deep .rz-data-grid {
-    border: none;
-    border-radius: 0;
+    border: 1px solid var(--os-color-border);
+    border-radius: 1rem;
+    overflow: hidden;
+    background: var(--os-color-surface);
+    box-shadow: var(--os-shadow-sm);
 }
 
 /* Header polish */

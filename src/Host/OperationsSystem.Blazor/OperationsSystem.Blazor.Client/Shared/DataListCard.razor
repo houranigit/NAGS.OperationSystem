@@ -14,19 +14,25 @@
         <div class="os-list-toolbar-filters">
             @if (ShowSearch)
             {
-                <div class="os-search">
-                    <RadzenIcon Icon="search" class="os-search-icon" />
-                    <RadzenTextBox Value="@SearchValue"
-                                   Change="@OnSearchChangedAsync"
-                                   Placeholder="@(SearchPlaceholder ?? UiStrings.Common.Search)"
-                                   class="os-search-input" aria-label="@(SearchPlaceholder ?? UiStrings.Common.Search)" />
-                    @if (!string.IsNullOrEmpty(SearchValue))
-                    {
-                        <button type="button" class="os-search-clear" aria-label="@UiStrings.Common.Cancel" @onclick="ClearSearchAsync">
-                            <RadzenIcon Icon="close" />
-                        </button>
-                    }
-                </div>
+                <RadzenFormField Variant="Variant.Outlined" class="os-search">
+                    <Start>
+                        <RadzenIcon Icon="search" />
+                    </Start>
+                    <ChildContent>
+                        <RadzenTextBox Value="@SearchValue"
+                                       Change="@OnSearchChangedAsync"
+                                       Placeholder="@(SearchPlaceholder ?? UiStrings.Common.Search)"
+                                       aria-label="@(SearchPlaceholder ?? UiStrings.Common.Search)" />
+                    </ChildContent>
+                    <End>
+                        @if (!string.IsNullOrEmpty(SearchValue))
+                        {
+                            <button type="button" class="os-search-clear" aria-label="@UiStrings.Common.Cancel" @onclick="ClearSearchAsync">
+                                <RadzenIcon Icon="close" />
+                            </button>
+                        }
+                    </End>
+                </RadzenFormField>
             }
             @Filters
         </div>

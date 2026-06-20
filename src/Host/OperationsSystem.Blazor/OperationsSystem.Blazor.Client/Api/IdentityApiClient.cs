@@ -24,6 +24,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
         string? search,
         string? status,
         Guid? roleId = null,
+        string? sort = null,
         CancellationToken ct = default)
     {
         var query = new QueryBuilder()
@@ -32,6 +33,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
             .Add("search", search)
             .Add("status", status)
             .Add("roleId", roleId?.ToString())
+            .Add("sort", sort)
             .Build();
         return api.GetAsync<PagedResult<UserListItem>>($"/identity/users{query}", ct);
     }
@@ -66,12 +68,14 @@ public sealed class IdentityApiClient(BrowserApiClient api)
         int page,
         int pageSize,
         string? search,
+        string? sort = null,
         CancellationToken ct = default)
     {
         var query = new QueryBuilder()
             .Add("page", page)
             .Add("pageSize", pageSize)
             .Add("search", search)
+            .Add("sort", sort)
             .Build();
         return api.GetAsync<PagedResult<RoleListItem>>($"/identity/roles{query}", ct);
     }

@@ -50,7 +50,7 @@
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="RoleListItem" Property="PermissionCount" Title="@UiStrings.Roles.PermissionCount" Width="140px" />
+                <RadzenDataGridColumn TItem="RoleListItem" Property="PermissionCount" Title="@UiStrings.Roles.PermissionCount" Sortable="false" Width="140px" />
                 <RadzenDataGridColumn TItem="RoleListItem" Property="UserCount" Title="@UiStrings.Roles.UserCount" Width="120px" />
             </Columns>
             <RowActions Context="role">
@@ -74,6 +74,7 @@
     private bool loadError;
 
     private string searchTerm = string.Empty;
+    private string? currentSort;
 
     protected override async Task OnInitializedAsync()
     {
@@ -91,6 +92,7 @@
     {
         currentPageSize = args.Top ?? currentPageSize;
         currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
         await FetchAsync();
     }
 
@@ -103,7 +105,7 @@
         try
         {
             var result = await Identity.GetRolesAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm);
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, currentSort);
             roles = result.Items;
             totalCount = (int)result.TotalCount;
         }

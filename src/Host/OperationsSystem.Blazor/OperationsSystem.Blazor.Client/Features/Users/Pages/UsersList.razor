@@ -26,9 +26,9 @@
                       SearchPlaceholder="@UiStrings.Users.SearchPlaceholder"
                       CountLabel="@UiStrings.Users.CountLabel" EmptyText="@UiStrings.Users.Empty">
             <Filters>
-                <DataListFilter TValue="string" Icon="tune" Placeholder="@UiStrings.Users.FilterByStatus"
+                <DataListFilter TValue="string" Placeholder="@UiStrings.Users.FilterByStatus"
                                 Data="@statusOptions" Value="@statusFilter" ValueChanged="@OnStatusFilterChangedAsync" />
-                <DataListFilter TValue="Guid?" Icon="badge" Placeholder="@UiStrings.Users.FilterByRole"
+                <DataListFilter TValue="Guid?" Placeholder="@UiStrings.Users.FilterByRole"
                                 Data="@roleOptions" Value="@roleFilter" ValueChanged="@OnRoleFilterChangedAsync" />
             </Filters>
             <Columns>
@@ -85,6 +85,7 @@
     private string searchTerm = string.Empty;
     private string? statusFilter;
     private Guid? roleFilter;
+    private string? currentSort;
 
     private readonly List<StatusOption> statusOptions =
     [
@@ -137,6 +138,7 @@
     {
         currentPageSize = args.Top ?? currentPageSize;
         currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
         await FetchAsync();
     }
 
@@ -149,7 +151,7 @@
         try
         {
             var result = await Identity.GetUsersAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, statusFilter, roleFilter);
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, statusFilter, roleFilter, currentSort);
             users = result.Items;
             totalCount = (int)result.TotalCount;
         }

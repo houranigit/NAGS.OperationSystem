@@ -189,7 +189,7 @@ a {
 .os-list-page {
     display: flex;
     flex-direction: column;
-    gap: var(--os-space-5);
+    gap: var(--os-space-4);
 }
 
 .os-list-page > .os-page-header {

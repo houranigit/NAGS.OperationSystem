@@ -4,7 +4,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: var(--os-space-4);
-    margin-bottom: var(--os-space-5);
+    margin-bottom: 0;
 }
 
 .os-page-header h1 {
