@@ -1,11 +1,14 @@
 .os-shell {
     --os-side: var(--os-sidebar-width);
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
     display: grid;
     grid-template-columns: var(--os-side) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     background: var(--os-color-bg);
     color: var(--os-color-text);
     transition: grid-template-columns var(--os-transition);
+    overflow: hidden;
 }
 
 /* --- Sidebar ------------------------------------------------------------- */
@@ -165,6 +168,7 @@
 /* --- Main column --------------------------------------------------------- */
 .os-main {
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
 }
@@ -437,12 +441,21 @@
 
 .os-content {
     flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     padding: var(--os-space-6) var(--os-space-5);
+    display: flex;
+    flex-direction: column;
 }
 
 .os-content-inner {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
     max-width: var(--os-content-max);
     margin-inline: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 /* --- Off-canvas scrim (mobile only) ------------------------------------- */

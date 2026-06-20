@@ -17,10 +17,17 @@
     }
     else if (role is { } r)
     {
-        <PageHeader Eyebrow="@UiStrings.Roles.Title" Title="@r.Name" Description="@r.Description">
+        <RadzenStack Gap="1.5rem" class="os-detail-stack">
+        <DetailHero Eyebrow="@UiStrings.Roles.Title" Title="@r.Name" Subtitle="@HeroSubtitle(r)"
+                    Icon="shield" Tone="@HeroTone(r)" OnBack="@GoBack">
+            <Metadata>
+                @if (r.IsSystem)
+                {
+                    <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
+                }
+                <span class="os-pill os-pill--info">@selected.Count @UiStrings.Roles.Permissions.ToLowerInvariant()</span>
+            </Metadata>
             <Actions>
-                <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
-                              Click="@(() => Navigation.NavigateTo("/roles"))" />
                 @if (!r.IsSystem)
                 {
                     <AuthorizeView Context="ctx">
@@ -35,7 +42,7 @@
                     </AuthorizeView>
                 }
             </Actions>
-        </PageHeader>
+        </DetailHero>
 
         @if (r.IsSystem)
         {
@@ -81,6 +88,7 @@
                 </RadzenStack>
             </AuthorizeView>
         </RadzenCard>
+        </RadzenStack>
     }
 </RequirePermission>
 
@@ -189,6 +197,13 @@
             Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
         }
     }
+
+    private void GoBack() => Navigation.NavigateTo("/roles");
+
+    private static string HeroTone(RoleDetail r) => r.IsSystem ? "neutral" : "primary";
+
+    private static string HeroSubtitle(RoleDetail r) =>
+        string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description;
 
     private static string ActionLabel(string permission)
     {

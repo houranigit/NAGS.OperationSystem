@@ -23,6 +23,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
         int pageSize,
         string? search,
         string? status,
+        Guid? roleId = null,
         CancellationToken ct = default)
     {
         var query = new QueryBuilder()
@@ -30,6 +31,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
             .Add("pageSize", pageSize)
             .Add("search", search)
             .Add("status", status)
+            .Add("roleId", roleId?.ToString())
             .Build();
         return api.GetAsync<PagedResult<UserListItem>>($"/identity/users{query}", ct);
     }

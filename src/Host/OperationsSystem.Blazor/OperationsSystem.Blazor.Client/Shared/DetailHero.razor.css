@@ -1,0 +1,84 @@
+.os-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-4);
+}
+
+.os-hero-main {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-4);
+    min-width: 0;
+}
+
+.os-hero-back {
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+    color: var(--os-color-text-muted);
+    cursor: pointer;
+    transition: background var(--os-transition), color var(--os-transition), border-color var(--os-transition);
+}
+
+.os-hero-back:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-text);
+    border-color: var(--os-color-border-strong);
+}
+
+.os-hero-avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 3.25rem;
+    height: 3.25rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-lg);
+    font-size: var(--os-text-lg);
+    font-weight: 700;
+}
+
+.os-hero-avatar .rz-icon {
+    font-size: 1.6rem;
+}
+
+.os-hero-avatar--primary { background: var(--os-color-primary-soft); color: var(--os-color-primary-strong); }
+.os-hero-avatar--success { background: var(--os-color-success-bg); color: var(--os-color-success); }
+.os-hero-avatar--warning { background: var(--os-color-warning-bg); color: var(--os-color-warning); }
+.os-hero-avatar--danger { background: var(--os-color-danger-bg); color: var(--os-color-danger); }
+.os-hero-avatar--neutral { background: var(--os-color-neutral-bg); color: var(--os-color-text-muted); }
+
+.os-hero-text {
+    min-width: 0;
+}
+
+.os-hero-title {
+    margin: 0;
+    font-size: var(--os-text-2xl);
+    line-height: 1.2;
+}
+
+.os-hero-subtitle {
+    margin: var(--os-space-1) 0 0;
+}
+
+.os-hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-top: var(--os-space-3);
+}
+
+.os-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+}

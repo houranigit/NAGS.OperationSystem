@@ -1,0 +1,69 @@
+@*
+    Standard hero header for detail pages: a back link, an avatar/icon, the entity
+    title + subtitle, inline meta (badges), and an actions slot. Replaces the plain
+    PageHeader on /{entity}/{id} pages for a denser, more professional look.
+*@
+
+<RadzenCard class="os-hero">
+    <div class="os-hero-main">
+        @if (OnBack.HasDelegate)
+        {
+            <button type="button" class="os-hero-back" @onclick="OnBack" aria-label="@UiStrings.Common.Back">
+                <RadzenIcon Icon="arrow_back" />
+            </button>
+        }
+
+        <span class="os-hero-avatar @($"os-hero-avatar--{Tone}")">
+            @if (!string.IsNullOrWhiteSpace(Icon))
+            {
+                <RadzenIcon Icon="@Icon" />
+            }
+            else
+            {
+                @Initials
+            }
+        </span>
+
+        <div class="os-hero-text">
+            @if (!string.IsNullOrWhiteSpace(Eyebrow))
+            {
+                <p class="os-eyebrow">@Eyebrow</p>
+            }
+            <h1 class="os-hero-title">@Title</h1>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <p class="os-muted os-hero-subtitle">@Subtitle</p>
+            }
+            @if (Metadata is not null)
+            {
+                <div class="os-hero-meta">@Metadata</div>
+            }
+        </div>
+    </div>
+
+    @if (Actions is not null)
+    {
+        <div class="os-hero-actions">@Actions</div>
+    }
+</RadzenCard>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? Eyebrow { get; set; }
+
+    /// <summary>Material icon name for the avatar. When empty, <see cref="Initials"/> is shown.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Initials shown in the avatar when no icon is set.</summary>
+    [Parameter] public string? Initials { get; set; }
+
+    /// <summary>Avatar accent tone: primary, success, warning, danger, neutral.</summary>
+    [Parameter] public string Tone { get; set; } = "primary";
+
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    /// <summary>Inline badges/pills shown under the title.</summary>
+    [Parameter] public RenderFragment? Metadata { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+}

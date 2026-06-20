@@ -8,6 +8,30 @@ window.operationsSystem.dom = {
   },
 };
 
+window.operationsSystem.storage = {
+  get(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Storage may be unavailable (private mode/quota); persistence is best-effort.
+    }
+  },
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Ignore — see set().
+    }
+  },
+};
+
 window.operationsSystem.api = {
   async request(method, path, body, accessToken, language) {
     const headers = {

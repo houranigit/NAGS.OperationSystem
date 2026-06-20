@@ -2,66 +2,99 @@
 @inject IdentityApiClient Identity
 @inject DialogService DialogService
 @inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
 
 <PageTitle>@UiStrings.Roles.Title</PageTitle>
 
 <RequirePermission Permission="@IdentityPermissions.RolesView">
-    <PageHeader Title="@UiStrings.Roles.Title" Description="@UiStrings.Roles.Description">
-        <Actions>
-            <AuthorizeView Context="create">
-                @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesCreate))
-                {
-                    <RadzenButton Text="@UiStrings.Roles.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
-                }
-            </AuthorizeView>
-        </Actions>
-    </PageHeader>
+    <div class="os-list-page">
+        <PageHeader Title="@UiStrings.Roles.Title" Description="@UiStrings.Roles.Description">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesCreate))
+                    {
+                        <RadzenButton Text="@UiStrings.Roles.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
 
-    <RadzenCard>
-        @if (isLoading)
-        {
-            <LoadingCard />
-        }
-        else if (loadError)
-        {
-            <ErrorState OnRetry="@LoadAsync" />
-        }
-        else if (roles.Count == 0)
-        {
-            <EmptyState Title="@UiStrings.Roles.Empty" Icon="shield" />
-        }
-        else
-        {
-            <RadzenDataGrid Data="@roles" TItem="RoleListItem" AllowPaging="true" PageSize="20"
-                            PagerHorizontalAlign="HorizontalAlign.Right"
-                            RowClick="@(args => OpenRole(args.Data!.Id))" class="os-clickable-grid">
-                <Columns>
-                    <RadzenDataGridColumn TItem="RoleListItem" Property="Name" Title="@UiStrings.Roles.Name" />
-                    <RadzenDataGridColumn TItem="RoleListItem" Property="Description" Title="@UiStrings.Roles.RoleDescription" />
-                    <RadzenDataGridColumn TItem="RoleListItem" Title="@UiStrings.Roles.System" Width="110px" Sortable="false">
-                        <Template Context="role">
+        <DataListCard @ref="list" TItem="RoleListItem" Data="@roles" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="@UiStrings.Roles.SearchPlaceholder"
+                      CountLabel="@UiStrings.Roles.CountLabel" EmptyText="@UiStrings.Roles.Empty">
+            <Columns>
+                <RadzenDataGridColumn TItem="RoleListItem" Property="Name" Title="@UiStrings.Roles.Name">
+                    <Template Context="role">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="shield" /></span>
+                            <strong>@role.Name</strong>
                             @if (role.IsSystem)
                             {
                                 <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
                             }
-                        </Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="RoleListItem" Property="PermissionCount" Title="@UiStrings.Roles.PermissionCount" Width="130px" />
-                    <RadzenDataGridColumn TItem="RoleListItem" Property="UserCount" Title="@UiStrings.Roles.UserCount" Width="110px" />
-                </Columns>
-            </RadzenDataGrid>
-        }
-    </RadzenCard>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="RoleListItem" Property="Description" Title="@UiStrings.Roles.RoleDescription" Sortable="false">
+                    <Template Context="role">
+                        @if (string.IsNullOrWhiteSpace(role.Description))
+                        {
+                            <span class="os-muted">@UiStrings.Roles.NoDescription</span>
+                        }
+                        else
+                        {
+                            @role.Description
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="RoleListItem" Property="PermissionCount" Title="@UiStrings.Roles.PermissionCount" Width="140px" />
+                <RadzenDataGridColumn TItem="RoleListItem" Property="UserCount" Title="@UiStrings.Roles.UserCount" Width="120px" />
+            </Columns>
+            <RowActions Context="role">
+                <RadzenButton Icon="arrow_forward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Variant="Variant.Flat"
+                              Click="@(() => OpenRole(role.Id))" title="@UiStrings.Common.Open" />
+            </RowActions>
+        </DataListCard>
+    </div>
 </RequirePermission>
 
 @code {
+    private const string GridKey = "roles";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<RoleListItem>? list;
     private IReadOnlyList<RoleListItem> roles = [];
-    private bool isLoading = true;
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
     private bool loadError;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private string searchTerm = string.Empty;
 
-    private async Task LoadAsync()
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
     {
         isLoading = true;
         loadError = false;
@@ -69,8 +102,10 @@
 
         try
         {
-            var result = await Identity.GetRolesAsync(1, 100, null);
+            var result = await Identity.GetRolesAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm);
             roles = result.Items;
+            totalCount = (int)result.TotalCount;
         }
         catch (ApiException)
         {
@@ -83,11 +118,20 @@
         }
     }
 
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
     private async Task OpenCreateAsync()
     {
         var result = await DialogService.OpenAsync<RoleFormDialog>(UiStrings.Roles.CreateTitle);
         if (result is true)
-            await LoadAsync();
+            await ReloadAsync();
     }
 
     private void OpenRole(Guid id) => Navigation.NavigateTo($"/roles/{id}");

@@ -1,0 +1,174 @@
+/* ==========================================================================
+   DataListCard — the standard list shell.
+   Fills its host height; only the grid rows scroll, header + pager stay fixed.
+   Radzen renders its own scrollable layout once the grid has a height, so the
+   card just needs to be a flex column with a definite height.
+   ========================================================================== */
+
+.os-list-card {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* --- Toolbar ------------------------------------------------------------- */
+.os-list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-3);
+    padding: var(--os-space-4) var(--os-space-5);
+    border-bottom: 1px solid var(--os-color-border);
+    background: var(--os-color-surface);
+    flex-shrink: 0;
+}
+
+.os-list-toolbar-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-3);
+    min-width: 0;
+}
+
+.os-list-toolbar-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+}
+
+/* --- Search box ---------------------------------------------------------- */
+.os-search {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.os-search-icon {
+    position: absolute;
+    inset-inline-start: 0.7rem;
+    color: var(--os-color-text-subtle);
+    font-size: 1.15rem;
+    pointer-events: none;
+}
+
+.os-search ::deep .rz-textbox {
+    width: 20rem;
+    max-width: 100%;
+    padding-inline-start: 2.4rem;
+    padding-inline-end: 2.1rem;
+}
+
+.os-search-clear {
+    position: absolute;
+    inset-inline-end: 0.4rem;
+    display: inline-grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: var(--os-radius-pill);
+    background: transparent;
+    color: var(--os-color-text-subtle);
+    cursor: pointer;
+    transition: background var(--os-transition), color var(--os-transition);
+}
+
+.os-search-clear:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-text);
+}
+
+.os-search-clear .rz-icon {
+    font-size: 1rem;
+}
+
+/* --- Count badge --------------------------------------------------------- */
+.os-count-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface-muted);
+    border: 1px solid var(--os-color-border);
+    font-size: var(--os-text-sm);
+    color: var(--os-color-text-muted);
+    white-space: nowrap;
+}
+
+.os-count-badge strong {
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+    font-weight: 700;
+}
+
+/* --- Grid region --------------------------------------------------------- */
+.os-list-grid {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.os-list-state {
+    padding: var(--os-space-5);
+}
+
+/* Strip the grid's own border/radius so it merges into the card frame, and make
+   the grid a flex column so its data body scrolls while header + pager stay put. */
+.os-list-grid ::deep .rz-data-grid {
+    border: none;
+    border-radius: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The scrollable rows region: takes the remaining height, scrolls internally. */
+.os-list-grid ::deep .rz-data-grid-data {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* Keep the header row pinned above the scrolling body. */
+.os-list-grid ::deep .rz-data-grid-data thead.rz-grid-table-header,
+.os-list-grid ::deep .rz-grid-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--os-color-surface);
+}
+
+/* Header polish */
+.os-list-grid ::deep .rz-column-title-content {
+    font-weight: 700;
+    font-size: var(--os-text-xs);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--os-color-text-muted);
+}
+
+/* Row hover */
+.os-list-grid ::deep .rz-data-row:hover > td {
+    background: var(--os-color-surface-hover);
+}
+
+.os-row-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--os-space-1);
+}
+
+/* Pager always visible at the bottom */
+.os-list-grid ::deep .rz-pager {
+    flex-shrink: 0;
+    border-top: 1px solid var(--os-color-border);
+    background: var(--os-color-surface);
+}

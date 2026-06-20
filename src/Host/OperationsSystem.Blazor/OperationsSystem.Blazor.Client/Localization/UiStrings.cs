@@ -26,13 +26,18 @@ public static class UiStrings
         public const string Confirm = "Confirm";
         public const string Search = "Search";
         public const string Actions = "Actions";
+        public const string Open = "Open";
+        public const string Manage = "Manage";
         public const string Back = "Back";
         public const string Yes = "Yes";
         public const string No = "No";
         public const string NoData = "No data to display.";
+        public const string ItemsPerPage = "Rows per page";
         public const string SomethingWentWrong = "Something went wrong. Please try again.";
         public const string SignOut = "Sign out";
         public const string Refresh = "Refresh";
+        public const string Details = "Details";
+        public const string Overview = "Overview";
     }
 
     public static class Auth
@@ -113,6 +118,8 @@ public static class UiStrings
         public const string Description = "Invite, edit, and manage portal accounts.";
         public const string Invite = "Invite user";
         public const string Empty = "No users match your filters.";
+        public const string CountLabel = "users";
+        public const string SearchPlaceholder = "Search by name or email";
         public const string DisplayName = "Name";
         public const string Email = "Email";
         public const string Status = "Status";
@@ -120,6 +127,7 @@ public static class UiStrings
         public const string LastLogin = "Last login";
         public const string Created = "Created";
         public const string AllStatuses = "All statuses";
+        public const string AllRoles = "All roles";
         public const string Lock = "Lock";
         public const string Unlock = "Unlock";
         public const string Deactivate = "Deactivate";
@@ -142,12 +150,15 @@ public static class UiStrings
         public const string Title = "Roles";
         public const string Description = "Define roles and the permissions they grant.";
         public const string Create = "New role";
-        public const string Empty = "No roles yet.";
+        public const string Empty = "No roles match your search.";
+        public const string CountLabel = "roles";
+        public const string SearchPlaceholder = "Search roles";
         public const string Name = "Name";
         public const string RoleDescription = "Description";
         public const string System = "System";
         public const string PermissionCount = "Permissions";
         public const string UserCount = "Users";
+        public const string NoDescription = "No description";
         public const string CreateTitle = "Create role";
         public const string EditTitle = "Edit role";
         public const string Permissions = "Permissions";

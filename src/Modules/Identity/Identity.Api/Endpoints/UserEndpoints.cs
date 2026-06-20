@@ -17,9 +17,9 @@ internal static class UserEndpoints
         var users = group.MapGroup("/users").WithTags("Identity.Users");
 
         users.MapGet("/", async (ISender sender, CancellationToken ct,
-            int page = 1, int pageSize = 20, string? search = null, UserStatus? status = null) =>
+            int page = 1, int pageSize = 20, string? search = null, UserStatus? status = null, Guid? roleId = null) =>
         {
-            var result = await sender.Send(new GetUsersQuery(page, pageSize, search, status), ct);
+            var result = await sender.Send(new GetUsersQuery(page, pageSize, search, status, roleId), ct);
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Users.View);
 

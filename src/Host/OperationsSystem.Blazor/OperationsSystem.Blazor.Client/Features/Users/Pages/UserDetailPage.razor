@@ -17,10 +17,20 @@
     }
     else if (user is { } u)
     {
-        <PageHeader Eyebrow="@UiStrings.Users.Title" Title="@u.DisplayName" Description="@u.Email">
+        <DetailHero Eyebrow="@UiStrings.Users.Title" Title="@u.DisplayName" Subtitle="@u.Email"
+                    Initials="@Initials(u.DisplayName)" Tone="@HeroTone(u)" OnBack="@GoBack">
+            <Metadata>
+                @if (u.IsLockedOut)
+                {
+                    <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
+                }
+                else
+                {
+                    <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
+                }
+                <span class="os-pill os-pill--info">@u.RoleName</span>
+            </Metadata>
             <Actions>
-                <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
-                              Click="@(() => Navigation.NavigateTo("/users"))" />
                 <AuthorizeView Context="ctx">
                     @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersUpdate))
                     {
@@ -48,10 +58,11 @@
                     }
                 </AuthorizeView>
             </Actions>
-        </PageHeader>
+        </DetailHero>
 
-        <RadzenStack Gap="1.5rem">
+        <RadzenStack Gap="1.5rem" class="os-detail-stack">
             <RadzenCard>
+                <h3 class="os-section-title">@UiStrings.Common.Details</h3>
                 <RadzenRow RowGap="1rem">
                     <RadzenColumn Size="12" SizeMD="6">
                         <DetailField Label="@UiStrings.Users.Status">
@@ -85,7 +96,7 @@
                     <RadzenCard>
                         <RadzenStack Gap="1rem">
                             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
-                                <h3>@UiStrings.Sessions.Title</h3>
+                                <h3 class="os-section-title">@UiStrings.Sessions.Title</h3>
                                 @if (sessionCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.SessionsRevoke))
                                 {
                                     <RadzenButton Text="@UiStrings.Sessions.RevokeAll" ButtonStyle="ButtonStyle.Light" Icon="block"
@@ -296,6 +307,10 @@
         await DialogService.Confirm(message, UiStrings.Common.Confirm,
             new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
 
+    private void GoBack() => Navigation.NavigateTo("/users");
+
+    private static string HeroTone(UserDetail u) => u.IsLockedOut ? "danger" : "primary";
+
     private static string StatusTone(string status) => status switch
     {
         "Active" => "success",
@@ -303,4 +318,18 @@
         "Deactivated" => "neutral",
         _ => "neutral"
     };
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "?";
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
+        };
+    }
 }

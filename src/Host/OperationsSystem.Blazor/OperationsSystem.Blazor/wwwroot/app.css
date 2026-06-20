@@ -45,6 +45,8 @@
 
     --rz-dialog-border-radius: var(--os-radius-lg);
     --rz-grid-header-background-color: var(--os-color-surface-muted);
+    --rz-grid-selected-background-color: var(--os-color-primary-soft);
+    --rz-grid-selected-color: var(--os-color-text);
 }
 
 /* --- Base ---------------------------------------------------------------- */
@@ -132,6 +134,12 @@ a {
     font-size: var(--os-text-2xl);
 }
 
+/* Section heading inside detail/form cards */
+.os-section-title {
+    margin: 0 0 var(--os-space-4);
+    font-size: var(--os-text-lg);
+}
+
 /* Responsive auto-fit card grid (no overflow at any width) */
 .os-cards-grid {
     display: grid;
@@ -173,14 +181,29 @@ a {
     transition: box-shadow var(--os-transition), border-color var(--os-transition);
 }
 
-/* DataGrid polish */
-.os-clickable-grid .rz-data-row {
-    cursor: pointer;
-    transition: background var(--os-transition);
+/* --- Full-height list page layout --------------------------------------- */
+/* A page that fills the content area: the page header is pinned and the grid
+   fills the remaining space so its pager is always visible (only the rows
+   scroll). Relies on MainLayout's content region being a definite-height flex
+   column. Pair with the DataListCard component. */
+.os-list-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-5);
+    flex: 1;
+    min-height: 0;
 }
 
-.os-clickable-grid .rz-data-row:hover td {
-    background: var(--os-color-surface-hover);
+.os-list-page > .os-page-header {
+    margin-bottom: 0;
+    flex-shrink: 0;
+}
+
+/* The DataListCard (or any direct content) fills the remaining height. */
+.os-list-page > .os-list-card,
+.os-list-page > .os-list-fill {
+    flex: 1;
+    min-height: 0;
 }
 
 /* --- Blazor framework error UI ------------------------------------------ */

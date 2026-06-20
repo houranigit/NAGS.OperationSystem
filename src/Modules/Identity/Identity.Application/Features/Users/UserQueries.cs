@@ -10,7 +10,7 @@ namespace Identity.Application.Features.Users;
 
 // --- Paged list -----------------------------------------------------------
 
-public sealed record GetUsersQuery(int Page = 1, int PageSize = 20, string? Search = null, UserStatus? Status = null)
+public sealed record GetUsersQuery(int Page = 1, int PageSize = 20, string? Search = null, UserStatus? Status = null, Guid? RoleId = null)
     : IQuery<PagedResult<UserListItemDto>>;
 
 public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider timeProvider)
@@ -26,6 +26,9 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
 
         if (request.Status is { } status)
             query = query.Where(u => u.Status == status);
+
+        if (request.RoleId is { } roleId)
+            query = query.Where(u => u.RoleId == roleId);
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {

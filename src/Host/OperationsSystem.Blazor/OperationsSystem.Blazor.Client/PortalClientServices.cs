@@ -20,6 +20,7 @@ public static class PortalClientServices
 
         services.AddScoped<AuthTokenStore>();
         services.AddScoped<LocaleState>();
+        services.AddScoped<GridPreferences>();
         services.AddScoped<BrowserApiClient>();
         services.AddScoped<IdentityApiClient>();
         services.AddScoped<AuthSession>();

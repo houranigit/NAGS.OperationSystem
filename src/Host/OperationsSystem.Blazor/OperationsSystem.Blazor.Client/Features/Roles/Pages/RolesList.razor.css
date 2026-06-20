@@ -1,3 +1,25 @@
-.os-clickable-grid ::deep .rz-data-row {
-    cursor: pointer;
+.os-role-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-width: 0;
+}
+
+.os-role-cell-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.os-role-cell-icon .rz-icon {
+    font-size: 1.15rem;
+}
+
+.os-role-cell strong {
+    font-weight: 600;
 }

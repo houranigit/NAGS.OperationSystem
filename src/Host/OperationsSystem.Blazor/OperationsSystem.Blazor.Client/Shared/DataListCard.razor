@@ -1,0 +1,166 @@
+@typeparam TItem where TItem : notnull
+@using Radzen
+
+@*
+    Reusable list shell for every grid page in the portal.
+    - Fills the available height so the pager is always visible (only the rows scroll).
+    - Toolbar: search box (left) + filter slot (left) + result count (right) + extra actions slot.
+    - Server-side paging via LoadData/Count.
+    - Row click highlights only (single selection); navigation/actions live in the pinned last column.
+*@
+
+<RadzenCard class="os-list-card">
+    <div class="os-list-toolbar">
+        <div class="os-list-toolbar-filters">
+            @if (ShowSearch)
+            {
+                <div class="os-search">
+                    <RadzenIcon Icon="search" class="os-search-icon" />
+                    <RadzenTextBox Value="@SearchValue"
+                                   Change="@OnSearchChangedAsync"
+                                   Placeholder="@(SearchPlaceholder ?? UiStrings.Common.Search)"
+                                   class="os-search-input" aria-label="@(SearchPlaceholder ?? UiStrings.Common.Search)" />
+                    @if (!string.IsNullOrEmpty(SearchValue))
+                    {
+                        <button type="button" class="os-search-clear" aria-label="@UiStrings.Common.Cancel" @onclick="ClearSearchAsync">
+                            <RadzenIcon Icon="close" />
+                        </button>
+                    }
+                </div>
+            }
+            @Filters
+        </div>
+
+        <div class="os-list-toolbar-meta">
+            @Toolbar
+            <span class="os-count-badge" aria-live="polite">
+                <strong>@Count.ToString("N0")</strong>
+                <span>@CountLabel</span>
+            </span>
+        </div>
+    </div>
+
+    @if (HasError)
+    {
+        <div class="os-list-state">
+            <ErrorState Message="@(ErrorMessage ?? UiStrings.Errors.LoadFailed)" OnRetry="@OnRetry" />
+        </div>
+    }
+    else
+    {
+        <div class="os-list-grid">
+            <RadzenDataGrid @ref="grid" TItem="TItem" Data="@Data" Count="@Count" IsLoading="@IsLoading"
+                            AllowPaging="true" PageSize="@PageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                            PageSizeOptions="@PageSizeOptions" PageSizeText="@(PageSizeText ?? UiStrings.Common.ItemsPerPage)"
+                            PagerHorizontalAlign="HorizontalAlign.Justify"
+                            PageNumbersCount="5" ShowPagingSummary="true" PagingSummaryFormat="@PagingSummaryFormat"
+                            AllowSorting="@AllowSorting" LoadData="@LoadData" EmptyText="@(EmptyText ?? UiStrings.Common.NoData)"
+                            SelectionMode="DataGridSelectionMode.Single" @bind-Value="@selection"
+                            GridLines="DataGridGridLines.Horizontal" Style="height: 100%;">
+                <Columns>
+                    @Columns
+                    @if (RowActions is not null)
+                    {
+                        <RadzenDataGridColumn TItem="TItem" Title="@(ActionsTitle ?? UiStrings.Common.Actions)"
+                                              Sortable="false" Filterable="false" Resizable="false" Reorderable="false"
+                                              Frozen="true" FrozenPosition="FrozenColumnPosition.Right"
+                                              Width="@ActionsWidth" TextAlign="TextAlign.Center" HeaderCssClass="os-actions-header">
+                            <Template Context="item">
+                                <div class="os-row-actions" @onclick:stopPropagation="true">
+                                    @RowActions(item)
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                    }
+                </Columns>
+            </RadzenDataGrid>
+        </div>
+    }
+</RadzenCard>
+
+@code {
+    private RadzenDataGrid<TItem>? grid;
+    private IList<TItem> selection = [];
+
+    /// <summary>Column definitions (RadzenDataGridColumn) for the concrete <typeparamref name="TItem"/>.</summary>
+    [Parameter] public RenderFragment? Columns { get; set; }
+
+    /// <summary>Cell content for the pinned trailing actions column. Omit to hide the column.</summary>
+    [Parameter] public RenderFragment<TItem>? RowActions { get; set; }
+
+    /// <summary>Extra controls rendered on the right of the toolbar, before the count badge.</summary>
+    [Parameter] public RenderFragment? Toolbar { get; set; }
+
+    /// <summary>Filter controls (dropdowns) rendered beside the search box.</summary>
+    [Parameter] public RenderFragment? Filters { get; set; }
+
+    [Parameter] public IEnumerable<TItem>? Data { get; set; }
+    [Parameter] public int Count { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool HasError { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+
+    [Parameter] public EventCallback<LoadDataArgs> LoadData { get; set; }
+
+    /// <summary>Current page size. Bind this to a persisted value to restore the user's choice.</summary>
+    [Parameter] public int PageSize { get; set; } = 10;
+
+    /// <summary>Raised when the user picks a different page size from the pager dropdown.</summary>
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+
+    /// <summary>Page-size choices shown in the pager dropdown.</summary>
+    [Parameter] public IEnumerable<int> PageSizeOptions { get; set; } = new[] { 10, 25, 50, 100 };
+
+    /// <summary>Label shown next to the page-size dropdown (defaults to a localized string).</summary>
+    [Parameter] public string? PageSizeText { get; set; }
+
+    [Parameter] public bool AllowSorting { get; set; } = true;
+
+    [Parameter] public bool ShowSearch { get; set; } = true;
+    [Parameter] public string SearchValue { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> SearchValueChanged { get; set; }
+    [Parameter] public string? SearchPlaceholder { get; set; }
+
+    /// <summary>Raised when the user submits the search (Enter/blur) or clears it.</summary>
+    [Parameter] public EventCallback OnSearch { get; set; }
+
+    [Parameter] public string? EmptyText { get; set; }
+    [Parameter] public string CountLabel { get; set; } = string.Empty;
+    [Parameter] public string? PagingSummaryFormat { get; set; } = "Page {0} of {1}";
+
+    [Parameter] public string? ActionsTitle { get; set; }
+    [Parameter] public string ActionsWidth { get; set; } = "84px";
+
+    /// <summary>
+    /// Reloads the grid from the first page (use after search/filter changes or create/edit/delete).
+    /// Falls back to invoking <see cref="LoadData"/> directly when the grid is hidden (e.g. error state).
+    /// </summary>
+    public async Task ReloadAsync()
+    {
+        if (grid is not null)
+            await grid.FirstPage(true);
+        else
+            await LoadData.InvokeAsync(new LoadDataArgs { Skip = 0, Top = PageSize });
+    }
+
+    private async Task OnPageSizeChangedAsync(int value)
+    {
+        PageSize = value;
+        await PageSizeChanged.InvokeAsync(value);
+    }
+
+    private async Task OnSearchChangedAsync(string value)
+    {
+        SearchValue = value;
+        await SearchValueChanged.InvokeAsync(value);
+        await OnSearch.InvokeAsync();
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        SearchValue = string.Empty;
+        await SearchValueChanged.InvokeAsync(string.Empty);
+        await OnSearch.InvokeAsync();
+    }
+}
