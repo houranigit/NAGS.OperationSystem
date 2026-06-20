@@ -1,0 +1,51 @@
+/* A filter that visually matches the search box: pill-framed control with a
+   leading icon. The icon overlays the dropdown so the two read as one field. */
+.os-filter {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 12rem;
+}
+
+.os-filter-icon {
+    position: absolute;
+    inset-inline-start: 0.7rem;
+    color: var(--os-color-text-subtle);
+    font-size: 1.15rem;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.os-filter-select {
+    width: 100%;
+}
+
+/* Make Radzen's trigger match the search input height and the leading icon. */
+.os-filter ::deep .rz-dropdown {
+    width: 100%;
+    background: var(--os-color-surface);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-sm);
+    transition: border-color var(--os-transition), box-shadow var(--os-transition);
+}
+
+.os-filter ::deep .rz-dropdown:hover {
+    border-color: var(--os-color-border-strong);
+}
+
+.os-filter ::deep .rz-dropdown.rz-state-focused,
+.os-filter ::deep .rz-dropdown:focus-within {
+    border-color: var(--os-color-primary);
+    box-shadow: var(--os-ring);
+}
+
+/* Leave room for the leading icon. */
+.os-filter ::deep .rz-dropdown .rz-dropdown-label,
+.os-filter ::deep .rz-dropdown .rz-placeholder {
+    padding-inline-start: 2.4rem;
+}
+
+/* Placeholder reads as muted, selected value reads as normal text. */
+.os-filter ::deep .rz-dropdown .rz-placeholder {
+    color: var(--os-color-text-subtle);
+}

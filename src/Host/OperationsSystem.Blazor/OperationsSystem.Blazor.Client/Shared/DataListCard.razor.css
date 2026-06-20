@@ -1,15 +1,14 @@
 /* ==========================================================================
    DataListCard — the standard list shell.
-   Fills its host height; only the grid rows scroll, header + pager stay fixed.
-   Radzen renders its own scrollable layout once the grid has a height, so the
-   card just needs to be a flex column with a definite height.
+   The card hugs its content: toolbar + grid + pager. The card height grows and
+   shrinks with the number of rows on the current page; the page itself scrolls
+   when the content is taller than the viewport. The user controls how many rows
+   are shown via the pager's "rows per page" selector.
    ========================================================================== */
 
 .os-list-card {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
     padding: 0;
     overflow: hidden;
 }
@@ -109,8 +108,6 @@
 
 /* --- Grid region --------------------------------------------------------- */
 .os-list-grid {
-    flex: 1;
-    min-height: 0;
     display: flex;
     flex-direction: column;
 }
@@ -119,30 +116,10 @@
     padding: var(--os-space-5);
 }
 
-/* Strip the grid's own border/radius so it merges into the card frame, and make
-   the grid a flex column so its data body scrolls while header + pager stay put. */
+/* Strip the grid's own border/radius so it merges into the card frame. */
 .os-list-grid ::deep .rz-data-grid {
     border: none;
     border-radius: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-/* The scrollable rows region: takes the remaining height, scrolls internally. */
-.os-list-grid ::deep .rz-data-grid-data {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-}
-
-/* Keep the header row pinned above the scrolling body. */
-.os-list-grid ::deep .rz-data-grid-data thead.rz-grid-table-header,
-.os-list-grid ::deep .rz-grid-table thead {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--os-color-surface);
 }
 
 /* Header polish */
@@ -152,6 +129,15 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--os-color-text-muted);
+}
+
+.os-list-grid ::deep th.rz-column-title {
+    background: var(--os-color-surface-muted);
+}
+
+/* Comfortable row rhythm */
+.os-list-grid ::deep .rz-data-row > td {
+    padding-block: var(--os-space-3);
 }
 
 /* Row hover */
@@ -166,9 +152,9 @@
     gap: var(--os-space-1);
 }
 
-/* Pager always visible at the bottom */
+/* Pager pinned to the bottom of the card */
 .os-list-grid ::deep .rz-pager {
-    flex-shrink: 0;
     border-top: 1px solid var(--os-color-border);
-    background: var(--os-color-surface);
+    background: var(--os-color-surface-muted);
+    padding-block: var(--os-space-2);
 }

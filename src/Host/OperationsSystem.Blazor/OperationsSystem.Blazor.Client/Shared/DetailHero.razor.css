@@ -1,51 +1,80 @@
+/* ==========================================================================
+   DetailHero — the standard header for /{entity}/{id} pages.
+   A tinted gradient band carries the back link; the avatar overlaps the band
+   for depth, with title, subtitle, metadata pills and a wrapping actions row.
+   ========================================================================== */
+
 .os-hero {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--os-space-4);
+    position: relative;
+    padding: 0;
+    overflow: hidden;
 }
 
-.os-hero-main {
+/* --- Top band (accent gradient) ----------------------------------------- */
+.os-hero-band {
     display: flex;
     align-items: center;
-    gap: var(--os-space-4);
-    min-width: 0;
+    min-height: 5.5rem;
+    padding: var(--os-space-4) var(--os-space-5);
+    background: linear-gradient(120deg, var(--os-color-primary) 0%, var(--os-color-primary-strong) 100%);
 }
+
+.os-hero--success .os-hero-band { background: linear-gradient(120deg, #1f9d57 0%, var(--os-color-success) 100%); }
+.os-hero--warning .os-hero-band { background: linear-gradient(120deg, #d2861a 0%, var(--os-color-warning) 100%); }
+.os-hero--danger  .os-hero-band { background: linear-gradient(120deg, #d33a3a 0%, var(--os-color-danger) 100%); }
+.os-hero--neutral .os-hero-band { background: linear-gradient(120deg, #3b4a63 0%, #1f2937 100%); }
 
 .os-hero-back {
-    display: inline-grid;
-    place-items: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    flex-shrink: 0;
-    border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-sm);
-    background: var(--os-color-surface);
-    color: var(--os-color-text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: 0.4rem 0.9rem 0.4rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: var(--os-radius-pill);
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
     cursor: pointer;
-    transition: background var(--os-transition), color var(--os-transition), border-color var(--os-transition);
+    backdrop-filter: blur(2px);
+    transition: background var(--os-transition), border-color var(--os-transition);
 }
 
 .os-hero-back:hover {
-    background: var(--os-color-surface-hover);
-    color: var(--os-color-text);
-    border-color: var(--os-color-border-strong);
+    background: rgba(255, 255, 255, 0.26);
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+.os-hero-back .rz-icon {
+    font-size: 1.1rem;
+}
+
+/* --- Body (avatar + identity + actions) --------------------------------- */
+.os-hero-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--os-space-4);
+    padding: 0 var(--os-space-5) var(--os-space-5);
+    margin-top: -2.5rem;
 }
 
 .os-hero-avatar {
     display: inline-grid;
     place-items: center;
-    width: 3.25rem;
-    height: 3.25rem;
+    width: 5rem;
+    height: 5rem;
     flex-shrink: 0;
     border-radius: var(--os-radius-lg);
-    font-size: var(--os-text-lg);
-    font-weight: 700;
+    font-size: var(--os-text-2xl);
+    font-weight: 800;
+    border: 3px solid var(--os-color-surface);
+    box-shadow: var(--os-shadow-md);
 }
 
 .os-hero-avatar .rz-icon {
-    font-size: 1.6rem;
+    font-size: 2.25rem;
 }
 
 .os-hero-avatar--primary { background: var(--os-color-primary-soft); color: var(--os-color-primary-strong); }
@@ -55,13 +84,16 @@
 .os-hero-avatar--neutral { background: var(--os-color-neutral-bg); color: var(--os-color-text-muted); }
 
 .os-hero-text {
+    flex: 1;
     min-width: 0;
+    padding-bottom: 0.15rem;
 }
 
 .os-hero-title {
     margin: 0;
     font-size: var(--os-text-2xl);
     line-height: 1.2;
+    word-break: break-word;
 }
 
 .os-hero-subtitle {
@@ -81,4 +113,15 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--os-space-2);
+    padding-bottom: 0.15rem;
+}
+
+@media (max-width: 640px) {
+    .os-hero-body {
+        align-items: flex-start;
+    }
+
+    .os-hero-actions {
+        width: 100%;
+    }
 }

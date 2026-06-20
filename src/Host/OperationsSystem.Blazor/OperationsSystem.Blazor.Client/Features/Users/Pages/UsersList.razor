@@ -26,10 +26,10 @@
                       SearchPlaceholder="@UiStrings.Users.SearchPlaceholder"
                       CountLabel="@UiStrings.Users.CountLabel" EmptyText="@UiStrings.Users.Empty">
             <Filters>
-                <RadzenDropDown @bind-Value="statusFilter" Data="@statusOptions" TextProperty="Label" ValueProperty="Value"
-                                Change="@(async _ => await ReloadAsync())" Style="min-width: 11rem;" />
-                <RadzenDropDown @bind-Value="roleFilter" Data="@roleOptions" TextProperty="Label" ValueProperty="Value"
-                                Change="@(async _ => await ReloadAsync())" Style="min-width: 11rem;" />
+                <DataListFilter TValue="string" Icon="tune" Placeholder="@UiStrings.Users.FilterByStatus"
+                                Data="@statusOptions" Value="@statusFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+                <DataListFilter TValue="Guid?" Icon="badge" Placeholder="@UiStrings.Users.FilterByRole"
+                                Data="@roleOptions" Value="@roleFilter" ValueChanged="@OnRoleFilterChangedAsync" />
             </Filters>
             <Columns>
                 <RadzenDataGridColumn TItem="UserListItem" Property="DisplayName" Title="@UiStrings.Users.DisplayName">
@@ -88,13 +88,12 @@
 
     private readonly List<StatusOption> statusOptions =
     [
-        new(UiStrings.Users.AllStatuses, null),
         new("Invited", "Invited"),
         new("Active", "Active"),
         new("Deactivated", "Deactivated")
     ];
 
-    private List<RoleOption> roleOptions = [new(UiStrings.Users.AllRoles, null)];
+    private List<RoleOption> roleOptions = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,12 +108,24 @@
         await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
     }
 
+    private async Task OnStatusFilterChangedAsync(string? value)
+    {
+        statusFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnRoleFilterChangedAsync(Guid? value)
+    {
+        roleFilter = value;
+        await ReloadAsync();
+    }
+
     private async Task LoadRoleOptionsAsync()
     {
         try
         {
             var roles = await Identity.GetRolesAsync(1, 100, null);
-            roleOptions = [new(UiStrings.Users.AllRoles, null), .. roles.Items.Select(r => new RoleOption(r.Name, r.Id))];
+            roleOptions = [.. roles.Items.Select(r => new RoleOption(r.Name, r.Id))];
         }
         catch (ApiException)
         {

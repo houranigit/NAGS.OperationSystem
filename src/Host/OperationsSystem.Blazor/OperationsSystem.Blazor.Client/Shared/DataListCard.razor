@@ -56,7 +56,7 @@
                             PageNumbersCount="5" ShowPagingSummary="true" PagingSummaryFormat="@PagingSummaryFormat"
                             AllowSorting="@AllowSorting" LoadData="@LoadData" EmptyText="@(EmptyText ?? UiStrings.Common.NoData)"
                             SelectionMode="DataGridSelectionMode.Single" @bind-Value="@selection"
-                            GridLines="DataGridGridLines.Horizontal" Style="height: 100%;">
+                            GridLines="DataGridGridLines.Horizontal">
                 <Columns>
                     @Columns
                     @if (RowActions is not null)

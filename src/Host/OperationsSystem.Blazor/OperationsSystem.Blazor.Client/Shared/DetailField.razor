@@ -1,17 +1,27 @@
 <div class="os-detail-field">
-    <span class="os-muted">@Label</span>
-    @if (ChildContent is not null)
+    @if (!string.IsNullOrWhiteSpace(Icon))
     {
-        <div>@ChildContent</div>
+        <span class="os-detail-field-icon"><RadzenIcon Icon="@Icon" /></span>
     }
-    else
-    {
-        <strong>@Value</strong>
-    }
+    <div class="os-detail-field-body">
+        <span class="os-detail-field-label">@Label</span>
+        @if (ChildContent is not null)
+        {
+            <div class="os-detail-field-value">@ChildContent</div>
+        }
+        else
+        {
+            <strong class="os-detail-field-value">@Value</strong>
+        }
+    </div>
 </div>
 
 @code {
     [Parameter] public string Label { get; set; } = string.Empty;
     [Parameter] public string? Value { get; set; }
+
+    /// <summary>Optional leading Material icon for the field.</summary>
+    [Parameter] public string? Icon { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
 }

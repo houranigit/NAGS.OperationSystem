@@ -4,15 +4,18 @@
     PageHeader on /{entity}/{id} pages for a denser, more professional look.
 *@
 
-<RadzenCard class="os-hero">
-    <div class="os-hero-main">
+<RadzenCard class="@($"os-hero os-hero--{Tone}")">
+    <div class="os-hero-band">
         @if (OnBack.HasDelegate)
         {
             <button type="button" class="os-hero-back" @onclick="OnBack" aria-label="@UiStrings.Common.Back">
                 <RadzenIcon Icon="arrow_back" />
+                <span>@UiStrings.Common.Back</span>
             </button>
         }
+    </div>
 
+    <div class="os-hero-body">
         <span class="os-hero-avatar @($"os-hero-avatar--{Tone}")">
             @if (!string.IsNullOrWhiteSpace(Icon))
             {
@@ -39,12 +42,12 @@
                 <div class="os-hero-meta">@Metadata</div>
             }
         </div>
-    </div>
 
-    @if (Actions is not null)
-    {
-        <div class="os-hero-actions">@Actions</div>
-    }
+        @if (Actions is not null)
+        {
+            <div class="os-hero-actions">@Actions</div>
+        }
+    </div>
 </RadzenCard>
 
 @code {

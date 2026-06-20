@@ -128,6 +128,8 @@ public static class UiStrings
         public const string Created = "Created";
         public const string AllStatuses = "All statuses";
         public const string AllRoles = "All roles";
+        public const string FilterByStatus = "All statuses";
+        public const string FilterByRole = "All roles";
         public const string Lock = "Lock";
         public const string Unlock = "Unlock";
         public const string Deactivate = "Deactivate";

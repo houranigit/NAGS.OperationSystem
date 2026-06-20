@@ -65,7 +65,7 @@
                 <h3 class="os-section-title">@UiStrings.Common.Details</h3>
                 <RadzenRow RowGap="1rem">
                     <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.Status">
+                        <DetailField Label="@UiStrings.Users.Status" Icon="toggle_on">
                             <ChildContent>
                                 @if (u.IsLockedOut)
                                 {
@@ -79,13 +79,16 @@
                         </DetailField>
                     </RadzenColumn>
                     <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" />
+                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" Icon="badge" />
                     </RadzenColumn>
                     <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" />
+                        <DetailField Label="@UiStrings.Users.Email" Value="@u.Email" Icon="mail" />
                     </RadzenColumn>
                     <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.LastLogin" Value="@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)" />
+                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="event" />
+                    </RadzenColumn>
+                    <RadzenColumn Size="12" SizeMD="6">
+                        <DetailField Label="@UiStrings.Users.LastLogin" Value="@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)" Icon="login" />
                     </RadzenColumn>
                 </RadzenRow>
             </RadzenCard>

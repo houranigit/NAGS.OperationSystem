@@ -181,29 +181,19 @@ a {
     transition: box-shadow var(--os-transition), border-color var(--os-transition);
 }
 
-/* --- Full-height list page layout --------------------------------------- */
-/* A page that fills the content area: the page header is pinned and the grid
-   fills the remaining space so its pager is always visible (only the rows
-   scroll). Relies on MainLayout's content region being a definite-height flex
-   column. Pair with the DataListCard component. */
+/* --- List page layout ---------------------------------------------------- */
+/* A standard list screen: a page header followed by a DataListCard. The card
+   hugs its content (toolbar + grid + pager) and grows with the number of rows
+   on the page; the content region scrolls when needed. Row count is controlled
+   by the pager's "rows per page" selector. */
 .os-list-page {
     display: flex;
     flex-direction: column;
     gap: var(--os-space-5);
-    flex: 1;
-    min-height: 0;
 }
 
 .os-list-page > .os-page-header {
     margin-bottom: 0;
-    flex-shrink: 0;
-}
-
-/* The DataListCard (or any direct content) fills the remaining height. */
-.os-list-page > .os-list-card,
-.os-list-page > .os-list-fill {
-    flex: 1;
-    min-height: 0;
 }
 
 /* --- Blazor framework error UI ------------------------------------------ */

@@ -1,21 +1,50 @@
 .os-detail-field {
-    display: grid;
-    gap: var(--os-space-1);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--os-space-3);
     padding: var(--os-space-4);
     border: 1px solid var(--os-color-border);
     border-radius: var(--os-radius-md);
     background: var(--os-color-surface-muted);
     height: 100%;
+    transition: border-color var(--os-transition), background var(--os-transition);
 }
 
-.os-detail-field > span {
+.os-detail-field:hover {
+    border-color: var(--os-color-border-strong);
+    background: var(--os-color-surface);
+}
+
+.os-detail-field-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.os-detail-field-icon .rz-icon {
+    font-size: 1.25rem;
+}
+
+.os-detail-field-body {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.os-detail-field-label {
     font-size: var(--os-text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    color: var(--os-color-text-muted);
 }
 
-.os-detail-field strong {
+.os-detail-field-value {
     font-size: var(--os-text-base);
     color: var(--os-color-text);
     word-break: break-word;

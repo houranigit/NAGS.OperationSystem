@@ -1,0 +1,51 @@
+@typeparam TValue
+@using Radzen
+@using Radzen.Blazor
+
+@*
+    Standard dropdown filter for a DataListCard toolbar. Mirrors the search box:
+    a leading icon plus a control. Shows a placeholder when nothing is selected
+    (i.e. "all"), and offers a clear affordance to reset back to that state.
+    Use one per filterable column (status, role, type, ...).
+*@
+
+<div class="os-filter">
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <RadzenIcon Icon="@Icon" class="os-filter-icon" />
+    }
+    <RadzenDropDown TValue="TValue"
+                    Value="@Value"
+                    ValueChanged="@OnValueChangedAsync"
+                    Data="@Data"
+                    TextProperty="@TextProperty"
+                    ValueProperty="@ValueProperty"
+                    Placeholder="@Placeholder"
+                    AllowClear="@AllowClear"
+                    class="os-filter-select"
+                    aria-label="@Placeholder" />
+</div>
+
+@code {
+    /// <summary>Leading Material icon shown inside the control (e.g. "tune", "badge").</summary>
+    [Parameter] public string? Icon { get; set; } = "filter_list";
+
+    /// <summary>Text shown when no option is selected (the "all" state).</summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    [Parameter] public IEnumerable<object>? Data { get; set; }
+    [Parameter] public string TextProperty { get; set; } = "Label";
+    [Parameter] public string ValueProperty { get; set; } = "Value";
+
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+
+    /// <summary>Show a clear (×) button to reset the filter to its "all" state.</summary>
+    [Parameter] public bool AllowClear { get; set; } = true;
+
+    private async Task OnValueChangedAsync(TValue? value)
+    {
+        Value = value;
+        await ValueChanged.InvokeAsync(value);
+    }
+}
