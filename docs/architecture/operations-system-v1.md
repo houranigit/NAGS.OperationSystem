@@ -105,10 +105,14 @@ src/
       Identity.Infrastructure/
       Identity.Contracts/
       Identity.Api/
-    Core/
+    MasterData/
+      MasterData.Domain/
+      MasterData.Application/
+      MasterData.Infrastructure/
+      MasterData.Contracts/
+      MasterData.Api/
     Contracts/
     Operations/
-    Store/
     Notifications/
     Audit/
 
@@ -154,6 +158,14 @@ Features/
 - Contracts projects contain cross-module DTOs, read models, events, or public contracts only.
 - Blazor feature folders own feature-specific pages, components, and any feature-only client helpers.
 - Shared client folders are for truly reusable primitives (shells, layouts, guards) and app-wide services only.
+
+### MasterData Boundary
+
+- `MasterData` owns shared business catalogs and master records: customers, employees, stations, countries, currencies, aircraft types, operation types, services, manpower types, licenses, units, tools, materials, general-support items, and their catalog price plans.
+- The legacy `Core` and `Store` modules are business references for this single v1.0.0 module; their names and project boundaries are not carried into the rewrite.
+- Catalog records may have lifecycle and validation behavior, but `MasterData` must not become a home for unrelated workflows merely because other modules consume their data.
+- Stock quantities, warehouses, receipts, issues, transfers, and replenishment are not master data. Introduce an `Inventory` module if those behaviors enter scope.
+- Flights and work orders remain in `Operations`; customer agreements and negotiated pricing remain in `Contracts`.
 
 ## 6. Module Dependency Rules
 
@@ -269,7 +281,7 @@ Features/
 - Roles are collections of permissions.
 - Avoid role-only authorization checks.
 - Permission names use lowercase dot format: module.resource.action.
-- Examples: core.manpower-types.view, core.manpower-types.create, operations.work-orders.approve, identity.users.assign-role.
+- Examples: masterdata.manpower-types.view, masterdata.manpower-types.create, operations.work-orders.approve, identity.users.assign-role.
 - Prefer consistent action names: view, create, update, delete, deactivate, approve, reject, assign, export, manage.
 - The first created user is the System Admin bootstrap account.
 - System Admin can create roles and assign permissions to roles.
@@ -286,7 +298,7 @@ Features/
 ### Identity And Employee Linkage
 
 - Identity owns authentication users, roles, and permissions.
-- The operational Employee concept (a person who performs work, scoped to a station) is a Core concern.
+- The operational Employee concept (a person who performs work, scoped to a station) is a MasterData concern.
 - A User may be linked to an Employee. This link drives data scoping and, later, the mobile client's "current employee" context.
 - Keep the link explicit and cross-module-safe (contracts/read models), not a hidden foreign key into another module's internals.
 
@@ -318,7 +330,7 @@ Features/
 List endpoint query conventions:
 
 ```text
-GET /api/v1/core/manpower-types?page=1&pageSize=20&search=engineer&sort=name:asc&isActive=true
+GET /api/v1/master-data/manpower-types?page=1&pageSize=20&search=engineer&sort=name:asc&isActive=true
 ```
 
 - page is 1-based.
@@ -503,7 +515,7 @@ The legacy is already a DDD modular monolith with strong patterns. Preserve thes
 ### Snapshots And Cross-Module Denormalization
 
 - When an aggregate references data owned by another module (customer, currency, station, operation type, aircraft type), capture an immutable point-in-time snapshot value object inside the aggregate instead of a live foreign key into the other module.
-- Snapshots preserve historical correctness: editing a customer in Core must not retroactively change the customer details printed on an old contract or work order.
+- Snapshots preserve historical correctness: editing a customer in MasterData must not retroactively change the customer details printed on an old contract or work order.
 - A snapshot contains the source id plus the fields the owning aggregate needs (e.g. names, codes). For bilingual fields, capture both languages (or a language-neutral key), consistent with the localization rules.
 - Snapshots are normally immutable for the life of the record. If a business case requires refreshing a snapshot, that refresh must be an explicit, intentional operation, never an implicit live join.
 - Reference-by-id is still correct for same-module relationships and for cheap, non-historical lookups; snapshots are for cross-module, historically significant data.
@@ -590,3 +602,4 @@ Use this section to record decisions as they become final.
 | 2026-06-19 | Web client is a Blazor Web App (Interactive Auto) with Radzen.Blazor (Material3) as the only UI library | Single .NET stack across backend and web; reuses C# domain knowledge; supersedes the React/Vite/Tailwind/shadcn/Orval frontend decision |
 | 2026-06-19 | The React project (`src/Host/OperationsSystem.Web`) is retired and removed | Frontend consolidated on Blazor; avoids maintaining two parallel web clients |
 | 2026-06-19 | Blazor calls the API through a hand-written typed client over `BrowserApiClient` (no Orval/TanStack Query/Zod) | Generated TS clients no longer apply; typed C# client keeps DTOs explicit and shared with the contracts |
+| 2026-06-21 | v1.0.0 uses a `MasterData` module instead of legacy `Core` and `Store` modules | Names the business capability explicitly, avoids an ambiguous catch-all `Core`, and keeps catalog-only items together until real inventory behavior requires an `Inventory` module |

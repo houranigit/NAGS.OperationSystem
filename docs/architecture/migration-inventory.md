@@ -16,8 +16,9 @@ Reference paths are relative to `legacy/src/`.
 ## Key Findings From The Legacy Census
 
 - The legacy is already a DDD modular monolith (Result pattern, aggregates, value objects, snapshots, domain + integration events, outbox/inbox, vertical slices). The rewrite is primarily **legacy Blazor UI → API-first backend + a new clean Blazor (Auto + Radzen) portal**, not an architecture rebuild.
-- **No `/api/v1`**: legacy exposes only `/api/identity/*`, `/api/notifications`, and `/api/mobile/v2`. Core/Store/Contracts/Operations portal features have **no REST** today — every Blazor page needs an API-first equivalent in the rewrite.
-- **Audit module is a stub**: real audit is automatic EF change capture into `audit.AuditTrails` (`BuildingBlocks.Infrastructure/Persistence/BaseDbContext.cs`, owned by Core migrations). `SecurityEventType` is enum-only with no writers.
+- **No `/api/v1`**: legacy exposes only `/api/identity/*`, `/api/notifications`, and `/api/mobile/v2`. Legacy Core/Store plus Contracts/Operations portal features have **no REST** today — every Blazor page needs an API-first equivalent in the rewrite.
+- **Audit module is a stub**: real audit is automatic EF change capture into `audit.AuditTrails` (`BuildingBlocks.Infrastructure/Persistence/BaseDbContext.cs`, owned by legacy Core migrations). `SecurityEventType` is enum-only with no writers.
+- **MasterData replaces legacy Core + Store**: catalog-only customers, employees, stations, services, tools, materials, and related records share one explicit v1.0.0 boundary. Stock and warehouse workflows require a future `Inventory` module rather than expanding MasterData.
 - **Roles admin UI missing**: API + queries exist (`RoleEndpoints.cs`) but `/system/roles` page is absent.
 - **Permissions are coarse** in legacy (Portal/Scheduler/Flights/Users/Roles/Sessions); master-data pages gated by `portal.manage`. v1.0.0 moves to `module.resource.action`.
 - **Mobile is deferred** for v1.0.0 (BFF, offline sync, FCM, `MobileJwt`). Legacy mobile v2 + sync hub are reference for when mobile returns.
@@ -37,31 +38,37 @@ Reference paths are relative to `legacy/src/`.
 | Sessions (refresh-token tracking, rotation, revoke) | done | `Identity.Application/Commands/{RevokeSession,RevokeAllSessions}/*`, `SessionEndpoints.cs`, `Aggregates/UserSession/UserSession.cs` | `Identity.Domain/Sessions/UserSession.cs`, `Identity.Application/Features/Sessions/*`, `Identity.Api/Endpoints/SessionEndpoints.cs` | Issue/rotate/revoke + admin (list/revoke/revoke-all per user) and self-service (`/me/sessions` list, revoke, sign-out-others) endpoints; integration tests cover current-session marking and revoke flows |
 | User queries (paginated users, role lookups) | done | `Identity.Application/Queries/{GetPaginatedUsers,GetAllRoleSelectOptions,GetRolesOverview}/*` | `Identity.Application/Features/{Users,Roles}/*Queries.cs` | Paged + search + status filter |
 | Admin/role seeding + permission catalog | done | `Identity.Infrastructure/Seeding/{RoleSeeder.cs,AdminSeeder.cs}` | `Identity.Infrastructure/Seeding/IdentityDataSeeder.cs` | Seeds System Admin role (all perms) + bootstrap admin; `SystemUserId` |
-| Identity integration events | not-started | `Identity.Contracts/IntegrationEvents/*`, `Identity.Application/IntegrationEvents/Handlers/EmployeeUserCreationRequestedIntegrationEventHandler.cs` | | Cross-module events; revisit when Core/Employee lands |
+| Identity integration events | not-started | `Identity.Contracts/IntegrationEvents/*`, `Identity.Application/IntegrationEvents/Handlers/EmployeeUserCreationRequestedIntegrationEventHandler.cs` | | Cross-module events; revisit when MasterData/Employee lands |
 | Permission-based authorization (API) | done | `Host.Web/Authorization/PortalPolicies.cs` | `BuildingBlocks.Api/Authorization/PermissionAuthorization.cs` | Dynamic per-permission policy provider; `RequirePermission(...)` |
 | Blazor portal: auth + Users/Roles/Sessions screens | in-progress | (Blazor `Components/Pages/Settings/System/**`) | `src/Host/OperationsSystem.Blazor/**` | Blazor Web App (Interactive Auto) + Radzen.Blazor (Material3); typed client over `BrowserApiClient` (JS fetch proxied to `/api/v1`); `AuthenticationStateProvider` + permission-gated UI; login, activation, account (profile/change-password/self-service sessions), users (list/detail/invite/edit/role/lifecycle + sessions), roles (CRUD + grouped permissions); in-memory token + refresh cookie. Replaces the retired React project (removed 2026-06-19) |
 
-### Core (reference / master data)
+### MasterData
 
 | Feature | Status | Old reference files | New location | Notes |
 |---|---|---|---|---|
-| Customer (+ contacts, optional user link) | not-started | `Core.Domain/Aggregates/Customer/*`, `Core.Application/Features/Customer/**` | | Contact sync; activate/deactivate; mobile catalog refresh |
-| Employee (+ licenses, optional user provisioning) | not-started | `Core.Domain/Aggregates/Employee/*`, `Core.Application/Features/Employee/**` | | Station + manpower type; emits `EmployeeUserCreationRequested` |
-| Station | not-started | `Core.Domain/Aggregates/Station/Station.cs`, `Features/Station/**` | | IATA + timezone |
-| AircraftType | not-started | `Core.Domain/Aggregates/AircraftType/*`, `Features/AircraftType/**` | | |
-| OperationType (incl. seeded Ad Hoc) | not-started | `Core.Domain/Aggregates/OperationType/*`, `Features/OperationType/**` | | Ad Hoc OT has special domain rules |
-| Service (incl. seeded AOG, On Call) | not-started | `Core.Domain/Aggregates/Service/*`, `Features/Service/**` | | AOG-only service rule in contracts |
-| ManpowerType | not-started | `Core.Domain/Aggregates/ManpowerType/*`, `Features/ManpowerType/**` | | |
-| License | not-started | `Core.Domain/Aggregates/License/*`, `Features/License/**` | | |
-| Country | not-started | `Core.Domain/Aggregates/Country/*`, `Features/Country/**` | | |
-| Currency (+ exchange rates) | not-started | `Core.Domain/Aggregates/Currency/*`, `Features/Currency/**` | | Cross rates; seeded SAR/USD |
-| Service price plans (bracketed) | not-started | `Core.Domain/Aggregates/ServicePricePlan/*`, `Features/ServicePricePlan/**` | | Tiered pricing |
-| Manpower price plans (bracketed) | not-started | `Core.Domain/Aggregates/ManpowerPricePlan/*`, `Features/ManpowerPricePlan/**` | | Tiered pricing |
-| Catalog dashboard KPIs | not-started | `Core.Application/Features/Dashboard/Queries/GetCatalogDashboard/*` | | Home dashboard |
-| Cross-module readers + snapshots | not-started | `Core.Contracts/Readers/*`, `Core.Infrastructure/Readers/*`, `Core.Contracts/Features/**` | | `IEmployeeReader`, `ICustomerReader`, `IStationReader`, `IServiceReader`, snapshot DTOs |
-| Core seeding + well-known ids | not-started | `Core.Infrastructure/Seeding/CoreDataSeeder.cs`, `Core.Contracts/Seeding/CoreSeedIds.cs` | | Stable GUIDs; `SystemUserId` |
-| Core integration event handlers (name propagation, user creation, deactivation) | not-started | `Core.Contracts/IntegrationEvents/*`, `Core.Application/IntegrationEvents/Handlers/*` | | Propagate name changes to snapshots |
-| Audit trail table ownership | not-started | `Core.Infrastructure/Persistence/CoreDbContext.cs` | | `audit.AuditTrails` migration owner |
+| Customer (+ contacts, optional user link) | not-started | `Core.Domain/Aggregates/Customer/*`, `Core.Application/Features/Customer/**` | `MasterData.*/Features/Customers` | Contact sync; activate/deactivate; mobile catalog refresh |
+| Employee (+ licenses, optional user provisioning) | not-started | `Core.Domain/Aggregates/Employee/*`, `Core.Application/Features/Employee/**` | `MasterData.*/Features/Employees` | Station + manpower type; emits `EmployeeUserCreationRequested` |
+| Station | not-started | `Core.Domain/Aggregates/Station/Station.cs`, `Features/Station/**` | `MasterData.*/Features/Stations` | IATA + timezone |
+| AircraftType | not-started | `Core.Domain/Aggregates/AircraftType/*`, `Features/AircraftType/**` | `MasterData.*/Features/AircraftTypes` | |
+| OperationType (incl. seeded Ad Hoc) | not-started | `Core.Domain/Aggregates/OperationType/*`, `Features/OperationType/**` | `MasterData.*/Features/OperationTypes` | Ad Hoc OT has special domain rules |
+| Service (incl. seeded AOG, On Call) | not-started | `Core.Domain/Aggregates/Service/*`, `Features/Service/**` | `MasterData.*/Features/Services` | AOG-only service rule in contracts |
+| ManpowerType | not-started | `Core.Domain/Aggregates/ManpowerType/*`, `Features/ManpowerType/**` | `MasterData.*/Features/ManpowerTypes` | |
+| License | not-started | `Core.Domain/Aggregates/License/*`, `Features/License/**` | `MasterData.*/Features/Licenses` | |
+| Country | not-started | `Core.Domain/Aggregates/Country/*`, `Features/Country/**` | `MasterData.*/Features/Countries` | |
+| Currency (+ exchange rates) | not-started | `Core.Domain/Aggregates/Currency/*`, `Features/Currency/**` | `MasterData.*/Features/Currencies` | Cross rates; seeded SAR/USD |
+| Unit | not-started | `Store.Domain/Aggregates/Unit/*`, `Store.Application/Features/Unit/**` | `MasterData.*/Features/Units` | Measurement units; catalog only |
+| Tool (+ equipment lines) | not-started | `Store.Domain/Aggregates/Tool/{Tool.cs,Equipment.cs}`, `Features/Tool/**` | `MasterData.*/Features/Tools` | Add/update/remove equipment; no stock tracking |
+| Material | not-started | `Store.Domain/Aggregates/Material/*`, `Features/Material/**` | `MasterData.*/Features/Materials` | Catalog only; stock behavior belongs in a future Inventory module |
+| General support | not-started | `Store.Domain/Aggregates/GeneralSupport/*`, `Features/GeneralSupport/**` | `MasterData.*/Features/GeneralSupports` | Catalog only |
+| Service price plans (bracketed) | not-started | `Core.Domain/Aggregates/ServicePricePlan/*`, `Features/ServicePricePlan/**` | `MasterData.*/Features/ServicePricePlans` | Tiered catalog pricing |
+| Manpower price plans (bracketed) | not-started | `Core.Domain/Aggregates/ManpowerPricePlan/*`, `Features/ManpowerPricePlan/**` | `MasterData.*/Features/ManpowerPricePlans` | Tiered catalog pricing |
+| Tool price plans (bracketed) | not-started | `Store.Domain/Aggregates/ToolPricePlan/*`, `Features/ToolPricePlan/**`, `Store.Domain/Events/ToolPricePlan*` | `MasterData.*/Features/ToolPricePlans` | Tiered catalog pricing |
+| Material price plans (bracketed) | not-started | `Store.Domain/Aggregates/MaterialPricePlan/*`, `Features/MaterialPricePlan/**`, `Store.Domain/Events/MaterialPricePlan*` | `MasterData.*/Features/MaterialPricePlans` | Tiered catalog pricing |
+| General support price plans (bracketed) | not-started | `Store.Domain/Aggregates/GeneralSupportPricePlan/*`, `Features/GeneralSupportPricePlan/**`, `Store.Domain/Events/GeneralSupportPricePlan*` | `MasterData.*/Features/GeneralSupportPricePlans` | Tiered catalog pricing |
+| Catalog dashboard KPIs | not-started | `Core.Application/Features/Dashboard/Queries/GetCatalogDashboard/*` | `MasterData.Application/Features/Dashboard` | Home dashboard |
+| Cross-module readers + snapshots | not-started | `Core.Contracts/Readers/*`, `Core.Infrastructure/Readers/*`, `Core.Contracts/Features/**`, `Store.Contracts/Readers/*`, `Store.Contracts/Features/**` | `MasterData.Contracts`, `MasterData.Infrastructure/Readers` | Employee, customer, station, service, tool, material, and support snapshots/read models |
+| MasterData seeding + well-known ids | not-started | `Core.Infrastructure/Seeding/CoreDataSeeder.cs`, `Core.Contracts/Seeding/CoreSeedIds.cs` | `MasterData.Infrastructure/Seeding`, `MasterData.Contracts/Seeding` | Stable GUIDs; `SystemUserId` |
+| MasterData integration event handlers (name propagation, user creation, deactivation) | not-started | `Core.Contracts/IntegrationEvents/*`, `Core.Application/IntegrationEvents/Handlers/*` | `MasterData.Application/IntegrationEvents` | Propagate name changes to snapshots |
 
 ### Contracts
 
@@ -97,19 +104,6 @@ Reference paths are relative to `legacy/src/`.
 | [DEFERRED] Mobile v2 BFF endpoints | not-started | `Operations.Presentation/Mobile/MobileV2Endpoints.cs` | | Reference only; mobile deferred for v1.0.0 |
 | [DEFERRED] Mobile offline sync (REST + hub) | not-started | `Operations.Presentation/Mobile/Sync/MobileSyncEndpoints.cs`, `BuildingBlocks.Application/Abstractions/Mobile/Sync/*`, `Host.Web` `MobileSyncHub` | | Reference only; mobile deferred |
 
-### Store
-
-| Feature | Status | Old reference files | New location | Notes |
-|---|---|---|---|---|
-| Unit | not-started | `Store.Domain/Aggregates/Unit/*`, `Store.Application/Features/Unit/**` | | Measurement units |
-| Tool (+ equipment lines) | not-started | `Store.Domain/Aggregates/Tool/{Tool.cs,Equipment.cs}`, `Features/Tool/**` | | Add/update/remove equipment |
-| Material | not-started | `Store.Domain/Aggregates/Material/*`, `Features/Material/**` | | |
-| General support | not-started | `Store.Domain/Aggregates/GeneralSupport/*`, `Features/GeneralSupport/**` | | |
-| Tool price plans (bracketed) | not-started | `Store.Domain/Aggregates/ToolPricePlan/*`, `Features/ToolPricePlan/**`, `Store.Domain/Events/ToolPricePlan*` | | |
-| Material price plans (bracketed) | not-started | `Store.Domain/Aggregates/MaterialPricePlan/*`, `Features/MaterialPricePlan/**`, `Store.Domain/Events/MaterialPricePlan*` | | |
-| General support price plans (bracketed) | not-started | `Store.Domain/Aggregates/GeneralSupportPricePlan/*`, `Features/GeneralSupportPricePlan/**`, `Store.Domain/Events/GeneralSupportPricePlan*` | | |
-| Store snapshots (cross-module reads) | not-started | `Store.Contracts/Features/Pricing/*`, `Store.Domain/ValueObjects/{ToolSnapshot,MaterialSnapshot,GeneralSupportSnapshot}.cs` | | |
-
 ### Notifications
 
 | Feature | Status | Old reference files | New location | Notes |
@@ -124,7 +118,7 @@ Reference paths are relative to `legacy/src/`.
 
 | Feature | Status | Old reference files | New location | Notes |
 |---|---|---|---|---|
-| Automatic EF change-capture audit trail | not-started | `BuildingBlocks.Infrastructure/Persistence/BaseDbContext.cs`, `Persistence/Models/AuditTrail.cs` | | Real audit today; writes `audit.AuditTrails` |
+| Automatic EF change-capture audit trail | not-started | `BuildingBlocks.Infrastructure/Persistence/BaseDbContext.cs`, `Persistence/Models/AuditTrail.cs`, `Core.Infrastructure/Persistence/CoreDbContext.cs` | `Audit.Infrastructure` | New Audit module owns `audit.AuditTrails`; do not preserve legacy Core migration ownership |
 | Business/security event audit | not-started | `Audit.Domain/Enumerations/SecurityEventType.cs`, `Audit.Contracts/SecurityEvent/SecurityEventDto.cs` | | Legacy is enum-only stub; implement properly in v1.0.0 |
 
 ### BuildingBlocks (shared foundation)
@@ -143,6 +137,6 @@ Reference paths are relative to `legacy/src/`.
 | Feature | Status | Old reference files | New location | Notes |
 |---|---|---|---|---|
 | Module composition & wiring | not-started | `Host.Web/Program.cs`, `Extensions/ServiceCollectionExtensions.cs` | | New host stays thin |
-| Ordered migrations apply | not-started | `Host.Web/Extensions/DatabaseMigrationExtensions.cs` | | Identity → Core (audit) → … |
+| Ordered migrations apply | not-started | `Host.Web/Extensions/DatabaseMigrationExtensions.cs` | | Identity → Audit → MasterData → … |
 | Auth policies (portal cookie + MobileJwt) | not-started | `Host.Web/Authorization/PortalPolicies.cs`, `Extensions/WebApplicationExtensions.cs` | | v1.0.0: web cookie now, Bearer scheme ready |
 | OpenAPI / Scalar | not-started | `Host.Web/Program.cs` | | Make OpenAPI a first-class artifact (Scalar) for the Blazor portal, future mobile, and integrations |
