@@ -43,8 +43,13 @@
 
 /* --- Search box (RadzenFormField with a leading search icon) ------------- */
 .os-search {
-    width: 22rem;
-    max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+}
+
+.os-search ::deep .rz-form-field {
+    width: 100%;
+    --rz-form-field-margin-block: 0;
 }
 
 .os-search ::deep .rz-form-field-content {
