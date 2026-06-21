@@ -175,6 +175,98 @@ a {
 .os-pill--info { background: var(--os-color-info-bg); color: var(--os-color-info); }
 .os-pill--neutral { background: var(--os-color-neutral-bg); color: var(--os-color-text-muted); }
 
+/* --- Row actions menu ---------------------------------------------------- */
+/* The per-row "more" trigger used inside grids. A quiet ghost button that opens
+   a dropdown of the actions available for that row. */
+.os-row-actions-trigger {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: var(--os-radius-sm);
+    background: transparent;
+    color: var(--os-color-text-muted);
+    cursor: pointer;
+    transition: background var(--os-transition), color var(--os-transition);
+}
+
+.os-row-actions-trigger:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-text);
+}
+
+.os-row-actions-trigger .rz-icon {
+    font-size: 1.25rem;
+}
+
+/* The dropdown is rendered by ContextMenuService at the document root; strip the
+   default container chrome so our own panel provides the surface. */
+.rz-contextmenu {
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.os-row-actions-menu {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 12rem;
+    padding: var(--os-space-1);
+    background: var(--os-color-surface);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    box-shadow: var(--os-shadow-lg);
+}
+
+.os-row-actions-item {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+    width: 100%;
+    padding: 0.5rem var(--os-space-3);
+    border: none;
+    border-radius: var(--os-radius-sm);
+    background: transparent;
+    color: var(--os-color-text);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 500;
+    text-align: start;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background var(--os-transition), color var(--os-transition);
+}
+
+.os-row-actions-item .rz-icon {
+    font-size: 1.15rem;
+    color: var(--os-color-text-muted);
+}
+
+.os-row-actions-item:hover {
+    background: var(--os-color-surface-hover);
+}
+
+.os-row-actions-item--danger {
+    color: var(--os-color-danger);
+}
+
+.os-row-actions-item--danger .rz-icon {
+    color: var(--os-color-danger);
+}
+
+.os-row-actions-item--danger:hover {
+    background: var(--os-color-danger-bg);
+}
+
+.os-row-actions-sep {
+    height: 1px;
+    margin: var(--os-space-1) 0;
+    background: var(--os-color-border);
+}
+
 /* Cards lift slightly on hover for interactive lists */
 .rz-card {
     border: 1px solid var(--os-color-border);

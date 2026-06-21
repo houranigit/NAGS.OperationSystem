@@ -1,6 +1,7 @@
 @page "/users"
 @inject IdentityApiClient Identity
 @inject DialogService DialogService
+@inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject GridPreferences GridPrefs
 
@@ -63,8 +64,23 @@
                 </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="user">
-                <RadzenButton Icon="arrow_forward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Variant="Variant.Flat"
-                              Click="@(() => OpenUser(user.Id))" title="@UiStrings.Common.Open" />
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => OpenUser(user.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@IdentityPermissions.UsersUpdate"
+                               OnClick="@(() => OpenEditAsync(user))" />
+                    <RowAction Text="@UiStrings.Users.AssignRole" Icon="badge" Permission="@IdentityPermissions.UsersAssignRole"
+                               OnClick="@(() => OpenAssignRoleAsync(user))" />
+                    <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail" Permission="@IdentityPermissions.UsersInvite"
+                               Visible="@(user.Status == "Invited")" OnClick="@(() => ResendInvitationAsync(user))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="@UiStrings.Users.Unlock" Icon="lock_open" Permission="@IdentityPermissions.UsersUnlock"
+                               Visible="@user.IsLockedOut" OnClick="@(() => UnlockAsync(user))" />
+                    <RowAction Text="@UiStrings.Users.Lock" Icon="lock" Permission="@IdentityPermissions.UsersLock"
+                               Visible="@(!user.IsLockedOut)" OnClick="@(() => LockAsync(user))" />
+                    <RowAction Text="@UiStrings.Users.Deactivate" Icon="person_off" Danger="true"
+                               Permission="@IdentityPermissions.UsersDeactivate"
+                               Visible="@(user.Status != "Deactivated")" OnClick="@(() => DeactivateAsync(user))" />
+                </RowActionMenu>
             </RowActions>
         </DataListCard>
     </div>
@@ -183,6 +199,60 @@
     }
 
     private void OpenUser(Guid id) => Navigation.NavigateTo($"/users/{id}");
+
+    private async Task OpenEditAsync(UserListItem user)
+    {
+        var result = await DialogService.OpenAsync<EditUserDialog>(UiStrings.Users.EditTitle,
+            new Dictionary<string, object?> { [nameof(EditUserDialog.UserId)] = user.Id, [nameof(EditUserDialog.DisplayName)] = user.DisplayName });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private async Task OpenAssignRoleAsync(UserListItem user)
+    {
+        var result = await DialogService.OpenAsync<AssignRoleDialog>(UiStrings.Users.AssignRoleTitle,
+            new Dictionary<string, object?> { [nameof(AssignRoleDialog.UserId)] = user.Id, [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ResendInvitationAsync(UserListItem user) =>
+        RunActionAsync(() => Identity.ResendInvitationAsync(user.Id), UiStrings.Users.ResendInvitation);
+
+    private Task UnlockAsync(UserListItem user) =>
+        RunActionAsync(() => Identity.UnlockUserAsync(user.Id), UiStrings.Users.Unlock);
+
+    private async Task LockAsync(UserListItem user)
+    {
+        if (await Confirm(UiStrings.Users.ConfirmLock))
+            await RunActionAsync(() => Identity.LockUserAsync(user.Id), UiStrings.Users.Lock);
+    }
+
+    private async Task DeactivateAsync(UserListItem user)
+    {
+        if (await Confirm(UiStrings.Users.ConfirmDeactivate))
+            await RunActionAsync(() => Identity.DeactivateUserAsync(user.Id), UiStrings.Users.Deactivate);
+    }
+
+    private async Task RunActionAsync(Func<Task> action, string successMessage)
+    {
+        try
+        {
+            await action();
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private async Task<bool> Confirm(string message) =>
+        await DialogService.Confirm(message, UiStrings.Common.Confirm,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
 
     private static string Initials(string? name)
     {

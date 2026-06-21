@@ -1,0 +1,41 @@
+@implements IDisposable
+
+@*
+    A single entry inside a <RowActionMenu>. Renders nothing on its own — it registers
+    itself with the parent menu, which collects the entries and draws the dropdown when opened.
+    Use Separator="true" for a divider; otherwise provide Text + Icon + OnClick.
+*@
+
+@code {
+    [CascadingParameter] private RowActionMenu? Menu { get; set; }
+
+    /// <summary>Label shown in the menu. Required for non-separator entries.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    /// <summary>Material icon name shown before the label.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Invoked when the entry is selected. The menu closes first, then this runs.</summary>
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    /// <summary>Renders the entry in the danger tone (e.g. destructive actions).</summary>
+    [Parameter] public bool Danger { get; set; }
+
+    /// <summary>When true, this entry is a divider instead of a clickable action.</summary>
+    [Parameter] public bool Separator { get; set; }
+
+    /// <summary>Optional permission claim required to show this entry.</summary>
+    [Parameter] public string? Permission { get; set; }
+
+    /// <summary>Set false to hide the entry regardless of permission (e.g. state-based gating).</summary>
+    [Parameter] public bool Visible { get; set; } = true;
+
+    protected override void OnInitialized() => Menu?.Register(this);
+
+    internal bool IsVisible(AuthSession auth) =>
+        Visible && (string.IsNullOrEmpty(Permission) || auth.HasPermission(Permission));
+
+    internal Task InvokeAsync() => OnClick.InvokeAsync();
+
+    public void Dispose() => Menu?.Unregister(this);
+}

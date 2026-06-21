@@ -1,6 +1,7 @@
 @page "/roles"
 @inject IdentityApiClient Identity
 @inject DialogService DialogService
+@inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject GridPreferences GridPrefs
 
@@ -54,8 +55,15 @@
                 <RadzenDataGridColumn TItem="RoleListItem" Property="UserCount" Title="@UiStrings.Roles.UserCount" Width="120px" />
             </Columns>
             <RowActions Context="role">
-                <RadzenButton Icon="arrow_forward" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Variant="Variant.Flat"
-                              Click="@(() => OpenRole(role.Id))" title="@UiStrings.Common.Open" />
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => OpenRole(role.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@IdentityPermissions.RolesUpdate"
+                               Visible="@(!role.IsSystem)" OnClick="@(() => OpenEditAsync(role))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="@UiStrings.Common.Delete" Icon="delete" Danger="true"
+                               Permission="@IdentityPermissions.RolesDelete"
+                               Visible="@(!role.IsSystem)" OnClick="@(() => DeleteAsync(role))" />
+                </RowActionMenu>
             </RowActions>
         </DataListCard>
     </div>
@@ -137,4 +145,38 @@
     }
 
     private void OpenRole(Guid id) => Navigation.NavigateTo($"/roles/{id}");
+
+    private async Task OpenEditAsync(RoleListItem role)
+    {
+        var result = await DialogService.OpenAsync<RoleFormDialog>(UiStrings.Roles.EditTitle,
+            new Dictionary<string, object?>
+            {
+                [nameof(RoleFormDialog.RoleId)] = role.Id,
+                [nameof(RoleFormDialog.Name)] = role.Name,
+                [nameof(RoleFormDialog.Description)] = role.Description
+            });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private async Task DeleteAsync(RoleListItem role)
+    {
+        var confirmed = await DialogService.Confirm(UiStrings.Roles.ConfirmDelete, UiStrings.Common.Delete,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        try
+        {
+            await Identity.DeleteRoleAsync(role.Id);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.Deleted);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
 }

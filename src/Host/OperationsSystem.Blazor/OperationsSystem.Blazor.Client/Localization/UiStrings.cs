@@ -26,6 +26,7 @@ public static class UiStrings
         public const string Confirm = "Confirm";
         public const string Search = "Search";
         public const string Actions = "Actions";
+        public const string MoreActions = "More actions";
         public const string Open = "Open";
         public const string Manage = "Manage";
         public const string Back = "Back";

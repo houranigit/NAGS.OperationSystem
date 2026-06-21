@@ -1,0 +1,98 @@
+@inject ContextMenuService ContextMenu
+@inject AuthSession Auth
+
+@*
+    Standard per-row actions control for grids. Renders a single "more" trigger that
+    opens a dropdown of the available actions for the row (navigate, edit, lock, …),
+    replacing the old single navigation button. Declare entries with <RowAction>.
+
+    The dropdown is rendered through ContextMenuService so it escapes the grid's
+    clipped scroll area and closes on outside-click / Escape automatically.
+*@
+
+<button type="button" class="os-row-actions-trigger" @onclick="ShowMenu" @onclick:stopPropagation="true"
+        aria-haspopup="menu" title="@TriggerLabel" aria-label="@TriggerLabel">
+    <RadzenIcon Icon="more_horiz" />
+</button>
+
+<CascadingValue Value="this" IsFixed="true">@ChildContent</CascadingValue>
+
+@code {
+    private readonly List<RowAction> _actions = [];
+
+    /// <summary><see cref="RowAction"/> entries describing the row's available actions.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Accessible label for the trigger button (defaults to a localized "Actions").</summary>
+    [Parameter] public string? Label { get; set; }
+
+    private string TriggerLabel => Label ?? UiStrings.Common.MoreActions;
+
+    internal void Register(RowAction action)
+    {
+        if (!_actions.Contains(action))
+            _actions.Add(action);
+    }
+
+    internal void Unregister(RowAction action) => _actions.Remove(action);
+
+    private void ShowMenu(MouseEventArgs args)
+    {
+        var actions = VisibleActions();
+        if (actions.Count == 0)
+            return;
+
+        ContextMenu.Open(args, _ =>
+            @<div class="os-row-actions-menu" role="menu" @onclick:stopPropagation="true">
+                @foreach (var action in actions)
+                {
+                    if (action.Separator)
+                    {
+                        <div class="os-row-actions-sep" role="separator"></div>
+                    }
+                    else
+                    {
+                        <button type="button" role="menuitem" class="@ItemClass(action)"
+                                @onclick="@(() => RunAsync(action))">
+                            <RadzenIcon Icon="@(string.IsNullOrWhiteSpace(action.Icon) ? "chevron_right" : action.Icon)" />
+                            <span>@action.Text</span>
+                        </button>
+                    }
+                }
+            </div>);
+    }
+
+    private async Task RunAsync(RowAction action)
+    {
+        ContextMenu.Close();
+        await action.InvokeAsync();
+    }
+
+    private static string ItemClass(RowAction action) =>
+        action.Danger ? "os-row-actions-item os-row-actions-item--danger" : "os-row-actions-item";
+
+    // Build the visible entry list in declared order while dropping leading,
+    // trailing, and duplicate separators so the menu never shows a dangling divider.
+    private List<RowAction> VisibleActions()
+    {
+        var result = new List<RowAction>();
+
+        foreach (var action in _actions)
+        {
+            if (action.Separator)
+            {
+                if (result.Count > 0 && !result[^1].Separator)
+                    result.Add(action);
+            }
+            else if (action.IsVisible(Auth))
+            {
+                result.Add(action);
+            }
+        }
+
+        while (result.Count > 0 && result[^1].Separator)
+            result.RemoveAt(result.Count - 1);
+
+        return result;
+    }
+}
