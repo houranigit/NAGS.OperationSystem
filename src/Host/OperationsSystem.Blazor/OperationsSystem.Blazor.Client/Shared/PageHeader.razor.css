@@ -13,7 +13,7 @@
 }
 
 .os-page-header p {
-    margin: var(--os-space-1) 0 0;
+    margin: var(--os-space-0) 0 0;
     max-width: 60ch;
 }
 
