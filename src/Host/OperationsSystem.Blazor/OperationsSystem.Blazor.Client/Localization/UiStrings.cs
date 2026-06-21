@@ -9,9 +9,8 @@ public static class UiStrings
     public static class App
     {
         public const string Name = "Operations System";
-        public const string Portal = "Operations Portal";
+        public const string Portal = "";
         public const string Version = "v1.0.0";
-        public const string BlazorPortal = "Blazor portal";
     }
 
     public static class Common
