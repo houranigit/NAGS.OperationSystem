@@ -12,6 +12,11 @@
 <RadzenCard class="os-list-card">
     <div class="os-list-toolbar">
         <div class="os-list-toolbar-filters">
+            <span class="os-count-badge" aria-live="polite">
+                <strong>@Count.ToString("N0")</strong>
+                <span>@CountLabel</span>
+            </span>
+
             @if (ShowSearch)
             {
                 <RadzenFormField Variant="Variant.Outlined" class="os-search">
@@ -39,10 +44,6 @@
 
         <div class="os-list-toolbar-meta">
             @Toolbar
-            <span class="os-count-badge" aria-live="polite">
-                <strong>@Count.ToString("N0")</strong>
-                <span>@CountLabel</span>
-            </span>
         </div>
     </div>
 

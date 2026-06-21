@@ -47,6 +47,10 @@
     max-width: 100%;
 }
 
+.os-search ::deep .rz-form-field-content {
+    margin-block: 0 !important;
+}
+
 /* Leading icon reads as muted, matching the placeholder. */
 .os-search ::deep .rz-form-field-start .rz-icon {
     color: var(--os-color-text-subtle);
@@ -133,7 +137,7 @@
 
 /* Comfortable row rhythm */
 .os-list-grid ::deep .rz-data-row > td {
-    padding-block: var(--os-space-3);
+    padding-block: var(--os-space-1);
 }
 
 /* Row hover */
