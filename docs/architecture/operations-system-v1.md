@@ -161,7 +161,8 @@ Features/
 
 ### MasterData Boundary
 
-- `MasterData` owns shared business catalogs and master records: customers, employees, stations, countries, currencies, aircraft types, operation types, services, manpower types, licenses, units, tools, materials, general-support items, and their catalog price plans.
+- Detailed feature decisions and open questions live in `docs/modules/master-data-foundation.md`; MasterData implementation work must follow that living foundation.
+- `MasterData` owns shared business catalogs and master records: customers, staff members, stations, countries, currencies, aircraft types, operation types, services, manpower types, licenses, units, tools, materials, general-support items, and their catalog price plans.
 - The legacy `Core` and `Store` modules are business references for this single v1.0.0 module; their names and project boundaries are not carried into the rewrite.
 - Catalog records may have lifecycle and validation behavior, but `MasterData` must not become a home for unrelated workflows merely because other modules consume their data.
 - Stock quantities, warehouses, receipts, issues, transfers, and replenishment are not master data. Introduce an `Inventory` module if those behaviors enter scope.
@@ -283,9 +284,11 @@ Features/
 - Permission names use lowercase dot format: module.resource.action.
 - Examples: masterdata.manpower-types.view, masterdata.manpower-types.create, operations.work-orders.approve, identity.users.assign-role.
 - Prefer consistent action names: view, create, update, delete, deactivate, approve, reject, assign, export, manage.
+- Each module contributes its own permission catalog and UserType compatibility metadata; Identity composes the registered catalogs when validating Role permissions.
 - The first created user is the System Admin bootstrap account.
 - System Admin can create roles and assign permissions to roles.
 - Each user has exactly one role for v1.0.0.
+- Each non-administrator Role is compatible with exactly one of the fixed `StationStaff` or `CustomerContact` UserTypes; permission compatibility is enforced when roles are edited and assigned.
 - Users cannot have multiple roles unless this rule is explicitly changed in the decisions log.
 - Keep future SSO/external-provider support in mind, but do not overbuild it early.
 
@@ -295,17 +298,17 @@ Features/
 - The backend auth foundation must support Bearer tokens as a first-class scheme so the deferred mobile client can authenticate without redesign.
 - Endpoints select their scheme/policy explicitly. Do not assume a single global scheme.
 
-### Identity And Employee Linkage
+### Identity And StaffMember Linkage
 
 - Identity owns authentication users, roles, and permissions.
-- The operational Employee concept (a person who performs work, scoped to a station) is a MasterData concern.
-- A User may be linked to an Employee. This link drives data scoping and, later, the mobile client's "current employee" context.
+- The operational `StaffMember` concept (named `Employee` in the legacy project) represents a person who performs work and is scoped to one station; it is a MasterData concern.
+- A User may be linked to a StaffMember. This link drives data scoping and, later, the mobile client's "current staff member" context.
 - Keep the link explicit and cross-module-safe (contracts/read models), not a hidden foreign key into another module's internals.
 
 ### Data Scoping (Row-Level Authorization)
 
 - Authorization has two axes: permission checks (can the user perform this action?) and data scope (which records may the user see/act on?).
-- v1.0.0 supports station-based data scoping for operational data (a user/employee is scoped to one or more stations).
+- v1.0.0 scopes each StationStaff User through one linked StaffMember to exactly one Station, and each CustomerContact User to exactly one Customer.
 - Data scoping is enforced server-side in queries and command guards, not only hidden in the UI.
 - Scope rules must be explicit, testable, and consistent across endpoints; do not scatter ad-hoc station filters through random handlers.
 - A System Admin (or an explicit all-stations scope) may bypass station scoping where the business requires it.
@@ -603,3 +606,5 @@ Use this section to record decisions as they become final.
 | 2026-06-19 | The React project (`src/Host/OperationsSystem.Web`) is retired and removed | Frontend consolidated on Blazor; avoids maintaining two parallel web clients |
 | 2026-06-19 | Blazor calls the API through a hand-written typed client over `BrowserApiClient` (no Orval/TanStack Query/Zod) | Generated TS clients no longer apply; typed C# client keeps DTOs explicit and shared with the contracts |
 | 2026-06-21 | v1.0.0 uses a `MasterData` module instead of legacy `Core` and `Store` modules | Names the business capability explicitly, avoids an ambiguous catch-all `Core`, and keeps catalog-only items together until real inventory behavior requires an `Inventory` module |
+| 2026-06-21 | Rename the legacy individual `Employee` concept to `StaffMember`; reserve Manpower terminology for labor categories/pricing | Produces clear person-level domain language while preserving established manpower pricing concepts |
+| 2026-06-21 | Users have one of three fixed types (`SystemAdministrator`, `StationStaff`, `CustomerContact`) plus one compatible permission-bearing Role | Separates immutable business identity/data scope from configurable authorization capabilities |
