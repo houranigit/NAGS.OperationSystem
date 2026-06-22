@@ -29,7 +29,7 @@ internal static class RoleEndpoints
 
         roles.MapPost("/", async (CreateRoleRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new CreateRoleCommand(request.Name, request.Description, request.Permissions), ct);
+            var result = await sender.Send(new CreateRoleCommand(request.Name, request.Description, request.CompatibleUserType, request.Permissions), ct);
             return result.ToCreated(id => $"/api/v1/identity/roles/{id}");
         }).RequirePermission(IdentityPermissions.Roles.Create);
 
@@ -51,9 +51,9 @@ internal static class RoleEndpoints
             return result.ToNoContent();
         }).RequirePermission(IdentityPermissions.Roles.Delete);
 
-        group.MapGet("/permissions", async (ISender sender, CancellationToken ct) =>
+        group.MapGet("/permissions", async (ISender sender, CancellationToken ct, BuildingBlocks.Contracts.Authorization.UserType? userType = null) =>
         {
-            var result = await sender.Send(new GetPermissionCatalogQuery(), ct);
+            var result = await sender.Send(new GetPermissionCatalogQuery(userType), ct);
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Roles.View).WithTags("Identity.Roles");
     }

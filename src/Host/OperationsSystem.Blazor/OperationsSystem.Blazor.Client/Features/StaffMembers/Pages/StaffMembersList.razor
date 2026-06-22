@@ -1,0 +1,201 @@
+@page "/master-data/staff-members"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
+
+<PageTitle>@UiStrings.StaffMembers.Title</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.StaffMembersView">
+    <div class="os-list-page">
+        <PageHeader Title="@UiStrings.StaffMembers.Title" Description="@UiStrings.StaffMembers.Description">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersCreate))
+                    {
+                        <RadzenButton Text="@UiStrings.StaffMembers.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <DataListCard @ref="list" TItem="StaffMemberListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="@UiStrings.StaffMembers.SearchPlaceholder"
+                      CountLabel="@UiStrings.StaffMembers.CountLabel" EmptyText="@UiStrings.StaffMembers.Empty">
+            <Filters>
+                <DataListFilter TValue="bool?" Placeholder="@UiStrings.StaffMembers.AllStatuses"
+                                Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="FullName" Title="@UiStrings.StaffMembers.FullName">
+                    <Template Context="s"><strong>@s.FullName</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="Email" Title="@UiStrings.StaffMembers.Email" />
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="StationCode" Title="@UiStrings.StaffMembers.Station" Width="120px" Sortable="false" />
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="ManpowerTypeName" Title="@UiStrings.StaffMembers.ManpowerType" Width="180px" Sortable="false" />
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Title="@UiStrings.StaffMembers.Status" Sortable="false" Width="120px">
+                    <Template Context="s">
+                        @if (s.IsActive)
+                        {
+                            <StatusBadge Label="@UiStrings.StaffMembers.Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="@UiStrings.StaffMembers.Inactive" Tone="neutral" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="s">
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(s.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@MasterDataPermissions.StaffMembersUpdate"
+                               OnClick="@(() => OpenEditAsync(s))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="@UiStrings.StaffMembers.Activate" Icon="check_circle" Permission="@MasterDataPermissions.StaffMembersActivate"
+                               Visible="@(!s.IsActive)" OnClick="@(() => ActivateAsync(s))" />
+                    <RowAction Text="@UiStrings.StaffMembers.Deactivate" Icon="cancel" Danger="true"
+                               Permission="@MasterDataPermissions.StaffMembersDeactivate"
+                               Visible="@s.IsActive" OnClick="@(() => DeactivateAsync(s))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private const string GridKey = "staff-members";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<StaffMemberListItem>? list;
+    private IReadOnlyList<StaffMemberListItem> items = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
+    private bool loadError;
+
+    private string searchTerm = string.Empty;
+    private bool? activeFilter;
+    private string? currentSort;
+
+    private readonly List<StatusOption> statusOptions =
+    [
+        new(UiStrings.StaffMembers.Active, true),
+        new(UiStrings.StaffMembers.Inactive, false)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(bool? value)
+    {
+        activeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MasterData.GetStaffMembersAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, null, null, currentSort);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var result = await DialogService.OpenAsync<StaffMemberFormDialog>(UiStrings.StaffMembers.CreateTitle,
+            null, new DialogOptions { Width = "720px" });
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void Open(Guid id) => Navigation.NavigateTo($"/master-data/staff-members/{id}");
+
+    private async Task OpenEditAsync(StaffMemberListItem s)
+    {
+        var result = await DialogService.OpenAsync<StaffMemberFormDialog>(UiStrings.StaffMembers.EditTitle,
+            new Dictionary<string, object?> { [nameof(StaffMemberFormDialog.StaffMemberId)] = s.Id },
+            new DialogOptions { Width = "720px" });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ActivateAsync(StaffMemberListItem s) =>
+        RunAsync(s.Id, (rv, ct) => MasterData.ActivateStaffMemberAsync(s.Id, rv, ct), UiStrings.StaffMembers.Activated);
+
+    private async Task DeactivateAsync(StaffMemberListItem s)
+    {
+        var confirmed = await DialogService.Confirm(UiStrings.StaffMembers.ConfirmDeactivate, UiStrings.StaffMembers.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync(s.Id, (rv, ct) => MasterData.DeactivateStaffMemberAsync(s.Id, rv, ct), UiStrings.StaffMembers.Deactivated);
+    }
+
+    private async Task RunAsync(Guid id, Func<string, CancellationToken, Task> action, string successMessage)
+    {
+        try
+        {
+            var detail = await MasterData.GetStaffMemberAsync(id);
+            await action(detail.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private sealed record StatusOption(string Label, bool? Value);
+}

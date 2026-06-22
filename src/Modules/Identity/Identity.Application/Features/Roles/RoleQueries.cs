@@ -1,9 +1,10 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using Identity.Application.Abstractions;
 using Identity.Application.Contracts;
-using Identity.Domain.Authorization;
 using Identity.Domain.Roles;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,16 +12,22 @@ namespace Identity.Application.Features.Roles;
 
 // --- Permission catalog ---------------------------------------------------
 
-public sealed record GetPermissionCatalogQuery : IQuery<IReadOnlyList<PermissionGroupDto>>;
+/// <summary>Returns the composed cross-module permission catalog, optionally limited to the codes a role of <paramref name="UserType"/> may select.</summary>
+public sealed record GetPermissionCatalogQuery(UserType? UserType = null) : IQuery<IReadOnlyList<PermissionGroupDto>>;
 
-public sealed class GetPermissionCatalogQueryHandler
+public sealed class GetPermissionCatalogQueryHandler(IPermissionRegistry permissions)
     : IQueryHandler<GetPermissionCatalogQuery, IReadOnlyList<PermissionGroupDto>>
 {
     public Task<Result<IReadOnlyList<PermissionGroupDto>>> Handle(GetPermissionCatalogQuery request, CancellationToken cancellationToken)
     {
-        IReadOnlyList<PermissionGroupDto> groups = IdentityPermissions.All
-            .GroupBy(p => p.Split('.') is { Length: >= 2 } parts ? parts[1] : p)
-            .Select(g => new PermissionGroupDto(g.Key, g.ToList()))
+        var codes = request.UserType is { } userType
+            ? permissions.CompatiblePermissions(userType)
+            : permissions.All.Select(p => p.Code).ToList();
+
+        IReadOnlyList<PermissionGroupDto> groups = codes
+            .GroupBy(p => p.Split('.') is { Length: >= 2 } parts ? $"{parts[0]}.{parts[1]}" : p)
+            .Select(g => new PermissionGroupDto(g.Key, g.OrderBy(x => x, StringComparer.Ordinal).ToList()))
+            .OrderBy(g => g.Resource, StringComparer.Ordinal)
             .ToList();
 
         return Task.FromResult(Result.Success(groups));
@@ -67,6 +74,7 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
             r.Name,
             r.Description,
             r.IsSystem,
+            r.CompatibleUserType.ToString(),
             r.Permissions.Count,
             userCounts.GetValueOrDefault(r.Id))).ToList();
 
@@ -104,7 +112,7 @@ public sealed class GetRoleByIdQueryHandler(IIdentityDbContext db)
             return Error.NotFound("Role not found.", "Identity.Role.NotFound");
 
         return new RoleDto(
-            role.Id, role.Name, role.Description, role.IsSystem,
+            role.Id, role.Name, role.Description, role.IsSystem, role.CompatibleUserType.ToString(),
             role.Permissions.ToList(), role.CreatedAtUtc, role.UpdatedAtUtc);
     }
 }

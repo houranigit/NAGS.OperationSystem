@@ -1,0 +1,290 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="StaffModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenRow Gap="1rem">
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.StaffMembers.FullName" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenTextBox @bind-Value="model.FullName" Name="fullName" Style="width: 100%;" MaxLength="200" />
+                </RadzenFormField>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.StaffMembers.Email" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" MaxLength="256" />
+                </RadzenFormField>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <RadzenRow Gap="1rem">
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.StaffMembers.Station" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
+                                    AllowFiltering="true" Name="station" Style="width: 100%;" />
+                </RadzenFormField>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.StaffMembers.ManpowerType" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" Name="manpowerType" Style="width: 100%;" />
+                </RadzenFormField>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <h4 class="os-form-section">@UiStrings.StaffMembers.EmploymentContract</h4>
+        <RadzenRow Gap="1rem">
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.StaffMembers.StartDate" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenDatePicker @bind-Value="model.StartDate" DateFormat="yyyy-MM-dd" Name="startDate" Style="width: 100%;" ShowTime="false" />
+                </RadzenFormField>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.StaffMembers.EndDate" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenDatePicker @bind-Value="model.EndDate" DateFormat="yyyy-MM-dd" Name="endDate" Style="width: 100%;" ShowTime="false" />
+                </RadzenFormField>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <h4 class="os-form-section">@UiStrings.StaffMembers.WorkingSchedule</h4>
+        <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.75rem">
+            @foreach (var day in WeekDays)
+            {
+                <RadzenCheckBox @bind-Value="dayState[day.Value]" Name="@($"day-{day.Value}")" TValue="bool" />
+                <RadzenLabel Text="@day.Label" Component="@($"day-{day.Value}")" Style="margin-inline-end: 0.75rem;" />
+            }
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+            <h4 class="os-form-section">@UiStrings.StaffMembers.Licenses</h4>
+            <RadzenButton Text="@UiStrings.StaffMembers.AddLicense" Icon="add" ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small" Click="@AddLicense" />
+        </RadzenStack>
+
+        @if (licenseRows.Count == 0)
+        {
+            <p class="os-muted">@UiStrings.StaffMembers.LicensesEmpty</p>
+        }
+        else
+        {
+            <RadzenStack Gap="0.75rem">
+                @foreach (var row in licenseRows)
+                {
+                    <RadzenCard Variant="Variant.Outlined">
+                        <RadzenRow Gap="0.75rem" AlignItems="AlignItems.Center">
+                            <RadzenColumn Size="6">
+                                <RadzenDropDown @bind-Value="row.LicenseId" Data="@licenses" TextProperty="Code" ValueProperty="Id"
+                                                AllowFiltering="true" Placeholder="@UiStrings.StaffMembers.License" Style="width: 100%;" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="5">
+                                <RadzenTextBox @bind-Value="row.LicenseNumber" Placeholder="@UiStrings.StaffMembers.LicenseNumber" Style="width: 100%;" MaxLength="100" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="1">
+                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
+                                              Size="ButtonSize.Small" Click="@(() => licenseRows.Remove(row))" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                    </RadzenCard>
+                }
+            </RadzenStack>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@(StaffMemberId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid? StaffMemberId { get; set; }
+    [Parameter] public Guid? PreselectedStationId { get; set; }
+
+    private static readonly DayOption[] WeekDays =
+    [
+        new(DayOfWeek.Sunday, UiStrings.Days.Sunday),
+        new(DayOfWeek.Monday, UiStrings.Days.Monday),
+        new(DayOfWeek.Tuesday, UiStrings.Days.Tuesday),
+        new(DayOfWeek.Wednesday, UiStrings.Days.Wednesday),
+        new(DayOfWeek.Thursday, UiStrings.Days.Thursday),
+        new(DayOfWeek.Friday, UiStrings.Days.Friday),
+        new(DayOfWeek.Saturday, UiStrings.Days.Saturday)
+    ];
+
+    private StaffModel model = new();
+    private readonly Dictionary<DayOfWeek, bool> dayState = Enum.GetValues<DayOfWeek>().ToDictionary(d => d, _ => false);
+    private readonly List<LicenseRow> licenseRows = [];
+    private IReadOnlyList<StationOption> stations = [];
+    private IReadOnlyList<ManpowerTypeOption> manpowerTypes = [];
+    private IReadOnlyList<LicenseOption> licenses = [];
+    private string? rowVersion;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            stations = await MasterData.GetStationOptionsAsync();
+            manpowerTypes = await MasterData.GetManpowerTypeOptionsAsync();
+            licenses = await MasterData.GetLicenseOptionsAsync();
+
+            if (PreselectedStationId is { } stationId)
+                model.StationId = stationId;
+
+            if (StaffMemberId is { } id)
+            {
+                var detail = await MasterData.GetStaffMemberAsync(id);
+                model = new StaffModel
+                {
+                    FullName = detail.FullName,
+                    Email = detail.Email,
+                    StationId = detail.StationId,
+                    ManpowerTypeId = detail.ManpowerTypeId,
+                    StartDate = detail.EmploymentContract?.StartDate.ToDateTime(TimeOnly.MinValue),
+                    EndDate = detail.EmploymentContract?.EndDate?.ToDateTime(TimeOnly.MinValue)
+                };
+                rowVersion = detail.RowVersion;
+
+                if (detail.WorkingDays is { } days)
+                {
+                    foreach (var d in days)
+                        dayState[d] = true;
+                }
+
+                foreach (var l in detail.Licenses)
+                    licenseRows.Add(new LicenseRow { Id = l.Id, LicenseId = l.LicenseId, LicenseNumber = l.LicenseNumber });
+            }
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+    }
+
+    private void AddLicense() => licenseRows.Add(new LicenseRow());
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.FullName))
+        {
+            errorMessage = UiStrings.StaffMembers.NameRequired;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Email))
+        {
+            errorMessage = UiStrings.StaffMembers.EmailRequired;
+            return;
+        }
+
+        if (model.StationId == Guid.Empty)
+        {
+            errorMessage = UiStrings.StaffMembers.StationRequired;
+            return;
+        }
+
+        if (model.ManpowerTypeId == Guid.Empty)
+        {
+            errorMessage = UiStrings.StaffMembers.ManpowerTypeRequired;
+            return;
+        }
+
+        if (model.StartDate is null && model.EndDate is not null)
+        {
+            errorMessage = UiStrings.StaffMembers.EndBeforeStart;
+            return;
+        }
+
+        if (model is { StartDate: { } start, EndDate: { } end } && end < start)
+        {
+            errorMessage = UiStrings.StaffMembers.EndBeforeStart;
+            return;
+        }
+
+        if (licenseRows.Any(r => r.LicenseId == Guid.Empty))
+        {
+            errorMessage = UiStrings.StaffMembers.LicenseRequired;
+            return;
+        }
+
+        if (licenseRows.Any(r => string.IsNullOrWhiteSpace(r.LicenseNumber)))
+        {
+            errorMessage = UiStrings.StaffMembers.LicenseNumberRequired;
+            return;
+        }
+
+        if (licenseRows.GroupBy(r => r.LicenseId).Any(g => g.Count() > 1))
+        {
+            errorMessage = UiStrings.StaffMembers.LicenseDuplicate;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            EmploymentContractRequest? contract = model.StartDate is { } startDate
+                ? new EmploymentContractRequest(DateOnly.FromDateTime(startDate), model.EndDate is { } e ? DateOnly.FromDateTime(e) : null)
+                : null;
+
+            var workingDays = dayState.Where(kv => kv.Value).Select(kv => kv.Key).ToList();
+            IReadOnlyList<DayOfWeek>? days = workingDays.Count > 0 ? workingDays : null;
+
+            var licenseRequests = licenseRows
+                .Select(r => new StaffLicenseRequest(r.Id, r.LicenseId, r.LicenseNumber!.Trim().ToUpperInvariant()))
+                .ToList();
+
+            var name = model.FullName!.Trim();
+            var email = model.Email!.Trim();
+
+            if (StaffMemberId is { } id)
+            {
+                await MasterData.UpdateStaffMemberAsync(id,
+                    new UpdateStaffMemberRequest(name, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests),
+                    rowVersion ?? string.Empty);
+            }
+            else
+            {
+                await MasterData.CreateStaffMemberAsync(
+                    new CreateStaffMemberRequest(name, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests));
+            }
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class StaffModel
+    {
+        public string? FullName { get; set; }
+        public string? Email { get; set; }
+        public Guid StationId { get; set; }
+        public Guid ManpowerTypeId { get; set; }
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+    }
+
+    private sealed class LicenseRow
+    {
+        public Guid? Id { get; set; }
+        public Guid LicenseId { get; set; }
+        public string? LicenseNumber { get; set; }
+    }
+
+    private sealed record DayOption(DayOfWeek Value, string Label);
+}

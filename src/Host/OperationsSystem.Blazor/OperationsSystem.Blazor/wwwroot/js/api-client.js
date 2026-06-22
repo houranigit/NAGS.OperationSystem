@@ -33,7 +33,7 @@ window.operationsSystem.storage = {
 };
 
 window.operationsSystem.api = {
-  async request(method, path, body, accessToken, language) {
+  async request(method, path, body, accessToken, language, ifMatch) {
     const headers = {
       Accept: "application/json",
       "Accept-Language": language || "en",
@@ -47,6 +47,10 @@ window.operationsSystem.api = {
 
     if (accessToken) {
       headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    if (ifMatch) {
+      headers["If-Match"] = ifMatch;
     }
 
     if (body !== null && body !== undefined) {

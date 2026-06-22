@@ -4,10 +4,11 @@ namespace Identity.Api.Endpoints;
 public sealed record LoginRequest(string Email, string Password);
 public sealed record ActivateAccountRequest(string Email, Guid InvitationToken, string NewPassword);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public sealed record ConfirmEmailChangeRequest(Guid Token, string NewEmail);
 public sealed record AccessTokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);
 
 // Roles
-public sealed record CreateRoleRequest(string Name, string? Description, IReadOnlyList<string> Permissions);
+public sealed record CreateRoleRequest(string Name, string? Description, BuildingBlocks.Contracts.Authorization.UserType CompatibleUserType, IReadOnlyList<string> Permissions);
 public sealed record UpdateRoleRequest(string Name, string? Description);
 public sealed record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);
 

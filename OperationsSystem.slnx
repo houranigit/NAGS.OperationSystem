@@ -3,6 +3,7 @@
   <Folder Name="/src/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/BuildingBlocks.Api/BuildingBlocks.Api.csproj" />
     <Project Path="src/BuildingBlocks/BuildingBlocks.Application/BuildingBlocks.Application.csproj" />
+    <Project Path="src/BuildingBlocks/BuildingBlocks.Contracts/BuildingBlocks.Contracts.csproj" />
     <Project Path="src/BuildingBlocks/BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
     <Project Path="src/BuildingBlocks/BuildingBlocks.Infrastructure/BuildingBlocks.Infrastructure.csproj" />
   </Folder>
@@ -12,14 +13,24 @@
     <Project Path="src/Host/OperationsSystem.Blazor/OperationsSystem.Blazor/OperationsSystem.Blazor.csproj" Id="518e9676-3e78-47f3-9723-2876aee1e6cf" />
   </Folder>
   <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/MasterData/">
+    <Project Path="src/Modules/MasterData/MasterData.Api/MasterData.Api.csproj" />
+    <Project Path="src/Modules/MasterData/MasterData.Application/MasterData.Application.csproj" />
+    <Project Path="src/Modules/MasterData/MasterData.Contracts/MasterData.Contracts.csproj" />
+    <Project Path="src/Modules/MasterData/MasterData.Domain/MasterData.Domain.csproj" />
+    <Project Path="src/Modules/MasterData/MasterData.Infrastructure/MasterData.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Identity/">
     <Project Path="src/Modules/Identity/Identity.Api/Identity.Api.csproj" />
     <Project Path="src/Modules/Identity/Identity.Application/Identity.Application.csproj" />
+    <Project Path="src/Modules/Identity/Identity.Contracts/Identity.Contracts.csproj" />
     <Project Path="src/Modules/Identity/Identity.Domain/Identity.Domain.csproj" />
     <Project Path="src/Modules/Identity/Identity.Infrastructure/Identity.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Identity.Domain.UnitTests/Identity.Domain.UnitTests.csproj" />
     <Project Path="tests/Identity.IntegrationTests/Identity.IntegrationTests.csproj" />
+    <Project Path="tests/MasterData.Domain.UnitTests/MasterData.Domain.UnitTests.csproj" />
+    <Project Path="tests/MasterData.IntegrationTests/MasterData.IntegrationTests.csproj" />
   </Folder>
 </Solution>

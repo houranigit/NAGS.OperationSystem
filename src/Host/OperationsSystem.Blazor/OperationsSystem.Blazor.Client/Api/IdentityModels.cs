@@ -8,11 +8,22 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSi
 
 // --- Roles -----------------------------------------------------------------
 
+/// <summary>The fixed account types. Mirrors the backend <c>UserType</c>; serialized as its name.</summary>
+public static class UserTypes
+{
+    public const string SystemAdministrator = nameof(SystemAdministrator);
+    public const string StationStaff = nameof(StationStaff);
+    public const string CustomerContact = nameof(CustomerContact);
+
+    public static readonly IReadOnlyList<string> All = [SystemAdministrator, StationStaff, CustomerContact];
+}
+
 public sealed record RoleListItem(
     Guid Id,
     string Name,
     string? Description,
     bool IsSystem,
+    string CompatibleUserType,
     int PermissionCount,
     int UserCount);
 
@@ -21,13 +32,14 @@ public sealed record RoleDetail(
     string Name,
     string? Description,
     bool IsSystem,
+    string CompatibleUserType,
     IReadOnlyList<string> Permissions,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc);
 
 public sealed record PermissionGroup(string Resource, IReadOnlyList<string> Permissions);
 
-public sealed record CreateRoleRequest(string Name, string? Description, IReadOnlyList<string> Permissions);
+public sealed record CreateRoleRequest(string Name, string? Description, string CompatibleUserType, IReadOnlyList<string> Permissions);
 public sealed record UpdateRoleRequest(string Name, string? Description);
 public sealed record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);
 

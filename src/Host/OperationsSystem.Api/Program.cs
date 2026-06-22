@@ -1,9 +1,15 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using BuildingBlocks.Api.Authorization;
+using BuildingBlocks.Api.Security;
 using BuildingBlocks.Application.Behaviors;
+using BuildingBlocks.Infrastructure.Messaging;
+using BuildingBlocks.Infrastructure.Storage;
 using FluentValidation;
 using Identity.Api;
 using Identity.Infrastructure;
+using MasterData.Api;
+using MasterData.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
@@ -29,16 +35,35 @@ builder.Services.AddProblemDetails(options =>
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
-// Application messaging: MediatR handlers + the Result-first validation behavior + validators.
+// Serialize enums as their names across the API so contracts are stable and human-readable.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+// Each module contributes its application assembly for MediatR handlers and FluentValidation.
+var moduleApplicationAssemblies = new[]
+{
+    Identity.Application.AssemblyReference.Assembly,
+    MasterData.Application.AssemblyReference.Assembly
+};
+
 builder.Services.AddMediatR(cfg =>
 {
-    cfg.RegisterServicesFromAssembly(Identity.Application.AssemblyReference.Assembly);
+    cfg.RegisterServicesFromAssemblies(moduleApplicationAssemblies);
     cfg.AddOpenBehavior(typeof(ValidationPipelineBehavior<,>));
 });
-builder.Services.AddValidatorsFromAssembly(Identity.Application.AssemblyReference.Assembly, includeInternalTypes: true);
+foreach (var assembly in moduleApplicationAssemblies)
+    builder.Services.AddValidatorsFromAssembly(assembly, includeInternalTypes: true);
+
+// Shared cross-cutting infrastructure.
+builder.Services.AddIntegrationMessaging();
+builder.Services.AddLocalFileStorage(builder.Configuration);
 
 // Modules.
 builder.Services.AddIdentityModule(builder.Configuration);
+builder.Services.AddMasterDataModule(builder.Configuration);
+
+// Compose the cross-module permission catalog after all module catalogs are registered.
+builder.Services.AddPermissionRegistry();
 
 // Authentication (JWT Bearer) + permission-based authorization.
 var jwt = builder.Configuration.GetSection("Identity:Jwt");
@@ -60,6 +85,7 @@ builder.Services
         };
     });
 builder.Services.AddPermissionAuthorization();
+builder.Services.AddHttpUserContext();
 
 var app = builder.Build();
 
@@ -79,8 +105,10 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 
 new IdentityEndpointModule().MapEndpoints(app);
+new MasterDataEndpointModule().MapEndpoints(app);
 
 await app.Services.MigrateAndSeedIdentityAsync();
+await app.Services.MigrateAndSeedMasterDataAsync();
 
 app.Run();
 

@@ -11,6 +11,13 @@
             <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" />
         </RadzenFormField>
 
+        @if (RoleId is null)
+        {
+            <RadzenFormField Text="@UiStrings.Roles.CompatibleUserType" Variant="Variant.Outlined">
+                <RadzenDropDown @bind-Value="model.CompatibleUserType" Data="@UserTypes.All" Name="compatibleUserType" Style="width: 100%;" />
+            </RadzenFormField>
+        }
+
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
@@ -55,7 +62,7 @@
             if (RoleId is { } id)
                 await Identity.UpdateRoleAsync(id, new UpdateRoleRequest(model.Name.Trim(), description));
             else
-                await Identity.CreateRoleAsync(new CreateRoleRequest(model.Name.Trim(), description, []));
+                await Identity.CreateRoleAsync(new CreateRoleRequest(model.Name.Trim(), description, model.CompatibleUserType, []));
 
             DialogService.Close(true);
         }
@@ -73,5 +80,6 @@
     {
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
+        public string CompatibleUserType { get; set; } = UserTypes.SystemAdministrator;
     }
 }

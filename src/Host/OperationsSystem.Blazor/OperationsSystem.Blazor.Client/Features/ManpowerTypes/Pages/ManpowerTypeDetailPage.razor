@@ -1,0 +1,151 @@
+@page "/master-data/manpower-types/{Id:guid}"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+
+<PageTitle>@(item?.Name ?? UiStrings.ManpowerTypes.Title)</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.ManpowerTypesView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (item is { } m)
+    {
+        <RadzenStack Gap="1rem" class="os-detail-stack">
+            <DetailHero Eyebrow="@UiStrings.ManpowerTypes.Title" Title="@m.Name"
+                        Subtitle="@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)"
+                        Icon="engineering" Tone="@(m.IsActive ? "primary" : "neutral")" OnBack="@GoBack">
+                <Metadata>
+                    @if (m.IsActive)
+                    {
+                        <StatusBadge Label="@UiStrings.ManpowerTypes.Active" Tone="success" />
+                    }
+                    else
+                    {
+                        <StatusBadge Label="@UiStrings.ManpowerTypes.Inactive" Tone="neutral" />
+                    }
+                </Metadata>
+                <Actions>
+                    <AuthorizeView Context="ctx">
+                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
+                        }
+                        @if (!m.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesActivate))
+                        {
+                            <RadzenButton Text="@UiStrings.ManpowerTypes.Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
+                        }
+                        @if (m.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesDeactivate))
+                        {
+                            <RadzenButton Text="@UiStrings.ManpowerTypes.Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                        }
+                    </AuthorizeView>
+                </Actions>
+            </DetailHero>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <h3>@UiStrings.Common.Details</h3>
+                    <div class="os-detail-grid">
+                        <DetailField Label="@UiStrings.ManpowerTypes.Name" Value="@m.Name" Icon="engineering" />
+                        <DetailField Label="@UiStrings.ManpowerTypes.ManpowerDescription"
+                                     Value="@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)" Icon="notes" />
+                        <DetailField Label="@UiStrings.ManpowerTypes.Status"
+                                     Value="@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)" Icon="toggle_on" />
+                        <DetailField Label="@UiStrings.ManpowerTypes.Created" Value="@m.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
+                        @if (m.UpdatedAtUtc is { } updated)
+                        {
+                            <DetailField Label="@UiStrings.ManpowerTypes.Updated" Value="@updated.ToLocalTime().ToString("g")" Icon="update" />
+                        }
+                    </div>
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenStack>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ManpowerTypeDetail? item;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            item = await MasterData.GetManpowerTypeAsync(Id);
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.IsNotFound ? UiStrings.Errors.NotFound : ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        var result = await DialogService.OpenAsync<ManpowerTypeFormDialog>(UiStrings.ManpowerTypes.EditTitle,
+            new Dictionary<string, object?> { [nameof(ManpowerTypeFormDialog.ManpowerTypeId)] = Id });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task ActivateAsync()
+    {
+        if (item is not { } m)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.ActivateManpowerTypeAsync(Id, rv, ct), UiStrings.ManpowerTypes.Activated, m.RowVersion);
+    }
+
+    private async Task DeactivateAsync()
+    {
+        if (item is not { } m)
+            return;
+
+        var confirmed = await DialogService.Confirm(UiStrings.ManpowerTypes.ConfirmDeactivate, UiStrings.ManpowerTypes.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.DeactivateManpowerTypeAsync(Id, rv, ct), UiStrings.ManpowerTypes.Deactivated, m.RowVersion);
+    }
+
+    private async Task RunAsync(Func<string, CancellationToken, Task> action, string successMessage, string rowVersion)
+    {
+        try
+        {
+            await action(rowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/master-data/manpower-types");
+}

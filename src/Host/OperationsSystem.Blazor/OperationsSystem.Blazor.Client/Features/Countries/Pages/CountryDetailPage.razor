@@ -1,0 +1,149 @@
+@page "/master-data/countries/{Id:guid}"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+
+<PageTitle>@(country?.Name ?? UiStrings.Countries.Title)</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.CountriesView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (country is { } c)
+    {
+        <RadzenStack Gap="1rem" class="os-detail-stack">
+            <DetailHero Eyebrow="@UiStrings.Countries.Title" Title="@c.Name" Subtitle="@c.IsoCode"
+                        Icon="public" Tone="@(c.IsActive ? "primary" : "neutral")" OnBack="@GoBack">
+                <Metadata>
+                    @if (c.IsActive)
+                    {
+                        <StatusBadge Label="@UiStrings.Countries.Active" Tone="success" />
+                    }
+                    else
+                    {
+                        <StatusBadge Label="@UiStrings.Countries.Inactive" Tone="neutral" />
+                    }
+                </Metadata>
+                <Actions>
+                    <AuthorizeView Context="ctx">
+                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
+                        }
+                        @if (!c.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesActivate))
+                        {
+                            <RadzenButton Text="@UiStrings.Countries.Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
+                        }
+                        @if (c.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesDeactivate))
+                        {
+                            <RadzenButton Text="@UiStrings.Countries.Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                        }
+                    </AuthorizeView>
+                </Actions>
+            </DetailHero>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <h3>@UiStrings.Common.Details</h3>
+                    <div class="os-detail-grid">
+                        <DetailField Label="@UiStrings.Countries.Name" Value="@c.Name" Icon="public" />
+                        <DetailField Label="@UiStrings.Countries.IsoCode" Value="@c.IsoCode" Icon="tag" />
+                        <DetailField Label="@UiStrings.Countries.Status"
+                                     Value="@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)" Icon="toggle_on" />
+                        <DetailField Label="@UiStrings.Countries.Created" Value="@c.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
+                        @if (c.UpdatedAtUtc is { } updated)
+                        {
+                            <DetailField Label="@UiStrings.Countries.Updated" Value="@updated.ToLocalTime().ToString("g")" Icon="update" />
+                        }
+                    </div>
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenStack>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private CountryDetail? country;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            country = await MasterData.GetCountryAsync(Id);
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.IsNotFound ? UiStrings.Errors.NotFound : ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        var result = await DialogService.OpenAsync<CountryFormDialog>(UiStrings.Countries.EditTitle,
+            new Dictionary<string, object?> { [nameof(CountryFormDialog.CountryId)] = Id });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task ActivateAsync()
+    {
+        if (country is not { } c)
+            return;
+
+        await RunActionAsync((rv, ct) => MasterData.ActivateCountryAsync(Id, rv, ct), UiStrings.Countries.Activated, c.RowVersion);
+    }
+
+    private async Task DeactivateAsync()
+    {
+        if (country is not { } c)
+            return;
+
+        var confirmed = await DialogService.Confirm(UiStrings.Countries.ConfirmDeactivate, UiStrings.Countries.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunActionAsync((rv, ct) => MasterData.DeactivateCountryAsync(Id, rv, ct), UiStrings.Countries.Deactivated, c.RowVersion);
+    }
+
+    private async Task RunActionAsync(Func<string, CancellationToken, Task> action, string successMessage, string rowVersion)
+    {
+        try
+        {
+            await action(rowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/master-data/countries");
+}

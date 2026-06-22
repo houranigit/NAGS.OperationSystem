@@ -1,0 +1,151 @@
+@page "/master-data/licenses/{Id:guid}"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+
+<PageTitle>@(item?.Code ?? UiStrings.Licenses.Title)</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.LicensesView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (item is { } l)
+    {
+        <RadzenStack Gap="1rem" class="os-detail-stack">
+            <DetailHero Eyebrow="@UiStrings.Licenses.Title" Title="@l.Name" Subtitle="@l.Code"
+                        Icon="badge" Tone="@(l.IsActive ? "primary" : "neutral")" OnBack="@GoBack">
+                <Metadata>
+                    @if (l.IsActive)
+                    {
+                        <StatusBadge Label="@UiStrings.Licenses.Active" Tone="success" />
+                    }
+                    else
+                    {
+                        <StatusBadge Label="@UiStrings.Licenses.Inactive" Tone="neutral" />
+                    }
+                </Metadata>
+                <Actions>
+                    <AuthorizeView Context="ctx">
+                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.LicensesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
+                        }
+                        @if (!l.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.LicensesActivate))
+                        {
+                            <RadzenButton Text="@UiStrings.Licenses.Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
+                        }
+                        @if (l.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.LicensesDeactivate))
+                        {
+                            <RadzenButton Text="@UiStrings.Licenses.Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                        }
+                    </AuthorizeView>
+                </Actions>
+            </DetailHero>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <h3>@UiStrings.Common.Details</h3>
+                    <div class="os-detail-grid">
+                        <DetailField Label="@UiStrings.Licenses.Code" Value="@l.Code" Icon="tag" />
+                        <DetailField Label="@UiStrings.Licenses.Name" Value="@l.Name" Icon="badge" />
+                        <DetailField Label="@UiStrings.Licenses.LicenseDescription"
+                                     Value="@(string.IsNullOrWhiteSpace(l.Description) ? UiStrings.Licenses.NoDescription : l.Description)" Icon="notes" />
+                        <DetailField Label="@UiStrings.Licenses.Status"
+                                     Value="@(l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)" Icon="toggle_on" />
+                        <DetailField Label="@UiStrings.Licenses.Created" Value="@l.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
+                        @if (l.UpdatedAtUtc is { } updated)
+                        {
+                            <DetailField Label="@UiStrings.Licenses.Updated" Value="@updated.ToLocalTime().ToString("g")" Icon="update" />
+                        }
+                    </div>
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenStack>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private LicenseDetail? item;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            item = await MasterData.GetLicenseAsync(Id);
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.IsNotFound ? UiStrings.Errors.NotFound : ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        var result = await DialogService.OpenAsync<LicenseFormDialog>(UiStrings.Licenses.EditTitle,
+            new Dictionary<string, object?> { [nameof(LicenseFormDialog.LicenseId)] = Id });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task ActivateAsync()
+    {
+        if (item is not { } l)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.ActivateLicenseAsync(Id, rv, ct), UiStrings.Licenses.Activated, l.RowVersion);
+    }
+
+    private async Task DeactivateAsync()
+    {
+        if (item is not { } l)
+            return;
+
+        var confirmed = await DialogService.Confirm(UiStrings.Licenses.ConfirmDeactivate, UiStrings.Licenses.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.DeactivateLicenseAsync(Id, rv, ct), UiStrings.Licenses.Deactivated, l.RowVersion);
+    }
+
+    private async Task RunAsync(Func<string, CancellationToken, Task> action, string successMessage, string rowVersion)
+    {
+        try
+        {
+            await action(rowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/master-data/licenses");
+}

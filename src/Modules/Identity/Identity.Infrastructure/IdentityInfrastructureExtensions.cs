@@ -1,6 +1,12 @@
+using BuildingBlocks.Contracts.Authorization;
+using BuildingBlocks.Infrastructure.Email;
+using BuildingBlocks.Infrastructure.Messaging;
 using Identity.Application;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
+using Identity.Application.Features.PortalAccess;
 using Identity.Infrastructure.Notifications;
+using MasterData.Contracts;
 using Identity.Infrastructure.Persistence;
 using Identity.Infrastructure.Seeding;
 using Identity.Infrastructure.Security;
@@ -35,7 +41,17 @@ public static class IdentityInfrastructureExtensions
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ITokenService, TokenService>();
         services.AddScoped<ICurrentUser, CurrentUser>();
-        services.AddScoped<IInvitationNotifier, LoggingInvitationNotifier>();
+        services.AddScoped<IInvitationNotifier, EmailInvitationNotifier>();
+
+        // Contribute Identity's permissions to the composed cross-module registry.
+        services.AddSingleton<IPermissionCatalog, IdentityPermissionCatalog>();
+
+        // Shared cross-cutting infrastructure used by Identity.
+        services.AddEmailSender(configuration);
+        services.AddModuleOutbox<IdentityDbContext>();
+        services.AddIntegrationEventHandler<PortalAccessRequested, PortalAccessRequestedHandler>();
+        services.AddIntegrationEventHandler<LinkedRecordDeactivated, LinkedRecordDeactivatedHandler>();
+        services.AddIntegrationEventHandler<LinkedEmailChangeRequested, LinkedEmailChangeRequestedHandler>();
 
         services.AddScoped<IdentityDataSeeder>();
 

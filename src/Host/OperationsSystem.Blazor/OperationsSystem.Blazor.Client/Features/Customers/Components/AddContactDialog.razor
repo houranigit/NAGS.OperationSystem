@@ -1,0 +1,86 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="ContactModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenFormField Text="@UiStrings.Customers.ContactName" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="150" />
+        </RadzenFormField>
+        <RadzenFormField Text="@UiStrings.Customers.ContactEmail" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" MaxLength="256" />
+        </RadzenFormField>
+        <RadzenFormField Text="@UiStrings.Customers.ContactJobTitle" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.JobTitle" Name="jobTitle" Style="width: 100%;" MaxLength="100" />
+        </RadzenFormField>
+        <RadzenFormField Text="@UiStrings.Customers.ContactPhone" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.Phone" Name="phone" Style="width: 100%;" MaxLength="30" />
+        </RadzenFormField>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Create" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid CustomerId { get; set; }
+    [Parameter] public string RowVersion { get; set; } = string.Empty;
+
+    private readonly ContactModel model = new();
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = UiStrings.Customers.ContactNameRequired;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Email))
+        {
+            errorMessage = UiStrings.Customers.ContactEmailRequired;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            await MasterData.AddCustomerContactAsync(CustomerId,
+                new AddCustomerContactRequest(
+                    model.Name!.Trim(),
+                    string.IsNullOrWhiteSpace(model.JobTitle) ? null : model.JobTitle!.Trim(),
+                    model.Email!.Trim(),
+                    string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone!.Trim()),
+                RowVersion);
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class ContactModel
+    {
+        public string? Name { get; set; }
+        public string? JobTitle { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+    }
+}

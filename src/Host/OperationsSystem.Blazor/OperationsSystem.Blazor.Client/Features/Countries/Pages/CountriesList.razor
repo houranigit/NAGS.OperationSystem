@@ -1,0 +1,202 @@
+@page "/master-data/countries"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
+
+<PageTitle>@UiStrings.Countries.Title</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.CountriesView">
+    <div class="os-list-page">
+        <PageHeader Title="@UiStrings.Countries.Title" Description="@UiStrings.Countries.Description">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesCreate))
+                    {
+                        <RadzenButton Text="@UiStrings.Countries.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <DataListCard @ref="list" TItem="CountryListItem" Data="@countries" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="@UiStrings.Countries.SearchPlaceholder"
+                      CountLabel="@UiStrings.Countries.CountLabel" EmptyText="@UiStrings.Countries.Empty">
+            <Filters>
+                <DataListFilter TValue="bool?" Placeholder="@UiStrings.Countries.AllStatuses"
+                                Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="CountryListItem" Property="Name" Title="@UiStrings.Countries.Name">
+                    <Template Context="country">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="public" /></span>
+                            <strong>@country.Name</strong>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="CountryListItem" Property="IsoCode" Title="@UiStrings.Countries.IsoCode" Width="140px" />
+                <RadzenDataGridColumn TItem="CountryListItem" Title="@UiStrings.Countries.Status" Sortable="false" Width="140px">
+                    <Template Context="country">
+                        @if (country.IsActive)
+                        {
+                            <StatusBadge Label="@UiStrings.Countries.Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="@UiStrings.Countries.Inactive" Tone="neutral" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="country">
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => OpenCountry(country.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@MasterDataPermissions.CountriesUpdate"
+                               OnClick="@(() => OpenEditAsync(country))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="@UiStrings.Countries.Activate" Icon="check_circle" Permission="@MasterDataPermissions.CountriesActivate"
+                               Visible="@(!country.IsActive)" OnClick="@(() => ActivateAsync(country))" />
+                    <RowAction Text="@UiStrings.Countries.Deactivate" Icon="cancel" Danger="true"
+                               Permission="@MasterDataPermissions.CountriesDeactivate"
+                               Visible="@country.IsActive" OnClick="@(() => DeactivateAsync(country))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private const string GridKey = "countries";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<CountryListItem>? list;
+    private IReadOnlyList<CountryListItem> countries = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
+    private bool loadError;
+
+    private string searchTerm = string.Empty;
+    private bool? activeFilter;
+    private string? currentSort;
+
+    private readonly List<StatusOption> statusOptions =
+    [
+        new(UiStrings.Countries.Active, true),
+        new(UiStrings.Countries.Inactive, false)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(bool? value)
+    {
+        activeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MasterData.GetCountriesAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, currentSort);
+            countries = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var result = await DialogService.OpenAsync<CountryFormDialog>(UiStrings.Countries.CreateTitle);
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void OpenCountry(Guid id) => Navigation.NavigateTo($"/master-data/countries/{id}");
+
+    private async Task OpenEditAsync(CountryListItem country)
+    {
+        var result = await DialogService.OpenAsync<CountryFormDialog>(UiStrings.Countries.EditTitle,
+            new Dictionary<string, object?> { [nameof(CountryFormDialog.CountryId)] = country.Id });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ActivateAsync(CountryListItem country) =>
+        RunWithConcurrencyAsync(country.Id, (rv, ct) => MasterData.ActivateCountryAsync(country.Id, rv, ct), UiStrings.Countries.Activated);
+
+    private async Task DeactivateAsync(CountryListItem country)
+    {
+        var confirmed = await DialogService.Confirm(UiStrings.Countries.ConfirmDeactivate, UiStrings.Countries.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunWithConcurrencyAsync(country.Id, (rv, ct) => MasterData.DeactivateCountryAsync(country.Id, rv, ct), UiStrings.Countries.Deactivated);
+    }
+
+    private async Task RunWithConcurrencyAsync(Guid id, Func<string, CancellationToken, Task> action, string successMessage)
+    {
+        try
+        {
+            var detail = await MasterData.GetCountryAsync(id);
+            await action(detail.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private sealed record StatusOption(string Label, bool? Value);
+}

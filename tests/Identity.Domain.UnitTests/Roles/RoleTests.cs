@@ -1,3 +1,4 @@
+using BuildingBlocks.Contracts.Authorization;
 using Identity.Domain.Authorization;
 using Identity.Domain.Roles;
 using Shouldly;
@@ -9,18 +10,27 @@ public class RoleTests
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void Create_with_unknown_permission_fails()
+    public void Create_with_blank_permission_fails()
     {
-        var result = Role.Create("Ops", null, ["not.a.real.permission"], Now);
+        var result = Role.Create("Ops", null, ["   "], UserType.SystemAdministrator, Now);
 
         result.IsFailure.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Create_records_compatible_user_type()
+    {
+        var result = Role.Create("Station Lead", null, [], UserType.StationStaff, Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.CompatibleUserType.ShouldBe(UserType.StationStaff);
     }
 
     [Fact]
     public void Create_dedupes_permissions_and_normalizes_name()
     {
         var result = Role.Create("  Dispatcher  ", "desc",
-            [IdentityPermissions.Users.View, IdentityPermissions.Users.View], Now);
+            [IdentityPermissions.Users.View, IdentityPermissions.Users.View], UserType.SystemAdministrator, Now);
 
         result.IsSuccess.ShouldBeTrue();
         var role = result.Value;
@@ -30,9 +40,9 @@ public class RoleTests
     }
 
     [Fact]
-    public void SetPermissions_replaces_and_validates()
+    public void SetPermissions_replaces_existing()
     {
-        var role = Role.Create("Ops", null, [IdentityPermissions.Users.View], Now).Value;
+        var role = Role.Create("Ops", null, [IdentityPermissions.Users.View], UserType.SystemAdministrator, Now).Value;
 
         role.SetPermissions([IdentityPermissions.Roles.View, IdentityPermissions.Roles.Create], Now);
 
@@ -44,7 +54,7 @@ public class RoleTests
     [Fact]
     public void Create_empty_name_fails()
     {
-        var result = Role.Create("  ", null, [], Now);
+        var result = Role.Create("  ", null, [], UserType.SystemAdministrator, Now);
 
         result.IsFailure.ShouldBeTrue();
     }

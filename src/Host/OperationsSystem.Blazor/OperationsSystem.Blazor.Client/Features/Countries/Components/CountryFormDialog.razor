@@ -1,0 +1,97 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="CountryModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenFormField Text="@UiStrings.Countries.Name" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+        </RadzenFormField>
+
+        <RadzenFormField Text="@UiStrings.Countries.IsoCode" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.IsoCode" Name="isoCode" Style="width: 100%;" MaxLength="2" />
+        </RadzenFormField>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@(CountryId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid? CountryId { get; set; }
+
+    private CountryModel model = new();
+    private string? rowVersion;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CountryId is { } id)
+        {
+            try
+            {
+                var detail = await MasterData.GetCountryAsync(id);
+                model = new CountryModel { Name = detail.Name, IsoCode = detail.IsoCode };
+                rowVersion = detail.RowVersion;
+            }
+            catch (ApiException ex)
+            {
+                errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+            }
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = UiStrings.Countries.NameRequired;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.IsoCode) || model.IsoCode.Trim().Length != 2)
+        {
+            errorMessage = UiStrings.Countries.IsoCodeRequired;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            var name = model.Name.Trim();
+            var isoCode = model.IsoCode.Trim().ToUpperInvariant();
+
+            if (CountryId is { } id)
+                await MasterData.UpdateCountryAsync(id, new UpdateCountryRequest(name, isoCode), rowVersion ?? string.Empty);
+            else
+                await MasterData.CreateCountryAsync(new CreateCountryRequest(name, isoCode));
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class CountryModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string IsoCode { get; set; } = string.Empty;
+    }
+}

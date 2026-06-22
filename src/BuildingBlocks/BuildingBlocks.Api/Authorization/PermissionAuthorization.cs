@@ -1,6 +1,9 @@
+using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace BuildingBlocks.Api.Authorization;
@@ -70,6 +73,16 @@ public static class PermissionAuthorizationExtensions
         services.AddAuthorization();
         services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
         services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the composed <see cref="IPermissionRegistry"/> built from every module's
+    /// <see cref="BuildingBlocks.Contracts.Authorization.IPermissionCatalog"/> registered in DI.
+    /// </summary>
+    public static IServiceCollection AddPermissionRegistry(this IServiceCollection services)
+    {
+        services.TryAddSingleton<IPermissionRegistry, PermissionRegistry>();
         return services;
     }
 

@@ -1,0 +1,148 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="StationModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenRow Gap="1rem">
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.Stations.IataCode" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenTextBox @bind-Value="model.IataCode" Name="iataCode" Style="width: 100%;" MaxLength="3" />
+                </RadzenFormField>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.Stations.IcaoCode" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenTextBox @bind-Value="model.IcaoCode" Name="icaoCode" Style="width: 100%;" MaxLength="4" />
+                </RadzenFormField>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <RadzenFormField Text="@UiStrings.Stations.Name" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="150" />
+        </RadzenFormField>
+
+        <RadzenFormField Text="@UiStrings.Stations.City" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.City" Name="city" Style="width: 100%;" MaxLength="100" />
+        </RadzenFormField>
+
+        <RadzenFormField Text="@UiStrings.Stations.Country" Variant="Variant.Outlined">
+            <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
+                            AllowFiltering="true" Name="country" Style="width: 100%;" />
+        </RadzenFormField>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@(StationId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid? StationId { get; set; }
+
+    private StationModel model = new();
+    private IReadOnlyList<CountryOption> countries = [];
+    private string? rowVersion;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            countries = await MasterData.GetCountryOptionsAsync();
+
+            if (StationId is { } id)
+            {
+                var detail = await MasterData.GetStationAsync(id);
+                model = new StationModel
+                {
+                    IataCode = detail.IataCode,
+                    IcaoCode = detail.IcaoCode,
+                    Name = detail.Name,
+                    City = detail.City,
+                    CountryId = detail.CountryId
+                };
+                rowVersion = detail.RowVersion;
+            }
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.IataCode) || model.IataCode.Trim().Length != 3)
+        {
+            errorMessage = UiStrings.Stations.IataRequired;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(model.IcaoCode) && model.IcaoCode.Trim().Length != 4)
+        {
+            errorMessage = UiStrings.Stations.IcaoInvalid;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = UiStrings.Stations.NameRequired;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.City))
+        {
+            errorMessage = UiStrings.Stations.CityRequired;
+            return;
+        }
+
+        if (model.CountryId == Guid.Empty)
+        {
+            errorMessage = UiStrings.Stations.CountryRequired;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            var iata = model.IataCode.Trim().ToUpperInvariant();
+            var icao = string.IsNullOrWhiteSpace(model.IcaoCode) ? null : model.IcaoCode.Trim().ToUpperInvariant();
+            var name = model.Name.Trim();
+            var city = model.City.Trim();
+
+            if (StationId is { } id)
+                await MasterData.UpdateStationAsync(id, new UpdateStationRequest(iata, icao, name, city, model.CountryId), rowVersion ?? string.Empty);
+            else
+                await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId));
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class StationModel
+    {
+        public string IataCode { get; set; } = string.Empty;
+        public string? IcaoCode { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string City { get; set; } = string.Empty;
+        public Guid CountryId { get; set; }
+    }
+}

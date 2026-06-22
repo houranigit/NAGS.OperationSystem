@@ -20,6 +20,7 @@ public sealed record RoleListItemDto(
     string Name,
     string? Description,
     bool IsSystem,
+    string CompatibleUserType,
     int PermissionCount,
     int UserCount);
 
@@ -28,9 +29,13 @@ public sealed record RoleDto(
     string Name,
     string? Description,
     bool IsSystem,
+    string CompatibleUserType,
     IReadOnlyList<string> Permissions,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc);
+
+/// <summary>A role option for pickers, with its compatible user type so the UI can filter by account type.</summary>
+public sealed record RoleOptionDto(Guid Id, string Name, string CompatibleUserType);
 
 public sealed record PermissionGroupDto(string Resource, IReadOnlyList<string> Permissions);
 

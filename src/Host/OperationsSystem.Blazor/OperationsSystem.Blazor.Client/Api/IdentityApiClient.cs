@@ -95,8 +95,11 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task DeleteRoleAsync(Guid id, CancellationToken ct = default) =>
         api.DeleteAsync($"/identity/roles/{id}", ct);
 
-    public Task<IReadOnlyList<PermissionGroup>> GetPermissionCatalogAsync(CancellationToken ct = default) =>
-        api.GetAsync<IReadOnlyList<PermissionGroup>>("/identity/permissions", ct);
+    public Task<IReadOnlyList<PermissionGroup>> GetPermissionCatalogAsync(string? userType = null, CancellationToken ct = default)
+    {
+        var query = string.IsNullOrWhiteSpace(userType) ? string.Empty : $"?userType={Uri.EscapeDataString(userType)}";
+        return api.GetAsync<IReadOnlyList<PermissionGroup>>($"/identity/permissions{query}", ct);
+    }
 
     // --- Sessions ----------------------------------------------------------
 

@@ -1,0 +1,238 @@
+@page "/master-data/stations/{Id:guid}"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+
+<PageTitle>@(item?.Name ?? UiStrings.Stations.Title)</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.StationsView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (item is { } s)
+    {
+        <RadzenStack Gap="1rem" class="os-detail-stack">
+            <DetailHero Eyebrow="@UiStrings.Stations.Title" Title="@s.Name" Subtitle="@($"{s.IataCode}{(string.IsNullOrWhiteSpace(s.IcaoCode) ? "" : " / " + s.IcaoCode)} · {s.City}")"
+                        Icon="flight_takeoff" Tone="@(s.IsActive ? "primary" : "neutral")" OnBack="@GoBack">
+                <Metadata>
+                    @if (s.IsActive)
+                    {
+                        <StatusBadge Label="@UiStrings.Stations.Active" Tone="success" />
+                    }
+                    else
+                    {
+                        <StatusBadge Label="@UiStrings.Stations.Inactive" Tone="neutral" />
+                    }
+                </Metadata>
+                <Actions>
+                    <AuthorizeView Context="ctx">
+                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
+                        }
+                        @if (!s.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsActivate))
+                        {
+                            <RadzenButton Text="@UiStrings.Stations.Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
+                        }
+                        @if (s.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsDeactivate))
+                        {
+                            <RadzenButton Text="@UiStrings.Stations.Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                        }
+                    </AuthorizeView>
+                </Actions>
+            </DetailHero>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <h3>@UiStrings.Common.Details</h3>
+                    <div class="os-detail-grid">
+                        <DetailField Label="@UiStrings.Stations.IataCode" Value="@s.IataCode" Icon="tag" />
+                        <DetailField Label="@UiStrings.Stations.IcaoCode" Value="@(string.IsNullOrWhiteSpace(s.IcaoCode) ? UiStrings.Stations.NoIcao : s.IcaoCode)" Icon="tag" />
+                        <DetailField Label="@UiStrings.Stations.Name" Value="@s.Name" Icon="flight_takeoff" />
+                        <DetailField Label="@UiStrings.Stations.City" Value="@s.City" Icon="location_city" />
+                        <DetailField Label="@UiStrings.Stations.Country" Value="@s.CountryName" Icon="public" />
+                        <DetailField Label="@UiStrings.Stations.Status"
+                                     Value="@(s.IsActive ? UiStrings.Stations.Active : UiStrings.Stations.Inactive)" Icon="toggle_on" />
+                        <DetailField Label="@UiStrings.Stations.Created" Value="@s.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
+                        @if (s.UpdatedAtUtc is { } updated)
+                        {
+                            <DetailField Label="@UiStrings.Stations.Updated" Value="@updated.ToLocalTime().ToString("g")" Icon="update" />
+                        }
+                    </div>
+                </RadzenStack>
+            </RadzenCard>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
+                        <h3>@UiStrings.Stations.StaffMembers</h3>
+                        <AuthorizeView Context="ctxStaff">
+                            @if (ctxStaff.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersCreate))
+                            {
+                                <RadzenButton Text="@UiStrings.Stations.AddStaffMember" Icon="person_add" ButtonStyle="ButtonStyle.Light"
+                                              Size="ButtonSize.Small" Click="@OpenAddStaffAsync" />
+                            }
+                        </AuthorizeView>
+                    </RadzenStack>
+
+                    @if (staffLoading)
+                    {
+                        <LoadingCard />
+                    }
+                    else if (stationStaff.Count == 0)
+                    {
+                        <EmptyState Icon="groups" Title="@UiStrings.Stations.StaffMembersEmpty" />
+                    }
+                    else
+                    {
+                        <RadzenDataGrid TItem="StaffMemberListItem" Data="@stationStaff" AllowSorting="false" class="os-grid"
+                                        RowSelect="@(st => NavigateToStaff(st.Id))">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="FullName" Title="@UiStrings.StaffMembers.FullName" />
+                                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="Email" Title="@UiStrings.StaffMembers.Email" />
+                                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="ManpowerTypeName" Title="@UiStrings.StaffMembers.ManpowerType" />
+                                <RadzenDataGridColumn TItem="StaffMemberListItem" Title="@UiStrings.StaffMembers.Status" Width="120px">
+                                    <Template Context="st">
+                                        @if (st.IsActive)
+                                        {
+                                            <StatusBadge Label="@UiStrings.StaffMembers.Active" Tone="success" />
+                                        }
+                                        else
+                                        {
+                                            <StatusBadge Label="@UiStrings.StaffMembers.Inactive" Tone="neutral" />
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenStack>
+            </RadzenCard>
+        </RadzenStack>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private StationDetail? item;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    private IReadOnlyList<StaffMemberListItem> stationStaff = [];
+    private bool staffLoading;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            item = await MasterData.GetStationAsync(Id);
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.IsNotFound ? UiStrings.Errors.NotFound : ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+
+        if (!loadError)
+            await LoadStaffAsync();
+    }
+
+    private async Task LoadStaffAsync()
+    {
+        staffLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var page = await MasterData.GetStaffMembersAsync(1, 100, null, stationId: Id);
+            stationStaff = page.Items;
+        }
+        catch (ApiException)
+        {
+            stationStaff = [];
+        }
+        finally
+        {
+            staffLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenAddStaffAsync()
+    {
+        var result = await DialogService.OpenAsync<StaffMemberFormDialog>(UiStrings.StaffMembers.CreateTitle,
+            new Dictionary<string, object?> { [nameof(StaffMemberFormDialog.PreselectedStationId)] = Id },
+            new DialogOptions { Width = "720px" });
+
+        if (result is true)
+            await LoadStaffAsync();
+    }
+
+    private void NavigateToStaff(Guid staffId) => Navigation.NavigateTo($"/master-data/staff-members/{staffId}");
+
+    private async Task OpenEditAsync()
+    {
+        var result = await DialogService.OpenAsync<StationFormDialog>(UiStrings.Stations.EditTitle,
+            new Dictionary<string, object?> { [nameof(StationFormDialog.StationId)] = Id });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task ActivateAsync()
+    {
+        if (item is not { } s)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.ActivateStationAsync(Id, rv, ct), UiStrings.Stations.Activated, s.RowVersion);
+    }
+
+    private async Task DeactivateAsync()
+    {
+        if (item is not { } s)
+            return;
+
+        var confirmed = await DialogService.Confirm(UiStrings.Stations.ConfirmDeactivate, UiStrings.Stations.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.DeactivateStationAsync(Id, rv, ct), UiStrings.Stations.Deactivated, s.RowVersion);
+    }
+
+    private async Task RunAsync(Func<string, CancellationToken, Task> action, string successMessage, string rowVersion)
+    {
+        try
+        {
+            await action(rowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/master-data/stations");
+}

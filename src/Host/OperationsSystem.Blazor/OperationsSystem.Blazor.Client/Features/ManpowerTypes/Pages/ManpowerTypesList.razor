@@ -1,0 +1,213 @@
+@page "/master-data/manpower-types"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
+
+<PageTitle>@UiStrings.ManpowerTypes.Title</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.ManpowerTypesView">
+    <div class="os-list-page">
+        <PageHeader Title="@UiStrings.ManpowerTypes.Title" Description="@UiStrings.ManpowerTypes.Description">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesCreate))
+                    {
+                        <RadzenButton Text="@UiStrings.ManpowerTypes.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <DataListCard @ref="list" TItem="ManpowerTypeListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="@UiStrings.ManpowerTypes.SearchPlaceholder"
+                      CountLabel="@UiStrings.ManpowerTypes.CountLabel" EmptyText="@UiStrings.ManpowerTypes.Empty">
+            <Filters>
+                <DataListFilter TValue="bool?" Placeholder="@UiStrings.ManpowerTypes.AllStatuses"
+                                Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Property="Name" Title="@UiStrings.ManpowerTypes.Name">
+                    <Template Context="item">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="engineering" /></span>
+                            <strong>@item.Name</strong>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Property="Description" Title="@UiStrings.ManpowerTypes.ManpowerDescription" Sortable="false">
+                    <Template Context="item">
+                        @if (string.IsNullOrWhiteSpace(item.Description))
+                        {
+                            <span class="os-muted">@UiStrings.ManpowerTypes.NoDescription</span>
+                        }
+                        else
+                        {
+                            @item.Description
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Title="@UiStrings.ManpowerTypes.Status" Sortable="false" Width="140px">
+                    <Template Context="item">
+                        @if (item.IsActive)
+                        {
+                            <StatusBadge Label="@UiStrings.ManpowerTypes.Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="@UiStrings.ManpowerTypes.Inactive" Tone="neutral" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="item">
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(item.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@MasterDataPermissions.ManpowerTypesUpdate"
+                               OnClick="@(() => OpenEditAsync(item))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="@UiStrings.ManpowerTypes.Activate" Icon="check_circle" Permission="@MasterDataPermissions.ManpowerTypesActivate"
+                               Visible="@(!item.IsActive)" OnClick="@(() => ActivateAsync(item))" />
+                    <RowAction Text="@UiStrings.ManpowerTypes.Deactivate" Icon="cancel" Danger="true"
+                               Permission="@MasterDataPermissions.ManpowerTypesDeactivate"
+                               Visible="@item.IsActive" OnClick="@(() => DeactivateAsync(item))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private const string GridKey = "manpower-types";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<ManpowerTypeListItem>? list;
+    private IReadOnlyList<ManpowerTypeListItem> items = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
+    private bool loadError;
+
+    private string searchTerm = string.Empty;
+    private bool? activeFilter;
+    private string? currentSort;
+
+    private readonly List<StatusOption> statusOptions =
+    [
+        new(UiStrings.ManpowerTypes.Active, true),
+        new(UiStrings.ManpowerTypes.Inactive, false)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(bool? value)
+    {
+        activeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MasterData.GetManpowerTypesAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, currentSort);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var result = await DialogService.OpenAsync<ManpowerTypeFormDialog>(UiStrings.ManpowerTypes.CreateTitle);
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void Open(Guid id) => Navigation.NavigateTo($"/master-data/manpower-types/{id}");
+
+    private async Task OpenEditAsync(ManpowerTypeListItem item)
+    {
+        var result = await DialogService.OpenAsync<ManpowerTypeFormDialog>(UiStrings.ManpowerTypes.EditTitle,
+            new Dictionary<string, object?> { [nameof(ManpowerTypeFormDialog.ManpowerTypeId)] = item.Id });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ActivateAsync(ManpowerTypeListItem item) =>
+        RunAsync(item.Id, (rv, ct) => MasterData.ActivateManpowerTypeAsync(item.Id, rv, ct), UiStrings.ManpowerTypes.Activated);
+
+    private async Task DeactivateAsync(ManpowerTypeListItem item)
+    {
+        var confirmed = await DialogService.Confirm(UiStrings.ManpowerTypes.ConfirmDeactivate, UiStrings.ManpowerTypes.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync(item.Id, (rv, ct) => MasterData.DeactivateManpowerTypeAsync(item.Id, rv, ct), UiStrings.ManpowerTypes.Deactivated);
+    }
+
+    private async Task RunAsync(Guid id, Func<string, CancellationToken, Task> action, string successMessage)
+    {
+        try
+        {
+            var detail = await MasterData.GetManpowerTypeAsync(id);
+            await action(detail.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private sealed record StatusOption(string Label, bool? Value);
+}

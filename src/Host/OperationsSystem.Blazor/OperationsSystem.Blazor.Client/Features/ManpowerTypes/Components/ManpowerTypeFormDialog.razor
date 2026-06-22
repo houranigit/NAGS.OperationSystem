@@ -1,0 +1,91 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="ManpowerTypeModel" Data="@model" Submit="@SubmitAsync">
+    <RadzenStack Gap="1rem">
+        <RadzenFormField Text="@UiStrings.ManpowerTypes.Name" Variant="Variant.Outlined">
+            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+        </RadzenFormField>
+
+        <RadzenFormField Text="@UiStrings.ManpowerTypes.ManpowerDescription" Variant="Variant.Outlined">
+            <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" MaxLength="500" />
+        </RadzenFormField>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@(ManpowerTypeId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid? ManpowerTypeId { get; set; }
+
+    private ManpowerTypeModel model = new();
+    private string? rowVersion;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ManpowerTypeId is { } id)
+        {
+            try
+            {
+                var detail = await MasterData.GetManpowerTypeAsync(id);
+                model = new ManpowerTypeModel { Name = detail.Name, Description = detail.Description };
+                rowVersion = detail.RowVersion;
+            }
+            catch (ApiException ex)
+            {
+                errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+            }
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = UiStrings.ManpowerTypes.NameRequired;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            var name = model.Name.Trim();
+            var description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+
+            if (ManpowerTypeId is { } id)
+                await MasterData.UpdateManpowerTypeAsync(id, new UpdateManpowerTypeRequest(name, description), rowVersion ?? string.Empty);
+            else
+                await MasterData.CreateManpowerTypeAsync(new CreateManpowerTypeRequest(name, description));
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class ManpowerTypeModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+    }
+}

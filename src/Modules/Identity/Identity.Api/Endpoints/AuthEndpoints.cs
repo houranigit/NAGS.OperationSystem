@@ -67,6 +67,12 @@ internal static class AuthEndpoints
             return result.ToNoContent();
         }).RequireAuthorization();
 
+        auth.MapPost("/confirm-email-change", async (ConfirmEmailChangeRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new ConfirmEmailChangeCommand(request.Token, request.NewEmail), ct);
+            return result.ToNoContent();
+        }).AllowAnonymous();
+
         group.MapGet("/me", async (ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetCurrentUserQuery(), ct);

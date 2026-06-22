@@ -1,0 +1,206 @@
+@page "/master-data/customers"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
+
+<PageTitle>@UiStrings.Customers.Title</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.CustomersView">
+    <div class="os-list-page">
+        <PageHeader Title="@UiStrings.Customers.Title" Description="@UiStrings.Customers.Description">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersCreate))
+                    {
+                        <RadzenButton Text="@UiStrings.Customers.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <DataListCard @ref="list" TItem="CustomerListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="@UiStrings.Customers.SearchPlaceholder"
+                      CountLabel="@UiStrings.Customers.CountLabel" EmptyText="@UiStrings.Customers.Empty">
+            <Filters>
+                <DataListFilter TValue="bool?" Placeholder="@UiStrings.Customers.AllStatuses"
+                                Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="CustomerListItem" Property="IataCode" Title="@UiStrings.Customers.IataCode" Width="100px">
+                    <Template Context="c"><strong>@c.IataCode</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="CustomerListItem" Property="IcaoCode" Title="@UiStrings.Customers.IcaoCode" Width="100px" Sortable="false">
+                    <Template Context="c">@(string.IsNullOrWhiteSpace(c.IcaoCode) ? UiStrings.Customers.NoIcao : c.IcaoCode)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="CustomerListItem" Property="Name" Title="@UiStrings.Customers.Name" />
+                <RadzenDataGridColumn TItem="CustomerListItem" Property="CountryName" Title="@UiStrings.Customers.Country" Width="160px" Sortable="false" />
+                <RadzenDataGridColumn TItem="CustomerListItem" Title="@UiStrings.Customers.Contacts" Sortable="false" Width="110px">
+                    <Template Context="c">@c.ContactCount</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="CustomerListItem" Title="@UiStrings.Customers.Status" Sortable="false" Width="120px">
+                    <Template Context="c">
+                        @if (c.IsActive)
+                        {
+                            <StatusBadge Label="@UiStrings.Customers.Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="c">
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(c.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@MasterDataPermissions.CustomersUpdate"
+                               OnClick="@(() => OpenEditAsync(c))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="@UiStrings.Customers.Activate" Icon="check_circle" Permission="@MasterDataPermissions.CustomersActivate"
+                               Visible="@(!c.IsActive)" OnClick="@(() => ActivateAsync(c))" />
+                    <RowAction Text="@UiStrings.Customers.Deactivate" Icon="cancel" Danger="true"
+                               Permission="@MasterDataPermissions.CustomersDeactivate"
+                               Visible="@c.IsActive" OnClick="@(() => DeactivateAsync(c))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private const string GridKey = "customers";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<CustomerListItem>? list;
+    private IReadOnlyList<CustomerListItem> items = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
+    private bool loadError;
+
+    private string searchTerm = string.Empty;
+    private bool? activeFilter;
+    private string? currentSort;
+
+    private readonly List<StatusOption> statusOptions =
+    [
+        new(UiStrings.Customers.Active, true),
+        new(UiStrings.Customers.Inactive, false)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(bool? value)
+    {
+        activeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MasterData.GetCustomersAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, null, currentSort);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var result = await DialogService.OpenAsync<CustomerFormDialog>(UiStrings.Customers.CreateTitle,
+            null, new DialogOptions { Width = "760px" });
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void Open(Guid id) => Navigation.NavigateTo($"/master-data/customers/{id}");
+
+    private async Task OpenEditAsync(CustomerListItem c)
+    {
+        var result = await DialogService.OpenAsync<CustomerFormDialog>(UiStrings.Customers.EditTitle,
+            new Dictionary<string, object?> { [nameof(CustomerFormDialog.CustomerId)] = c.Id },
+            new DialogOptions { Width = "760px" });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ActivateAsync(CustomerListItem c) =>
+        RunAsync(c.Id, (rv, ct) => MasterData.ActivateCustomerAsync(c.Id, rv, ct), UiStrings.Customers.Activated);
+
+    private async Task DeactivateAsync(CustomerListItem c)
+    {
+        var confirmed = await DialogService.Confirm(UiStrings.Customers.ConfirmDeactivate, UiStrings.Customers.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync(c.Id, (rv, ct) => MasterData.DeactivateCustomerAsync(c.Id, rv, ct), UiStrings.Customers.Deactivated);
+    }
+
+    private async Task RunAsync(Guid id, Func<string, CancellationToken, Task> action, string successMessage)
+    {
+        try
+        {
+            var detail = await MasterData.GetCustomerAsync(id);
+            await action(detail.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private sealed record StatusOption(string Label, bool? Value);
+}

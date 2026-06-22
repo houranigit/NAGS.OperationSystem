@@ -113,12 +113,9 @@
 
         try
         {
-            var roleTask = Identity.GetRoleAsync(Id);
-            var catalogTask = Identity.GetPermissionCatalogAsync();
-            await Task.WhenAll(roleTask, catalogTask);
-
-            role = roleTask.Result;
-            catalog = catalogTask.Result;
+            role = await Identity.GetRoleAsync(Id);
+            // Only show permissions compatible with this role's account type.
+            catalog = await Identity.GetPermissionCatalogAsync(role.CompatibleUserType);
             selected = [.. role.Permissions];
         }
         catch (ApiException ex)

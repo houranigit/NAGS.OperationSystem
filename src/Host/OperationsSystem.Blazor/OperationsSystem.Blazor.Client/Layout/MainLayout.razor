@@ -50,6 +50,63 @@
                     </NavLink>
                 }
             </AuthorizeView>
+
+            <AuthorizeView Context="masterData">
+                @{
+                    var canCountries = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesView);
+                    var canManpower = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesView);
+                    var canLicenses = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.LicensesView);
+                    var canStations = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsView);
+                    var canCustomers = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersView);
+                    var canStaff = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersView);
+                }
+                @if (canCountries || canManpower || canLicenses || canStations || canCustomers || canStaff)
+                {
+                    <p class="os-nav-section">@UiStrings.Nav.MasterData</p>
+                }
+                @if (canCountries)
+                {
+                    <NavLink href="/master-data/countries" class="os-nav-link" title="@UiStrings.Nav.Countries" @onclick="CloseNav">
+                        <RadzenIcon Icon="public" />
+                        <span>@UiStrings.Nav.Countries</span>
+                    </NavLink>
+                }
+                @if (canManpower)
+                {
+                    <NavLink href="/master-data/manpower-types" class="os-nav-link" title="@UiStrings.Nav.ManpowerTypes" @onclick="CloseNav">
+                        <RadzenIcon Icon="engineering" />
+                        <span>@UiStrings.Nav.ManpowerTypes</span>
+                    </NavLink>
+                }
+                @if (canLicenses)
+                {
+                    <NavLink href="/master-data/licenses" class="os-nav-link" title="@UiStrings.Nav.Licenses" @onclick="CloseNav">
+                        <RadzenIcon Icon="badge" />
+                        <span>@UiStrings.Nav.Licenses</span>
+                    </NavLink>
+                }
+                @if (canStations)
+                {
+                    <NavLink href="/master-data/stations" class="os-nav-link" title="@UiStrings.Nav.Stations" @onclick="CloseNav">
+                        <RadzenIcon Icon="flight_takeoff" />
+                        <span>@UiStrings.Nav.Stations</span>
+                    </NavLink>
+                }
+                @if (canCustomers)
+                {
+                    <NavLink href="/master-data/customers" class="os-nav-link" title="@UiStrings.Nav.Customers" @onclick="CloseNav">
+                        <RadzenIcon Icon="business" />
+                        <span>@UiStrings.Nav.Customers</span>
+                    </NavLink>
+                }
+                @if (canStaff)
+                {
+                    <NavLink href="/master-data/staff-members" class="os-nav-link" title="@UiStrings.Nav.StaffMembers" @onclick="CloseNav">
+                        <RadzenIcon Icon="groups" />
+                        <span>@UiStrings.Nav.StaffMembers</span>
+                    </NavLink>
+                }
+            </AuthorizeView>
         </nav>
 
         <div class="os-sidebar-foot">

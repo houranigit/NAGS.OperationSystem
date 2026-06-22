@@ -12,6 +12,9 @@ public sealed class IdentityModuleOptions
     public int LockoutMinutes { get; set; } = 15;
     public int InvitationExpiryHours { get; set; } = 72;
 
+    /// <summary>Base URL of the portal's activation page; the invitation link is built from it.</summary>
+    public string ActivationUrlBase { get; set; } = "https://localhost/activate";
+
     public AdminBootstrapOptions Admin { get; set; } = new();
     public DemoDataOptions DemoData { get; set; } = new();
 }

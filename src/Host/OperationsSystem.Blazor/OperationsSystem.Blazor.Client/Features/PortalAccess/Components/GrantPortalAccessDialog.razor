@@ -1,0 +1,98 @@
+@inject IdentityApiClient Identity
+@inject DialogService DialogService
+
+<RadzenStack Gap="1rem">
+    <p class="os-muted">@UiStrings.PortalAccess.Explanation</p>
+
+    @if (isLoading)
+    {
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+    }
+    else if (roles.Count == 0)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+            @UiStrings.PortalAccess.NoCompatibleRoles
+        </RadzenAlert>
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End">
+            <RadzenButton Text="@UiStrings.Common.Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        </RadzenStack>
+    }
+    else
+    {
+        <RadzenFormField Text="@UiStrings.PortalAccess.Role" Variant="Variant.Outlined" Style="width: 100%;">
+            <RadzenDropDown @bind-Value="selectedRoleId" Data="@roles" TextProperty="Name" ValueProperty="Id"
+                            Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" Style="width: 100%;" />
+        </RadzenFormField>
+
+        @if (errorMessage is not null)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" Disabled="@isSubmitting" />
+            <RadzenButton Text="@UiStrings.PortalAccess.Grant" Icon="send" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
+        </RadzenStack>
+    }
+</RadzenStack>
+
+@code {
+    /// <summary>The user type a candidate role must declare to be eligible (e.g. "StationStaff").</summary>
+    [Parameter] public string CompatibleUserType { get; set; } = string.Empty;
+
+    /// <summary>Performs the grant against the selected role; throws <see cref="ApiException"/> on failure.</summary>
+    [Parameter] public Func<Guid, CancellationToken, Task>? GrantAsync { get; set; }
+
+    private readonly List<RoleListItem> roles = [];
+    private Guid? selectedRoleId;
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var page = await Identity.GetRolesAsync(1, 100, null);
+            roles.AddRange(page.Items.Where(r =>
+                string.Equals(r.CompatibleUserType, CompatibleUserType, StringComparison.OrdinalIgnoreCase)));
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (selectedRoleId is not { } roleId)
+        {
+            errorMessage = UiStrings.PortalAccess.RoleRequired;
+            return;
+        }
+
+        if (GrantAsync is null)
+            return;
+
+        isSubmitting = true;
+        try
+        {
+            await GrantAsync(roleId, CancellationToken.None);
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

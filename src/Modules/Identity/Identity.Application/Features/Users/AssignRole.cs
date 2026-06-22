@@ -26,9 +26,14 @@ public sealed class AssignRoleCommandHandler(IIdentityDbContext db, TimeProvider
         if (user is null)
             return Error.NotFound("User not found.", "Identity.User.NotFound");
 
-        var roleExists = await db.Roles.AnyAsync(r => r.Id == request.RoleId, cancellationToken);
-        if (!roleExists)
+        var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == request.RoleId, cancellationToken);
+        if (role is null)
             return Error.Validation("The selected role does not exist.", "Identity.User.RoleNotFound");
+
+        if (role.CompatibleUserType != user.UserType)
+            return Error.Conflict(
+                $"Role '{role.Name}' is not compatible with this account's type ({user.UserType}).",
+                "Identity.User.IncompatibleRole");
 
         var result = user.AssignRole(request.RoleId, timeProvider.GetUtcNow());
         if (result.IsFailure)

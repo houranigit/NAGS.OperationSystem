@@ -23,6 +23,7 @@ public static class PortalClientServices
         services.AddScoped<GridPreferences>();
         services.AddScoped<BrowserApiClient>();
         services.AddScoped<IdentityApiClient>();
+        services.AddScoped<MasterDataApiClient>();
         services.AddScoped<AuthSession>();
 
         services.AddAuthorizationCore();

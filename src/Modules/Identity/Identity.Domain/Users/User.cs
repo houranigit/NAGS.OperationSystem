@@ -1,3 +1,4 @@
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Results;
 using Identity.Domain.Users.Events;
@@ -7,6 +8,8 @@ namespace Identity.Domain.Users;
 /// <summary>
 /// A login account. Created via invitation (no password) and activated by the invitee setting
 /// a password. Has exactly one role for v1.0.0. Supports lockout and a status lifecycle.
+/// Carries its fixed <see cref="UserType"/> (business identity/data scope) and, for non-admin
+/// accounts, the <see cref="ExternalReferenceId"/> of the originating MasterData record.
 /// </summary>
 public sealed class User : AggregateRoot<Guid>
 {
@@ -17,6 +20,23 @@ public sealed class User : AggregateRoot<Guid>
     public string? PasswordHash { get; private set; }
     public UserStatus Status { get; private set; }
     public Guid RoleId { get; private set; }
+
+    /// <summary>The account's fixed business identity and data scope.</summary>
+    public UserType UserType { get; private set; }
+
+    /// <summary>For StationStaff/CustomerContact, the id of the linked MasterData record.</summary>
+    public Guid? ExternalReferenceId { get; private set; }
+
+    /// <summary>
+    /// True once a permanently-removed account's login email has been released for reuse. The row is
+    /// retained for audit, but it no longer participates in login-email uniqueness.
+    /// </summary>
+    public bool LoginEmailReleased { get; private set; }
+
+    /// <summary>A pending, not-yet-verified new login email (linked email-change workflow).</summary>
+    public string? PendingEmail { get; private set; }
+    public Guid? EmailChangeToken { get; private set; }
+    public DateTimeOffset? EmailChangeExpiresAtUtc { get; private set; }
 
     /// <summary>Rotated whenever credentials change; lets existing sessions be invalidated.</summary>
     public Guid SecurityStamp { get; private set; }
@@ -39,7 +59,9 @@ public sealed class User : AggregateRoot<Guid>
         Guid roleId,
         Guid invitationToken,
         DateTimeOffset invitationExpiresAtUtc,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        UserType userType = UserType.SystemAdministrator,
+        Guid? externalReferenceId = null)
     {
         var nameCheck = ValidateDisplayName(displayName);
         if (nameCheck.IsFailure)
@@ -47,6 +69,9 @@ public sealed class User : AggregateRoot<Guid>
 
         if (roleId == Guid.Empty)
             return Error.Validation("A role is required.", "Identity.User.RoleRequired");
+
+        if (userType != UserType.SystemAdministrator && (externalReferenceId is null || externalReferenceId == Guid.Empty))
+            return Error.Validation("A non-administrator account requires an external reference.", "Identity.User.ExternalReferenceRequired");
 
         var user = new User
         {
@@ -56,6 +81,8 @@ public sealed class User : AggregateRoot<Guid>
             PasswordHash = null,
             Status = UserStatus.Invited,
             RoleId = roleId,
+            UserType = userType,
+            ExternalReferenceId = externalReferenceId,
             SecurityStamp = Guid.NewGuid(),
             InvitationToken = invitationToken,
             InvitationExpiresAtUtc = invitationExpiresAtUtc,
@@ -95,6 +122,7 @@ public sealed class User : AggregateRoot<Guid>
             PasswordHash = passwordHash,
             Status = UserStatus.Active,
             RoleId = roleId,
+            UserType = UserType.SystemAdministrator,
             SecurityStamp = Guid.NewGuid(),
             CreatedAtUtc = now
         };
@@ -102,6 +130,59 @@ public sealed class User : AggregateRoot<Guid>
         user.RaiseDomainEvent(new UserInvitedEvent(user.Id, user.Email.Value, user.RoleId));
         user.RaiseDomainEvent(new UserActivatedEvent(user.Id));
         return user;
+    }
+
+    /// <summary>
+    /// Starts a linked email-change. The login email does not change until the new address is
+    /// verified, so a typo or undeliverable address cannot lock the account out.
+    /// </summary>
+    public Result RequestEmailChange(Email newEmail, Guid token, DateTimeOffset expiresAtUtc, DateTimeOffset now)
+    {
+        if (Status == UserStatus.Deactivated)
+            return Error.Conflict("Cannot change the email of a deactivated account.", "Identity.User.Deactivated");
+
+        if (string.Equals(newEmail.Value, Email.Value, StringComparison.Ordinal))
+            return Error.Validation("The new email matches the current email.", "Identity.User.EmailUnchanged");
+
+        PendingEmail = newEmail.Value;
+        EmailChangeToken = token;
+        EmailChangeExpiresAtUtc = expiresAtUtc;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>Completes a linked email-change after the new address is verified.</summary>
+    public Result ConfirmEmailChange(Email verifiedEmail, DateTimeOffset now)
+    {
+        if (PendingEmail is null || !string.Equals(PendingEmail, verifiedEmail.Value, StringComparison.Ordinal))
+            return Error.Conflict("There is no pending email change for this address.", "Identity.User.NoPendingEmailChange");
+
+        Email = verifiedEmail;
+        PendingEmail = null;
+        EmailChangeToken = null;
+        EmailChangeExpiresAtUtc = null;
+        SecurityStamp = Guid.NewGuid();
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new UserProfileUpdatedEvent(Id));
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Permanently detaches the account from its MasterData identity and releases its login email
+    /// for reuse by a different identity. The row and its historical email are retained for audit.
+    /// </summary>
+    public Result ReleaseLoginEmail(DateTimeOffset now)
+    {
+        Status = UserStatus.Deactivated;
+        LoginEmailReleased = true;
+        ExternalReferenceId = null;
+        PendingEmail = null;
+        EmailChangeToken = null;
+        EmailChangeExpiresAtUtc = null;
+        SecurityStamp = Guid.NewGuid();
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new UserDeactivatedEvent(Id));
+        return Result.Success();
     }
 
     public Result Activate(Guid invitationToken, string passwordHash, DateTimeOffset now)

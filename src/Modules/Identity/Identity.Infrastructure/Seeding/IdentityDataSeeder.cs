@@ -1,3 +1,5 @@
+using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Contracts.Authorization;
 using Identity.Application;
 using Identity.Application.Abstractions;
 using Identity.Domain.Authorization;
@@ -17,6 +19,7 @@ namespace Identity.Infrastructure.Seeding;
 public sealed class IdentityDataSeeder(
     IdentityDbContext db,
     IPasswordHasher passwordHasher,
+    IPermissionRegistry permissionRegistry,
     TimeProvider timeProvider,
     IOptions<IdentityModuleOptions> options,
     ILogger<IdentityDataSeeder> logger)
@@ -35,6 +38,7 @@ public sealed class IdentityDataSeeder(
                 IdentitySeedIds.SystemAdminRoleName,
                 "Full system access. Seeded and protected.",
                 AllKnownPermissions(),
+                UserType.SystemAdministrator,
                 now,
                 isSystem: true);
 
@@ -111,6 +115,7 @@ public sealed class IdentityDataSeeder(
                     $"Demo Role {i:000}",
                     $"Pagination demo role {i}",
                     [IdentityPermissions.Roles.View],
+                    UserType.SystemAdministrator,
                     now);
 
                 if (roleResult.IsFailure)
@@ -136,6 +141,7 @@ public sealed class IdentityDataSeeder(
                 demoUserRoleName,
                 "Shared role for pagination demo users.",
                 [IdentityPermissions.Users.View],
+                UserType.SystemAdministrator,
                 now);
 
             if (demoUserRoleResult.IsFailure)
@@ -194,5 +200,5 @@ public sealed class IdentityDataSeeder(
         }
     }
 
-    private static List<string> AllKnownPermissions() => IdentityPermissions.All.ToList();
+    private List<string> AllKnownPermissions() => permissionRegistry.All.Select(p => p.Code).ToList();
 }

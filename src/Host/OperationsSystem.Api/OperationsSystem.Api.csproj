@@ -6,6 +6,8 @@
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Application\BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\..\Modules\Identity\Identity.Api\Identity.Api.csproj" />
     <ProjectReference Include="..\..\Modules\Identity\Identity.Infrastructure\Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\MasterData\MasterData.Api\MasterData.Api.csproj" />
+    <ProjectReference Include="..\..\Modules\MasterData\MasterData.Infrastructure\MasterData.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

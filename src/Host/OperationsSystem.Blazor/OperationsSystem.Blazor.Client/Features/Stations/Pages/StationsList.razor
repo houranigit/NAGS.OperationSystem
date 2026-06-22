@@ -1,0 +1,202 @@
+@page "/master-data/stations"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
+
+<PageTitle>@UiStrings.Stations.Title</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.StationsView">
+    <div class="os-list-page">
+        <PageHeader Title="@UiStrings.Stations.Title" Description="@UiStrings.Stations.Description">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsCreate))
+                    {
+                        <RadzenButton Text="@UiStrings.Stations.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <DataListCard @ref="list" TItem="StationListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="@UiStrings.Stations.SearchPlaceholder"
+                      CountLabel="@UiStrings.Stations.CountLabel" EmptyText="@UiStrings.Stations.Empty">
+            <Filters>
+                <DataListFilter TValue="bool?" Placeholder="@UiStrings.Stations.AllStatuses"
+                                Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="StationListItem" Property="IataCode" Title="@UiStrings.Stations.IataCode" Width="100px">
+                    <Template Context="s"><strong>@s.IataCode</strong></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="StationListItem" Property="IcaoCode" Title="@UiStrings.Stations.IcaoCode" Width="100px" Sortable="false">
+                    <Template Context="s">@(string.IsNullOrWhiteSpace(s.IcaoCode) ? UiStrings.Stations.NoIcao : s.IcaoCode)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="StationListItem" Property="Name" Title="@UiStrings.Stations.Name" />
+                <RadzenDataGridColumn TItem="StationListItem" Property="City" Title="@UiStrings.Stations.City" Width="160px" />
+                <RadzenDataGridColumn TItem="StationListItem" Property="CountryName" Title="@UiStrings.Stations.Country" Width="160px" Sortable="false" />
+                <RadzenDataGridColumn TItem="StationListItem" Title="@UiStrings.Stations.Status" Sortable="false" Width="120px">
+                    <Template Context="s">
+                        @if (s.IsActive)
+                        {
+                            <StatusBadge Label="@UiStrings.Stations.Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="@UiStrings.Stations.Inactive" Tone="neutral" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="s">
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(s.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@MasterDataPermissions.StationsUpdate"
+                               OnClick="@(() => OpenEditAsync(s))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="@UiStrings.Stations.Activate" Icon="check_circle" Permission="@MasterDataPermissions.StationsActivate"
+                               Visible="@(!s.IsActive)" OnClick="@(() => ActivateAsync(s))" />
+                    <RowAction Text="@UiStrings.Stations.Deactivate" Icon="cancel" Danger="true"
+                               Permission="@MasterDataPermissions.StationsDeactivate"
+                               Visible="@s.IsActive" OnClick="@(() => DeactivateAsync(s))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private const string GridKey = "stations";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<StationListItem>? list;
+    private IReadOnlyList<StationListItem> items = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
+    private bool loadError;
+
+    private string searchTerm = string.Empty;
+    private bool? activeFilter;
+    private string? currentSort;
+
+    private readonly List<StatusOption> statusOptions =
+    [
+        new(UiStrings.Stations.Active, true),
+        new(UiStrings.Stations.Inactive, false)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(bool? value)
+    {
+        activeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MasterData.GetStationsAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, null, currentSort);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var result = await DialogService.OpenAsync<StationFormDialog>(UiStrings.Stations.CreateTitle);
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void Open(Guid id) => Navigation.NavigateTo($"/master-data/stations/{id}");
+
+    private async Task OpenEditAsync(StationListItem s)
+    {
+        var result = await DialogService.OpenAsync<StationFormDialog>(UiStrings.Stations.EditTitle,
+            new Dictionary<string, object?> { [nameof(StationFormDialog.StationId)] = s.Id });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ActivateAsync(StationListItem s) =>
+        RunAsync(s.Id, (rv, ct) => MasterData.ActivateStationAsync(s.Id, rv, ct), UiStrings.Stations.Activated);
+
+    private async Task DeactivateAsync(StationListItem s)
+    {
+        var confirmed = await DialogService.Confirm(UiStrings.Stations.ConfirmDeactivate, UiStrings.Stations.Deactivate,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync(s.Id, (rv, ct) => MasterData.DeactivateStationAsync(s.Id, rv, ct), UiStrings.Stations.Deactivated);
+    }
+
+    private async Task RunAsync(Guid id, Func<string, CancellationToken, Task> action, string successMessage)
+    {
+        try
+        {
+            var detail = await MasterData.GetStationAsync(id);
+            await action(detail.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private sealed record StatusOption(string Label, bool? Value);
+}

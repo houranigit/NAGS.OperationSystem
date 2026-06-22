@@ -17,6 +17,7 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.Property(r => r.Description).HasMaxLength(500);
         builder.Property(r => r.IsSystem).IsRequired();
+        builder.Property(r => r.CompatibleUserType).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(r => r.CreatedAtUtc).IsRequired();
         builder.Property(r => r.UpdatedAtUtc);
 

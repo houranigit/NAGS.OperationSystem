@@ -15,30 +15,47 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public Task<TResponse> GetAsync<TResponse>(string path, CancellationToken cancellationToken = default) =>
-        SendAsync<TResponse>(HttpMethod.Get, path, body: null, cancellationToken);
+        SendAsync<TResponse>(HttpMethod.Get, path, body: null, ifMatch: null, cancellationToken);
 
     public Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest body, CancellationToken cancellationToken = default) =>
-        SendAsync<TResponse>(HttpMethod.Post, path, body, cancellationToken);
+        SendAsync<TResponse>(HttpMethod.Post, path, body, ifMatch: null, cancellationToken);
+
+    /// <summary>POST with optimistic concurrency that returns a body (e.g. add-child returning the new id).</summary>
+    public Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest body, string? ifMatch, CancellationToken cancellationToken = default) =>
+        SendAsync<TResponse>(HttpMethod.Post, path, body, ifMatch, cancellationToken);
 
     public Task PostAsync<TRequest>(string path, TRequest body, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Post, path, body, cancellationToken);
+        SendAsync(HttpMethod.Post, path, body, ifMatch: null, cancellationToken);
 
     public Task PostAsync(string path, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Post, path, body: null, cancellationToken);
+        SendAsync(HttpMethod.Post, path, body: null, ifMatch: null, cancellationToken);
 
     public Task PutAsync<TRequest>(string path, TRequest body, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Put, path, body, cancellationToken);
+        SendAsync(HttpMethod.Put, path, body, ifMatch: null, cancellationToken);
+
+    /// <summary>PUT with optimistic concurrency: sends the rowversion as the <c>If-Match</c> header.</summary>
+    public Task PutAsync<TRequest>(string path, TRequest body, string? ifMatch, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Put, path, body, ifMatch, cancellationToken);
+
+    /// <summary>POST with optimistic concurrency (e.g. activate/deactivate of an editable record).</summary>
+    public Task PostAsync(string path, string? ifMatch, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Post, path, body: null, ifMatch, cancellationToken);
 
     public Task DeleteAsync(string path, CancellationToken cancellationToken = default) =>
-        SendAsync(HttpMethod.Delete, path, body: null, cancellationToken);
+        SendAsync(HttpMethod.Delete, path, body: null, ifMatch: null, cancellationToken);
+
+    /// <summary>DELETE with optimistic concurrency.</summary>
+    public Task DeleteAsync(string path, string? ifMatch, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Delete, path, body: null, ifMatch, cancellationToken);
 
     private async Task<TResponse> SendAsync<TResponse>(
         HttpMethod method,
         string path,
         object? body,
+        string? ifMatch,
         CancellationToken cancellationToken)
     {
-        var response = await SendAsync(method, path, body, cancellationToken);
+        var response = await SendAsync(method, path, body, ifMatch, cancellationToken);
         return JsonSerializer.Deserialize<TResponse>(response, JsonOptions)
             ?? throw new JsonException($"The API response for '{path}' was empty.");
     }
@@ -47,6 +64,7 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
         HttpMethod method,
         string path,
         object? body,
+        string? ifMatch,
         CancellationToken cancellationToken)
     {
         try
@@ -58,7 +76,8 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
                 path,
                 body,
                 tokenStore.AccessToken,
-                locale.Language);
+                locale.Language,
+                ifMatch);
         }
         catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
         {

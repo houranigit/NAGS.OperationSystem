@@ -1,13 +1,16 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Identity.Domain.Roles;
 using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Application.Features.Roles;
 
-public sealed record CreateRoleCommand(string Name, string? Description, IReadOnlyList<string> Permissions) : ICommand<Guid>;
+public sealed record CreateRoleCommand(string Name, string? Description, UserType CompatibleUserType, IReadOnlyList<string> Permissions) : ICommand<Guid>;
 
 public sealed class CreateRoleCommandValidator : AbstractValidator<CreateRoleCommand>
 {
@@ -15,11 +18,12 @@ public sealed class CreateRoleCommandValidator : AbstractValidator<CreateRoleCom
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
+        RuleFor(x => x.CompatibleUserType).IsInEnum();
         RuleFor(x => x.Permissions).NotNull();
     }
 }
 
-public sealed class CreateRoleCommandHandler(IIdentityDbContext db, TimeProvider timeProvider)
+public sealed class CreateRoleCommandHandler(IIdentityDbContext db, IPermissionRegistry permissions, TimeProvider timeProvider)
     : ICommandHandler<CreateRoleCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateRoleCommand request, CancellationToken cancellationToken)
@@ -29,7 +33,11 @@ public sealed class CreateRoleCommandHandler(IIdentityDbContext db, TimeProvider
         if (exists)
             return Error.Conflict("A role with this name already exists.", "Identity.Role.DuplicateName");
 
-        var roleResult = Role.Create(request.Name, request.Description, request.Permissions, timeProvider.GetUtcNow());
+        var permissionCheck = RolePermissionValidator.Validate(request.Permissions, request.CompatibleUserType, permissions);
+        if (permissionCheck.IsFailure)
+            return permissionCheck.Error;
+
+        var roleResult = Role.Create(request.Name, request.Description, request.Permissions, request.CompatibleUserType, timeProvider.GetUtcNow());
         if (roleResult.IsFailure)
             return roleResult.Error;
 

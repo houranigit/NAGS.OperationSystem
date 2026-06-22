@@ -23,11 +23,68 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.Application.Messaging.InboxMessage", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Consumer")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("ProcessedOnUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("MessageId", "Consumer");
+
+                    b.ToTable("inbox_messages", "identity");
+                });
+
+            modelBuilder.Entity("BuildingBlocks.Application.Messaging.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTimeOffset>("OccurredOnUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ProcessedOnUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProcessedOnUtc");
+
+                    b.ToTable("outbox_messages", "identity");
+                });
+
             modelBuilder.Entity("Identity.Domain.Roles.Role", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CompatibleUserType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -123,6 +180,15 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<DateTimeOffset?>("EmailChangeExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("EmailChangeToken")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ExternalReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset?>("InvitationExpiresAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -135,9 +201,16 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LockoutEndUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<bool>("LoginEmailReleased")
+                        .HasColumnType("bit");
+
                     b.Property<string>("PasswordHash")
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("PendingEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<Guid>("RoleId")
                         .HasColumnType("uniqueidentifier");
@@ -153,7 +226,14 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("UserType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ExternalReferenceId");
 
                     b.HasIndex("RoleId");
 
@@ -176,7 +256,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             b1.HasKey("UserId");
 
                             b1.HasIndex("Value")
-                                .IsUnique();
+                                .IsUnique()
+                                .HasFilter("[LoginEmailReleased] = 0");
 
                             b1.ToTable("users", "identity");
 

@@ -1,6 +1,6 @@
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Results;
-using Identity.Domain.Authorization;
 using Identity.Domain.Roles.Events;
 
 namespace Identity.Domain.Roles;
@@ -8,7 +8,9 @@ namespace Identity.Domain.Roles;
 /// <summary>
 /// A named collection of permissions. Authorization is permission-based; roles are how
 /// permissions are grouped and assigned to users. System roles are seeded and protected
-/// from deletion.
+/// from deletion. Each role declares the single <see cref="CompatibleUserType"/> whose accounts
+/// it may be assigned to; permission compatibility is enforced in the application layer against the
+/// composed cross-module permission catalog.
 /// </summary>
 public sealed class Role : AggregateRoot<Guid>
 {
@@ -20,12 +22,19 @@ public sealed class Role : AggregateRoot<Guid>
     public string NormalizedName { get; private set; } = null!;
     public string? Description { get; private set; }
     public bool IsSystem { get; private set; }
+    public UserType CompatibleUserType { get; private set; }
     public IReadOnlyCollection<string> Permissions => _permissions;
 
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
 
-    public static Result<Role> Create(string? name, string? description, IEnumerable<string> permissions, DateTimeOffset now, bool isSystem = false)
+    public static Result<Role> Create(
+        string? name,
+        string? description,
+        IEnumerable<string> permissions,
+        UserType compatibleUserType,
+        DateTimeOffset now,
+        bool isSystem = false)
     {
         var nameCheck = ValidateName(name);
         if (nameCheck.IsFailure)
@@ -43,6 +52,7 @@ public sealed class Role : AggregateRoot<Guid>
             NormalizedName = Normalize(nameCheck.Value),
             Description = NormalizeDescription(description),
             IsSystem = isSystem,
+            CompatibleUserType = compatibleUserType,
             CreatedAtUtc = now
         };
 
@@ -99,10 +109,13 @@ public sealed class Role : AggregateRoot<Guid>
 
     private static Result ValidatePermissions(IReadOnlyList<string> permissions)
     {
+        // Known/compatible validation against the composed cross-module catalog happens in the
+        // application layer (it requires the runtime permission registry). Here we only reject
+        // structurally invalid entries.
         foreach (var permission in permissions)
         {
-            if (!IdentityPermissions.IsKnown(permission))
-                return Error.Validation($"Unknown permission '{permission}'.", "Identity.Role.UnknownPermission");
+            if (string.IsNullOrWhiteSpace(permission))
+                return Error.Validation("A permission code cannot be empty.", "Identity.Role.EmptyPermission");
         }
 
         return Result.Success();

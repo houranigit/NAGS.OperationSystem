@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using BuildingBlocks.Contracts.Authorization;
 using Identity.Application;
 using Identity.Application.Abstractions;
 using Identity.Domain.Users;
@@ -31,8 +32,12 @@ public sealed class TokenService(TimeProvider timeProvider, IOptions<IdentityMod
             new(JwtRegisteredClaimNames.Email, user.Email.Value),
             new(JwtRegisteredClaimNames.Name, user.DisplayName),
             new("roleId", user.RoleId.ToString()),
+            new(AuthorizationClaimTypes.UserType, user.UserType.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+
+        if (user.ExternalReferenceId is { } externalRef)
+            claims.Add(new Claim(AuthorizationClaimTypes.ExternalReference, externalRef.ToString()));
 
         claims.AddRange(permissions.Select(p => new Claim(IdentityClaimTypes.Permission, p)));
 
