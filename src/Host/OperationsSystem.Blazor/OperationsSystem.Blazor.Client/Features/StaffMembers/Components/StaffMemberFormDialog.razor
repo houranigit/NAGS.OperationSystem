@@ -47,9 +47,9 @@
 
         <h4 class="os-form-section">@UiStrings.StaffMembers.WorkingSchedule</h4>
         <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.75rem">
-            @foreach (var day in WeekDays)
+            @foreach (var day in scheduleDays)
             {
-                <RadzenCheckBox @bind-Value="dayState[day.Value]" Name="@($"day-{day.Value}")" TValue="bool" />
+                <RadzenCheckBox @bind-Value="day.Selected" Name="@($"day-{day.Value}")" TValue="bool" />
                 <RadzenLabel Text="@day.Label" Component="@($"day-{day.Value}")" Style="margin-inline-end: 0.75rem;" />
             }
         </RadzenStack>
@@ -105,7 +105,8 @@
     [Parameter] public Guid? StaffMemberId { get; set; }
     [Parameter] public Guid? PreselectedStationId { get; set; }
 
-    private static readonly DayOption[] WeekDays =
+    private StaffModel model = new();
+    private readonly List<DayScheduleRow> scheduleDays =
     [
         new(DayOfWeek.Sunday, UiStrings.Days.Sunday),
         new(DayOfWeek.Monday, UiStrings.Days.Monday),
@@ -115,9 +116,6 @@
         new(DayOfWeek.Friday, UiStrings.Days.Friday),
         new(DayOfWeek.Saturday, UiStrings.Days.Saturday)
     ];
-
-    private StaffModel model = new();
-    private readonly Dictionary<DayOfWeek, bool> dayState = Enum.GetValues<DayOfWeek>().ToDictionary(d => d, _ => false);
     private readonly List<LicenseRow> licenseRows = [];
     private IReadOnlyList<StationOption> stations = [];
     private IReadOnlyList<ManpowerTypeOption> manpowerTypes = [];
@@ -153,8 +151,8 @@
 
                 if (detail.WorkingDays is { } days)
                 {
-                    foreach (var d in days)
-                        dayState[d] = true;
+                    foreach (var row in scheduleDays)
+                        row.Selected = days.Contains(row.Value);
                 }
 
                 foreach (var l in detail.Licenses)
@@ -235,7 +233,7 @@
                 ? new EmploymentContractRequest(DateOnly.FromDateTime(startDate), model.EndDate is { } e ? DateOnly.FromDateTime(e) : null)
                 : null;
 
-            var workingDays = dayState.Where(kv => kv.Value).Select(kv => kv.Key).ToList();
+            var workingDays = scheduleDays.Where(d => d.Selected).Select(d => d.Value).ToList();
             IReadOnlyList<DayOfWeek>? days = workingDays.Count > 0 ? workingDays : null;
 
             var licenseRequests = licenseRows
@@ -286,5 +284,10 @@
         public string? LicenseNumber { get; set; }
     }
 
-    private sealed record DayOption(DayOfWeek Value, string Label);
+    private sealed class DayScheduleRow(DayOfWeek value, string label)
+    {
+        public DayOfWeek Value { get; } = value;
+        public string Label { get; } = label;
+        public bool Selected { get; set; }
+    }
 }
