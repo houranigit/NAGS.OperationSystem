@@ -437,6 +437,39 @@ public static class UiStrings
         public const string LicenseNumberRequired = "A license number is required for each assignment.";
         public const string LicenseDuplicate = "A staff member cannot hold the same license twice.";
         public const string PortalLinked = "Portal access";
+
+        public const string EditMember = "Edit member";
+
+        public const string TabOverview = "Overview";
+        public const string TabLicenses = "Licenses";
+        public const string TabSchedule = "Schedule";
+        public const string TabPortalAccess = "Portal access";
+        public const string TabActivity = "Activity";
+
+        public const string PersonalInformation = "Personal information";
+        public const string EmploymentDetails = "Employment details";
+        public const string RecentActivity = "Recent activity";
+
+        public const string StatLicenses = "Licenses";
+        public const string StatWorkingDays = "Working days";
+        public const string StatPortalAccount = "Portal account";
+        public const string PortalLinkedShort = "Linked";
+        public const string PortalNotLinkedShort = "Not created";
+
+        public const string LicenseCountSingular = "{0} license";
+        public const string LicenseCountPlural = "{0} licenses";
+        public const string WorkingDaysCount = "Working days: {0}";
+
+        public const string ActivityEmpty = "No activity recorded yet";
+        public const string ActivityEmptyHint = "Audit history for this staff member will appear here as actions are taken.";
+
+        public const string PortalAccessManageTitle = "Account management";
+        public const string PortalAccessManageHint = "Future account controls — password resets, session management, and role changes — will be available here.";
+        public const string PortalAccessLinkedTitle = "Portal account linked";
+        public const string PortalAccessLinkedHint = "This staff member can sign in to the portal with their linked account.";
+        public const string PortalAccessUnlinkedTitle = "No portal account";
+        public const string PortalAccessUnlinkedHint = "Grant portal access to let this staff member sign in to the portal.";
+        public const string PortalAccessUnavailableHint = "Portal access can be granted once the staff member is active.";
     }
 
     public static class Days

@@ -1,0 +1,507 @@
+/* ==========================================================================
+   Staff Member Details — SaaS workspace layout.
+   Token-driven and RTL-safe (logical properties). Reuses --os-* design tokens;
+   structured so future tabs/cards drop in without restructuring the page.
+   ========================================================================== */
+
+.sm-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+}
+
+/* --- Back link ----------------------------------------------------------- */
+.sm-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    align-self: flex-start;
+    padding: 0.35rem 0.85rem 0.35rem 0.55rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface);
+    color: var(--os-color-text-muted);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
+}
+
+.sm-back:hover {
+    background: var(--os-color-surface-hover);
+    border-color: var(--os-color-border-strong);
+    color: var(--os-color-text);
+}
+
+.sm-back .rz-icon {
+    font-size: 1.15rem;
+}
+
+/* --- Hero ---------------------------------------------------------------- */
+.sm-hero {
+    position: relative;
+    overflow: hidden;
+    padding: var(--os-space-5);
+}
+
+.sm-hero::before {
+    content: "";
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+    height: 4px;
+    background: var(--os-color-primary);
+}
+
+.sm-hero--inactive::before {
+    background: var(--os-color-border-strong);
+}
+
+.sm-hero-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-4);
+}
+
+.sm-avatar {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 4.5rem;
+    height: 4.5rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-lg);
+    font-size: var(--os-text-2xl);
+    font-weight: 800;
+}
+
+.sm-avatar--active {
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.sm-avatar--inactive {
+    background: var(--os-color-neutral-bg);
+    color: var(--os-color-text-muted);
+}
+
+.sm-avatar-dot {
+    position: absolute;
+    inset-block-end: -2px;
+    inset-inline-end: -2px;
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 50%;
+    border: 3px solid var(--os-color-surface);
+}
+
+.sm-avatar-dot--active {
+    background: var(--os-color-success);
+}
+
+.sm-avatar-dot--inactive {
+    background: var(--os-color-text-subtle);
+}
+
+.sm-hero-identity {
+    flex: 1 1 18rem;
+    min-width: 0;
+}
+
+.sm-hero-name {
+    margin: 0;
+    font-size: var(--os-text-2xl);
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+.sm-hero-role {
+    margin: var(--os-space-1) 0 0;
+    font-size: var(--os-text-base);
+    font-weight: 600;
+}
+
+.sm-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-top: var(--os-space-3);
+}
+
+.sm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    padding: 0.2rem 0.65rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.sm-chip strong {
+    color: var(--os-color-text);
+}
+
+.sm-chip .rz-icon {
+    font-size: 0.95rem;
+}
+
+.sm-chip--ok {
+    background: var(--os-color-success-bg);
+    border-color: transparent;
+    color: var(--os-color-success);
+}
+
+.sm-chip--ok strong {
+    color: var(--os-color-success);
+}
+
+.sm-hero-stamp {
+    margin: var(--os-space-3) 0 0;
+    font-size: var(--os-text-xs);
+}
+
+.sm-hero-stamp-sep {
+    margin-inline: var(--os-space-2);
+}
+
+.sm-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-inline-start: auto;
+}
+
+/* --- Tab strip ----------------------------------------------------------- */
+.sm-tabs {
+    display: flex;
+    gap: var(--os-space-1);
+    border-bottom: 1px solid var(--os-color-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.sm-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.sm-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: 0.7rem var(--os-space-3);
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: transparent;
+    color: var(--os-color-text-muted);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--os-transition), border-color var(--os-transition);
+}
+
+.sm-tab .rz-icon {
+    font-size: 1.15rem;
+}
+
+.sm-tab:hover {
+    color: var(--os-color-text);
+}
+
+.sm-tab--active {
+    color: var(--os-color-primary);
+    border-bottom-color: var(--os-color-primary);
+}
+
+.sm-tab-body {
+    margin-top: var(--os-space-1);
+}
+
+/* --- Generic stack + cards ---------------------------------------------- */
+.sm-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+}
+
+.sm-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    gap: var(--os-space-4);
+    align-items: start;
+}
+
+.sm-card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-bottom: var(--os-space-4);
+}
+
+.sm-card-head h3 {
+    margin: 0;
+    font-size: var(--os-text-lg);
+}
+
+.sm-card-head .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 1.3rem;
+}
+
+.sm-link {
+    margin-inline-start: auto;
+    border: none;
+    background: transparent;
+    color: var(--os-color-primary);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sm-link:hover {
+    color: var(--os-color-primary-strong);
+    text-decoration: underline;
+}
+
+.sm-count {
+    margin-inline-start: auto;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+}
+
+.sm-field-list {
+    display: grid;
+    gap: var(--os-space-3);
+}
+
+.sm-field-list--row {
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+
+/* --- Stat tiles ---------------------------------------------------------- */
+.sm-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--os-space-4);
+}
+
+.sm-stat {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-4);
+}
+
+.sm-stat-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-md);
+}
+
+.sm-stat-icon .rz-icon {
+    font-size: 1.5rem;
+}
+
+.sm-stat-icon--blue {
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.sm-stat-icon--green {
+    background: var(--os-color-success-bg);
+    color: var(--os-color-success);
+}
+
+.sm-stat-icon--amber {
+    background: var(--os-color-warning-bg);
+    color: var(--os-color-warning);
+}
+
+.sm-stat-body {
+    min-width: 0;
+}
+
+.sm-stat-label {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.sm-stat-value {
+    margin: 0.15rem 0 0;
+    font-size: var(--os-text-xl);
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- Working schedule chips --------------------------------------------- */
+.sm-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+}
+
+.sm-day {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    padding: 0.3rem 0.75rem;
+    border-radius: var(--os-radius-pill);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+}
+
+.sm-day .rz-icon {
+    font-size: 1rem;
+}
+
+.sm-day--on {
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.sm-day--off {
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-subtle);
+    border: 1px solid var(--os-color-border);
+}
+
+.sm-days-empty {
+    margin: var(--os-space-3) 0 0;
+    font-size: var(--os-text-sm);
+}
+
+/* --- Portal access ------------------------------------------------------- */
+.sm-portal {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-4);
+}
+
+.sm-portal-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-md);
+}
+
+.sm-portal-icon .rz-icon {
+    font-size: 1.6rem;
+}
+
+.sm-portal-icon--ok {
+    background: var(--os-color-success-bg);
+    color: var(--os-color-success);
+}
+
+.sm-portal-icon--warn {
+    background: var(--os-color-warning-bg);
+    color: var(--os-color-warning);
+}
+
+.sm-portal-body {
+    flex: 1 1 16rem;
+    min-width: 0;
+}
+
+.sm-portal-body h3 {
+    margin: 0;
+    font-size: var(--os-text-lg);
+}
+
+.sm-portal-body p {
+    margin: var(--os-space-1) 0 0;
+    font-size: var(--os-text-sm);
+}
+
+.sm-portal-note {
+    display: flex;
+    gap: var(--os-space-3);
+    margin-top: var(--os-space-5);
+    padding: var(--os-space-4);
+    border: 1px dashed var(--os-color-border-strong);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.sm-portal-note .rz-icon {
+    color: var(--os-color-text-muted);
+    font-size: 1.4rem;
+}
+
+.sm-portal-note p {
+    margin: var(--os-space-1) 0 0;
+    font-size: var(--os-text-sm);
+}
+
+/* --- Activity timeline --------------------------------------------------- */
+.sm-timeline {
+    position: relative;
+}
+
+.sm-timeline--empty {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-4);
+    padding: var(--os-space-5);
+    border: 1px dashed var(--os-color-border-strong);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.sm-timeline-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--os-color-neutral-bg);
+    color: var(--os-color-text-muted);
+}
+
+.sm-timeline-icon .rz-icon {
+    font-size: 1.6rem;
+}
+
+.sm-timeline-title {
+    margin: 0;
+    font-weight: 600;
+    color: var(--os-color-text);
+}
+
+.sm-timeline-title + p {
+    margin: var(--os-space-1) 0 0;
+    font-size: var(--os-text-sm);
+}
+
+@media (max-width: 640px) {
+    .sm-hero-actions {
+        width: 100%;
+        margin-inline-start: 0;
+    }
+}
