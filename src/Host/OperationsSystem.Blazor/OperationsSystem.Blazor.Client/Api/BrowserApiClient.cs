@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Auth;
 using OperationsSystem.Blazor.Client.State;
@@ -12,7 +13,10 @@ namespace OperationsSystem.Blazor.Client.Api;
 /// </summary>
 public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenStore, LocaleState locale)
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     public Task<TResponse> GetAsync<TResponse>(string path, CancellationToken cancellationToken = default) =>
         SendAsync<TResponse>(HttpMethod.Get, path, body: null, ifMatch: null, cancellationToken);
