@@ -1,12 +1,14 @@
 @inject IdentityApiClient Identity
 @inject DialogService DialogService
 
-<RadzenStack Gap="1rem">
-    <p class="os-muted">@UiStrings.PortalAccess.Explanation</p>
+<div class="gpa-form">
+    <p class="gpa-intro os-muted">@UiStrings.PortalAccess.Explanation</p>
 
     @if (isLoading)
     {
-        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        <div class="gpa-loading">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        </div>
     }
     else if (roles.Count == 0)
     {
@@ -20,8 +22,11 @@
     else
     {
         <RadzenFormField Text="@UiStrings.PortalAccess.Role" Variant="Variant.Outlined" Style="width: 100%;">
-            <RadzenDropDown @bind-Value="selectedRoleId" Data="@roles" TextProperty="Name" ValueProperty="Id"
-                            Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" Style="width: 100%;" />
+            <Start><RadzenIcon Icon="badge" /></Start>
+            <ChildContent>
+                <RadzenDropDown @bind-Value="selectedRoleId" Data="@roles" TextProperty="Name" ValueProperty="Id"
+                                Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" Style="width: 100%;" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (errorMessage is not null)
@@ -34,7 +39,7 @@
             <RadzenButton Text="@UiStrings.PortalAccess.Grant" Icon="send" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
         </RadzenStack>
     }
-</RadzenStack>
+</div>
 
 @code {
     /// <summary>The user type a candidate role must declare to be eligible (e.g. "StationStaff").</summary>

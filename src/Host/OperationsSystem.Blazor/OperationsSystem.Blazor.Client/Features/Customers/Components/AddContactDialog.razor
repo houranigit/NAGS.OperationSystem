@@ -2,18 +2,32 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="ContactModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
-        <RadzenFormField Text="@UiStrings.Customers.ContactName" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="150" />
+    <div class="acd-form">
+        <div class="acd-section"><RadzenIcon Icon="contacts" /><h4>@UiStrings.Customers.AddContact</h4></div>
+
+        <RadzenFormField Text="@UiStrings.Customers.ContactName" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="person" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="150" />
+            </ChildContent>
         </RadzenFormField>
-        <RadzenFormField Text="@UiStrings.Customers.ContactEmail" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" MaxLength="256" />
+        <RadzenFormField Text="@UiStrings.Customers.ContactEmail" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="mail" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" MaxLength="256" />
+            </ChildContent>
         </RadzenFormField>
-        <RadzenFormField Text="@UiStrings.Customers.ContactJobTitle" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.JobTitle" Name="jobTitle" Style="width: 100%;" MaxLength="100" />
+        <RadzenFormField Text="@UiStrings.Customers.ContactJobTitle" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="work" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.JobTitle" Name="jobTitle" Style="width: 100%;" MaxLength="100" />
+            </ChildContent>
         </RadzenFormField>
-        <RadzenFormField Text="@UiStrings.Customers.ContactPhone" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Phone" Name="phone" Style="width: 100%;" MaxLength="30" />
+        <RadzenFormField Text="@UiStrings.Customers.ContactPhone" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="call" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Phone" Name="phone" Style="width: 100%;" MaxLength="30" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -25,7 +39,7 @@
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
             <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Create" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

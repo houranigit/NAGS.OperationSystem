@@ -2,13 +2,23 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="ManpowerTypeModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
-        <RadzenFormField Text="@UiStrings.ManpowerTypes.Name" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+    <div class="mtf-form">
+        <p class="mtf-intro os-muted">@UiStrings.ManpowerTypes.FormIntro</p>
+
+        <div class="mtf-section"><RadzenIcon Icon="engineering" /><h4>@UiStrings.Common.Details</h4></div>
+
+        <RadzenFormField Text="@UiStrings.ManpowerTypes.Name" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="engineering" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+            </ChildContent>
         </RadzenFormField>
 
-        <RadzenFormField Text="@UiStrings.ManpowerTypes.ManpowerDescription" Variant="Variant.Outlined">
-            <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" MaxLength="500" />
+        <RadzenFormField Text="@UiStrings.ManpowerTypes.ManpowerDescription" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="notes" /></Start>
+            <ChildContent>
+                <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" MaxLength="500" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -21,7 +31,7 @@
             <RadzenButton ButtonType="ButtonType.Submit" Text="@(ManpowerTypeId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

@@ -2,19 +2,32 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="RoleModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
-        <RadzenFormField Text="@UiStrings.Roles.Name" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" />
+    <div class="rlf-form">
+        <p class="rlf-intro os-muted">@UiStrings.Roles.FormIntro</p>
+
+        <div class="rlf-section"><RadzenIcon Icon="shield" /><h4>@UiStrings.Common.Details</h4></div>
+
+        <RadzenFormField Text="@UiStrings.Roles.Name" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="badge" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" />
+            </ChildContent>
         </RadzenFormField>
 
-        <RadzenFormField Text="@UiStrings.Roles.RoleDescription" Variant="Variant.Outlined">
-            <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" />
+        <RadzenFormField Text="@UiStrings.Roles.RoleDescription" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="notes" /></Start>
+            <ChildContent>
+                <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (RoleId is null)
         {
-            <RadzenFormField Text="@UiStrings.Roles.CompatibleUserType" Variant="Variant.Outlined">
-                <RadzenDropDown @bind-Value="model.CompatibleUserType" Data="@UserTypes.All" Name="compatibleUserType" Style="width: 100%;" />
+            <RadzenFormField Text="@UiStrings.Roles.CompatibleUserType" Variant="Variant.Outlined" Style="width: 100%;">
+                <Start><RadzenIcon Icon="account_circle" /></Start>
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="model.CompatibleUserType" Data="@UserTypes.All" Name="compatibleUserType" Style="width: 100%;" />
+                </ChildContent>
             </RadzenFormField>
         }
 
@@ -28,7 +41,7 @@
             <RadzenButton ButtonType="ButtonType.Submit" Text="@(RoleId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

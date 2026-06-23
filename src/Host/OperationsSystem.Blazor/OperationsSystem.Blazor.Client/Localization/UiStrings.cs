@@ -39,6 +39,7 @@ public static class UiStrings
         public const string Details = "Details";
         public const string Overview = "Overview";
         public const string Name = "Name";
+        public const string None = "—";
     }
 
     public static class Auth
@@ -147,12 +148,14 @@ public static class UiStrings
         public const string Never = "Never";
 
         public const string InviteTitle = "Invite a user";
+        public const string InviteIntro = "Send an invitation so this person can set up their portal account.";
         public const string InviteSuccess = "Invitation sent.";
         public const string InvitationTokenLabel = "Invitation code (development)";
         public const string EditTitle = "Edit user";
         public const string AssignRoleTitle = "Assign role";
         public const string ConfirmDeactivate = "Deactivate this user? They will be signed out of all sessions.";
         public const string ConfirmLock = "Lock this user out of signing in?";
+        public const string StatActiveSessions = "Active sessions";
     }
 
     public static class Roles
@@ -169,9 +172,12 @@ public static class UiStrings
         public const string System = "System";
         public const string PermissionCount = "Permissions";
         public const string UserCount = "Users";
+        public const string RoleType = "Type";
+        public const string Custom = "Custom";
         public const string NoDescription = "No description";
         public const string CreateTitle = "Create role";
         public const string EditTitle = "Edit role";
+        public const string FormIntro = "Name the role and choose which account type it applies to.";
         public const string Permissions = "Permissions";
         public const string PermissionsDescription = "Select the permissions this role grants.";
         public const string PermissionsSaved = "Permissions updated.";
@@ -216,6 +222,7 @@ public static class UiStrings
         public const string Updated = "Updated";
         public const string CreateTitle = "Create country";
         public const string EditTitle = "Edit country";
+        public const string FormIntro = "Maintain the country name and its ISO code.";
         public const string NameRequired = "A country name is required.";
         public const string IsoCodeRequired = "A 2-letter ISO code is required.";
         public const string SavedCreate = "Country created.";
@@ -246,6 +253,7 @@ public static class UiStrings
         public const string Updated = "Updated";
         public const string CreateTitle = "Create manpower type";
         public const string EditTitle = "Edit manpower type";
+        public const string FormIntro = "Name the manpower type and optionally describe it.";
         public const string NameRequired = "A name is required.";
         public const string SavedCreate = "Manpower type created.";
         public const string SavedUpdate = "Manpower type updated.";
@@ -276,6 +284,7 @@ public static class UiStrings
         public const string Updated = "Updated";
         public const string CreateTitle = "Create license";
         public const string EditTitle = "Edit license";
+        public const string FormIntro = "Define the license code, name and an optional description.";
         public const string CodeRequired = "A license code is required (2-10 letters or digits).";
         public const string NameRequired = "A license name is required.";
         public const string CodeImmutable = "The code cannot be changed after creation.";
@@ -310,6 +319,7 @@ public static class UiStrings
         public const string Updated = "Updated";
         public const string CreateTitle = "Create station";
         public const string EditTitle = "Edit station";
+        public const string FormIntro = "Set the airport codes, name, city and country for this station.";
         public const string IataRequired = "A 3-letter IATA code is required.";
         public const string IcaoInvalid = "ICAO code must be exactly four letters.";
         public const string NameRequired = "A station name is required.";
@@ -323,6 +333,9 @@ public static class UiStrings
         public const string StaffMembers = "Staff members";
         public const string StaffMembersEmpty = "No staff members are assigned to this station yet.";
         public const string AddStaffMember = "Add staff member";
+        public const string StatStaff = "Staff members";
+        public const string StatActiveStaff = "Active staff";
+        public const string StaffCountFormat = "{0} staff";
     }
 
     public static class Customers
@@ -350,6 +363,7 @@ public static class UiStrings
         public const string Updated = "Updated";
         public const string CreateTitle = "Create customer";
         public const string EditTitle = "Edit customer";
+        public const string FormIntro = "Capture the airline codes, official contact details, address and contacts.";
         public const string IataRequired = "A 2-character IATA code is required.";
         public const string IcaoInvalid = "ICAO code must be exactly three letters.";
         public const string NameRequired = "A customer name is required.";
@@ -385,6 +399,11 @@ public static class UiStrings
         public const string ContactRemoved = "(will be removed)";
         public const string ContactAdded = "Contact added.";
         public const string PortalLinked = "Portal access";
+
+        public const string TabAddress = "Address";
+        public const string StatContacts = "Contacts";
+        public const string StatPortalAccounts = "Portal accounts";
+        public const string ContactsCountFormat = "{0} contacts";
     }
 
     public static class StaffMembers

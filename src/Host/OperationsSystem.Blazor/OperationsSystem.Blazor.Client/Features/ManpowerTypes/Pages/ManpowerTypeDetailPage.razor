@@ -3,6 +3,7 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
+@inject AuthSession Auth
 
 <PageTitle>@(item?.Name ?? UiStrings.ManpowerTypes.Title)</PageTitle>
 
@@ -17,58 +18,105 @@
     }
     else if (item is { } m)
     {
-        <RadzenStack Gap="1rem" class="os-detail-stack">
-            <DetailHero Eyebrow="@UiStrings.ManpowerTypes.Title" Title="@m.Name"
-                        Subtitle="@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)"
-                        Icon="engineering" Tone="@(m.IsActive ? "primary" : "neutral")" OnBack="@GoBack">
-                <Metadata>
-                    @if (m.IsActive)
-                    {
-                        <StatusBadge Label="@UiStrings.ManpowerTypes.Active" Tone="success" />
-                    }
-                    else
-                    {
-                        <StatusBadge Label="@UiStrings.ManpowerTypes.Inactive" Tone="neutral" />
-                    }
-                </Metadata>
-                <Actions>
-                    <AuthorizeView Context="ctx">
-                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
-                        }
-                        @if (!m.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesActivate))
-                        {
-                            <RadzenButton Text="@UiStrings.ManpowerTypes.Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
-                        }
-                        @if (m.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesDeactivate))
-                        {
-                            <RadzenButton Text="@UiStrings.ManpowerTypes.Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
-                        }
-                    </AuthorizeView>
-                </Actions>
-            </DetailHero>
+        <div class="mt-workspace">
+            <button type="button" class="mt-back" @onclick="GoBack">
+                <RadzenIcon Icon="arrow_back" />
+                <span>@UiStrings.ManpowerTypes.Title</span>
+            </button>
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <h3>@UiStrings.Common.Details</h3>
-                    <div class="os-detail-grid">
+            <RadzenCard class="@($"mt-hero {(m.IsActive ? "mt-hero--active" : "mt-hero--inactive")}")">
+                <div class="mt-hero-main">
+                    <div class="mt-avatar @(m.IsActive ? "mt-avatar--active" : "mt-avatar--inactive")">
+                        <RadzenIcon Icon="engineering" />
+                    </div>
+
+                    <div class="mt-hero-identity">
+                        <h1 class="mt-hero-name">@m.Name</h1>
+                        <p class="mt-hero-sub os-muted">@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</p>
+
+                        <div class="mt-chips">
+                            @if (m.IsActive)
+                            {
+                                <StatusBadge Label="@UiStrings.ManpowerTypes.Active" Tone="success" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.ManpowerTypes.Inactive" Tone="neutral" />
+                            }
+                        </div>
+
+                        <p class="mt-hero-stamp os-muted">
+                            @UiStrings.ManpowerTypes.Created: @m.CreatedAtUtc.ToLocalTime().ToString("g")
+                            @if (m.UpdatedAtUtc is { } updated)
+                            {
+                                <span class="mt-hero-stamp-sep">·</span>
+                                @($"{UiStrings.ManpowerTypes.Updated}: {updated.ToLocalTime().ToString("g")}")
+                            }
+                        </p>
+                    </div>
+
+                    <div class="mt-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.ManpowerTypesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(m))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                                <RowAction Text="@UiStrings.ManpowerTypes.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.ManpowerTypesActivate"
+                                           Visible="@(!m.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.ManpowerTypes.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.ManpowerTypesDeactivate"
+                                           Visible="@m.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </div>
+            </RadzenCard>
+
+            <div class="mt-overview-grid">
+                <RadzenCard class="mt-card">
+                    <div class="mt-card-head"><RadzenIcon Icon="engineering" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="mt-field-list">
                         <DetailField Label="@UiStrings.ManpowerTypes.Name" Value="@m.Name" Icon="engineering" />
                         <DetailField Label="@UiStrings.ManpowerTypes.ManpowerDescription"
                                      Value="@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)" Icon="notes" />
-                        <DetailField Label="@UiStrings.ManpowerTypes.Status"
-                                     Value="@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)" Icon="toggle_on" />
+                        <DetailField Label="@UiStrings.ManpowerTypes.Status" Icon="toggle_on">
+                            @if (m.IsActive)
+                            {
+                                <StatusBadge Label="@UiStrings.ManpowerTypes.Active" Tone="success" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.ManpowerTypes.Inactive" Tone="neutral" />
+                            }
+                        </DetailField>
                         <DetailField Label="@UiStrings.ManpowerTypes.Created" Value="@m.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        @if (m.UpdatedAtUtc is { } updated)
-                        {
-                            <DetailField Label="@UiStrings.ManpowerTypes.Updated" Value="@updated.ToLocalTime().ToString("g")" Icon="update" />
-                        }
+                        <DetailField Label="@UiStrings.ManpowerTypes.Updated" Value="@(m.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
                     </div>
-                </RadzenStack>
-            </RadzenCard>
-        </RadzenStack>
+                </RadzenCard>
+            </div>
+
+            <div class="mt-stats">
+                @StatTile("toggle_on", m.IsActive ? "green" : "amber", UiStrings.ManpowerTypes.Status, m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)
+                @StatTile("schedule", "blue", UiStrings.ManpowerTypes.Created, m.CreatedAtUtc.ToLocalTime().ToString("d"))
+            </div>
+        </div>
     }
 </RequirePermission>
+
+@code {
+    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
+        <RadzenCard class="mt-stat">
+            <span class="mt-stat-icon mt-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
+            <div class="mt-stat-body">
+                <p class="mt-stat-label">@label</p>
+                <p class="mt-stat-value">@value</p>
+            </div>
+        </RadzenCard>
+    </text>;
+}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -146,6 +194,10 @@
             Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
         }
     }
+
+    private bool HasMoreActions(ManpowerTypeDetail m) =>
+        (!m.IsActive && Auth.HasPermission(MasterDataPermissions.ManpowerTypesActivate))
+        || (m.IsActive && Auth.HasPermission(MasterDataPermissions.ManpowerTypesDeactivate));
 
     private void GoBack() => Navigation.NavigateTo("/master-data/manpower-types");
 }

@@ -18,18 +18,29 @@
 else
 {
     <RadzenTemplateForm TItem="InviteModel" Data="@model" Submit="@SubmitAsync">
-        <RadzenStack Gap="1rem">
-            <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined">
-                <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" />
+        <div class="iud-form">
+            <p class="iud-intro os-muted">@UiStrings.Users.InviteIntro</p>
+
+            <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined" Style="width: 100%;">
+                <Start><RadzenIcon Icon="mail" /></Start>
+                <ChildContent>
+                    <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" />
+                </ChildContent>
             </RadzenFormField>
 
-            <RadzenFormField Text="@UiStrings.Users.DisplayName" Variant="Variant.Outlined">
-                <RadzenTextBox @bind-Value="model.DisplayName" Name="displayName" Style="width: 100%;" />
+            <RadzenFormField Text="@UiStrings.Users.DisplayName" Variant="Variant.Outlined" Style="width: 100%;">
+                <Start><RadzenIcon Icon="person" /></Start>
+                <ChildContent>
+                    <RadzenTextBox @bind-Value="model.DisplayName" Name="displayName" Style="width: 100%;" />
+                </ChildContent>
             </RadzenFormField>
 
-            <RadzenFormField Text="@UiStrings.Users.Role" Variant="Variant.Outlined">
-                <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleListItem.Name)"
-                                ValueProperty="@nameof(RoleListItem.Id)" Style="width: 100%;" />
+            <RadzenFormField Text="@UiStrings.Users.Role" Variant="Variant.Outlined" Style="width: 100%;">
+                <Start><RadzenIcon Icon="badge" /></Start>
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleListItem.Name)"
+                                    ValueProperty="@nameof(RoleListItem.Id)" Style="width: 100%;" />
+                </ChildContent>
             </RadzenFormField>
 
             @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -41,7 +52,7 @@ else
                 <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
                 <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Users.Invite" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
             </RadzenStack>
-        </RadzenStack>
+        </div>
     </RadzenTemplateForm>
 }
 

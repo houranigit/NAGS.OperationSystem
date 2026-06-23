@@ -2,31 +2,49 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="StationModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
+    <div class="stf-form">
+        <p class="stf-intro os-muted">@UiStrings.Stations.FormIntro</p>
+
+        <div class="stf-section"><RadzenIcon Icon="flight_takeoff" /><h4>@UiStrings.Common.Details</h4></div>
         <RadzenRow Gap="1rem">
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.Stations.IataCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenTextBox @bind-Value="model.IataCode" Name="iataCode" Style="width: 100%;" MaxLength="3" />
+                    <Start><RadzenIcon Icon="tag" /></Start>
+                    <ChildContent>
+                        <RadzenTextBox @bind-Value="model.IataCode" Name="iataCode" Style="width: 100%;" MaxLength="3" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.Stations.IcaoCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenTextBox @bind-Value="model.IcaoCode" Name="icaoCode" Style="width: 100%;" MaxLength="4" />
+                    <Start><RadzenIcon Icon="tag" /></Start>
+                    <ChildContent>
+                        <RadzenTextBox @bind-Value="model.IcaoCode" Name="icaoCode" Style="width: 100%;" MaxLength="4" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
         </RadzenRow>
 
-        <RadzenFormField Text="@UiStrings.Stations.Name" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="150" />
+        <RadzenFormField Text="@UiStrings.Stations.Name" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="flight_takeoff" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="150" />
+            </ChildContent>
         </RadzenFormField>
 
-        <RadzenFormField Text="@UiStrings.Stations.City" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.City" Name="city" Style="width: 100%;" MaxLength="100" />
+        <RadzenFormField Text="@UiStrings.Stations.City" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="location_city" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.City" Name="city" Style="width: 100%;" MaxLength="100" />
+            </ChildContent>
         </RadzenFormField>
 
-        <RadzenFormField Text="@UiStrings.Stations.Country" Variant="Variant.Outlined">
-            <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
-                            AllowFiltering="true" Name="country" Style="width: 100%;" />
+        <RadzenFormField Text="@UiStrings.Stations.Country" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="public" /></Start>
+            <ChildContent>
+                <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
+                                AllowFiltering="true" Name="country" Style="width: 100%;" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -39,7 +57,7 @@
             <RadzenButton ButtonType="ButtonType.Submit" Text="@(StationId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

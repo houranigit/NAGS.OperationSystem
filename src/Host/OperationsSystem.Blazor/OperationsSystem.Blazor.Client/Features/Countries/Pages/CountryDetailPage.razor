@@ -3,6 +3,7 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
+@inject AuthSession Auth
 
 <PageTitle>@(country?.Name ?? UiStrings.Countries.Title)</PageTitle>
 
@@ -17,56 +18,106 @@
     }
     else if (country is { } c)
     {
-        <RadzenStack Gap="1rem" class="os-detail-stack">
-            <DetailHero Eyebrow="@UiStrings.Countries.Title" Title="@c.Name" Subtitle="@c.IsoCode"
-                        Icon="public" Tone="@(c.IsActive ? "primary" : "neutral")" OnBack="@GoBack">
-                <Metadata>
-                    @if (c.IsActive)
-                    {
-                        <StatusBadge Label="@UiStrings.Countries.Active" Tone="success" />
-                    }
-                    else
-                    {
-                        <StatusBadge Label="@UiStrings.Countries.Inactive" Tone="neutral" />
-                    }
-                </Metadata>
-                <Actions>
-                    <AuthorizeView Context="ctx">
-                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
-                        }
-                        @if (!c.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesActivate))
-                        {
-                            <RadzenButton Text="@UiStrings.Countries.Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
-                        }
-                        @if (c.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesDeactivate))
-                        {
-                            <RadzenButton Text="@UiStrings.Countries.Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
-                        }
-                    </AuthorizeView>
-                </Actions>
-            </DetailHero>
+        <div class="cn-workspace">
+            <button type="button" class="cn-back" @onclick="GoBack">
+                <RadzenIcon Icon="arrow_back" />
+                <span>@UiStrings.Countries.Title</span>
+            </button>
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <h3>@UiStrings.Common.Details</h3>
-                    <div class="os-detail-grid">
-                        <DetailField Label="@UiStrings.Countries.Name" Value="@c.Name" Icon="public" />
-                        <DetailField Label="@UiStrings.Countries.IsoCode" Value="@c.IsoCode" Icon="tag" />
-                        <DetailField Label="@UiStrings.Countries.Status"
-                                     Value="@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)" Icon="toggle_on" />
-                        <DetailField Label="@UiStrings.Countries.Created" Value="@c.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        @if (c.UpdatedAtUtc is { } updated)
+            <RadzenCard class="@($"cn-hero {(c.IsActive ? "cn-hero--active" : "cn-hero--inactive")}")">
+                <div class="cn-hero-main">
+                    <div class="cn-avatar @(c.IsActive ? "cn-avatar--active" : "cn-avatar--inactive")">
+                        <RadzenIcon Icon="public" />
+                    </div>
+
+                    <div class="cn-hero-identity">
+                        <h1 class="cn-hero-name">@c.Name</h1>
+                        <p class="cn-hero-sub os-muted">@c.IsoCode</p>
+
+                        <div class="cn-chips">
+                            @if (c.IsActive)
+                            {
+                                <StatusBadge Label="@UiStrings.Countries.Active" Tone="success" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.Countries.Inactive" Tone="neutral" />
+                            }
+                            <span class="cn-chip"><RadzenIcon Icon="tag" /><span>@UiStrings.Countries.IsoCode: <strong>@c.IsoCode</strong></span></span>
+                        </div>
+
+                        <p class="cn-hero-stamp os-muted">
+                            @UiStrings.Countries.Created: @c.CreatedAtUtc.ToLocalTime().ToString("g")
+                            @if (c.UpdatedAtUtc is { } updated)
+                            {
+                                <span class="cn-hero-stamp-sep">·</span>
+                                @($"{UiStrings.Countries.Updated}: {updated.ToLocalTime().ToString("g")}")
+                            }
+                        </p>
+                    </div>
+
+                    <div class="cn-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.CountriesUpdate))
                         {
-                            <DetailField Label="@UiStrings.Countries.Updated" Value="@updated.ToLocalTime().ToString("g")" Icon="update" />
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(c))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                                <RowAction Text="@UiStrings.Countries.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.CountriesActivate"
+                                           Visible="@(!c.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.Countries.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.CountriesDeactivate"
+                                           Visible="@c.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
                         }
                     </div>
-                </RadzenStack>
+                </div>
             </RadzenCard>
-        </RadzenStack>
+
+            <div class="cn-overview-grid">
+                <RadzenCard class="cn-card">
+                    <div class="cn-card-head"><RadzenIcon Icon="public" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="cn-field-list">
+                        <DetailField Label="@UiStrings.Countries.Name" Value="@c.Name" Icon="public" />
+                        <DetailField Label="@UiStrings.Countries.IsoCode" Value="@c.IsoCode" Icon="tag" />
+                        <DetailField Label="@UiStrings.Countries.Status" Icon="toggle_on">
+                            @if (c.IsActive)
+                            {
+                                <StatusBadge Label="@UiStrings.Countries.Active" Tone="success" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.Countries.Inactive" Tone="neutral" />
+                            }
+                        </DetailField>
+                        <DetailField Label="@UiStrings.Countries.Created" Value="@c.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
+                        <DetailField Label="@UiStrings.Countries.Updated" Value="@(c.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
+                    </div>
+                </RadzenCard>
+            </div>
+
+            <div class="cn-stats">
+                @StatTile("toggle_on", c.IsActive ? "green" : "amber", UiStrings.Countries.Status, c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)
+                @StatTile("tag", "blue", UiStrings.Countries.IsoCode, c.IsoCode)
+                @StatTile("schedule", "blue", UiStrings.Countries.Created, c.CreatedAtUtc.ToLocalTime().ToString("d"))
+            </div>
+        </div>
     }
 </RequirePermission>
+
+@code {
+    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
+        <RadzenCard class="cn-stat">
+            <span class="cn-stat-icon cn-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
+            <div class="cn-stat-body">
+                <p class="cn-stat-label">@label</p>
+                <p class="cn-stat-value">@value</p>
+            </div>
+        </RadzenCard>
+    </text>;
+}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -144,6 +195,10 @@
             Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
         }
     }
+
+    private bool HasMoreActions(CountryDetail c) =>
+        (!c.IsActive && Auth.HasPermission(MasterDataPermissions.CountriesActivate))
+        || (c.IsActive && Auth.HasPermission(MasterDataPermissions.CountriesDeactivate));
 
     private void GoBack() => Navigation.NavigateTo("/master-data/countries");
 }

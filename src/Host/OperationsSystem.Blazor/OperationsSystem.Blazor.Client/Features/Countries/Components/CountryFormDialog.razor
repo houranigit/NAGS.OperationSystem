@@ -2,13 +2,23 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="CountryModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
-        <RadzenFormField Text="@UiStrings.Countries.Name" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+    <div class="cnf-form">
+        <p class="cnf-intro os-muted">@UiStrings.Countries.FormIntro</p>
+
+        <div class="cnf-section"><RadzenIcon Icon="public" /><h4>@UiStrings.Common.Details</h4></div>
+
+        <RadzenFormField Text="@UiStrings.Countries.Name" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="public" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+            </ChildContent>
         </RadzenFormField>
 
-        <RadzenFormField Text="@UiStrings.Countries.IsoCode" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.IsoCode" Name="isoCode" Style="width: 100%;" MaxLength="2" />
+        <RadzenFormField Text="@UiStrings.Countries.IsoCode" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="tag" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.IsoCode" Name="isoCode" Style="width: 100%;" MaxLength="2" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -21,7 +31,7 @@
             <RadzenButton ButtonType="ButtonType.Submit" Text="@(CountryId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

@@ -2,9 +2,12 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="EditModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
-        <RadzenFormField Text="@UiStrings.Users.DisplayName" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.DisplayName" Name="displayName" Style="width: 100%;" />
+    <div class="eud-form">
+        <RadzenFormField Text="@UiStrings.Users.DisplayName" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="person" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.DisplayName" Name="displayName" Style="width: 100%;" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -16,7 +19,7 @@
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
             <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

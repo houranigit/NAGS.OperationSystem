@@ -2,21 +2,34 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="LicenseModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
-        <RadzenFormField Text="@UiStrings.Licenses.Code" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Code" Name="code" Style="width: 100%;" MaxLength="10" Disabled="@(LicenseId is not null)" />
+    <div class="lcf-form">
+        <p class="lcf-intro os-muted">@UiStrings.Licenses.FormIntro</p>
+
+        <div class="lcf-section"><RadzenIcon Icon="badge" /><h4>@UiStrings.Common.Details</h4></div>
+
+        <RadzenFormField Text="@UiStrings.Licenses.Code" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="tag" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Code" Name="code" Style="width: 100%;" MaxLength="10" Disabled="@(LicenseId is not null)" />
+            </ChildContent>
         </RadzenFormField>
         @if (LicenseId is not null)
         {
-            <p class="os-muted">@UiStrings.Licenses.CodeImmutable</p>
+            <p class="lcf-hint os-muted">@UiStrings.Licenses.CodeImmutable</p>
         }
 
-        <RadzenFormField Text="@UiStrings.Licenses.Name" Variant="Variant.Outlined">
-            <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+        <RadzenFormField Text="@UiStrings.Licenses.Name" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="badge" /></Start>
+            <ChildContent>
+                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
+            </ChildContent>
         </RadzenFormField>
 
-        <RadzenFormField Text="@UiStrings.Licenses.LicenseDescription" Variant="Variant.Outlined">
-            <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" MaxLength="500" />
+        <RadzenFormField Text="@UiStrings.Licenses.LicenseDescription" Variant="Variant.Outlined" Style="width: 100%;">
+            <Start><RadzenIcon Icon="notes" /></Start>
+            <ChildContent>
+                <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" MaxLength="500" />
+            </ChildContent>
         </RadzenFormField>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -29,7 +42,7 @@
             <RadzenButton ButtonType="ButtonType.Submit" Text="@(LicenseId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

@@ -1,0 +1,44 @@
+/* ==========================================================================
+   License form dialog — polished create/edit form.
+   Token-driven and RTL-safe (logical properties). Mirrors the Staff Member
+   form design language (section heads with icons, leading field icons).
+   ========================================================================== */
+
+.lcf-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+}
+
+.lcf-intro {
+    margin: 0;
+    font-size: var(--os-text-sm);
+}
+
+.lcf-section {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-block: var(--os-space-2) 0;
+}
+
+.lcf-section h4 {
+    margin: 0;
+    font-size: var(--os-text-lg);
+    font-weight: 600;
+}
+
+.lcf-section .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 1.2rem;
+}
+
+.lcf-form ::deep .rz-form-field-start .rz-icon {
+    color: var(--os-color-text-muted);
+    font-size: 1.1rem;
+}
+
+.lcf-hint {
+    margin: calc(-1 * var(--os-space-2)) 0 0;
+    font-size: var(--os-text-sm);
+}

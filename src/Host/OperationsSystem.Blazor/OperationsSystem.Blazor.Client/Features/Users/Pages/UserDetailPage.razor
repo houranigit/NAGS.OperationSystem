@@ -3,6 +3,7 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
+@inject AuthSession Auth
 
 <PageTitle>@(user?.DisplayName ?? UiStrings.Users.Title)</PageTitle>
 
@@ -17,150 +18,204 @@
     }
     else if (user is { } u)
     {
-        <RadzenStack Gap="1rem" class="os-detail-stack">
-        <DetailHero Eyebrow="@UiStrings.Users.Title" Title="@u.DisplayName" Subtitle="@u.Email"
-                    Initials="@Initials(u.DisplayName)" Tone="@HeroTone(u)" OnBack="@GoBack">
-            <Metadata>
-                @if (u.IsLockedOut)
-                {
-                    <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
-                }
-                else
-                {
-                    <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
-                }
-                <span class="os-pill os-pill--info">@u.RoleName</span>
-            </Metadata>
-            <Actions>
-                <AuthorizeView Context="ctx">
-                    @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersUpdate))
-                    {
-                        <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
-                    }
-                    @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersAssignRole))
-                    {
-                        <RadzenButton Text="@UiStrings.Users.AssignRole" Icon="badge" ButtonStyle="ButtonStyle.Light" Click="@OpenAssignRoleAsync" />
-                    }
-                    @if (u.Status == "Invited" && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersInvite))
-                    {
-                        <RadzenButton Text="@UiStrings.Users.ResendInvitation" Icon="mail" ButtonStyle="ButtonStyle.Light" Click="@ResendInvitationAsync" />
-                    }
-                    @if (u.IsLockedOut && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersUnlock))
-                    {
-                        <RadzenButton Text="@UiStrings.Users.Unlock" Icon="lock_open" ButtonStyle="ButtonStyle.Light" Click="@UnlockAsync" />
-                    }
-                    else if (!u.IsLockedOut && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersLock))
-                    {
-                        <RadzenButton Text="@UiStrings.Users.Lock" Icon="lock" ButtonStyle="ButtonStyle.Light" Click="@LockAsync" />
-                    }
-                    @if (u.Status != "Deactivated" && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersDeactivate))
-                    {
-                        <RadzenButton Text="@UiStrings.Users.Deactivate" Icon="person_off" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
-                    }
-                </AuthorizeView>
-            </Actions>
-        </DetailHero>
+        <div class="us-workspace">
+            <button type="button" class="us-back" @onclick="GoBack">
+                <RadzenIcon Icon="arrow_back" />
+                <span>@UiStrings.Users.Title</span>
+            </button>
 
-            <RadzenCard>
-                <h3 class="os-section-title">@UiStrings.Common.Details</h3>
-                <RadzenRow RowGap="1rem">
-                    <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.Status" Icon="toggle_on">
-                            <ChildContent>
-                                @if (u.IsLockedOut)
-                                {
-                                    <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
-                                }
-                                else
-                                {
-                                    <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
-                                }
-                            </ChildContent>
-                        </DetailField>
-                    </RadzenColumn>
-                    <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" Icon="badge" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.Email" Value="@u.Email" Icon="mail" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="event" />
-                    </RadzenColumn>
-                    <RadzenColumn Size="12" SizeMD="6">
-                        <DetailField Label="@UiStrings.Users.LastLogin" Value="@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)" Icon="login" />
-                    </RadzenColumn>
-                </RadzenRow>
-            </RadzenCard>
+            <RadzenCard class="@($"us-hero {HeroClass(u)}")">
+                <div class="us-hero-main">
+                    <div class="us-avatar @AvatarClass(u)">
+                        <span>@Initials(u.DisplayName)</span>
+                        <span class="us-avatar-dot @DotClass(u)"></span>
+                    </div>
 
-            <AuthorizeView Context="sessionCtx">
-                @if (sessionCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.SessionsView))
-                {
-                    <RadzenCard>
-                        <RadzenStack Gap="1rem">
-                            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
-                                <h3 class="os-section-title">@UiStrings.Sessions.Title</h3>
-                                @if (sessionCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.SessionsRevoke))
-                                {
-                                    <RadzenButton Text="@UiStrings.Sessions.RevokeAll" ButtonStyle="ButtonStyle.Light" Icon="block"
-                                                  Disabled="@(!HasActiveSessions)" Click="@RevokeAllAsync" />
-                                }
-                            </RadzenStack>
+                    <div class="us-hero-identity">
+                        <h1 class="us-hero-name">@u.DisplayName</h1>
+                        <p class="us-hero-sub os-muted">@u.Email</p>
 
-                            @if (sessionsLoading)
+                        <div class="us-chips">
+                            @if (u.IsLockedOut)
                             {
-                                <LoadingCard />
-                            }
-                            else if (sessionsError)
-                            {
-                                <ErrorState OnRetry="@LoadSessionsAsync" />
-                            }
-                            else if (sessions is null || sessions.Count == 0)
-                            {
-                                <EmptyState Title="@UiStrings.Sessions.Empty" Icon="devices" />
+                                <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
                             }
                             else
                             {
-                                <RadzenDataGrid Data="@sessions" TItem="UserSession" AllowPaging="false" GridLines="DataGridGridLines.Horizontal">
-                                    <Columns>
-                                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
-                                            <Template Context="session">@(string.IsNullOrWhiteSpace(session.UserAgent) ? "—" : session.UserAgent)</Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" />
-                                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created">
-                                            <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="120px">
-                                            <Template Context="session">
-                                                @if (session.IsActive)
-                                                {
-                                                    <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
-                                                }
-                                                else
-                                                {
-                                                    <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="neutral" />
-                                                }
-                                            </Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="UserSession" Title="" Width="110px" Sortable="false" TextAlign="TextAlign.End">
-                                            <Template Context="session">
-                                                @if (session.IsActive && sessionCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.SessionsRevoke))
-                                                {
-                                                    <RadzenButton Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
-                                                                  Text="@UiStrings.Account.RevokeSession" Click="@(() => RevokeSessionAsync(session.Id))" />
-                                                }
-                                            </Template>
-                                        </RadzenDataGridColumn>
-                                    </Columns>
-                                </RadzenDataGrid>
+                                <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
                             }
-                        </RadzenStack>
-                    </RadzenCard>
+                            <span class="us-chip"><RadzenIcon Icon="badge" /><span>@UiStrings.Users.Role: <strong>@u.RoleName</strong></span></span>
+                            <span class="us-chip"><RadzenIcon Icon="login" /><span>@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)</span></span>
+                        </div>
+
+                        <p class="us-hero-stamp os-muted">
+                            @UiStrings.Users.Created: @u.CreatedAtUtc.ToLocalTime().ToString("g")
+                        </p>
+                    </div>
+
+                    <div class="us-hero-actions">
+                        @if (Auth.HasPermission(IdentityPermissions.UsersUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(u))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                                <RowAction Text="@UiStrings.Users.AssignRole" Icon="badge"
+                                           Permission="@IdentityPermissions.UsersAssignRole" OnClick="@OpenAssignRoleAsync" />
+                                <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail"
+                                           Permission="@IdentityPermissions.UsersInvite"
+                                           Visible="@(u.Status == "Invited")" OnClick="@ResendInvitationAsync" />
+                                <RowAction Text="@UiStrings.Users.Unlock" Icon="lock_open"
+                                           Permission="@IdentityPermissions.UsersUnlock"
+                                           Visible="@u.IsLockedOut" OnClick="@UnlockAsync" />
+                                <RowAction Text="@UiStrings.Users.Lock" Icon="lock"
+                                           Permission="@IdentityPermissions.UsersLock"
+                                           Visible="@(!u.IsLockedOut)" OnClick="@LockAsync" />
+                                <RowAction Separator="true" />
+                                <RowAction Text="@UiStrings.Users.Deactivate" Icon="person_off" Danger="true"
+                                           Permission="@IdentityPermissions.UsersDeactivate"
+                                           Visible="@(u.Status != "Deactivated")" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </div>
+            </RadzenCard>
+
+            <nav class="us-tabs" role="tablist">
+                @foreach (var tab in Tabs())
+                {
+                    <button type="button" role="tab" class="us-tab @(activeTab == tab.Key ? "us-tab--active" : "")"
+                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                        <RadzenIcon Icon="@tab.Icon" />
+                        <span>@tab.Label</span>
+                    </button>
                 }
-            </AuthorizeView>
-        </RadzenStack>
+            </nav>
+
+            <div class="us-tab-body" role="tabpanel">
+                @(activeTab switch
+                {
+                    UserTab.Sessions => SessionsTab(u),
+                    _ => OverviewTab(u)
+                })
+            </div>
+        </div>
     }
 </RequirePermission>
+
+@code {
+    private RenderFragment OverviewTab(UserDetail u) =>@<text>
+        <div class="us-stack">
+            <div class="us-overview-grid">
+                <RadzenCard class="us-card">
+                    <div class="us-card-head"><RadzenIcon Icon="person" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="us-field-list">
+                        <DetailField Label="@UiStrings.Users.Status" Icon="toggle_on">
+                            @if (u.IsLockedOut)
+                            {
+                                <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
+                            }
+                        </DetailField>
+                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" Icon="badge" />
+                        <DetailField Label="@UiStrings.Users.Email" Value="@u.Email" Icon="mail" />
+                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="event" />
+                        <DetailField Label="@UiStrings.Users.LastLogin" Value="@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)" Icon="login" />
+                    </div>
+                </RadzenCard>
+            </div>
+
+            <div class="us-stats">
+                @StatTile("toggle_on", u.IsLockedOut ? "amber" : (u.Status == "Active" ? "green" : "amber"), UiStrings.Users.Status, u.IsLockedOut ? UiStrings.Users.LockedOut : u.Status)
+                @StatTile("badge", "blue", UiStrings.Users.Role, u.RoleName)
+                @if (Auth.HasPermission(IdentityPermissions.SessionsView))
+                {
+                    @StatTile("devices", ActiveSessionCount > 0 ? "green" : "amber", UiStrings.Users.StatActiveSessions, ActiveSessionCount.ToString())
+                }
+            </div>
+        </div>
+    </text>;
+
+    private RenderFragment SessionsTab(UserDetail u) =>@<text>
+        <RadzenCard class="us-card">
+            <div class="us-card-head">
+                <RadzenIcon Icon="devices" /><h3>@UiStrings.Sessions.Title</h3>
+                @if (Auth.HasPermission(IdentityPermissions.SessionsRevoke))
+                {
+                    <span class="us-count"></span>
+                    <RadzenButton Text="@UiStrings.Sessions.RevokeAll" ButtonStyle="ButtonStyle.Light" Icon="block"
+                                  Size="ButtonSize.Small" Disabled="@(!HasActiveSessions)" Click="@RevokeAllAsync" />
+                }
+            </div>
+
+            @if (sessionsLoading)
+            {
+                <LoadingCard />
+            }
+            else if (sessionsError)
+            {
+                <ErrorState OnRetry="@LoadSessionsAsync" />
+            }
+            else if (sessions is null || sessions.Count == 0)
+            {
+                <EmptyState Title="@UiStrings.Sessions.Empty" Icon="devices" />
+            }
+            else
+            {
+                <RadzenDataGrid Data="@sessions" TItem="UserSession" AllowPaging="false" GridLines="DataGridGridLines.Horizontal">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
+                            <Template Context="session">@(string.IsNullOrWhiteSpace(session.UserAgent) ? UiStrings.Common.None : session.UserAgent)</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" />
+                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created">
+                            <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="120px">
+                            <Template Context="session">
+                                @if (session.IsActive)
+                                {
+                                    <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
+                                }
+                                else
+                                {
+                                    <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="neutral" />
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Common.Actions" Width="84px" Sortable="false" TextAlign="TextAlign.Center" Frozen="true" FrozenPosition="FrozenColumnPosition.Right">
+                            <Template Context="session">
+                                @if (session.IsActive && Auth.HasPermission(IdentityPermissions.SessionsRevoke))
+                                {
+                                    <div class="os-row-actions">
+                                        <RowActionMenu>
+                                            <RowAction Text="@UiStrings.Account.RevokeSession" Icon="block" Danger="true"
+                                                       OnClick="@(() => RevokeSessionAsync(session.Id))" />
+                                        </RowActionMenu>
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
+        <RadzenCard class="us-stat">
+            <span class="us-stat-icon us-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
+            <div class="us-stat-body">
+                <p class="us-stat-label">@label</p>
+                <p class="us-stat-value">@value</p>
+            </div>
+        </RadzenCard>
+    </text>;
+}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -173,8 +228,28 @@
     private IReadOnlyList<UserSession>? sessions;
     private bool sessionsLoading;
     private bool sessionsError;
+    private UserTab activeTab = UserTab.Overview;
+
+    private enum UserTab { Overview, Sessions }
+
+    private sealed record TabDef(UserTab Key, string Label, string Icon);
 
     private bool HasActiveSessions => sessions?.Any(s => s.IsActive) ?? false;
+    private int ActiveSessionCount => sessions?.Count(s => s.IsActive) ?? 0;
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(UserTab.Overview, UiStrings.Common.Overview, "dashboard");
+        if (Auth.HasPermission(IdentityPermissions.SessionsView))
+            yield return new TabDef(UserTab.Sessions, UiStrings.Sessions.Title, "devices");
+    }
+
+    private bool HasMoreActions(UserDetail u) =>
+        Auth.HasPermission(IdentityPermissions.UsersAssignRole)
+        || (u.Status == "Invited" && Auth.HasPermission(IdentityPermissions.UsersInvite))
+        || (u.IsLockedOut && Auth.HasPermission(IdentityPermissions.UsersUnlock))
+        || (!u.IsLockedOut && Auth.HasPermission(IdentityPermissions.UsersLock))
+        || (u.Status != "Deactivated" && Auth.HasPermission(IdentityPermissions.UsersDeactivate));
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -312,7 +387,14 @@
 
     private void GoBack() => Navigation.NavigateTo("/users");
 
-    private static string HeroTone(UserDetail u) => u.IsLockedOut ? "danger" : "primary";
+    private static string HeroClass(UserDetail u) =>
+        u.IsLockedOut ? "us-hero--locked" : (u.Status == "Active" ? "us-hero--active" : "us-hero--inactive");
+
+    private static string AvatarClass(UserDetail u) =>
+        u.IsLockedOut ? "us-avatar--locked" : (u.Status == "Active" ? "us-avatar--active" : "us-avatar--inactive");
+
+    private static string DotClass(UserDetail u) =>
+        u.IsLockedOut ? "us-avatar-dot--locked" : (u.Status == "Active" ? "us-avatar-dot--active" : "us-avatar-dot--inactive");
 
     private static string StatusTone(string status) => status switch
     {

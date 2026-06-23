@@ -1,0 +1,59 @@
+/* ==========================================================================
+   Customer form dialog — polished sectioned create/edit form.
+   Token-driven and RTL-safe (logical properties). Mirrors the Staff Member
+   form design language (section heads with icons, leading field icons).
+   ========================================================================== */
+
+.cuf-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+}
+
+.cuf-intro {
+    margin: 0;
+    font-size: var(--os-text-sm);
+}
+
+.cuf-section {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-block: var(--os-space-2) 0;
+}
+
+.cuf-section h4 {
+    margin: 0;
+    font-size: var(--os-text-lg);
+    font-weight: 600;
+}
+
+.cuf-section .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 1.2rem;
+}
+
+.cuf-section-actions {
+    margin-inline-start: auto;
+}
+
+.cuf-form ::deep .rz-form-field-start .rz-icon {
+    color: var(--os-color-text-muted);
+    font-size: 1.1rem;
+}
+
+/* --- Contact rows -------------------------------------------------------- */
+.cuf-contacts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-3);
+}
+
+.cuf-empty {
+    margin: 0;
+    font-size: var(--os-text-sm);
+}
+
+.cuf-contact ::deep .rz-card {
+    padding: var(--os-space-3);
+}

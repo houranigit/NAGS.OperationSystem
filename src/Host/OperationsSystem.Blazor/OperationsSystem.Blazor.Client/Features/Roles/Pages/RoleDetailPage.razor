@@ -3,6 +3,7 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
+@inject AuthSession Auth
 
 <PageTitle>@(role?.Name ?? UiStrings.Roles.Title)</PageTitle>
 
@@ -17,80 +18,164 @@
     }
     else if (role is { } r)
     {
-        <RadzenStack Gap="1rem" class="os-detail-stack">
-        <DetailHero Eyebrow="@UiStrings.Roles.Title" Title="@r.Name" Subtitle="@HeroSubtitle(r)"
-                    Icon="shield" Tone="@HeroTone(r)" OnBack="@GoBack">
-            <Metadata>
-                @if (r.IsSystem)
-                {
-                    <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
-                }
-                <span class="os-pill os-pill--info">@selected.Count @UiStrings.Roles.Permissions.ToLowerInvariant()</span>
-            </Metadata>
-            <Actions>
-                @if (!r.IsSystem)
-                {
-                    <AuthorizeView Context="ctx">
-                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
-                        }
-                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesDelete))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Delete" Icon="delete" ButtonStyle="ButtonStyle.Danger" Click="@DeleteAsync" />
-                        }
-                    </AuthorizeView>
-                }
-            </Actions>
-        </DetailHero>
+        <div class="rl-workspace">
+            <button type="button" class="rl-back" @onclick="GoBack">
+                <RadzenIcon Icon="arrow_back" />
+                <span>@UiStrings.Roles.Title</span>
+            </button>
 
+            <RadzenCard class="@($"rl-hero {(r.IsSystem ? "rl-hero--system" : "rl-hero--custom")}")">
+                <div class="rl-hero-main">
+                    <div class="rl-avatar @(r.IsSystem ? "rl-avatar--system" : "rl-avatar--custom")">
+                        <RadzenIcon Icon="shield" />
+                    </div>
+
+                    <div class="rl-hero-identity">
+                        <h1 class="rl-hero-name">@r.Name</h1>
+                        <p class="rl-hero-sub os-muted">@HeroSubtitle(r)</p>
+
+                        <div class="rl-chips">
+                            @if (r.IsSystem)
+                            {
+                                <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.Roles.Custom" Tone="success" />
+                            }
+                            <span class="rl-chip"><RadzenIcon Icon="key" /><span>@selected.Count @UiStrings.Roles.Permissions.ToLowerInvariant()</span></span>
+                            <span class="rl-chip"><RadzenIcon Icon="account_circle" /><span>@r.CompatibleUserType</span></span>
+                        </div>
+                    </div>
+
+                    <div class="rl-hero-actions">
+                        @if (!r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (!r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesDelete))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                                <RowAction Text="@UiStrings.Common.Delete" Icon="delete" Danger="true"
+                                           Permission="@IdentityPermissions.RolesDelete" OnClick="@DeleteAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </div>
+            </RadzenCard>
+
+            <nav class="rl-tabs" role="tablist">
+                @foreach (var tab in tabs)
+                {
+                    <button type="button" role="tab" class="rl-tab @(activeTab == tab.Key ? "rl-tab--active" : "")"
+                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                        <RadzenIcon Icon="@tab.Icon" />
+                        <span>@tab.Label</span>
+                    </button>
+                }
+            </nav>
+
+            <div class="rl-tab-body" role="tabpanel">
+                @(activeTab switch
+                {
+                    RoleTab.Permissions => PermissionsTab(r),
+                    _ => OverviewTab(r)
+                })
+            </div>
+        </div>
+    }
+</RequirePermission>
+
+@code {
+    private RenderFragment OverviewTab(RoleDetail r) =>@<text>
+        <div class="rl-stack">
+            <div class="rl-overview-grid">
+                <RadzenCard class="rl-card">
+                    <div class="rl-card-head"><RadzenIcon Icon="shield" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="rl-field-list">
+                        <DetailField Label="@UiStrings.Roles.Name" Value="@r.Name" Icon="badge" />
+                        <DetailField Label="@UiStrings.Roles.CompatibleUserType" Value="@r.CompatibleUserType" Icon="account_circle" />
+                        <DetailField Label="@UiStrings.Roles.RoleDescription"
+                                     Value="@(string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description)" Icon="notes" />
+                        <DetailField Label="@UiStrings.Roles.RoleType" Icon="toggle_on">
+                            @if (r.IsSystem)
+                            {
+                                <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.Roles.Custom" Tone="success" />
+                            }
+                        </DetailField>
+                    </div>
+                </RadzenCard>
+            </div>
+
+            <div class="rl-stats">
+                @StatTile("key", "blue", UiStrings.Roles.PermissionCount, selected.Count.ToString())
+                @StatTile("account_circle", "blue", UiStrings.Roles.CompatibleUserType, r.CompatibleUserType)
+                @StatTile("toggle_on", r.IsSystem ? "amber" : "green", UiStrings.Roles.RoleType, r.IsSystem ? UiStrings.Roles.System : UiStrings.Roles.Custom)
+            </div>
+        </div>
+    </text>;
+
+    private RenderFragment PermissionsTab(RoleDetail r) =>@<text>
+        @{
+            var canManage = !r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesManagePermissions);
+        }
         @if (r.IsSystem)
         {
             <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
                 @UiStrings.Roles.SystemRoleLocked
             </RadzenAlert>
         }
-
-        <RadzenCard class="os-role-card">
-            <AuthorizeView Context="permCtx">
-                @{
-                    var canManage = !r.IsSystem && permCtx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesManagePermissions);
+        <RadzenCard class="rl-card">
+            <div class="rl-perm-head">
+                <RadzenIcon Icon="key" />
+                <div>
+                    <h3>@UiStrings.Roles.Permissions</h3>
+                    <p class="os-muted">@UiStrings.Roles.PermissionsDescription</p>
+                </div>
+                @if (canManage)
+                {
+                    <div class="rl-perm-head-actions">
+                        <RadzenButton Text="@UiStrings.Common.Save" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@isSaving" Click="@SavePermissionsAsync" />
+                    </div>
                 }
-                <RadzenStack Gap="1.25rem">
-                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
-                        <div>
-                            <h3>@UiStrings.Roles.Permissions</h3>
-                            <p class="os-muted">@UiStrings.Roles.PermissionsDescription</p>
-                        </div>
-                        @if (canManage)
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Save" Icon="save" ButtonStyle="ButtonStyle.Primary"
-                                          Disabled="@isSaving" Click="@SavePermissionsAsync" />
-                        }
-                    </RadzenStack>
+            </div>
 
-                    @foreach (var group in catalog)
-                    {
-                        <div class="os-perm-group">
-                            <strong>@group.Resource</strong>
-                            <div class="os-perm-list">
-                                @foreach (var permission in group.Permissions)
-                                {
-                                    <label class="os-perm-item">
-                                        <RadzenCheckBox TValue="bool" Value="@selected.Contains(permission)" Disabled="@(!canManage)"
-                                                        Change="@(value => TogglePermission(permission, value))" />
-                                        <span>@ActionLabel(permission)</span>
-                                    </label>
-                                }
-                            </div>
+            <div class="rl-perm-groups">
+                @foreach (var group in catalog)
+                {
+                    <div class="os-perm-group">
+                        <strong>@group.Resource</strong>
+                        <div class="os-perm-list">
+                            @foreach (var permission in group.Permissions)
+                            {
+                                <label class="os-perm-item">
+                                    <RadzenCheckBox TValue="bool" Value="@selected.Contains(permission)" Disabled="@(!canManage)"
+                                                    Change="@(value => TogglePermission(permission, value))" />
+                                    <span>@ActionLabel(permission)</span>
+                                </label>
+                            }
                         </div>
-                    }
-                </RadzenStack>
-            </AuthorizeView>
+                    </div>
+                }
+            </div>
         </RadzenCard>
-        </RadzenStack>
-    }
-</RequirePermission>
+    </text>;
+
+    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
+        <RadzenCard class="rl-stat">
+            <span class="rl-stat-icon rl-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
+            <div class="rl-stat-body">
+                <p class="rl-stat-label">@label</p>
+                <p class="rl-stat-value">@value</p>
+            </div>
+        </RadzenCard>
+    </text>;
+}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -102,6 +187,17 @@
     private bool loadError;
     private bool isSaving;
     private string errorMessage = UiStrings.Errors.LoadFailed;
+    private RoleTab activeTab = RoleTab.Overview;
+
+    private enum RoleTab { Overview, Permissions }
+
+    private sealed record TabDef(RoleTab Key, string Label, string Icon);
+
+    private static readonly TabDef[] tabs =
+    [
+        new(RoleTab.Overview, UiStrings.Common.Overview, "dashboard"),
+        new(RoleTab.Permissions, UiStrings.Roles.Permissions, "key")
+    ];
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -196,8 +292,6 @@
     }
 
     private void GoBack() => Navigation.NavigateTo("/roles");
-
-    private static string HeroTone(RoleDetail r) => r.IsSystem ? "neutral" : "primary";
 
     private static string HeroSubtitle(RoleDetail r) =>
         string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description;

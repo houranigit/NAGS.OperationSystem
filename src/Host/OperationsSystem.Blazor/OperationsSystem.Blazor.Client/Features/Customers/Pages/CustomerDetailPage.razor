@@ -3,6 +3,7 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
+@inject AuthSession Auth
 
 <PageTitle>@(item?.Name ?? UiStrings.Customers.Title)</PageTitle>
 
@@ -17,139 +18,221 @@
     }
     else if (item is { } c)
     {
-        <RadzenStack Gap="1rem" class="os-detail-stack">
-            <DetailHero Eyebrow="@UiStrings.Customers.Title" Title="@c.Name"
-                        Subtitle="@($"{c.IataCode}{(string.IsNullOrWhiteSpace(c.IcaoCode) ? "" : " / " + c.IcaoCode)} · {c.CountryName}")"
-                        Icon="business" Tone="@(c.IsActive ? "primary" : "neutral")" OnBack="@GoBack">
-                <Metadata>
-                    @if (c.IsActive)
-                    {
-                        <StatusBadge Label="@UiStrings.Customers.Active" Tone="success" />
-                    }
-                    else
-                    {
-                        <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
-                    }
-                </Metadata>
-                <Actions>
-                    <AuthorizeView Context="ctx">
-                        @if (ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Click="@OpenEditAsync" />
-                        }
-                        @if (!c.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersActivate))
-                        {
-                            <RadzenButton Text="@UiStrings.Customers.Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
-                        }
-                        @if (c.IsActive && ctx.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersDeactivate))
-                        {
-                            <RadzenButton Text="@UiStrings.Customers.Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
-                        }
-                    </AuthorizeView>
-                </Actions>
-            </DetailHero>
+        <div class="cu-workspace">
+            <button type="button" class="cu-back" @onclick="GoBack">
+                <RadzenIcon Icon="arrow_back" />
+                <span>@UiStrings.Customers.Title</span>
+            </button>
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <h3>@UiStrings.Common.Details</h3>
-                    <div class="os-detail-grid">
+            <RadzenCard class="@($"cu-hero {(c.IsActive ? "cu-hero--active" : "cu-hero--inactive")}")">
+                <div class="cu-hero-main">
+                    <div class="cu-avatar @(c.IsActive ? "cu-avatar--active" : "cu-avatar--inactive")">
+                        <RadzenIcon Icon="business" />
+                    </div>
+
+                    <div class="cu-hero-identity">
+                        <h1 class="cu-hero-name">@c.Name</h1>
+                        <p class="cu-hero-sub os-muted">@($"{c.IataCode}{(string.IsNullOrWhiteSpace(c.IcaoCode) ? "" : " / " + c.IcaoCode)} · {c.CountryName}")</p>
+
+                        <div class="cu-chips">
+                            @if (c.IsActive)
+                            {
+                                <StatusBadge Label="@UiStrings.Customers.Active" Tone="success" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
+                            }
+                            <span class="cu-chip"><RadzenIcon Icon="tag" /><span>@UiStrings.Customers.IataCode: <strong>@c.IataCode</strong></span></span>
+                            <span class="cu-chip"><RadzenIcon Icon="public" /><span>@c.CountryName</span></span>
+                            <span class="cu-chip"><RadzenIcon Icon="contacts" /><span>@string.Format(UiStrings.Customers.ContactsCountFormat, ActiveContacts(c).Count)</span></span>
+                        </div>
+
+                        <p class="cu-hero-stamp os-muted">
+                            @UiStrings.Customers.Created: @c.CreatedAtUtc.ToLocalTime().ToString("g")
+                            @if (c.UpdatedAtUtc is { } updated)
+                            {
+                                <span class="cu-hero-stamp-sep">·</span>
+                                @($"{UiStrings.Customers.Updated}: {updated.ToLocalTime().ToString("g")}")
+                            }
+                        </p>
+                    </div>
+
+                    <div class="cu-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.CustomersUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(c))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                                <RowAction Text="@UiStrings.Customers.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.CustomersActivate"
+                                           Visible="@(!c.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.Customers.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.CustomersDeactivate"
+                                           Visible="@c.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </div>
+            </RadzenCard>
+
+            <nav class="cu-tabs" role="tablist">
+                @foreach (var tab in tabs)
+                {
+                    <button type="button" role="tab" class="cu-tab @(activeTab == tab.Key ? "cu-tab--active" : "")"
+                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                        <RadzenIcon Icon="@tab.Icon" />
+                        <span>@tab.Label</span>
+                    </button>
+                }
+            </nav>
+
+            <div class="cu-tab-body" role="tabpanel">
+                @(activeTab switch
+                {
+                    CustomerTab.Overview => OverviewTab(c),
+                    CustomerTab.Address => AddressTab(c),
+                    _ => ContactsTab(c)
+                })
+            </div>
+        </div>
+    }
+</RequirePermission>
+
+@code {
+    private RenderFragment OverviewTab(CustomerDetail c) =>@<text>
+        <div class="cu-stack">
+            <div class="cu-overview-grid">
+                <RadzenCard class="cu-card">
+                    <div class="cu-card-head"><RadzenIcon Icon="business" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="cu-field-list">
                         <DetailField Label="@UiStrings.Customers.IataCode" Value="@c.IataCode" Icon="tag" />
                         <DetailField Label="@UiStrings.Customers.IcaoCode" Value="@(string.IsNullOrWhiteSpace(c.IcaoCode) ? UiStrings.Customers.NoIcao : c.IcaoCode)" Icon="tag" />
                         <DetailField Label="@UiStrings.Customers.Country" Value="@c.CountryName" Icon="public" />
+                        <DetailField Label="@UiStrings.Customers.Status" Icon="toggle_on">
+                            @if (c.IsActive)
+                            {
+                                <StatusBadge Label="@UiStrings.Customers.Active" Tone="success" />
+                            }
+                            else
+                            {
+                                <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
+                            }
+                        </DetailField>
+                    </div>
+                </RadzenCard>
+
+                <RadzenCard class="cu-card">
+                    <div class="cu-card-head"><RadzenIcon Icon="contact_mail" /><h3>@UiStrings.Customers.OfficialEmail</h3></div>
+                    <div class="cu-field-list">
                         <DetailField Label="@UiStrings.Customers.OfficialEmail" Value="@(string.IsNullOrWhiteSpace(c.OfficialEmail) ? UiStrings.Customers.NoIcao : c.OfficialEmail)" Icon="mail" />
                         <DetailField Label="@UiStrings.Customers.OfficialPhone" Value="@(string.IsNullOrWhiteSpace(c.OfficialPhone) ? UiStrings.Customers.NoIcao : c.OfficialPhone)" Icon="call" />
-                        <DetailField Label="@UiStrings.Customers.Status" Value="@(c.IsActive ? UiStrings.Customers.Active : UiStrings.Customers.Inactive)" Icon="toggle_on" />
                         <DetailField Label="@UiStrings.Customers.Created" Value="@c.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        @if (c.UpdatedAtUtc is { } updated)
-                        {
-                            <DetailField Label="@UiStrings.Customers.Updated" Value="@updated.ToLocalTime().ToString("g")" Icon="update" />
-                        }
+                        <DetailField Label="@UiStrings.Customers.Updated" Value="@(c.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
                     </div>
-                </RadzenStack>
-            </RadzenCard>
+                </RadzenCard>
+            </div>
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <h3>@UiStrings.Customers.Address</h3>
-                    <div class="os-detail-grid">
-                        <DetailField Label="@UiStrings.Customers.AddressLine1" Value="@c.Address.Line1" Icon="home" />
-                        @if (!string.IsNullOrWhiteSpace(c.Address.Line2))
-                        {
-                            <DetailField Label="@UiStrings.Customers.AddressLine2" Value="@c.Address.Line2" Icon="home" />
-                        }
-                        <DetailField Label="@UiStrings.Customers.City" Value="@c.Address.City" Icon="location_city" />
-                        @if (!string.IsNullOrWhiteSpace(c.Address.Region))
-                        {
-                            <DetailField Label="@UiStrings.Customers.Region" Value="@c.Address.Region" Icon="map" />
-                        }
-                        @if (!string.IsNullOrWhiteSpace(c.Address.PostalCode))
-                        {
-                            <DetailField Label="@UiStrings.Customers.PostalCode" Value="@c.Address.PostalCode" Icon="local_post_office" />
-                        }
-                    </div>
-                </RadzenStack>
-            </RadzenCard>
+            <div class="cu-stats">
+                @StatTile("contacts", "blue", UiStrings.Customers.StatContacts, ActiveContacts(c).Count.ToString())
+                @StatTile("vpn_key", LinkedContacts(c) > 0 ? "green" : "amber", UiStrings.Customers.StatPortalAccounts, LinkedContacts(c).ToString())
+                @StatTile("toggle_on", c.IsActive ? "green" : "amber", UiStrings.Customers.Status, c.IsActive ? UiStrings.Customers.Active : UiStrings.Customers.Inactive)
+            </div>
+        </div>
+    </text>;
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
-                        <h3>@UiStrings.Customers.Contacts</h3>
-                        <AuthorizeView Context="ctxAdd">
-                            @if (ctxAdd.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomerContactsCreate))
-                            {
-                                <RadzenButton Text="@UiStrings.Customers.AddContact" Icon="person_add" ButtonStyle="ButtonStyle.Light"
-                                              Size="ButtonSize.Small" Click="@OpenAddContactAsync" />
-                            }
-                        </AuthorizeView>
-                    </RadzenStack>
+    private RenderFragment AddressTab(CustomerDetail c) =>@<text>
+        <RadzenCard class="cu-card">
+            <div class="cu-card-head"><RadzenIcon Icon="location_on" /><h3>@UiStrings.Customers.Address</h3></div>
+            <div class="cu-field-list">
+                <DetailField Label="@UiStrings.Customers.AddressLine1" Value="@c.Address.Line1" Icon="home" />
+                @if (!string.IsNullOrWhiteSpace(c.Address.Line2))
+                {
+                    <DetailField Label="@UiStrings.Customers.AddressLine2" Value="@c.Address.Line2" Icon="home" />
+                }
+                <DetailField Label="@UiStrings.Customers.City" Value="@c.Address.City" Icon="location_city" />
+                @if (!string.IsNullOrWhiteSpace(c.Address.Region))
+                {
+                    <DetailField Label="@UiStrings.Customers.Region" Value="@c.Address.Region" Icon="map" />
+                }
+                @if (!string.IsNullOrWhiteSpace(c.Address.PostalCode))
+                {
+                    <DetailField Label="@UiStrings.Customers.PostalCode" Value="@c.Address.PostalCode" Icon="local_post_office" />
+                }
+            </div>
+        </RadzenCard>
+    </text>;
 
-                    @{
-                        var activeContacts = c.Contacts.Where(ct => ct.IsActive).ToList();
-                    }
-                    @if (activeContacts.Count == 0)
-                    {
-                        <EmptyState Icon="contacts" Title="@UiStrings.Customers.ContactsEmpty" />
-                    }
-                    else
-                    {
-                        <RadzenDataGrid TItem="CustomerContactModel" Data="@activeContacts" AllowSorting="false" class="os-grid">
-                            <Columns>
-                                <RadzenDataGridColumn TItem="CustomerContactModel" Property="Name" Title="@UiStrings.Customers.ContactName" />
-                                <RadzenDataGridColumn TItem="CustomerContactModel" Property="JobTitle" Title="@UiStrings.Customers.ContactJobTitle" />
-                                <RadzenDataGridColumn TItem="CustomerContactModel" Property="Email" Title="@UiStrings.Customers.ContactEmail" />
-                                <RadzenDataGridColumn TItem="CustomerContactModel" Property="Phone" Title="@UiStrings.Customers.ContactPhone" />
-                                <RadzenDataGridColumn TItem="CustomerContactModel" Title="@UiStrings.Customers.PortalLinked" Width="140px">
-                                    <Template Context="contact">
-                                        @if (contact.LinkedUserId is not null)
-                                        {
-                                            <StatusBadge Label="@UiStrings.PortalAccess.HasAccess" Tone="success" />
-                                        }
-                                        else
-                                        {
-                                            <span class="os-muted">@UiStrings.PortalAccess.NoAccess</span>
-                                        }
-                                    </Template>
-                                </RadzenDataGridColumn>
-                                <RadzenDataGridColumn TItem="CustomerContactModel" Title="@UiStrings.Common.Actions" Width="160px" Sortable="false">
-                                    <Template Context="contact">
-                                        <AuthorizeView Context="ctxGrant">
-                                            @if (c.IsActive && contact.LinkedUserId is null
-                                                 && ctxGrant.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomerContactsGrantAccess))
-                                            {
-                                                <RadzenButton Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add" ButtonStyle="ButtonStyle.Info"
-                                                              Size="ButtonSize.Small" Click="@(() => OpenGrantContactAccessAsync(contact.Id))" />
-                                            }
-                                        </AuthorizeView>
-                                    </Template>
-                                </RadzenDataGridColumn>
-                            </Columns>
-                        </RadzenDataGrid>
-                    }
-                </RadzenStack>
-            </RadzenCard>
-        </RadzenStack>
-    }
-</RequirePermission>
+    private RenderFragment ContactsTab(CustomerDetail c) =>@<text>
+        @{
+            var activeContacts = ActiveContacts(c);
+        }
+        <RadzenCard class="cu-card">
+            <div class="cu-card-head">
+                <RadzenIcon Icon="contacts" /><h3>@UiStrings.Customers.Contacts</h3>
+                <span class="cu-count">@string.Format(UiStrings.Customers.ContactsCountFormat, activeContacts.Count)</span>
+                @if (Auth.HasPermission(MasterDataPermissions.CustomerContactsCreate))
+                {
+                    <RadzenButton Text="@UiStrings.Customers.AddContact" Icon="person_add" ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small" Click="@OpenAddContactAsync" />
+                }
+            </div>
+            @if (activeContacts.Count == 0)
+            {
+                <EmptyState Icon="contacts" Title="@UiStrings.Customers.ContactsEmpty" />
+            }
+            else
+            {
+                <RadzenDataGrid TItem="CustomerContactModel" Data="@activeContacts" AllowSorting="false" GridLines="DataGridGridLines.Horizontal">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="CustomerContactModel" Property="Name" Title="@UiStrings.Customers.ContactName" />
+                        <RadzenDataGridColumn TItem="CustomerContactModel" Property="JobTitle" Title="@UiStrings.Customers.ContactJobTitle" />
+                        <RadzenDataGridColumn TItem="CustomerContactModel" Property="Email" Title="@UiStrings.Customers.ContactEmail" />
+                        <RadzenDataGridColumn TItem="CustomerContactModel" Property="Phone" Title="@UiStrings.Customers.ContactPhone" />
+                        <RadzenDataGridColumn TItem="CustomerContactModel" Title="@UiStrings.Customers.PortalLinked" Width="160px">
+                            <Template Context="contact">
+                                @if (contact.LinkedUserId is not null)
+                                {
+                                    <StatusBadge Label="@UiStrings.PortalAccess.HasAccess" Tone="success" />
+                                }
+                                else
+                                {
+                                    <span class="os-muted">@UiStrings.PortalAccess.NoAccess</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="CustomerContactModel" Title="@UiStrings.Common.Actions" Width="84px" Sortable="false" TextAlign="TextAlign.Center" Frozen="true" FrozenPosition="FrozenColumnPosition.Right">
+                            <Template Context="contact">
+                                @if (CanGrantContact(c, contact))
+                                {
+                                    <div class="os-row-actions">
+                                        <RowActionMenu>
+                                            <RowAction Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add"
+                                                       Permission="@MasterDataPermissions.CustomerContactsGrantAccess"
+                                                       OnClick="@(() => OpenGrantContactAccessAsync(contact.Id))" />
+                                        </RowActionMenu>
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
+        <RadzenCard class="cu-stat">
+            <span class="cu-stat-icon cu-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
+            <div class="cu-stat-body">
+                <p class="cu-stat-label">@label</p>
+                <p class="cu-stat-value">@value</p>
+            </div>
+        </RadzenCard>
+    </text>;
+}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -158,6 +241,31 @@
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
+    private CustomerTab activeTab = CustomerTab.Overview;
+
+    private enum CustomerTab { Overview, Address, Contacts }
+
+    private sealed record TabDef(CustomerTab Key, string Label, string Icon);
+
+    private static readonly TabDef[] tabs =
+    [
+        new(CustomerTab.Overview, UiStrings.Common.Overview, "dashboard"),
+        new(CustomerTab.Address, UiStrings.Customers.TabAddress, "location_on"),
+        new(CustomerTab.Contacts, UiStrings.Customers.Contacts, "contacts")
+    ];
+
+    private static List<CustomerContactModel> ActiveContacts(CustomerDetail c) =>
+        c.Contacts.Where(ct => ct.IsActive).ToList();
+
+    private static int LinkedContacts(CustomerDetail c) =>
+        c.Contacts.Count(ct => ct.IsActive && ct.LinkedUserId is not null);
+
+    private bool HasMoreActions(CustomerDetail c) =>
+        (!c.IsActive && Auth.HasPermission(MasterDataPermissions.CustomersActivate))
+        || (c.IsActive && Auth.HasPermission(MasterDataPermissions.CustomersDeactivate));
+
+    private bool CanGrantContact(CustomerDetail c, CustomerContactModel contact) =>
+        c.IsActive && contact.LinkedUserId is null && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess);
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
