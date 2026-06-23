@@ -410,6 +410,9 @@ public static class UiStrings
         public const string None = "—";
         public const string CreateTitle = "Create staff member";
         public const string EditTitle = "Edit staff member";
+        public const string BasicInformation = "Basic information";
+        public const string FormIntro = "Update staff member information, schedule and licenses.";
+        public const string ScheduleHint = "Select the days this staff member works.";
         public const string NameRequired = "A full name is required.";
         public const string EmailRequired = "A valid email is required.";
         public const string StationRequired = "An active station is required.";

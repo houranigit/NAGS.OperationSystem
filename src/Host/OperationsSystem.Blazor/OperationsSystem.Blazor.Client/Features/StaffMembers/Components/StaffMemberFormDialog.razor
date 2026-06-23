@@ -2,16 +2,25 @@
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="StaffModel" Data="@model" Submit="@SubmitAsync">
-    <RadzenStack Gap="1rem">
+    <div class="sf-form">
+        <p class="sf-intro os-muted">@UiStrings.StaffMembers.FormIntro</p>
+
+        <div class="sf-section"><RadzenIcon Icon="badge" /><h4>@UiStrings.StaffMembers.BasicInformation</h4></div>
         <RadzenRow Gap="1rem">
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.StaffMembers.FullName" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenTextBox @bind-Value="model.FullName" Name="fullName" Style="width: 100%;" MaxLength="200" />
+                    <Start><RadzenIcon Icon="person" /></Start>
+                    <ChildContent>
+                        <RadzenTextBox @bind-Value="model.FullName" Name="fullName" Style="width: 100%;" MaxLength="200" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.StaffMembers.Email" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" MaxLength="256" />
+                    <Start><RadzenIcon Icon="mail" /></Start>
+                    <ChildContent>
+                        <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" MaxLength="256" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
         </RadzenRow>
@@ -19,43 +28,62 @@
         <RadzenRow Gap="1rem">
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.StaffMembers.Station" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
-                                    AllowFiltering="true" Name="station" Style="width: 100%;" />
+                    <Start><RadzenIcon Icon="flight_takeoff" /></Start>
+                    <ChildContent>
+                        <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
+                                        AllowFiltering="true" Name="station" Style="width: 100%;" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.StaffMembers.ManpowerType" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" Name="manpowerType" Style="width: 100%;" />
+                    <Start><RadzenIcon Icon="engineering" /></Start>
+                    <ChildContent>
+                        <RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id"
+                                        AllowFiltering="true" Name="manpowerType" Style="width: 100%;" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
         </RadzenRow>
 
-        <h4 class="os-form-section">@UiStrings.StaffMembers.EmploymentContract</h4>
+        <div class="sf-section"><RadzenIcon Icon="event" /><h4>@UiStrings.StaffMembers.EmploymentContract</h4></div>
         <RadzenRow Gap="1rem">
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.StaffMembers.StartDate" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenDatePicker @bind-Value="model.StartDate" DateFormat="yyyy-MM-dd" Name="startDate" Style="width: 100%;" ShowTime="false" />
+                    <Start><RadzenIcon Icon="event" /></Start>
+                    <ChildContent>
+                        <RadzenDatePicker @bind-Value="model.StartDate" DateFormat="yyyy-MM-dd" Name="startDate" Style="width: 100%;" ShowTime="false" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.StaffMembers.EndDate" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenDatePicker @bind-Value="model.EndDate" DateFormat="yyyy-MM-dd" Name="endDate" Style="width: 100%;" ShowTime="false" />
+                    <Start><RadzenIcon Icon="event" /></Start>
+                    <ChildContent>
+                        <RadzenDatePicker @bind-Value="model.EndDate" DateFormat="yyyy-MM-dd" Name="endDate" Style="width: 100%;" ShowTime="false" />
+                    </ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
         </RadzenRow>
 
-        <h4 class="os-form-section">@UiStrings.StaffMembers.WorkingSchedule</h4>
-        <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.75rem">
+        <div class="sf-section"><RadzenIcon Icon="calendar_month" /><h4>@UiStrings.StaffMembers.WorkingSchedule</h4></div>
+        <div class="sf-days">
             @foreach (var day in scheduleDays)
             {
-                <RadzenCheckBox @bind-Value="day.Selected" Name="@($"day-{day.Value}")" TValue="bool" />
-                <RadzenLabel Text="@day.Label" Component="@($"day-{day.Value}")" Style="margin-inline-end: 0.75rem;" />
+                <button type="button" class="sf-day @(day.Selected ? "sf-day--on" : "")"
+                        @onclick="@(() => day.Selected = !day.Selected)">
+                    @if (day.Selected)
+                    {
+                        <RadzenIcon Icon="check" />
+                    }
+                    <span>@day.Label</span>
+                </button>
             }
-        </RadzenStack>
+        </div>
+        <p class="sf-hint os-muted">@UiStrings.StaffMembers.ScheduleHint</p>
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
-            <h4 class="os-form-section">@UiStrings.StaffMembers.Licenses</h4>
+            <div class="sf-section"><RadzenIcon Icon="badge" /><h4>@UiStrings.StaffMembers.Licenses</h4></div>
             <RadzenButton Text="@UiStrings.StaffMembers.AddLicense" Icon="add" ButtonStyle="ButtonStyle.Light"
                           Size="ButtonSize.Small" Click="@AddLicense" />
         </RadzenStack>
@@ -69,7 +97,7 @@
             <RadzenStack Gap="0.75rem">
                 @foreach (var row in licenseRows)
                 {
-                    <RadzenCard Variant="Variant.Outlined">
+                    <RadzenCard Variant="Variant.Outlined" class="sf-license-card">
                         <RadzenRow Gap="0.75rem" AlignItems="AlignItems.Center">
                             <RadzenColumn Size="6">
                                 <RadzenDropDown @bind-Value="row.LicenseId" Data="@licenses" TextProperty="Code" ValueProperty="Id"
@@ -95,10 +123,11 @@
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton ButtonType="ButtonType.Submit" Text="@(StaffMemberId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
+            <RadzenButton ButtonType="ButtonType.Submit" Icon="check"
+                          Text="@(StaffMemberId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
-    </RadzenStack>
+    </div>
 </RadzenTemplateForm>
 
 @code {

@@ -1,0 +1,94 @@
+/* ==========================================================================
+   Staff Member form dialog — polished create/edit form.
+   Token-driven and RTL-safe (logical properties). Mirrors the detail page
+   design language (section heads with icons, day toggle pills).
+   ========================================================================== */
+
+.sf-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+}
+
+/* --- Intro --------------------------------------------------------------- */
+.sf-intro {
+    margin: 0;
+    font-size: var(--os-text-sm);
+}
+
+/* --- Section headers ----------------------------------------------------- */
+.sf-section {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-block: var(--os-space-2) 0;
+}
+
+.sf-section h4 {
+    margin: 0;
+    font-size: var(--os-text-lg);
+    font-weight: 600;
+}
+
+.sf-section .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 1.2rem;
+}
+
+/* --- Field leading icons ------------------------------------------------- */
+.sf-form ::deep .rz-form-field-start .rz-icon {
+    color: var(--os-color-text-muted);
+    font-size: 1.1rem;
+}
+
+/* --- Working schedule toggle pills --------------------------------------- */
+.sf-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+}
+
+.sf-day {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--os-radius-pill);
+    border: 1px solid var(--os-color-border);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-subtle);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
+}
+
+.sf-day:hover {
+    border-color: var(--os-color-border-strong);
+    color: var(--os-color-text);
+}
+
+.sf-day .rz-icon {
+    font-size: 1rem;
+}
+
+.sf-day--on {
+    background: var(--os-color-primary-soft);
+    border-color: transparent;
+    color: var(--os-color-primary-strong);
+}
+
+.sf-day--on:hover {
+    color: var(--os-color-primary-strong);
+}
+
+.sf-hint {
+    margin: 0;
+    font-size: var(--os-text-sm);
+}
+
+/* --- License rows -------------------------------------------------------- */
+.sf-license-card ::deep .rz-card {
+    padding: var(--os-space-3);
+}

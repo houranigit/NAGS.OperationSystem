@@ -10,6 +10,14 @@
     gap: var(--os-space-4);
 }
 
+.sm-workspace ::deep .rz-card {
+    padding: var(--os-space-4);
+}
+
+.sm-workspace ::deep .os-detail-field {
+    padding: var(--os-space-2);
+}
+
 /* --- Back link ----------------------------------------------------------- */
 .sm-back {
     display: inline-flex;
@@ -42,7 +50,7 @@
 .sm-hero {
     position: relative;
     overflow: hidden;
-    padding: var(--os-space-5);
+    padding: var(--os-space-4);
 }
 
 .sm-hero::before {
@@ -117,10 +125,10 @@
     word-break: break-word;
 }
 
-.sm-hero-role {
-    margin: var(--os-space-1) 0 0;
+.sm-hero-name .sm-hero-role {
     font-size: var(--os-text-base);
     font-weight: 600;
+    vertical-align: middle;
 }
 
 .sm-chips {
@@ -128,7 +136,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--os-space-2);
-    margin-top: var(--os-space-3);
+    margin-top: var(--os-space-2);
 }
 
 .sm-chip {
@@ -164,7 +172,7 @@
 }
 
 .sm-hero-stamp {
-    margin: var(--os-space-3) 0 0;
+    margin: var(--os-space-2) 0 0;
     font-size: var(--os-text-xs);
 }
 

@@ -33,8 +33,9 @@
                     </div>
 
                     <div class="sm-hero-identity">
-                        <h1 class="sm-hero-name">@s.FullName</h1>
-                        <p class="sm-hero-role os-muted">@s.ManpowerTypeName</p>
+                        <h1 class="sm-hero-name">
+                            @s.FullName <span class="sm-hero-role os-muted">(@s.ManpowerTypeName)</span>
+                        </h1>
 
                         <div class="sm-chips">
                             @if (s.IsActive)
