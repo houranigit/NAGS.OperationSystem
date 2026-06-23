@@ -273,6 +273,10 @@ a {
     transition: box-shadow var(--os-transition), border-color var(--os-transition);
 }
 
+.rz-dialog {
+    background-color: white;
+}
+
 /* --- List page layout ---------------------------------------------------- */
 /* A standard list screen: a page header followed by a DataListCard. The card
    hugs its content (toolbar + grid + pager) and grows with the number of rows
