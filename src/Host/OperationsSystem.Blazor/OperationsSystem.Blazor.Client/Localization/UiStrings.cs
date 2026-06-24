@@ -38,7 +38,14 @@ public static class UiStrings
         public static string Details => UiText.Get("Common.Details", "Details");
         public static string Overview => UiText.Get("Common.Overview", "Overview");
         public static string Name => UiText.Get("Common.Name", "Name");
-        public static string None => UiText.Get("Common.None", "â");
+        public static string ViewAll => UiText.Get("Common.ViewAll", "View all");
+        public static string Copy => UiText.Get("Common.Copy", "Copy");
+        public static string Copied => UiText.Get("Common.Copied", "Copied to clipboard");
+        public static string JustNow => UiText.Get("Common.JustNow", "Just now");
+        public static string MinutesAgo => UiText.Get("Common.MinutesAgo", "{0}m ago");
+        public static string HoursAgo => UiText.Get("Common.HoursAgo", "{0}h ago");
+        public static string DaysAgo => UiText.Get("Common.DaysAgo", "{0}d ago");
+        public static string None => UiText.Get("Common.None", "—");
     }
 
     public static class Auth
@@ -171,6 +178,26 @@ public static class UiStrings
         public static string ConfirmDeactivate => UiText.Get("Users.ConfirmDeactivate", "Deactivate this user? They will be signed out of all sessions.");
         public static string ConfirmLock => UiText.Get("Users.ConfirmLock", "Lock this user out of signing in?");
         public static string StatActiveSessions => UiText.Get("Users.StatActiveSessions", "Active sessions");
+        public static string UserId => UiText.Get("Users.UserId", "User ID");
+        public static string CopyId => UiText.Get("Users.CopyId", "Copy user ID");
+        public static string CopyEmail => UiText.Get("Users.CopyEmail", "Copy email");
+        public static string AccountStatus => UiText.Get("Users.AccountStatus", "Account status");
+        public static string Permissions => UiText.Get("Users.Permissions", "Permissions");
+        public static string Security => UiText.Get("Users.Security", "Security");
+        public static string MemberSince => UiText.Get("Users.MemberSince", "Member since");
+        public static string LastUpdated => UiText.Get("Users.LastUpdated", "Last updated");
+        public static string LockStatus => UiText.Get("Users.LockStatus", "Lock status");
+        public static string NotLocked => UiText.Get("Users.NotLocked", "Not locked");
+        public static string LockedUntil => UiText.Get("Users.LockedUntil", "Locked until {0}");
+        public static string AccessScope => UiText.Get("Users.AccessScope", "Access scope");
+        public static string RecentDevice => UiText.Get("Users.RecentDevice", "Recent device");
+        public static string StatusActiveDesc => UiText.Get("Users.StatusActiveDesc", "This account is active and can access all assigned resources.");
+        public static string StatusInvitedDesc => UiText.Get("Users.StatusInvitedDesc", "This account has been invited and is awaiting activation.");
+        public static string StatusDeactivatedDesc => UiText.Get("Users.StatusDeactivatedDesc", "This account is deactivated and cannot sign in.");
+        public static string StatusLockedDesc => UiText.Get("Users.StatusLockedDesc", "This account is temporarily locked out of signing in.");
+        public static string ScopeFullAccess => UiText.Get("Users.ScopeFullAccess", "Full system access");
+        public static string ScopeStation => UiText.Get("Users.ScopeStation", "Station-scoped access");
+        public static string ScopeCustomer => UiText.Get("Users.ScopeCustomer", "Customer-scoped access");
     }
 
     public static class Roles
@@ -215,6 +242,15 @@ public static class UiStrings
         public static string Revoked => UiText.Get("Sessions.Revoked", "Revoked");
         public static string RevokeAll => UiText.Get("Sessions.RevokeAll", "Revoke all sessions");
         public static string Empty => UiText.Get("Sessions.Empty", "No sessions found.");
+        public static string EmptyHint => UiText.Get("Sessions.EmptyHint", "Active devices for this user will appear here once they sign in.");
+        public static string Current => UiText.Get("Sessions.Current", "Current");
+        public static string Expired => UiText.Get("Sessions.Expired", "Expired");
+        public static string Browser => UiText.Get("Sessions.Browser", "Browser");
+        public static string LastActivity => UiText.Get("Sessions.LastActivity", "Signed in");
+        public static string CurrentSession => UiText.Get("Sessions.CurrentSession", "Current session");
+        public static string OtherSessions => UiText.Get("Sessions.OtherSessions", "Other sessions");
+        public static string UnknownDevice => UiText.Get("Sessions.UnknownDevice", "Unknown device");
+        public static string CurrentDeviceBadge => UiText.Get("Sessions.CurrentDeviceBadge", "Current device");
     }
 
     public static class Countries

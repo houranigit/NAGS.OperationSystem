@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
 @inject OperationsSystem.Blazor.Client.Api.AuditApiClient AuditApi
 
 <PageTitle>@(user?.DisplayName ?? UiStrings.Users.Title)</PageTitle>
@@ -25,19 +26,17 @@
                 <span>@UiStrings.Users.Title</span>
             </button>
 
-            @* ---- Hero ---------------------------------------------------- *@
-            <RadzenCard class="@($"us-hero {HeroClass(u)}")">
-                <div class="us-hero-main">
+            @* ---- Profile (hero + tabs as one unit) ----------------------- *@
+            <section class="us-profile @ProfileClass(u)">
+                <div class="us-hero">
                     <div class="us-avatar @AvatarClass(u)">
                         <span>@Initials(u.DisplayName)</span>
                         <span class="us-avatar-dot @DotClass(u)"></span>
                     </div>
 
-                    <div class="us-hero-identity">
-                        <h1 class="us-hero-name">@u.DisplayName</h1>
-                        <p class="us-hero-sub os-muted">@u.Email</p>
-
-                        <div class="us-chips">
+                    <div class="us-identity">
+                        <div class="us-identity-headline">
+                            <h1 class="us-name">@u.DisplayName</h1>
                             @if (u.IsLockedOut)
                             {
                                 <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
@@ -46,18 +45,24 @@
                             {
                                 <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
                             }
-                            <span class="us-chip"><RadzenIcon Icon="badge" /><span>@UiStrings.Users.Role: <strong>@u.RoleName</strong></span></span>
-                            <span class="us-chip"><RadzenIcon Icon="login" /><span>@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)</span></span>
+                            <span class="us-role-badge"><RadzenIcon Icon="badge" />@u.RoleName</span>
                         </div>
 
-                        <p class="us-hero-stamp os-muted">
-                            @UiStrings.Users.Created: @u.CreatedAtUtc.ToLocalTime().ToString("g")
-                            @if (u.UpdatedAtUtc is { } updated)
-                            {
-                                <span class="us-hero-stamp-sep">·</span>
-                                @($"{UiStrings.StaffMembers.Updated}: {updated.ToLocalTime().ToString("g")}")
-                            }
-                        </p>
+                        <div class="us-email">
+                            <RadzenIcon Icon="mail" />
+                            <span>@u.Email</span>
+                            <button type="button" class="us-copy" title="@UiStrings.Users.CopyEmail"
+                                    aria-label="@UiStrings.Users.CopyEmail" @onclick="@(() => CopyAsync(u.Email))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(u.Id)</span>
+                            <button type="button" class="us-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(u.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="us-hero-actions">
@@ -76,10 +81,10 @@
                                 <RowAction Text="@UiStrings.Users.Unlock" Icon="lock_open"
                                            Permission="@IdentityPermissions.UsersUnlock"
                                            Visible="@u.IsLockedOut" OnClick="@UnlockAsync" />
-                                <RowAction Text="@UiStrings.Users.Lock" Icon="lock"
+                                <RowAction Separator="true" />
+                                <RowAction Text="@UiStrings.Users.Lock" Icon="lock" Danger="true"
                                            Permission="@IdentityPermissions.UsersLock"
                                            Visible="@(!u.IsLockedOut)" OnClick="@LockAsync" />
-                                <RowAction Separator="true" />
                                 <RowAction Text="@UiStrings.Users.Deactivate" Icon="person_off" Danger="true"
                                            Permission="@IdentityPermissions.UsersDeactivate"
                                            Visible="@(u.Status != "Deactivated")" OnClick="@DeactivateAsync" />
@@ -87,19 +92,18 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
 
-            @* ---- Tabs ---------------------------------------------------- *@
-            <nav class="us-tabs" role="tablist">
-                @foreach (var tab in Tabs())
-                {
-                    <button type="button" role="tab" class="us-tab @(activeTab == tab.Key ? "us-tab--active" : "")"
-                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
-                        <RadzenIcon Icon="@tab.Icon" />
-                        <span>@tab.Label</span>
-                    </button>
-                }
-            </nav>
+                <nav class="us-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="us-tab @(activeTab == tab.Key ? "us-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
+            </section>
 
             @* ---- Tab body ------------------------------------------------ *@
             <div class="us-tab-body" role="tabpanel">
@@ -119,66 +123,110 @@
     private RenderFragment OverviewTab(UserDetail u) =>@<text>
         <div class="us-stack">
             <div class="us-overview-grid">
+                @* --- Account status --- *@
                 <RadzenCard class="us-card">
-                    <div class="us-card-head"><RadzenIcon Icon="person" /><h3>@UiStrings.Common.Details</h3></div>
-                    <div class="us-field-list">
-                        <DetailField Label="@UiStrings.Users.DisplayName" Value="@u.DisplayName" Icon="person" />
-                        <DetailField Label="@UiStrings.Users.Email" Value="@u.Email" Icon="mail" />
-                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" Icon="badge" />
+                    <div class="us-card-head"><RadzenIcon Icon="account_circle" /><h3>@UiStrings.Users.AccountStatus</h3></div>
+                    <div class="us-lead">
+                        <span class="us-lead-dot us-lead-dot--@StatusToneColor(u)"></span>
+                        <div>
+                            <p class="us-lead-title">@(u.IsLockedOut ? UiStrings.Users.LockedOut : u.Status)</p>
+                            <p class="os-muted us-lead-desc">@StatusDescription(u)</p>
+                        </div>
                     </div>
+                    <dl class="us-metrics">
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.LockStatus</dt>
+                            <dd>@(u.IsLockedOut
+                                ? (u.LockoutEndUtc is { } end ? string.Format(UiStrings.Users.LockedUntil, end.ToLocalTime().ToString("g")) : UiStrings.Users.LockedOut)
+                                : UiStrings.Users.NotLocked)</dd>
+                        </div>
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.MemberSince</dt>
+                            <dd>@u.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.LastUpdated</dt>
+                            <dd>@(u.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
                 </RadzenCard>
 
+                @* --- Permissions --- *@
                 <RadzenCard class="us-card">
-                    <div class="us-card-head"><RadzenIcon Icon="security" /><h3>@UiStrings.Sessions.State</h3></div>
-                    <div class="us-field-list">
-                        <DetailField Label="@UiStrings.Users.Status" Icon="toggle_on">
-                            @if (u.IsLockedOut)
-                            {
-                                <StatusBadge Label="@UiStrings.Users.LockedOut" Tone="danger" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
-                            }
-                        </DetailField>
-                        <DetailField Label="@UiStrings.Users.LastLogin" Value="@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)" Icon="login" />
-                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        <DetailField Label="@UiStrings.StaffMembers.Updated" Value="@(u.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
+                    <div class="us-card-head"><RadzenIcon Icon="badge" /><h3>@UiStrings.Users.Permissions</h3></div>
+                    <div class="us-lead">
+                        <span class="us-lead-icon us-lead-icon--blue"><RadzenIcon Icon="shield_person" /></span>
+                        <div>
+                            <p class="us-lead-title">@u.RoleName</p>
+                            <p class="os-muted us-lead-desc">@AccessScope(u)</p>
+                        </div>
                     </div>
+                    <dl class="us-metrics">
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.Role</dt>
+                            <dd>@u.RoleName</dd>
+                        </div>
+                        @if (roleDetail is { } role)
+                        {
+                            <div class="us-metric">
+                                <dt>@UiStrings.Roles.PermissionCount</dt>
+                                <dd>@role.Permissions.Count</dd>
+                            </div>
+                        }
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.AccessScope</dt>
+                            <dd>@AccessScope(u)</dd>
+                        </div>
+                    </dl>
+                    @if (Auth.HasPermission(IdentityPermissions.RolesView))
+                    {
+                        <button type="button" class="us-card-link" @onclick="@(() => Navigation.NavigateTo($"/roles/{u.RoleId}"))">
+                            @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
+                        </button>
+                    }
                 </RadzenCard>
 
+                @* --- Security --- *@
                 <RadzenCard class="us-card">
-                    <div class="us-card-head">
-                        <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
-                        <button type="button" class="us-link" @onclick="@(() => activeTab = UserTab.Activity)">@UiStrings.Common.Open</button>
-                    </div>
-                    @ActivityTimeline(OverviewActivityPreviewCount)
+                    <div class="us-card-head"><RadzenIcon Icon="security" /><h3>@UiStrings.Users.Security</h3></div>
+                    <dl class="us-metrics us-metrics--tall">
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.LastLogin</dt>
+                            <dd title="@FullStamp(u.LastLoginAtUtc)">@LoginStamp(u.LastLoginAtUtc)</dd>
+                        </div>
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.StatActiveSessions</dt>
+                            <dd>@ActiveSessionCount</dd>
+                        </div>
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.RecentDevice</dt>
+                            <dd>@RecentDeviceLabel()</dd>
+                        </div>
+                        <div class="us-metric">
+                            <dt>@UiStrings.Sessions.IpAddress</dt>
+                            <dd class="us-mono">@(RecentIp() ?? UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
                 </RadzenCard>
             </div>
 
-            <div class="us-stats">
-                @StatTile("toggle_on", u.IsLockedOut ? "amber" : (u.Status == "Active" ? "green" : "amber"), UiStrings.Users.Status, u.IsLockedOut ? UiStrings.Users.LockedOut : u.Status)
-                @StatTile("badge", "blue", UiStrings.Users.Role, u.RoleName)
-                @if (Auth.HasPermission(IdentityPermissions.SessionsView))
-                {
-                    @StatTile("devices", ActiveSessionCount > 0 ? "green" : "amber", UiStrings.Users.StatActiveSessions, ActiveSessionCount.ToString())
-                }
-            </div>
+            @* --- Recent activity preview --- *@
+            <RadzenCard class="us-card">
+                <div class="us-card-head">
+                    <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
+                    @if (activity.Count > 0)
+                    {
+                        <button type="button" class="us-link" @onclick="@(() => activeTab = UserTab.Activity)">@UiStrings.Common.ViewAll</button>
+                    }
+                </div>
+                @ActivityTimeline(OverviewActivityPreviewCount)
+            </RadzenCard>
         </div>
     </text>;
 
+    @* ================================================================ Sessions *@
     private RenderFragment SessionsTab(UserDetail u) =>@<text>
-        <RadzenCard class="us-card">
-            <div class="us-card-head">
-                <RadzenIcon Icon="devices" /><h3>@UiStrings.Sessions.Title</h3>
-                @if (Auth.HasPermission(IdentityPermissions.SessionsRevoke))
-                {
-                    <span class="us-count"></span>
-                    <RadzenButton Text="@UiStrings.Sessions.RevokeAll" ButtonStyle="ButtonStyle.Light" Icon="block"
-                                  Size="ButtonSize.Small" Disabled="@(!HasActiveSessions)" Click="@RevokeAllAsync" />
-                }
-            </div>
-
+        <div class="us-stack">
             @if (sessionsLoading)
             {
                 <LoadingCard />
@@ -189,50 +237,88 @@
             }
             else if (sessions is null || sessions.Count == 0)
             {
-                <EmptyState Title="@UiStrings.Sessions.Empty" Icon="devices" />
+                <EmptyState Title="@UiStrings.Sessions.Empty" Description="@UiStrings.Sessions.EmptyHint" Icon="devices" />
             }
             else
             {
-                <RadzenDataGrid Data="@sessions" TItem="UserSession" AllowPaging="false" GridLines="DataGridGridLines.Horizontal">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
-                            <Template Context="session">@(string.IsNullOrWhiteSpace(session.UserAgent) ? UiStrings.Common.None : session.UserAgent)</Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" />
-                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created">
-                            <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="120px">
-                            <Template Context="session">
-                                @if (session.IsActive)
-                                {
-                                    <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
-                                }
-                                else
-                                {
-                                    <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="neutral" />
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Common.Actions" Width="84px" Sortable="false" TextAlign="TextAlign.Center" Frozen="true" FrozenPosition="FrozenColumnPosition.Right">
-                            <Template Context="session">
-                                @if (session.IsActive && Auth.HasPermission(IdentityPermissions.SessionsRevoke))
-                                {
-                                    <div class="os-row-actions">
-                                        <RowActionMenu>
-                                            <RowAction Text="@UiStrings.Account.RevokeSession" Icon="block" Danger="true"
-                                                       OnClick="@(() => RevokeSessionAsync(session.Id))" />
-                                        </RowActionMenu>
-                                    </div>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
+                var current = sessions.FirstOrDefault(s => s.IsCurrent);
+                var others = sessions.Where(s => !s.IsCurrent).ToList();
+
+                @if (current is { } cur)
+                {
+                    <RadzenCard class="us-card us-current">
+                        <div class="us-current-main">
+                            <span class="us-current-icon"><RadzenIcon Icon="@DeviceIcon(cur.UserAgent)" /></span>
+                            <div class="us-current-body">
+                                <div class="us-current-head">
+                                    <h3>@UiStrings.Sessions.CurrentSession</h3>
+                                    <StatusBadge Label="@UiStrings.Sessions.CurrentDeviceBadge" Tone="success" />
+                                </div>
+                                <p class="us-current-device">@DeviceLabel(cur.UserAgent)</p>
+                                <dl class="us-current-meta">
+                                    <div><dt>@UiStrings.Sessions.IpAddress</dt><dd class="us-mono">@(cur.CreatedByIp ?? UiStrings.Common.None)</dd></div>
+                                    <div><dt>@UiStrings.Sessions.LastActivity</dt><dd>@cur.CreatedAtUtc.ToLocalTime().ToString("g")</dd></div>
+                                    <div><dt>@UiStrings.Sessions.Expires</dt><dd>@cur.ExpiresAtUtc.ToLocalTime().ToString("g")</dd></div>
+                                </dl>
+                            </div>
+                        </div>
+                    </RadzenCard>
+                }
+
+                <RadzenCard class="us-card">
+                    <div class="us-card-head">
+                        <RadzenIcon Icon="devices" /><h3>@UiStrings.Sessions.OtherSessions</h3>
+                        @if (Auth.HasPermission(IdentityPermissions.SessionsRevoke))
+                        {
+                            <span class="us-count"></span>
+                            <RadzenButton Text="@UiStrings.Sessions.RevokeAll" ButtonStyle="ButtonStyle.Light" Icon="block"
+                                          Size="ButtonSize.Small" Disabled="@(!HasActiveSessions)" Click="@RevokeAllAsync" />
+                        }
+                    </div>
+
+                    @if (others.Count == 0)
+                    {
+                        <EmptyState Title="@UiStrings.Sessions.Empty" Description="@UiStrings.Sessions.EmptyHint" Icon="devices" />
+                    }
+                    else
+                    {
+                        <div class="us-table" role="table">
+                            <div class="us-tr us-tr--head" role="row">
+                                <span role="columnheader">@UiStrings.Sessions.Device</span>
+                                <span role="columnheader">@UiStrings.Sessions.IpAddress</span>
+                                <span role="columnheader">@UiStrings.Sessions.LastActivity</span>
+                                <span role="columnheader">@UiStrings.Sessions.State</span>
+                                <span role="columnheader" class="us-td--actions"></span>
+                            </div>
+                            @foreach (var s in others)
+                            {
+                                <div class="us-tr" role="row" @key="s.Id">
+                                    <span role="cell" class="us-td-device" data-label="@UiStrings.Sessions.Device">
+                                        <RadzenIcon Icon="@DeviceIcon(s.UserAgent)" />
+                                        <span>@DeviceLabel(s.UserAgent)</span>
+                                    </span>
+                                    <span role="cell" class="us-mono" data-label="@UiStrings.Sessions.IpAddress">@(s.CreatedByIp ?? UiStrings.Common.None)</span>
+                                    <span role="cell" data-label="@UiStrings.Sessions.LastActivity">@s.CreatedAtUtc.ToLocalTime().ToString("g")</span>
+                                    <span role="cell" data-label="@UiStrings.Sessions.State">@SessionBadge(s)</span>
+                                    <span role="cell" class="us-td--actions">
+                                        @if (s.IsActive && Auth.HasPermission(IdentityPermissions.SessionsRevoke))
+                                        {
+                                            <RowActionMenu>
+                                                <RowAction Text="@UiStrings.Account.RevokeSession" Icon="block" Danger="true"
+                                                           OnClick="@(() => RevokeSessionAsync(s.Id))" />
+                                            </RowActionMenu>
+                                        }
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </RadzenCard>
             }
-        </RadzenCard>
+        </div>
     </text>;
 
+    @* ================================================================ Activity *@
     private RenderFragment ActivityTab(UserDetail u) =>@<text>
         <RadzenCard class="us-card">
             <div class="us-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
@@ -247,36 +333,43 @@
         }
         else
         {
-            <div class="us-timeline">
+            <ol class="us-timeline">
                 @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
                 {
-                    <div class="us-timeline-row" @key="entry.Id">
-                        <span class="us-timeline-icon"><RadzenIcon Icon="history" /></span>
-                        <div>
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="us-timeline-row" @key="entry.Id">
+                        <span class="us-timeline-icon us-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="us-timeline-content">
                             <p class="us-timeline-title">@entry.Action</p>
-                            <p class="os-muted">
-                                @entry.OccurredOnUtc.ToString("u")
-                                &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            <p class="os-muted us-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="us-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
                         </div>
-                    </div>
+                    </li>
                 }
-            </div>
+            </ol>
         }
     </text>;
 
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="us-stat">
-            <span class="us-stat-icon us-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="us-stat-body">
-                <p class="us-stat-label">@label</p>
-                <p class="us-stat-value">@value</p>
-            </div>
-        </RadzenCard>
+    private RenderFragment SessionBadge(UserSession s) =>@<text>
+        @if (s.IsActive)
+        {
+            <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
+        }
+        else if (s.RevokedAtUtc is not null)
+        {
+            <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="danger" />
+        }
+        else
+        {
+            <StatusBadge Label="@UiStrings.Sessions.Expired" Tone="neutral" />
+        }
     </text>;
 
     private RenderFragment TimelineEmpty() =>@<text>
-        <div class="us-timeline us-timeline--empty">
+        <div class="us-timeline-empty">
             <span class="us-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
             <div>
                 <p class="us-timeline-title">@UiStrings.Common.NoData</p>
@@ -290,6 +383,7 @@
     [Parameter] public Guid Id { get; set; }
 
     private UserDetail? user;
+    private RoleDetail? roleDetail;
     private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> activity = [];
     private bool isLoading = true;
     private bool loadError;
@@ -300,7 +394,7 @@
     private bool sessionsError;
     private UserTab activeTab = UserTab.Overview;
 
-    private const int OverviewActivityPreviewCount = 3;
+    private const int OverviewActivityPreviewCount = 4;
 
     private enum UserTab { Overview, Sessions, Activity }
 
@@ -336,6 +430,7 @@
         {
             user = await Identity.GetUserAsync(Id);
             await LoadSessionsAsync();
+            await LoadRoleAsync(user.RoleId);
 
             activity = [];
             if (Auth.HasPermission(AuditPermissions.TrailsView))
@@ -360,6 +455,22 @@
         {
             isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task LoadRoleAsync(Guid roleId)
+    {
+        roleDetail = null;
+        if (!Auth.HasPermission(IdentityPermissions.RolesView))
+            return;
+
+        try
+        {
+            roleDetail = await Identity.GetRoleAsync(roleId);
+        }
+        catch (ApiException)
+        {
+            roleDetail = null;
         }
     }
 
@@ -468,20 +579,69 @@
         }
     }
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private async Task<bool> Confirm(string message) =>
         await DialogService.Confirm(message, UiStrings.Common.Confirm,
             new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
 
     private void GoBack() => Navigation.NavigateTo("/users");
 
-    private static string HeroClass(UserDetail u) =>
-        u.IsLockedOut ? "us-hero--locked" : (u.Status == "Active" ? "us-hero--active" : "us-hero--inactive");
+    // --- Presentation helpers ---------------------------------------------
+
+    private static string ProfileClass(UserDetail u) =>
+        u.IsLockedOut ? "us-profile--locked" : (u.Status == "Active" ? "us-profile--active" : "us-profile--inactive");
 
     private static string AvatarClass(UserDetail u) =>
         u.IsLockedOut ? "us-avatar--locked" : (u.Status == "Active" ? "us-avatar--active" : "us-avatar--inactive");
 
     private static string DotClass(UserDetail u) =>
         u.IsLockedOut ? "us-avatar-dot--locked" : (u.Status == "Active" ? "us-avatar-dot--active" : "us-avatar-dot--inactive");
+
+    private static string StatusToneColor(UserDetail u) =>
+        u.IsLockedOut ? "danger" : u.Status switch
+        {
+            "Active" => "success",
+            "Invited" => "warning",
+            _ => "neutral"
+        };
+
+    private static string StatusDescription(UserDetail u)
+    {
+        if (u.IsLockedOut)
+            return UiStrings.Users.StatusLockedDesc;
+
+        return u.Status switch
+        {
+            "Active" => UiStrings.Users.StatusActiveDesc,
+            "Invited" => UiStrings.Users.StatusInvitedDesc,
+            "Deactivated" => UiStrings.Users.StatusDeactivatedDesc,
+            _ => UiStrings.Users.StatusActiveDesc
+        };
+    }
+
+    private string AccessScope(UserDetail u)
+    {
+        var type = roleDetail?.CompatibleUserType;
+        return type switch
+        {
+            UserTypes.SystemAdministrator => UiStrings.Users.ScopeFullAccess,
+            UserTypes.StationStaff => UiStrings.Users.ScopeStation,
+            UserTypes.CustomerContact => UiStrings.Users.ScopeCustomer,
+            _ => UiStrings.Users.ScopeFullAccess
+        };
+    }
 
     private static string StatusTone(string status) => status switch
     {
@@ -490,6 +650,111 @@
         "Deactivated" => "neutral",
         _ => "neutral"
     };
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string FullStamp(DateTimeOffset? value) =>
+        value is { } v ? v.ToLocalTime().ToString("F") : UiStrings.Users.Never;
+
+    private static string LoginStamp(DateTimeOffset? value) =>
+        value is { } v ? RelativeTime(v) : UiStrings.Users.Never;
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private string? RecentIp() => sessions?.FirstOrDefault(s => s.IsCurrent)?.CreatedByIp
+        ?? sessions?.Where(s => s.IsActive).OrderByDescending(s => s.CreatedAtUtc).FirstOrDefault()?.CreatedByIp;
+
+    private string RecentDeviceLabel()
+    {
+        var session = sessions?.FirstOrDefault(s => s.IsCurrent)
+            ?? sessions?.Where(s => s.IsActive).OrderByDescending(s => s.CreatedAtUtc).FirstOrDefault();
+        return session is null ? UiStrings.Common.None : DeviceLabel(session.UserAgent);
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("log in") || a.Contains("logged in") || a.Contains("sign in") || a.Contains("signed in"))
+            return ("login", "blue");
+        if (a.Contains("role"))
+            return ("badge", "blue");
+        if (a.Contains("password"))
+            return ("key", "amber");
+        if (a.Contains("unlock"))
+            return ("lock_open", "green");
+        if (a.Contains("lock"))
+            return ("lock", "amber");
+        if (a.Contains("deactivat"))
+            return ("person_off", "red");
+        if (a.Contains("invit"))
+            return ("mail", "blue");
+        if (a.Contains("creat"))
+            return ("person_add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
+    }
+
+    private static string DeviceIcon(string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(userAgent))
+            return "devices";
+
+        var ua = userAgent.ToLowerInvariant();
+        if (ua.Contains("iphone") || ua.Contains("android") || ua.Contains("mobile"))
+            return "smartphone";
+        if (ua.Contains("ipad") || ua.Contains("tablet"))
+            return "tablet_mac";
+        return "computer";
+    }
+
+    private static string DeviceLabel(string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(userAgent))
+            return UiStrings.Sessions.UnknownDevice;
+
+        var ua = userAgent;
+        var os =
+            ua.Contains("Windows", StringComparison.OrdinalIgnoreCase) ? "Windows" :
+            ua.Contains("iPhone", StringComparison.OrdinalIgnoreCase) ? "iPhone" :
+            ua.Contains("iPad", StringComparison.OrdinalIgnoreCase) ? "iPad" :
+            ua.Contains("Mac", StringComparison.OrdinalIgnoreCase) ? "macOS" :
+            ua.Contains("Android", StringComparison.OrdinalIgnoreCase) ? "Android" :
+            ua.Contains("Linux", StringComparison.OrdinalIgnoreCase) ? "Linux" :
+            null;
+
+        var browser =
+            ua.Contains("Edg", StringComparison.OrdinalIgnoreCase) ? "Edge" :
+            ua.Contains("OPR", StringComparison.OrdinalIgnoreCase) || ua.Contains("Opera", StringComparison.OrdinalIgnoreCase) ? "Opera" :
+            ua.Contains("Firefox", StringComparison.OrdinalIgnoreCase) ? "Firefox" :
+            ua.Contains("Chrome", StringComparison.OrdinalIgnoreCase) ? "Chrome" :
+            ua.Contains("Safari", StringComparison.OrdinalIgnoreCase) ? "Safari" :
+            null;
+
+        return (os, browser) switch
+        {
+            (not null, not null) => $"{browser} · {os}",
+            (not null, null) => os!,
+            (null, not null) => browser!,
+            _ => userAgent.Length > 48 ? userAgent[..48] + "…" : userAgent
+        };
+    }
 
     private static string Initials(string? name)
     {

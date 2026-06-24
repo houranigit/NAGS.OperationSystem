@@ -31,7 +31,7 @@
   <data name="Common.Details" xml:space="preserve"><value>تفاصيل</value></data>
   <data name="Common.Overview" xml:space="preserve"><value>ملخص</value></data>
   <data name="Common.Name" xml:space="preserve"><value>اسم</value></data>
-  <data name="Common.None" xml:space="preserve"><value>â</value></data>
+  <data name="Common.None" xml:space="preserve"><value>—</value></data>
   <data name="Auth.SignInTitle" xml:space="preserve"><value>تسجيل الدخول</value></data>
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>استخدم حساب البوابة الإلكترونية الخاص بك للمتابعة.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>

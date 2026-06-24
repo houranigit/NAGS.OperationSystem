@@ -31,7 +31,7 @@
   <data name="Common.Details" xml:space="preserve"><value>Details</value></data>
   <data name="Common.Overview" xml:space="preserve"><value>Overview</value></data>
   <data name="Common.Name" xml:space="preserve"><value>Name</value></data>
-  <data name="Common.None" xml:space="preserve"><value>â</value></data>
+  <data name="Common.None" xml:space="preserve"><value>—</value></data>
   <data name="Auth.SignInTitle" xml:space="preserve"><value>Sign in</value></data>
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>Use your portal account to continue.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>Email</value></data>
