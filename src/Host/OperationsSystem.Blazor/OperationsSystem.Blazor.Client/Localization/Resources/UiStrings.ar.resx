@@ -1,0 +1,481 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="App.Name" xml:space="preserve"><value>نظام العمليات</value></data>
+  <data name="App.Portal" xml:space="preserve"><value></value></data>
+  <data name="App.Version" xml:space="preserve"><value>v1.0.0</value></data>
+  <data name="Common.Loading" xml:space="preserve"><value>تحميل...</value></data>
+  <data name="Common.Save" xml:space="preserve"><value>يحفظ</value></data>
+  <data name="Common.Cancel" xml:space="preserve"><value>يلغي</value></data>
+  <data name="Common.Create" xml:space="preserve"><value>يخلق</value></data>
+  <data name="Common.Delete" xml:space="preserve"><value>يمسح</value></data>
+  <data name="Common.Edit" xml:space="preserve"><value>يحرر</value></data>
+  <data name="Common.Close" xml:space="preserve"><value>يغلق</value></data>
+  <data name="Common.Confirm" xml:space="preserve"><value>يتأكد</value></data>
+  <data name="Common.Search" xml:space="preserve"><value>يبحث</value></data>
+  <data name="Common.Actions" xml:space="preserve"><value>الإجراءات</value></data>
+  <data name="Common.MoreActions" xml:space="preserve"><value>المزيد من الإجراءات</value></data>
+  <data name="Common.Open" xml:space="preserve"><value>يفتح</value></data>
+  <data name="Common.Manage" xml:space="preserve"><value>يدير</value></data>
+  <data name="Common.Back" xml:space="preserve"><value>خلف</value></data>
+  <data name="Common.Yes" xml:space="preserve"><value>نعم</value></data>
+  <data name="Common.No" xml:space="preserve"><value>لا</value></data>
+  <data name="Common.NoData" xml:space="preserve"><value>لا توجد بيانات لعرضها.</value></data>
+  <data name="Common.ItemsPerPage" xml:space="preserve"><value>صفوف لكل صفحة</value></data>
+  <data name="Common.SomethingWentWrong" xml:space="preserve"><value>حدث خطأ ما. يرجى المحاولة مرة أخرى.</value></data>
+  <data name="Common.SignOut" xml:space="preserve"><value>تسجيل الخروج</value></data>
+  <data name="Common.Refresh" xml:space="preserve"><value>ينعش</value></data>
+  <data name="Common.Details" xml:space="preserve"><value>تفاصيل</value></data>
+  <data name="Common.Overview" xml:space="preserve"><value>ملخص</value></data>
+  <data name="Common.Name" xml:space="preserve"><value>اسم</value></data>
+  <data name="Common.None" xml:space="preserve"><value>â</value></data>
+  <data name="Auth.SignInTitle" xml:space="preserve"><value>تسجيل الدخول</value></data>
+  <data name="Auth.SignInSubtitle" xml:space="preserve"><value>استخدم حساب البوابة الإلكترونية الخاص بك للمتابعة.</value></data>
+  <data name="Auth.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>
+  <data name="Auth.Password" xml:space="preserve"><value>كلمة المرور</value></data>
+  <data name="Auth.SignInButton" xml:space="preserve"><value>تسجيل الدخول</value></data>
+  <data name="Auth.CredentialsRequired" xml:space="preserve"><value>البريد الإلكتروني وكلمة المرور مطلوبة.</value></data>
+  <data name="Auth.InvalidCredentials" xml:space="preserve"><value>البريد الإلكتروني أو كلمة المرور غير صحيحة.</value></data>
+  <data name="Auth.ActivateTitle" xml:space="preserve"><value>تفعيل حسابك</value></data>
+  <data name="Auth.ActivateSubtitle" xml:space="preserve"><value>قم بتعيين كلمة مرور لإنهاء إعداد حسابك.</value></data>
+  <data name="Auth.ActivationToken" xml:space="preserve"><value>رمز التفعيل</value></data>
+  <data name="Auth.NewPassword" xml:space="preserve"><value>كلمة المرور الجديدة</value></data>
+  <data name="Auth.ConfirmPassword" xml:space="preserve"><value>تأكيد كلمة المرور</value></data>
+  <data name="Auth.ActivateButton" xml:space="preserve"><value>تفعيل الحساب</value></data>
+  <data name="Auth.ActivationSuccess" xml:space="preserve"><value>حسابك نشط. يمكنك تسجيل الدخول الآن.</value></data>
+  <data name="Auth.PasswordsDoNotMatch" xml:space="preserve"><value>كلمات المرور غير متطابقة.</value></data>
+  <data name="Auth.PasswordTooShort" xml:space="preserve"><value>استخدم 8 أحرف على الأقل.</value></data>
+  <data name="Auth.GoToSignIn" xml:space="preserve"><value>اذهب لتسجيل الدخول</value></data>
+  <data name="Auth.BrandHeadline" xml:space="preserve"><value>العمليات تحت السيطرة.</value></data>
+  <data name="Auth.BrandSubtext" xml:space="preserve"><value>قم بإدارة الأشخاص والأدوار وإمكانية الوصول من خلال بوابة واحدة آمنة وثنائية اللغة.</value></data>
+  <data name="Auth.BrandPointAccess" xml:space="preserve"><value>التحكم في الوصول على أساس الدور الحبيبي</value></data>
+  <data name="Auth.BrandPointSessions" xml:space="preserve"><value>الجلسة المباشرة وإدارة الجهاز</value></data>
+  <data name="Auth.BrandPointBilingual" xml:space="preserve"><value>دعم كامل للغتين العربية والإنجليزية</value></data>
+  <data name="Auth.Copyright" xml:space="preserve"><value>Â© 2026 نظام العمليات. جميع الحقوق محفوظة.</value></data>
+  <data name="Nav.Dashboard" xml:space="preserve"><value>لوحة القيادة</value></data>
+  <data name="Nav.Users" xml:space="preserve"><value>المستخدمين</value></data>
+  <data name="Nav.Roles" xml:space="preserve"><value>الأدوار</value></data>
+  <data name="Nav.Audit" xml:space="preserve"><value>سجل التدقيق</value></data>
+  <data name="Nav.Account" xml:space="preserve"><value>حساب</value></data>
+  <data name="Nav.Overview" xml:space="preserve"><value>ملخص</value></data>
+  <data name="Nav.Administration" xml:space="preserve"><value>إدارة</value></data>
+  <data name="Nav.MasterData" xml:space="preserve"><value>البيانات الرئيسية</value></data>
+  <data name="Nav.Countries" xml:space="preserve"><value>بلدان</value></data>
+  <data name="Nav.ManpowerTypes" xml:space="preserve"><value>أنواع القوى العاملة</value></data>
+  <data name="Nav.Licenses" xml:space="preserve"><value>التراخيص</value></data>
+  <data name="Nav.Stations" xml:space="preserve"><value>محطات</value></data>
+  <data name="Nav.Customers" xml:space="preserve"><value>عملاء</value></data>
+  <data name="Nav.StaffMembers" xml:space="preserve"><value>أعضاء هيئة التدريس</value></data>
+  <data name="Nav.ToggleMenu" xml:space="preserve"><value>تبديل التنقل</value></data>
+  <data name="Nav.Language" xml:space="preserve"><value>لغة</value></data>
+  <data name="Audit.Title" xml:space="preserve"><value>سجل التدقيق</value></data>
+  <data name="Audit.Description" xml:space="preserve"><value>سجل دائم وملحق فقط لتغيرات الأعمال والأمان.</value></data>
+  <data name="Audit.When" xml:space="preserve"><value>متى</value></data>
+  <data name="Audit.Actor" xml:space="preserve"><value>ممثل</value></data>
+  <data name="Audit.System" xml:space="preserve"><value>نظام</value></data>
+  <data name="Audit.Module" xml:space="preserve"><value>الوحدة النمطية</value></data>
+  <data name="Audit.Entity" xml:space="preserve"><value>كيان</value></data>
+  <data name="Audit.Action" xml:space="preserve"><value>فعل</value></data>
+  <data name="Audit.Empty" xml:space="preserve"><value>لم يتم تسجيل أي نشاط تدقيق حتى الآن.</value></data>
+  <data name="Audit.Changes" xml:space="preserve"><value>التغييرات الميدانية</value></data>
+  <data name="Audit.Field" xml:space="preserve"><value>مجال</value></data>
+  <data name="Audit.Before" xml:space="preserve"><value>قبل</value></data>
+  <data name="Audit.After" xml:space="preserve"><value>بعد</value></data>
+  <data name="Audit.NoChanges" xml:space="preserve"><value>لم يتم تسجيل أية تغييرات على مستوى الحقل لهذا الإدخال.</value></data>
+  <data name="Audit.ActivityTitle" xml:space="preserve"><value>النشاط الأخير</value></data>
+  <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>مرحبًا بعودتك</value></data>
+  <data name="Dashboard.Overview" xml:space="preserve"><value>ملخص</value></data>
+  <data name="Dashboard.IdentityCard" xml:space="preserve"><value>الوصول إلى الحساب</value></data>
+  <data name="Dashboard.PermissionsCard" xml:space="preserve"><value>الأذونات</value></data>
+  <data name="Dashboard.SessionsCard" xml:space="preserve"><value>جلسات نشطة</value></data>
+  <data name="Dashboard.ManageUsers" xml:space="preserve"><value>إدارة المستخدمين</value></data>
+  <data name="Dashboard.ManageRoles" xml:space="preserve"><value>إدارة الأدوار</value></data>
+  <data name="Account.Title" xml:space="preserve"><value>حساب</value></data>
+  <data name="Account.Profile" xml:space="preserve"><value>حساب تعريفي</value></data>
+  <data name="Account.Role" xml:space="preserve"><value>دور</value></data>
+  <data name="Account.Permissions" xml:space="preserve"><value>الأذونات</value></data>
+  <data name="Account.DisplayName" xml:space="preserve"><value>اسم العرض</value></data>
+  <data name="Account.ProfileUpdated" xml:space="preserve"><value>تم تحديث ملفك الشخصي.</value></data>
+  <data name="Account.ChangePassword" xml:space="preserve"><value>تغيير كلمة المرور</value></data>
+  <data name="Account.CurrentPassword" xml:space="preserve"><value>كلمة المرور الحالية</value></data>
+  <data name="Account.PasswordChanged" xml:space="preserve"><value>لقد تم تغيير كلمة المرور الخاصة بك. الرجاء تسجيل الدخول مرة أخرى.</value></data>
+  <data name="Account.Sessions" xml:space="preserve"><value>الجلسات</value></data>
+  <data name="Account.SessionsDescription" xml:space="preserve"><value>الأجهزة التي تم تسجيل الدخول إليها حاليًا باستخدام حسابك.</value></data>
+  <data name="Account.ThisDevice" xml:space="preserve"><value>هذا الجهاز</value></data>
+  <data name="Account.SignOutOthers" xml:space="preserve"><value>تسجيل الخروج من الجلسات الأخرى</value></data>
+  <data name="Account.RevokeSession" xml:space="preserve"><value>إبطال</value></data>
+  <data name="Users.Title" xml:space="preserve"><value>المستخدمين</value></data>
+  <data name="Users.Description" xml:space="preserve"><value>دعوة حسابات البوابة الإلكترونية وتحريرها وإدارتها.</value></data>
+  <data name="Users.Invite" xml:space="preserve"><value>دعوة المستخدم</value></data>
+  <data name="Users.Empty" xml:space="preserve"><value>لا يوجد مستخدمون يطابقون عوامل التصفية الخاصة بك.</value></data>
+  <data name="Users.CountLabel" xml:space="preserve"><value>المستخدمين</value></data>
+  <data name="Users.SearchPlaceholder" xml:space="preserve"><value>البحث بالاسم أو البريد الإلكتروني</value></data>
+  <data name="Users.DisplayName" xml:space="preserve"><value>اسم</value></data>
+  <data name="Users.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>
+  <data name="Users.Status" xml:space="preserve"><value>حالة</value></data>
+  <data name="Users.Role" xml:space="preserve"><value>دور</value></data>
+  <data name="Users.LastLogin" xml:space="preserve"><value>آخر تسجيل دخول</value></data>
+  <data name="Users.Created" xml:space="preserve"><value>مخلوق</value></data>
+  <data name="Users.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="Users.AllRoles" xml:space="preserve"><value>جميع الأدوار</value></data>
+  <data name="Users.FilterByStatus" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="Users.FilterByRole" xml:space="preserve"><value>جميع الأدوار</value></data>
+  <data name="Users.Lock" xml:space="preserve"><value>قفل</value></data>
+  <data name="Users.Unlock" xml:space="preserve"><value>فتح</value></data>
+  <data name="Users.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
+  <data name="Users.ResendInvitation" xml:space="preserve"><value>إعادة إرسال الدعوة</value></data>
+  <data name="Users.AssignRole" xml:space="preserve"><value>تعيين الدور</value></data>
+  <data name="Users.LockedOut" xml:space="preserve"><value>مغلق</value></data>
+  <data name="Users.Never" xml:space="preserve"><value>أبداً</value></data>
+  <data name="Users.InviteTitle" xml:space="preserve"><value>دعوة مستخدم</value></data>
+  <data name="Users.InviteIntro" xml:space="preserve"><value>أرسل دعوة حتى يتمكن هذا الشخص من إعداد حساب البوابة الإلكترونية الخاص به.</value></data>
+  <data name="Users.InviteAdminNote" xml:space="preserve"><value>يؤدي الإنشاء المباشر للمستخدم دائمًا إلى إنشاء مسؤول النظام مع حق الوصول الكامل. تتم دعوة موظفي المحطة وجهات اتصال العملاء من سجلاتهم الخاصة.</value></data>
+  <data name="Users.InviteSuccess" xml:space="preserve"><value>تم إرسال الدعوة.</value></data>
+  <data name="Users.InvitationDeliveryLabel" xml:space="preserve"><value>حالة تسليم الدعوة</value></data>
+  <data name="Users.EditTitle" xml:space="preserve"><value>تحرير المستخدم</value></data>
+  <data name="Users.AssignRoleTitle" xml:space="preserve"><value>تعيين الدور</value></data>
+  <data name="Users.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا المستخدم؟ سيتم تسجيل خروجهم من جميع الجلسات.</value></data>
+  <data name="Users.ConfirmLock" xml:space="preserve"><value>هل تريد منع هذا المستخدم من تسجيل الدخول؟</value></data>
+  <data name="Users.StatActiveSessions" xml:space="preserve"><value>جلسات نشطة</value></data>
+  <data name="Roles.Title" xml:space="preserve"><value>الأدوار</value></data>
+  <data name="Roles.Description" xml:space="preserve"><value>تحديد الأدوار والأذونات التي يمنحونها.</value></data>
+  <data name="Roles.Create" xml:space="preserve"><value>دور جديد</value></data>
+  <data name="Roles.Empty" xml:space="preserve"><value>لا توجد أدوار تطابق بحثك.</value></data>
+  <data name="Roles.CountLabel" xml:space="preserve"><value>الأدوار</value></data>
+  <data name="Roles.SearchPlaceholder" xml:space="preserve"><value>أدوار البحث</value></data>
+  <data name="Roles.Name" xml:space="preserve"><value>اسم</value></data>
+  <data name="Roles.RoleDescription" xml:space="preserve"><value>وصف</value></data>
+  <data name="Roles.CompatibleUserType" xml:space="preserve"><value>نوع الحساب</value></data>
+  <data name="Roles.System" xml:space="preserve"><value>نظام</value></data>
+  <data name="Roles.PermissionCount" xml:space="preserve"><value>الأذونات</value></data>
+  <data name="Roles.UserCount" xml:space="preserve"><value>المستخدمين</value></data>
+  <data name="Roles.RoleType" xml:space="preserve"><value>يكتب</value></data>
+  <data name="Roles.Custom" xml:space="preserve"><value>مخصص</value></data>
+  <data name="Roles.NoDescription" xml:space="preserve"><value>لا يوجد وصف</value></data>
+  <data name="Roles.CreateTitle" xml:space="preserve"><value>إنشاء دور</value></data>
+  <data name="Roles.EditTitle" xml:space="preserve"><value>تحرير الدور</value></data>
+  <data name="Roles.FormIntro" xml:space="preserve"><value>قم بتسمية الدور واختر نوع الحساب الذي ينطبق عليه.</value></data>
+  <data name="Roles.Permissions" xml:space="preserve"><value>الأذونات</value></data>
+  <data name="Roles.PermissionsDescription" xml:space="preserve"><value>حدد الأذونات التي يمنحها هذا الدور.</value></data>
+  <data name="Roles.PermissionsSaved" xml:space="preserve"><value>تم تحديث الأذونات.</value></data>
+  <data name="Roles.SystemRoleLocked" xml:space="preserve"><value>لا يمكن تعديل أدوار النظام أو حذفها.</value></data>
+  <data name="Roles.ConfirmDelete" xml:space="preserve"><value>هل تريد حذف هذا الدور؟ لا يجب تعيين المستخدمين لذلك.</value></data>
+  <data name="Roles.Created" xml:space="preserve"><value>تم إنشاء الدور.</value></data>
+  <data name="Roles.Updated" xml:space="preserve"><value>تم تحديث الدور.</value></data>
+  <data name="Roles.Deleted" xml:space="preserve"><value>تم حذف الدور.</value></data>
+  <data name="Sessions.Title" xml:space="preserve"><value>الجلسات</value></data>
+  <data name="Sessions.Created" xml:space="preserve"><value>تم تسجيل الدخول</value></data>
+  <data name="Sessions.Expires" xml:space="preserve"><value>تنتهي</value></data>
+  <data name="Sessions.Device" xml:space="preserve"><value>جهاز</value></data>
+  <data name="Sessions.IpAddress" xml:space="preserve"><value>عنوان IP</value></data>
+  <data name="Sessions.State" xml:space="preserve"><value>ولاية</value></data>
+  <data name="Sessions.Active" xml:space="preserve"><value>نشيط</value></data>
+  <data name="Sessions.Revoked" xml:space="preserve"><value>تم إبطاله</value></data>
+  <data name="Sessions.RevokeAll" xml:space="preserve"><value>إلغاء كافة الجلسات</value></data>
+  <data name="Sessions.Empty" xml:space="preserve"><value>لم يتم العثور على جلسات.</value></data>
+  <data name="Countries.Title" xml:space="preserve"><value>بلدان</value></data>
+  <data name="Countries.Description" xml:space="preserve"><value>الحفاظ على قائمة الدول ISO المستخدمة عبر النظام.</value></data>
+  <data name="Countries.Create" xml:space="preserve"><value>بلد جديد</value></data>
+  <data name="Countries.Empty" xml:space="preserve"><value>لا توجد بلدان تتطابق مع عوامل التصفية الخاصة بك.</value></data>
+  <data name="Countries.CountLabel" xml:space="preserve"><value>بلدان</value></data>
+  <data name="Countries.SearchPlaceholder" xml:space="preserve"><value>البحث بالاسم أو الكود</value></data>
+  <data name="Countries.Name" xml:space="preserve"><value>اسم</value></data>
+  <data name="Countries.IsoCode" xml:space="preserve"><value>كود الايزو</value></data>
+  <data name="Countries.Status" xml:space="preserve"><value>حالة</value></data>
+  <data name="Countries.Active" xml:space="preserve"><value>نشيط</value></data>
+  <data name="Countries.Inactive" xml:space="preserve"><value>غير نشط</value></data>
+  <data name="Countries.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="Countries.Activate" xml:space="preserve"><value>فعل</value></data>
+  <data name="Countries.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
+  <data name="Countries.Created" xml:space="preserve"><value>مخلوق</value></data>
+  <data name="Countries.Updated" xml:space="preserve"><value>تم التحديث</value></data>
+  <data name="Countries.CreateTitle" xml:space="preserve"><value>إنشاء بلد</value></data>
+  <data name="Countries.EditTitle" xml:space="preserve"><value>تحرير البلد</value></data>
+  <data name="Countries.FormIntro" xml:space="preserve"><value>الحفاظ على اسم الدولة ورمز ISO الخاص بها.</value></data>
+  <data name="Countries.NameRequired" xml:space="preserve"><value>اسم البلد مطلوب.</value></data>
+  <data name="Countries.IsoCodeRequired" xml:space="preserve"><value>مطلوب رمز ISO مكون من حرفين.</value></data>
+  <data name="Countries.SavedCreate" xml:space="preserve"><value>تم إنشاء البلد.</value></data>
+  <data name="Countries.SavedUpdate" xml:space="preserve"><value>تم تحديث البلد.</value></data>
+  <data name="Countries.Activated" xml:space="preserve"><value>تم تفعيل البلد</value></data>
+  <data name="Countries.Deactivated" xml:space="preserve"><value>البلد معطل.</value></data>
+  <data name="Countries.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا البلد؟ لن يكون قابلاً للاختيار بعد الآن.</value></data>
+  <data name="ManpowerTypes.Title" xml:space="preserve"><value>أنواع القوى العاملة</value></data>
+  <data name="ManpowerTypes.Description" xml:space="preserve"><value>تصنيف الموظفين حسب العمل الذي يؤدونه.</value></data>
+  <data name="ManpowerTypes.Create" xml:space="preserve"><value>نوع جديد من القوى العاملة</value></data>
+  <data name="ManpowerTypes.Empty" xml:space="preserve"><value>لا توجد أنواع من القوى العاملة تتطابق مع عوامل التصفية الخاصة بك.</value></data>
+  <data name="ManpowerTypes.CountLabel" xml:space="preserve"><value>أنواع القوى العاملة</value></data>
+  <data name="ManpowerTypes.SearchPlaceholder" xml:space="preserve"><value>البحث بالاسم</value></data>
+  <data name="ManpowerTypes.Name" xml:space="preserve"><value>اسم</value></data>
+  <data name="ManpowerTypes.ManpowerDescription" xml:space="preserve"><value>وصف</value></data>
+  <data name="ManpowerTypes.NoDescription" xml:space="preserve"><value>لا يوجد وصف</value></data>
+  <data name="ManpowerTypes.Status" xml:space="preserve"><value>حالة</value></data>
+  <data name="ManpowerTypes.Active" xml:space="preserve"><value>نشيط</value></data>
+  <data name="ManpowerTypes.Inactive" xml:space="preserve"><value>غير نشط</value></data>
+  <data name="ManpowerTypes.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="ManpowerTypes.Activate" xml:space="preserve"><value>فعل</value></data>
+  <data name="ManpowerTypes.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
+  <data name="ManpowerTypes.Created" xml:space="preserve"><value>مخلوق</value></data>
+  <data name="ManpowerTypes.Updated" xml:space="preserve"><value>تم التحديث</value></data>
+  <data name="ManpowerTypes.CreateTitle" xml:space="preserve"><value>إنشاء نوع القوى العاملة</value></data>
+  <data name="ManpowerTypes.EditTitle" xml:space="preserve"><value>تعديل نوع القوى العاملة</value></data>
+  <data name="ManpowerTypes.FormIntro" xml:space="preserve"><value>قم بتسمية نوع القوى العاملة ووصفه اختياريًا.</value></data>
+  <data name="ManpowerTypes.NameRequired" xml:space="preserve"><value>الاسم مطلوب.</value></data>
+  <data name="ManpowerTypes.SavedCreate" xml:space="preserve"><value>تم إنشاء نوع القوى العاملة.</value></data>
+  <data name="ManpowerTypes.SavedUpdate" xml:space="preserve"><value>تم تحديث نوع القوى العاملة.</value></data>
+  <data name="ManpowerTypes.Activated" xml:space="preserve"><value>تم تفعيل نوع القوى العاملة.</value></data>
+  <data name="ManpowerTypes.Deactivated" xml:space="preserve"><value>تم إلغاء تنشيط نوع القوى العاملة.</value></data>
+  <data name="ManpowerTypes.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا النوع من القوى العاملة؟ لن يكون قابلاً للاختيار بعد الآن.</value></data>
+  <data name="Licenses.Title" xml:space="preserve"><value>التراخيص</value></data>
+  <data name="Licenses.Description" xml:space="preserve"><value>إدارة التراخيص والشهادات التي يمكن للموظفين الحصول عليها.</value></data>
+  <data name="Licenses.Create" xml:space="preserve"><value>ترخيص جديد</value></data>
+  <data name="Licenses.Empty" xml:space="preserve"><value>لا توجد تراخيص تتطابق مع عوامل التصفية الخاصة بك.</value></data>
+  <data name="Licenses.CountLabel" xml:space="preserve"><value>التراخيص</value></data>
+  <data name="Licenses.SearchPlaceholder" xml:space="preserve"><value>البحث عن طريق الرمز أو الاسم</value></data>
+  <data name="Licenses.Code" xml:space="preserve"><value>شفرة</value></data>
+  <data name="Licenses.Name" xml:space="preserve"><value>اسم</value></data>
+  <data name="Licenses.LicenseDescription" xml:space="preserve"><value>وصف</value></data>
+  <data name="Licenses.NoDescription" xml:space="preserve"><value>لا يوجد وصف</value></data>
+  <data name="Licenses.Status" xml:space="preserve"><value>حالة</value></data>
+  <data name="Licenses.Active" xml:space="preserve"><value>نشيط</value></data>
+  <data name="Licenses.Inactive" xml:space="preserve"><value>غير نشط</value></data>
+  <data name="Licenses.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="Licenses.Activate" xml:space="preserve"><value>فعل</value></data>
+  <data name="Licenses.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
+  <data name="Licenses.Created" xml:space="preserve"><value>مخلوق</value></data>
+  <data name="Licenses.Updated" xml:space="preserve"><value>تم التحديث</value></data>
+  <data name="Licenses.CreateTitle" xml:space="preserve"><value>إنشاء ترخيص</value></data>
+  <data name="Licenses.EditTitle" xml:space="preserve"><value>تحرير الترخيص</value></data>
+  <data name="Licenses.FormIntro" xml:space="preserve"><value>تحديد رمز الترخيص والاسم والوصف الاختياري.</value></data>
+  <data name="Licenses.CodeRequired" xml:space="preserve"><value>مطلوب رمز الترخيص (2-10 أحرف أو أرقام).</value></data>
+  <data name="Licenses.NameRequired" xml:space="preserve"><value>مطلوب اسم الترخيص.</value></data>
+  <data name="Licenses.CodeImmutable" xml:space="preserve"><value>لا يمكن تغيير الرمز بعد الإنشاء.</value></data>
+  <data name="Licenses.SavedCreate" xml:space="preserve"><value>تم إنشاء الترخيص.</value></data>
+  <data name="Licenses.SavedUpdate" xml:space="preserve"><value>تم تحديث الترخيص.</value></data>
+  <data name="Licenses.Activated" xml:space="preserve"><value>تم تفعيل الترخيص.</value></data>
+  <data name="Licenses.Deactivated" xml:space="preserve"><value>تم إلغاء تنشيط الترخيص.</value></data>
+  <data name="Licenses.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا الترخيص؟ لن يكون قابلاً للاختيار بعد الآن.</value></data>
+  <data name="Stations.Title" xml:space="preserve"><value>محطات</value></data>
+  <data name="Stations.Description" xml:space="preserve"><value>إدارة محطات المطار التي تعمل بها العملية.</value></data>
+  <data name="Stations.Create" xml:space="preserve"><value>محطة جديدة</value></data>
+  <data name="Stations.Empty" xml:space="preserve"><value>لا توجد محطات تطابق عوامل التصفية الخاصة بك.</value></data>
+  <data name="Stations.CountLabel" xml:space="preserve"><value>محطات</value></data>
+  <data name="Stations.SearchPlaceholder" xml:space="preserve"><value>البحث عن طريق الرمز أو الاسم أو المدينة</value></data>
+  <data name="Stations.IataCode" xml:space="preserve"><value>IATA</value></data>
+  <data name="Stations.IcaoCode" xml:space="preserve"><value>ICAO</value></data>
+  <data name="Stations.Name" xml:space="preserve"><value>اسم</value></data>
+  <data name="Stations.City" xml:space="preserve"><value>مدينة</value></data>
+  <data name="Stations.Country" xml:space="preserve"><value>دولة</value></data>
+  <data name="Stations.NoIcao" xml:space="preserve"><value>â</value></data>
+  <data name="Stations.Status" xml:space="preserve"><value>حالة</value></data>
+  <data name="Stations.Active" xml:space="preserve"><value>نشيط</value></data>
+  <data name="Stations.Inactive" xml:space="preserve"><value>غير نشط</value></data>
+  <data name="Stations.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="Stations.Activate" xml:space="preserve"><value>فعل</value></data>
+  <data name="Stations.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
+  <data name="Stations.Created" xml:space="preserve"><value>مخلوق</value></data>
+  <data name="Stations.Updated" xml:space="preserve"><value>تم التحديث</value></data>
+  <data name="Stations.CreateTitle" xml:space="preserve"><value>إنشاء محطة</value></data>
+  <data name="Stations.EditTitle" xml:space="preserve"><value>تحرير المحطة</value></data>
+  <data name="Stations.FormIntro" xml:space="preserve"><value>قم بتعيين رموز المطار والاسم والمدينة والبلد لهذه المحطة.</value></data>
+  <data name="Stations.IataRequired" xml:space="preserve"><value>مطلوب رمز IATA المكون من 3 أحرف.</value></data>
+  <data name="Stations.IcaoInvalid" xml:space="preserve"><value>يجب أن يتكون رمز منظمة الطيران المدني الدولي من أربعة أحرف بالضبط.</value></data>
+  <data name="Stations.NameRequired" xml:space="preserve"><value>مطلوب اسم المحطة.</value></data>
+  <data name="Stations.CityRequired" xml:space="preserve"><value>مطلوب مدينة.</value></data>
+  <data name="Stations.CountryRequired" xml:space="preserve"><value>مطلوب دولة نشطة.</value></data>
+  <data name="Stations.SavedCreate" xml:space="preserve"><value>تم إنشاء المحطة.</value></data>
+  <data name="Stations.SavedUpdate" xml:space="preserve"><value>تم تحديث المحطة.</value></data>
+  <data name="Stations.Activated" xml:space="preserve"><value>تم تفعيل المحطة</value></data>
+  <data name="Stations.Deactivated" xml:space="preserve"><value>تم تعطيل المحطة.</value></data>
+  <data name="Stations.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذه المحطة؟ يفقد الموظفون المرتبطون إمكانية الوصول إلى البوابة الإلكترونية.</value></data>
+  <data name="Stations.StaffMembers" xml:space="preserve"><value>أعضاء هيئة التدريس</value></data>
+  <data name="Stations.StepDetails" xml:space="preserve"><value>تفاصيل المحطة</value></data>
+  <data name="Stations.StepStaff" xml:space="preserve"><value>إضافة موظفين (اختياري)</value></data>
+  <data name="Stations.StepReview" xml:space="preserve"><value>المراجعة والإنشاء</value></data>
+  <data name="Stations.Next" xml:space="preserve"><value>التالي</value></data>
+  <data name="Stations.Previous" xml:space="preserve"><value>خلف</value></data>
+  <data name="Stations.AddStaff" xml:space="preserve"><value>إضافة موظف</value></data>
+  <data name="Stations.RemoveStaff" xml:space="preserve"><value>يزيل</value></data>
+  <data name="Stations.StaffName" xml:space="preserve"><value>الاسم الكامل</value></data>
+  <data name="Stations.StaffEmail" xml:space="preserve"><value>بريد إلكتروني</value></data>
+  <data name="Stations.ManpowerType" xml:space="preserve"><value>نوع القوى العاملة</value></data>
+  <data name="Stations.GrantPortal" xml:space="preserve"><value>منح الوصول إلى البوابة</value></data>
+  <data name="Stations.PortalRole" xml:space="preserve"><value>دور البوابة</value></data>
+  <data name="Stations.NoStaffYet" xml:space="preserve"><value>لم تتم إضافة أي موظفين. يمكنك إضافة فريق العمل الآن أو لاحقًا من صفحة المحطة.</value></data>
+  <data name="Stations.ReviewStaffCount" xml:space="preserve"><value>سيتم إنشاء {0} من الموظفين بهذه المحطة.</value></data>
+  <data name="Stations.StaffIncomplete" xml:space="preserve"><value>يحتاج كل صف من صفوف الموظفين إلى الاسم والبريد الإلكتروني ونوع القوى العاملة.</value></data>
+  <data name="Stations.StaffRoleRequired" xml:space="preserve"><value>حدد دور البوابة الإلكترونية أو قم بإيقاف تشغيل الوصول إلى البوابة الإلكترونية لهذا الموظف.</value></data>
+  <data name="Stations.StaffMembersEmpty" xml:space="preserve"><value>لم يتم تعيين أي موظف لهذه المحطة حتى الآن.</value></data>
+  <data name="Stations.AddStaffMember" xml:space="preserve"><value>إضافة موظف</value></data>
+  <data name="Stations.StatStaff" xml:space="preserve"><value>أعضاء هيئة التدريس</value></data>
+  <data name="Stations.StatActiveStaff" xml:space="preserve"><value>الموظفين النشطين</value></data>
+  <data name="Stations.StaffCountFormat" xml:space="preserve"><value>{0} موظفين</value></data>
+  <data name="Customers.Title" xml:space="preserve"><value>عملاء</value></data>
+  <data name="Customers.Description" xml:space="preserve"><value>إدارة عملاء شركات الطيران التي تخدمها العملية.</value></data>
+  <data name="Customers.Create" xml:space="preserve"><value>عميل جديد</value></data>
+  <data name="Customers.Empty" xml:space="preserve"><value>لا يوجد عملاء يطابقون عوامل التصفية الخاصة بك.</value></data>
+  <data name="Customers.CountLabel" xml:space="preserve"><value>عملاء</value></data>
+  <data name="Customers.SearchPlaceholder" xml:space="preserve"><value>البحث عن طريق الرمز أو الاسم</value></data>
+  <data name="Customers.IataCode" xml:space="preserve"><value>IATA</value></data>
+  <data name="Customers.IcaoCode" xml:space="preserve"><value>ICAO</value></data>
+  <data name="Customers.Name" xml:space="preserve"><value>اسم</value></data>
+  <data name="Customers.Country" xml:space="preserve"><value>دولة</value></data>
+  <data name="Customers.NoIcao" xml:space="preserve"><value>â</value></data>
+  <data name="Customers.OfficialEmail" xml:space="preserve"><value>البريد الإلكتروني الرسمي</value></data>
+  <data name="Customers.OfficialPhone" xml:space="preserve"><value>الهاتف الرسمي</value></data>
+  <data name="Customers.Status" xml:space="preserve"><value>حالة</value></data>
+  <data name="Customers.Active" xml:space="preserve"><value>نشيط</value></data>
+  <data name="Customers.Inactive" xml:space="preserve"><value>غير نشط</value></data>
+  <data name="Customers.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="Customers.Activate" xml:space="preserve"><value>فعل</value></data>
+  <data name="Customers.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
+  <data name="Customers.Created" xml:space="preserve"><value>مخلوق</value></data>
+  <data name="Customers.Updated" xml:space="preserve"><value>تم التحديث</value></data>
+  <data name="Customers.CreateTitle" xml:space="preserve"><value>إنشاء العميل</value></data>
+  <data name="Customers.EditTitle" xml:space="preserve"><value>تحرير العميل</value></data>
+  <data name="Customers.StepDetails" xml:space="preserve"><value>تفاصيل العميل</value></data>
+  <data name="Customers.StepAddress" xml:space="preserve"><value>عنوان</value></data>
+  <data name="Customers.StepContacts" xml:space="preserve"><value>اتصالات</value></data>
+  <data name="Customers.StepReview" xml:space="preserve"><value>المراجعة والإنشاء</value></data>
+  <data name="Customers.Next" xml:space="preserve"><value>التالي</value></data>
+  <data name="Customers.Previous" xml:space="preserve"><value>خلف</value></data>
+  <data name="Customers.ReviewSummary" xml:space="preserve"><value>{0} {1}. {2} جهة اتصال (جهات اتصال).</value></data>
+  <data name="Customers.FormIntro" xml:space="preserve"><value>احصل على رموز شركات الطيران وتفاصيل الاتصال الرسمية والعنوان وجهات الاتصال.</value></data>
+  <data name="Customers.IataRequired" xml:space="preserve"><value>مطلوب رمز IATA مكون من حرفين.</value></data>
+  <data name="Customers.IcaoInvalid" xml:space="preserve"><value>يجب أن يتكون رمز منظمة الطيران المدني الدولي من ثلاثة أحرف بالضبط.</value></data>
+  <data name="Customers.NameRequired" xml:space="preserve"><value>مطلوب اسم العميل.</value></data>
+  <data name="Customers.CountryRequired" xml:space="preserve"><value>مطلوب دولة نشطة.</value></data>
+  <data name="Customers.SavedCreate" xml:space="preserve"><value>تم إنشاء العميل.</value></data>
+  <data name="Customers.SavedUpdate" xml:space="preserve"><value>تم تحديث العميل.</value></data>
+  <data name="Customers.Activated" xml:space="preserve"><value>تم تفعيل العميل.</value></data>
+  <data name="Customers.Deactivated" xml:space="preserve"><value>تم إلغاء تنشيط العميل.</value></data>
+  <data name="Customers.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا العميل؟ تفقد جهات الاتصال المرتبطة الوصول إلى البوابة الإلكترونية.</value></data>
+  <data name="Customers.Address" xml:space="preserve"><value>العنوان الرسمي</value></data>
+  <data name="Customers.AddressLine1" xml:space="preserve"><value>العنوان سطر 1</value></data>
+  <data name="Customers.AddressLine2" xml:space="preserve"><value>سطر العنوان 2</value></data>
+  <data name="Customers.City" xml:space="preserve"><value>مدينة</value></data>
+  <data name="Customers.Region" xml:space="preserve"><value>الولاية / المنطقة</value></data>
+  <data name="Customers.PostalCode" xml:space="preserve"><value>رمز بريدي</value></data>
+  <data name="Customers.AddressLine1Required" xml:space="preserve"><value>سطر العنوان 1 مطلوب.</value></data>
+  <data name="Customers.AddressCityRequired" xml:space="preserve"><value>مدينة العنوان مطلوبة.</value></data>
+  <data name="Customers.ContactsCount" xml:space="preserve"><value>اتصالات</value></data>
+  <data name="Customers.Contacts" xml:space="preserve"><value>اتصالات</value></data>
+  <data name="Customers.ContactsEmpty" xml:space="preserve"><value>لم تتم إضافة أي جهات اتصال حتى الآن.</value></data>
+  <data name="Customers.AddContact" xml:space="preserve"><value>أضف جهة اتصال</value></data>
+  <data name="Customers.EditContact" xml:space="preserve"><value>تحرير جهة الاتصال</value></data>
+  <data name="Customers.ContactName" xml:space="preserve"><value>اسم</value></data>
+  <data name="Customers.ContactJobTitle" xml:space="preserve"><value>مسمى وظيفي</value></data>
+  <data name="Customers.ContactEmail" xml:space="preserve"><value>بريد إلكتروني</value></data>
+  <data name="Customers.ContactPhone" xml:space="preserve"><value>هاتف</value></data>
+  <data name="Customers.ContactNameRequired" xml:space="preserve"><value>مطلوب اسم جهة الاتصال.</value></data>
+  <data name="Customers.ContactEmailRequired" xml:space="preserve"><value>مطلوب بريد إلكتروني صالح للاتصال.</value></data>
+  <data name="Customers.ContactEmailDuplicate" xml:space="preserve"><value>يجب أن تكون رسائل البريد الإلكتروني الخاصة بجهة الاتصال فريدة داخل العميل.</value></data>
+  <data name="Customers.ContactRemove" xml:space="preserve"><value>يزيل</value></data>
+  <data name="Customers.ContactRemoved" xml:space="preserve"><value>(ستتم إزالته)</value></data>
+  <data name="Customers.ContactAdded" xml:space="preserve"><value>تمت إضافة جهة الاتصال.</value></data>
+  <data name="Customers.PortalLinked" xml:space="preserve"><value>الوصول إلى البوابة</value></data>
+  <data name="Customers.TabAddress" xml:space="preserve"><value>عنوان</value></data>
+  <data name="Customers.StatContacts" xml:space="preserve"><value>اتصالات</value></data>
+  <data name="Customers.StatPortalAccounts" xml:space="preserve"><value>حسابات البوابة</value></data>
+  <data name="Customers.ContactsCountFormat" xml:space="preserve"><value>{0} جهات اتصال</value></data>
+  <data name="StaffMembers.Title" xml:space="preserve"><value>أعضاء هيئة التدريس</value></data>
+  <data name="StaffMembers.Description" xml:space="preserve"><value>إدارة موظفي المحطة ونوع القوى العاملة لديهم والجدول الزمني والتراخيص.</value></data>
+  <data name="StaffMembers.Create" xml:space="preserve"><value>موظف جديد</value></data>
+  <data name="StaffMembers.Empty" xml:space="preserve"><value>لا يوجد أي موظف يتطابق مع عوامل التصفية الخاصة بك.</value></data>
+  <data name="StaffMembers.CountLabel" xml:space="preserve"><value>الموظفين</value></data>
+  <data name="StaffMembers.SearchPlaceholder" xml:space="preserve"><value>البحث بالاسم أو البريد الإلكتروني</value></data>
+  <data name="StaffMembers.FullName" xml:space="preserve"><value>الاسم الكامل</value></data>
+  <data name="StaffMembers.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>
+  <data name="StaffMembers.Station" xml:space="preserve"><value>محطة</value></data>
+  <data name="StaffMembers.ManpowerType" xml:space="preserve"><value>نوع القوى العاملة</value></data>
+  <data name="StaffMembers.Status" xml:space="preserve"><value>حالة</value></data>
+  <data name="StaffMembers.Active" xml:space="preserve"><value>نشيط</value></data>
+  <data name="StaffMembers.Inactive" xml:space="preserve"><value>غير نشط</value></data>
+  <data name="StaffMembers.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="StaffMembers.Activate" xml:space="preserve"><value>فعل</value></data>
+  <data name="StaffMembers.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
+  <data name="StaffMembers.Created" xml:space="preserve"><value>مخلوق</value></data>
+  <data name="StaffMembers.Updated" xml:space="preserve"><value>تم التحديث</value></data>
+  <data name="StaffMembers.None" xml:space="preserve"><value>â</value></data>
+  <data name="StaffMembers.CreateTitle" xml:space="preserve"><value>إنشاء موظف</value></data>
+  <data name="StaffMembers.EditTitle" xml:space="preserve"><value>تحرير الموظف</value></data>
+  <data name="StaffMembers.BasicInformation" xml:space="preserve"><value>المعلومات الأساسية</value></data>
+  <data name="StaffMembers.FormIntro" xml:space="preserve"><value>تحديث معلومات الموظف والجدول الزمني والتراخيص.</value></data>
+  <data name="StaffMembers.ScheduleHint" xml:space="preserve"><value>حدد الأيام التي يعمل فيها هذا الموظف.</value></data>
+  <data name="StaffMembers.NameRequired" xml:space="preserve"><value>الاسم الكامل مطلوب.</value></data>
+  <data name="StaffMembers.EmailRequired" xml:space="preserve"><value>مطلوب بريد إلكتروني صالح.</value></data>
+  <data name="StaffMembers.StationRequired" xml:space="preserve"><value>مطلوب محطة نشطة.</value></data>
+  <data name="StaffMembers.ManpowerTypeRequired" xml:space="preserve"><value>مطلوب نوع القوى العاملة النشطة.</value></data>
+  <data name="StaffMembers.SavedCreate" xml:space="preserve"><value>تم إنشاء الموظف.</value></data>
+  <data name="StaffMembers.SavedUpdate" xml:space="preserve"><value>تم تحديث عضو فريق العمل.</value></data>
+  <data name="StaffMembers.Activated" xml:space="preserve"><value>تم تفعيل الموظف.</value></data>
+  <data name="StaffMembers.Deactivated" xml:space="preserve"><value>تم تعطيل الموظف.</value></data>
+  <data name="StaffMembers.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا الموظف؟ يفقد حساب البوابة الإلكترونية المرتبط إمكانية الوصول.</value></data>
+  <data name="StaffMembers.EmploymentContract" xml:space="preserve"><value>عقد العمل</value></data>
+  <data name="StaffMembers.StartDate" xml:space="preserve"><value>تاريخ البدء</value></data>
+  <data name="StaffMembers.EndDate" xml:space="preserve"><value>تاريخ الانتهاء</value></data>
+  <data name="StaffMembers.EndBeforeStart" xml:space="preserve"><value>لا يمكن أن يسبق تاريخ الانتهاء تاريخ البدء.</value></data>
+  <data name="StaffMembers.WorkingSchedule" xml:space="preserve"><value>جدول العمل</value></data>
+  <data name="StaffMembers.NoSchedule" xml:space="preserve"><value>لم يتم تحديد جدول العمل.</value></data>
+  <data name="StaffMembers.NoContract" xml:space="preserve"><value>لا يوجد عقد عمل.</value></data>
+  <data name="StaffMembers.Licenses" xml:space="preserve"><value>التراخيص</value></data>
+  <data name="StaffMembers.LicensesEmpty" xml:space="preserve"><value>لم يتم تعيين تراخيص.</value></data>
+  <data name="StaffMembers.AddLicense" xml:space="preserve"><value>إضافة ترخيص</value></data>
+  <data name="StaffMembers.License" xml:space="preserve"><value>رخصة</value></data>
+  <data name="StaffMembers.LicenseNumber" xml:space="preserve"><value>رقم الترخيص</value></data>
+  <data name="StaffMembers.LicenseRequired" xml:space="preserve"><value>حدد ترخيصًا لكل مهمة.</value></data>
+  <data name="StaffMembers.LicenseNumberRequired" xml:space="preserve"><value>مطلوب رقم الترخيص لكل مهمة.</value></data>
+  <data name="StaffMembers.LicenseDuplicate" xml:space="preserve"><value>لا يجوز للموظف أن يحمل نفس الرخصة مرتين.</value></data>
+  <data name="StaffMembers.PortalLinked" xml:space="preserve"><value>الوصول إلى البوابة</value></data>
+  <data name="StaffMembers.EditMember" xml:space="preserve"><value>تحرير العضو</value></data>
+  <data name="StaffMembers.TabOverview" xml:space="preserve"><value>ملخص</value></data>
+  <data name="StaffMembers.TabLicenses" xml:space="preserve"><value>التراخيص</value></data>
+  <data name="StaffMembers.TabSchedule" xml:space="preserve"><value>جدول</value></data>
+  <data name="StaffMembers.TabPortalAccess" xml:space="preserve"><value>الوصول إلى البوابة</value></data>
+  <data name="StaffMembers.TabActivity" xml:space="preserve"><value>نشاط</value></data>
+  <data name="StaffMembers.PersonalInformation" xml:space="preserve"><value>معلومات شخصية</value></data>
+  <data name="StaffMembers.EmploymentDetails" xml:space="preserve"><value>تفاصيل التوظيف</value></data>
+  <data name="StaffMembers.RecentActivity" xml:space="preserve"><value>النشاط الأخير</value></data>
+  <data name="StaffMembers.StatLicenses" xml:space="preserve"><value>التراخيص</value></data>
+  <data name="StaffMembers.StatWorkingDays" xml:space="preserve"><value>أيام العمل</value></data>
+  <data name="StaffMembers.StatPortalAccount" xml:space="preserve"><value>حساب البوابة</value></data>
+  <data name="StaffMembers.PortalLinkedShort" xml:space="preserve"><value>مرتبط</value></data>
+  <data name="StaffMembers.PortalNotLinkedShort" xml:space="preserve"><value>لم يتم إنشاؤه</value></data>
+  <data name="StaffMembers.LicenseCountSingular" xml:space="preserve"><value>{0} ترخيص</value></data>
+  <data name="StaffMembers.LicenseCountPlural" xml:space="preserve"><value>{0} تراخيص</value></data>
+  <data name="StaffMembers.WorkingDaysCount" xml:space="preserve"><value>أيام العمل: {0}</value></data>
+  <data name="StaffMembers.ActivityEmpty" xml:space="preserve"><value>لم يتم تسجيل أي نشاط حتى الآن</value></data>
+  <data name="StaffMembers.ActivityEmptyHint" xml:space="preserve"><value>سيظهر هنا سجل التدقيق لهذا الموظف عند اتخاذ الإجراءات.</value></data>
+  <data name="StaffMembers.PortalAccessManageTitle" xml:space="preserve"><value>إدارة الحساب</value></data>
+  <data name="StaffMembers.PortalAccessManageHint" xml:space="preserve"><value>ستكون عناصر التحكم المستقبلية في الحساب - إعادة تعيين كلمة المرور، وإدارة الجلسة، وتغييرات الأدوار - متاحة هنا.</value></data>
+  <data name="StaffMembers.PortalAccessLinkedTitle" xml:space="preserve"><value>تم ربط حساب البوابة</value></data>
+  <data name="StaffMembers.PortalAccessLinkedHint" xml:space="preserve"><value>يمكن لهذا الموظف تسجيل الدخول إلى البوابة باستخدام حسابه المرتبط.</value></data>
+  <data name="StaffMembers.PortalAccessUnlinkedTitle" xml:space="preserve"><value>لا يوجد حساب البوابة</value></data>
+  <data name="StaffMembers.PortalAccessUnlinkedHint" xml:space="preserve"><value>امنح حق الوصول إلى البوابة للسماح لهذا الموظف بتسجيل الدخول إلى البوابة.</value></data>
+  <data name="StaffMembers.PortalAccessUnavailableHint" xml:space="preserve"><value>يمكن منح الوصول إلى البوابة بمجرد نشاط الموظف.</value></data>
+  <data name="Days.Sunday" xml:space="preserve"><value>شمس</value></data>
+  <data name="Days.Monday" xml:space="preserve"><value>الاثنين</value></data>
+  <data name="Days.Tuesday" xml:space="preserve"><value>الثلاثاء</value></data>
+  <data name="Days.Wednesday" xml:space="preserve"><value>تزوج</value></data>
+  <data name="Days.Thursday" xml:space="preserve"><value>الخميس</value></data>
+  <data name="Days.Friday" xml:space="preserve"><value>الجمعة</value></data>
+  <data name="Days.Saturday" xml:space="preserve"><value>قعد</value></data>
+  <data name="PortalAccess.GrantTitle" xml:space="preserve"><value>منح الوصول إلى البوابة</value></data>
+  <data name="PortalAccess.GrantAction" xml:space="preserve"><value>منح الوصول إلى البوابة</value></data>
+  <data name="PortalAccess.Role" xml:space="preserve"><value>دور</value></data>
+  <data name="PortalAccess.RolePlaceholder" xml:space="preserve"><value>حدد دورًا متوافقًا</value></data>
+  <data name="PortalAccess.RoleRequired" xml:space="preserve"><value>حدد دورًا للمتابعة.</value></data>
+  <data name="PortalAccess.NoCompatibleRoles" xml:space="preserve"><value>لا يوجد دور متوافق حتى الآن. قم بإنشاء واحد قبل منح حق الوصول.</value></data>
+  <data name="PortalAccess.Grant" xml:space="preserve"><value>أرسل الدعوة</value></data>
+  <data name="PortalAccess.Granted" xml:space="preserve"><value>تم طلب الوصول إلى البوابة. سيتم إرسال دعوة قريبا.</value></data>
+  <data name="PortalAccess.HasAccess" xml:space="preserve"><value>تم ربط حساب البوابة</value></data>
+  <data name="PortalAccess.NoAccess" xml:space="preserve"><value>لا يوجد حساب البوابة</value></data>
+  <data name="PortalAccess.Explanation" xml:space="preserve"><value>سيتم إنشاء حساب بوابة مدعو لهذا السجل باستخدام الدور المحدد.</value></data>
+  <data name="PortalAccess.GrantOnCreate" xml:space="preserve"><value>منح الوصول إلى البوابة عند الإنشاء</value></data>
+  <data name="PortalAccess.GrantOnCreateHint" xml:space="preserve"><value>قم بإرسال دعوة البوابة بمجرد إنشاء هذا السجل.</value></data>
+  <data name="Errors.Forbidden" xml:space="preserve"><value>ليس لديك الإذن بمشاهدة هذا.</value></data>
+  <data name="Errors.NotFound" xml:space="preserve"><value>لم يتم العثور على العنصر المطلوب.</value></data>
+  <data name="Errors.LoadFailed" xml:space="preserve"><value>لم نتمكن من تحميل هذا. يرجى المحاولة مرة أخرى.</value></data>
+</root>

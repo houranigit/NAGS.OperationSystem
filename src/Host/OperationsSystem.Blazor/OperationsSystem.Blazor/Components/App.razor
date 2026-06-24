@@ -5,6 +5,16 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+        (function () {
+            try {
+                var lang = localStorage.getItem("operations-system.language") || "en";
+                var rtl = lang === "ar";
+                document.documentElement.setAttribute("lang", lang);
+                document.documentElement.setAttribute("dir", rtl ? "rtl" : "ltr");
+            } catch (_) { /* ignore */ }
+        })();
+    </script>
     <base href="/" />
     <link rel="icon" type="image/png" href="favicon.png" sizes="64x64" />
     <link rel="icon" type="image/png" href="favicon-32.png" sizes="32x32" />

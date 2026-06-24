@@ -180,7 +180,7 @@
         </header>
 
         <section class="os-content">
-            <div class="os-content-inner">
+            <div class="os-content-inner" @key="Locale.Language">
                 @Body
             </div>
         </section>
@@ -203,8 +203,9 @@
     private bool HasNav => Auth.User?.Permissions.Any(p =>
         p == IdentityPermissions.UsersView || p == IdentityPermissions.RolesView) ?? false;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        await Locale.InitializeAsync();
         Auth.StateChanged += OnStateChanged;
         Locale.Changed += OnStateChanged;
     }

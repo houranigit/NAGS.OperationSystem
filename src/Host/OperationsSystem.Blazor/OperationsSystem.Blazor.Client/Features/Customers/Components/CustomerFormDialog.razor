@@ -1,26 +1,76 @@
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
 
-<RadzenTemplateForm TItem="CustomerModel" Data="@model" Submit="@SubmitAsync">
-    <div class="cuf-form">
-        <p class="cuf-intro os-muted">@UiStrings.Customers.FormIntro</p>
+<div class="cuf-form">
+    @if (IsCreate)
+    {
+        <RadzenSteps @bind-SelectedIndex="step" ShowStepsButtons="false">
+            <Steps>
+                <RadzenStepsItem Text="@UiStrings.Customers.StepDetails"><div class="cuf-step">@DetailsSection()</div></RadzenStepsItem>
+                <RadzenStepsItem Text="@UiStrings.Customers.StepAddress"><div class="cuf-step">@AddressSection()</div></RadzenStepsItem>
+                <RadzenStepsItem Text="@UiStrings.Customers.StepContacts"><div class="cuf-step">@ContactsSection()</div></RadzenStepsItem>
+                <RadzenStepsItem Text="@UiStrings.Customers.StepReview"><div class="cuf-step">@ReviewSection()</div></RadzenStepsItem>
+            </Steps>
+        </RadzenSteps>
 
+        @ErrorBanner()
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Customers.Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                          Click="@(() => step = Math.Max(0, step - 1))" Disabled="@(step == 0)" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                @if (step < 3)
+                {
+                    <RadzenButton Text="@UiStrings.Customers.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" Click="@NextAsync" />
+                }
+                else
+                {
+                    <RadzenButton Text="@UiStrings.Common.Create" Icon="check" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
+                }
+            </RadzenStack>
+        </RadzenStack>
+    }
+    else
+    {
+        <p class="cuf-intro os-muted">@UiStrings.Customers.FormIntro</p>
+        @DetailsSection()
+        @AddressSection()
+        @ContactsSection()
+        @ErrorBanner()
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
+        </RadzenStack>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? CustomerId { get; set; }
+
+    private CustomerModel model = new();
+    private readonly List<ContactRow> contacts = [];
+    private IReadOnlyList<CountryOption> countries = [];
+    private string? rowVersion;
+    private int step;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    private bool IsCreate => CustomerId is null;
+
+    private RenderFragment DetailsSection() =>@<text>
         <div class="cuf-section"><RadzenIcon Icon="business" /><h4>@UiStrings.Common.Details</h4></div>
         <RadzenRow Gap="1rem">
             <RadzenColumn Size="4">
                 <RadzenFormField Text="@UiStrings.Customers.IataCode" Variant="Variant.Outlined" Style="width: 100%;">
                     <Start><RadzenIcon Icon="tag" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.IataCode" Name="iataCode" Style="width: 100%;" MaxLength="2" />
-                    </ChildContent>
+                    <ChildContent><RadzenTextBox @bind-Value="model.IataCode" Name="iataCode" Style="width: 100%;" MaxLength="2" /></ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="4">
                 <RadzenFormField Text="@UiStrings.Customers.IcaoCode" Variant="Variant.Outlined" Style="width: 100%;">
                     <Start><RadzenIcon Icon="tag" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.IcaoCode" Name="icaoCode" Style="width: 100%;" MaxLength="3" />
-                    </ChildContent>
+                    <ChildContent><RadzenTextBox @bind-Value="model.IcaoCode" Name="icaoCode" Style="width: 100%;" MaxLength="3" /></ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="4">
@@ -36,70 +86,58 @@
 
         <RadzenFormField Text="@UiStrings.Customers.Name" Variant="Variant.Outlined" Style="width: 100%;">
             <Start><RadzenIcon Icon="badge" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="200" />
-            </ChildContent>
+            <ChildContent><RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="200" /></ChildContent>
         </RadzenFormField>
 
         <RadzenRow Gap="1rem">
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.Customers.OfficialEmail" Variant="Variant.Outlined" Style="width: 100%;">
                     <Start><RadzenIcon Icon="mail" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.OfficialEmail" Name="officialEmail" Style="width: 100%;" MaxLength="256" />
-                    </ChildContent>
+                    <ChildContent><RadzenTextBox @bind-Value="model.OfficialEmail" Name="officialEmail" Style="width: 100%;" MaxLength="256" /></ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="6">
                 <RadzenFormField Text="@UiStrings.Customers.OfficialPhone" Variant="Variant.Outlined" Style="width: 100%;">
                     <Start><RadzenIcon Icon="call" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.OfficialPhone" Name="officialPhone" Style="width: 100%;" MaxLength="30" />
-                    </ChildContent>
+                    <ChildContent><RadzenTextBox @bind-Value="model.OfficialPhone" Name="officialPhone" Style="width: 100%;" MaxLength="30" /></ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
         </RadzenRow>
+    </text>;
 
+    private RenderFragment AddressSection() =>@<text>
         <div class="cuf-section"><RadzenIcon Icon="location_on" /><h4>@UiStrings.Customers.Address</h4></div>
         <RadzenFormField Text="@UiStrings.Customers.AddressLine1" Variant="Variant.Outlined" Style="width: 100%;">
             <Start><RadzenIcon Icon="home" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.AddressLine1" Name="addressLine1" Style="width: 100%;" MaxLength="200" />
-            </ChildContent>
+            <ChildContent><RadzenTextBox @bind-Value="model.AddressLine1" Name="addressLine1" Style="width: 100%;" MaxLength="200" /></ChildContent>
         </RadzenFormField>
         <RadzenFormField Text="@UiStrings.Customers.AddressLine2" Variant="Variant.Outlined" Style="width: 100%;">
             <Start><RadzenIcon Icon="home" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.AddressLine2" Name="addressLine2" Style="width: 100%;" MaxLength="200" />
-            </ChildContent>
+            <ChildContent><RadzenTextBox @bind-Value="model.AddressLine2" Name="addressLine2" Style="width: 100%;" MaxLength="200" /></ChildContent>
         </RadzenFormField>
         <RadzenRow Gap="1rem">
             <RadzenColumn Size="4">
                 <RadzenFormField Text="@UiStrings.Customers.City" Variant="Variant.Outlined" Style="width: 100%;">
                     <Start><RadzenIcon Icon="location_city" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.AddressCity" Name="addressCity" Style="width: 100%;" MaxLength="100" />
-                    </ChildContent>
+                    <ChildContent><RadzenTextBox @bind-Value="model.AddressCity" Name="addressCity" Style="width: 100%;" MaxLength="100" /></ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="4">
                 <RadzenFormField Text="@UiStrings.Customers.Region" Variant="Variant.Outlined" Style="width: 100%;">
                     <Start><RadzenIcon Icon="map" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.AddressRegion" Name="addressRegion" Style="width: 100%;" MaxLength="100" />
-                    </ChildContent>
+                    <ChildContent><RadzenTextBox @bind-Value="model.AddressRegion" Name="addressRegion" Style="width: 100%;" MaxLength="100" /></ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
             <RadzenColumn Size="4">
                 <RadzenFormField Text="@UiStrings.Customers.PostalCode" Variant="Variant.Outlined" Style="width: 100%;">
                     <Start><RadzenIcon Icon="local_post_office" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.AddressPostalCode" Name="addressPostalCode" Style="width: 100%;" MaxLength="20" />
-                    </ChildContent>
+                    <ChildContent><RadzenTextBox @bind-Value="model.AddressPostalCode" Name="addressPostalCode" Style="width: 100%;" MaxLength="20" /></ChildContent>
                 </RadzenFormField>
             </RadzenColumn>
         </RadzenRow>
+    </text>;
 
+    private RenderFragment ContactsSection() =>@<text>
         <div class="cuf-section">
             <RadzenIcon Icon="contacts" /><h4>@UiStrings.Customers.Contacts</h4>
             <div class="cuf-section-actions">
@@ -117,20 +155,12 @@
             <div class="cuf-contacts">
                 @foreach (var contact in contacts.Where(c => !c.Removed))
                 {
-                    <RadzenCard Variant="Variant.Outlined" class="cuf-contact">
+                    <RadzenCard Variant="Variant.Outlined" class="cuf-contact" @key="contact">
                         <RadzenRow Gap="0.75rem" AlignItems="AlignItems.Center">
-                            <RadzenColumn Size="3">
-                                <RadzenTextBox @bind-Value="contact.Name" Placeholder="@UiStrings.Customers.ContactName" Style="width: 100%;" MaxLength="150" />
-                            </RadzenColumn>
-                            <RadzenColumn Size="3">
-                                <RadzenTextBox @bind-Value="contact.Email" Placeholder="@UiStrings.Customers.ContactEmail" Style="width: 100%;" MaxLength="256" />
-                            </RadzenColumn>
-                            <RadzenColumn Size="3">
-                                <RadzenTextBox @bind-Value="contact.JobTitle" Placeholder="@UiStrings.Customers.ContactJobTitle" Style="width: 100%;" MaxLength="100" />
-                            </RadzenColumn>
-                            <RadzenColumn Size="2">
-                                <RadzenTextBox @bind-Value="contact.Phone" Placeholder="@UiStrings.Customers.ContactPhone" Style="width: 100%;" MaxLength="30" />
-                            </RadzenColumn>
+                            <RadzenColumn Size="3"><RadzenTextBox @bind-Value="contact.Name" Placeholder="@UiStrings.Customers.ContactName" Style="width: 100%;" MaxLength="150" /></RadzenColumn>
+                            <RadzenColumn Size="3"><RadzenTextBox @bind-Value="contact.Email" Placeholder="@UiStrings.Customers.ContactEmail" Style="width: 100%;" MaxLength="256" /></RadzenColumn>
+                            <RadzenColumn Size="3"><RadzenTextBox @bind-Value="contact.JobTitle" Placeholder="@UiStrings.Customers.ContactJobTitle" Style="width: 100%;" MaxLength="100" /></RadzenColumn>
+                            <RadzenColumn Size="2"><RadzenTextBox @bind-Value="contact.Phone" Placeholder="@UiStrings.Customers.ContactPhone" Style="width: 100%;" MaxLength="30" /></RadzenColumn>
                             <RadzenColumn Size="1">
                                 <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
                                               Size="ButtonSize.Small" Click="@(() => RemoveContact(contact))" />
@@ -140,29 +170,19 @@
                 }
             </div>
         }
+    </text>;
 
+    private RenderFragment ReviewSection() =>@<text>
+        <div class="cuf-section"><RadzenIcon Icon="fact_check" /><h4>@UiStrings.Customers.StepReview</h4></div>
+        <p>@string.Format(UiStrings.Customers.ReviewSummary, model.IataCode, model.Name, contacts.Count(c => !c.Removed))</p>
+    </text>;
+
+    private RenderFragment ErrorBanner() =>@<text>
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
         }
-
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
-            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton ButtonType="ButtonType.Submit" Text="@(CustomerId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
-                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
-        </RadzenStack>
-    </div>
-</RadzenTemplateForm>
-
-@code {
-    [Parameter] public Guid? CustomerId { get; set; }
-
-    private CustomerModel model = new();
-    private readonly List<ContactRow> contacts = [];
-    private IReadOnlyList<CountryOption> countries = [];
-    private string? rowVersion;
-    private bool isSubmitting;
-    private string? errorMessage;
+    </text>;
 
     protected override async Task OnInitializedAsync()
     {
@@ -190,16 +210,7 @@
                 rowVersion = detail.RowVersion;
 
                 foreach (var c in detail.Contacts.Where(c => c.IsActive))
-                {
-                    contacts.Add(new ContactRow
-                    {
-                        Id = c.Id,
-                        Name = c.Name,
-                        JobTitle = c.JobTitle,
-                        Email = c.Email,
-                        Phone = c.Phone
-                    });
-                }
+                    contacts.Add(new ContactRow { Id = c.Id, Name = c.Name, JobTitle = c.JobTitle, Email = c.Email, Phone = c.Phone });
             }
         }
         catch (ApiException ex)
@@ -218,82 +229,57 @@
             contact.Removed = true;
     }
 
+    private void NextAsync()
+    {
+        errorMessage = null;
+        if (step == 0 && !ValidateDetails())
+            return;
+        if (step == 1 && !ValidateAddress())
+            return;
+        if (step == 2 && !ValidateContacts())
+            return;
+        step = Math.Min(3, step + 1);
+    }
+
+    private bool ValidateDetails()
+    {
+        if (string.IsNullOrWhiteSpace(model.IataCode) || model.IataCode.Trim().Length != 2) { errorMessage = UiStrings.Customers.IataRequired; return false; }
+        if (!string.IsNullOrWhiteSpace(model.IcaoCode) && model.IcaoCode.Trim().Length != 3) { errorMessage = UiStrings.Customers.IcaoInvalid; return false; }
+        if (string.IsNullOrWhiteSpace(model.Name)) { errorMessage = UiStrings.Customers.NameRequired; return false; }
+        if (model.CountryId == Guid.Empty) { errorMessage = UiStrings.Customers.CountryRequired; return false; }
+        return true;
+    }
+
+    private bool ValidateAddress()
+    {
+        if (string.IsNullOrWhiteSpace(model.AddressLine1)) { errorMessage = UiStrings.Customers.AddressLine1Required; return false; }
+        if (string.IsNullOrWhiteSpace(model.AddressCity)) { errorMessage = UiStrings.Customers.AddressCityRequired; return false; }
+        return true;
+    }
+
+    private bool ValidateContacts()
+    {
+        var active = contacts.Where(c => !c.Removed).ToList();
+        if (active.Any(c => string.IsNullOrWhiteSpace(c.Name))) { errorMessage = UiStrings.Customers.ContactNameRequired; return false; }
+        if (active.Any(c => string.IsNullOrWhiteSpace(c.Email))) { errorMessage = UiStrings.Customers.ContactEmailRequired; return false; }
+        if (active.GroupBy(c => c.Email!.Trim().ToLowerInvariant()).Any(g => g.Count() > 1)) { errorMessage = UiStrings.Customers.ContactEmailDuplicate; return false; }
+        return true;
+    }
+
     private async Task SubmitAsync()
     {
         errorMessage = null;
-
-        if (string.IsNullOrWhiteSpace(model.IataCode) || model.IataCode.Trim().Length != 2)
-        {
-            errorMessage = UiStrings.Customers.IataRequired;
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.IcaoCode) && model.IcaoCode.Trim().Length != 3)
-        {
-            errorMessage = UiStrings.Customers.IcaoInvalid;
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(model.Name))
-        {
-            errorMessage = UiStrings.Customers.NameRequired;
-            return;
-        }
-
-        if (model.CountryId == Guid.Empty)
-        {
-            errorMessage = UiStrings.Customers.CountryRequired;
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(model.AddressLine1))
-        {
-            errorMessage = UiStrings.Customers.AddressLine1Required;
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(model.AddressCity))
-        {
-            errorMessage = UiStrings.Customers.AddressCityRequired;
-            return;
-        }
-
-        var activeContacts = contacts.Where(c => !c.Removed).ToList();
-        if (activeContacts.Any(c => string.IsNullOrWhiteSpace(c.Name)))
-        {
-            errorMessage = UiStrings.Customers.ContactNameRequired;
-            return;
-        }
-
-        if (activeContacts.Any(c => string.IsNullOrWhiteSpace(c.Email)))
-        {
-            errorMessage = UiStrings.Customers.ContactEmailRequired;
-            return;
-        }
-
-        var duplicate = activeContacts
-            .GroupBy(c => c.Email!.Trim().ToLowerInvariant())
-            .Any(g => g.Count() > 1);
-        if (duplicate)
-        {
-            errorMessage = UiStrings.Customers.ContactEmailDuplicate;
-            return;
-        }
+        if (!ValidateDetails()) { step = 0; return; }
+        if (!ValidateAddress()) { step = 1; return; }
+        if (!ValidateContacts()) { step = 2; return; }
 
         isSubmitting = true;
-
         try
         {
+            var activeContacts = contacts.Where(c => !c.Removed).ToList();
             var address = new AddressRequest(
-                model.AddressLine1!.Trim(),
-                Trim(model.AddressLine2),
-                model.AddressCity!.Trim(),
-                Trim(model.AddressRegion),
-                Trim(model.AddressPostalCode));
-
-            var contactRequests = activeContacts
-                .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone)))
-                .ToList();
+                model.AddressLine1!.Trim(), Trim(model.AddressLine2), model.AddressCity!.Trim(),
+                Trim(model.AddressRegion), Trim(model.AddressPostalCode));
 
             var iata = model.IataCode!.Trim().ToUpperInvariant();
             var icao = string.IsNullOrWhiteSpace(model.IcaoCode) ? null : model.IcaoCode!.Trim().ToUpperInvariant();
@@ -303,12 +289,16 @@
 
             if (CustomerId is { } id)
             {
+                // Customer update changes only customer fields; contacts are managed on the detail page.
                 await MasterData.UpdateCustomerAsync(id,
-                    new UpdateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests),
+                    new UpdateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address),
                     rowVersion ?? string.Empty);
             }
             else
             {
+                var contactRequests = activeContacts
+                    .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone)))
+                    .ToList();
                 await MasterData.CreateCustomerAsync(
                     new CreateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests));
             }
@@ -318,6 +308,8 @@
         catch (ApiException ex)
         {
             errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+            if (IsCreate)
+                step = 0;
         }
         finally
         {

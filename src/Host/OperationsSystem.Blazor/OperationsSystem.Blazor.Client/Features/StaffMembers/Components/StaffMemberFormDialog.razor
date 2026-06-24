@@ -1,4 +1,6 @@
 @inject MasterDataApiClient MasterData
+@inject IdentityApiClient Identity
+@inject AuthSession Auth
 @inject DialogService DialogService
 
 <RadzenTemplateForm TItem="StaffModel" Data="@model" Submit="@SubmitAsync">
@@ -116,6 +118,33 @@
             </RadzenStack>
         }
 
+        @if (StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess))
+        {
+            <div class="sf-section"><RadzenIcon Icon="vpn_key" /><h4>@UiStrings.PortalAccess.GrantTitle</h4></div>
+            <RadzenStack Gap="0.5rem">
+                <RadzenSwitch @bind-Value="grantPortal" Name="grantPortal" />
+                <RadzenLabel Text="@UiStrings.PortalAccess.GrantOnCreate" Component="grantPortal" />
+                <p class="sf-hint os-muted">@UiStrings.PortalAccess.GrantOnCreateHint</p>
+                @if (grantPortal)
+                {
+                    @if (portalRoles.Count == 0)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@UiStrings.PortalAccess.NoCompatibleRoles</RadzenAlert>
+                    }
+                    else
+                    {
+                        <RadzenFormField Text="@UiStrings.PortalAccess.Role" Variant="Variant.Outlined" Style="width: 100%;">
+                            <Start><RadzenIcon Icon="badge" /></Start>
+                            <ChildContent>
+                                <RadzenDropDown @bind-Value="portalRoleId" Data="@portalRoles" TextProperty="Name" ValueProperty="Id"
+                                                Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" Style="width: 100%;" />
+                            </ChildContent>
+                        </RadzenFormField>
+                    }
+                }
+            </RadzenStack>
+        }
+
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
@@ -152,6 +181,9 @@
     private string? rowVersion;
     private bool isSubmitting;
     private string? errorMessage;
+    private bool grantPortal;
+    private Guid? portalRoleId;
+    private IReadOnlyList<RoleOption> portalRoles = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -160,6 +192,9 @@
             stations = await MasterData.GetStationOptionsAsync();
             manpowerTypes = await MasterData.GetManpowerTypeOptionsAsync();
             licenses = await MasterData.GetLicenseOptionsAsync();
+
+            if (StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess))
+                portalRoles = await Identity.GetRoleOptionsAsync("StationStaff");
 
             if (PreselectedStationId is { } stationId)
                 model.StationId = stationId;
@@ -254,6 +289,12 @@
             return;
         }
 
+        if (StaffMemberId is null && grantPortal && portalRoleId is null)
+        {
+            errorMessage = UiStrings.PortalAccess.RoleRequired;
+            return;
+        }
+
         isSubmitting = true;
 
         try
@@ -280,8 +321,11 @@
             }
             else
             {
-                await MasterData.CreateStaffMemberAsync(
+                var newId = await MasterData.CreateStaffMemberAsync(
                     new CreateStaffMemberRequest(name, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests));
+
+                if (grantPortal && portalRoleId is { } roleId)
+                    await MasterData.GrantStaffPortalAccessAsync(newId, new GrantPortalAccessRequest(roleId));
             }
 
             DialogService.Close(true);

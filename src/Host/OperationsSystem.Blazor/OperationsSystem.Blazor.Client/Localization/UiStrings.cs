@@ -1,568 +1,557 @@
 namespace OperationsSystem.Blazor.Client.Localization;
 
 /// <summary>
-/// Centralized user-facing strings. Per the frontend rules, UI literals must not be scattered
-/// across components; they live here until a full resource-based localization layer is wired.
+/// Centralized user-facing strings resolved from embedded EN/AR .resx resources.
 /// </summary>
 public static class UiStrings
 {
     public static class App
     {
-        public const string Name = "Operations System";
-        public const string Portal = "";
-        public const string Version = "v1.0.0";
+        public static string Name => UiText.Get("App.Name", "Operations System");
+        public static string Portal => UiText.Get("App.Portal", "");
+        public static string Version => UiText.Get("App.Version", "v1.0.0");
     }
 
     public static class Common
     {
-        public const string Loading = "Loading...";
-        public const string Save = "Save";
-        public const string Cancel = "Cancel";
-        public const string Create = "Create";
-        public const string Delete = "Delete";
-        public const string Edit = "Edit";
-        public const string Close = "Close";
-        public const string Confirm = "Confirm";
-        public const string Search = "Search";
-        public const string Actions = "Actions";
-        public const string MoreActions = "More actions";
-        public const string Open = "Open";
-        public const string Manage = "Manage";
-        public const string Back = "Back";
-        public const string Yes = "Yes";
-        public const string No = "No";
-        public const string NoData = "No data to display.";
-        public const string ItemsPerPage = "Rows per page";
-        public const string SomethingWentWrong = "Something went wrong. Please try again.";
-        public const string SignOut = "Sign out";
-        public const string Refresh = "Refresh";
-        public const string Details = "Details";
-        public const string Overview = "Overview";
-        public const string Name = "Name";
-        public const string None = "—";
+        public static string Loading => UiText.Get("Common.Loading", "Loading...");
+        public static string Save => UiText.Get("Common.Save", "Save");
+        public static string Cancel => UiText.Get("Common.Cancel", "Cancel");
+        public static string Create => UiText.Get("Common.Create", "Create");
+        public static string Delete => UiText.Get("Common.Delete", "Delete");
+        public static string Edit => UiText.Get("Common.Edit", "Edit");
+        public static string Close => UiText.Get("Common.Close", "Close");
+        public static string Confirm => UiText.Get("Common.Confirm", "Confirm");
+        public static string Search => UiText.Get("Common.Search", "Search");
+        public static string Actions => UiText.Get("Common.Actions", "Actions");
+        public static string MoreActions => UiText.Get("Common.MoreActions", "More actions");
+        public static string Open => UiText.Get("Common.Open", "Open");
+        public static string Manage => UiText.Get("Common.Manage", "Manage");
+        public static string Back => UiText.Get("Common.Back", "Back");
+        public static string Yes => UiText.Get("Common.Yes", "Yes");
+        public static string No => UiText.Get("Common.No", "No");
+        public static string NoData => UiText.Get("Common.NoData", "No data to display.");
+        public static string ItemsPerPage => UiText.Get("Common.ItemsPerPage", "Rows per page");
+        public static string SomethingWentWrong => UiText.Get("Common.SomethingWentWrong", "Something went wrong. Please try again.");
+        public static string SignOut => UiText.Get("Common.SignOut", "Sign out");
+        public static string Refresh => UiText.Get("Common.Refresh", "Refresh");
+        public static string Details => UiText.Get("Common.Details", "Details");
+        public static string Overview => UiText.Get("Common.Overview", "Overview");
+        public static string Name => UiText.Get("Common.Name", "Name");
+        public static string None => UiText.Get("Common.None", "â");
     }
 
     public static class Auth
     {
-        public const string SignInTitle = "Sign in";
-        public const string SignInSubtitle = "Use your portal account to continue.";
-        public const string Email = "Email";
-        public const string Password = "Password";
-        public const string SignInButton = "Sign in";
-        public const string CredentialsRequired = "Email and password are required.";
-        public const string InvalidCredentials = "The email or password is incorrect.";
-
-        public const string ActivateTitle = "Activate your account";
-        public const string ActivateSubtitle = "Set a password to finish setting up your account.";
-        public const string ActivationToken = "Activation code";
-        public const string NewPassword = "New password";
-        public const string ConfirmPassword = "Confirm password";
-        public const string ActivateButton = "Activate account";
-        public const string ActivationSuccess = "Your account is active. You can sign in now.";
-        public const string PasswordsDoNotMatch = "The passwords do not match.";
-        public const string PasswordTooShort = "Use at least 8 characters.";
-        public const string GoToSignIn = "Go to sign in";
-
-        public const string BrandHeadline = "Operations, under control.";
-        public const string BrandSubtext = "Manage your people, roles, and access from one secure, bilingual portal.";
-        public const string BrandPointAccess = "Granular role-based access control";
-        public const string BrandPointSessions = "Live session and device management";
-        public const string BrandPointBilingual = "Full Arabic and English support";
-        public const string Copyright = "© 2026 Operations System. All rights reserved.";
+        public static string SignInTitle => UiText.Get("Auth.SignInTitle", "Sign in");
+        public static string SignInSubtitle => UiText.Get("Auth.SignInSubtitle", "Use your portal account to continue.");
+        public static string Email => UiText.Get("Auth.Email", "Email");
+        public static string Password => UiText.Get("Auth.Password", "Password");
+        public static string SignInButton => UiText.Get("Auth.SignInButton", "Sign in");
+        public static string CredentialsRequired => UiText.Get("Auth.CredentialsRequired", "Email and password are required.");
+        public static string InvalidCredentials => UiText.Get("Auth.InvalidCredentials", "The email or password is incorrect.");
+        public static string ActivateTitle => UiText.Get("Auth.ActivateTitle", "Activate your account");
+        public static string ActivateSubtitle => UiText.Get("Auth.ActivateSubtitle", "Set a password to finish setting up your account.");
+        public static string ActivationToken => UiText.Get("Auth.ActivationToken", "Activation code");
+        public static string NewPassword => UiText.Get("Auth.NewPassword", "New password");
+        public static string ConfirmPassword => UiText.Get("Auth.ConfirmPassword", "Confirm password");
+        public static string ActivateButton => UiText.Get("Auth.ActivateButton", "Activate account");
+        public static string ActivationSuccess => UiText.Get("Auth.ActivationSuccess", "Your account is active. You can sign in now.");
+        public static string PasswordsDoNotMatch => UiText.Get("Auth.PasswordsDoNotMatch", "The passwords do not match.");
+        public static string PasswordTooShort => UiText.Get("Auth.PasswordTooShort", "Use at least 8 characters.");
+        public static string GoToSignIn => UiText.Get("Auth.GoToSignIn", "Go to sign in");
+        public static string BrandHeadline => UiText.Get("Auth.BrandHeadline", "Operations, under control.");
+        public static string BrandSubtext => UiText.Get("Auth.BrandSubtext", "Manage your people, roles, and access from one secure, bilingual portal.");
+        public static string BrandPointAccess => UiText.Get("Auth.BrandPointAccess", "Granular role-based access control");
+        public static string BrandPointSessions => UiText.Get("Auth.BrandPointSessions", "Live session and device management");
+        public static string BrandPointBilingual => UiText.Get("Auth.BrandPointBilingual", "Full Arabic and English support");
+        public static string Copyright => UiText.Get("Auth.Copyright", "Â© 2026 Operations System. All rights reserved.");
     }
 
     public static class Nav
     {
-        public const string Dashboard = "Dashboard";
-        public const string Users = "Users";
-        public const string Roles = "Roles";
-        public const string Audit = "Audit log";
-        public const string Account = "Account";
-        public const string Overview = "Overview";
-        public const string Administration = "Administration";
-        public const string MasterData = "Master data";
-        public const string Countries = "Countries";
-        public const string ManpowerTypes = "Manpower types";
-        public const string Licenses = "Licenses";
-        public const string Stations = "Stations";
-        public const string Customers = "Customers";
-        public const string StaffMembers = "Staff members";
-        public const string ToggleMenu = "Toggle navigation";
-        public const string Language = "Language";
+        public static string Dashboard => UiText.Get("Nav.Dashboard", "Dashboard");
+        public static string Users => UiText.Get("Nav.Users", "Users");
+        public static string Roles => UiText.Get("Nav.Roles", "Roles");
+        public static string Audit => UiText.Get("Nav.Audit", "Audit log");
+        public static string Account => UiText.Get("Nav.Account", "Account");
+        public static string Overview => UiText.Get("Nav.Overview", "Overview");
+        public static string Administration => UiText.Get("Nav.Administration", "Administration");
+        public static string MasterData => UiText.Get("Nav.MasterData", "Master data");
+        public static string Countries => UiText.Get("Nav.Countries", "Countries");
+        public static string ManpowerTypes => UiText.Get("Nav.ManpowerTypes", "Manpower types");
+        public static string Licenses => UiText.Get("Nav.Licenses", "Licenses");
+        public static string Stations => UiText.Get("Nav.Stations", "Stations");
+        public static string Customers => UiText.Get("Nav.Customers", "Customers");
+        public static string StaffMembers => UiText.Get("Nav.StaffMembers", "Staff members");
+        public static string ToggleMenu => UiText.Get("Nav.ToggleMenu", "Toggle navigation");
+        public static string Language => UiText.Get("Nav.Language", "Language");
     }
 
     public static class Audit
     {
-        public const string Title = "Audit log";
-        public const string Description = "Permanent, append-only history of business and security changes.";
-        public const string When = "When";
-        public const string Actor = "Actor";
-        public const string System = "System";
-        public const string Module = "Module";
-        public const string Entity = "Entity";
-        public const string Action = "Action";
-        public const string Empty = "No audit activity recorded yet.";
-        public const string Changes = "Field changes";
-        public const string Field = "Field";
-        public const string Before = "Before";
-        public const string After = "After";
-        public const string NoChanges = "No field-level changes were recorded for this entry.";
-        public const string ActivityTitle = "Recent activity";
+        public static string Title => UiText.Get("Audit.Title", "Audit log");
+        public static string Description => UiText.Get("Audit.Description", "Permanent, append-only history of business and security changes.");
+        public static string When => UiText.Get("Audit.When", "When");
+        public static string Actor => UiText.Get("Audit.Actor", "Actor");
+        public static string System => UiText.Get("Audit.System", "System");
+        public static string Module => UiText.Get("Audit.Module", "Module");
+        public static string Entity => UiText.Get("Audit.Entity", "Entity");
+        public static string Action => UiText.Get("Audit.Action", "Action");
+        public static string Empty => UiText.Get("Audit.Empty", "No audit activity recorded yet.");
+        public static string Changes => UiText.Get("Audit.Changes", "Field changes");
+        public static string Field => UiText.Get("Audit.Field", "Field");
+        public static string Before => UiText.Get("Audit.Before", "Before");
+        public static string After => UiText.Get("Audit.After", "After");
+        public static string NoChanges => UiText.Get("Audit.NoChanges", "No field-level changes were recorded for this entry.");
+        public static string ActivityTitle => UiText.Get("Audit.ActivityTitle", "Recent activity");
     }
 
     public static class Dashboard
     {
-        public const string WelcomeBack = "Welcome back";
-        public const string Overview = "Overview";
-        public const string IdentityCard = "Account access";
-        public const string PermissionsCard = "Permissions";
-        public const string SessionsCard = "Active sessions";
-        public const string ManageUsers = "Manage users";
-        public const string ManageRoles = "Manage roles";
+        public static string WelcomeBack => UiText.Get("Dashboard.WelcomeBack", "Welcome back");
+        public static string Overview => UiText.Get("Dashboard.Overview", "Overview");
+        public static string IdentityCard => UiText.Get("Dashboard.IdentityCard", "Account access");
+        public static string PermissionsCard => UiText.Get("Dashboard.PermissionsCard", "Permissions");
+        public static string SessionsCard => UiText.Get("Dashboard.SessionsCard", "Active sessions");
+        public static string ManageUsers => UiText.Get("Dashboard.ManageUsers", "Manage users");
+        public static string ManageRoles => UiText.Get("Dashboard.ManageRoles", "Manage roles");
     }
 
     public static class Account
     {
-        public const string Title = "Account";
-        public const string Profile = "Profile";
-        public const string Role = "Role";
-        public const string Permissions = "Permissions";
-        public const string DisplayName = "Display name";
-        public const string ProfileUpdated = "Your profile has been updated.";
-
-        public const string ChangePassword = "Change password";
-        public const string CurrentPassword = "Current password";
-        public const string PasswordChanged = "Your password has been changed. Please sign in again.";
-
-        public const string Sessions = "Sessions";
-        public const string SessionsDescription = "Devices currently signed in with your account.";
-        public const string ThisDevice = "This device";
-        public const string SignOutOthers = "Sign out other sessions";
-        public const string RevokeSession = "Revoke";
+        public static string Title => UiText.Get("Account.Title", "Account");
+        public static string Profile => UiText.Get("Account.Profile", "Profile");
+        public static string Role => UiText.Get("Account.Role", "Role");
+        public static string Permissions => UiText.Get("Account.Permissions", "Permissions");
+        public static string DisplayName => UiText.Get("Account.DisplayName", "Display name");
+        public static string ProfileUpdated => UiText.Get("Account.ProfileUpdated", "Your profile has been updated.");
+        public static string ChangePassword => UiText.Get("Account.ChangePassword", "Change password");
+        public static string CurrentPassword => UiText.Get("Account.CurrentPassword", "Current password");
+        public static string PasswordChanged => UiText.Get("Account.PasswordChanged", "Your password has been changed. Please sign in again.");
+        public static string Sessions => UiText.Get("Account.Sessions", "Sessions");
+        public static string SessionsDescription => UiText.Get("Account.SessionsDescription", "Devices currently signed in with your account.");
+        public static string ThisDevice => UiText.Get("Account.ThisDevice", "This device");
+        public static string SignOutOthers => UiText.Get("Account.SignOutOthers", "Sign out other sessions");
+        public static string RevokeSession => UiText.Get("Account.RevokeSession", "Revoke");
     }
 
     public static class Users
     {
-        public const string Title = "Users";
-        public const string Description = "Invite, edit, and manage portal accounts.";
-        public const string Invite = "Invite user";
-        public const string Empty = "No users match your filters.";
-        public const string CountLabel = "users";
-        public const string SearchPlaceholder = "Search by name or email";
-        public const string DisplayName = "Name";
-        public const string Email = "Email";
-        public const string Status = "Status";
-        public const string Role = "Role";
-        public const string LastLogin = "Last login";
-        public const string Created = "Created";
-        public const string AllStatuses = "All statuses";
-        public const string AllRoles = "All roles";
-        public const string FilterByStatus = "All statuses";
-        public const string FilterByRole = "All roles";
-        public const string Lock = "Lock";
-        public const string Unlock = "Unlock";
-        public const string Deactivate = "Deactivate";
-        public const string ResendInvitation = "Resend invitation";
-        public const string AssignRole = "Assign role";
-        public const string LockedOut = "Locked out";
-        public const string Never = "Never";
-
-        public const string InviteTitle = "Invite a user";
-        public const string InviteIntro = "Send an invitation so this person can set up their portal account.";
-        public const string InviteAdminNote = "Direct user creation always creates a System Administrator with full access. Station staff and customer contacts are invited from their own records.";
-        public const string InviteSuccess = "Invitation sent.";
-        public const string InvitationDeliveryLabel = "Invitation delivery status";
-        public const string EditTitle = "Edit user";
-        public const string AssignRoleTitle = "Assign role";
-        public const string ConfirmDeactivate = "Deactivate this user? They will be signed out of all sessions.";
-        public const string ConfirmLock = "Lock this user out of signing in?";
-        public const string StatActiveSessions = "Active sessions";
+        public static string Title => UiText.Get("Users.Title", "Users");
+        public static string Description => UiText.Get("Users.Description", "Invite, edit, and manage portal accounts.");
+        public static string Invite => UiText.Get("Users.Invite", "Invite user");
+        public static string Empty => UiText.Get("Users.Empty", "No users match your filters.");
+        public static string CountLabel => UiText.Get("Users.CountLabel", "users");
+        public static string SearchPlaceholder => UiText.Get("Users.SearchPlaceholder", "Search by name or email");
+        public static string DisplayName => UiText.Get("Users.DisplayName", "Name");
+        public static string Email => UiText.Get("Users.Email", "Email");
+        public static string Status => UiText.Get("Users.Status", "Status");
+        public static string Role => UiText.Get("Users.Role", "Role");
+        public static string LastLogin => UiText.Get("Users.LastLogin", "Last login");
+        public static string Created => UiText.Get("Users.Created", "Created");
+        public static string AllStatuses => UiText.Get("Users.AllStatuses", "All statuses");
+        public static string AllRoles => UiText.Get("Users.AllRoles", "All roles");
+        public static string FilterByStatus => UiText.Get("Users.FilterByStatus", "All statuses");
+        public static string FilterByRole => UiText.Get("Users.FilterByRole", "All roles");
+        public static string Lock => UiText.Get("Users.Lock", "Lock");
+        public static string Unlock => UiText.Get("Users.Unlock", "Unlock");
+        public static string Deactivate => UiText.Get("Users.Deactivate", "Deactivate");
+        public static string ResendInvitation => UiText.Get("Users.ResendInvitation", "Resend invitation");
+        public static string AssignRole => UiText.Get("Users.AssignRole", "Assign role");
+        public static string LockedOut => UiText.Get("Users.LockedOut", "Locked out");
+        public static string Never => UiText.Get("Users.Never", "Never");
+        public static string InviteTitle => UiText.Get("Users.InviteTitle", "Invite a user");
+        public static string InviteIntro => UiText.Get("Users.InviteIntro", "Send an invitation so this person can set up their portal account.");
+        public static string InviteAdminNote => UiText.Get("Users.InviteAdminNote", "Direct user creation always creates a System Administrator with full access. Station staff and customer contacts are invited from their own records.");
+        public static string InviteSuccess => UiText.Get("Users.InviteSuccess", "Invitation sent.");
+        public static string InvitationDeliveryLabel => UiText.Get("Users.InvitationDeliveryLabel", "Invitation delivery status");
+        public static string EditTitle => UiText.Get("Users.EditTitle", "Edit user");
+        public static string AssignRoleTitle => UiText.Get("Users.AssignRoleTitle", "Assign role");
+        public static string ConfirmDeactivate => UiText.Get("Users.ConfirmDeactivate", "Deactivate this user? They will be signed out of all sessions.");
+        public static string ConfirmLock => UiText.Get("Users.ConfirmLock", "Lock this user out of signing in?");
+        public static string StatActiveSessions => UiText.Get("Users.StatActiveSessions", "Active sessions");
     }
 
     public static class Roles
     {
-        public const string Title = "Roles";
-        public const string Description = "Define roles and the permissions they grant.";
-        public const string Create = "New role";
-        public const string Empty = "No roles match your search.";
-        public const string CountLabel = "roles";
-        public const string SearchPlaceholder = "Search roles";
-        public const string Name = "Name";
-        public const string RoleDescription = "Description";
-        public const string CompatibleUserType = "Account type";
-        public const string System = "System";
-        public const string PermissionCount = "Permissions";
-        public const string UserCount = "Users";
-        public const string RoleType = "Type";
-        public const string Custom = "Custom";
-        public const string NoDescription = "No description";
-        public const string CreateTitle = "Create role";
-        public const string EditTitle = "Edit role";
-        public const string FormIntro = "Name the role and choose which account type it applies to.";
-        public const string Permissions = "Permissions";
-        public const string PermissionsDescription = "Select the permissions this role grants.";
-        public const string PermissionsSaved = "Permissions updated.";
-        public const string SystemRoleLocked = "System roles cannot be edited or deleted.";
-        public const string ConfirmDelete = "Delete this role? Users must not be assigned to it.";
-        public const string Created = "Role created.";
-        public const string Updated = "Role updated.";
-        public const string Deleted = "Role deleted.";
+        public static string Title => UiText.Get("Roles.Title", "Roles");
+        public static string Description => UiText.Get("Roles.Description", "Define roles and the permissions they grant.");
+        public static string Create => UiText.Get("Roles.Create", "New role");
+        public static string Empty => UiText.Get("Roles.Empty", "No roles match your search.");
+        public static string CountLabel => UiText.Get("Roles.CountLabel", "roles");
+        public static string SearchPlaceholder => UiText.Get("Roles.SearchPlaceholder", "Search roles");
+        public static string Name => UiText.Get("Roles.Name", "Name");
+        public static string RoleDescription => UiText.Get("Roles.RoleDescription", "Description");
+        public static string CompatibleUserType => UiText.Get("Roles.CompatibleUserType", "Account type");
+        public static string System => UiText.Get("Roles.System", "System");
+        public static string PermissionCount => UiText.Get("Roles.PermissionCount", "Permissions");
+        public static string UserCount => UiText.Get("Roles.UserCount", "Users");
+        public static string RoleType => UiText.Get("Roles.RoleType", "Type");
+        public static string Custom => UiText.Get("Roles.Custom", "Custom");
+        public static string NoDescription => UiText.Get("Roles.NoDescription", "No description");
+        public static string CreateTitle => UiText.Get("Roles.CreateTitle", "Create role");
+        public static string EditTitle => UiText.Get("Roles.EditTitle", "Edit role");
+        public static string FormIntro => UiText.Get("Roles.FormIntro", "Name the role and choose which account type it applies to.");
+        public static string Permissions => UiText.Get("Roles.Permissions", "Permissions");
+        public static string PermissionsDescription => UiText.Get("Roles.PermissionsDescription", "Select the permissions this role grants.");
+        public static string PermissionsSaved => UiText.Get("Roles.PermissionsSaved", "Permissions updated.");
+        public static string SystemRoleLocked => UiText.Get("Roles.SystemRoleLocked", "System roles cannot be edited or deleted.");
+        public static string ConfirmDelete => UiText.Get("Roles.ConfirmDelete", "Delete this role? Users must not be assigned to it.");
+        public static string Created => UiText.Get("Roles.Created", "Role created.");
+        public static string Updated => UiText.Get("Roles.Updated", "Role updated.");
+        public static string Deleted => UiText.Get("Roles.Deleted", "Role deleted.");
     }
 
     public static class Sessions
     {
-        public const string Title = "Sessions";
-        public const string Created = "Signed in";
-        public const string Expires = "Expires";
-        public const string Device = "Device";
-        public const string IpAddress = "IP address";
-        public const string State = "State";
-        public const string Active = "Active";
-        public const string Revoked = "Revoked";
-        public const string RevokeAll = "Revoke all sessions";
-        public const string Empty = "No sessions found.";
+        public static string Title => UiText.Get("Sessions.Title", "Sessions");
+        public static string Created => UiText.Get("Sessions.Created", "Signed in");
+        public static string Expires => UiText.Get("Sessions.Expires", "Expires");
+        public static string Device => UiText.Get("Sessions.Device", "Device");
+        public static string IpAddress => UiText.Get("Sessions.IpAddress", "IP address");
+        public static string State => UiText.Get("Sessions.State", "State");
+        public static string Active => UiText.Get("Sessions.Active", "Active");
+        public static string Revoked => UiText.Get("Sessions.Revoked", "Revoked");
+        public static string RevokeAll => UiText.Get("Sessions.RevokeAll", "Revoke all sessions");
+        public static string Empty => UiText.Get("Sessions.Empty", "No sessions found.");
     }
 
     public static class Countries
     {
-        public const string Title = "Countries";
-        public const string Description = "Maintain the ISO country list used across the system.";
-        public const string Create = "New country";
-        public const string Empty = "No countries match your filters.";
-        public const string CountLabel = "countries";
-        public const string SearchPlaceholder = "Search by name or code";
-        public const string Name = "Name";
-        public const string IsoCode = "ISO code";
-        public const string Status = "Status";
-        public const string Active = "Active";
-        public const string Inactive = "Inactive";
-        public const string AllStatuses = "All statuses";
-        public const string Activate = "Activate";
-        public const string Deactivate = "Deactivate";
-        public const string Created = "Created";
-        public const string Updated = "Updated";
-        public const string CreateTitle = "Create country";
-        public const string EditTitle = "Edit country";
-        public const string FormIntro = "Maintain the country name and its ISO code.";
-        public const string NameRequired = "A country name is required.";
-        public const string IsoCodeRequired = "A 2-letter ISO code is required.";
-        public const string SavedCreate = "Country created.";
-        public const string SavedUpdate = "Country updated.";
-        public const string Activated = "Country activated.";
-        public const string Deactivated = "Country deactivated.";
-        public const string ConfirmDeactivate = "Deactivate this country? It will no longer be selectable.";
+        public static string Title => UiText.Get("Countries.Title", "Countries");
+        public static string Description => UiText.Get("Countries.Description", "Maintain the ISO country list used across the system.");
+        public static string Create => UiText.Get("Countries.Create", "New country");
+        public static string Empty => UiText.Get("Countries.Empty", "No countries match your filters.");
+        public static string CountLabel => UiText.Get("Countries.CountLabel", "countries");
+        public static string SearchPlaceholder => UiText.Get("Countries.SearchPlaceholder", "Search by name or code");
+        public static string Name => UiText.Get("Countries.Name", "Name");
+        public static string IsoCode => UiText.Get("Countries.IsoCode", "ISO code");
+        public static string Status => UiText.Get("Countries.Status", "Status");
+        public static string Active => UiText.Get("Countries.Active", "Active");
+        public static string Inactive => UiText.Get("Countries.Inactive", "Inactive");
+        public static string AllStatuses => UiText.Get("Countries.AllStatuses", "All statuses");
+        public static string Activate => UiText.Get("Countries.Activate", "Activate");
+        public static string Deactivate => UiText.Get("Countries.Deactivate", "Deactivate");
+        public static string Created => UiText.Get("Countries.Created", "Created");
+        public static string Updated => UiText.Get("Countries.Updated", "Updated");
+        public static string CreateTitle => UiText.Get("Countries.CreateTitle", "Create country");
+        public static string EditTitle => UiText.Get("Countries.EditTitle", "Edit country");
+        public static string FormIntro => UiText.Get("Countries.FormIntro", "Maintain the country name and its ISO code.");
+        public static string NameRequired => UiText.Get("Countries.NameRequired", "A country name is required.");
+        public static string IsoCodeRequired => UiText.Get("Countries.IsoCodeRequired", "A 2-letter ISO code is required.");
+        public static string SavedCreate => UiText.Get("Countries.SavedCreate", "Country created.");
+        public static string SavedUpdate => UiText.Get("Countries.SavedUpdate", "Country updated.");
+        public static string Activated => UiText.Get("Countries.Activated", "Country activated.");
+        public static string Deactivated => UiText.Get("Countries.Deactivated", "Country deactivated.");
+        public static string ConfirmDeactivate => UiText.Get("Countries.ConfirmDeactivate", "Deactivate this country? It will no longer be selectable.");
     }
 
     public static class ManpowerTypes
     {
-        public const string Title = "Manpower types";
-        public const string Description = "Classify staff members by the work they perform.";
-        public const string Create = "New manpower type";
-        public const string Empty = "No manpower types match your filters.";
-        public const string CountLabel = "manpower types";
-        public const string SearchPlaceholder = "Search by name";
-        public const string Name = "Name";
-        public const string ManpowerDescription = "Description";
-        public const string NoDescription = "No description";
-        public const string Status = "Status";
-        public const string Active = "Active";
-        public const string Inactive = "Inactive";
-        public const string AllStatuses = "All statuses";
-        public const string Activate = "Activate";
-        public const string Deactivate = "Deactivate";
-        public const string Created = "Created";
-        public const string Updated = "Updated";
-        public const string CreateTitle = "Create manpower type";
-        public const string EditTitle = "Edit manpower type";
-        public const string FormIntro = "Name the manpower type and optionally describe it.";
-        public const string NameRequired = "A name is required.";
-        public const string SavedCreate = "Manpower type created.";
-        public const string SavedUpdate = "Manpower type updated.";
-        public const string Activated = "Manpower type activated.";
-        public const string Deactivated = "Manpower type deactivated.";
-        public const string ConfirmDeactivate = "Deactivate this manpower type? It will no longer be selectable.";
+        public static string Title => UiText.Get("ManpowerTypes.Title", "Manpower types");
+        public static string Description => UiText.Get("ManpowerTypes.Description", "Classify staff members by the work they perform.");
+        public static string Create => UiText.Get("ManpowerTypes.Create", "New manpower type");
+        public static string Empty => UiText.Get("ManpowerTypes.Empty", "No manpower types match your filters.");
+        public static string CountLabel => UiText.Get("ManpowerTypes.CountLabel", "manpower types");
+        public static string SearchPlaceholder => UiText.Get("ManpowerTypes.SearchPlaceholder", "Search by name");
+        public static string Name => UiText.Get("ManpowerTypes.Name", "Name");
+        public static string ManpowerDescription => UiText.Get("ManpowerTypes.ManpowerDescription", "Description");
+        public static string NoDescription => UiText.Get("ManpowerTypes.NoDescription", "No description");
+        public static string Status => UiText.Get("ManpowerTypes.Status", "Status");
+        public static string Active => UiText.Get("ManpowerTypes.Active", "Active");
+        public static string Inactive => UiText.Get("ManpowerTypes.Inactive", "Inactive");
+        public static string AllStatuses => UiText.Get("ManpowerTypes.AllStatuses", "All statuses");
+        public static string Activate => UiText.Get("ManpowerTypes.Activate", "Activate");
+        public static string Deactivate => UiText.Get("ManpowerTypes.Deactivate", "Deactivate");
+        public static string Created => UiText.Get("ManpowerTypes.Created", "Created");
+        public static string Updated => UiText.Get("ManpowerTypes.Updated", "Updated");
+        public static string CreateTitle => UiText.Get("ManpowerTypes.CreateTitle", "Create manpower type");
+        public static string EditTitle => UiText.Get("ManpowerTypes.EditTitle", "Edit manpower type");
+        public static string FormIntro => UiText.Get("ManpowerTypes.FormIntro", "Name the manpower type and optionally describe it.");
+        public static string NameRequired => UiText.Get("ManpowerTypes.NameRequired", "A name is required.");
+        public static string SavedCreate => UiText.Get("ManpowerTypes.SavedCreate", "Manpower type created.");
+        public static string SavedUpdate => UiText.Get("ManpowerTypes.SavedUpdate", "Manpower type updated.");
+        public static string Activated => UiText.Get("ManpowerTypes.Activated", "Manpower type activated.");
+        public static string Deactivated => UiText.Get("ManpowerTypes.Deactivated", "Manpower type deactivated.");
+        public static string ConfirmDeactivate => UiText.Get("ManpowerTypes.ConfirmDeactivate", "Deactivate this manpower type? It will no longer be selectable.");
     }
 
     public static class Licenses
     {
-        public const string Title = "Licenses";
-        public const string Description = "Manage the licenses and certifications staff can hold.";
-        public const string Create = "New license";
-        public const string Empty = "No licenses match your filters.";
-        public const string CountLabel = "licenses";
-        public const string SearchPlaceholder = "Search by code or name";
-        public const string Code = "Code";
-        public const string Name = "Name";
-        public const string LicenseDescription = "Description";
-        public const string NoDescription = "No description";
-        public const string Status = "Status";
-        public const string Active = "Active";
-        public const string Inactive = "Inactive";
-        public const string AllStatuses = "All statuses";
-        public const string Activate = "Activate";
-        public const string Deactivate = "Deactivate";
-        public const string Created = "Created";
-        public const string Updated = "Updated";
-        public const string CreateTitle = "Create license";
-        public const string EditTitle = "Edit license";
-        public const string FormIntro = "Define the license code, name and an optional description.";
-        public const string CodeRequired = "A license code is required (2-10 letters or digits).";
-        public const string NameRequired = "A license name is required.";
-        public const string CodeImmutable = "The code cannot be changed after creation.";
-        public const string SavedCreate = "License created.";
-        public const string SavedUpdate = "License updated.";
-        public const string Activated = "License activated.";
-        public const string Deactivated = "License deactivated.";
-        public const string ConfirmDeactivate = "Deactivate this license? It will no longer be selectable.";
+        public static string Title => UiText.Get("Licenses.Title", "Licenses");
+        public static string Description => UiText.Get("Licenses.Description", "Manage the licenses and certifications staff can hold.");
+        public static string Create => UiText.Get("Licenses.Create", "New license");
+        public static string Empty => UiText.Get("Licenses.Empty", "No licenses match your filters.");
+        public static string CountLabel => UiText.Get("Licenses.CountLabel", "licenses");
+        public static string SearchPlaceholder => UiText.Get("Licenses.SearchPlaceholder", "Search by code or name");
+        public static string Code => UiText.Get("Licenses.Code", "Code");
+        public static string Name => UiText.Get("Licenses.Name", "Name");
+        public static string LicenseDescription => UiText.Get("Licenses.LicenseDescription", "Description");
+        public static string NoDescription => UiText.Get("Licenses.NoDescription", "No description");
+        public static string Status => UiText.Get("Licenses.Status", "Status");
+        public static string Active => UiText.Get("Licenses.Active", "Active");
+        public static string Inactive => UiText.Get("Licenses.Inactive", "Inactive");
+        public static string AllStatuses => UiText.Get("Licenses.AllStatuses", "All statuses");
+        public static string Activate => UiText.Get("Licenses.Activate", "Activate");
+        public static string Deactivate => UiText.Get("Licenses.Deactivate", "Deactivate");
+        public static string Created => UiText.Get("Licenses.Created", "Created");
+        public static string Updated => UiText.Get("Licenses.Updated", "Updated");
+        public static string CreateTitle => UiText.Get("Licenses.CreateTitle", "Create license");
+        public static string EditTitle => UiText.Get("Licenses.EditTitle", "Edit license");
+        public static string FormIntro => UiText.Get("Licenses.FormIntro", "Define the license code, name and an optional description.");
+        public static string CodeRequired => UiText.Get("Licenses.CodeRequired", "A license code is required (2-10 letters or digits).");
+        public static string NameRequired => UiText.Get("Licenses.NameRequired", "A license name is required.");
+        public static string CodeImmutable => UiText.Get("Licenses.CodeImmutable", "The code cannot be changed after creation.");
+        public static string SavedCreate => UiText.Get("Licenses.SavedCreate", "License created.");
+        public static string SavedUpdate => UiText.Get("Licenses.SavedUpdate", "License updated.");
+        public static string Activated => UiText.Get("Licenses.Activated", "License activated.");
+        public static string Deactivated => UiText.Get("Licenses.Deactivated", "License deactivated.");
+        public static string ConfirmDeactivate => UiText.Get("Licenses.ConfirmDeactivate", "Deactivate this license? It will no longer be selectable.");
     }
 
     public static class Stations
     {
-        public const string Title = "Stations";
-        public const string Description = "Manage the airport stations the operation works at.";
-        public const string Create = "New station";
-        public const string Empty = "No stations match your filters.";
-        public const string CountLabel = "stations";
-        public const string SearchPlaceholder = "Search by code, name or city";
-        public const string IataCode = "IATA";
-        public const string IcaoCode = "ICAO";
-        public const string Name = "Name";
-        public const string City = "City";
-        public const string Country = "Country";
-        public const string NoIcao = "—";
-        public const string Status = "Status";
-        public const string Active = "Active";
-        public const string Inactive = "Inactive";
-        public const string AllStatuses = "All statuses";
-        public const string Activate = "Activate";
-        public const string Deactivate = "Deactivate";
-        public const string Created = "Created";
-        public const string Updated = "Updated";
-        public const string CreateTitle = "Create station";
-        public const string EditTitle = "Edit station";
-        public const string FormIntro = "Set the airport codes, name, city and country for this station.";
-        public const string IataRequired = "A 3-letter IATA code is required.";
-        public const string IcaoInvalid = "ICAO code must be exactly four letters.";
-        public const string NameRequired = "A station name is required.";
-        public const string CityRequired = "A city is required.";
-        public const string CountryRequired = "An active country is required.";
-        public const string SavedCreate = "Station created.";
-        public const string SavedUpdate = "Station updated.";
-        public const string Activated = "Station activated.";
-        public const string Deactivated = "Station deactivated.";
-        public const string ConfirmDeactivate = "Deactivate this station? Linked staff lose portal access.";
-        public const string StaffMembers = "Staff members";
-
-        // Creation wizard
-        public const string StepDetails = "Station details";
-        public const string StepStaff = "Add staff (optional)";
-        public const string StepReview = "Review & create";
-        public const string Next = "Next";
-        public const string Previous = "Back";
-        public const string AddStaff = "Add staff member";
-        public const string RemoveStaff = "Remove";
-        public const string StaffName = "Full name";
-        public const string StaffEmail = "Email";
-        public const string ManpowerType = "Manpower type";
-        public const string GrantPortal = "Grant portal access";
-        public const string PortalRole = "Portal role";
-        public const string NoStaffYet = "No staff added. You can add staff now or later from the station page.";
-        public const string ReviewStaffCount = "{0} staff member(s) will be created with this station.";
-        public const string StaffIncomplete = "Each staff row needs a name, email, and manpower type.";
-        public const string StaffRoleRequired = "Select a portal role or turn off portal access for this staff member.";
-        public const string StaffMembersEmpty = "No staff members are assigned to this station yet.";
-        public const string AddStaffMember = "Add staff member";
-        public const string StatStaff = "Staff members";
-        public const string StatActiveStaff = "Active staff";
-        public const string StaffCountFormat = "{0} staff";
+        public static string Title => UiText.Get("Stations.Title", "Stations");
+        public static string Description => UiText.Get("Stations.Description", "Manage the airport stations the operation works at.");
+        public static string Create => UiText.Get("Stations.Create", "New station");
+        public static string Empty => UiText.Get("Stations.Empty", "No stations match your filters.");
+        public static string CountLabel => UiText.Get("Stations.CountLabel", "stations");
+        public static string SearchPlaceholder => UiText.Get("Stations.SearchPlaceholder", "Search by code, name or city");
+        public static string IataCode => UiText.Get("Stations.IataCode", "IATA");
+        public static string IcaoCode => UiText.Get("Stations.IcaoCode", "ICAO");
+        public static string Name => UiText.Get("Stations.Name", "Name");
+        public static string City => UiText.Get("Stations.City", "City");
+        public static string Country => UiText.Get("Stations.Country", "Country");
+        public static string NoIcao => UiText.Get("Stations.NoIcao", "â");
+        public static string Status => UiText.Get("Stations.Status", "Status");
+        public static string Active => UiText.Get("Stations.Active", "Active");
+        public static string Inactive => UiText.Get("Stations.Inactive", "Inactive");
+        public static string AllStatuses => UiText.Get("Stations.AllStatuses", "All statuses");
+        public static string Activate => UiText.Get("Stations.Activate", "Activate");
+        public static string Deactivate => UiText.Get("Stations.Deactivate", "Deactivate");
+        public static string Created => UiText.Get("Stations.Created", "Created");
+        public static string Updated => UiText.Get("Stations.Updated", "Updated");
+        public static string CreateTitle => UiText.Get("Stations.CreateTitle", "Create station");
+        public static string EditTitle => UiText.Get("Stations.EditTitle", "Edit station");
+        public static string FormIntro => UiText.Get("Stations.FormIntro", "Set the airport codes, name, city and country for this station.");
+        public static string IataRequired => UiText.Get("Stations.IataRequired", "A 3-letter IATA code is required.");
+        public static string IcaoInvalid => UiText.Get("Stations.IcaoInvalid", "ICAO code must be exactly four letters.");
+        public static string NameRequired => UiText.Get("Stations.NameRequired", "A station name is required.");
+        public static string CityRequired => UiText.Get("Stations.CityRequired", "A city is required.");
+        public static string CountryRequired => UiText.Get("Stations.CountryRequired", "An active country is required.");
+        public static string SavedCreate => UiText.Get("Stations.SavedCreate", "Station created.");
+        public static string SavedUpdate => UiText.Get("Stations.SavedUpdate", "Station updated.");
+        public static string Activated => UiText.Get("Stations.Activated", "Station activated.");
+        public static string Deactivated => UiText.Get("Stations.Deactivated", "Station deactivated.");
+        public static string ConfirmDeactivate => UiText.Get("Stations.ConfirmDeactivate", "Deactivate this station? Linked staff lose portal access.");
+        public static string StaffMembers => UiText.Get("Stations.StaffMembers", "Staff members");
+        public static string StepDetails => UiText.Get("Stations.StepDetails", "Station details");
+        public static string StepStaff => UiText.Get("Stations.StepStaff", "Add staff (optional)");
+        public static string StepReview => UiText.Get("Stations.StepReview", "Review & create");
+        public static string Next => UiText.Get("Stations.Next", "Next");
+        public static string Previous => UiText.Get("Stations.Previous", "Back");
+        public static string AddStaff => UiText.Get("Stations.AddStaff", "Add staff member");
+        public static string RemoveStaff => UiText.Get("Stations.RemoveStaff", "Remove");
+        public static string StaffName => UiText.Get("Stations.StaffName", "Full name");
+        public static string StaffEmail => UiText.Get("Stations.StaffEmail", "Email");
+        public static string ManpowerType => UiText.Get("Stations.ManpowerType", "Manpower type");
+        public static string GrantPortal => UiText.Get("Stations.GrantPortal", "Grant portal access");
+        public static string PortalRole => UiText.Get("Stations.PortalRole", "Portal role");
+        public static string NoStaffYet => UiText.Get("Stations.NoStaffYet", "No staff added. You can add staff now or later from the station page.");
+        public static string ReviewStaffCount => UiText.Get("Stations.ReviewStaffCount", "{0} staff member(s) will be created with this station.");
+        public static string StaffIncomplete => UiText.Get("Stations.StaffIncomplete", "Each staff row needs a name, email, and manpower type.");
+        public static string StaffRoleRequired => UiText.Get("Stations.StaffRoleRequired", "Select a portal role or turn off portal access for this staff member.");
+        public static string StaffMembersEmpty => UiText.Get("Stations.StaffMembersEmpty", "No staff members are assigned to this station yet.");
+        public static string AddStaffMember => UiText.Get("Stations.AddStaffMember", "Add staff member");
+        public static string StatStaff => UiText.Get("Stations.StatStaff", "Staff members");
+        public static string StatActiveStaff => UiText.Get("Stations.StatActiveStaff", "Active staff");
+        public static string StaffCountFormat => UiText.Get("Stations.StaffCountFormat", "{0} staff");
     }
 
     public static class Customers
     {
-        public const string Title = "Customers";
-        public const string Description = "Manage the airline customers the operation serves.";
-        public const string Create = "New customer";
-        public const string Empty = "No customers match your filters.";
-        public const string CountLabel = "customers";
-        public const string SearchPlaceholder = "Search by code or name";
-        public const string IataCode = "IATA";
-        public const string IcaoCode = "ICAO";
-        public const string Name = "Name";
-        public const string Country = "Country";
-        public const string NoIcao = "—";
-        public const string OfficialEmail = "Official email";
-        public const string OfficialPhone = "Official phone";
-        public const string Status = "Status";
-        public const string Active = "Active";
-        public const string Inactive = "Inactive";
-        public const string AllStatuses = "All statuses";
-        public const string Activate = "Activate";
-        public const string Deactivate = "Deactivate";
-        public const string Created = "Created";
-        public const string Updated = "Updated";
-        public const string CreateTitle = "Create customer";
-        public const string EditTitle = "Edit customer";
-        public const string FormIntro = "Capture the airline codes, official contact details, address and contacts.";
-        public const string IataRequired = "A 2-character IATA code is required.";
-        public const string IcaoInvalid = "ICAO code must be exactly three letters.";
-        public const string NameRequired = "A customer name is required.";
-        public const string CountryRequired = "An active country is required.";
-        public const string SavedCreate = "Customer created.";
-        public const string SavedUpdate = "Customer updated.";
-        public const string Activated = "Customer activated.";
-        public const string Deactivated = "Customer deactivated.";
-        public const string ConfirmDeactivate = "Deactivate this customer? Linked contacts lose portal access.";
-
-        public const string Address = "Official address";
-        public const string AddressLine1 = "Address line 1";
-        public const string AddressLine2 = "Address line 2";
-        public const string City = "City";
-        public const string Region = "State / region";
-        public const string PostalCode = "Postal code";
-        public const string AddressLine1Required = "Address line 1 is required.";
-        public const string AddressCityRequired = "Address city is required.";
-
-        public const string ContactsCount = "contacts";
-        public const string Contacts = "Contacts";
-        public const string ContactsEmpty = "No contacts have been added yet.";
-        public const string AddContact = "Add contact";
-        public const string EditContact = "Edit contact";
-        public const string ContactName = "Name";
-        public const string ContactJobTitle = "Job title";
-        public const string ContactEmail = "Email";
-        public const string ContactPhone = "Phone";
-        public const string ContactNameRequired = "A contact name is required.";
-        public const string ContactEmailRequired = "A valid contact email is required.";
-        public const string ContactEmailDuplicate = "Contact emails must be unique within the customer.";
-        public const string ContactRemove = "Remove";
-        public const string ContactRemoved = "(will be removed)";
-        public const string ContactAdded = "Contact added.";
-        public const string PortalLinked = "Portal access";
-
-        public const string TabAddress = "Address";
-        public const string StatContacts = "Contacts";
-        public const string StatPortalAccounts = "Portal accounts";
-        public const string ContactsCountFormat = "{0} contacts";
+        public static string Title => UiText.Get("Customers.Title", "Customers");
+        public static string Description => UiText.Get("Customers.Description", "Manage the airline customers the operation serves.");
+        public static string Create => UiText.Get("Customers.Create", "New customer");
+        public static string Empty => UiText.Get("Customers.Empty", "No customers match your filters.");
+        public static string CountLabel => UiText.Get("Customers.CountLabel", "customers");
+        public static string SearchPlaceholder => UiText.Get("Customers.SearchPlaceholder", "Search by code or name");
+        public static string IataCode => UiText.Get("Customers.IataCode", "IATA");
+        public static string IcaoCode => UiText.Get("Customers.IcaoCode", "ICAO");
+        public static string Name => UiText.Get("Customers.Name", "Name");
+        public static string Country => UiText.Get("Customers.Country", "Country");
+        public static string NoIcao => UiText.Get("Customers.NoIcao", "â");
+        public static string OfficialEmail => UiText.Get("Customers.OfficialEmail", "Official email");
+        public static string OfficialPhone => UiText.Get("Customers.OfficialPhone", "Official phone");
+        public static string Status => UiText.Get("Customers.Status", "Status");
+        public static string Active => UiText.Get("Customers.Active", "Active");
+        public static string Inactive => UiText.Get("Customers.Inactive", "Inactive");
+        public static string AllStatuses => UiText.Get("Customers.AllStatuses", "All statuses");
+        public static string Activate => UiText.Get("Customers.Activate", "Activate");
+        public static string Deactivate => UiText.Get("Customers.Deactivate", "Deactivate");
+        public static string Created => UiText.Get("Customers.Created", "Created");
+        public static string Updated => UiText.Get("Customers.Updated", "Updated");
+        public static string CreateTitle => UiText.Get("Customers.CreateTitle", "Create customer");
+        public static string EditTitle => UiText.Get("Customers.EditTitle", "Edit customer");
+        public static string StepDetails => UiText.Get("Customers.StepDetails", "Customer details");
+        public static string StepAddress => UiText.Get("Customers.StepAddress", "Address");
+        public static string StepContacts => UiText.Get("Customers.StepContacts", "Contacts");
+        public static string StepReview => UiText.Get("Customers.StepReview", "Review & create");
+        public static string Next => UiText.Get("Customers.Next", "Next");
+        public static string Previous => UiText.Get("Customers.Previous", "Back");
+        public static string ReviewSummary => UiText.Get("Customers.ReviewSummary", "{0} â {1}. {2} contact(s).");
+        public static string FormIntro => UiText.Get("Customers.FormIntro", "Capture the airline codes, official contact details, address and contacts.");
+        public static string IataRequired => UiText.Get("Customers.IataRequired", "A 2-character IATA code is required.");
+        public static string IcaoInvalid => UiText.Get("Customers.IcaoInvalid", "ICAO code must be exactly three letters.");
+        public static string NameRequired => UiText.Get("Customers.NameRequired", "A customer name is required.");
+        public static string CountryRequired => UiText.Get("Customers.CountryRequired", "An active country is required.");
+        public static string SavedCreate => UiText.Get("Customers.SavedCreate", "Customer created.");
+        public static string SavedUpdate => UiText.Get("Customers.SavedUpdate", "Customer updated.");
+        public static string Activated => UiText.Get("Customers.Activated", "Customer activated.");
+        public static string Deactivated => UiText.Get("Customers.Deactivated", "Customer deactivated.");
+        public static string ConfirmDeactivate => UiText.Get("Customers.ConfirmDeactivate", "Deactivate this customer? Linked contacts lose portal access.");
+        public static string Address => UiText.Get("Customers.Address", "Official address");
+        public static string AddressLine1 => UiText.Get("Customers.AddressLine1", "Address line 1");
+        public static string AddressLine2 => UiText.Get("Customers.AddressLine2", "Address line 2");
+        public static string City => UiText.Get("Customers.City", "City");
+        public static string Region => UiText.Get("Customers.Region", "State / region");
+        public static string PostalCode => UiText.Get("Customers.PostalCode", "Postal code");
+        public static string AddressLine1Required => UiText.Get("Customers.AddressLine1Required", "Address line 1 is required.");
+        public static string AddressCityRequired => UiText.Get("Customers.AddressCityRequired", "Address city is required.");
+        public static string ContactsCount => UiText.Get("Customers.ContactsCount", "contacts");
+        public static string Contacts => UiText.Get("Customers.Contacts", "Contacts");
+        public static string ContactsEmpty => UiText.Get("Customers.ContactsEmpty", "No contacts have been added yet.");
+        public static string AddContact => UiText.Get("Customers.AddContact", "Add contact");
+        public static string EditContact => UiText.Get("Customers.EditContact", "Edit contact");
+        public static string ContactName => UiText.Get("Customers.ContactName", "Name");
+        public static string ContactJobTitle => UiText.Get("Customers.ContactJobTitle", "Job title");
+        public static string ContactEmail => UiText.Get("Customers.ContactEmail", "Email");
+        public static string ContactPhone => UiText.Get("Customers.ContactPhone", "Phone");
+        public static string ContactNameRequired => UiText.Get("Customers.ContactNameRequired", "A contact name is required.");
+        public static string ContactEmailRequired => UiText.Get("Customers.ContactEmailRequired", "A valid contact email is required.");
+        public static string ContactEmailDuplicate => UiText.Get("Customers.ContactEmailDuplicate", "Contact emails must be unique within the customer.");
+        public static string ContactRemove => UiText.Get("Customers.ContactRemove", "Remove");
+        public static string ContactRemoved => UiText.Get("Customers.ContactRemoved", "(will be removed)");
+        public static string ContactAdded => UiText.Get("Customers.ContactAdded", "Contact added.");
+        public static string PortalLinked => UiText.Get("Customers.PortalLinked", "Portal access");
+        public static string TabAddress => UiText.Get("Customers.TabAddress", "Address");
+        public static string StatContacts => UiText.Get("Customers.StatContacts", "Contacts");
+        public static string StatPortalAccounts => UiText.Get("Customers.StatPortalAccounts", "Portal accounts");
+        public static string ContactsCountFormat => UiText.Get("Customers.ContactsCountFormat", "{0} contacts");
     }
 
     public static class StaffMembers
     {
-        public const string Title = "Staff members";
-        public const string Description = "Manage station staff, their manpower type, schedule and licenses.";
-        public const string Create = "New staff member";
-        public const string Empty = "No staff members match your filters.";
-        public const string CountLabel = "staff members";
-        public const string SearchPlaceholder = "Search by name or email";
-        public const string FullName = "Full name";
-        public const string Email = "Email";
-        public const string Station = "Station";
-        public const string ManpowerType = "Manpower type";
-        public const string Status = "Status";
-        public const string Active = "Active";
-        public const string Inactive = "Inactive";
-        public const string AllStatuses = "All statuses";
-        public const string Activate = "Activate";
-        public const string Deactivate = "Deactivate";
-        public const string Created = "Created";
-        public const string Updated = "Updated";
-        public const string None = "—";
-        public const string CreateTitle = "Create staff member";
-        public const string EditTitle = "Edit staff member";
-        public const string BasicInformation = "Basic information";
-        public const string FormIntro = "Update staff member information, schedule and licenses.";
-        public const string ScheduleHint = "Select the days this staff member works.";
-        public const string NameRequired = "A full name is required.";
-        public const string EmailRequired = "A valid email is required.";
-        public const string StationRequired = "An active station is required.";
-        public const string ManpowerTypeRequired = "An active manpower type is required.";
-        public const string SavedCreate = "Staff member created.";
-        public const string SavedUpdate = "Staff member updated.";
-        public const string Activated = "Staff member activated.";
-        public const string Deactivated = "Staff member deactivated.";
-        public const string ConfirmDeactivate = "Deactivate this staff member? A linked portal account loses access.";
-
-        public const string EmploymentContract = "Employment contract";
-        public const string StartDate = "Start date";
-        public const string EndDate = "End date";
-        public const string EndBeforeStart = "The end date cannot precede the start date.";
-        public const string WorkingSchedule = "Working schedule";
-        public const string NoSchedule = "No working schedule set.";
-        public const string NoContract = "No employment contract.";
-
-        public const string Licenses = "Licenses";
-        public const string LicensesEmpty = "No licenses assigned.";
-        public const string AddLicense = "Add license";
-        public const string License = "License";
-        public const string LicenseNumber = "License number";
-        public const string LicenseRequired = "Select a license for each assignment.";
-        public const string LicenseNumberRequired = "A license number is required for each assignment.";
-        public const string LicenseDuplicate = "A staff member cannot hold the same license twice.";
-        public const string PortalLinked = "Portal access";
-
-        public const string EditMember = "Edit member";
-
-        public const string TabOverview = "Overview";
-        public const string TabLicenses = "Licenses";
-        public const string TabSchedule = "Schedule";
-        public const string TabPortalAccess = "Portal access";
-        public const string TabActivity = "Activity";
-
-        public const string PersonalInformation = "Personal information";
-        public const string EmploymentDetails = "Employment details";
-        public const string RecentActivity = "Recent activity";
-
-        public const string StatLicenses = "Licenses";
-        public const string StatWorkingDays = "Working days";
-        public const string StatPortalAccount = "Portal account";
-        public const string PortalLinkedShort = "Linked";
-        public const string PortalNotLinkedShort = "Not created";
-
-        public const string LicenseCountSingular = "{0} license";
-        public const string LicenseCountPlural = "{0} licenses";
-        public const string WorkingDaysCount = "Working days: {0}";
-
-        public const string ActivityEmpty = "No activity recorded yet";
-        public const string ActivityEmptyHint = "Audit history for this staff member will appear here as actions are taken.";
-
-        public const string PortalAccessManageTitle = "Account management";
-        public const string PortalAccessManageHint = "Future account controls — password resets, session management, and role changes — will be available here.";
-        public const string PortalAccessLinkedTitle = "Portal account linked";
-        public const string PortalAccessLinkedHint = "This staff member can sign in to the portal with their linked account.";
-        public const string PortalAccessUnlinkedTitle = "No portal account";
-        public const string PortalAccessUnlinkedHint = "Grant portal access to let this staff member sign in to the portal.";
-        public const string PortalAccessUnavailableHint = "Portal access can be granted once the staff member is active.";
+        public static string Title => UiText.Get("StaffMembers.Title", "Staff members");
+        public static string Description => UiText.Get("StaffMembers.Description", "Manage station staff, their manpower type, schedule and licenses.");
+        public static string Create => UiText.Get("StaffMembers.Create", "New staff member");
+        public static string Empty => UiText.Get("StaffMembers.Empty", "No staff members match your filters.");
+        public static string CountLabel => UiText.Get("StaffMembers.CountLabel", "staff members");
+        public static string SearchPlaceholder => UiText.Get("StaffMembers.SearchPlaceholder", "Search by name or email");
+        public static string FullName => UiText.Get("StaffMembers.FullName", "Full name");
+        public static string Email => UiText.Get("StaffMembers.Email", "Email");
+        public static string Station => UiText.Get("StaffMembers.Station", "Station");
+        public static string ManpowerType => UiText.Get("StaffMembers.ManpowerType", "Manpower type");
+        public static string Status => UiText.Get("StaffMembers.Status", "Status");
+        public static string Active => UiText.Get("StaffMembers.Active", "Active");
+        public static string Inactive => UiText.Get("StaffMembers.Inactive", "Inactive");
+        public static string AllStatuses => UiText.Get("StaffMembers.AllStatuses", "All statuses");
+        public static string Activate => UiText.Get("StaffMembers.Activate", "Activate");
+        public static string Deactivate => UiText.Get("StaffMembers.Deactivate", "Deactivate");
+        public static string Created => UiText.Get("StaffMembers.Created", "Created");
+        public static string Updated => UiText.Get("StaffMembers.Updated", "Updated");
+        public static string None => UiText.Get("StaffMembers.None", "â");
+        public static string CreateTitle => UiText.Get("StaffMembers.CreateTitle", "Create staff member");
+        public static string EditTitle => UiText.Get("StaffMembers.EditTitle", "Edit staff member");
+        public static string BasicInformation => UiText.Get("StaffMembers.BasicInformation", "Basic information");
+        public static string FormIntro => UiText.Get("StaffMembers.FormIntro", "Update staff member information, schedule and licenses.");
+        public static string ScheduleHint => UiText.Get("StaffMembers.ScheduleHint", "Select the days this staff member works.");
+        public static string NameRequired => UiText.Get("StaffMembers.NameRequired", "A full name is required.");
+        public static string EmailRequired => UiText.Get("StaffMembers.EmailRequired", "A valid email is required.");
+        public static string StationRequired => UiText.Get("StaffMembers.StationRequired", "An active station is required.");
+        public static string ManpowerTypeRequired => UiText.Get("StaffMembers.ManpowerTypeRequired", "An active manpower type is required.");
+        public static string SavedCreate => UiText.Get("StaffMembers.SavedCreate", "Staff member created.");
+        public static string SavedUpdate => UiText.Get("StaffMembers.SavedUpdate", "Staff member updated.");
+        public static string Activated => UiText.Get("StaffMembers.Activated", "Staff member activated.");
+        public static string Deactivated => UiText.Get("StaffMembers.Deactivated", "Staff member deactivated.");
+        public static string ConfirmDeactivate => UiText.Get("StaffMembers.ConfirmDeactivate", "Deactivate this staff member? A linked portal account loses access.");
+        public static string EmploymentContract => UiText.Get("StaffMembers.EmploymentContract", "Employment contract");
+        public static string StartDate => UiText.Get("StaffMembers.StartDate", "Start date");
+        public static string EndDate => UiText.Get("StaffMembers.EndDate", "End date");
+        public static string EndBeforeStart => UiText.Get("StaffMembers.EndBeforeStart", "The end date cannot precede the start date.");
+        public static string WorkingSchedule => UiText.Get("StaffMembers.WorkingSchedule", "Working schedule");
+        public static string NoSchedule => UiText.Get("StaffMembers.NoSchedule", "No working schedule set.");
+        public static string NoContract => UiText.Get("StaffMembers.NoContract", "No employment contract.");
+        public static string Licenses => UiText.Get("StaffMembers.Licenses", "Licenses");
+        public static string LicensesEmpty => UiText.Get("StaffMembers.LicensesEmpty", "No licenses assigned.");
+        public static string AddLicense => UiText.Get("StaffMembers.AddLicense", "Add license");
+        public static string License => UiText.Get("StaffMembers.License", "License");
+        public static string LicenseNumber => UiText.Get("StaffMembers.LicenseNumber", "License number");
+        public static string LicenseRequired => UiText.Get("StaffMembers.LicenseRequired", "Select a license for each assignment.");
+        public static string LicenseNumberRequired => UiText.Get("StaffMembers.LicenseNumberRequired", "A license number is required for each assignment.");
+        public static string LicenseDuplicate => UiText.Get("StaffMembers.LicenseDuplicate", "A staff member cannot hold the same license twice.");
+        public static string PortalLinked => UiText.Get("StaffMembers.PortalLinked", "Portal access");
+        public static string EditMember => UiText.Get("StaffMembers.EditMember", "Edit member");
+        public static string TabOverview => UiText.Get("StaffMembers.TabOverview", "Overview");
+        public static string TabLicenses => UiText.Get("StaffMembers.TabLicenses", "Licenses");
+        public static string TabSchedule => UiText.Get("StaffMembers.TabSchedule", "Schedule");
+        public static string TabPortalAccess => UiText.Get("StaffMembers.TabPortalAccess", "Portal access");
+        public static string TabActivity => UiText.Get("StaffMembers.TabActivity", "Activity");
+        public static string PersonalInformation => UiText.Get("StaffMembers.PersonalInformation", "Personal information");
+        public static string EmploymentDetails => UiText.Get("StaffMembers.EmploymentDetails", "Employment details");
+        public static string RecentActivity => UiText.Get("StaffMembers.RecentActivity", "Recent activity");
+        public static string StatLicenses => UiText.Get("StaffMembers.StatLicenses", "Licenses");
+        public static string StatWorkingDays => UiText.Get("StaffMembers.StatWorkingDays", "Working days");
+        public static string StatPortalAccount => UiText.Get("StaffMembers.StatPortalAccount", "Portal account");
+        public static string PortalLinkedShort => UiText.Get("StaffMembers.PortalLinkedShort", "Linked");
+        public static string PortalNotLinkedShort => UiText.Get("StaffMembers.PortalNotLinkedShort", "Not created");
+        public static string LicenseCountSingular => UiText.Get("StaffMembers.LicenseCountSingular", "{0} license");
+        public static string LicenseCountPlural => UiText.Get("StaffMembers.LicenseCountPlural", "{0} licenses");
+        public static string WorkingDaysCount => UiText.Get("StaffMembers.WorkingDaysCount", "Working days: {0}");
+        public static string ActivityEmpty => UiText.Get("StaffMembers.ActivityEmpty", "No activity recorded yet");
+        public static string ActivityEmptyHint => UiText.Get("StaffMembers.ActivityEmptyHint", "Audit history for this staff member will appear here as actions are taken.");
+        public static string PortalAccessManageTitle => UiText.Get("StaffMembers.PortalAccessManageTitle", "Account management");
+        public static string PortalAccessManageHint => UiText.Get("StaffMembers.PortalAccessManageHint", "Future account controls â password resets, session management, and role changes â will be available here.");
+        public static string PortalAccessLinkedTitle => UiText.Get("StaffMembers.PortalAccessLinkedTitle", "Portal account linked");
+        public static string PortalAccessLinkedHint => UiText.Get("StaffMembers.PortalAccessLinkedHint", "This staff member can sign in to the portal with their linked account.");
+        public static string PortalAccessUnlinkedTitle => UiText.Get("StaffMembers.PortalAccessUnlinkedTitle", "No portal account");
+        public static string PortalAccessUnlinkedHint => UiText.Get("StaffMembers.PortalAccessUnlinkedHint", "Grant portal access to let this staff member sign in to the portal.");
+        public static string PortalAccessUnavailableHint => UiText.Get("StaffMembers.PortalAccessUnavailableHint", "Portal access can be granted once the staff member is active.");
     }
 
     public static class Days
     {
-        public const string Sunday = "Sun";
-        public const string Monday = "Mon";
-        public const string Tuesday = "Tue";
-        public const string Wednesday = "Wed";
-        public const string Thursday = "Thu";
-        public const string Friday = "Fri";
-        public const string Saturday = "Sat";
+        public static string Sunday => UiText.Get("Days.Sunday", "Sun");
+        public static string Monday => UiText.Get("Days.Monday", "Mon");
+        public static string Tuesday => UiText.Get("Days.Tuesday", "Tue");
+        public static string Wednesday => UiText.Get("Days.Wednesday", "Wed");
+        public static string Thursday => UiText.Get("Days.Thursday", "Thu");
+        public static string Friday => UiText.Get("Days.Friday", "Fri");
+        public static string Saturday => UiText.Get("Days.Saturday", "Sat");
     }
 
     public static class PortalAccess
     {
-        public const string GrantTitle = "Grant portal access";
-        public const string GrantAction = "Grant portal access";
-        public const string Role = "Role";
-        public const string RolePlaceholder = "Select a compatible role";
-        public const string RoleRequired = "Select a role to continue.";
-        public const string NoCompatibleRoles = "No compatible role exists yet. Create one before granting access.";
-        public const string Grant = "Send invitation";
-        public const string Granted = "Portal access requested. An invitation will be sent shortly.";
-        public const string HasAccess = "Portal account linked";
-        public const string NoAccess = "No portal account";
-        public const string Explanation = "An invited portal account will be created for this record using the selected role.";
+        public static string GrantTitle => UiText.Get("PortalAccess.GrantTitle", "Grant portal access");
+        public static string GrantAction => UiText.Get("PortalAccess.GrantAction", "Grant portal access");
+        public static string Role => UiText.Get("PortalAccess.Role", "Role");
+        public static string RolePlaceholder => UiText.Get("PortalAccess.RolePlaceholder", "Select a compatible role");
+        public static string RoleRequired => UiText.Get("PortalAccess.RoleRequired", "Select a role to continue.");
+        public static string NoCompatibleRoles => UiText.Get("PortalAccess.NoCompatibleRoles", "No compatible role exists yet. Create one before granting access.");
+        public static string Grant => UiText.Get("PortalAccess.Grant", "Send invitation");
+        public static string Granted => UiText.Get("PortalAccess.Granted", "Portal access requested. An invitation will be sent shortly.");
+        public static string HasAccess => UiText.Get("PortalAccess.HasAccess", "Portal account linked");
+        public static string NoAccess => UiText.Get("PortalAccess.NoAccess", "No portal account");
+        public static string Explanation => UiText.Get("PortalAccess.Explanation", "An invited portal account will be created for this record using the selected role.");
+        public static string GrantOnCreate => UiText.Get("PortalAccess.GrantOnCreate", "Grant portal access on creation");
+        public static string GrantOnCreateHint => UiText.Get("PortalAccess.GrantOnCreateHint", "Send a portal invitation once this record is created.");
     }
 
     public static class Errors
     {
-        public const string Forbidden = "You do not have permission to view this.";
-        public const string NotFound = "The requested item was not found.";
-        public const string LoadFailed = "We couldn't load this. Please try again.";
+        public static string Forbidden => UiText.Get("Errors.Forbidden", "You do not have permission to view this.");
+        public static string NotFound => UiText.Get("Errors.NotFound", "The requested item was not found.");
+        public static string LoadFailed => UiText.Get("Errors.LoadFailed", "We couldn't load this. Please try again.");
     }
 }

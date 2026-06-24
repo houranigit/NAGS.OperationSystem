@@ -15,4 +15,10 @@
     <PackageReference Include="Radzen.Blazor" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Update="Localization\Resources\UiStrings.ar.resx">
+      <Culture>ar</Culture>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

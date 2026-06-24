@@ -177,10 +177,10 @@ public sealed record UpdateCustomerRequest(
     Guid CountryId,
     string? OfficialEmail,
     string? OfficialPhone,
-    AddressRequest Address,
-    IReadOnlyList<CustomerContactRequest> Contacts);
+    AddressRequest Address);
 
 public sealed record AddCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
+public sealed record UpdateCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
 
 // --- StaffMembers ----------------------------------------------------------
 
