@@ -352,6 +352,24 @@ public static class UiStrings
         public const string Deactivated = "Station deactivated.";
         public const string ConfirmDeactivate = "Deactivate this station? Linked staff lose portal access.";
         public const string StaffMembers = "Staff members";
+
+        // Creation wizard
+        public const string StepDetails = "Station details";
+        public const string StepStaff = "Add staff (optional)";
+        public const string StepReview = "Review & create";
+        public const string Next = "Next";
+        public const string Previous = "Back";
+        public const string AddStaff = "Add staff member";
+        public const string RemoveStaff = "Remove";
+        public const string StaffName = "Full name";
+        public const string StaffEmail = "Email";
+        public const string ManpowerType = "Manpower type";
+        public const string GrantPortal = "Grant portal access";
+        public const string PortalRole = "Portal role";
+        public const string NoStaffYet = "No staff added. You can add staff now or later from the station page.";
+        public const string ReviewStaffCount = "{0} staff member(s) will be created with this station.";
+        public const string StaffIncomplete = "Each staff row needs a name, email, and manpower type.";
+        public const string StaffRoleRequired = "Select a portal role or turn off portal access for this staff member.";
         public const string StaffMembersEmpty = "No staff members are assigned to this station yet.";
         public const string AddStaffMember = "Add staff member";
         public const string StatStaff = "Staff members";

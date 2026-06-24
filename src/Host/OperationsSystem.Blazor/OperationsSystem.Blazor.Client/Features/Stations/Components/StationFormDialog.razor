@@ -1,71 +1,67 @@
 @inject MasterDataApiClient MasterData
+@inject IdentityApiClient Identity
 @inject DialogService DialogService
+@inject AuthSession Auth
 
-<RadzenTemplateForm TItem="StationModel" Data="@model" Submit="@SubmitAsync">
-    <div class="stf-form">
-        <p class="stf-intro os-muted">@UiStrings.Stations.FormIntro</p>
+<div class="stf-form">
+    @if (StationId is null)
+    {
+        <RadzenSteps @bind-SelectedIndex="step" ShowStepsButtons="false">
+            <Steps>
+                <RadzenStepsItem Text="@UiStrings.Stations.StepDetails">
+                    @DetailsFields()
+                </RadzenStepsItem>
+                <RadzenStepsItem Text="@UiStrings.Stations.StepStaff">
+                    @StaffStep()
+                </RadzenStepsItem>
+                <RadzenStepsItem Text="@UiStrings.Stations.StepReview">
+                    @ReviewStep()
+                </RadzenStepsItem>
+            </Steps>
+        </RadzenSteps>
 
-        <div class="stf-section"><RadzenIcon Icon="flight_takeoff" /><h4>@UiStrings.Common.Details</h4></div>
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.Stations.IataCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="tag" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.IataCode" Name="iataCode" Style="width: 100%;" MaxLength="3" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.Stations.IcaoCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="tag" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.IcaoCode" Name="icaoCode" Style="width: 100%;" MaxLength="4" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
+        @ErrorBanner()
 
-        <RadzenFormField Text="@UiStrings.Stations.Name" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="flight_takeoff" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="150" />
-            </ChildContent>
-        </RadzenFormField>
-
-        <RadzenFormField Text="@UiStrings.Stations.City" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="location_city" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.City" Name="city" Style="width: 100%;" MaxLength="100" />
-            </ChildContent>
-        </RadzenFormField>
-
-        <RadzenFormField Text="@UiStrings.Stations.Country" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="public" /></Start>
-            <ChildContent>
-                <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
-                                AllowFiltering="true" Name="country" Style="width: 100%;" />
-            </ChildContent>
-        </RadzenFormField>
-
-        @if (!string.IsNullOrWhiteSpace(errorMessage))
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
-        }
-
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
-            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton ButtonType="ButtonType.Submit" Text="@(StationId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
-                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="stf-actions">
+            <RadzenButton Text="@UiStrings.Stations.Previous" ButtonStyle="ButtonStyle.Light" Icon="arrow_back"
+                          Click="@(() => step = Math.Max(0, step - 1))" Disabled="@(step == 0)" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                @if (step < 2)
+                {
+                    <RadzenButton Text="@UiStrings.Stations.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" Click="@NextAsync" />
+                }
+                else
+                {
+                    <RadzenButton Text="@UiStrings.Common.Create" Icon="check" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
+                }
+            </RadzenStack>
         </RadzenStack>
-    </div>
-</RadzenTemplateForm>
+    }
+    else
+    {
+        <RadzenTemplateForm TItem="StationModel" Data="@model" Submit="@SubmitAsync">
+            @DetailsFields()
+            @ErrorBanner()
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+                <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+            </RadzenStack>
+        </RadzenTemplateForm>
+    }
+</div>
 
 @code {
     [Parameter] public Guid? StationId { get; set; }
 
     private StationModel model = new();
+    private readonly List<StaffRow> staff = [];
     private IReadOnlyList<CountryOption> countries = [];
+    private IReadOnlyList<ManpowerTypeOption> manpowerTypes = [];
+    private IReadOnlyList<RoleOption> stationRoles = [];
+    private bool canGrantPortal;
     private string? rowVersion;
+    private int step;
     private bool isSubmitting;
     private string? errorMessage;
 
@@ -78,15 +74,15 @@
             if (StationId is { } id)
             {
                 var detail = await MasterData.GetStationAsync(id);
-                model = new StationModel
-                {
-                    IataCode = detail.IataCode,
-                    IcaoCode = detail.IcaoCode,
-                    Name = detail.Name,
-                    City = detail.City,
-                    CountryId = detail.CountryId
-                };
+                model = new StationModel { IataCode = detail.IataCode, IcaoCode = detail.IcaoCode, Name = detail.Name, City = detail.City, CountryId = detail.CountryId };
                 rowVersion = detail.RowVersion;
+            }
+            else
+            {
+                manpowerTypes = await MasterData.GetManpowerTypeOptionsAsync();
+                canGrantPortal = Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
+                if (canGrantPortal)
+                    stationRoles = await Identity.GetRoleOptionsAsync("StationStaff");
             }
         }
         catch (ApiException ex)
@@ -95,42 +91,132 @@
         }
     }
 
+    private RenderFragment DetailsFields() =>@<text>
+        <p class="stf-intro os-muted">@UiStrings.Stations.FormIntro</p>
+        <RadzenRow Gap="1rem">
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.Stations.IataCode" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenTextBox @bind-Value="model.IataCode" Style="width: 100%;" MaxLength="3" />
+                </RadzenFormField>
+            </RadzenColumn>
+            <RadzenColumn Size="6">
+                <RadzenFormField Text="@UiStrings.Stations.IcaoCode" Variant="Variant.Outlined" Style="width: 100%;">
+                    <RadzenTextBox @bind-Value="model.IcaoCode" Style="width: 100%;" MaxLength="4" />
+                </RadzenFormField>
+            </RadzenColumn>
+        </RadzenRow>
+        <RadzenFormField Text="@UiStrings.Stations.Name" Variant="Variant.Outlined" Style="width: 100%;">
+            <RadzenTextBox @bind-Value="model.Name" Style="width: 100%;" MaxLength="150" />
+        </RadzenFormField>
+        <RadzenFormField Text="@UiStrings.Stations.City" Variant="Variant.Outlined" Style="width: 100%;">
+            <RadzenTextBox @bind-Value="model.City" Style="width: 100%;" MaxLength="100" />
+        </RadzenFormField>
+        <RadzenFormField Text="@UiStrings.Stations.Country" Variant="Variant.Outlined" Style="width: 100%;">
+            <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" Style="width: 100%;" />
+        </RadzenFormField>
+    </text>;
+
+    private RenderFragment StaffStep() =>@<text>
+        <RadzenStack Gap="0.75rem">
+            @if (staff.Count == 0)
+            {
+                <p class="os-muted">@UiStrings.Stations.NoStaffYet</p>
+            }
+            @foreach (var row in staff)
+            {
+                <RadzenCard @key="row.Key" class="stf-staff-row">
+                    <RadzenRow Gap="0.75rem">
+                        <RadzenColumn Size="4"><RadzenFormField Text="@UiStrings.Stations.StaffName" Variant="Variant.Outlined" Style="width:100%;"><RadzenTextBox @bind-Value="row.FullName" Style="width:100%;" /></RadzenFormField></RadzenColumn>
+                        <RadzenColumn Size="4"><RadzenFormField Text="@UiStrings.Stations.StaffEmail" Variant="Variant.Outlined" Style="width:100%;"><RadzenTextBox @bind-Value="row.Email" Style="width:100%;" /></RadzenFormField></RadzenColumn>
+                        <RadzenColumn Size="4"><RadzenFormField Text="@UiStrings.Stations.ManpowerType" Variant="Variant.Outlined" Style="width:100%;"><RadzenDropDown @bind-Value="row.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" Style="width:100%;" /></RadzenFormField></RadzenColumn>
+                    </RadzenRow>
+                    @if (canGrantPortal)
+                    {
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem" class="stf-portal">
+                            <RadzenCheckBox @bind-Value="row.GrantPortal" Name="@($"gp-{row.Key}")" />
+                            <RadzenLabel Text="@UiStrings.Stations.GrantPortal" Component="@($"gp-{row.Key}")" />
+                            @if (row.GrantPortal)
+                            {
+                                <RadzenDropDown @bind-Value="row.PortalRoleId" Data="@stationRoles" TextProperty="Name" ValueProperty="Id"
+                                                Placeholder="@UiStrings.Stations.PortalRole" Style="min-width: 220px;" />
+                            }
+                        </RadzenStack>
+                    }
+                    <RadzenButton Text="@UiStrings.Stations.RemoveStaff" Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  Click="@(() => staff.Remove(row))" />
+                </RadzenCard>
+            }
+            <RadzenButton Text="@UiStrings.Stations.AddStaff" Icon="person_add" ButtonStyle="ButtonStyle.Secondary"
+                          Click="@(() => staff.Add(new StaffRow()))" />
+        </RadzenStack>
+    </text>;
+
+    private RenderFragment ReviewStep() =>@<text>
+        <RadzenStack Gap="0.5rem">
+            <p><strong>@model.IataCode</strong> @model.Name — @model.City</p>
+            <p class="os-muted">@string.Format(UiStrings.Stations.ReviewStaffCount, staff.Count)</p>
+        </RadzenStack>
+    </text>;
+
+    private RenderFragment ErrorBanner() =>@<text>
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+    </text>;
+
+    private async Task NextAsync()
+    {
+        errorMessage = null;
+        if (step == 0)
+        {
+            if (!ValidateDetails())
+                return;
+        }
+        else if (step == 1)
+        {
+            if (!ValidateStaff())
+                return;
+        }
+        step = Math.Min(2, step + 1);
+        await Task.CompletedTask;
+    }
+
+    private bool ValidateDetails()
+    {
+        if (string.IsNullOrWhiteSpace(model.IataCode) || model.IataCode.Trim().Length != 3) { errorMessage = UiStrings.Stations.IataRequired; return false; }
+        if (!string.IsNullOrWhiteSpace(model.IcaoCode) && model.IcaoCode.Trim().Length != 4) { errorMessage = UiStrings.Stations.IcaoInvalid; return false; }
+        if (string.IsNullOrWhiteSpace(model.Name)) { errorMessage = UiStrings.Stations.NameRequired; return false; }
+        if (string.IsNullOrWhiteSpace(model.City)) { errorMessage = UiStrings.Stations.CityRequired; return false; }
+        if (model.CountryId == Guid.Empty) { errorMessage = UiStrings.Stations.CountryRequired; return false; }
+        return true;
+    }
+
+    private bool ValidateStaff()
+    {
+        foreach (var row in staff)
+        {
+            if (string.IsNullOrWhiteSpace(row.FullName) || string.IsNullOrWhiteSpace(row.Email) || row.ManpowerTypeId == Guid.Empty)
+            {
+                errorMessage = UiStrings.Stations.StaffIncomplete;
+                return false;
+            }
+            if (row.GrantPortal && (row.PortalRoleId is null || row.PortalRoleId == Guid.Empty))
+            {
+                errorMessage = UiStrings.Stations.StaffRoleRequired;
+                return false;
+            }
+        }
+        return true;
+    }
+
     private async Task SubmitAsync()
     {
         errorMessage = null;
-
-        if (string.IsNullOrWhiteSpace(model.IataCode) || model.IataCode.Trim().Length != 3)
-        {
-            errorMessage = UiStrings.Stations.IataRequired;
+        if (!ValidateDetails() || !ValidateStaff())
             return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.IcaoCode) && model.IcaoCode.Trim().Length != 4)
-        {
-            errorMessage = UiStrings.Stations.IcaoInvalid;
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(model.Name))
-        {
-            errorMessage = UiStrings.Stations.NameRequired;
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(model.City))
-        {
-            errorMessage = UiStrings.Stations.CityRequired;
-            return;
-        }
-
-        if (model.CountryId == Guid.Empty)
-        {
-            errorMessage = UiStrings.Stations.CountryRequired;
-            return;
-        }
 
         isSubmitting = true;
-
         try
         {
             var iata = model.IataCode.Trim().ToUpperInvariant();
@@ -139,15 +225,23 @@
             var city = model.City.Trim();
 
             if (StationId is { } id)
+            {
                 await MasterData.UpdateStationAsync(id, new UpdateStationRequest(iata, icao, name, city, model.CountryId), rowVersion ?? string.Empty);
+            }
             else
-                await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId));
+            {
+                var staffRequests = staff.Select(r => new NewStationStaffRequest(
+                    r.FullName.Trim(), r.Email.Trim(), r.ManpowerTypeId, null, null, null,
+                    r.GrantPortal ? r.PortalRoleId : null)).ToList();
+                await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId, staffRequests));
+            }
 
             DialogService.Close(true);
         }
         catch (ApiException ex)
         {
             errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+            step = 0;
         }
         finally
         {
@@ -162,5 +256,15 @@
         public string Name { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
         public Guid CountryId { get; set; }
+    }
+
+    private sealed class StaffRow
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public Guid ManpowerTypeId { get; set; }
+        public bool GrantPortal { get; set; }
+        public Guid? PortalRoleId { get; set; }
     }
 }

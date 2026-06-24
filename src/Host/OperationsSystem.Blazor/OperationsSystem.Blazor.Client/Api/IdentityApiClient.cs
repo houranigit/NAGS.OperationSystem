@@ -83,6 +83,10 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task<RoleDetail> GetRoleAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<RoleDetail>($"/identity/roles/{id}", ct);
 
+    /// <summary>Roles compatible with a given user type, for portal-access pickers (server-filtered).</summary>
+    public Task<IReadOnlyList<RoleOption>> GetRoleOptionsAsync(string userType, CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<RoleOption>>($"/identity/roles/options?userType={Uri.EscapeDataString(userType)}", ct);
+
     public Task<Guid> CreateRoleAsync(CreateRoleRequest request, CancellationToken ct = default) =>
         api.PostAsync<CreateRoleRequest, Guid>("/identity/roles", request, ct);
 

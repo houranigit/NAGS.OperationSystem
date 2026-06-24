@@ -37,6 +37,7 @@ first.
 - `GET /health/live` — process liveness (no dependency checks).
 - `GET /health/ready` — readiness; verifies the Identity, MasterData, and Audit databases are reachable. Wire this to the orchestrator's readiness probe.
 - Every response carries an `X-Correlation-ID` header (echoed from the request when supplied); logs are enriched with `CorrelationId`.
+- **OpenTelemetry**: tracing/metrics wiring is intentionally deferred — the current OpenTelemetry packages (`OpenTelemetry.Api`, OTLP exporter) carry open security advisories, and the build fails on vulnerable packages (`NU1902` as error). Add the instrumentation + an OTLP exporter once patched versions are published, keeping the vulnerability gate green.
 - The transactional outbox retries failed integration events; after `OutboxProcessor.MaxAttempts` (10) a message is **dead-lettered** (logged at Critical, left in the outbox with its `Error` for inspection) and no longer retried.
 
 ## Backup / restore

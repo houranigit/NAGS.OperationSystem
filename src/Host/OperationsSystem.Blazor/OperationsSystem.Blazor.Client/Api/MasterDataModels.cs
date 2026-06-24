@@ -95,7 +95,22 @@ public sealed record StationDetail(
 
 public sealed record StationOption(Guid Id, string IataCode, string Name);
 
-public sealed record CreateStationRequest(string IataCode, string? IcaoCode, string Name, string City, Guid CountryId);
+public sealed record NewStationStaffRequest(
+    string FullName,
+    string Email,
+    Guid ManpowerTypeId,
+    EmploymentContractRequest? EmploymentContract,
+    IReadOnlyList<DayOfWeek>? WorkingDays,
+    IReadOnlyList<StaffLicenseRequest>? Licenses,
+    Guid? PortalAccessRoleId);
+
+public sealed record CreateStationRequest(
+    string IataCode,
+    string? IcaoCode,
+    string Name,
+    string City,
+    Guid CountryId,
+    IReadOnlyList<NewStationStaffRequest>? Staff);
 public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string City, Guid CountryId);
 
 // --- Customers -------------------------------------------------------------

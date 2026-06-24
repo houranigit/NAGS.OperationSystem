@@ -71,6 +71,8 @@ public sealed record UserDetail(
 
 public sealed record InvitedUser(Guid Id, string Email, string DeliveryStatus);
 
+public sealed record RoleOption(Guid Id, string Name, string CompatibleUserType);
+
 public sealed record InviteUserRequest(string Email, string DisplayName);
 public sealed record UpdateUserRequest(string DisplayName);
 public sealed record AssignRoleRequest(Guid RoleId);
