@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject OperationsSystem.Blazor.Client.Api.AuditApiClient AuditApi
 
 <PageTitle>@(user?.DisplayName ?? UiStrings.Users.Title)</PageTitle>
 
@@ -24,6 +25,7 @@
                 <span>@UiStrings.Users.Title</span>
             </button>
 
+            @* ---- Hero ---------------------------------------------------- *@
             <RadzenCard class="@($"us-hero {HeroClass(u)}")">
                 <div class="us-hero-main">
                     <div class="us-avatar @AvatarClass(u)">
@@ -50,6 +52,11 @@
 
                         <p class="us-hero-stamp os-muted">
                             @UiStrings.Users.Created: @u.CreatedAtUtc.ToLocalTime().ToString("g")
+                            @if (u.UpdatedAtUtc is { } updated)
+                            {
+                                <span class="us-hero-stamp-sep">·</span>
+                                @($"{UiStrings.StaffMembers.Updated}: {updated.ToLocalTime().ToString("g")}")
+                            }
                         </p>
                     </div>
 
@@ -82,6 +89,7 @@
                 </div>
             </RadzenCard>
 
+            @* ---- Tabs ---------------------------------------------------- *@
             <nav class="us-tabs" role="tablist">
                 @foreach (var tab in Tabs())
                 {
@@ -93,23 +101,35 @@
                 }
             </nav>
 
+            @* ---- Tab body ------------------------------------------------ *@
             <div class="us-tab-body" role="tabpanel">
                 @(activeTab switch
                 {
+                    UserTab.Overview => OverviewTab(u),
                     UserTab.Sessions => SessionsTab(u),
-                    _ => OverviewTab(u)
+                    _ => ActivityTab(u)
                 })
             </div>
         </div>
     }
 </RequirePermission>
 
+@* ================================================================ Overview *@
 @code {
     private RenderFragment OverviewTab(UserDetail u) =>@<text>
         <div class="us-stack">
             <div class="us-overview-grid">
                 <RadzenCard class="us-card">
                     <div class="us-card-head"><RadzenIcon Icon="person" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="us-field-list">
+                        <DetailField Label="@UiStrings.Users.DisplayName" Value="@u.DisplayName" Icon="person" />
+                        <DetailField Label="@UiStrings.Users.Email" Value="@u.Email" Icon="mail" />
+                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" Icon="badge" />
+                    </div>
+                </RadzenCard>
+
+                <RadzenCard class="us-card">
+                    <div class="us-card-head"><RadzenIcon Icon="security" /><h3>@UiStrings.Sessions.State</h3></div>
                     <div class="us-field-list">
                         <DetailField Label="@UiStrings.Users.Status" Icon="toggle_on">
                             @if (u.IsLockedOut)
@@ -121,11 +141,18 @@
                                 <StatusBadge Label="@u.Status" Tone="@StatusTone(u.Status)" />
                             }
                         </DetailField>
-                        <DetailField Label="@UiStrings.Users.Role" Value="@u.RoleName" Icon="badge" />
-                        <DetailField Label="@UiStrings.Users.Email" Value="@u.Email" Icon="mail" />
-                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="event" />
                         <DetailField Label="@UiStrings.Users.LastLogin" Value="@(u.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)" Icon="login" />
+                        <DetailField Label="@UiStrings.Users.Created" Value="@u.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
+                        <DetailField Label="@UiStrings.StaffMembers.Updated" Value="@(u.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
                     </div>
+                </RadzenCard>
+
+                <RadzenCard class="us-card">
+                    <div class="us-card-head">
+                        <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
+                        <button type="button" class="us-link" @onclick="@(() => activeTab = UserTab.Activity)">@UiStrings.Common.Open</button>
+                    </div>
+                    @TimelineEmpty()
                 </RadzenCard>
             </div>
 
@@ -206,6 +233,34 @@
         </RadzenCard>
     </text>;
 
+    private RenderFragment ActivityTab(UserDetail u) =>@<text>
+        <RadzenCard class="us-card">
+            <div class="us-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
+            @if (activity.Count == 0)
+            {
+                @TimelineEmpty()
+            }
+            else
+            {
+                <div class="us-timeline">
+                    @foreach (var entry in activity)
+                    {
+                        <div class="us-timeline-row" @key="entry.Id">
+                            <span class="us-timeline-icon"><RadzenIcon Icon="history" /></span>
+                            <div>
+                                <p class="us-timeline-title">@entry.Action</p>
+                                <p class="os-muted">
+                                    @entry.OccurredOnUtc.ToString("u")
+                                    &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                                </p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </RadzenCard>
+    </text>;
+
     private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
         <RadzenCard class="us-stat">
             <span class="us-stat-icon us-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
@@ -215,12 +270,23 @@
             </div>
         </RadzenCard>
     </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="us-timeline us-timeline--empty">
+            <span class="us-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="us-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Description</p>
+            </div>
+        </div>
+    </text>;
 }
 
 @code {
     [Parameter] public Guid Id { get; set; }
 
     private UserDetail? user;
+    private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> activity = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
@@ -230,7 +296,7 @@
     private bool sessionsError;
     private UserTab activeTab = UserTab.Overview;
 
-    private enum UserTab { Overview, Sessions }
+    private enum UserTab { Overview, Sessions, Activity }
 
     private sealed record TabDef(UserTab Key, string Label, string Icon);
 
@@ -242,6 +308,7 @@
         yield return new TabDef(UserTab.Overview, UiStrings.Common.Overview, "dashboard");
         if (Auth.HasPermission(IdentityPermissions.SessionsView))
             yield return new TabDef(UserTab.Sessions, UiStrings.Sessions.Title, "devices");
+        yield return new TabDef(UserTab.Activity, UiStrings.Audit.ActivityTitle, "history");
     }
 
     private bool HasMoreActions(UserDetail u) =>
@@ -263,6 +330,20 @@
         {
             user = await Identity.GetUserAsync(Id);
             await LoadSessionsAsync();
+
+            activity = [];
+            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "User", entityId: Id, pageSize: 25);
+                    activity = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    activity = [];
+                }
+            }
         }
         catch (ApiException ex)
         {

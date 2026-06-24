@@ -239,7 +239,7 @@
     margin-top: var(--os-space-1);
 }
 
-/* --- Stack + cards ------------------------------------------------------- */
+/* --- Generic stack + cards ---------------------------------------------- */
 .us-stack {
     display: flex;
     flex-direction: column;
@@ -270,6 +270,22 @@
     font-size: 1.3rem;
 }
 
+.us-link {
+    margin-inline-start: auto;
+    border: none;
+    background: transparent;
+    color: var(--os-color-primary);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.us-link:hover {
+    color: var(--os-color-primary-strong);
+    text-decoration: underline;
+}
+
 .us-count {
     margin-inline-start: auto;
     color: var(--os-color-text-muted);
@@ -280,6 +296,10 @@
 .us-field-list {
     display: grid;
     gap: var(--os-space-3);
+}
+
+.us-field-list--row {
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
 }
 
 /* --- Stat tiles ---------------------------------------------------------- */
@@ -344,6 +364,58 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* --- Activity timeline --------------------------------------------------- */
+.us-timeline {
+    position: relative;
+}
+
+.us-timeline--empty {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-4);
+    padding: var(--os-space-5);
+    border: 1px dashed var(--os-color-border-strong);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.us-timeline-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--os-space-4);
+    padding: var(--os-space-3) 0;
+}
+
+.us-timeline-row + .us-timeline-row {
+    border-top: 1px solid var(--os-color-border);
+}
+
+.us-timeline-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--os-color-neutral-bg);
+    color: var(--os-color-text-muted);
+}
+
+.us-timeline-icon .rz-icon {
+    font-size: 1.6rem;
+}
+
+.us-timeline-title {
+    margin: 0;
+    font-weight: 600;
+    color: var(--os-color-text);
+}
+
+.us-timeline-title + p {
+    margin: var(--os-space-1) 0 0;
+    font-size: var(--os-text-sm);
 }
 
 @media (max-width: 640px) {
