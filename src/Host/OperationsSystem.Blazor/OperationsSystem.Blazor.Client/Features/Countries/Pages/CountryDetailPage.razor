@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
 
 <PageTitle>@(country?.Name ?? UiStrings.Countries.Title)</PageTitle>
 
@@ -24,17 +25,17 @@
                 <span>@UiStrings.Countries.Title</span>
             </button>
 
-            <RadzenCard class="@($"cn-hero {(c.IsActive ? "cn-hero--active" : "cn-hero--inactive")}")">
-                <div class="cn-hero-main">
-                    <div class="cn-avatar @(c.IsActive ? "cn-avatar--active" : "cn-avatar--inactive")">
+            @* ---- Profile (hero only) ------------------------------------- *@
+            <section class="cn-profile @ProfileClass(c)">
+                <div class="cn-hero">
+                    <div class="cn-avatar @AvatarClass(c)">
                         <RadzenIcon Icon="public" />
+                        <span class="cn-avatar-dot @DotClass(c)"></span>
                     </div>
 
-                    <div class="cn-hero-identity">
-                        <h1 class="cn-hero-name">@c.Name</h1>
-                        <p class="cn-hero-sub os-muted">@c.IsoCode</p>
-
-                        <div class="cn-chips">
+                    <div class="cn-identity">
+                        <div class="cn-identity-headline">
+                            <h1 class="cn-name">@c.Name</h1>
                             @if (c.IsActive)
                             {
                                 <StatusBadge Label="@UiStrings.Countries.Active" Tone="success" />
@@ -43,17 +44,20 @@
                             {
                                 <StatusBadge Label="@UiStrings.Countries.Inactive" Tone="neutral" />
                             }
-                            <span class="cn-chip"><RadzenIcon Icon="tag" /><span>@UiStrings.Countries.IsoCode: <strong>@c.IsoCode</strong></span></span>
+                            <span class="cn-info-badge"><RadzenIcon Icon="tag" />@c.IsoCode</span>
                         </div>
 
-                        <p class="cn-hero-stamp os-muted">
-                            @UiStrings.Countries.Created: @c.CreatedAtUtc.ToLocalTime().ToString("g")
-                            @if (c.UpdatedAtUtc is { } updated)
-                            {
-                                <span class="cn-hero-stamp-sep">·</span>
-                                @($"{UiStrings.Countries.Updated}: {updated.ToLocalTime().ToString("g")}")
-                            }
-                        </p>
+                        <div class="cn-meta-row">
+                            <RadzenIcon Icon="public" />
+                            <span>@c.IsoCode</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(c.Id)</span>
+                            <button type="button" class="cn-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(c.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="cn-hero-actions">
@@ -74,50 +78,65 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
+            </section>
 
-            <div class="cn-overview-grid">
-                <RadzenCard class="cn-card">
-                    <div class="cn-card-head"><RadzenIcon Icon="public" /><h3>@UiStrings.Common.Details</h3></div>
-                    <div class="cn-field-list">
-                        <DetailField Label="@UiStrings.Countries.Name" Value="@c.Name" Icon="public" />
-                        <DetailField Label="@UiStrings.Countries.IsoCode" Value="@c.IsoCode" Icon="tag" />
-                        <DetailField Label="@UiStrings.Countries.Status" Icon="toggle_on">
-                            @if (c.IsActive)
-                            {
-                                <StatusBadge Label="@UiStrings.Countries.Active" Tone="success" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@UiStrings.Countries.Inactive" Tone="neutral" />
-                            }
-                        </DetailField>
-                        <DetailField Label="@UiStrings.Countries.Created" Value="@c.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        <DetailField Label="@UiStrings.Countries.Updated" Value="@(c.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
+            @* ---- Overview (tab-body stack) ------------------------------- *@
+            <div class="cn-tab-body" role="tabpanel">
+                <div class="cn-stack">
+                    <div class="cn-overview-grid">
+                        @* --- Status --- *@
+                        <RadzenCard class="cn-card">
+                            <div class="cn-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.Countries.Status</h3></div>
+                            <div class="cn-lead">
+                                <span class="cn-lead-dot cn-lead-dot--@StatusToneColor(c)"></span>
+                                <div>
+                                    <p class="cn-lead-title">@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)</p>
+                                    <p class="os-muted cn-lead-desc">@StatusDescription(c)</p>
+                                </div>
+                            </div>
+                            <dl class="cn-metrics">
+                                <div class="cn-metric">
+                                    <dt>@UiStrings.Countries.Created</dt>
+                                    <dd>@c.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                                </div>
+                                <div class="cn-metric">
+                                    <dt>@UiStrings.Countries.Updated</dt>
+                                    <dd>@(c.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                                </div>
+                            </dl>
+                        </RadzenCard>
+
+                        @* --- Details --- *@
+                        <RadzenCard class="cn-card">
+                            <div class="cn-card-head"><RadzenIcon Icon="public" /><h3>@UiStrings.Common.Details</h3></div>
+                            <div class="cn-lead">
+                                <span class="cn-lead-icon cn-lead-icon--blue"><RadzenIcon Icon="public" /></span>
+                                <div>
+                                    <p class="cn-lead-title">@c.Name</p>
+                                    <p class="os-muted cn-lead-desc">@c.IsoCode</p>
+                                </div>
+                            </div>
+                            <dl class="cn-metrics cn-metrics--tall">
+                                <div class="cn-metric">
+                                    <dt>@UiStrings.Countries.Name</dt>
+                                    <dd>@c.Name</dd>
+                                </div>
+                                <div class="cn-metric">
+                                    <dt>@UiStrings.Countries.IsoCode</dt>
+                                    <dd>@c.IsoCode</dd>
+                                </div>
+                                <div class="cn-metric">
+                                    <dt>@UiStrings.Countries.Status</dt>
+                                    <dd>@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)</dd>
+                                </div>
+                            </dl>
+                        </RadzenCard>
                     </div>
-                </RadzenCard>
-            </div>
-
-            <div class="cn-stats">
-                @StatTile("toggle_on", c.IsActive ? "green" : "amber", UiStrings.Countries.Status, c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)
-                @StatTile("tag", "blue", UiStrings.Countries.IsoCode, c.IsoCode)
-                @StatTile("schedule", "blue", UiStrings.Countries.Created, c.CreatedAtUtc.ToLocalTime().ToString("d"))
+                </div>
             </div>
         </div>
     }
 </RequirePermission>
-
-@code {
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="cn-stat">
-            <span class="cn-stat-icon cn-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="cn-stat-body">
-                <p class="cn-stat-label">@label</p>
-                <p class="cn-stat-value">@value</p>
-            </div>
-        </RadzenCard>
-    </text>;
-}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -200,5 +219,35 @@
         (!c.IsActive && Auth.HasPermission(MasterDataPermissions.CountriesActivate))
         || (c.IsActive && Auth.HasPermission(MasterDataPermissions.CountriesDeactivate));
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private void GoBack() => Navigation.NavigateTo("/master-data/countries");
+
+    private static string ProfileClass(CountryDetail c) =>
+        c.IsActive ? "cn-profile--active" : "cn-profile--inactive";
+
+    private static string AvatarClass(CountryDetail c) =>
+        c.IsActive ? "cn-avatar--active" : "cn-avatar--inactive";
+
+    private static string DotClass(CountryDetail c) =>
+        c.IsActive ? "cn-avatar-dot--active" : "cn-avatar-dot--inactive";
+
+    private static string StatusToneColor(CountryDetail c) =>
+        c.IsActive ? "success" : "neutral";
+
+    private static string StatusDescription(CountryDetail c) =>
+        c.IsActive ? UiStrings.Countries.FormIntro : UiStrings.Countries.ConfirmDeactivate;
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
 }

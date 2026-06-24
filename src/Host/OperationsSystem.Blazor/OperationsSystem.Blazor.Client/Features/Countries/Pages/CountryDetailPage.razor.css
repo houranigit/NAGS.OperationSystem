@@ -1,22 +1,18 @@
 /* ==========================================================================
-   Country Details — workspace layout (simple, no tabs).
-   Token-driven and RTL-safe (logical properties). Reuses --os-* design tokens
-   and mirrors the Staff Member detail design language so master-data detail
-   pages read consistently across the portal.
+   Country Details — enterprise SaaS profile.
+   One unified profile surface (hero + tabs), typography-driven overview cards,
+   a connected activity timeline, and responsive session table → cards.
+   Token-driven and RTL-safe (logical properties); reuses --os-* tokens.
    ========================================================================== */
 
 .cn-workspace {
     display: flex;
     flex-direction: column;
-    gap: var(--os-space-4);
+    gap: var(--os-space-3);
 }
 
 .cn-workspace ::deep .rz-card {
-    padding: var(--os-space-4);
-}
-
-.cn-workspace ::deep .os-detail-field {
-    padding: var(--os-space-2);
+    padding: var(--os-space-5);
 }
 
 /* --- Back link ----------------------------------------------------------- */
@@ -27,7 +23,7 @@
     align-self: flex-start;
     padding: 0.35rem 0.85rem 0.35rem 0.55rem;
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-pill);
+    border-radius: var(--os-radicn-pill);
     background: var(--os-color-surface);
     color: var(--os-color-text-muted);
     font-family: inherit;
@@ -47,44 +43,54 @@
     font-size: 1.15rem;
 }
 
-/* --- Hero ---------------------------------------------------------------- */
-.cn-hero {
+/* --- Profile surface (hero + tabs) -------------------------------------- */
+.cn-profile {
     position: relative;
     overflow: hidden;
-    padding: var(--os-space-4);
+    background: var(--os-color-surface);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radicn-lg);
+    box-shadow: var(--os-shadow-sm);
 }
 
-.cn-hero::before {
+.cn-profile::before {
     content: "";
     position: absolute;
     inset-block-start: 0;
     inset-inline: 0;
-    height: 4px;
+    height: 3px;
     background: var(--os-color-primary);
 }
 
-.cn-hero--inactive::before {
+.cn-profile--inactive::before {
     background: var(--os-color-border-strong);
 }
 
-.cn-hero-main {
+
+.cn-profile--inactive::before {
+    background: var(--os-color-danger);
+}
+
+
+.cn-hero {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: var(--os-space-4);
+    align-items: flex-start;
+    gap: var(--os-space-5);
+    padding: var(--os-space-5) var(--os-space-4);
 }
 
+/* --- Avatar -------------------------------------------------------------- */
 .cn-avatar {
+    position: relative;
     display: inline-grid;
     place-items: center;
-    width: 4.5rem;
-    height: 4.5rem;
+    width: 5.5rem;
+    height: 5.5rem;
     flex-shrink: 0;
-    border-radius: var(--os-radius-lg);
-}
-
-.cn-avatar .rz-icon {
-    font-size: 2.1rem;
+    border-radius: var(--os-radicn-lg);
+    font-size: var(--os-text-2xl);
+    font-weight: 800;
 }
 
 .cn-avatar--active {
@@ -97,62 +103,139 @@
     color: var(--os-color-text-muted);
 }
 
-.cn-hero-identity {
-    flex: 1 1 18rem;
+.cn-avatar--locked {
+    background: var(--os-color-danger-bg);
+    color: var(--os-color-danger);
+}
+
+.cn-avatar-dot {
+    position: absolute;
+    inset-block-end: -2px;
+    inset-inline-end: -2px;
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 50%;
+    border: 3px solid var(--os-color-surface);
+}
+
+.cn-avatar-dot--active { background: var(--os-color-success); }
+.cn-avatar-dot--inactive { background: var(--os-color-text-subtle); }
+.cn-avatar-dot--locked { background: var(--os-color-danger); }
+
+/* --- Identity ------------------------------------------------------------ */
+.cn-identity {
+    flex: 1 1 20rem;
     min-width: 0;
+    align-self: center;
 }
 
-.cn-hero-name {
-    margin: 0;
-    font-size: var(--os-text-2xl);
-    line-height: 1.2;
-    word-break: break-word;
-}
-
-.cn-hero-sub {
-    margin: var(--os-space-1) 0 0;
-    font-size: var(--os-text-sm);
-}
-
-.cn-chips {
+.cn-identity-headline {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--os-space-2);
-    margin-top: var(--os-space-2);
+    gap: var(--os-space-3);
 }
 
-.cn-chip {
+.cn-name {
+  font-size: var(--os-text-2xl);
+  line-height: 1.2;
+  word-break: break-word;
+  margin: 0px;
+  font-weight: 600;
+}
+
+.cn-info-badge {
     display: inline-flex;
     align-items: center;
     gap: var(--os-space-1);
     padding: 0.2rem 0.65rem;
-    border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-pill);
-    background: var(--os-color-surface-muted);
-    color: var(--os-color-text-muted);
+    border-radius: var(--os-radicn-pill);
+    background: var(--os-color-info-bg);
+    color: var(--os-color-info);
     font-size: var(--os-text-xs);
     font-weight: 600;
     white-space: nowrap;
 }
 
-.cn-chip strong {
-    color: var(--os-color-text);
-}
-
-.cn-chip .rz-icon {
+.cn-info-badge .rz-icon {
     font-size: 0.95rem;
 }
 
-.cn-hero-stamp {
-    margin: var(--os-space-2) 0 0;
+.cn-meta-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-top: var(--os-space-2);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-base);
+}
+
+.cn-meta-row .rz-icon {
+    font-size: 1.05rem;
+}
+
+.cn-copy {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: none;
+    border-radius: var(--os-radicn-sm);
+    background: transparent;
+    color: var(--os-color-text-subtle);
+    cursor: pointer;
+    transition: background var(--os-transition), color var(--os-transition);
+}
+
+.cn-copy:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-primary);
+}
+
+.cn-copy .rz-icon {
+    font-size: 1rem;
+}
+
+.cn-mono {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+}
+
+/* --- Metadata row -------------------------------------------------------- */
+.cn-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-5);
+    margin: var(--os-space-4) 0 0;
+}
+
+.cn-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.cn-meta-item dt {
+    color: var(--os-color-text-subtle);
     font-size: var(--os-text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 
-.cn-hero-stamp-sep {
-    margin-inline: var(--os-space-2);
+.cn-meta-item dd {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
 }
 
+/* --- Hero actions -------------------------------------------------------- */
 .cn-hero-actions {
     display: flex;
     flex-wrap: wrap;
@@ -161,12 +244,73 @@
     margin-inline-start: auto;
 }
 
-/* --- Cards --------------------------------------------------------------- */
+/* --- Tab strip (attached to profile) ------------------------------------ */
+.cn-tabs {
+    display: flex;
+    gap: var(--os-space-1);
+    padding-inline: var(--os-space-4);
+    border-top: 1px solid var(--os-color-border);
+    background: var(--os-color-surface-muted);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.cn-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.cn-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: 0.85rem var(--os-space-3);
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--os-color-text-muted);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--os-transition), border-color var(--os-transition);
+}
+
+.cn-tab .rz-icon {
+    font-size: 1.15rem;
+}
+
+.cn-tab:hover {
+    color: var(--os-color-text);
+}
+
+.cn-tab--active {
+    color: var(--os-color-primary);
+    border-bottom-color: var(--os-color-primary);
+}
+
+.cn-tab-body {
+    margin-top: calc(-1 * var(--os-space-1));
+}
+
+/* --- Generic stack + cards ---------------------------------------------- */
+.cn-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-3);
+}
+
 .cn-overview-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-    gap: var(--os-space-4);
-    align-items: start;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: var(--os-space-3);
+    align-items: stretch;
+}
+
+.cn-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
 }
 
 .cn-card-head {
@@ -183,81 +327,232 @@
 
 .cn-card-head .rz-icon {
     color: var(--os-color-primary);
-    font-size: 1.3rem;
+    font-size: 1.25rem;
 }
 
-.cn-field-list {
-    display: grid;
-    gap: var(--os-space-3);
+.cn-link {
+    margin-inline-start: auto;
+    border: none;
+    background: transparent;
+    color: var(--os-color-primary);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    cursor: pointer;
 }
 
-/* --- Stat tiles ---------------------------------------------------------- */
-.cn-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-    gap: var(--os-space-4);
+.cn-link:hover {
+    color: var(--os-color-primary-strong);
+    text-decoration: underline;
 }
 
-.cn-stat {
-    display: flex;
+.cn-count {
+    margin-inline-start: auto;
+}
+
+.cn-card-link {
+    display: inline-flex;
     align-items: center;
-    gap: var(--os-space-4);
+    gap: 0.15rem;
+    margin-top: var(--os-space-4);
+    align-self: flex-start;
+    border: none;
+    background: transparent;
+    color: var(--os-color-primary);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    cursor: pointer;
 }
 
-.cn-stat-icon {
+.cn-card-link:hover {
+    color: var(--os-color-primary-strong);
+}
+
+.cn-card-link .rz-icon {
+    font-size: 1.1rem;
+}
+
+/* --- Lead block (card highlight) ---------------------------------------- */
+.cn-lead {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--os-space-3);
+    padding-bottom: var(--os-space-4);
+    margin-bottom: var(--os-space-4);
+    border-bottom: 1px solid var(--os-color-border);
+}
+
+.cn-lead-dot {
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-top: 0.4rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+}
+
+.cn-lead-dot--success { background: var(--os-color-success); }
+.cn-lead-dot--warning { background: var(--os-color-warning); }
+.cn-lead-dot--danger { background: var(--os-color-danger); }
+.cn-lead-dot--neutral { background: var(--os-color-text-subtle); }
+
+.cn-lead-icon {
     display: inline-grid;
     place-items: center;
-    width: 3rem;
-    height: 3rem;
+    width: 2.5rem;
+    height: 2.5rem;
     flex-shrink: 0;
-    border-radius: var(--os-radius-md);
+    border-radius: var(--os-radicn-md);
 }
 
-.cn-stat-icon .rz-icon {
-    font-size: 1.5rem;
-}
-
-.cn-stat-icon--blue {
+.cn-lead-icon--blue {
     background: var(--os-color-primary-soft);
     color: var(--os-color-primary);
 }
 
-.cn-stat-icon--green {
-    background: var(--os-color-success-bg);
-    color: var(--os-color-success);
+.cn-lead-icon .rz-icon {
+    font-size: 1.4rem;
 }
 
-.cn-stat-icon--amber {
-    background: var(--os-color-warning-bg);
-    color: var(--os-color-warning);
+.cn-lead-title {
+    margin: 0;
+    font-size: var(--os-text-base);
+    font-weight: 700;
+    color: var(--os-color-text);
 }
 
-.cn-stat-body {
+.cn-lead-desc {
+    margin: 0.15rem 0 0;
+    font-size: var(--os-text-sm);
+    line-height: 1.4;
+}
+
+/* --- Metric list --------------------------------------------------------- */
+.cn-metrics {
+    display: grid;
+    gap: var(--os-space-3);
+    margin: 0;
+}
+
+.cn-metrics--tall {
+    gap: var(--os-space-4);
+}
+
+.cn-metric {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--os-space-3);
+}
+
+.cn-metric dt {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.cn-metric dd {
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    text-align: end;
+    word-break: break-word;
+}
+
+/* --- Activity timeline --------------------------------------------------- */
+.cn-timeline {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cn-timeline-row {
+    position: relative;
+    display: flex;
+    gap: var(--os-space-3);
+    padding-bottom: var(--os-space-4);
+}
+
+.cn-timeline-row:last-child {
+    padding-bottom: 0;
+}
+
+.cn-timeline-icon {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--os-color-neutral-bg);
+    color: var(--os-color-text-muted);
+}
+
+.cn-timeline-icon .rz-icon {
+    font-size: 1.3rem;
+}
+
+.cn-timeline-row:not(:last-child) .cn-timeline-icon::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: calc(50% - 1px);
+    inset-block-start: 100%;
+    width: 2px;
+    height: var(--os-space-4);
+    background: var(--os-color-border);
+}
+
+.cn-timeline-icon--blue { background: var(--os-color-primary-soft); color: var(--os-color-primary); }
+.cn-timeline-icon--green { background: var(--os-color-success-bg); color: var(--os-color-success); }
+.cn-timeline-icon--amber { background: var(--os-color-warning-bg); color: var(--os-color-warning); }
+.cn-timeline-icon--red { background: var(--os-color-danger-bg); color: var(--os-color-danger); }
+
+.cn-timeline-content {
+    padding-top: 0.35rem;
     min-width: 0;
 }
 
-.cn-stat-label {
+.cn-timeline-title {
     margin: 0;
-    color: var(--os-color-text-muted);
-    font-size: var(--os-text-xs);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    color: var(--os-color-text);
 }
 
-.cn-stat-value {
+.cn-timeline-sub {
     margin: 0.15rem 0 0;
-    font-size: var(--os-text-xl);
-    font-weight: 700;
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: var(--os-text-sm);
 }
 
-@media (max-width: 640px) {
+.cn-dot-sep {
+    margin-inline: var(--os-space-1);
+}
+
+.cn-timeline-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-4);
+    padding: var(--os-space-5);
+    border: 1px dashed var(--os-color-border-strong);
+    border-radius: var(--os-radicn-md);
+    background: var(--os-color-surface-muted);
+}
+
+/* --- Responsive --------------------------------------------------------- */
+@media (max-width: 768px) {
+    .cn-hero {
+        padding: var(--os-space-5) var(--os-space-4) var(--os-space-4);
+    }
+
     .cn-hero-actions {
         width: 100%;
         margin-inline-start: 0;
     }
+
+    .cn-name {
+        font-size: 1.6rem;
+    }
+
 }

@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
 
 <PageTitle>@(item?.Name ?? UiStrings.ManpowerTypes.Title)</PageTitle>
 
@@ -24,17 +25,17 @@
                 <span>@UiStrings.ManpowerTypes.Title</span>
             </button>
 
-            <RadzenCard class="@($"mt-hero {(m.IsActive ? "mt-hero--active" : "mt-hero--inactive")}")">
-                <div class="mt-hero-main">
-                    <div class="mt-avatar @(m.IsActive ? "mt-avatar--active" : "mt-avatar--inactive")">
+            @* ---- Profile (hero only) ------------------------------------- *@
+            <section class="mt-profile @ProfileClass(m)">
+                <div class="mt-hero">
+                    <div class="mt-avatar @AvatarClass(m)">
                         <RadzenIcon Icon="engineering" />
+                        <span class="mt-avatar-dot @DotClass(m)"></span>
                     </div>
 
-                    <div class="mt-hero-identity">
-                        <h1 class="mt-hero-name">@m.Name</h1>
-                        <p class="mt-hero-sub os-muted">@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</p>
-
-                        <div class="mt-chips">
+                    <div class="mt-identity">
+                        <div class="mt-identity-headline">
+                            <h1 class="mt-name">@m.Name</h1>
                             @if (m.IsActive)
                             {
                                 <StatusBadge Label="@UiStrings.ManpowerTypes.Active" Tone="success" />
@@ -45,14 +46,17 @@
                             }
                         </div>
 
-                        <p class="mt-hero-stamp os-muted">
-                            @UiStrings.ManpowerTypes.Created: @m.CreatedAtUtc.ToLocalTime().ToString("g")
-                            @if (m.UpdatedAtUtc is { } updated)
-                            {
-                                <span class="mt-hero-stamp-sep">·</span>
-                                @($"{UiStrings.ManpowerTypes.Updated}: {updated.ToLocalTime().ToString("g")}")
-                            }
-                        </p>
+                        <div class="mt-meta-row">
+                            <RadzenIcon Icon="notes" />
+                            <span>@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(m.Id)</span>
+                            <button type="button" class="mt-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(m.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="mt-hero-actions">
@@ -73,50 +77,65 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
+            </section>
 
-            <div class="mt-overview-grid">
-                <RadzenCard class="mt-card">
-                    <div class="mt-card-head"><RadzenIcon Icon="engineering" /><h3>@UiStrings.Common.Details</h3></div>
-                    <div class="mt-field-list">
-                        <DetailField Label="@UiStrings.ManpowerTypes.Name" Value="@m.Name" Icon="engineering" />
-                        <DetailField Label="@UiStrings.ManpowerTypes.ManpowerDescription"
-                                     Value="@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)" Icon="notes" />
-                        <DetailField Label="@UiStrings.ManpowerTypes.Status" Icon="toggle_on">
-                            @if (m.IsActive)
-                            {
-                                <StatusBadge Label="@UiStrings.ManpowerTypes.Active" Tone="success" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@UiStrings.ManpowerTypes.Inactive" Tone="neutral" />
-                            }
-                        </DetailField>
-                        <DetailField Label="@UiStrings.ManpowerTypes.Created" Value="@m.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        <DetailField Label="@UiStrings.ManpowerTypes.Updated" Value="@(m.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
+            @* ---- Overview (tab-body stack) ------------------------------- *@
+            <div class="mt-tab-body" role="tabpanel">
+                <div class="mt-stack">
+                    <div class="mt-overview-grid">
+                        @* --- Status --- *@
+                        <RadzenCard class="mt-card">
+                            <div class="mt-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.ManpowerTypes.Status</h3></div>
+                            <div class="mt-lead">
+                                <span class="mt-lead-dot mt-lead-dot--@StatusToneColor(m)"></span>
+                                <div>
+                                    <p class="mt-lead-title">@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)</p>
+                                    <p class="os-muted mt-lead-desc">@StatusDescription(m)</p>
+                                </div>
+                            </div>
+                            <dl class="mt-metrics">
+                                <div class="mt-metric">
+                                    <dt>@UiStrings.ManpowerTypes.Created</dt>
+                                    <dd>@m.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                                </div>
+                                <div class="mt-metric">
+                                    <dt>@UiStrings.ManpowerTypes.Updated</dt>
+                                    <dd>@(m.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                                </div>
+                            </dl>
+                        </RadzenCard>
+
+                        @* --- Details --- *@
+                        <RadzenCard class="mt-card">
+                            <div class="mt-card-head"><RadzenIcon Icon="engineering" /><h3>@UiStrings.Common.Details</h3></div>
+                            <div class="mt-lead">
+                                <span class="mt-lead-icon mt-lead-icon--blue"><RadzenIcon Icon="engineering" /></span>
+                                <div>
+                                    <p class="mt-lead-title">@m.Name</p>
+                                    <p class="os-muted mt-lead-desc">@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</p>
+                                </div>
+                            </div>
+                            <dl class="mt-metrics mt-metrics--tall">
+                                <div class="mt-metric">
+                                    <dt>@UiStrings.ManpowerTypes.Name</dt>
+                                    <dd>@m.Name</dd>
+                                </div>
+                                <div class="mt-metric">
+                                    <dt>@UiStrings.ManpowerTypes.ManpowerDescription</dt>
+                                    <dd>@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</dd>
+                                </div>
+                                <div class="mt-metric">
+                                    <dt>@UiStrings.ManpowerTypes.Status</dt>
+                                    <dd>@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)</dd>
+                                </div>
+                            </dl>
+                        </RadzenCard>
                     </div>
-                </RadzenCard>
-            </div>
-
-            <div class="mt-stats">
-                @StatTile("toggle_on", m.IsActive ? "green" : "amber", UiStrings.ManpowerTypes.Status, m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)
-                @StatTile("schedule", "blue", UiStrings.ManpowerTypes.Created, m.CreatedAtUtc.ToLocalTime().ToString("d"))
+                </div>
             </div>
         </div>
     }
 </RequirePermission>
-
-@code {
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="mt-stat">
-            <span class="mt-stat-icon mt-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="mt-stat-body">
-                <p class="mt-stat-label">@label</p>
-                <p class="mt-stat-value">@value</p>
-            </div>
-        </RadzenCard>
-    </text>;
-}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -199,5 +218,35 @@
         (!m.IsActive && Auth.HasPermission(MasterDataPermissions.ManpowerTypesActivate))
         || (m.IsActive && Auth.HasPermission(MasterDataPermissions.ManpowerTypesDeactivate));
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private void GoBack() => Navigation.NavigateTo("/master-data/manpower-types");
+
+    private static string ProfileClass(ManpowerTypeDetail m) =>
+        m.IsActive ? "mt-profile--active" : "mt-profile--inactive";
+
+    private static string AvatarClass(ManpowerTypeDetail m) =>
+        m.IsActive ? "mt-avatar--active" : "mt-avatar--inactive";
+
+    private static string DotClass(ManpowerTypeDetail m) =>
+        m.IsActive ? "mt-avatar-dot--active" : "mt-avatar-dot--inactive";
+
+    private static string StatusToneColor(ManpowerTypeDetail m) =>
+        m.IsActive ? "success" : "neutral";
+
+    private static string StatusDescription(ManpowerTypeDetail m) =>
+        m.IsActive ? UiStrings.ManpowerTypes.FormIntro : UiStrings.ManpowerTypes.ConfirmDeactivate;
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
 }

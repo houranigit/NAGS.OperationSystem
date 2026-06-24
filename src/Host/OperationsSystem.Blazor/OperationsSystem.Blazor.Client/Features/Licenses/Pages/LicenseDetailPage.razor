@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
 
 <PageTitle>@(item?.Code ?? UiStrings.Licenses.Title)</PageTitle>
 
@@ -24,17 +25,17 @@
                 <span>@UiStrings.Licenses.Title</span>
             </button>
 
-            <RadzenCard class="@($"lc-hero {(l.IsActive ? "lc-hero--active" : "lc-hero--inactive")}")">
-                <div class="lc-hero-main">
-                    <div class="lc-avatar @(l.IsActive ? "lc-avatar--active" : "lc-avatar--inactive")">
+            @* ---- Profile (hero only) ------------------------------------- *@
+            <section class="lc-profile @ProfileClass(l)">
+                <div class="lc-hero">
+                    <div class="lc-avatar @AvatarClass(l)">
                         <RadzenIcon Icon="badge" />
+                        <span class="lc-avatar-dot @DotClass(l)"></span>
                     </div>
 
-                    <div class="lc-hero-identity">
-                        <h1 class="lc-hero-name">@l.Name</h1>
-                        <p class="lc-hero-sub os-muted">@l.Code</p>
-
-                        <div class="lc-chips">
+                    <div class="lc-identity">
+                        <div class="lc-identity-headline">
+                            <h1 class="lc-name">@l.Name</h1>
                             @if (l.IsActive)
                             {
                                 <StatusBadge Label="@UiStrings.Licenses.Active" Tone="success" />
@@ -43,17 +44,20 @@
                             {
                                 <StatusBadge Label="@UiStrings.Licenses.Inactive" Tone="neutral" />
                             }
-                            <span class="lc-chip"><RadzenIcon Icon="tag" /><span>@UiStrings.Licenses.Code: <strong>@l.Code</strong></span></span>
+                            <span class="lc-info-badge"><RadzenIcon Icon="tag" />@l.Code</span>
                         </div>
 
-                        <p class="lc-hero-stamp os-muted">
-                            @UiStrings.Licenses.Created: @l.CreatedAtUtc.ToLocalTime().ToString("g")
-                            @if (l.UpdatedAtUtc is { } updated)
-                            {
-                                <span class="lc-hero-stamp-sep">·</span>
-                                @($"{UiStrings.Licenses.Updated}: {updated.ToLocalTime().ToString("g")}")
-                            }
-                        </p>
+                        <div class="lc-meta-row">
+                            <RadzenIcon Icon="notes" />
+                            <span>@(string.IsNullOrWhiteSpace(l.Description) ? UiStrings.Licenses.NoDescription : l.Description)</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(l.Id)</span>
+                            <button type="button" class="lc-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(l.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="lc-hero-actions">
@@ -74,52 +78,69 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
+            </section>
 
-            <div class="lc-overview-grid">
-                <RadzenCard class="lc-card">
-                    <div class="lc-card-head"><RadzenIcon Icon="badge" /><h3>@UiStrings.Common.Details</h3></div>
-                    <div class="lc-field-list">
-                        <DetailField Label="@UiStrings.Licenses.Code" Value="@l.Code" Icon="tag" />
-                        <DetailField Label="@UiStrings.Licenses.Name" Value="@l.Name" Icon="badge" />
-                        <DetailField Label="@UiStrings.Licenses.LicenseDescription"
-                                     Value="@(string.IsNullOrWhiteSpace(l.Description) ? UiStrings.Licenses.NoDescription : l.Description)" Icon="notes" />
-                        <DetailField Label="@UiStrings.Licenses.Status" Icon="toggle_on">
-                            @if (l.IsActive)
-                            {
-                                <StatusBadge Label="@UiStrings.Licenses.Active" Tone="success" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@UiStrings.Licenses.Inactive" Tone="neutral" />
-                            }
-                        </DetailField>
-                        <DetailField Label="@UiStrings.Licenses.Created" Value="@l.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        <DetailField Label="@UiStrings.Licenses.Updated" Value="@(l.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
+            @* ---- Overview (tab-body stack) ------------------------------- *@
+            <div class="lc-tab-body" role="tabpanel">
+                <div class="lc-stack">
+                    <div class="lc-overview-grid">
+                        @* --- Status --- *@
+                        <RadzenCard class="lc-card">
+                            <div class="lc-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.Licenses.Status</h3></div>
+                            <div class="lc-lead">
+                                <span class="lc-lead-dot lc-lead-dot--@StatusToneColor(l)"></span>
+                                <div>
+                                    <p class="lc-lead-title">@(l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)</p>
+                                    <p class="os-muted lc-lead-desc">@StatusDescription(l)</p>
+                                </div>
+                            </div>
+                            <dl class="lc-metrics">
+                                <div class="lc-metric">
+                                    <dt>@UiStrings.Licenses.Created</dt>
+                                    <dd>@l.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                                </div>
+                                <div class="lc-metric">
+                                    <dt>@UiStrings.Licenses.Updated</dt>
+                                    <dd>@(l.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                                </div>
+                            </dl>
+                        </RadzenCard>
+
+                        @* --- Details --- *@
+                        <RadzenCard class="lc-card">
+                            <div class="lc-card-head"><RadzenIcon Icon="badge" /><h3>@UiStrings.Common.Details</h3></div>
+                            <div class="lc-lead">
+                                <span class="lc-lead-icon lc-lead-icon--blue"><RadzenIcon Icon="badge" /></span>
+                                <div>
+                                    <p class="lc-lead-title">@l.Name</p>
+                                    <p class="os-muted lc-lead-desc">@l.Code</p>
+                                </div>
+                            </div>
+                            <dl class="lc-metrics lc-metrics--tall">
+                                <div class="lc-metric">
+                                    <dt>@UiStrings.Licenses.Code</dt>
+                                    <dd>@l.Code</dd>
+                                </div>
+                                <div class="lc-metric">
+                                    <dt>@UiStrings.Licenses.Name</dt>
+                                    <dd>@l.Name</dd>
+                                </div>
+                                <div class="lc-metric">
+                                    <dt>@UiStrings.Licenses.LicenseDescription</dt>
+                                    <dd>@(string.IsNullOrWhiteSpace(l.Description) ? UiStrings.Licenses.NoDescription : l.Description)</dd>
+                                </div>
+                                <div class="lc-metric">
+                                    <dt>@UiStrings.Licenses.Status</dt>
+                                    <dd>@(l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)</dd>
+                                </div>
+                            </dl>
+                        </RadzenCard>
                     </div>
-                </RadzenCard>
-            </div>
-
-            <div class="lc-stats">
-                @StatTile("toggle_on", l.IsActive ? "green" : "amber", UiStrings.Licenses.Status, l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)
-                @StatTile("tag", "blue", UiStrings.Licenses.Code, l.Code)
-                @StatTile("schedule", "blue", UiStrings.Licenses.Created, l.CreatedAtUtc.ToLocalTime().ToString("d"))
+                </div>
             </div>
         </div>
     }
 </RequirePermission>
-
-@code {
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="lc-stat">
-            <span class="lc-stat-icon lc-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="lc-stat-body">
-                <p class="lc-stat-label">@label</p>
-                <p class="lc-stat-value">@value</p>
-            </div>
-        </RadzenCard>
-    </text>;
-}
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -202,5 +223,35 @@
         (!l.IsActive && Auth.HasPermission(MasterDataPermissions.LicensesActivate))
         || (l.IsActive && Auth.HasPermission(MasterDataPermissions.LicensesDeactivate));
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private void GoBack() => Navigation.NavigateTo("/master-data/licenses");
+
+    private static string ProfileClass(LicenseDetail l) =>
+        l.IsActive ? "lc-profile--active" : "lc-profile--inactive";
+
+    private static string AvatarClass(LicenseDetail l) =>
+        l.IsActive ? "lc-avatar--active" : "lc-avatar--inactive";
+
+    private static string DotClass(LicenseDetail l) =>
+        l.IsActive ? "lc-avatar-dot--active" : "lc-avatar-dot--inactive";
+
+    private static string StatusToneColor(LicenseDetail l) =>
+        l.IsActive ? "success" : "neutral";
+
+    private static string StatusDescription(LicenseDetail l) =>
+        l.IsActive ? UiStrings.Licenses.FormIntro : UiStrings.Licenses.ConfirmDeactivate;
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
 }

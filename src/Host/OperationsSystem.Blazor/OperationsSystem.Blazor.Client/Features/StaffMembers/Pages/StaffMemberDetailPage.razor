@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
 @inject OperationsSystem.Blazor.Client.Api.AuditApiClient AuditApi
 
 <PageTitle>@(item?.FullName ?? UiStrings.StaffMembers.Title)</PageTitle>
@@ -25,20 +26,17 @@
                 <span>@UiStrings.StaffMembers.Title</span>
             </button>
 
-            @* ---- Hero ---------------------------------------------------- *@
-            <RadzenCard class="@($"sm-hero {(s.IsActive ? "sm-hero--active" : "sm-hero--inactive")}")">
-                <div class="sm-hero-main">
-                    <div class="sm-avatar @(s.IsActive ? "sm-avatar--active" : "sm-avatar--inactive")">
+            @* ---- Profile (hero + tabs as one unit) ----------------------- *@
+            <section class="sm-profile @ProfileClass(s)">
+                <div class="sm-hero">
+                    <div class="sm-avatar @AvatarClass(s)">
                         <span>@Initials(s.FullName)</span>
-                        <span class="sm-avatar-dot @(s.IsActive ? "sm-avatar-dot--active" : "sm-avatar-dot--inactive")"></span>
+                        <span class="sm-avatar-dot @DotClass(s)"></span>
                     </div>
 
-                    <div class="sm-hero-identity">
-                        <h1 class="sm-hero-name">
-                            @s.FullName <span class="sm-hero-role os-muted">(@s.ManpowerTypeName)</span>
-                        </h1>
-
-                        <div class="sm-chips">
+                    <div class="sm-identity">
+                        <div class="sm-identity-headline">
+                            <h1 class="sm-name">@s.FullName</h1>
                             @if (s.IsActive)
                             {
                                 <StatusBadge Label="@UiStrings.StaffMembers.Active" Tone="success" />
@@ -47,27 +45,27 @@
                             {
                                 <StatusBadge Label="@UiStrings.StaffMembers.Inactive" Tone="neutral" />
                             }
-                            <span class="sm-chip"><RadzenIcon Icon="flight_takeoff" /><span>@UiStrings.StaffMembers.Station: <strong>@s.StationCode</strong></span></span>
-                            <span class="sm-chip"><RadzenIcon Icon="engineering" /><span>@UiStrings.StaffMembers.ManpowerType: <strong>@s.ManpowerTypeName</strong></span></span>
-                            <span class="sm-chip"><RadzenIcon Icon="badge" /><span>@LicenseCountLabel(s.Licenses.Count)</span></span>
-                            @if (s.LinkedUserId is not null)
-                            {
-                                <span class="sm-chip sm-chip--ok"><RadzenIcon Icon="lock_open" /><span>@UiStrings.PortalAccess.HasAccess</span></span>
-                            }
-                            else
-                            {
-                                <span class="sm-chip"><RadzenIcon Icon="lock" /><span>@UiStrings.PortalAccess.NoAccess</span></span>
-                            }
+                            <span class="sm-info-badge"><RadzenIcon Icon="engineering" />@s.ManpowerTypeName</span>
                         </div>
 
-                        <p class="sm-hero-stamp os-muted">
-                            @UiStrings.StaffMembers.Created: @s.CreatedAtUtc.ToLocalTime().ToString("g")
-                            @if (s.UpdatedAtUtc is { } updated)
-                            {
-                                <span class="sm-hero-stamp-sep">·</span>
-                                @($"{UiStrings.StaffMembers.Updated}: {updated.ToLocalTime().ToString("g")}")
-                            }
-                        </p>
+                        <div class="sm-meta-row">
+                            <RadzenIcon Icon="mail" />
+                            <span>@s.Email</span>
+                            <button type="button" class="sm-copy" title="@UiStrings.Users.CopyEmail"
+                                    aria-label="@UiStrings.Users.CopyEmail" @onclick="@(() => CopyAsync(s.Email))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+
+                            <RadzenIcon Icon="flight_takeoff" />
+                            <span>@s.StationCode</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(s.Id)</span>
+                            <button type="button" class="sm-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(s.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="sm-hero-actions">
@@ -92,19 +90,18 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
 
-            @* ---- Tabs ---------------------------------------------------- *@
-            <nav class="sm-tabs" role="tablist">
-                @foreach (var tab in tabs)
-                {
-                    <button type="button" role="tab" class="sm-tab @(activeTab == tab.Key ? "sm-tab--active" : "")"
-                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
-                        <RadzenIcon Icon="@tab.Icon" />
-                        <span>@tab.Label</span>
-                    </button>
-                }
-            </nav>
+                <nav class="sm-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="sm-tab @(activeTab == tab.Key ? "sm-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
+            </section>
 
             @* ---- Tab body ------------------------------------------------ *@
             <div class="sm-tab-body" role="tabpanel">
@@ -126,50 +123,105 @@
     private RenderFragment OverviewTab(StaffMemberDetail s) =>@<text>
         <div class="sm-stack">
             <div class="sm-overview-grid">
+                @* --- Employment status --- *@
                 <RadzenCard class="sm-card">
-                    <div class="sm-card-head"><RadzenIcon Icon="person" /><h3>@UiStrings.StaffMembers.PersonalInformation</h3></div>
-                    <div class="sm-field-list">
-                        <DetailField Label="@UiStrings.StaffMembers.FullName" Value="@s.FullName" Icon="person" />
-                        <DetailField Label="@UiStrings.StaffMembers.Email" Value="@s.Email" Icon="mail" />
-                        <DetailField Label="@UiStrings.StaffMembers.Station" Value="@($"{s.StationCode} — {s.StationName}")" Icon="flight_takeoff" />
-                        <DetailField Label="@UiStrings.StaffMembers.ManpowerType" Value="@s.ManpowerTypeName" Icon="engineering" />
+                    <div class="sm-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.StaffMembers.Status</h3></div>
+                    <div class="sm-lead">
+                        <span class="sm-lead-dot sm-lead-dot--@StatusToneColor(s)"></span>
+                        <div>
+                            <p class="sm-lead-title">@(s.IsActive ? UiStrings.StaffMembers.Active : UiStrings.StaffMembers.Inactive)</p>
+                            <p class="os-muted sm-lead-desc">@StatusDescription(s)</p>
+                        </div>
                     </div>
+                    <dl class="sm-metrics">
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.Status</dt>
+                            <dd>@(s.IsActive ? UiStrings.StaffMembers.Active : UiStrings.StaffMembers.Inactive)</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.Created</dt>
+                            <dd>@s.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.Updated</dt>
+                            <dd>@(s.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.EmploymentContract</dt>
+                            <dd>
+                                @if (s.EmploymentContract is { } ec)
+                                {
+                                    @($"{ec.StartDate:yyyy-MM-dd} — {(ec.EndDate is { } end ? end.ToString("yyyy-MM-dd") : UiStrings.StaffMembers.None)}")
+                                }
+                                else
+                                {
+                                    @UiStrings.StaffMembers.NoContract
+                                }
+                            </dd>
+                        </div>
+                    </dl>
                 </RadzenCard>
 
+                @* --- Assignment --- *@
                 <RadzenCard class="sm-card">
-                    <div class="sm-card-head"><RadzenIcon Icon="work" /><h3>@UiStrings.StaffMembers.EmploymentDetails</h3></div>
-                    <div class="sm-field-list">
-                        <DetailField Label="@UiStrings.StaffMembers.Status" Icon="toggle_on">
-                            @if (s.IsActive)
-                            {
-                                <StatusBadge Label="@UiStrings.StaffMembers.Active" Tone="success" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@UiStrings.StaffMembers.Inactive" Tone="neutral" />
-                            }
-                        </DetailField>
-                        <DetailField Label="@UiStrings.StaffMembers.Created" Value="@s.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        <DetailField Label="@UiStrings.StaffMembers.Updated" Value="@(s.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.StaffMembers.None)" Icon="update" />
-                        <DetailField Label="@UiStrings.StaffMembers.EmploymentContract" Icon="event">
-                            @if (s.EmploymentContract is { } ec)
-                            {
-                                <span>@ec.StartDate.ToString("yyyy-MM-dd") — @(ec.EndDate is { } end ? end.ToString("yyyy-MM-dd") : UiStrings.StaffMembers.None)</span>
-                            }
-                            else
-                            {
-                                <span class="os-muted">@UiStrings.StaffMembers.NoContract</span>
-                            }
-                        </DetailField>
+                    <div class="sm-card-head"><RadzenIcon Icon="flight_takeoff" /><h3>@UiStrings.StaffMembers.Station</h3></div>
+                    <div class="sm-lead">
+                        <span class="sm-lead-icon sm-lead-icon--blue"><RadzenIcon Icon="engineering" /></span>
+                        <div>
+                            <p class="sm-lead-title">@s.StationCode</p>
+                            <p class="os-muted sm-lead-desc">@s.StationName · @s.ManpowerTypeName</p>
+                        </div>
                     </div>
+                    <dl class="sm-metrics">
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.Station</dt>
+                            <dd>@($"{s.StationCode} — {s.StationName}")</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.ManpowerType</dt>
+                            <dd>@s.ManpowerTypeName</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.Licenses</dt>
+                            <dd>@LicenseCountLabel(s.Licenses.Count)</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.StatWorkingDays</dt>
+                            <dd>@((s.WorkingDays?.Count ?? 0).ToString())</dd>
+                        </div>
+                    </dl>
+                    <button type="button" class="sm-card-link" @onclick="@(() => activeTab = StaffTab.Licenses)">
+                        @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
+                    </button>
                 </RadzenCard>
 
+                @* --- Portal access summary --- *@
                 <RadzenCard class="sm-card">
-                    <div class="sm-card-head">
-                        <RadzenIcon Icon="history" /><h3>@UiStrings.StaffMembers.RecentActivity</h3>
-                        <button type="button" class="sm-link" @onclick="@(() => activeTab = StaffTab.Activity)">@UiStrings.Common.Open</button>
+                    <div class="sm-card-head"><RadzenIcon Icon="vpn_key" /><h3>@UiStrings.StaffMembers.TabPortalAccess</h3></div>
+                    <div class="sm-lead">
+                        <span class="sm-lead-dot sm-lead-dot--@(s.LinkedUserId is not null ? "success" : "warning")"></span>
+                        <div>
+                            <p class="sm-lead-title">@(s.LinkedUserId is not null ? UiStrings.PortalAccess.HasAccess : UiStrings.PortalAccess.NoAccess)</p>
+                            <p class="os-muted sm-lead-desc">@PortalAccessDescription(s)</p>
+                        </div>
                     </div>
-                    @ActivityTimeline(OverviewActivityPreviewCount)
+                    <dl class="sm-metrics">
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.StatPortalAccount</dt>
+                            <dd>@(s.LinkedUserId is not null ? UiStrings.StaffMembers.PortalLinkedShort : UiStrings.StaffMembers.PortalNotLinkedShort)</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.Email</dt>
+                            <dd>@s.Email</dd>
+                        </div>
+                        <div class="sm-metric">
+                            <dt>@UiStrings.StaffMembers.Status</dt>
+                            <dd>@(s.IsActive ? UiStrings.StaffMembers.Active : UiStrings.StaffMembers.Inactive)</dd>
+                        </div>
+                    </dl>
+                    <button type="button" class="sm-card-link" @onclick="@(() => activeTab = StaffTab.PortalAccess)">
+                        @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
+                    </button>
                 </RadzenCard>
             </div>
 
@@ -178,12 +230,17 @@
                 @ScheduleChips(s)
             </RadzenCard>
 
-            <div class="sm-stats">
-                @StatTile("badge", "blue", UiStrings.StaffMembers.StatLicenses, s.Licenses.Count.ToString())
-                @StatTile("calendar_month", "green", UiStrings.StaffMembers.StatWorkingDays, (s.WorkingDays?.Count ?? 0).ToString())
-                @StatTile("vpn_key", s.LinkedUserId is not null ? "green" : "amber", UiStrings.StaffMembers.StatPortalAccount,
-                    s.LinkedUserId is not null ? UiStrings.StaffMembers.PortalLinkedShort : UiStrings.StaffMembers.PortalNotLinkedShort)
-            </div>
+            @* --- Recent activity preview --- *@
+            <RadzenCard class="sm-card">
+                <div class="sm-card-head">
+                    <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
+                    @if (activity.Count > 0 && Auth.HasPermission(AuditPermissions.TrailsView))
+                    {
+                        <button type="button" class="sm-link" @onclick="@(() => activeTab = StaffTab.Activity)">@UiStrings.Common.ViewAll</button>
+                    }
+                </div>
+                @ActivityTimeline(OverviewActivityPreviewCount)
+            </RadzenCard>
         </div>
     </text>;
 
@@ -276,7 +333,7 @@
 
     private RenderFragment ActivityTab(StaffMemberDetail s) =>@<text>
         <RadzenCard class="sm-card">
-            <div class="sm-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.StaffMembers.TabActivity</h3></div>
+            <div class="sm-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
             @ActivityTimeline()
         </RadzenCard>
     </text>;
@@ -288,25 +345,26 @@
         }
         else
         {
-            <div class="sm-timeline">
+            <ol class="sm-timeline">
                 @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
                 {
-                    <div class="sm-timeline-row" @key="entry.Id">
-                        <span class="sm-timeline-icon"><RadzenIcon Icon="history" /></span>
-                        <div>
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="sm-timeline-row" @key="entry.Id">
+                        <span class="sm-timeline-icon sm-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="sm-timeline-content">
                             <p class="sm-timeline-title">@entry.Action</p>
-                            <p class="os-muted">
-                                @entry.OccurredOnUtc.ToString("u")
-                                &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            <p class="os-muted sm-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="sm-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
                         </div>
-                    </div>
+                    </li>
                 }
-            </div>
+            </ol>
         }
     </text>;
 
-    // Small shared fragments reused across tabs.
     private RenderFragment ScheduleChips(StaffMemberDetail s) =>@<text>
         @{
             var working = s.WorkingDays ?? Array.Empty<DayOfWeek>();
@@ -334,22 +392,12 @@
         }
     </text>;
 
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="sm-stat">
-            <span class="sm-stat-icon sm-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="sm-stat-body">
-                <p class="sm-stat-label">@label</p>
-                <p class="sm-stat-value">@value</p>
-            </div>
-        </RadzenCard>
-    </text>;
-
     private RenderFragment TimelineEmpty() =>@<text>
-        <div class="sm-timeline sm-timeline--empty">
+        <div class="sm-timeline-empty">
             <span class="sm-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
             <div>
-                <p class="sm-timeline-title">@UiStrings.StaffMembers.ActivityEmpty</p>
-                <p class="os-muted">@UiStrings.StaffMembers.ActivityEmptyHint</p>
+                <p class="sm-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Description</p>
             </div>
         </div>
     </text>;
@@ -371,20 +419,21 @@
 
     private sealed record TabDef(StaffTab Key, string Label, string Icon);
 
-    private static readonly TabDef[] tabs =
-    [
-        new(StaffTab.Overview, UiStrings.StaffMembers.TabOverview, "dashboard"),
-        new(StaffTab.Licenses, UiStrings.StaffMembers.TabLicenses, "badge"),
-        new(StaffTab.Schedule, UiStrings.StaffMembers.TabSchedule, "calendar_month"),
-        new(StaffTab.PortalAccess, UiStrings.StaffMembers.TabPortalAccess, "vpn_key"),
-        new(StaffTab.Activity, UiStrings.StaffMembers.TabActivity, "history")
-    ];
-
     private static readonly DayOfWeek[] WeekOrder =
     [
         DayOfWeek.Sunday, DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday,
         DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday
     ];
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(StaffTab.Overview, UiStrings.StaffMembers.TabOverview, "dashboard");
+        yield return new TabDef(StaffTab.Licenses, UiStrings.StaffMembers.TabLicenses, "badge");
+        yield return new TabDef(StaffTab.Schedule, UiStrings.StaffMembers.TabSchedule, "calendar_month");
+        yield return new TabDef(StaffTab.PortalAccess, UiStrings.StaffMembers.TabPortalAccess, "vpn_key");
+        if (Auth.HasPermission(AuditPermissions.TrailsView))
+            yield return new TabDef(StaffTab.Activity, UiStrings.StaffMembers.TabActivity, "history");
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -398,7 +447,6 @@
         {
             item = await MasterData.GetStaffMemberAsync(Id);
 
-            // The Activity timeline reads the audit trail; only administrators can query it.
             activity = [];
             if (Auth.HasPermission(AuditPermissions.TrailsView))
             {
@@ -489,6 +537,19 @@
         }
     }
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private bool HasMoreActions(StaffMemberDetail s) =>
         (!s.IsActive && Auth.HasPermission(MasterDataPermissions.StaffMembersActivate))
         || (s.IsActive && Auth.HasPermission(MasterDataPermissions.StaffMembersDeactivate))
@@ -497,18 +558,76 @@
     private string LicenseCountLabel(int count) =>
         string.Format(count == 1 ? UiStrings.StaffMembers.LicenseCountSingular : UiStrings.StaffMembers.LicenseCountPlural, count);
 
-    private static string Initials(string fullName)
-    {
-        if (string.IsNullOrWhiteSpace(fullName))
-            return "?";
+    private static string ProfileClass(StaffMemberDetail s) =>
+        s.IsActive ? "sm-profile--active" : "sm-profile--inactive";
 
-        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Length switch
-        {
-            0 => "?",
-            1 => parts[0][..1].ToUpperInvariant(),
-            _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant()
-        };
+    private static string AvatarClass(StaffMemberDetail s) =>
+        s.IsActive ? "sm-avatar--active" : "sm-avatar--inactive";
+
+    private static string DotClass(StaffMemberDetail s) =>
+        s.IsActive ? "sm-avatar-dot--active" : "sm-avatar-dot--inactive";
+
+    private static string StatusToneColor(StaffMemberDetail s) =>
+        s.IsActive ? "success" : "neutral";
+
+    private static string StatusDescription(StaffMemberDetail s)
+    {
+        if (!s.IsActive)
+            return UiStrings.StaffMembers.PortalAccessUnavailableHint;
+
+        return s.LinkedUserId is not null
+            ? UiStrings.StaffMembers.PortalAccessLinkedHint
+            : UiStrings.StaffMembers.PortalAccessUnlinkedHint;
+    }
+
+    private static string PortalAccessDescription(StaffMemberDetail s)
+    {
+        if (!s.IsActive)
+            return UiStrings.StaffMembers.PortalAccessUnavailableHint;
+
+        return s.LinkedUserId is not null
+            ? UiStrings.StaffMembers.PortalAccessLinkedHint
+            : UiStrings.StaffMembers.PortalAccessUnlinkedHint;
+    }
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("license"))
+            return ("badge", "blue");
+        if (a.Contains("portal") || a.Contains("access") || a.Contains("invit"))
+            return ("vpn_key", "blue");
+        if (a.Contains("activat"))
+            return ("check_circle", "green");
+        if (a.Contains("deactivat"))
+            return ("cancel", "red");
+        if (a.Contains("schedule") || a.Contains("contract"))
+            return ("calendar_month", "blue");
+        if (a.Contains("creat"))
+            return ("person_add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
     }
 
     private static string DayLabel(DayOfWeek day) => day switch
@@ -521,6 +640,20 @@
         DayOfWeek.Friday => UiStrings.Days.Friday,
         _ => UiStrings.Days.Saturday
     };
+
+    private static string Initials(string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "?";
+
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
+        };
+    }
 
     private void GoBack() => Navigation.NavigateTo("/master-data/staff-members");
 }

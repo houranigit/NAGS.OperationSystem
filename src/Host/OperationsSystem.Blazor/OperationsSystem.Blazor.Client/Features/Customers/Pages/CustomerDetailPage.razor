@@ -4,6 +4,8 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
 <PageTitle>@(item?.Name ?? UiStrings.Customers.Title)</PageTitle>
 
@@ -24,17 +26,17 @@
                 <span>@UiStrings.Customers.Title</span>
             </button>
 
-            <RadzenCard class="@($"cu-hero {(c.IsActive ? "cu-hero--active" : "cu-hero--inactive")}")">
-                <div class="cu-hero-main">
-                    <div class="cu-avatar @(c.IsActive ? "cu-avatar--active" : "cu-avatar--inactive")">
+            @* ---- Profile (hero + tabs as one unit) ----------------------- *@
+            <section class="cu-profile @ProfileClass(c)">
+                <div class="cu-hero">
+                    <div class="cu-avatar @AvatarClass(c)">
                         <RadzenIcon Icon="business" />
+                        <span class="cu-avatar-dot @DotClass(c)"></span>
                     </div>
 
-                    <div class="cu-hero-identity">
-                        <h1 class="cu-hero-name">@c.Name</h1>
-                        <p class="cu-hero-sub os-muted">@($"{c.IataCode}{(string.IsNullOrWhiteSpace(c.IcaoCode) ? "" : " / " + c.IcaoCode)} · {c.CountryName}")</p>
-
-                        <div class="cu-chips">
+                    <div class="cu-identity">
+                        <div class="cu-identity-headline">
+                            <h1 class="cu-name">@c.Name</h1>
                             @if (c.IsActive)
                             {
                                 <StatusBadge Label="@UiStrings.Customers.Active" Tone="success" />
@@ -43,19 +45,30 @@
                             {
                                 <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
                             }
-                            <span class="cu-chip"><RadzenIcon Icon="tag" /><span>@UiStrings.Customers.IataCode: <strong>@c.IataCode</strong></span></span>
-                            <span class="cu-chip"><RadzenIcon Icon="public" /><span>@c.CountryName</span></span>
-                            <span class="cu-chip"><RadzenIcon Icon="contacts" /><span>@string.Format(UiStrings.Customers.ContactsCountFormat, ActiveContacts(c).Count)</span></span>
+                            <span class="cu-info-badge"><RadzenIcon Icon="tag" />@c.IataCode</span>
                         </div>
 
-                        <p class="cu-hero-stamp os-muted">
-                            @UiStrings.Customers.Created: @c.CreatedAtUtc.ToLocalTime().ToString("g")
-                            @if (c.UpdatedAtUtc is { } updated)
+                        <div class="cu-meta-row">
+                            <RadzenIcon Icon="public" />
+                            <span>@c.CountryName</span>
+
+                            @if (!string.IsNullOrWhiteSpace(c.OfficialEmail))
                             {
-                                <span class="cu-hero-stamp-sep">·</span>
-                                @($"{UiStrings.Customers.Updated}: {updated.ToLocalTime().ToString("g")}")
+                                <RadzenIcon Icon="mail" />
+                                <span>@c.OfficialEmail</span>
+                                <button type="button" class="cu-copy" title="@UiStrings.Users.CopyEmail"
+                                        aria-label="@UiStrings.Users.CopyEmail" @onclick="@(() => CopyAsync(c.OfficialEmail!))">
+                                    <RadzenIcon Icon="content_copy" />
+                                </button>
                             }
-                        </p>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(c.Id)</span>
+                            <button type="button" class="cu-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(c.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="cu-hero-actions">
@@ -76,95 +89,174 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
 
-            <nav class="cu-tabs" role="tablist">
-                @foreach (var tab in tabs)
-                {
-                    <button type="button" role="tab" class="cu-tab @(activeTab == tab.Key ? "cu-tab--active" : "")"
-                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
-                        <RadzenIcon Icon="@tab.Icon" />
-                        <span>@tab.Label</span>
-                    </button>
-                }
-            </nav>
+                <nav class="cu-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="cu-tab @(activeTab == tab.Key ? "cu-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
+            </section>
 
+            @* ---- Tab body ------------------------------------------------ *@
             <div class="cu-tab-body" role="tabpanel">
                 @(activeTab switch
                 {
                     CustomerTab.Overview => OverviewTab(c),
                     CustomerTab.Address => AddressTab(c),
-                    _ => ContactsTab(c)
+                    CustomerTab.Contacts => ContactsTab(c),
+                    CustomerTab.Activity => ActivityTab(c),
+                    _ => OverviewTab(c)
                 })
             </div>
         </div>
     }
 </RequirePermission>
 
+@* ================================================================ Overview *@
 @code {
     private RenderFragment OverviewTab(CustomerDetail c) =>@<text>
         <div class="cu-stack">
             <div class="cu-overview-grid">
+                @* --- Customer status --- *@
                 <RadzenCard class="cu-card">
-                    <div class="cu-card-head"><RadzenIcon Icon="business" /><h3>@UiStrings.Common.Details</h3></div>
-                    <div class="cu-field-list">
-                        <DetailField Label="@UiStrings.Customers.IataCode" Value="@c.IataCode" Icon="tag" />
-                        <DetailField Label="@UiStrings.Customers.IcaoCode" Value="@(string.IsNullOrWhiteSpace(c.IcaoCode) ? UiStrings.Customers.NoIcao : c.IcaoCode)" Icon="tag" />
-                        <DetailField Label="@UiStrings.Customers.Country" Value="@c.CountryName" Icon="public" />
-                        <DetailField Label="@UiStrings.Customers.Status" Icon="toggle_on">
-                            @if (c.IsActive)
-                            {
-                                <StatusBadge Label="@UiStrings.Customers.Active" Tone="success" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
-                            }
-                        </DetailField>
+                    <div class="cu-card-head"><RadzenIcon Icon="business" /><h3>@UiStrings.Customers.Status</h3></div>
+                    <div class="cu-lead">
+                        <span class="cu-lead-dot cu-lead-dot--@StatusToneColor(c)"></span>
+                        <div>
+                            <p class="cu-lead-title">@(c.IsActive ? UiStrings.Customers.Active : UiStrings.Customers.Inactive)</p>
+                            <p class="os-muted cu-lead-desc">@StatusDescription(c)</p>
+                        </div>
                     </div>
+                    <dl class="cu-metrics">
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.IataCode</dt>
+                            <dd>@c.IataCode</dd>
+                        </div>
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.IcaoCode</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(c.IcaoCode) ? UiStrings.Customers.NoIcao : c.IcaoCode)</dd>
+                        </div>
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.Created</dt>
+                            <dd>@c.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.Updated</dt>
+                            <dd>@(c.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
                 </RadzenCard>
 
+                @* --- Contact summary --- *@
+                <RadzenCard class="cu-card">
+                    <div class="cu-card-head"><RadzenIcon Icon="contacts" /><h3>@UiStrings.Customers.Contacts</h3></div>
+                    <div class="cu-lead">
+                        <span class="cu-lead-icon cu-lead-icon--blue"><RadzenIcon Icon="contacts" /></span>
+                        <div>
+                            <p class="cu-lead-title">@string.Format(UiStrings.Customers.ContactsCountFormat, ActiveContacts(c).Count)</p>
+                            <p class="os-muted cu-lead-desc">@UiStrings.Customers.StatPortalAccounts: @LinkedContacts(c)</p>
+                        </div>
+                    </div>
+                    <dl class="cu-metrics">
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.StatContacts</dt>
+                            <dd>@ActiveContacts(c).Count</dd>
+                        </div>
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.StatPortalAccounts</dt>
+                            <dd>@LinkedContacts(c)</dd>
+                        </div>
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.Country</dt>
+                            <dd>@c.CountryName</dd>
+                        </div>
+                    </dl>
+                    <button type="button" class="cu-card-link" @onclick="@(() => activeTab = CustomerTab.Contacts)">
+                        @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
+                    </button>
+                </RadzenCard>
+
+                @* --- Official contact --- *@
                 <RadzenCard class="cu-card">
                     <div class="cu-card-head"><RadzenIcon Icon="contact_mail" /><h3>@UiStrings.Customers.OfficialEmail</h3></div>
-                    <div class="cu-field-list">
-                        <DetailField Label="@UiStrings.Customers.OfficialEmail" Value="@(string.IsNullOrWhiteSpace(c.OfficialEmail) ? UiStrings.Customers.NoIcao : c.OfficialEmail)" Icon="mail" />
-                        <DetailField Label="@UiStrings.Customers.OfficialPhone" Value="@(string.IsNullOrWhiteSpace(c.OfficialPhone) ? UiStrings.Customers.NoIcao : c.OfficialPhone)" Icon="call" />
-                        <DetailField Label="@UiStrings.Customers.Created" Value="@c.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        <DetailField Label="@UiStrings.Customers.Updated" Value="@(c.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
-                    </div>
+                    <dl class="cu-metrics cu-metrics--tall">
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.OfficialEmail</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(c.OfficialEmail) ? UiStrings.Customers.NoIcao : c.OfficialEmail)</dd>
+                        </div>
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.OfficialPhone</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(c.OfficialPhone) ? UiStrings.Customers.NoIcao : c.OfficialPhone)</dd>
+                        </div>
+                        <div class="cu-metric">
+                            <dt>@UiStrings.Customers.Country</dt>
+                            <dd>@c.CountryName</dd>
+                        </div>
+                    </dl>
                 </RadzenCard>
             </div>
 
-            <div class="cu-stats">
-                @StatTile("contacts", "blue", UiStrings.Customers.StatContacts, ActiveContacts(c).Count.ToString())
-                @StatTile("vpn_key", LinkedContacts(c) > 0 ? "green" : "amber", UiStrings.Customers.StatPortalAccounts, LinkedContacts(c).ToString())
-                @StatTile("toggle_on", c.IsActive ? "green" : "amber", UiStrings.Customers.Status, c.IsActive ? UiStrings.Customers.Active : UiStrings.Customers.Inactive)
-            </div>
+            @* --- Recent activity preview --- *@
+            @if (Auth.HasPermission(AuditPermissions.TrailsView))
+            {
+                <RadzenCard class="cu-card">
+                    <div class="cu-card-head">
+                        <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
+                        @if (activity.Count > 0)
+                        {
+                            <button type="button" class="cu-link" @onclick="@(() => activeTab = CustomerTab.Activity)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    @ActivityTimeline(OverviewActivityPreviewCount)
+                </RadzenCard>
+            }
         </div>
     </text>;
 
+    @* ================================================================ Address *@
     private RenderFragment AddressTab(CustomerDetail c) =>@<text>
         <RadzenCard class="cu-card">
             <div class="cu-card-head"><RadzenIcon Icon="location_on" /><h3>@UiStrings.Customers.Address</h3></div>
-            <div class="cu-field-list">
-                <DetailField Label="@UiStrings.Customers.AddressLine1" Value="@c.Address.Line1" Icon="home" />
+            <dl class="cu-metrics cu-metrics--tall">
+                <div class="cu-metric">
+                    <dt>@UiStrings.Customers.AddressLine1</dt>
+                    <dd>@c.Address.Line1</dd>
+                </div>
                 @if (!string.IsNullOrWhiteSpace(c.Address.Line2))
                 {
-                    <DetailField Label="@UiStrings.Customers.AddressLine2" Value="@c.Address.Line2" Icon="home" />
+                    <div class="cu-metric">
+                        <dt>@UiStrings.Customers.AddressLine2</dt>
+                        <dd>@c.Address.Line2</dd>
+                    </div>
                 }
-                <DetailField Label="@UiStrings.Customers.City" Value="@c.Address.City" Icon="location_city" />
+                <div class="cu-metric">
+                    <dt>@UiStrings.Customers.City</dt>
+                    <dd>@c.Address.City</dd>
+                </div>
                 @if (!string.IsNullOrWhiteSpace(c.Address.Region))
                 {
-                    <DetailField Label="@UiStrings.Customers.Region" Value="@c.Address.Region" Icon="map" />
+                    <div class="cu-metric">
+                        <dt>@UiStrings.Customers.Region</dt>
+                        <dd>@c.Address.Region</dd>
+                    </div>
                 }
                 @if (!string.IsNullOrWhiteSpace(c.Address.PostalCode))
                 {
-                    <DetailField Label="@UiStrings.Customers.PostalCode" Value="@c.Address.PostalCode" Icon="local_post_office" />
+                    <div class="cu-metric">
+                        <dt>@UiStrings.Customers.PostalCode</dt>
+                        <dd>@c.Address.PostalCode</dd>
+                    </div>
                 }
-            </div>
+            </dl>
         </RadzenCard>
     </text>;
 
+    @* ================================================================ Contacts *@
     private RenderFragment ContactsTab(CustomerDetail c) =>@<text>
         @{
             var activeContacts = ActiveContacts(c);
@@ -223,14 +315,49 @@
         </RadzenCard>
     </text>;
 
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="cu-stat">
-            <span class="cu-stat-icon cu-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="cu-stat-body">
-                <p class="cu-stat-label">@label</p>
-                <p class="cu-stat-value">@value</p>
-            </div>
+    @* ================================================================ Activity *@
+    private RenderFragment ActivityTab(CustomerDetail c) =>@<text>
+        <RadzenCard class="cu-card">
+            <div class="cu-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
+            @ActivityTimeline()
         </RadzenCard>
+    </text>;
+
+    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
+        @if (activity.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="cu-timeline">
+                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="cu-timeline-row" @key="entry.Id">
+                        <span class="cu-timeline-icon cu-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="cu-timeline-content">
+                            <p class="cu-timeline-title">@entry.Action</p>
+                            <p class="os-muted cu-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="cu-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="cu-timeline-empty">
+            <span class="cu-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="cu-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Description</p>
+            </div>
+        </div>
     </text>;
 }
 
@@ -238,21 +365,26 @@
     [Parameter] public Guid Id { get; set; }
 
     private CustomerDetail? item;
+    private IReadOnlyList<AuditTrailListItem> activity = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private CustomerTab activeTab = CustomerTab.Overview;
 
-    private enum CustomerTab { Overview, Address, Contacts }
+    private const int OverviewActivityPreviewCount = 4;
+
+    private enum CustomerTab { Overview, Address, Contacts, Activity }
 
     private sealed record TabDef(CustomerTab Key, string Label, string Icon);
 
-    private static readonly TabDef[] tabs =
-    [
-        new(CustomerTab.Overview, UiStrings.Common.Overview, "dashboard"),
-        new(CustomerTab.Address, UiStrings.Customers.TabAddress, "location_on"),
-        new(CustomerTab.Contacts, UiStrings.Customers.Contacts, "contacts")
-    ];
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(CustomerTab.Overview, UiStrings.Common.Overview, "dashboard");
+        yield return new TabDef(CustomerTab.Address, UiStrings.Customers.TabAddress, "location_on");
+        yield return new TabDef(CustomerTab.Contacts, UiStrings.Customers.Contacts, "contacts");
+        if (Auth.HasPermission(AuditPermissions.TrailsView))
+            yield return new TabDef(CustomerTab.Activity, UiStrings.Audit.ActivityTitle, "history");
+    }
 
     private static List<CustomerContactModel> ActiveContacts(CustomerDetail c) =>
         c.Contacts.Where(ct => ct.IsActive).ToList();
@@ -278,6 +410,20 @@
         try
         {
             item = await MasterData.GetCustomerAsync(Id);
+
+            activity = [];
+            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "Customer", entityId: Id, pageSize: 25);
+                    activity = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    activity = [];
+                }
+            }
         }
         catch (ApiException ex)
         {
@@ -375,5 +521,75 @@
         }
     }
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private void GoBack() => Navigation.NavigateTo("/master-data/customers");
+
+    private static string ProfileClass(CustomerDetail c) =>
+        c.IsActive ? "cu-profile--active" : "cu-profile--inactive";
+
+    private static string AvatarClass(CustomerDetail c) =>
+        c.IsActive ? "cu-avatar--active" : "cu-avatar--inactive";
+
+    private static string DotClass(CustomerDetail c) =>
+        c.IsActive ? "cu-avatar-dot--active" : "cu-avatar-dot--inactive";
+
+    private static string StatusToneColor(CustomerDetail c) =>
+        c.IsActive ? "success" : "neutral";
+
+    private static string StatusDescription(CustomerDetail c) =>
+        c.IsActive ? UiStrings.Customers.FormIntro : UiStrings.Customers.ConfirmDeactivate;
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("contact"))
+            return ("contacts", "blue");
+        if (a.Contains("portal") || a.Contains("access") || a.Contains("grant"))
+            return ("vpn_key", "blue");
+        if (a.Contains("activ"))
+            return ("check_circle", "green");
+        if (a.Contains("deactiv"))
+            return ("cancel", "red");
+        if (a.Contains("delet"))
+            return ("delete", "red");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        if (a.Contains("customer"))
+            return ("business", "blue");
+        return ("history", "neutral");
+    }
 }

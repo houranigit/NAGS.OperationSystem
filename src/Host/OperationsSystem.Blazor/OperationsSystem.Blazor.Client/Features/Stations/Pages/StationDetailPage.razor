@@ -4,6 +4,8 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
 <PageTitle>@(item?.Name ?? UiStrings.Stations.Title)</PageTitle>
 
@@ -24,17 +26,17 @@
                 <span>@UiStrings.Stations.Title</span>
             </button>
 
-            <RadzenCard class="@($"st-hero {(s.IsActive ? "st-hero--active" : "st-hero--inactive")}")">
-                <div class="st-hero-main">
-                    <div class="st-avatar @(s.IsActive ? "st-avatar--active" : "st-avatar--inactive")">
+            @* ---- Profile (hero + tabs as one unit) ----------------------- *@
+            <section class="st-profile @ProfileClass(s)">
+                <div class="st-hero">
+                    <div class="st-avatar @AvatarClass(s)">
                         <RadzenIcon Icon="flight_takeoff" />
+                        <span class="st-avatar-dot @DotClass(s)"></span>
                     </div>
 
-                    <div class="st-hero-identity">
-                        <h1 class="st-hero-name">@s.Name</h1>
-                        <p class="st-hero-sub os-muted">@($"{s.IataCode}{(string.IsNullOrWhiteSpace(s.IcaoCode) ? "" : " / " + s.IcaoCode)} · {s.City}")</p>
-
-                        <div class="st-chips">
+                    <div class="st-identity">
+                        <div class="st-identity-headline">
+                            <h1 class="st-name">@s.Name</h1>
                             @if (s.IsActive)
                             {
                                 <StatusBadge Label="@UiStrings.Stations.Active" Tone="success" />
@@ -43,19 +45,30 @@
                             {
                                 <StatusBadge Label="@UiStrings.Stations.Inactive" Tone="neutral" />
                             }
-                            <span class="st-chip"><RadzenIcon Icon="tag" /><span>@UiStrings.Stations.IataCode: <strong>@s.IataCode</strong></span></span>
-                            <span class="st-chip"><RadzenIcon Icon="public" /><span>@s.CountryName</span></span>
-                            <span class="st-chip"><RadzenIcon Icon="groups" /><span>@string.Format(UiStrings.Stations.StaffCountFormat, stationStaff.Count)</span></span>
+                            <span class="st-info-badge"><RadzenIcon Icon="tag" />@s.IataCode</span>
                         </div>
 
-                        <p class="st-hero-stamp os-muted">
-                            @UiStrings.Stations.Created: @s.CreatedAtUtc.ToLocalTime().ToString("g")
-                            @if (s.UpdatedAtUtc is { } updated)
-                            {
-                                <span class="st-hero-stamp-sep">·</span>
-                                @($"{UiStrings.Stations.Updated}: {updated.ToLocalTime().ToString("g")}")
-                            }
-                        </p>
+                        <dl class="st-meta">
+                            <div class="st-meta-item">
+                                <dt>@UiStrings.Stations.City</dt>
+                                <dd><RadzenIcon Icon="location_city" /><span>@s.City</span></dd>
+                            </div>
+                            <div class="st-meta-item">
+                                <dt>@UiStrings.Stations.Country</dt>
+                                <dd><RadzenIcon Icon="public" /><span>@s.CountryName</span></dd>
+                            </div>
+                            <div class="st-meta-item">
+                                <dt>ID</dt>
+                                <dd>
+                                    <RadzenIcon Icon="id_card" />
+                                    <span class="st-mono">@ShortId(s.Id)</span>
+                                    <button type="button" class="st-copy" title="@UiStrings.Users.CopyId"
+                                            aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(s.Id.ToString()))">
+                                        <RadzenIcon Icon="content_copy" />
+                                    </button>
+                                </dd>
+                            </div>
+                        </dl>
                     </div>
 
                     <div class="st-hero-actions">
@@ -76,65 +89,132 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
 
-            <nav class="st-tabs" role="tablist">
-                @foreach (var tab in tabs)
-                {
-                    <button type="button" role="tab" class="st-tab @(activeTab == tab.Key ? "st-tab--active" : "")"
-                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
-                        <RadzenIcon Icon="@tab.Icon" />
-                        <span>@tab.Label</span>
-                    </button>
-                }
-            </nav>
+                <nav class="st-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="st-tab @(activeTab == tab.Key ? "st-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
+            </section>
 
+            @* ---- Tab body ------------------------------------------------ *@
             <div class="st-tab-body" role="tabpanel">
                 @(activeTab switch
                 {
                     StationTab.Overview => OverviewTab(s),
-                    _ => StaffTab(s)
+                    StationTab.Staff => StaffTab(s),
+                    _ => ActivityTab(s)
                 })
             </div>
         </div>
     }
 </RequirePermission>
 
+@* ================================================================ Overview *@
 @code {
     private RenderFragment OverviewTab(StationDetail s) =>@<text>
         <div class="st-stack">
             <div class="st-overview-grid">
+                @* --- Station status --- *@
                 <RadzenCard class="st-card">
-                    <div class="st-card-head"><RadzenIcon Icon="flight_takeoff" /><h3>@UiStrings.Common.Details</h3></div>
-                    <div class="st-field-list">
-                        <DetailField Label="@UiStrings.Stations.IataCode" Value="@s.IataCode" Icon="tag" />
-                        <DetailField Label="@UiStrings.Stations.IcaoCode" Value="@(string.IsNullOrWhiteSpace(s.IcaoCode) ? UiStrings.Stations.NoIcao : s.IcaoCode)" Icon="tag" />
-                        <DetailField Label="@UiStrings.Stations.City" Value="@s.City" Icon="location_city" />
-                        <DetailField Label="@UiStrings.Stations.Country" Value="@s.CountryName" Icon="public" />
-                        <DetailField Label="@UiStrings.Stations.Status" Icon="toggle_on">
-                            @if (s.IsActive)
-                            {
-                                <StatusBadge Label="@UiStrings.Stations.Active" Tone="success" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@UiStrings.Stations.Inactive" Tone="neutral" />
-                            }
-                        </DetailField>
-                        <DetailField Label="@UiStrings.Stations.Created" Value="@s.CreatedAtUtc.ToLocalTime().ToString("g")" Icon="schedule" />
-                        <DetailField Label="@UiStrings.Stations.Updated" Value="@(s.UpdatedAtUtc is { } u ? u.ToLocalTime().ToString("g") : UiStrings.Common.None)" Icon="update" />
+                    <div class="st-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.Stations.Status</h3></div>
+                    <div class="st-lead">
+                        <span class="st-lead-dot st-lead-dot--@StatusToneColor(s)"></span>
+                        <div>
+                            <p class="st-lead-title">@(s.IsActive ? UiStrings.Stations.Active : UiStrings.Stations.Inactive)</p>
+                            <p class="os-muted st-lead-desc">@StatusDescription(s)</p>
+                        </div>
                     </div>
+                    <dl class="st-metrics">
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.Created</dt>
+                            <dd>@s.CreatedAtUtc.ToLocalTime().ToString("g")</dd>
+                        </div>
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.Updated</dt>
+                            <dd>@(s.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                @* --- Location --- *@
+                <RadzenCard class="st-card">
+                    <div class="st-card-head"><RadzenIcon Icon="location_city" /><h3>@UiStrings.Stations.StepDetails</h3></div>
+                    <div class="st-lead">
+                        <span class="st-lead-icon st-lead-icon--blue"><RadzenIcon Icon="flight_takeoff" /></span>
+                        <div>
+                            <p class="st-lead-title">@s.Name</p>
+                            <p class="os-muted st-lead-desc">@($"{s.City}, {s.CountryName}")</p>
+                        </div>
+                    </div>
+                    <dl class="st-metrics">
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.IataCode</dt>
+                            <dd>@s.IataCode</dd>
+                        </div>
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.IcaoCode</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(s.IcaoCode) ? UiStrings.Stations.NoIcao : s.IcaoCode)</dd>
+                        </div>
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.City</dt>
+                            <dd>@s.City</dd>
+                        </div>
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.Country</dt>
+                            <dd>@s.CountryName</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                @* --- Staff summary --- *@
+                <RadzenCard class="st-card">
+                    <div class="st-card-head"><RadzenIcon Icon="groups" /><h3>@UiStrings.Stations.StaffMembers</h3></div>
+                    <div class="st-lead">
+                        <span class="st-lead-icon st-lead-icon--blue"><RadzenIcon Icon="groups" /></span>
+                        <div>
+                            <p class="st-lead-title">@string.Format(UiStrings.Stations.StaffCountFormat, stationStaff.Count)</p>
+                            <p class="os-muted st-lead-desc">@(stationStaff.Count == 0
+                                ? UiStrings.Stations.StaffMembersEmpty
+                                : string.Format("{0}: {1}", UiStrings.Stations.StatActiveStaff, stationStaff.Count(x => x.IsActive)))</p>
+                        </div>
+                    </div>
+                    <dl class="st-metrics">
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.StatStaff</dt>
+                            <dd>@stationStaff.Count</dd>
+                        </div>
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.StatActiveStaff</dt>
+                            <dd>@stationStaff.Count(x => x.IsActive)</dd>
+                        </div>
+                    </dl>
+                    <button type="button" class="st-card-link" @onclick="@(() => activeTab = StationTab.Staff)">
+                        @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
+                    </button>
                 </RadzenCard>
             </div>
 
-            <div class="st-stats">
-                @StatTile("groups", "blue", UiStrings.Stations.StatStaff, stationStaff.Count.ToString())
-                @StatTile("how_to_reg", "green", UiStrings.Stations.StatActiveStaff, stationStaff.Count(x => x.IsActive).ToString())
-                @StatTile("toggle_on", s.IsActive ? "green" : "amber", UiStrings.Stations.Status, s.IsActive ? UiStrings.Stations.Active : UiStrings.Stations.Inactive)
-            </div>
+            @* --- Recent activity preview --- *@
+            <RadzenCard class="st-card">
+                <div class="st-card-head">
+                    <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
+                    @if (activity.Count > 0 && Auth.HasPermission(AuditPermissions.TrailsView))
+                    {
+                        <button type="button" class="st-link" @onclick="@(() => activeTab = StationTab.Activity)">@UiStrings.Common.ViewAll</button>
+                    }
+                </div>
+                @ActivityTimeline(OverviewActivityPreviewCount)
+            </RadzenCard>
         </div>
     </text>;
 
+    @* ================================================================ Staff *@
     private RenderFragment StaffTab(StationDetail s) =>@<text>
         <RadzenCard class="st-card">
             <div class="st-card-head">
@@ -181,14 +261,49 @@
         </RadzenCard>
     </text>;
 
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="st-stat">
-            <span class="st-stat-icon st-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="st-stat-body">
-                <p class="st-stat-label">@label</p>
-                <p class="st-stat-value">@value</p>
-            </div>
+    @* ================================================================ Activity *@
+    private RenderFragment ActivityTab(StationDetail s) =>@<text>
+        <RadzenCard class="st-card">
+            <div class="st-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
+            @ActivityTimeline()
         </RadzenCard>
+    </text>;
+
+    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
+        @if (activity.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="st-timeline">
+                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="st-timeline-row" @key="entry.Id">
+                        <span class="st-timeline-icon st-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="st-timeline-content">
+                            <p class="st-timeline-title">@entry.Action</p>
+                            <p class="os-muted st-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="st-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="st-timeline-empty">
+            <span class="st-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="st-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Description</p>
+            </div>
+        </div>
     </text>;
 }
 
@@ -201,18 +316,23 @@
     private string errorMessage = UiStrings.Errors.LoadFailed;
 
     private IReadOnlyList<StaffMemberListItem> stationStaff = [];
+    private IReadOnlyList<AuditTrailListItem> activity = [];
     private bool staffLoading;
     private StationTab activeTab = StationTab.Overview;
 
-    private enum StationTab { Overview, Staff }
+    private const int OverviewActivityPreviewCount = 4;
+
+    private enum StationTab { Overview, Staff, Activity }
 
     private sealed record TabDef(StationTab Key, string Label, string Icon);
 
-    private static readonly TabDef[] tabs =
-    [
-        new(StationTab.Overview, UiStrings.Common.Overview, "dashboard"),
-        new(StationTab.Staff, UiStrings.Stations.StaffMembers, "groups")
-    ];
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(StationTab.Overview, UiStrings.Common.Overview, "dashboard");
+        yield return new TabDef(StationTab.Staff, UiStrings.Stations.StaffMembers, "groups");
+        if (Auth.HasPermission(AuditPermissions.TrailsView))
+            yield return new TabDef(StationTab.Activity, UiStrings.Audit.ActivityTitle, "history");
+    }
 
     private bool HasMoreActions(StationDetail s) =>
         (!s.IsActive && Auth.HasPermission(MasterDataPermissions.StationsActivate))
@@ -242,7 +362,23 @@
         }
 
         if (!loadError)
+        {
             await LoadStaffAsync();
+
+            activity = [];
+            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "Station", entityId: Id, pageSize: 25);
+                    activity = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    activity = [];
+                }
+            }
+        }
     }
 
     private async Task LoadStaffAsync()
@@ -323,5 +459,71 @@
         }
     }
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private void GoBack() => Navigation.NavigateTo("/master-data/stations");
+
+    // --- Presentation helpers ---------------------------------------------
+
+    private static string ProfileClass(StationDetail s) =>
+        s.IsActive ? "st-profile--active" : "st-profile--inactive";
+
+    private static string AvatarClass(StationDetail s) =>
+        s.IsActive ? "st-avatar--active" : "st-avatar--inactive";
+
+    private static string DotClass(StationDetail s) =>
+        s.IsActive ? "st-avatar-dot--active" : "st-avatar-dot--inactive";
+
+    private static string StatusToneColor(StationDetail s) =>
+        s.IsActive ? "success" : "neutral";
+
+    private static string StatusDescription(StationDetail s) =>
+        s.IsActive ? UiStrings.Stations.FormIntro : UiStrings.Stations.Inactive;
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("activat"))
+            return ("check_circle", "green");
+        if (a.Contains("deactivat"))
+            return ("cancel", "red");
+        if (a.Contains("staff"))
+            return ("groups", "blue");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
+    }
 }
