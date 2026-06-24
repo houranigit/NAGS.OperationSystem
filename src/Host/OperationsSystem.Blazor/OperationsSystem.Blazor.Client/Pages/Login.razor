@@ -22,11 +22,13 @@
             <RadzenTemplateForm TItem="LoginModel" Data="@model" Submit="@SubmitAsync">
                 <RadzenStack Gap="1rem">
                     <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="model.Email" Name="email" autofocus Style="width: 100%;" />
+                        <RadzenTextBox @bind-Value="model.Email" Name="email" autofocus Style="width: 100%;"
+                                       Immediate="true" AutoCompleteType="AutoCompleteType.Username" />
                     </RadzenFormField>
 
                     <RadzenFormField Text="@UiStrings.Auth.Password" Variant="Variant.Outlined">
-                        <RadzenPassword @bind-Value="model.Password" Name="password" Style="width: 100%;" />
+                        <RadzenPassword @bind-Value="model.Password" Name="password" Style="width: 100%;"
+                                        Immediate="true" AutoCompleteType="AutoCompleteType.CurrentPassword" />
                     </RadzenFormField>
 
                     @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -84,9 +86,15 @@
             await Auth.LoginAsync(model.Email, model.Password);
             NavigateAfterLogin();
         }
+        catch (ApiException ex) when (ex.IsUnauthorized)
+        {
+            errorMessage = ex.ProblemCode == "Identity.Auth.LockedOut"
+                ? UiStrings.Auth.AccountLocked
+                : UiStrings.Auth.InvalidCredentials;
+        }
         catch (ApiException)
         {
-            errorMessage = UiStrings.Auth.InvalidCredentials;
+            errorMessage = UiStrings.Common.SomethingWentWrong;
         }
         finally
         {

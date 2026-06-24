@@ -39,6 +39,7 @@
   <data name="Auth.SignInButton" xml:space="preserve"><value>Sign in</value></data>
   <data name="Auth.CredentialsRequired" xml:space="preserve"><value>Email and password are required.</value></data>
   <data name="Auth.InvalidCredentials" xml:space="preserve"><value>The email or password is incorrect.</value></data>
+  <data name="Auth.AccountLocked" xml:space="preserve"><value>The account is temporarily locked. Please try again later.</value></data>
   <data name="Auth.ActivateTitle" xml:space="preserve"><value>Activate your account</value></data>
   <data name="Auth.ActivateSubtitle" xml:space="preserve"><value>Set a password to finish setting up your account.</value></data>
   <data name="Auth.ActivationToken" xml:space="preserve"><value>Activation code</value></data>

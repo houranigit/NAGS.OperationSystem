@@ -39,6 +39,7 @@
   <data name="Auth.SignInButton" xml:space="preserve"><value>تسجيل الدخول</value></data>
   <data name="Auth.CredentialsRequired" xml:space="preserve"><value>البريد الإلكتروني وكلمة المرور مطلوبة.</value></data>
   <data name="Auth.InvalidCredentials" xml:space="preserve"><value>البريد الإلكتروني أو كلمة المرور غير صحيحة.</value></data>
+  <data name="Auth.AccountLocked" xml:space="preserve"><value>تم قفل الحساب مؤقتًا. يرجى المحاولة مرة أخرى لاحقًا.</value></data>
   <data name="Auth.ActivateTitle" xml:space="preserve"><value>تفعيل حسابك</value></data>
   <data name="Auth.ActivateSubtitle" xml:space="preserve"><value>قم بتعيين كلمة مرور لإنهاء إعداد حسابك.</value></data>
   <data name="Auth.ActivationToken" xml:space="preserve"><value>رمز التفعيل</value></data>

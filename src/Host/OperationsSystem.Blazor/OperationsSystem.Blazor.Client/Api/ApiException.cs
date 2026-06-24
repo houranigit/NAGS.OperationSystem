@@ -9,17 +9,38 @@ public sealed class ApiException : Exception
     {
         StatusCode = statusCode;
         ResponseBody = responseBody;
+        ProblemCode = ReadProblemCode(responseBody);
     }
 
     public int StatusCode { get; }
 
     public string ResponseBody { get; }
 
+    public string? ProblemCode { get; }
+
     public bool IsForbidden => StatusCode == 403;
 
     public bool IsUnauthorized => StatusCode == 401;
 
     public bool IsNotFound => StatusCode == 404;
+
+    private static string? ReadProblemCode(string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            return document.RootElement.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String
+                ? code.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Best-effort human-readable message extracted from the ProblemDetails body.</summary>
     public string ToDisplayMessage(string fallback)

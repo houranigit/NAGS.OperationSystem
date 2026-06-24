@@ -57,6 +57,7 @@ public static class UiStrings
         public static string SignInButton => UiText.Get("Auth.SignInButton", "Sign in");
         public static string CredentialsRequired => UiText.Get("Auth.CredentialsRequired", "Email and password are required.");
         public static string InvalidCredentials => UiText.Get("Auth.InvalidCredentials", "The email or password is incorrect.");
+        public static string AccountLocked => UiText.Get("Auth.AccountLocked", "The account is temporarily locked. Please try again later.");
         public static string ActivateTitle => UiText.Get("Auth.ActivateTitle", "Activate your account");
         public static string ActivateSubtitle => UiText.Get("Auth.ActivateSubtitle", "Set a password to finish setting up your account.");
         public static string ActivationToken => UiText.Get("Auth.ActivationToken", "Activation code");
