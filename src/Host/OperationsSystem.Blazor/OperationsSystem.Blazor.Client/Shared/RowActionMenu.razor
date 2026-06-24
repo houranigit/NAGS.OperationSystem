@@ -10,9 +10,14 @@
     clipped scroll area and closes on outside-click / Escape automatically.
 *@
 
-<button type="button" class="os-row-actions-trigger" @onclick="ShowMenu" @onclick:stopPropagation="true"
+<button type="button" class="os-row-actions-trigger @(ShowLabel ? "os-row-actions-trigger--labeled" : string.Empty)"
+        @onclick="ShowMenu" @onclick:stopPropagation="true"
         aria-haspopup="menu" title="@TriggerLabel" aria-label="@TriggerLabel">
     <RadzenIcon Icon="more_horiz" />
+    @if (ShowLabel)
+    {
+        <span>@TriggerLabel</span>
+    }
 </button>
 
 <CascadingValue Value="this" IsFixed="true">@ChildContent</CascadingValue>
@@ -25,6 +30,9 @@
 
     /// <summary>Accessible label for the trigger button (defaults to a localized "Actions").</summary>
     [Parameter] public string? Label { get; set; }
+
+    /// <summary>Shows the label next to the icon for page-level action menus.</summary>
+    [Parameter] public bool ShowLabel { get; set; }
 
     private string TriggerLabel => Label ?? UiStrings.Common.MoreActions;
 

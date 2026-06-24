@@ -304,6 +304,12 @@
     align-items: stretch;
 }
 
+.us-audit-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--os-space-3);
+}
+
 .us-card {
     position: relative;
     display: flex;
@@ -325,6 +331,11 @@
 .us-card-head .rz-icon {
     color: var(--os-color-primary);
     font-size: 1.25rem;
+}
+
+.us-audit-description {
+    margin: calc(-1 * var(--os-space-2)) 0 var(--os-space-4);
+    font-size: var(--os-text-sm);
 }
 
 .us-link {
@@ -638,8 +649,14 @@
 .us-timeline-icon--red { background: var(--os-color-danger-bg); color: var(--os-color-danger); }
 
 .us-timeline-content {
+    flex: 1 1 auto;
     padding-top: 0.35rem;
     min-width: 0;
+}
+
+.us-timeline-view {
+    flex: 0 0 auto;
+    align-self: flex-start;
 }
 
 .us-timeline-title {
@@ -680,6 +697,18 @@
 
     .us-name {
         font-size: 1.6rem;
+    }
+
+    .us-audit-preview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .us-timeline-row {
+        flex-wrap: wrap;
+    }
+
+    .us-timeline-view {
+        margin-inline-start: 3.25rem;
     }
 
     /* Sessions table → stacked cards */

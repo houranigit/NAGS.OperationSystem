@@ -87,6 +87,13 @@
   <data name="Audit.After" xml:space="preserve"><value>After</value></data>
   <data name="Audit.NoChanges" xml:space="preserve"><value>No field-level changes were recorded for this entry.</value></data>
   <data name="Audit.ActivityTitle" xml:space="preserve"><value>Recent activity</value></data>
+  <data name="Audit.HistoryTitle" xml:space="preserve"><value>History</value></data>
+  <data name="Audit.HistoryDescription" xml:space="preserve"><value>Changes made to this user account.</value></data>
+  <data name="Audit.ActivityDescription" xml:space="preserve"><value>Actions performed by this user across the system.</value></data>
+  <data name="Audit.ViewDetails" xml:space="preserve"><value>View</value></data>
+  <data name="Audit.DetailsTitle" xml:space="preserve"><value>Audit details</value></data>
+  <data name="Audit.CorrelationId" xml:space="preserve"><value>Correlation ID</value></data>
+  <data name="Audit.Metadata" xml:space="preserve"><value>Additional details</value></data>
   <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>Welcome back</value></data>
   <data name="Dashboard.Overview" xml:space="preserve"><value>Overview</value></data>
   <data name="Dashboard.IdentityCard" xml:space="preserve"><value>Account access</value></data>

@@ -87,6 +87,13 @@
   <data name="Audit.After" xml:space="preserve"><value>بعد</value></data>
   <data name="Audit.NoChanges" xml:space="preserve"><value>لم يتم تسجيل أية تغييرات على مستوى الحقل لهذا الإدخال.</value></data>
   <data name="Audit.ActivityTitle" xml:space="preserve"><value>النشاط الأخير</value></data>
+  <data name="Audit.HistoryTitle" xml:space="preserve"><value>السجل</value></data>
+  <data name="Audit.HistoryDescription" xml:space="preserve"><value>التغييرات التي أُجريت على حساب هذا المستخدم.</value></data>
+  <data name="Audit.ActivityDescription" xml:space="preserve"><value>الإجراءات التي نفّذها هذا المستخدم في النظام.</value></data>
+  <data name="Audit.ViewDetails" xml:space="preserve"><value>عرض</value></data>
+  <data name="Audit.DetailsTitle" xml:space="preserve"><value>تفاصيل التدقيق</value></data>
+  <data name="Audit.CorrelationId" xml:space="preserve"><value>معرّف الارتباط</value></data>
+  <data name="Audit.Metadata" xml:space="preserve"><value>تفاصيل إضافية</value></data>
   <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>مرحبًا بعودتك</value></data>
   <data name="Dashboard.Overview" xml:space="preserve"><value>ملخص</value></data>
   <data name="Dashboard.IdentityCard" xml:space="preserve"><value>الوصول إلى الحساب</value></data>

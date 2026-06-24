@@ -228,6 +228,16 @@ a {
     font-size: 1.25rem;
 }
 
+.os-row-actions-trigger--labeled {
+    display: inline-flex;
+    width: auto;
+    padding-inline: var(--os-space-3);
+    gap: var(--os-space-2);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+}
+
 /* The dropdown is rendered by ContextMenuService at the document root; strip the
    default container chrome so our own panel provides the surface. */
 .rz-contextmenu {

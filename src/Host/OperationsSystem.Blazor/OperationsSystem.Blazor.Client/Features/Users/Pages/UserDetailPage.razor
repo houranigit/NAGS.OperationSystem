@@ -68,7 +68,7 @@
                         }
                         @if (HasMoreActions(u))
                         {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.Users.AssignRole" Icon="badge"
                                            Permission="@IdentityPermissions.UsersAssignRole" OnClick="@OpenAssignRoleAsync" />
                                 <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail"
@@ -107,7 +107,8 @@
                 {
                     UserTab.Overview => OverviewTab(u),
                     UserTab.Sessions => SessionsTab(u),
-                    _ => ActivityTab(u)
+                    UserTab.History => HistoryTab(),
+                    _ => ActivityTab()
                 })
             </div>
         </div>
@@ -206,17 +207,34 @@
                 </RadzenCard>
             </div>
 
-            @* --- Recent activity preview --- *@
-            <RadzenCard class="us-card">
-                <div class="us-card-head">
-                    <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
-                    @if (activity.Count > 0)
-                    {
-                        <button type="button" class="us-link" @onclick="@(() => activeTab = UserTab.Activity)">@UiStrings.Common.ViewAll</button>
-                    }
+            @if (CanViewAudit)
+            {
+                <div class="us-audit-preview-grid">
+                    <RadzenCard class="us-card">
+                        <div class="us-card-head">
+                            <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                            @if (history.Count > 0)
+                            {
+                                <button type="button" class="us-link" @onclick="@(() => activeTab = UserTab.History)">@UiStrings.Common.ViewAll</button>
+                            }
+                        </div>
+                        <p class="us-audit-description os-muted">@UiStrings.Audit.HistoryDescription</p>
+                        @AuditTimeline(history, showTarget: false, maxItems: OverviewAuditPreviewCount)
+                    </RadzenCard>
+
+                    <RadzenCard class="us-card">
+                        <div class="us-card-head">
+                            <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
+                            @if (userActivity.Count > 0)
+                            {
+                                <button type="button" class="us-link" @onclick="@(() => activeTab = UserTab.Activity)">@UiStrings.Common.ViewAll</button>
+                            }
+                        </div>
+                        <p class="us-audit-description os-muted">@UiStrings.Audit.ActivityDescription</p>
+                        @AuditTimeline(userActivity, showTarget: true, maxItems: OverviewAuditPreviewCount)
+                    </RadzenCard>
                 </div>
-                @ActivityTimeline(OverviewActivityPreviewCount)
-            </RadzenCard>
+            }
         </div>
     </text>;
 
@@ -314,35 +332,53 @@
         </div>
     </text>;
 
-    @* ================================================================ Activity *@
-    private RenderFragment ActivityTab(UserDetail u) =>@<text>
+    @* ================================================================ History *@
+    private RenderFragment HistoryTab() =>@<text>
         <RadzenCard class="us-card">
-            <div class="us-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
-            @ActivityTimeline()
+            <div class="us-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="us-audit-description os-muted">@UiStrings.Audit.HistoryDescription</p>
+            @AuditTimeline(history, showTarget: false)
         </RadzenCard>
     </text>;
 
-    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
-        @if (activity.Count == 0)
+    @* ================================================================ Activity *@
+    private RenderFragment ActivityTab() =>@<text>
+        <RadzenCard class="us-card">
+            <div class="us-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
+            <p class="us-audit-description os-muted">@UiStrings.Audit.ActivityDescription</p>
+            @AuditTimeline(userActivity, showTarget: true)
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment AuditTimeline(
+        IReadOnlyList<AuditTrailListItem> entries,
+        bool showTarget,
+        int? maxItems = null) =>@<text>
+        @if (entries.Count == 0)
         {
-            @TimelineEmpty()
+            @TimelineEmpty(showTarget ? UiStrings.Audit.ActivityDescription : UiStrings.Audit.HistoryDescription)
         }
         else
         {
             <ol class="us-timeline">
-                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                @foreach (var entry in maxItems is { } take ? entries.Take(take) : entries)
                 {
                     var visual = TimelineVisual(entry.Action);
                     <li class="us-timeline-row" @key="entry.Id">
                         <span class="us-timeline-icon us-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
                         <div class="us-timeline-content">
-                            <p class="us-timeline-title">@entry.Action</p>
+                            <p class="us-timeline-title">@(showTarget ? $"{entry.Action} · {TargetLabel(entry)}" : entry.Action)</p>
                             <p class="os-muted us-timeline-sub">
                                 <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
                                 <span class="us-dot-sep">&middot;</span>
-                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                                @(showTarget
+                                    ? entry.Module
+                                    : (entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None)))
                             </p>
                         </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="us-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
                     </li>
                 }
             </ol>
@@ -364,12 +400,12 @@
         }
     </text>;
 
-    private RenderFragment TimelineEmpty() =>@<text>
+    private RenderFragment TimelineEmpty(string description) =>@<text>
         <div class="us-timeline-empty">
             <span class="us-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
             <div>
                 <p class="us-timeline-title">@UiStrings.Common.NoData</p>
-                <p class="os-muted">@UiStrings.Audit.Description</p>
+                <p class="os-muted">@description</p>
             </div>
         </div>
     </text>;
@@ -380,7 +416,8 @@
 
     private UserDetail? user;
     private RoleDetail? roleDetail;
-    private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> activity = [];
+    private IReadOnlyList<AuditTrailListItem> history = [];
+    private IReadOnlyList<AuditTrailListItem> userActivity = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
@@ -390,21 +427,26 @@
     private bool sessionsError;
     private UserTab activeTab = UserTab.Overview;
 
-    private const int OverviewActivityPreviewCount = 4;
+    private const int OverviewAuditPreviewCount = 4;
 
-    private enum UserTab { Overview, Sessions, Activity }
+    private enum UserTab { Overview, Sessions, History, Activity }
 
     private sealed record TabDef(UserTab Key, string Label, string Icon);
 
     private bool HasActiveSessions => sessions?.Any(s => s.IsActive) ?? false;
     private int ActiveSessionCount => sessions?.Count(s => s.IsActive) ?? 0;
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
 
     private IEnumerable<TabDef> Tabs()
     {
         yield return new TabDef(UserTab.Overview, UiStrings.Common.Overview, "dashboard");
         if (Auth.HasPermission(IdentityPermissions.SessionsView))
             yield return new TabDef(UserTab.Sessions, UiStrings.Sessions.Title, "devices");
-        yield return new TabDef(UserTab.Activity, UiStrings.Audit.ActivityTitle, "history");
+        if (CanViewAudit)
+        {
+            yield return new TabDef(UserTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
+            yield return new TabDef(UserTab.Activity, UiStrings.Audit.ActivityTitle, "history");
+        }
     }
 
     private bool HasMoreActions(UserDetail u) =>
@@ -428,17 +470,21 @@
             await LoadSessionsAsync();
             await LoadRoleAsync(user.RoleId);
 
-            activity = [];
-            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            history = [];
+            userActivity = [];
+            if (CanViewAudit)
             {
                 try
                 {
-                    var trails = await AuditApi.GetTrailsAsync(entityType: "User", entityId: Id, pageSize: 25);
-                    activity = trails.Items;
+                    var historyResult = await AuditApi.GetTrailsAsync(entityType: "User", entityId: Id, pageSize: 50);
+                    var activityResult = await AuditApi.GetTrailsAsync(actorId: Id, pageSize: 50);
+                    history = historyResult.Items;
+                    userActivity = activityResult.Items;
                 }
                 catch (ApiException)
                 {
-                    activity = [];
+                    history = [];
+                    userActivity = [];
                 }
             }
         }
@@ -513,6 +559,14 @@
 
         if (result is true)
             await LoadAsync();
+    }
+
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
     }
 
     private Task ResendInvitationAsync() =>
@@ -648,6 +702,10 @@
     };
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string TargetLabel(AuditTrailListItem entry) => entry.EntityId is { } id
+        ? $"{entry.EntityType} {ShortId(id)}"
+        : entry.EntityType;
 
     private static string FullStamp(DateTimeOffset? value) =>
         value is { } v ? v.ToLocalTime().ToString("F") : UiStrings.Users.Never;

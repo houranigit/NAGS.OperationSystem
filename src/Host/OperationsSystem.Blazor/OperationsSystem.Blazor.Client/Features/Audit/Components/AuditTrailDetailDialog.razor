@@ -1,0 +1,132 @@
+@using System.Text.Json
+@inject AuditApiClient Audit
+@inject DialogService DialogService
+
+<div class="adt-dialog">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@UiStrings.Errors.LoadFailed" OnRetry="@LoadAsync" />
+    }
+    else if (detail is { } entry)
+    {
+        <div class="adt-summary">
+            <div class="adt-summary-item">
+                <span>@UiStrings.Audit.Action</span>
+                <strong>@entry.Action</strong>
+            </div>
+            <div class="adt-summary-item">
+                <span>@UiStrings.Audit.When</span>
+                <strong>@entry.OccurredOnUtc.ToLocalTime().ToString("F")</strong>
+            </div>
+            <div class="adt-summary-item">
+                <span>@UiStrings.Audit.Actor</span>
+                <strong>@ActorLabel(entry)</strong>
+            </div>
+            <div class="adt-summary-item">
+                <span>@UiStrings.Audit.Module</span>
+                <strong>@entry.Module</strong>
+            </div>
+            <div class="adt-summary-item">
+                <span>@UiStrings.Audit.Entity</span>
+                <strong>@EntityLabel(entry)</strong>
+            </div>
+            <div class="adt-summary-item">
+                <span>@UiStrings.Audit.CorrelationId</span>
+                <strong class="adt-mono">@(entry.CorrelationId ?? UiStrings.Common.None)</strong>
+            </div>
+        </div>
+
+        <section class="adt-section">
+            <h3>@UiStrings.Audit.Changes</h3>
+            @if (entry.Changes.Count == 0)
+            {
+                <p class="adt-empty os-muted">@UiStrings.Audit.NoChanges</p>
+            }
+            else
+            {
+                <div class="adt-table" role="table">
+                    <div class="adt-row adt-row--head" role="row">
+                        <span role="columnheader">@UiStrings.Audit.Field</span>
+                        <span role="columnheader">@UiStrings.Audit.Before</span>
+                        <span role="columnheader">@UiStrings.Audit.After</span>
+                    </div>
+                    @foreach (var change in entry.Changes)
+                    {
+                        <div class="adt-row" role="row" @key="change">
+                            <strong role="cell" data-label="@UiStrings.Audit.Field">@change.Field</strong>
+                            <span role="cell" data-label="@UiStrings.Audit.Before">@(change.Before ?? UiStrings.Common.None)</span>
+                            <span role="cell" data-label="@UiStrings.Audit.After">@(change.After ?? UiStrings.Common.None)</span>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        @if (!string.IsNullOrWhiteSpace(entry.Metadata))
+        {
+            <section class="adt-section">
+                <h3>@UiStrings.Audit.Metadata</h3>
+                <pre class="adt-metadata">@FormatMetadata(entry.Metadata)</pre>
+            </section>
+        }
+
+        <div class="adt-actions">
+            <RadzenButton Text="@UiStrings.Common.Close" ButtonStyle="ButtonStyle.Light"
+                          Click="@(() => DialogService.Close())" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid TrailId { get; set; }
+
+    private AuditTrailDetail? detail;
+    private bool isLoading = true;
+    private bool loadError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+
+        try
+        {
+            detail = await Audit.GetTrailAsync(TrailId);
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static string ActorLabel(AuditTrailDetail entry) => entry.IsSystemActor
+        ? UiStrings.Audit.System
+        : entry.ActorDisplayName ?? entry.ActorId?.ToString() ?? UiStrings.Common.None;
+
+    private static string EntityLabel(AuditTrailDetail entry) => entry.EntityId is { } id
+        ? $"{entry.EntityType} ({id})"
+        : entry.EntityType;
+
+    private static string FormatMetadata(string metadata)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(metadata);
+            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (JsonException)
+        {
+            return metadata;
+        }
+    }
+}

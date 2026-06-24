@@ -113,6 +113,13 @@ public static class UiStrings
         public static string After => UiText.Get("Audit.After", "After");
         public static string NoChanges => UiText.Get("Audit.NoChanges", "No field-level changes were recorded for this entry.");
         public static string ActivityTitle => UiText.Get("Audit.ActivityTitle", "Recent activity");
+        public static string HistoryTitle => UiText.Get("Audit.HistoryTitle", "History");
+        public static string HistoryDescription => UiText.Get("Audit.HistoryDescription", "Changes made to this user account.");
+        public static string ActivityDescription => UiText.Get("Audit.ActivityDescription", "Actions performed by this user across the system.");
+        public static string ViewDetails => UiText.Get("Audit.ViewDetails", "View");
+        public static string DetailsTitle => UiText.Get("Audit.DetailsTitle", "Audit details");
+        public static string CorrelationId => UiText.Get("Audit.CorrelationId", "Correlation ID");
+        public static string Metadata => UiText.Get("Audit.Metadata", "Additional details");
     }
 
     public static class Dashboard
