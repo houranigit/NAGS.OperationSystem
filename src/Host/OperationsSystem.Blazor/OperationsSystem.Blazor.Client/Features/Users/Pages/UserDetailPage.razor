@@ -152,7 +152,7 @@
                         <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
                         <button type="button" class="us-link" @onclick="@(() => activeTab = UserTab.Activity)">@UiStrings.Common.Open</button>
                     </div>
-                    @TimelineEmpty()
+                    @ActivityTimeline(OverviewActivityPreviewCount)
                 </RadzenCard>
             </div>
 
@@ -236,29 +236,33 @@
     private RenderFragment ActivityTab(UserDetail u) =>@<text>
         <RadzenCard class="us-card">
             <div class="us-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
-            @if (activity.Count == 0)
-            {
-                @TimelineEmpty()
-            }
-            else
-            {
-                <div class="us-timeline">
-                    @foreach (var entry in activity)
-                    {
-                        <div class="us-timeline-row" @key="entry.Id">
-                            <span class="us-timeline-icon"><RadzenIcon Icon="history" /></span>
-                            <div>
-                                <p class="us-timeline-title">@entry.Action</p>
-                                <p class="os-muted">
-                                    @entry.OccurredOnUtc.ToString("u")
-                                    &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
-                                </p>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
+            @ActivityTimeline()
         </RadzenCard>
+    </text>;
+
+    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
+        @if (activity.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <div class="us-timeline">
+                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                {
+                    <div class="us-timeline-row" @key="entry.Id">
+                        <span class="us-timeline-icon"><RadzenIcon Icon="history" /></span>
+                        <div>
+                            <p class="us-timeline-title">@entry.Action</p>
+                            <p class="os-muted">
+                                @entry.OccurredOnUtc.ToString("u")
+                                &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
     </text>;
 
     private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
@@ -295,6 +299,8 @@
     private bool sessionsLoading;
     private bool sessionsError;
     private UserTab activeTab = UserTab.Overview;
+
+    private const int OverviewActivityPreviewCount = 3;
 
     private enum UserTab { Overview, Sessions, Activity }
 

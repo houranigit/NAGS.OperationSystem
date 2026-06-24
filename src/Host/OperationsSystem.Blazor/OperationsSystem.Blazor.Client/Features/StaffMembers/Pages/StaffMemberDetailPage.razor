@@ -169,7 +169,7 @@
                         <RadzenIcon Icon="history" /><h3>@UiStrings.StaffMembers.RecentActivity</h3>
                         <button type="button" class="sm-link" @onclick="@(() => activeTab = StaffTab.Activity)">@UiStrings.Common.Open</button>
                     </div>
-                    @TimelineEmpty()
+                    @ActivityTimeline(OverviewActivityPreviewCount)
                 </RadzenCard>
             </div>
 
@@ -277,29 +277,33 @@
     private RenderFragment ActivityTab(StaffMemberDetail s) =>@<text>
         <RadzenCard class="sm-card">
             <div class="sm-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.StaffMembers.TabActivity</h3></div>
-            @if (activity.Count == 0)
-            {
-                @TimelineEmpty()
-            }
-            else
-            {
-                <div class="sm-timeline">
-                    @foreach (var entry in activity)
-                    {
-                        <div class="sm-timeline-row" @key="entry.Id">
-                            <span class="sm-timeline-icon"><RadzenIcon Icon="history" /></span>
-                            <div>
-                                <p class="sm-timeline-title">@entry.Action</p>
-                                <p class="os-muted">
-                                    @entry.OccurredOnUtc.ToString("u")
-                                    &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
-                                </p>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
+            @ActivityTimeline()
         </RadzenCard>
+    </text>;
+
+    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
+        @if (activity.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <div class="sm-timeline">
+                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                {
+                    <div class="sm-timeline-row" @key="entry.Id">
+                        <span class="sm-timeline-icon"><RadzenIcon Icon="history" /></span>
+                        <div>
+                            <p class="sm-timeline-title">@entry.Action</p>
+                            <p class="os-muted">
+                                @entry.OccurredOnUtc.ToString("u")
+                                &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
     </text>;
 
     // Small shared fragments reused across tabs.
@@ -360,6 +364,8 @@
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private StaffTab activeTab = StaffTab.Overview;
+
+    private const int OverviewActivityPreviewCount = 3;
 
     private enum StaffTab { Overview, Licenses, Schedule, PortalAccess, Activity }
 
