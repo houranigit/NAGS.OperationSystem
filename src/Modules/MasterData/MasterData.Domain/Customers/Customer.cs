@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Aggregates;
+using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
 
 namespace MasterData.Domain.Customers;
@@ -9,11 +10,14 @@ namespace MasterData.Domain.Customers;
 /// <see cref="Countries.Country"/>. Owns its <see cref="CustomerContact"/> collection, reconciled by
 /// stable contact id. Long-lived master data with an active/inactive lifecycle; never hard-deleted.
 /// </summary>
-public sealed class Customer : AggregateRoot<Guid>
+public sealed class Customer : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<CustomerContact> _contacts = [];
 
     private Customer() { }
+
+    string IAuditable.AuditEntityType => "Customer";
+    Guid IAuditable.AuditEntityId => Id;
 
     public string IataCode { get; private set; } = null!;
     public string? IcaoCode { get; private set; }
@@ -173,6 +177,27 @@ public sealed class Customer : AggregateRoot<Guid>
         _contacts.Add(contact);
         UpdatedAtUtc = now;
         return contact;
+    }
+
+    /// <summary>Updates an active contact's fields, enforcing email uniqueness among the customer's other active contacts.</summary>
+    public Result UpdateContact(Guid contactId, string? name, string? jobTitle, string? email, string? phone, DateTimeOffset now)
+    {
+        var contact = _contacts.FirstOrDefault(c => c.Id == contactId);
+        if (contact is null || !contact.IsActive)
+            return Error.NotFound("A referenced contact does not exist for the customer.", "MasterData.CustomerContact.NotFound");
+
+        if (!string.IsNullOrWhiteSpace(email) &&
+            _contacts.Any(c => c.Id != contactId && c.IsActive && string.Equals(c.Email, email.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            return Error.Conflict("A contact with this email already exists for the customer.", "MasterData.CustomerContact.EmailNotUnique");
+        }
+
+        var result = contact.Update(name, jobTitle, email, phone, now);
+        if (result.IsFailure)
+            return result.Error;
+
+        UpdatedAtUtc = now;
+        return Result.Success();
     }
 
     /// <summary>

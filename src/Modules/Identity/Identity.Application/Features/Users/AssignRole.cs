@@ -35,9 +35,17 @@ public sealed class AssignRoleCommandHandler(IIdentityDbContext db, TimeProvider
                 $"Role '{role.Name}' is not compatible with this account's type ({user.UserType}).",
                 "Identity.User.IncompatibleRole");
 
-        var result = user.AssignRole(request.RoleId, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var result = user.AssignRole(request.RoleId, now);
         if (result.IsFailure)
             return result.Error;
+
+        // Revoke existing sessions so the old role's refresh tokens cannot be used.
+        var sessions = await db.Sessions
+            .Where(s => s.UserId == user.Id && s.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var session in sessions)
+            session.Revoke(now);
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();

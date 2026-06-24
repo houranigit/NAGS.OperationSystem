@@ -28,7 +28,7 @@ internal static class ManpowerTypeEndpoints
         {
             var result = await sender.Send(new GetActiveManpowerTypeOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.ManpowerTypes.View);
+        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
 
         manpowerTypes.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

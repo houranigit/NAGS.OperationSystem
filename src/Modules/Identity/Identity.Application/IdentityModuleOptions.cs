@@ -15,6 +15,18 @@ public sealed class IdentityModuleOptions
     /// <summary>Base URL of the portal's activation page; the invitation link is built from it.</summary>
     public string ActivationUrlBase { get; set; } = "https://localhost/activate";
 
+    /// <summary>Base URL of the portal's password-reset page; the reset link is built from it.</summary>
+    public string PasswordResetUrlBase { get; set; } = "https://localhost/reset-password";
+
+    /// <summary>How long a password-reset link remains valid.</summary>
+    public int PasswordResetExpiryHours { get; set; } = 2;
+
+    /// <summary>Base URL of the portal's email-change confirmation page; the link is built from it.</summary>
+    public string EmailChangeConfirmUrlBase { get; set; } = "https://localhost/confirm-email-change";
+
+    /// <summary>How long a linked-email verification link remains valid.</summary>
+    public int EmailChangeExpiryHours { get; set; } = 72;
+
     public AdminBootstrapOptions Admin { get; set; } = new();
     public DemoDataOptions DemoData { get; set; } = new();
 }

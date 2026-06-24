@@ -10,7 +10,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     private const string Base = IdentityApiTestData.Base;
 
     private sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);
-    private sealed record InvitedResponse(Guid Id, string Email, Guid InvitationToken);
+    private sealed record InvitedResponse(Guid Id, string Email, string DeliveryStatus);
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record RoleItem(Guid Id, string Name);
 
@@ -64,23 +64,31 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     {
         var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
 
-        // A role with no permissions.
+        // A role with no permissions (admin-compatible, so it can be assigned to a created admin).
         var roleName = $"NoPerms-{Guid.NewGuid():N}";
         var createRole = await client.PostAsJsonAsync($"{Base}/roles",
             new { name = roleName, description = (string?)null, permissions = Array.Empty<string>() });
         var roleId = await createRole.Content.ReadFromJsonAsync<Guid>();
 
-        // Invite + activate a user in that role.
+        // Direct creation always makes a full administrator; invite + activate, then demote to the
+        // empty role so we can prove permission enforcement.
         var email = $"limited-{Guid.NewGuid():N}@nags.sa";
         var invite = await client.PostAsJsonAsync($"{Base}/users/invite",
-            new { email, displayName = "Limited User", roleId });
+            new { email, displayName = "Limited User" });
         var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        invited.ShouldNotBeNull();
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
 
         var activate = await client.PostAsJsonAsync($"{Base}/auth/activate",
-            new { email, invitationToken = invited!.InvitationToken, newPassword = "Limited#12345" });
+            new { email, invitationToken, newPassword = "Limited#12345" });
         activate.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
-        // Log in as the limited user and attempt a permission-gated endpoint.
+        (await client.PutAsJsonAsync($"{Base}/users/{invited!.Id}/role", new { roleId }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        // Log in as the now-limited user and attempt a permission-gated endpoint.
         var limitedClient = factory.CreateClient();
         var login = await limitedClient.PostAsJsonAsync($"{Base}/auth/login",
             new { email, password = "Limited#12345" });
@@ -101,7 +109,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
 
         await IdentityApiTestData.SeedDemoRolesAsync(client);
         var userRoleId = await IdentityApiTestData.EnsureDemoUserRoleAsync(client);
-        await IdentityApiTestData.SeedDemoUsersAsync(client, userRoleId);
+        await IdentityApiTestData.SeedDemoUsersAsync(factory, client, userRoleId);
 
         const int pageSize = 20;
         var expectedRoleTotal = rolesBefore!.TotalCount + IdentityApiTestData.DemoRoleCount + 1; // Shared demo user role.

@@ -58,7 +58,7 @@ internal static class CustomerEndpoints
                 id, request.IataCode, request.IcaoCode, request.Name, request.CountryId,
                 request.OfficialEmail, request.OfficialPhone,
                 new CustomerAddressInput(request.Address.Line1, request.Address.Line2, request.Address.City, request.Address.Region, request.Address.PostalCode),
-                MapContacts(request.Contacts), rowVersion);
+                rowVersion);
 
             var result = await sender.Send(command, ct);
             return result.ToNoContent();
@@ -72,6 +72,15 @@ internal static class CustomerEndpoints
             var result = await sender.Send(new AddCustomerContactCommand(id, request.Name, request.JobTitle, request.Email, request.Phone, rowVersion), ct);
             return result.ToCreated(contactId => $"/api/v1/masterdata/customers/{id}/contacts/{contactId}");
         }).RequirePermission(MasterDataPermissions.CustomerContacts.Create);
+
+        customers.MapPut("/{id:guid}/contacts/{contactId:guid}", async (Guid id, Guid contactId, UpdateCustomerContactRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new UpdateCustomerContactCommand(id, contactId, request.Name, request.JobTitle, request.Email, request.Phone, rowVersion), ct);
+            return result.ToNoContent();
+        }).RequirePermission(MasterDataPermissions.CustomerContacts.Update);
 
         customers.MapPost("/{id:guid}/logo", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {

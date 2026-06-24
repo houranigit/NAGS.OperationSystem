@@ -7,5 +7,6 @@ namespace Identity.Application.Abstractions;
 /// </summary>
 public interface IInvitationNotifier
 {
-    public Task SendInvitationAsync(string email, string displayName, Guid userId, Guid invitationToken, CancellationToken cancellationToken = default);
+    /// <summary><paramref name="invitationToken"/> is the raw (unhashed) URL-safe token for the activation link.</summary>
+    public Task SendInvitationAsync(string email, string displayName, Guid userId, string invitationToken, CancellationToken cancellationToken = default);
 }

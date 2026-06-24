@@ -9,8 +9,20 @@ public enum AuthStatus
     Anonymous
 }
 
-public sealed class AuthSession(BrowserApiClient apiClient, AuthTokenStore tokenStore)
+public sealed class AuthSession
 {
+    private readonly BrowserApiClient apiClient;
+    private readonly AuthTokenStore tokenStore;
+
+    public AuthSession(BrowserApiClient apiClient, AuthTokenStore tokenStore, ClientTokenRefresher refresher)
+    {
+        this.apiClient = apiClient;
+        this.tokenStore = tokenStore;
+        // When a transparent refresh fails, the session is no longer valid: drop to anonymous so the
+        // UI redirects to login.
+        refresher.RefreshFailed += OnRefreshFailed;
+    }
+
     public AuthStatus Status { get; private set; } = AuthStatus.Loading;
 
     public AuthenticatedUser? User { get; private set; }
@@ -18,6 +30,16 @@ public sealed class AuthSession(BrowserApiClient apiClient, AuthTokenStore token
     public event Action? StateChanged;
 
     public bool HasPermission(string permission) => User?.Permissions.Contains(permission) ?? false;
+
+    private void OnRefreshFailed()
+    {
+        if (Status == AuthStatus.Anonymous)
+            return;
+
+        User = null;
+        Status = AuthStatus.Anonymous;
+        StateChanged?.Invoke();
+    }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {

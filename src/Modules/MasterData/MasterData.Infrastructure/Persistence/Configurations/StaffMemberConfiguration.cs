@@ -26,6 +26,9 @@ public sealed class StaffMemberConfiguration : IEntityTypeConfiguration<StaffMem
         builder.Property(s => s.EmploymentEndDate);
         builder.Property(s => s.WorkingScheduleMask);
         builder.Property(s => s.LinkedUserId);
+        builder.Property(s => s.PortalState).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(s => s.PortalCorrelationId);
+        builder.Property(s => s.PortalFailureReason).HasMaxLength(500);
 
         // VO accessors are derived from the scalar columns above; not separately persisted.
         builder.Ignore(s => s.EmploymentContract);

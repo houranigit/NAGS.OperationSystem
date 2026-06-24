@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject OperationsSystem.Blazor.Client.Api.AuditApiClient AuditApi
 
 <PageTitle>@(item?.FullName ?? UiStrings.StaffMembers.Title)</PageTitle>
 
@@ -276,7 +277,28 @@
     private RenderFragment ActivityTab(StaffMemberDetail s) =>@<text>
         <RadzenCard class="sm-card">
             <div class="sm-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.StaffMembers.TabActivity</h3></div>
-            @TimelineEmpty()
+            @if (activity.Count == 0)
+            {
+                @TimelineEmpty()
+            }
+            else
+            {
+                <div class="sm-timeline">
+                    @foreach (var entry in activity)
+                    {
+                        <div class="sm-timeline-row" @key="entry.Id">
+                            <span class="sm-timeline-icon"><RadzenIcon Icon="history" /></span>
+                            <div>
+                                <p class="sm-timeline-title">@entry.Action</p>
+                                <p class="os-muted">
+                                    @entry.OccurredOnUtc.ToString("u")
+                                    &middot; @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                                </p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
         </RadzenCard>
     </text>;
 
@@ -333,6 +355,7 @@
     [Parameter] public Guid Id { get; set; }
 
     private StaffMemberDetail? item;
+    private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> activity = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
@@ -368,6 +391,21 @@
         try
         {
             item = await MasterData.GetStaffMemberAsync(Id);
+
+            // The Activity timeline reads the audit trail; only administrators can query it.
+            activity = [];
+            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "StaffMember", entityId: Id, pageSize: 25);
+                    activity = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    activity = [];
+                }
+            }
         }
         catch (ApiException ex)
         {

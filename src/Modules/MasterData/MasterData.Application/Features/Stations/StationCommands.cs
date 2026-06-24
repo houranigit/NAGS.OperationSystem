@@ -1,9 +1,15 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Persistence;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
+using MasterData.Application.Features.StaffMembers;
+using MasterData.Contracts;
+using MasterData.Domain.Authorization;
+using MasterData.Domain.StaffMembers;
 using MasterData.Domain.Stations;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,7 +17,27 @@ namespace MasterData.Application.Features.Stations;
 
 // --- Create ---------------------------------------------------------------
 
-public sealed record CreateStationCommand(string IataCode, string? IcaoCode, string Name, string City, Guid CountryId) : ICommand<Guid>;
+/// <summary>
+/// A staff member to create together with a new station. <see cref="PortalAccessRoleId"/>, when set,
+/// requests portal access in the same transaction and requires the administrator-only grant-access
+/// permission.
+/// </summary>
+public sealed record NewStationStaffInput(
+    string FullName,
+    string Email,
+    Guid ManpowerTypeId,
+    EmploymentContractInput? EmploymentContract,
+    IReadOnlyList<DayOfWeek>? WorkingDays,
+    IReadOnlyList<StaffLicenseInput> Licenses,
+    Guid? PortalAccessRoleId);
+
+public sealed record CreateStationCommand(
+    string IataCode,
+    string? IcaoCode,
+    string Name,
+    string City,
+    Guid CountryId,
+    IReadOnlyList<NewStationStaffInput> Staff) : ICommand<Guid>;
 
 public sealed class CreateStationCommandValidator : AbstractValidator<CreateStationCommand>
 {
@@ -24,16 +50,18 @@ public sealed class CreateStationCommandValidator : AbstractValidator<CreateStat
     }
 }
 
-public sealed class CreateStationCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserContext userContext, TimeProvider timeProvider)
     : ICommandHandler<CreateStationCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateStationCommand request, CancellationToken cancellationToken)
     {
+        var now = timeProvider.GetUtcNow();
+
         var countryCheck = await StationGuards.EnsureActiveCountryAsync(db, request.CountryId, cancellationToken);
         if (countryCheck.IsFailure)
             return countryCheck.Error;
 
-        var result = Station.Create(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, timeProvider.GetUtcNow());
+        var result = Station.Create(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, now);
         if (result.IsFailure)
             return result.Error;
 
@@ -44,8 +72,80 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, TimePro
             return conflict.Error;
 
         db.Stations.Add(station);
+
+        // Create zero-or-more staff atomically with the station. Any invalid child fails the whole
+        // create (single SaveChanges below). Supplying portal access requires the grant-access
+        // permission, enforced here as well as at the endpoint.
+        var pendingEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var input in request.Staff ?? [])
+        {
+            var staffResult = await BuildStaffAsync(station.Id, input, pendingEmails, now, cancellationToken);
+            if (staffResult.IsFailure)
+                return staffResult.Error;
+
+            db.StaffMembers.Add(staffResult.Value);
+
+            if (input.PortalAccessRoleId is { } roleId)
+            {
+                if (!userContext.HasPermission(MasterDataPermissions.StaffMembers.GrantAccess))
+                    return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
+
+                db.Enqueue(new PortalAccessRequested
+                {
+                    ExternalReferenceId = staffResult.Value.Id,
+                    UserType = UserType.StationStaff,
+                    RoleId = roleId,
+                    Email = staffResult.Value.Email,
+                    DisplayName = staffResult.Value.FullName
+                });
+            }
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return station.Id;
+    }
+
+    private async Task<Result<StaffMember>> BuildStaffAsync(
+        Guid stationId, NewStationStaffInput input, HashSet<string> pendingEmails, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // The station is the freshly-created active one (not yet persisted), so only the manpower
+        // type needs to be validated against the database here.
+        var manpowerType = await db.ManpowerTypes.FirstOrDefaultAsync(m => m.Id == input.ManpowerTypeId, cancellationToken);
+        if (manpowerType is null)
+            return Error.NotFound("The selected manpower type was not found.", "MasterData.StaffMember.ManpowerTypeNotFound");
+        if (!manpowerType.IsActive)
+            return Error.Validation("The selected manpower type is inactive.", "MasterData.StaffMember.ManpowerTypeInactive");
+
+        var contract = StaffMemberGuards.BuildContract(input.EmploymentContract);
+        if (contract.IsFailure)
+            return contract.Error;
+
+        var schedule = StaffMemberGuards.BuildSchedule(input.WorkingDays);
+        if (schedule.IsFailure)
+            return schedule.Error;
+
+        var created = StaffMember.Create(input.FullName, input.Email, stationId, input.ManpowerTypeId, contract.Value, schedule.Value, now);
+        if (created.IsFailure)
+            return created.Error;
+
+        var staff = created.Value;
+
+        if (!pendingEmails.Add(staff.Email))
+            return Error.Conflict("Two staff members in the request share an email.", "MasterData.StaffMember.DuplicateEmail");
+
+        var emailCheck = await StaffMemberGuards.EnsureEmailAvailableAsync(db, staff.Email, null, cancellationToken);
+        if (emailCheck.IsFailure)
+            return emailCheck.Error;
+
+        var licensesCheck = await StaffMemberGuards.EnsureLicensesExistAsync(db, input.Licenses, cancellationToken);
+        if (licensesCheck.IsFailure)
+            return licensesCheck.Error;
+
+        var reconcile = staff.ReconcileLicenses(StaffMemberGuards.MapLicenses(input.Licenses), now);
+        if (reconcile.IsFailure)
+            return reconcile.Error;
+
+        return staff;
     }
 }
 

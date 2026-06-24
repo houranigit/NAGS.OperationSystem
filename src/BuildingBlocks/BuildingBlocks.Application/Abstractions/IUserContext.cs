@@ -19,4 +19,11 @@ public interface IUserContext
 
     /// <summary>The linked MasterData record id for scoped accounts; null for System Administrators.</summary>
     public Guid? ExternalReferenceId { get; }
+
+    /// <summary>
+    /// True when the caller holds <paramref name="permission"/>. Lets application handlers enforce
+    /// permission-gated sub-operations (e.g. supplying portal access during a create) as
+    /// defense-in-depth alongside the endpoint policy.
+    /// </summary>
+    public bool HasPermission(string permission);
 }

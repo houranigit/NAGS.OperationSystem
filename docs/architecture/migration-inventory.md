@@ -122,8 +122,9 @@ Design source of truth: `docs/modules/master-data-foundation.md`.
 
 | Feature | Status | Old reference files | New location | Notes |
 |---|---|---|---|---|
-| Automatic EF change-capture audit trail | not-started | `BuildingBlocks.Infrastructure/Persistence/BaseDbContext.cs`, `Persistence/Models/AuditTrail.cs`, `Core.Infrastructure/Persistence/CoreDbContext.cs` | `Audit.Infrastructure` | New Audit module owns `audit.AuditTrails`; do not preserve legacy Core migration ownership |
-| Business/security event audit | not-started | `Audit.Domain/Enumerations/SecurityEventType.cs`, `Audit.Contracts/SecurityEvent/SecurityEventDto.cs` | | Legacy is enum-only stub; implement properly in v1.0.0 |
+| Automatic EF change-capture audit trail | done | `BuildingBlocks.Infrastructure/Persistence/BaseDbContext.cs`, `Persistence/Models/AuditTrail.cs`, `Core.Infrastructure/Persistence/CoreDbContext.cs` | `Audit.Infrastructure` (`audit.audit_trails`) | New Audit module. `AuditSaveChangesInterceptor` captures `IAuditable` create/update deltas into each module's outbox in the same transaction; the Audit consumer persists them (inbox-idempotent). User/Role marked `IAuditable` (MasterData aggregates pending Phase 3). |
+| Business/security event audit | partial | `Audit.Domain/Enumerations/SecurityEventType.cs`, `Audit.Contracts/SecurityEvent/SecurityEventDto.cs` | `BuildingBlocks.Contracts.Auditing.AuditEntryRecorded` + `db.EnqueueAudit(...)` | Cross-cutting event + explicit-event helper available. Read API `GET /api/v1/audit/trails(/{id})` is admin-only and append-only; secrets redacted via `AuditRedaction`. Explicit lifecycle/login/MFA events expanded in Phase 2. |
+| Audit read API + permissions | done | — | `Audit.Api`, `Audit.Domain/Authorization/AuditPermissions.cs` | `audit.trails.view` (SystemAdministrator-only); no write/delete endpoints; retained indefinitely for MVP. |
 
 ### BuildingBlocks (shared foundation)
 
@@ -141,6 +142,6 @@ Design source of truth: `docs/modules/master-data-foundation.md`.
 | Feature | Status | Old reference files | New location | Notes |
 |---|---|---|---|---|
 | Module composition & wiring | not-started | `Host.Web/Program.cs`, `Extensions/ServiceCollectionExtensions.cs` | | New host stays thin |
-| Ordered migrations apply | not-started | `Host.Web/Extensions/DatabaseMigrationExtensions.cs` | | Identity → Audit → MasterData → … |
+| Ordered migrations apply | partial | `Host.Web/Extensions/DatabaseMigrationExtensions.cs` | `OperationsSystem.Api/Program.cs` | Startup applies Audit → Identity → MasterData. Migration squash + reviewed prod scripts land in the release-hardening phase. |
 | Auth policies (portal cookie + MobileJwt) | not-started | `Host.Web/Authorization/PortalPolicies.cs`, `Extensions/WebApplicationExtensions.cs` | | v1.0.0: web cookie now, Bearer scheme ready |
 | OpenAPI / Scalar | not-started | `Host.Web/Program.cs` | | Make OpenAPI a first-class artifact (Scalar) for the Blazor portal, future mobile, and integrations |

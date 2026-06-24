@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Aggregates;
+using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
 using MasterData.Domain.Customers;
 
@@ -10,11 +11,14 @@ namespace MasterData.Domain.StaffMembers;
 /// schedule, and a reconciled-by-id collection of license assignments. Email is unique across staff.
 /// A linked portal <c>User</c> is optional and assigned later via the portal-access workflow.
 /// </summary>
-public sealed class StaffMember : AggregateRoot<Guid>
+public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<StaffMemberLicense> _licenses = [];
 
     private StaffMember() { }
+
+    string IAuditable.AuditEntityType => "StaffMember";
+    Guid IAuditable.AuditEntityId => Id;
 
     public string FullName { get; private set; } = null!;
     public string Email { get; private set; } = null!;
@@ -27,6 +31,16 @@ public sealed class StaffMember : AggregateRoot<Guid>
 
     /// <summary>The provisioned portal user, set later via the portal-access workflow. Null until linked.</summary>
     public Guid? LinkedUserId { get; private set; }
+
+    /// <summary>Portal-access lifecycle state reflected from the Identity provisioning workflow.</summary>
+    public PortalAccess.PortalAccessState PortalState { get; private set; } = PortalAccess.PortalAccessState.None;
+
+    /// <summary>Correlates the latest provisioning request so stale replies cannot overwrite a newer one.</summary>
+    public Guid? PortalCorrelationId { get; private set; }
+
+    /// <summary>Safe, non-sensitive failure detail when <see cref="PortalState"/> is Failed.</summary>
+    public string? PortalFailureReason { get; private set; }
+
     public bool IsActive { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
@@ -180,10 +194,48 @@ public sealed class StaffMember : AggregateRoot<Guid>
         return Result.Success();
     }
 
-    /// <summary>Links the provisioned portal user. Called when consuming the Identity provisioning reply.</summary>
-    public void LinkUser(Guid userId, DateTimeOffset now)
+    /// <summary>Begins a portal-access request, recording the correlation id of this attempt.</summary>
+    public void RequestPortalAccess(Guid correlationId, DateTimeOffset now)
     {
+        PortalCorrelationId = correlationId;
+        PortalState = PortalAccess.PortalAccessState.Provisioning;
+        PortalFailureReason = null;
+        UpdatedAtUtc = now;
+    }
+
+    /// <summary>
+    /// Links the provisioned portal user when consuming the Identity reply. Ignores stale replies
+    /// whose correlation id does not match the latest request.
+    /// </summary>
+    public void LinkUser(Guid userId, Guid? correlationId, DateTimeOffset now)
+    {
+        if (correlationId is { } id && PortalCorrelationId is { } current && id != current)
+            return;
+
         LinkedUserId = userId;
+        PortalState = PortalAccess.PortalAccessState.Invited;
+        PortalFailureReason = null;
+        UpdatedAtUtc = now;
+    }
+
+    /// <summary>Records a provisioning failure (visible, retryable) for the matching request.</summary>
+    public void MarkPortalFailed(Guid? correlationId, string reason, DateTimeOffset now)
+    {
+        if (correlationId is { } id && PortalCorrelationId is { } current && id != current)
+            return;
+
+        PortalState = PortalAccess.PortalAccessState.Failed;
+        PortalFailureReason = reason;
+        UpdatedAtUtc = now;
+    }
+
+    /// <summary>Marks portal access suspended (record or parent deactivated). Keeps the User link.</summary>
+    public void SuspendPortal(DateTimeOffset now)
+    {
+        if (PortalState is PortalAccess.PortalAccessState.None)
+            return;
+
+        PortalState = PortalAccess.PortalAccessState.Suspended;
         UpdatedAtUtc = now;
     }
 
@@ -191,6 +243,9 @@ public sealed class StaffMember : AggregateRoot<Guid>
     public void UnlinkUser(DateTimeOffset now)
     {
         LinkedUserId = null;
+        PortalState = PortalAccess.PortalAccessState.None;
+        PortalCorrelationId = null;
+        PortalFailureReason = null;
         UpdatedAtUtc = now;
     }
 

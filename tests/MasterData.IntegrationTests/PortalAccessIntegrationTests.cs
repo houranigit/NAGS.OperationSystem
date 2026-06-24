@@ -17,7 +17,7 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
     private const string Base = MasterDataApiFactory.Base;
     private const string IdentityBase = MasterDataApiFactory.IdentityBase;
 
-    private sealed record StaffDetail(Guid Id, string FullName, string Email, Guid StationId, bool IsActive, Guid? LinkedUserId, string RowVersion);
+    private sealed record StaffDetail(Guid Id, string FullName, string Email, Guid StationId, bool IsActive, Guid? LinkedUserId, string PortalState, string? PortalFailureReason, string RowVersion);
     private sealed record CustomerDetail(Guid Id, string IataCode, bool IsActive, string RowVersion, List<ContactBody> Contacts);
     private sealed record ContactBody(Guid Id, string Name, string Email, Guid? LinkedUserId, bool IsActive);
     private sealed record StationDetail(Guid Id, string RowVersion);
@@ -43,6 +43,53 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         user.UserType.ShouldBe(BuildingBlocks.Contracts.Authorization.UserType.StationStaff);
         user.RoleId.ShouldBe(roleId);
         staff.LinkedUserId.ShouldBe(user.Id);
+    }
+
+    [Fact]
+    public async Task Portal_state_transitions_through_provisioning_invited_and_suspended()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
+        var (staffId, _) = await CreateStaffAsync(client);
+
+        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        // Before draining, the request is in flight (Provisioning).
+        var provisioning = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        provisioning!.PortalState.ShouldBe("Provisioning");
+
+        await factory.DrainOutboxesAsync();
+
+        var invited = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        invited!.PortalState.ShouldBe("Invited");
+        invited.LinkedUserId.ShouldNotBeNull();
+
+        // Deactivating the staff member suspends portal access.
+        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{staffId}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", invited.RowVersion);
+        (await client.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var suspended = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        suspended!.PortalState.ShouldBe("Suspended");
+    }
+
+    [Fact]
+    public async Task Failed_provisioning_is_visible_and_state_is_failed()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        // Incompatible role makes Identity reject provisioning.
+        var roleId = await CreateRoleAsync(client, "SystemAdministrator", "masterdata.staff-members.view");
+        var (staffId, _) = await CreateStaffAsync(client);
+
+        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var failed = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        failed!.PortalState.ShouldBe("Failed");
+        failed.PortalFailureReason.ShouldNotBeNullOrWhiteSpace();
+        failed.LinkedUserId.ShouldBeNull();
     }
 
     [Fact]
@@ -134,14 +181,19 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
-        // The linked user keeps the old login email until reverification.
+        // The linked user keeps the old login email until reverification, and a hashed (never
+        // plaintext) verification token is recorded.
         var pending = await FindUserByExternalRefAsync(staffId);
         pending!.Email.Value.ShouldBe(originalEmail);
         pending.PendingEmail.ShouldBe(newEmail);
         pending.EmailChangeToken.ShouldNotBeNull();
 
+        // The verification email is delivered durably to the new address; confirm with the raw token.
+        var verificationToken = await factory.GetInvitationTokenAsync(newEmail);
+        verificationToken.ShouldNotBeNull();
+
         var confirm = await client.PostAsJsonAsync($"{IdentityBase}/auth/confirm-email-change",
-            new { token = pending.EmailChangeToken!.Value, newEmail });
+            new { token = verificationToken, newEmail });
         confirm.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         var confirmed = await FindUserByExternalRefAsync(staffId);

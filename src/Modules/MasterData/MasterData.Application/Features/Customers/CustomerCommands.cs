@@ -92,7 +92,6 @@ public sealed record UpdateCustomerCommand(
     string? OfficialEmail,
     string? OfficialPhone,
     CustomerAddressInput Address,
-    IReadOnlyList<CustomerContactInput> Contacts,
     byte[] RowVersion) : ICommand;
 
 public sealed class UpdateCustomerCommandValidator : AbstractValidator<UpdateCustomerCommand>
@@ -117,9 +116,9 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
-        var customer = await db.Customers
-            .Include(c => c.Contacts)
-            .FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
+        // Customer update changes only customer fields. Contacts are managed through their own
+        // dedicated add/update/remove endpoints (no reconciliation here).
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
 
@@ -142,10 +141,6 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
         var conflict = await CustomerGuards.EnsureCodesAvailableAsync(db, customer.IataCode, customer.IcaoCode, customer.Id, cancellationToken);
         if (conflict.IsFailure)
             return conflict.Error;
-
-        var reconcile = customer.ReconcileContacts(CreateCustomerCommandHandler.MapContacts(request.Contacts), now);
-        if (reconcile.IsFailure)
-            return reconcile.Error;
 
         db.SetOriginalRowVersion(customer, request.RowVersion);
 
@@ -211,15 +206,74 @@ public sealed class AddCustomerContactCommandHandler(IMasterDataDbContext db, IM
     }
 }
 
+// --- Update contact -------------------------------------------------------
+
+public sealed record UpdateCustomerContactCommand(Guid CustomerId, Guid ContactId, string? Name, string? JobTitle, string? Email, string? Phone, byte[] RowVersion) : ICommand;
+
+public sealed class UpdateCustomerContactCommandValidator : AbstractValidator<UpdateCustomerContactCommand>
+{
+    public UpdateCustomerContactCommandValidator()
+    {
+        RuleFor(x => x.CustomerId).NotEmpty();
+        RuleFor(x => x.ContactId).NotEmpty();
+        RuleFor(x => x.Name).NotEmpty();
+        RuleFor(x => x.Email).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+    }
+}
+
+public sealed class UpdateCustomerContactCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+    : ICommandHandler<UpdateCustomerContactCommand>
+{
+    public async Task<Result> Handle(UpdateCustomerContactCommand request, CancellationToken cancellationToken)
+    {
+        var scopeCheck = await scope.CheckCustomerAsync(request.CustomerId, cancellationToken);
+        if (scopeCheck.IsFailure)
+            return scopeCheck.Error;
+
+        var customer = await db.Customers
+            .Include(c => c.Contacts)
+            .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
+        if (customer is null)
+            return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+
+        var result = customer.UpdateContact(request.ContactId, request.Name, request.JobTitle, request.Email, request.Phone, timeProvider.GetUtcNow());
+        if (result.IsFailure)
+            return result.Error;
+
+        db.SetOriginalRowVersion(customer, request.RowVersion);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+
+        return Result.Success();
+    }
+}
+
 // --- Logo -----------------------------------------------------------------
 
 public sealed record SetCustomerLogoCommand(Guid Id, byte[] Content, string FileName, string ContentType, byte[] RowVersion) : ICommand<string>;
 
-public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IFileStorage storage, TimeProvider timeProvider)
+public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, IFileStorage storage, TimeProvider timeProvider)
     : ICommandHandler<SetCustomerLogoCommand, string>
 {
+    // Allow-list of raster image types for customer logos.
+    private static readonly HashSet<string> AllowedContentTypes =
+        new(StringComparer.OrdinalIgnoreCase) { "image/png", "image/jpeg", "image/webp", "image/gif" };
+
     public async Task<Result<string>> Handle(SetCustomerLogoCommand request, CancellationToken cancellationToken)
     {
+        // Logo upload is a customer sub-operation and must honor the caller's data scope.
+        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        if (scopeCheck.IsFailure)
+            return scopeCheck.Error;
+
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
@@ -229,6 +283,9 @@ public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IFile
 
         if (request.Content.Length > 2 * 1024 * 1024)
             return Error.Validation("The logo file must be at most 2 MB.", "MasterData.Customer.LogoTooLarge");
+
+        if (!AllowedContentTypes.Contains(request.ContentType) || !HasImageSignature(request.Content))
+            return Error.Validation("The logo must be a PNG, JPEG, WEBP, or GIF image.", "MasterData.Customer.LogoInvalidType");
 
         var previousKey = customer.LogoFileReference;
 
@@ -252,6 +309,29 @@ public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IFile
             await storage.DeleteAsync(previousKey, cancellationToken);
 
         return stored.StorageKey;
+    }
+
+    /// <summary>Verifies the bytes start with a known raster-image magic number (defends against a spoofed content type).</summary>
+    private static bool HasImageSignature(byte[] content)
+    {
+        if (content.Length < 12)
+            return false;
+
+        // PNG
+        if (content[0] == 0x89 && content[1] == 0x50 && content[2] == 0x4E && content[3] == 0x47)
+            return true;
+        // JPEG
+        if (content[0] == 0xFF && content[1] == 0xD8 && content[2] == 0xFF)
+            return true;
+        // GIF ("GIF8")
+        if (content[0] == 0x47 && content[1] == 0x49 && content[2] == 0x46 && content[3] == 0x38)
+            return true;
+        // WEBP ("RIFF"...."WEBP")
+        if (content[0] == 0x52 && content[1] == 0x49 && content[2] == 0x46 && content[3] == 0x46
+            && content[8] == 0x57 && content[9] == 0x45 && content[10] == 0x42 && content[11] == 0x50)
+            return true;
+
+        return false;
     }
 }
 

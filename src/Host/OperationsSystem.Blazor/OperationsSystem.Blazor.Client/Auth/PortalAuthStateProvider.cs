@@ -12,6 +12,7 @@ public sealed class PortalAuthStateProvider : AuthenticationStateProvider, IDisp
 {
     public const string PermissionClaimType = "permission";
     public const string RoleNameClaimType = "role_name";
+    public const string UserTypeClaimType = "user_type";
 
     private readonly AuthSession _auth;
 
@@ -40,7 +41,8 @@ public sealed class PortalAuthStateProvider : AuthenticationStateProvider, IDisp
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.DisplayName),
             new(ClaimTypes.Email, user.Email),
-            new(RoleNameClaimType, user.RoleName)
+            new(RoleNameClaimType, user.RoleName),
+            new(UserTypeClaimType, user.UserType)
         };
         claims.AddRange(user.Permissions.Select(p => new Claim(PermissionClaimType, p)));
 

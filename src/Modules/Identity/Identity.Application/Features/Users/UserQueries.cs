@@ -57,6 +57,8 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
             u.IsLockedOut(now),
             u.RoleId,
             roleNames.GetValueOrDefault(u.RoleId, string.Empty),
+            u.UserType.ToString(),
+            u.ExternalReferenceId,
             u.CreatedAtUtc,
             u.LastLoginAtUtc)).ToList();
 
@@ -104,7 +106,8 @@ public sealed class GetUserByIdQueryHandler(IIdentityDbContext db, TimeProvider 
         return new UserDto(
             user.Id, user.Email.Value, user.DisplayName, user.Status.ToString(),
             user.IsLockedOut(timeProvider.GetUtcNow()), user.LockoutEndUtc,
-            user.RoleId, roleName, user.CreatedAtUtc, user.UpdatedAtUtc, user.LastLoginAtUtc);
+            user.RoleId, roleName, user.UserType.ToString(), user.ExternalReferenceId,
+            PortalSource.For(user.UserType), user.CreatedAtUtc, user.UpdatedAtUtc, user.LastLoginAtUtc);
     }
 }
 
@@ -129,6 +132,15 @@ public sealed class GetCurrentUserQueryHandler(IIdentityDbContext db, ICurrentUs
         return new AuthenticatedUserDto(
             user.Id, user.Email.Value, user.DisplayName,
             user.RoleId, role?.Name ?? string.Empty,
+            user.UserType.ToString(), user.ExternalReferenceId, PortalSource.For(user.UserType),
+            user.MfaEnabled, user.MfaRequired && !user.MfaEnabled,
             role?.Permissions.ToList() ?? []);
     }
+}
+
+internal static class PortalSource
+{
+    /// <summary>How the account was provisioned: administrators are created directly; scoped accounts originate from MasterData.</summary>
+    public static string For(BuildingBlocks.Contracts.Authorization.UserType userType) =>
+        userType == BuildingBlocks.Contracts.Authorization.UserType.SystemAdministrator ? "Direct" : "MasterData";
 }

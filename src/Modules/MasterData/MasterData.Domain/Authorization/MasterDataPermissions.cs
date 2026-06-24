@@ -6,6 +6,16 @@ namespace MasterData.Domain.Authorization;
 /// </summary>
 public static class MasterDataPermissions
 {
+    /// <summary>
+    /// Read-only access to active reference lookups (country/manpower-type/license options) so
+    /// scoped users such as Station Staff can populate station and staff forms without being granted
+    /// management access to those catalogs, which remains administrator-only.
+    /// </summary>
+    public static class Reference
+    {
+        public const string ViewOptions = "masterdata.reference.view-options";
+    }
+
     public static class Countries
     {
         public const string View = "masterdata.countries.view";

@@ -76,6 +76,7 @@ public static class UiStrings
         public const string Dashboard = "Dashboard";
         public const string Users = "Users";
         public const string Roles = "Roles";
+        public const string Audit = "Audit log";
         public const string Account = "Account";
         public const string Overview = "Overview";
         public const string Administration = "Administration";
@@ -88,6 +89,25 @@ public static class UiStrings
         public const string StaffMembers = "Staff members";
         public const string ToggleMenu = "Toggle navigation";
         public const string Language = "Language";
+    }
+
+    public static class Audit
+    {
+        public const string Title = "Audit log";
+        public const string Description = "Permanent, append-only history of business and security changes.";
+        public const string When = "When";
+        public const string Actor = "Actor";
+        public const string System = "System";
+        public const string Module = "Module";
+        public const string Entity = "Entity";
+        public const string Action = "Action";
+        public const string Empty = "No audit activity recorded yet.";
+        public const string Changes = "Field changes";
+        public const string Field = "Field";
+        public const string Before = "Before";
+        public const string After = "After";
+        public const string NoChanges = "No field-level changes were recorded for this entry.";
+        public const string ActivityTitle = "Recent activity";
     }
 
     public static class Dashboard
@@ -149,8 +169,9 @@ public static class UiStrings
 
         public const string InviteTitle = "Invite a user";
         public const string InviteIntro = "Send an invitation so this person can set up their portal account.";
+        public const string InviteAdminNote = "Direct user creation always creates a System Administrator with full access. Station staff and customer contacts are invited from their own records.";
         public const string InviteSuccess = "Invitation sent.";
-        public const string InvitationTokenLabel = "Invitation code (development)";
+        public const string InvitationDeliveryLabel = "Invitation delivery status";
         public const string EditTitle = "Edit user";
         public const string AssignRoleTitle = "Assign role";
         public const string ConfirmDeactivate = "Deactivate this user? They will be signed out of all sessions.";

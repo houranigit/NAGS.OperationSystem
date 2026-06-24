@@ -91,7 +91,7 @@
             return;
         }
 
-        if (!Guid.TryParse(model.Token, out var token))
+        if (string.IsNullOrWhiteSpace(model.Token))
         {
             errorMessage = UiStrings.Common.SomethingWentWrong;
             return;
@@ -101,7 +101,7 @@
 
         try
         {
-            await Identity.ActivateAsync(new ActivateAccountRequest(model.Email, token, model.Password));
+            await Identity.ActivateAsync(new ActivateAccountRequest(model.Email, model.Token, model.Password));
             activated = true;
         }
         catch (ApiException ex)

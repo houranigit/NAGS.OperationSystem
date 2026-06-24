@@ -26,10 +26,17 @@ public sealed class OutboxProcessor<TDbContext>(
 {
     private const int BatchSize = 50;
 
+    /// <summary>
+    /// After this many failed attempts a message is treated as dead-lettered: it is no longer retried
+    /// and remains in the outbox with its <see cref="OutboxMessage.Error"/> for operator visibility.
+    /// </summary>
+    public const int MaxAttempts = 10;
+
     public async Task ProcessAsync(CancellationToken cancellationToken = default)
     {
+        // Skip dead-lettered messages (Attempts >= MaxAttempts); they stay visible but are not retried.
         var messages = await db.OutboxMessages
-            .Where(m => m.ProcessedOnUtc == null)
+            .Where(m => m.ProcessedOnUtc == null && m.Attempts < MaxAttempts)
             .OrderBy(m => m.OccurredOnUtc)
             .Take(BatchSize)
             .ToListAsync(cancellationToken);
@@ -56,7 +63,10 @@ public sealed class OutboxProcessor<TDbContext>(
             {
                 message.Attempts++;
                 message.Error = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
-                logger.LogError(ex, "Outbox dispatch failed for message {MessageId} ({Type}).", message.Id, message.Type);
+                if (message.Attempts >= MaxAttempts)
+                    logger.LogCritical(ex, "Outbox message {MessageId} ({Type}) dead-lettered after {Attempts} attempts.", message.Id, message.Type, message.Attempts);
+                else
+                    logger.LogError(ex, "Outbox dispatch failed for message {MessageId} ({Type}) (attempt {Attempts}).", message.Id, message.Type, message.Attempts);
             }
         }
 

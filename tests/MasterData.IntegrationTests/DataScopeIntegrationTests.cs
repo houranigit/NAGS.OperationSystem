@@ -84,12 +84,12 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
-        var invitationToken = await ReadInvitationTokenAsync(staffId);
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
         invitationToken.ShouldNotBeNull();
 
         const string password = "Staff#12345";
         (await admin.PostAsJsonAsync($"{IdentityBase}/auth/activate",
-            new { email, invitationToken = invitationToken!.Value, newPassword = password }))
+            new { email, invitationToken, newPassword = password }))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         var client = factory.CreateClient();
@@ -98,16 +98,6 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
         var token = await login.Content.ReadFromJsonAsync<TokenResponse>();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.AccessToken);
         return client;
-    }
-
-    private async Task<Guid?> ReadInvitationTokenAsync(Guid staffId)
-    {
-        await using var scope = factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-        return await db.Users.AsNoTracking()
-            .Where(u => u.ExternalReferenceId == staffId)
-            .Select(u => u.InvitationToken)
-            .FirstOrDefaultAsync();
     }
 
     private static class Helpers

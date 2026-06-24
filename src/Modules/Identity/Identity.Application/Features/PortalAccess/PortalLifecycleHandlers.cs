@@ -65,6 +65,8 @@ public sealed class LinkedRecordDeactivatedHandler(
 /// </summary>
 public sealed class LinkedEmailChangeRequestedHandler(
     IIdentityDbContext db,
+    ITokenService tokenService,
+    ILinkedEmailVerificationNotifier verificationNotifier,
     TimeProvider timeProvider,
     ILogger<LinkedEmailChangeRequestedHandler> logger)
     : IIntegrationEventHandler<LinkedEmailChangeRequested>
@@ -96,8 +98,21 @@ public sealed class LinkedEmailChangeRequestedHandler(
         }
 
         var now = timeProvider.GetUtcNow();
-        var token = Guid.NewGuid();
-        var change = user.RequestEmailChange(emailResult.Value, token, now.AddHours(72), now);
+
+        // Duplicate handling: if the new address is already a live login email, do not start a change.
+        var newEmailValue = emailResult.Value.Value;
+        var taken = await db.Users.AnyAsync(
+            u => u.Email.Value == newEmailValue && !u.LoginEmailReleased && u.Id != user.Id, cancellationToken);
+        if (taken)
+        {
+            logger.LogWarning("Linked email change for user {UserId} skipped: '{Email}' already in use.", integrationEvent.UserId, newEmailValue);
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var token = tokenService.CreateSecureToken();
+        var change = user.RequestEmailChange(emailResult.Value, token.Hash, now.AddHours(72), now);
         if (change.IsFailure)
         {
             logger.LogWarning("Email change for user {UserId} was rejected: {Reason}.", integrationEvent.UserId, change.Error.Description);
@@ -106,11 +121,11 @@ public sealed class LinkedEmailChangeRequestedHandler(
             return;
         }
 
-        // Verification delivery reuses the email infrastructure once wired for change flows; for now the
-        // pending state is recorded and the token logged for development confirmation.
-        logger.LogInformation("Email-change verification token issued for user {UserId}.", integrationEvent.UserId);
-
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
         await db.SaveChangesAsync(cancellationToken);
+
+        // Durable verification delivery to the pending address. The login email stays unchanged until
+        // the recipient confirms via the emailed link.
+        await verificationNotifier.SendVerificationAsync(newEmailValue, user.DisplayName, user.Id, token.Value, cancellationToken);
     }
 }

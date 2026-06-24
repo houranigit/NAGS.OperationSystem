@@ -61,21 +61,38 @@ public class SessionApiTests(IdentityApiFactory factory) : IClassFixture<Identit
     [Fact]
     public async Task Admin_can_list_and_revoke_all_sessions_for_a_user()
     {
-        var admin = factory.CreateClient();
-        var adminToken = await LoginAsAdminAsync(admin);
-        admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
 
-        var me = await admin.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        // Use a separate target user so revoking all of THEIR sessions does not invalidate the
+        // admin's own (now session-bound) access token.
+        var roleId = await IdentityApiTestData.EnsureDemoUserRoleAsync(admin);
+        var email = $"sessions-{Guid.NewGuid():N}@nags.sa";
+        const string password = "Sessions#12345";
 
-        var sessions = await admin.GetFromJsonAsync<List<SessionItem>>($"{Base}/users/{me!.Id}/sessions");
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "Session User", roleId });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedItem>();
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+        (await admin.PostAsJsonAsync($"{Base}/auth/activate", new { email, invitationToken, newPassword = password }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var target = factory.CreateClient();
+        await target.PostAsJsonAsync($"{Base}/auth/login", new { email, password });
+
+        var sessions = await admin.GetFromJsonAsync<List<SessionItem>>($"{Base}/users/{invited!.Id}/sessions");
         sessions!.ShouldNotBeEmpty();
 
-        var revoke = await admin.PostAsync($"{Base}/users/{me.Id}/sessions/revoke-all", null);
+        var revoke = await admin.PostAsync($"{Base}/users/{invited.Id}/sessions/revoke-all", null);
         revoke.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
-        var active = await admin.GetFromJsonAsync<List<SessionItem>>($"{Base}/users/{me.Id}/sessions?activeOnly=true");
+        var active = await admin.GetFromJsonAsync<List<SessionItem>>($"{Base}/users/{invited.Id}/sessions?activeOnly=true");
         active!.ShouldBeEmpty();
     }
+
+    private sealed record InvitedItem(Guid Id, string Email, string DeliveryStatus);
 
     [Fact]
     public async Task Sessions_for_unknown_user_returns_404()

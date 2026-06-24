@@ -183,8 +183,9 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("EmailChangeExpiresAtUtc")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<Guid?>("EmailChangeToken")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("EmailChangeToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<Guid?>("ExternalReferenceId")
                         .HasColumnType("uniqueidentifier");
@@ -192,8 +193,9 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("InvitationExpiresAtUtc")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<Guid?>("InvitationToken")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("InvitationToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<DateTimeOffset?>("LastLoginAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -204,13 +206,32 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<bool>("LoginEmailReleased")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("MfaEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MfaSecret")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
                     b.Property<string>("PasswordHash")
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
+                    b.Property<DateTimeOffset?>("PasswordResetExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("PasswordResetToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<string>("PendingEmail")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.PrimitiveCollection<string>("RecoveryCodeHashes")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("MfaRecoveryCodeHashes");
 
                     b.Property<Guid>("RoleId")
                         .HasColumnType("uniqueidentifier");
@@ -236,6 +257,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("ExternalReferenceId");
 
                     b.HasIndex("RoleId");
+
+                    b.HasIndex("UserType", "ExternalReferenceId")
+                        .IsUnique()
+                        .HasFilter("[ExternalReferenceId] IS NOT NULL AND [LoginEmailReleased] = 0");
 
                     b.ToTable("users", "identity");
                 });

@@ -11,7 +11,7 @@ namespace OperationsSystem.Blazor.Client.Api;
 /// httpOnly refresh cookie is sent automatically (server prerender is disabled, so JS interop is
 /// always available). The in-memory access token is attached as a Bearer header.
 /// </summary>
-public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenStore, LocaleState locale)
+public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenStore, LocaleState locale, ClientTokenRefresher refresher)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -73,21 +73,40 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     {
         try
         {
-            return await jsRuntime.InvokeAsync<string>(
-                "operationsSystem.api.request",
-                cancellationToken,
-                method.Method,
-                path,
-                body,
-                tokenStore.AccessToken,
-                locale.Language,
-                ifMatch);
+            return await InvokeAsync(method, path, body, ifMatch, cancellationToken);
         }
         catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
         {
+            // Transparently refresh once on a 401 (token expired mid-session) and retry. The refresh
+            // is single-flight, so many concurrent 401s share one refresh. The refresh endpoint
+            // itself is excluded to avoid recursion.
+            var isRefresh = path.Contains("/auth/refresh", StringComparison.Ordinal);
+            if (statusCode == 401 && !isRefresh && await refresher.TryRefreshAsync(cancellationToken))
+            {
+                try
+                {
+                    return await InvokeAsync(method, path, body, ifMatch, cancellationToken);
+                }
+                catch (JSException retryEx) when (TryReadApiError(retryEx.Message, out var retryStatus, out var retryBody))
+                {
+                    throw new ApiException(retryStatus, retryBody);
+                }
+            }
+
             throw new ApiException(statusCode, responseBody);
         }
     }
+
+    private async Task<string> InvokeAsync(HttpMethod method, string path, object? body, string? ifMatch, CancellationToken cancellationToken) =>
+        await jsRuntime.InvokeAsync<string>(
+            "operationsSystem.api.request",
+            cancellationToken,
+            method.Method,
+            path,
+            body,
+            tokenStore.AccessToken,
+            locale.Language,
+            ifMatch);
 
     private static bool TryReadApiError(string message, out int statusCode, out string responseBody)
     {

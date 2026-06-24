@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Authorization;
+using BuildingBlocks.Contracts.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,14 +24,30 @@ public sealed class PermissionRequirement(string permission) : IAuthorizationReq
     public string Permission { get; } = permission;
 }
 
-public sealed class PermissionAuthorizationHandler : AuthorizationHandler<PermissionRequirement>
+/// <summary>
+/// Grants access only when the caller both holds the permission claim AND has a
+/// <see cref="UserType"/> that the permission is compatible with (per the composed
+/// <see cref="IPermissionRegistry"/>). This is the server-side guarantee that a forged or
+/// mistakenly-stored permission cannot grant access to an incompatible account type: a Station
+/// Staff or Customer Contact token carrying an administrator-only permission is rejected.
+/// </summary>
+public sealed class PermissionAuthorizationHandler(IPermissionRegistry permissionRegistry)
+    : AuthorizationHandler<PermissionRequirement>
 {
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
     {
         var hasPermission = context.User.Claims.Any(c =>
             c.Type == PermissionPolicy.ClaimType && c.Value == requirement.Permission);
 
-        if (hasPermission)
+        if (!hasPermission)
+            return Task.CompletedTask;
+
+        // The permission must be known and compatible with the caller's user type. Unknown
+        // permissions and incompatible user types both fail closed.
+        if (!Enum.TryParse<UserType>(context.User.FindFirst(AuthorizationClaimTypes.UserType)?.Value, out var userType))
+            return Task.CompletedTask;
+
+        if (permissionRegistry.IsCompatibleWith(requirement.Permission, userType))
             context.Succeed(requirement);
 
         return Task.CompletedTask;

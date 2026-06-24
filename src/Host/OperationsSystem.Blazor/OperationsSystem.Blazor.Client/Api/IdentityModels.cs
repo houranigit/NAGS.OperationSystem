@@ -69,9 +69,9 @@ public sealed record UserDetail(
     DateTimeOffset? UpdatedAtUtc,
     DateTimeOffset? LastLoginAtUtc);
 
-public sealed record InvitedUser(Guid Id, string Email, Guid InvitationToken);
+public sealed record InvitedUser(Guid Id, string Email, string DeliveryStatus);
 
-public sealed record InviteUserRequest(string Email, string DisplayName, Guid RoleId);
+public sealed record InviteUserRequest(string Email, string DisplayName);
 public sealed record UpdateUserRequest(string DisplayName);
 public sealed record AssignRoleRequest(Guid RoleId);
 
@@ -90,5 +90,5 @@ public sealed record UserSession(
 
 // --- Auth ------------------------------------------------------------------
 
-public sealed record ActivateAccountRequest(string Email, Guid InvitationToken, string NewPassword);
+public sealed record ActivateAccountRequest(string Email, string InvitationToken, string NewPassword);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);

@@ -20,6 +20,7 @@ namespace Identity.Application.Features.PortalAccess;
 public sealed class PortalAccessRequestedHandler(
     IIdentityDbContext db,
     IInvitationNotifier invitationNotifier,
+    ITokenService tokenService,
     TimeProvider timeProvider,
     IOptions<IdentityModuleOptions> options,
     ILogger<PortalAccessRequestedHandler> logger)
@@ -45,7 +46,8 @@ public sealed class PortalAccessRequestedHandler(
                 ExternalReferenceId = integrationEvent.ExternalReferenceId,
                 UserId = existing.Id,
                 UserType = existing.UserType,
-                Email = existing.Email.Value
+                Email = existing.Email.Value,
+                CorrelationId = integrationEvent.CorrelationId
             });
             db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
             await db.SaveChangesAsync(cancellationToken);
@@ -84,11 +86,11 @@ public sealed class PortalAccessRequestedHandler(
         }
 
         var now = timeProvider.GetUtcNow();
-        var token = Guid.NewGuid();
+        var token = tokenService.CreateSecureToken();
         var expiry = now.AddHours(_options.InvitationExpiryHours);
 
         var userResult = User.Invite(
-            email, integrationEvent.DisplayName, integrationEvent.RoleId, token, expiry, now,
+            email, integrationEvent.DisplayName, integrationEvent.RoleId, token.Hash, expiry, now,
             integrationEvent.UserType, integrationEvent.ExternalReferenceId);
         if (userResult.IsFailure)
         {
@@ -103,7 +105,8 @@ public sealed class PortalAccessRequestedHandler(
             ExternalReferenceId = integrationEvent.ExternalReferenceId,
             UserId = user.Id,
             UserType = user.UserType,
-            Email = emailValue
+            Email = emailValue,
+            CorrelationId = integrationEvent.CorrelationId
         });
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
         await db.SaveChangesAsync(cancellationToken);
@@ -112,7 +115,7 @@ public sealed class PortalAccessRequestedHandler(
         // roll back the account; the administrator can use Resend invitation.
         try
         {
-            await invitationNotifier.SendInvitationAsync(emailValue, user.DisplayName, user.Id, token, cancellationToken);
+            await invitationNotifier.SendInvitationAsync(emailValue, user.DisplayName, user.Id, token.Value, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -130,6 +133,15 @@ public sealed class PortalAccessRequestedHandler(
         logger.LogError(
             "Portal access provisioning failed for record {ExternalReferenceId} ({UserType}): {Reason}.",
             integrationEvent.ExternalReferenceId, integrationEvent.UserType, reason);
+
+        // Reply with a visible, retryable failure so MasterData can surface it.
+        db.Enqueue(new PortalUserProvisioningFailed
+        {
+            ExternalReferenceId = integrationEvent.ExternalReferenceId,
+            UserType = integrationEvent.UserType,
+            Reason = reason,
+            CorrelationId = integrationEvent.CorrelationId
+        });
 
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
         await db.SaveChangesAsync(cancellationToken);

@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Aggregates;
+using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
 
 namespace MasterData.Domain.Stations;
@@ -8,9 +9,12 @@ namespace MasterData.Domain.Stations;
 /// optional unique 4-letter ICAO code. References an active <see cref="Countries.Country"/>.
 /// Long-lived master data with an active/inactive lifecycle; never hard-deleted.
 /// </summary>
-public sealed class Station : AggregateRoot<Guid>
+public sealed class Station : AggregateRoot<Guid>, IAuditable
 {
     private Station() { }
+
+    string IAuditable.AuditEntityType => "Station";
+    Guid IAuditable.AuditEntityId => Id;
 
     public string IataCode { get; private set; } = null!;
     public string? IcaoCode { get; private set; }

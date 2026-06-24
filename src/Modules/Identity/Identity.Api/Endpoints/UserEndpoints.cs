@@ -1,5 +1,6 @@
 using BuildingBlocks.Api.Authorization;
 using BuildingBlocks.Api.Results;
+using Identity.Application.Features.Auth;
 using Identity.Application.Features.Users;
 using Identity.Domain.Authorization;
 using Identity.Domain.Users;
@@ -31,7 +32,7 @@ internal static class UserEndpoints
 
         users.MapPost("/invite", async (InviteUserRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new InviteUserCommand(request.Email, request.DisplayName, request.RoleId), ct);
+            var result = await sender.Send(new InviteUserCommand(request.Email, request.DisplayName), ct);
             return result.ToCreated(u => $"/api/v1/identity/users/{u.Id}");
         }).RequirePermission(IdentityPermissions.Users.Invite);
 
@@ -64,6 +65,24 @@ internal static class UserEndpoints
             var result = await sender.Send(new DeactivateUserCommand(id), ct);
             return result.ToNoContent();
         }).RequirePermission(IdentityPermissions.Users.Deactivate);
+
+        users.MapPost("/{id:guid}/suspend", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new SuspendUserCommand(id), ct);
+            return result.ToNoContent();
+        }).RequirePermission(IdentityPermissions.Users.Suspend);
+
+        users.MapPost("/{id:guid}/restore-access", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new RestoreAccessCommand(id), ct);
+            return result.ToNoContent();
+        }).RequirePermission(IdentityPermissions.Users.RestoreAccess);
+
+        users.MapPost("/{id:guid}/mfa/reset", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new ResetUserMfaCommand(id), ct);
+            return result.ToNoContent();
+        }).RequirePermission(IdentityPermissions.Users.ResetMfa);
 
         users.MapPost("/{id:guid}/resend-invitation", async (Guid id, ISender sender, CancellationToken ct) =>
         {

@@ -20,6 +20,9 @@ public sealed class MasterDataPermissionCatalog : IPermissionCatalog
 
     public IReadOnlyList<PermissionDescriptor> Permissions { get; } =
     [
+        // Read-only reference lookups for forms (station staff included); not catalog management.
+        new(MasterDataPermissions.Reference.ViewOptions, AdminAndStation),
+
         // Countries: everyone can view; admin maintains.
         new(MasterDataPermissions.Countries.View, AdminStationCustomer),
         new(MasterDataPermissions.Countries.Create, AdminOnly),

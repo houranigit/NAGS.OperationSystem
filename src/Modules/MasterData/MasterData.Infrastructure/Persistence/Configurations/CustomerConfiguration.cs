@@ -75,6 +75,9 @@ public sealed class CustomerContactConfiguration : IEntityTypeConfiguration<Cust
         builder.Property(c => c.Email).HasMaxLength(256).IsRequired();
         builder.Property(c => c.Phone).HasMaxLength(30);
         builder.Property(c => c.LinkedUserId);
+        builder.Property(c => c.PortalState).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(c => c.PortalCorrelationId);
+        builder.Property(c => c.PortalFailureReason).HasMaxLength(500);
 
         // Email is unique within a customer across active contacts.
         builder.HasIndex(c => new { c.CustomerId, c.Email }).IsUnique().HasFilter("[IsActive] = 1");

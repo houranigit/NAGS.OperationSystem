@@ -164,6 +164,8 @@ public sealed record StaffMemberDto(
     EmploymentContractDto? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
     Guid? LinkedUserId,
+    string PortalState,
+    string? PortalFailureReason,
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,

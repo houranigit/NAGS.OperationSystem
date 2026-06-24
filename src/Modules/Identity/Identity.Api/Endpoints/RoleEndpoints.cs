@@ -21,6 +21,12 @@ internal static class RoleEndpoints
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Roles.View);
 
+        roles.MapGet("/options", async (BuildingBlocks.Contracts.Authorization.UserType userType, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetRoleOptionsQuery(userType), ct);
+            return result.ToOk();
+        }).RequirePermission(IdentityPermissions.Roles.View);
+
         roles.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetRoleByIdQuery(id), ct);

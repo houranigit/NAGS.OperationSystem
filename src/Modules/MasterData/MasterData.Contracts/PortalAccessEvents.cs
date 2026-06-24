@@ -15,6 +15,9 @@ public sealed record PortalAccessRequested : IntegrationEvent
     public required Guid RoleId { get; init; }
     public required string Email { get; init; }
     public required string DisplayName { get; init; }
+
+    /// <summary>Identifies this provisioning attempt so a stale reply cannot overwrite a newer request.</summary>
+    public Guid CorrelationId { get; init; }
 }
 
 /// <summary>Raised when a linked MasterData record's email changes, so Identity can re-verify it.</summary>

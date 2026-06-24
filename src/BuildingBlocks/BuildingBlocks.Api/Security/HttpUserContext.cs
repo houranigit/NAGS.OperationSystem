@@ -33,6 +33,9 @@ public sealed class HttpUserContext(IHttpContextAccessor accessor) : IUserContex
         Guid.TryParse(Principal?.FindFirstValue(AuthorizationClaimTypes.ExternalReference), out var id)
             ? id
             : null;
+
+    public bool HasPermission(string permission) =>
+        Principal?.Claims.Any(c => c.Type == "permission" && c.Value == permission) ?? false;
 }
 
 public static class UserContextExtensions

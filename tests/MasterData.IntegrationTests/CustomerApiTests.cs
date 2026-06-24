@@ -116,7 +116,7 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
     }
 
     [Fact]
-    public async Task Update_reconciles_contacts_by_id()
+    public async Task Customer_update_ignores_contacts_and_dedicated_endpoints_manage_them()
     {
         var client = await factory.CreateAuthenticatedAdminClientAsync();
         var countryId = await CreateCountryAsync(client);
@@ -141,27 +141,50 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
 
         var before = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{id}");
         var alice = before!.Contacts.Single(c => c.Email == "alice@test.com");
+        var bob = before.Contacts.Single(c => c.Email == "bob@test.com");
 
+        // A customer update changes only customer fields; contacts are untouched even if the body
+        // were to include them.
         var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/customers/{id}")
         {
             Content = JsonContent.Create(new
             {
                 iataCode = iata,
                 icaoCode = (string?)null,
-                name = "Reconcile",
+                name = "Reconcile Renamed",
                 countryId,
                 officialEmail = (string?)null,
                 officialPhone = (string?)null,
-                address = AddressPayload(),
-                contacts = new[]
-                {
-                    new { id = (Guid?)alice.Id, name = "Alice Updated", jobTitle = "Director", email = "alice@test.com", phone = (string?)null },
-                    new { id = (Guid?)null, name = "Carol", jobTitle = (string?)null, email = "carol@test.com", phone = (string?)null }
-                }
+                address = AddressPayload()
             })
         };
         update.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
         (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var afterUpdate = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{id}");
+        afterUpdate!.Name.ShouldBe("Reconcile Renamed");
+        afterUpdate.Contacts.Count(c => c.IsActive).ShouldBe(2); // Unchanged by the customer update.
+
+        // Dedicated endpoints manage contacts: update Alice, add Carol, terminally remove Bob.
+        var editAlice = new HttpRequestMessage(HttpMethod.Put, $"{Base}/customers/{id}/contacts/{alice.Id}")
+        {
+            Content = JsonContent.Create(new { name = "Alice Updated", jobTitle = "Director", email = "alice@test.com", phone = (string?)null })
+        };
+        editAlice.Headers.TryAddWithoutValidation("If-Match", afterUpdate.RowVersion);
+        (await client.SendAsync(editAlice)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var afterAlice = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{id}");
+        var addCarol = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{id}/contacts")
+        {
+            Content = JsonContent.Create(new { name = "Carol", jobTitle = (string?)null, email = "carol@test.com", phone = (string?)null })
+        };
+        addCarol.Headers.TryAddWithoutValidation("If-Match", afterAlice!.RowVersion);
+        (await client.SendAsync(addCarol)).StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var afterCarol = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{id}");
+        var removeBob = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{id}/contacts/{bob.Id}/remove");
+        removeBob.Headers.TryAddWithoutValidation("If-Match", afterCarol!.RowVersion);
+        (await client.SendAsync(removeBob)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         var after = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{id}");
         var activeAfter = after!.Contacts.Where(c => c.IsActive).ToList();

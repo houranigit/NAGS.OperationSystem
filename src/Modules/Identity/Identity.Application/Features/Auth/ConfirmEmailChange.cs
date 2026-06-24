@@ -11,7 +11,7 @@ namespace Identity.Application.Features.Auth;
 /// Finalizes a linked email change once the recipient verifies the new address. The login email only
 /// changes here, after verification, so an undeliverable address never locks the account out.
 /// </summary>
-public sealed record ConfirmEmailChangeCommand(Guid Token, string NewEmail) : ICommand;
+public sealed record ConfirmEmailChangeCommand(string Token, string NewEmail) : ICommand;
 
 public sealed class ConfirmEmailChangeCommandValidator : AbstractValidator<ConfirmEmailChangeCommand>
 {
@@ -22,7 +22,7 @@ public sealed class ConfirmEmailChangeCommandValidator : AbstractValidator<Confi
     }
 }
 
-public sealed class ConfirmEmailChangeCommandHandler(IIdentityDbContext db, TimeProvider timeProvider)
+public sealed class ConfirmEmailChangeCommandHandler(IIdentityDbContext db, ITokenService tokenService, TimeProvider timeProvider)
     : ICommandHandler<ConfirmEmailChangeCommand>
 {
     public async Task<Result> Handle(ConfirmEmailChangeCommand request, CancellationToken cancellationToken)
@@ -32,7 +32,8 @@ public sealed class ConfirmEmailChangeCommandHandler(IIdentityDbContext db, Time
             return emailResult.Error;
 
         var now = timeProvider.GetUtcNow();
-        var user = await db.Users.FirstOrDefaultAsync(u => u.EmailChangeToken == request.Token, cancellationToken);
+        var tokenHash = tokenService.HashToken(request.Token);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.EmailChangeToken == tokenHash, cancellationToken);
         if (user is null)
             return Error.NotFound("There is no pending email change for this token.", "Identity.User.NoPendingEmailChange");
 

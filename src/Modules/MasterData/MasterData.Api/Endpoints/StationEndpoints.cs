@@ -2,6 +2,7 @@ using BuildingBlocks.Api.Authorization;
 using BuildingBlocks.Api.Concurrency;
 using BuildingBlocks.Api.Results;
 using BuildingBlocks.Application.Persistence;
+using MasterData.Application.Features.StaffMembers;
 using MasterData.Application.Features.Stations;
 using MasterData.Domain.Authorization;
 using MediatR;
@@ -38,7 +39,14 @@ internal static class StationEndpoints
 
         stations.MapPost("/", async (CreateStationRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new CreateStationCommand(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId), ct);
+            var staff = (request.Staff ?? []).Select(s => new NewStationStaffInput(
+                s.FullName, s.Email, s.ManpowerTypeId,
+                s.EmploymentContract is { } c ? new EmploymentContractInput(c.StartDate, c.EndDate) : null,
+                s.WorkingDays,
+                (s.Licenses ?? []).Select(l => new StaffLicenseInput(l.Id, l.LicenseId, l.LicenseNumber)).ToList(),
+                s.PortalAccessRoleId)).ToList();
+
+            var result = await sender.Send(new CreateStationCommand(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, staff), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/stations/{id}");
         }).RequirePermission(MasterDataPermissions.Stations.Create);
 

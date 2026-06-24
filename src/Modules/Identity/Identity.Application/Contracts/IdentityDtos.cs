@@ -7,12 +7,29 @@ public sealed record AuthTokensDto(
     string RefreshToken,
     DateTimeOffset RefreshTokenExpiresAtUtc);
 
+/// <summary>
+/// Outcome of the first login step. When <see cref="MfaRequired"/> is true the caller must complete
+/// the second step with <see cref="MfaToken"/>; otherwise <see cref="Tokens"/> is populated.
+/// </summary>
+public sealed record LoginResultDto(bool MfaRequired, string? MfaToken, AuthTokensDto? Tokens);
+
+/// <summary>Returned by MFA enrollment: the shared secret and the otpauth URI for an authenticator app.</summary>
+public sealed record MfaEnrollmentDto(string Secret, string OtpAuthUri);
+
+/// <summary>One-time recovery codes shown once, after MFA is confirmed.</summary>
+public sealed record MfaRecoveryCodesDto(IReadOnlyList<string> RecoveryCodes);
+
 public sealed record AuthenticatedUserDto(
     Guid Id,
     string Email,
     string DisplayName,
     Guid RoleId,
     string RoleName,
+    string UserType,
+    Guid? ExternalReferenceId,
+    string PortalSource,
+    bool MfaEnabled,
+    bool MfaEnrollmentRequired,
     IReadOnlyList<string> Permissions);
 
 public sealed record RoleListItemDto(
@@ -47,6 +64,8 @@ public sealed record UserListItemDto(
     bool IsLockedOut,
     Guid RoleId,
     string RoleName,
+    string UserType,
+    Guid? ExternalReferenceId,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? LastLoginAtUtc);
 
@@ -59,12 +78,18 @@ public sealed record UserDto(
     DateTimeOffset? LockoutEndUtc,
     Guid RoleId,
     string RoleName,
+    string UserType,
+    Guid? ExternalReferenceId,
+    string PortalSource,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     DateTimeOffset? LastLoginAtUtc);
 
-/// <summary>Returned by InviteUser. The token is surfaced for dev/testing; production delivers it by email only.</summary>
-public sealed record InvitedUserDto(Guid Id, string Email, Guid InvitationToken);
+/// <summary>
+/// Returned by InviteUser. The invitation token is never exposed; it is delivered only by email.
+/// <see cref="DeliveryStatus"/> reports the queued/sent state of that delivery.
+/// </summary>
+public sealed record InvitedUserDto(Guid Id, string Email, string DeliveryStatus);
 
 /// <summary>
 /// A refresh-token session. <see cref="IsCurrent"/> marks the session backing the caller's

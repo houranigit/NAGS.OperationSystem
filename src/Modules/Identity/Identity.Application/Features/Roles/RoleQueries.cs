@@ -98,6 +98,29 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
     }
 }
 
+// --- Compatible-role options ----------------------------------------------
+
+/// <summary>
+/// Returns role options compatible with a given <paramref name="UserType"/> for portal-access
+/// pickers, so dialogs filter server-side instead of paging the first 100 roles client-side.
+/// </summary>
+public sealed record GetRoleOptionsQuery(UserType UserType) : IQuery<IReadOnlyList<RoleOptionDto>>;
+
+public sealed class GetRoleOptionsQueryHandler(IIdentityDbContext db)
+    : IQueryHandler<GetRoleOptionsQuery, IReadOnlyList<RoleOptionDto>>
+{
+    public async Task<Result<IReadOnlyList<RoleOptionDto>>> Handle(GetRoleOptionsQuery request, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<RoleOptionDto> options = await db.Roles.AsNoTracking()
+            .Where(r => r.CompatibleUserType == request.UserType)
+            .OrderBy(r => r.Name)
+            .Select(r => new RoleOptionDto(r.Id, r.Name, r.CompatibleUserType.ToString()))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success(options);
+    }
+}
+
 // --- By id ----------------------------------------------------------------
 
 public sealed record GetRoleByIdQuery(Guid Id) : IQuery<RoleDto>;

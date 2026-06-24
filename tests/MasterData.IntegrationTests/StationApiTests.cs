@@ -97,6 +97,71 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         after.City.ShouldBe("New City");
     }
 
+    private sealed record StaffItem(Guid Id, string FullName, string Email);
+
+    [Fact]
+    public async Task Create_station_with_staff_is_atomic()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await EnsureActiveCountryAsync(client);
+        var iata = await UnusedIataAsync(client);
+        var manpowerTypeId = await CreateManpowerTypeAsync(client);
+
+        var create = await client.PostAsJsonAsync($"{Base}/stations", new
+        {
+            iataCode = iata,
+            icaoCode = (string?)null,
+            name = "Atomic Station",
+            city = "City",
+            countryId,
+            staff = new[]
+            {
+                new { fullName = "Staff One", email = $"one-{iata}@test.com", manpowerTypeId, employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null },
+                new { fullName = "Staff Two", email = $"two-{iata}@test.com", manpowerTypeId, employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null }
+            }
+        });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var stationId = await create.Content.ReadFromJsonAsync<Guid>();
+
+        var staff = await client.GetFromJsonAsync<PagedList<StaffItem>>($"{Base}/staff-members?stationId={stationId}&pageSize=100");
+        staff!.Items.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Create_station_with_invalid_staff_rolls_back_the_station()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await EnsureActiveCountryAsync(client);
+        var iata = await UnusedIataAsync(client);
+
+        // One child references a non-existent manpower type; the whole create must fail and persist nothing.
+        var create = await client.PostAsJsonAsync($"{Base}/stations", new
+        {
+            iataCode = iata,
+            icaoCode = (string?)null,
+            name = "Rollback Station",
+            city = "City",
+            countryId,
+            staff = new[]
+            {
+                new { fullName = "Bad Staff", email = $"bad-{iata}@test.com", manpowerTypeId = Guid.NewGuid(), employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null }
+            }
+        });
+        create.StatusCode.ShouldBeOneOf(HttpStatusCode.NotFound, HttpStatusCode.BadRequest);
+
+        // The station must not exist (the failed nested create rolled back).
+        var stations = await client.GetFromJsonAsync<PagedList<StationItem>>($"{Base}/stations?pageSize=100&search={iata}");
+        stations!.Items.ShouldNotContain(s => s.IataCode == iata);
+    }
+
+    private static async Task<Guid> CreateManpowerTypeAsync(HttpClient client)
+    {
+        var create = await client.PostAsJsonAsync($"{MasterDataApiFactory.Base}/manpower-types",
+            new { name = $"MT {Guid.NewGuid():N}", description = (string?)null });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return await create.Content.ReadFromJsonAsync<Guid>();
+    }
+
     private static async Task<Guid> CreateStationAsync(HttpClient client, string iata, Guid countryId)
     {
         var create = await client.PostAsJsonAsync($"{Base}/stations",

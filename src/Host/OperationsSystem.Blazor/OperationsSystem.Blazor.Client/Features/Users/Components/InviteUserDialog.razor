@@ -7,8 +7,8 @@
         <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
             @UiStrings.Users.InviteSuccess
         </RadzenAlert>
-        <RadzenFormField Text="@UiStrings.Users.InvitationTokenLabel" Variant="Variant.Outlined">
-            <RadzenTextBox Value="@invited.InvitationToken.ToString()" ReadOnly="true" Style="width: 100%;" />
+        <RadzenFormField Text="@UiStrings.Users.InvitationDeliveryLabel" Variant="Variant.Outlined">
+            <RadzenTextBox Value="@invited.DeliveryStatus" ReadOnly="true" Style="width: 100%;" />
         </RadzenFormField>
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End">
             <RadzenButton Text="@UiStrings.Common.Close" ButtonStyle="ButtonStyle.Primary" Click="@(() => DialogService.Close(true))" />
@@ -21,6 +21,10 @@ else
         <div class="iud-form">
             <p class="iud-intro os-muted">@UiStrings.Users.InviteIntro</p>
 
+            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                @UiStrings.Users.InviteAdminNote
+            </RadzenAlert>
+
             <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined" Style="width: 100%;">
                 <Start><RadzenIcon Icon="mail" /></Start>
                 <ChildContent>
@@ -32,14 +36,6 @@ else
                 <Start><RadzenIcon Icon="person" /></Start>
                 <ChildContent>
                     <RadzenTextBox @bind-Value="model.DisplayName" Name="displayName" Style="width: 100%;" />
-                </ChildContent>
-            </RadzenFormField>
-
-            <RadzenFormField Text="@UiStrings.Users.Role" Variant="Variant.Outlined" Style="width: 100%;">
-                <Start><RadzenIcon Icon="badge" /></Start>
-                <ChildContent>
-                    <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleListItem.Name)"
-                                    ValueProperty="@nameof(RoleListItem.Id)" Style="width: 100%;" />
                 </ChildContent>
             </RadzenFormField>
 
@@ -58,40 +54,18 @@ else
 
 @code {
     private readonly InviteModel model = new();
-    private IReadOnlyList<RoleListItem> roles = [];
     private InvitedUser? invited;
     private bool isSubmitting;
     private string? errorMessage;
 
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            var result = await Identity.GetRolesAsync(1, 100, null);
-            roles = result.Items;
-            model.RoleId = roles.FirstOrDefault()?.Id ?? Guid.Empty;
-        }
-        catch (ApiException)
-        {
-            errorMessage = UiStrings.Errors.LoadFailed;
-        }
-    }
-
     private async Task SubmitAsync()
     {
         errorMessage = null;
-
-        if (model.RoleId == Guid.Empty)
-        {
-            errorMessage = UiStrings.Users.Role;
-            return;
-        }
-
         isSubmitting = true;
 
         try
         {
-            invited = await Identity.InviteUserAsync(new InviteUserRequest(model.Email.Trim(), model.DisplayName.Trim(), model.RoleId));
+            invited = await Identity.InviteUserAsync(new InviteUserRequest(model.Email.Trim(), model.DisplayName.Trim()));
         }
         catch (ApiException ex)
         {
@@ -107,6 +81,5 @@ else
     {
         public string Email { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
-        public Guid RoleId { get; set; } = Guid.Empty;
     }
 }

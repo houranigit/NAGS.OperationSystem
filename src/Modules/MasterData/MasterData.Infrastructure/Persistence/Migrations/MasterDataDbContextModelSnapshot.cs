@@ -212,6 +212,18 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<Guid?>("PortalCorrelationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PortalFailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PortalState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTimeOffset?>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -339,6 +351,18 @@ namespace MasterData.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ManpowerTypeId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PortalCorrelationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PortalFailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PortalState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()

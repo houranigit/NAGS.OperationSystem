@@ -49,6 +49,13 @@
                         <span>@UiStrings.Nav.Roles</span>
                     </NavLink>
                 }
+                @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, AuditPermissions.TrailsView))
+                {
+                    <NavLink href="/audit" class="os-nav-link" title="@UiStrings.Nav.Audit" @onclick="CloseNav">
+                        <RadzenIcon Icon="history" />
+                        <span>@UiStrings.Nav.Audit</span>
+                    </NavLink>
+                }
             </AuthorizeView>
 
             <AuthorizeView Context="masterData">

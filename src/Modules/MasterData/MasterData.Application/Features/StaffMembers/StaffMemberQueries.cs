@@ -135,7 +135,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             staff.Id, staff.FullName, staff.Email,
             staff.StationId, station?.IataCode ?? string.Empty, station?.Name ?? string.Empty,
             staff.ManpowerTypeId, manpowerTypeName,
-            contract, workingDays, staff.LinkedUserId, staff.IsActive,
+            contract, workingDays, staff.LinkedUserId, staff.PortalState.ToString(), staff.PortalFailureReason, staff.IsActive,
             staff.CreatedAtUtc, staff.UpdatedAtUtc, Convert.ToBase64String(staff.RowVersion),
             licenses);
     }

@@ -1,5 +1,6 @@
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Aggregates;
+using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
 using Identity.Domain.Roles.Events;
 
@@ -12,11 +13,14 @@ namespace Identity.Domain.Roles;
 /// it may be assigned to; permission compatibility is enforced in the application layer against the
 /// composed cross-module permission catalog.
 /// </summary>
-public sealed class Role : AggregateRoot<Guid>
+public sealed class Role : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<string> _permissions = [];
 
     private Role() { }
+
+    string IAuditable.AuditEntityType => "Role";
+    Guid IAuditable.AuditEntityId => Id;
 
     public string Name { get; private set; } = null!;
     public string NormalizedName { get; private set; } = null!;

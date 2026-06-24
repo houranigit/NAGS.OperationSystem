@@ -13,8 +13,23 @@ public sealed record CreateLicenseRequest(string Code, string Name, string? Desc
 public sealed record UpdateLicenseRequest(string Name, string? Description);
 
 // Stations
-public sealed record CreateStationRequest(string IataCode, string? IcaoCode, string Name, string City, Guid CountryId);
+public sealed record CreateStationRequest(
+    string IataCode,
+    string? IcaoCode,
+    string Name,
+    string City,
+    Guid CountryId,
+    IReadOnlyList<NewStationStaffRequest>? Staff);
 public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string City, Guid CountryId);
+
+public sealed record NewStationStaffRequest(
+    string FullName,
+    string Email,
+    Guid ManpowerTypeId,
+    EmploymentContractRequest? EmploymentContract,
+    IReadOnlyList<DayOfWeek>? WorkingDays,
+    IReadOnlyList<StaffLicenseRequest>? Licenses,
+    Guid? PortalAccessRoleId);
 
 // Customers
 public sealed record AddressRequest(string Line1, string? Line2, string City, string? Region, string? PostalCode);
@@ -37,10 +52,10 @@ public sealed record UpdateCustomerRequest(
     Guid CountryId,
     string? OfficialEmail,
     string? OfficialPhone,
-    AddressRequest Address,
-    IReadOnlyList<CustomerContactRequest>? Contacts);
+    AddressRequest Address);
 
 public sealed record AddCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
+public sealed record UpdateCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
 
 // Portal access
 public sealed record GrantPortalAccessRequest(Guid RoleId);

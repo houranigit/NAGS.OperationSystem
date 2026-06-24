@@ -22,7 +22,7 @@ public sealed class GrantStaffPortalAccessCommandValidator : AbstractValidator<G
     }
 }
 
-public sealed class GrantStaffPortalAccessCommandHandler(IMasterDataDbContext db)
+public sealed class GrantStaffPortalAccessCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
     : ICommandHandler<GrantStaffPortalAccessCommand>
 {
     public async Task<Result> Handle(GrantStaffPortalAccessCommand request, CancellationToken cancellationToken)
@@ -37,13 +37,18 @@ public sealed class GrantStaffPortalAccessCommandHandler(IMasterDataDbContext db
         if (staff.LinkedUserId is not null)
             return Error.Conflict("This staff member already has a linked portal account.", "MasterData.StaffMember.AlreadyLinked");
 
+        // A correlation id identifies this attempt; a stale reply from a superseded request is ignored.
+        var correlationId = Guid.NewGuid();
+        staff.RequestPortalAccess(correlationId, timeProvider.GetUtcNow());
+
         db.Enqueue(new PortalAccessRequested
         {
             ExternalReferenceId = staff.Id,
             UserType = UserType.StationStaff,
             RoleId = request.RoleId,
             Email = staff.Email,
-            DisplayName = staff.FullName
+            DisplayName = staff.FullName,
+            CorrelationId = correlationId
         });
 
         await db.SaveChangesAsync(cancellationToken);
@@ -65,7 +70,7 @@ public sealed class GrantContactPortalAccessCommandValidator : AbstractValidator
     }
 }
 
-public sealed class GrantContactPortalAccessCommandHandler(IMasterDataDbContext db)
+public sealed class GrantContactPortalAccessCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
     : ICommandHandler<GrantContactPortalAccessCommand>
 {
     public async Task<Result> Handle(GrantContactPortalAccessCommand request, CancellationToken cancellationToken)
@@ -88,13 +93,17 @@ public sealed class GrantContactPortalAccessCommandHandler(IMasterDataDbContext 
         if (contact.LinkedUserId is not null)
             return Error.Conflict("This contact already has a linked portal account.", "MasterData.CustomerContact.AlreadyLinked");
 
+        var correlationId = Guid.NewGuid();
+        contact.RequestPortalAccess(correlationId, timeProvider.GetUtcNow());
+
         db.Enqueue(new PortalAccessRequested
         {
             ExternalReferenceId = contact.Id,
             UserType = UserType.CustomerContact,
             RoleId = request.RoleId,
             Email = contact.Email,
-            DisplayName = contact.Name
+            DisplayName = contact.Name,
+            CorrelationId = correlationId
         });
 
         await db.SaveChangesAsync(cancellationToken);

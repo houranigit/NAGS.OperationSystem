@@ -33,12 +33,22 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.ExternalReferenceId);
         builder.Property(u => u.LoginEmailReleased).IsRequired();
         builder.Property(u => u.PendingEmail).HasMaxLength(256);
-        builder.Property(u => u.EmailChangeToken);
+        builder.Property(u => u.EmailChangeToken).HasMaxLength(128);
         builder.Property(u => u.EmailChangeExpiresAtUtc);
         builder.Property(u => u.SecurityStamp).IsRequired();
+        builder.Property(u => u.MfaEnabled).IsRequired();
+        builder.Property(u => u.MfaSecret).HasMaxLength(512);
 
-        builder.Property(u => u.InvitationToken);
+        // Unused recovery-code hashes stored as a JSON column on the user row.
+        builder.PrimitiveCollection(u => u.RecoveryCodeHashes)
+            .HasColumnName("MfaRecoveryCodeHashes");
+        builder.Metadata.FindProperty(nameof(User.RecoveryCodeHashes))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.Property(u => u.InvitationToken).HasMaxLength(128);
         builder.Property(u => u.InvitationExpiresAtUtc);
+        builder.Property(u => u.PasswordResetToken).HasMaxLength(128);
+        builder.Property(u => u.PasswordResetExpiresAtUtc);
         builder.Property(u => u.AccessFailedCount).IsRequired();
         builder.Property(u => u.LockoutEndUtc);
         builder.Property(u => u.CreatedAtUtc).IsRequired();
@@ -47,6 +57,13 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasIndex(u => u.RoleId);
         builder.HasIndex(u => u.ExternalReferenceId);
+
+        // At most one live account per MasterData record. Filtered so released (detached) accounts and
+        // administrators (no external reference) are excluded; this also blocks concurrent duplicate
+        // provisioning of the same staff member / customer contact at the database level.
+        builder.HasIndex(u => new { u.UserType, u.ExternalReferenceId })
+            .IsUnique()
+            .HasFilter("[ExternalReferenceId] IS NOT NULL AND [LoginEmailReleased] = 0");
 
         builder.Ignore(u => u.DomainEvents);
     }

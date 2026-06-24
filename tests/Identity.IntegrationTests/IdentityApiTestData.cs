@@ -17,7 +17,6 @@ internal static class IdentityApiTestData
     public const string DemoUserPassword = "Demo#12345";
 
     private sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);
-    private sealed record InvitedResponse(Guid Id, string Email, Guid InvitationToken);
 
     public static async Task<HttpClient> CreateAuthenticatedAdminClientAsync(IdentityApiFactory factory)
     {
@@ -76,7 +75,7 @@ internal static class IdentityApiTestData
         return list!.Items.Single(r => r.Name == name).Id;
     }
 
-    public static async Task SeedDemoUsersAsync(HttpClient client, Guid roleId, int count = DemoUserCount)
+    public static async Task SeedDemoUsersAsync(IdentityApiFactory factory, HttpClient client, Guid roleId, int count = DemoUserCount)
     {
         for (var i = 1; i <= count; i++)
         {
@@ -90,10 +89,12 @@ internal static class IdentityApiTestData
                 continue;
 
             invite.StatusCode.ShouldBe(HttpStatusCode.Created);
-            var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+
+            var invitationToken = await factory.GetInvitationTokenAsync(email);
+            invitationToken.ShouldNotBeNull();
 
             var activate = await client.PostAsJsonAsync($"{Base}/auth/activate",
-                new { email, invitationToken = invited!.InvitationToken, newPassword = DemoUserPassword });
+                new { email, invitationToken, newPassword = DemoUserPassword });
             activate.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         }
     }

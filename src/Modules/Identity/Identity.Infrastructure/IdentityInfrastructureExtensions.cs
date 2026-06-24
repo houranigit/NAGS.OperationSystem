@@ -1,4 +1,5 @@
 using BuildingBlocks.Contracts.Authorization;
+using BuildingBlocks.Infrastructure.Auditing;
 using BuildingBlocks.Infrastructure.Email;
 using BuildingBlocks.Infrastructure.Messaging;
 using Identity.Application;
@@ -14,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Infrastructure;
 
@@ -24,14 +26,22 @@ public static class IdentityInfrastructureExtensions
         services.AddOptions<IdentityModuleOptions>()
             .Bind(configuration.GetSection(IdentityModuleOptions.SectionName))
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<IdentityModuleOptions>, IdentityModuleOptionsValidator>();
 
         var connectionString = configuration.GetConnectionString("Identity")
             ?? configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("No 'Identity' or 'Default' connection string configured.");
 
-        services.AddDbContext<IdentityDbContext>(options =>
+        services.AddDbContext<IdentityDbContext>((sp, options) =>
+        {
             options.UseSqlServer(connectionString, sql =>
-                sql.MigrationsHistoryTable("__EFMigrationsHistory", IdentityDbContext.Schema)));
+                sql.MigrationsHistoryTable("__EFMigrationsHistory", IdentityDbContext.Schema));
+
+            // Automatic audit capture writes change events to this module's outbox in the same
+            // transaction. Optional so the module can be composed without the audit host wiring.
+            if (sp.GetService<AuditSaveChangesInterceptor>() is { } auditInterceptor)
+                options.AddInterceptors(auditInterceptor);
+        });
 
         services.AddScoped<IIdentityDbContext>(sp => sp.GetRequiredService<IdentityDbContext>());
 
@@ -40,8 +50,13 @@ public static class IdentityInfrastructureExtensions
 
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ITokenService, TokenService>();
+        services.AddSingleton<IMfaService, MfaService>();
+        services.AddSingleton<IMfaSecretProtector, DataProtectionMfaSecretProtector>();
+        services.AddScoped<ITokenSecurityValidator, TokenSecurityValidator>();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<IInvitationNotifier, EmailInvitationNotifier>();
+        services.AddScoped<IPasswordResetNotifier, EmailPasswordResetNotifier>();
+        services.AddScoped<ILinkedEmailVerificationNotifier, EmailLinkedEmailVerificationNotifier>();
 
         // Contribute Identity's permissions to the composed cross-module registry.
         services.AddSingleton<IPermissionCatalog, IdentityPermissionCatalog>();

@@ -10,7 +10,12 @@ using Microsoft.Extensions.Options;
 
 namespace Identity.Application.Features.Users;
 
-public sealed record InviteUserCommand(string Email, string DisplayName, Guid RoleId) : ICommand<InvitedUserDto>;
+/// <summary>
+/// Direct user creation. v1.0.0 only creates System Administrators: the protected full-access role
+/// is assigned automatically and there is no role selection. Station Staff and Customer Contact
+/// accounts are provisioned from their MasterData record via the portal-access flow.
+/// </summary>
+public sealed record InviteUserCommand(string Email, string DisplayName) : ICommand<InvitedUserDto>;
 
 public sealed class InviteUserCommandValidator : AbstractValidator<InviteUserCommand>
 {
@@ -18,13 +23,13 @@ public sealed class InviteUserCommandValidator : AbstractValidator<InviteUserCom
     {
         RuleFor(x => x.Email).NotEmpty().MaximumLength(256);
         RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(150);
-        RuleFor(x => x.RoleId).NotEmpty();
     }
 }
 
 public sealed class InviteUserCommandHandler(
     IIdentityDbContext db,
     IInvitationNotifier invitationNotifier,
+    ITokenService tokenService,
     TimeProvider timeProvider,
     IOptions<IdentityModuleOptions> options)
     : ICommandHandler<InviteUserCommand, InvitedUserDto>
@@ -45,30 +50,25 @@ public sealed class InviteUserCommandHandler(
         if (emailTaken)
             return Error.Conflict("A user with this email already exists.", "Identity.User.DuplicateEmail");
 
-        var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == request.RoleId, cancellationToken);
+        // Direct creation always assigns the protected full-access System Administrator role.
+        // StationStaff/CustomerContact accounts are provisioned from MasterData via portal access.
+        var role = await db.Roles.FirstOrDefaultAsync(r => r.IsSystem, cancellationToken);
         if (role is null)
-            return Error.Validation("The selected role does not exist.", "Identity.User.RoleNotFound");
-
-        // Identity only directly invites administrators. StationStaff/CustomerContact accounts are
-        // provisioned from their MasterData record via the portal-access integration flow.
-        if (role.CompatibleUserType != UserType.SystemAdministrator)
-            return Error.Conflict(
-                "Only System Administrator accounts can be invited directly. Grant portal access from the staff member or customer contact instead.",
-                "Identity.User.PortalAccountFromMasterData");
+            return Error.Failure("The protected System Administrator role is not available.", "Identity.User.NoAdminRole");
 
         var now = timeProvider.GetUtcNow();
-        var token = Guid.NewGuid();
+        var token = tokenService.CreateSecureToken();
         var expiry = now.AddHours(_options.InvitationExpiryHours);
 
-        var userResult = User.Invite(email, request.DisplayName, request.RoleId, token, expiry, now, UserType.SystemAdministrator);
+        var userResult = User.Invite(email, request.DisplayName, role.Id, token.Hash, expiry, now, UserType.SystemAdministrator);
         if (userResult.IsFailure)
             return userResult.Error;
 
         db.Users.Add(userResult.Value);
         await db.SaveChangesAsync(cancellationToken);
 
-        await invitationNotifier.SendInvitationAsync(email.Value, request.DisplayName, userResult.Value.Id, token, cancellationToken);
+        await invitationNotifier.SendInvitationAsync(email.Value, request.DisplayName, userResult.Value.Id, token.Value, cancellationToken);
 
-        return new InvitedUserDto(userResult.Value.Id, email.Value, token);
+        return new InvitedUserDto(userResult.Value.Id, email.Value, "Queued");
     }
 }

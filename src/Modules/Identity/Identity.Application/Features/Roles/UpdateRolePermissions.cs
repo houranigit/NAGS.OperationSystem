@@ -4,6 +4,7 @@ using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
 using Identity.Application.Authorization;
+using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Application.Features.Roles;
@@ -35,9 +36,29 @@ public sealed class UpdateRolePermissionsCommandHandler(IIdentityDbContext db, I
         if (permissionCheck.IsFailure)
             return permissionCheck.Error;
 
-        var result = role.SetPermissions(request.Permissions, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var result = role.SetPermissions(request.Permissions, now);
         if (result.IsFailure)
             return result.Error;
+
+        // Everyone holding this role now has a different permission set; rotate their stamps and
+        // revoke their sessions so outstanding tokens carrying the old permissions stop working.
+        var affectedUsers = await db.Users
+            .Where(u => u.RoleId == role.Id && u.Status == UserStatus.Active)
+            .ToListAsync(cancellationToken);
+        var affectedUserIds = affectedUsers.Select(u => u.Id).ToList();
+
+        foreach (var user in affectedUsers)
+            user.RotateSecurityStamp(now);
+
+        if (affectedUserIds.Count > 0)
+        {
+            var sessions = await db.Sessions
+                .Where(s => affectedUserIds.Contains(s.UserId) && s.RevokedAtUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var session in sessions)
+                session.Revoke(now);
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();

@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Application.Features.Auth;
 
-public sealed record ActivateAccountCommand(string Email, Guid InvitationToken, string NewPassword) : ICommand;
+public sealed record ActivateAccountCommand(string Email, string InvitationToken, string NewPassword) : ICommand;
 
 public sealed class ActivateAccountCommandValidator : AbstractValidator<ActivateAccountCommand>
 {
@@ -22,6 +22,7 @@ public sealed class ActivateAccountCommandValidator : AbstractValidator<Activate
 public sealed class ActivateAccountCommandHandler(
     IIdentityDbContext db,
     IPasswordHasher passwordHasher,
+    ITokenService tokenService,
     TimeProvider timeProvider)
     : ICommandHandler<ActivateAccountCommand>
 {
@@ -31,15 +32,21 @@ public sealed class ActivateAccountCommandHandler(
         if (emailResult.IsFailure)
             return emailResult.Error;
 
+        // Non-enumerating: an unknown email, wrong token, or expired invitation all return the same
+        // generic result so the endpoint cannot be used to discover which emails have accounts.
+        var invalidInvitation = Error.Validation(
+            "The invitation link is invalid or has expired.", "Identity.Auth.InvalidInvitation");
+
         var emailValue = emailResult.Value.Value;
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email.Value == emailValue, cancellationToken);
         if (user is null)
-            return Error.NotFound("Account not found.", "Identity.User.NotFound");
+            return invalidInvitation;
 
         var hash = passwordHasher.Hash(request.NewPassword);
-        var result = user.Activate(request.InvitationToken, hash, timeProvider.GetUtcNow());
+        var tokenHash = tokenService.HashToken(request.InvitationToken);
+        var result = user.Activate(tokenHash, hash, timeProvider.GetUtcNow());
         if (result.IsFailure)
-            return result.Error;
+            return invalidInvitation;
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();

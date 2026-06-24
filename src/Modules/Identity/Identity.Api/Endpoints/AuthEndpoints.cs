@@ -1,3 +1,4 @@
+using BuildingBlocks.Api.RateLimiting;
 using BuildingBlocks.Api.Results;
 using BuildingBlocks.Domain.Results;
 using Identity.Application.Features.Auth;
@@ -23,9 +24,38 @@ internal static class AuthEndpoints
             if (result.IsFailure)
                 return ApiResults.Problem(result.Error);
 
+            // MFA-enrolled accounts must complete the second step; no tokens or cookie are issued yet.
+            if (result.Value.MfaRequired)
+                return Results.Ok(new LoginChallengeResponse(true, result.Value.MfaToken!));
+
+            var tokens = result.Value.Tokens!;
+            AuthCookies.SetRefreshToken(http, tokens);
+            return Results.Ok(new AccessTokenResponse(tokens.AccessToken, tokens.AccessTokenExpiresAtUtc));
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
+
+        auth.MapPost("/login/mfa", async (LoginMfaRequest request, ISender sender, HttpContext http, CancellationToken ct) =>
+        {
+            var result = await sender.Send(
+                new LoginMfaCommand(request.MfaToken, request.Code, AuthCookies.ClientIp(http), AuthCookies.UserAgent(http)), ct);
+
+            if (result.IsFailure)
+                return ApiResults.Problem(result.Error);
+
             AuthCookies.SetRefreshToken(http, result.Value);
             return Results.Ok(new AccessTokenResponse(result.Value.AccessToken, result.Value.AccessTokenExpiresAtUtc));
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
+
+        auth.MapPost("/mfa/enroll", async (ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new EnrollMfaCommand(), ct);
+            return result.ToOk();
+        }).RequireAuthorization();
+
+        auth.MapPost("/mfa/confirm", async (ConfirmMfaRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new ConfirmMfaCommand(request.Code), ct);
+            return result.ToOk();
+        }).RequireAuthorization();
 
         auth.MapPost("/refresh", async (ISender sender, HttpContext http, CancellationToken ct) =>
         {
@@ -44,7 +74,7 @@ internal static class AuthEndpoints
 
             AuthCookies.SetRefreshToken(http, result.Value);
             return Results.Ok(new AccessTokenResponse(result.Value.AccessToken, result.Value.AccessTokenExpiresAtUtc));
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
 
         auth.MapPost("/logout", async (ISender sender, HttpContext http, CancellationToken ct) =>
         {
@@ -59,7 +89,7 @@ internal static class AuthEndpoints
             var result = await sender.Send(
                 new ActivateAccountCommand(request.Email, request.InvitationToken, request.NewPassword), ct);
             return result.ToNoContent();
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
 
         auth.MapPost("/change-password", async (ChangePasswordRequest request, ISender sender, CancellationToken ct) =>
         {
@@ -71,7 +101,20 @@ internal static class AuthEndpoints
         {
             var result = await sender.Send(new ConfirmEmailChangeCommand(request.Token, request.NewEmail), ct);
             return result.ToNoContent();
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
+
+        auth.MapPost("/forgot-password", async (ForgotPasswordRequest request, ISender sender, CancellationToken ct) =>
+        {
+            // Always 204 regardless of whether the email exists (non-enumerating).
+            await sender.Send(new ForgotPasswordCommand(request.Email), ct);
+            return Results.NoContent();
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
+
+        auth.MapPost("/reset-password", async (ResetPasswordRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new ResetPasswordCommand(request.Token, request.NewPassword), ct);
+            return result.ToNoContent();
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
 
         group.MapGet("/me", async (ISender sender, CancellationToken ct) =>
         {

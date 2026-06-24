@@ -27,6 +27,13 @@
     <Project Path="src/Modules/Identity/Identity.Domain/Identity.Domain.csproj" />
     <Project Path="src/Modules/Identity/Identity.Infrastructure/Identity.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Audit/">
+    <Project Path="src/Modules/Audit/Audit.Api/Audit.Api.csproj" />
+    <Project Path="src/Modules/Audit/Audit.Application/Audit.Application.csproj" />
+    <Project Path="src/Modules/Audit/Audit.Contracts/Audit.Contracts.csproj" />
+    <Project Path="src/Modules/Audit/Audit.Domain/Audit.Domain.csproj" />
+    <Project Path="src/Modules/Audit/Audit.Infrastructure/Audit.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Identity.Domain.UnitTests/Identity.Domain.UnitTests.csproj" />
     <Project Path="tests/Identity.IntegrationTests/Identity.IntegrationTests.csproj" />

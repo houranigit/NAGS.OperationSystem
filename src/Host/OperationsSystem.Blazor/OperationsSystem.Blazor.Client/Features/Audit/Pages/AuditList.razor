@@ -1,0 +1,90 @@
+@page "/audit"
+@using OperationsSystem.Blazor.Client.Api
+@inject AuditApiClient Audit
+
+<PageTitle>@UiStrings.Audit.Title</PageTitle>
+
+<RequirePermission Permission="@AuditPermissions.TrailsView">
+    <div class="os-list-page">
+        <PageHeader Title="@UiStrings.Audit.Title" Description="@UiStrings.Audit.Description" />
+
+        @if (isLoading)
+        {
+            <LoadingCard />
+        }
+        else if (loadError)
+        {
+            <ErrorState Message="@UiStrings.Errors.LoadFailed" OnRetry="@ReloadAsync" />
+        }
+        else
+        {
+            <RadzenCard>
+                <RadzenDataGrid @ref="grid" TItem="AuditTrailListItem" Data="@items" Count="@totalCount"
+                                LoadData="@LoadDataAsync" AllowPaging="true" PageSize="@pageSize" IsLoading="@isLoading"
+                                AllowSorting="false" EmptyText="@UiStrings.Audit.Empty">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AuditTrailListItem" Title="@UiStrings.Audit.When" Width="200px">
+                            <Template Context="row">@row.OccurredOnUtc.ToString("u")</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AuditTrailListItem" Title="@UiStrings.Audit.Actor" Width="200px">
+                            <Template Context="row">@(row.IsSystemActor ? UiStrings.Audit.System : (row.ActorDisplayName ?? row.ActorId?.ToString() ?? UiStrings.Common.None))</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AuditTrailListItem" Property="Module" Title="@UiStrings.Audit.Module" Width="130px" />
+                        <RadzenDataGridColumn TItem="AuditTrailListItem" Title="@UiStrings.Audit.Entity">
+                            <Template Context="row">@row.EntityType @(row.EntityId is { } eid ? $"({eid})" : string.Empty)</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="AuditTrailListItem" Property="Action" Title="@UiStrings.Audit.Action" Width="160px" />
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+        }
+    </div>
+</RequirePermission>
+
+@code {
+    private RadzenDataGrid<AuditTrailListItem>? grid;
+    private IReadOnlyList<AuditTrailListItem> items = [];
+    private int totalCount;
+    private int page = 1;
+    private int pageSize = 20;
+    private bool isLoading = true;
+    private bool loadError;
+
+    protected override async Task OnInitializedAsync() => await FetchAsync();
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        pageSize = args.Top ?? pageSize;
+        page = ((args.Skip ?? 0) / Math.Max(pageSize, 1)) + 1;
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Audit.GetTrailsAsync(page, pageSize);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        page = 1;
+        await FetchAsync();
+    }
+}

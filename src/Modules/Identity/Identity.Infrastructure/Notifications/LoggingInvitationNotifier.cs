@@ -9,11 +9,10 @@ namespace Identity.Infrastructure.Notifications;
 /// </summary>
 public sealed class LoggingInvitationNotifier(ILogger<LoggingInvitationNotifier> logger) : IInvitationNotifier
 {
-    public Task SendInvitationAsync(string email, string displayName, Guid userId, Guid invitationToken, CancellationToken cancellationToken = default)
+    public Task SendInvitationAsync(string email, string displayName, Guid userId, string invitationToken, CancellationToken cancellationToken = default)
     {
-        logger.LogInformation(
-            "Invitation for {Email} (user {UserId}). Activation token: {InvitationToken}",
-            email, userId, invitationToken);
+        // Never log the raw token; record only that an invitation was prepared.
+        logger.LogInformation("Invitation prepared for {Email} (user {UserId}).", email, userId);
         return Task.CompletedTask;
     }
 }

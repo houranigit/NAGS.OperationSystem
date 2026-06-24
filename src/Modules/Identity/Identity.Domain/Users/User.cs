@@ -1,5 +1,6 @@
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Aggregates;
+using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
 using Identity.Domain.Users.Events;
 
@@ -11,9 +12,14 @@ namespace Identity.Domain.Users;
 /// Carries its fixed <see cref="UserType"/> (business identity/data scope) and, for non-admin
 /// accounts, the <see cref="ExternalReferenceId"/> of the originating MasterData record.
 /// </summary>
-public sealed class User : AggregateRoot<Guid>
+public sealed class User : AggregateRoot<Guid>, IAuditable
 {
+    private readonly List<string> _recoveryCodeHashes = [];
+
     private User() { }
+
+    string IAuditable.AuditEntityType => "User";
+    Guid IAuditable.AuditEntityId => Id;
 
     public Email Email { get; private set; } = null!;
     public string DisplayName { get; private set; } = null!;
@@ -35,14 +41,33 @@ public sealed class User : AggregateRoot<Guid>
 
     /// <summary>A pending, not-yet-verified new login email (linked email-change workflow).</summary>
     public string? PendingEmail { get; private set; }
-    public Guid? EmailChangeToken { get; private set; }
+
+    /// <summary>SHA-256 hash of the email-change verification token; the raw token is never stored.</summary>
+    public string? EmailChangeToken { get; private set; }
     public DateTimeOffset? EmailChangeExpiresAtUtc { get; private set; }
 
     /// <summary>Rotated whenever credentials change; lets existing sessions be invalidated.</summary>
     public Guid SecurityStamp { get; private set; }
 
-    public Guid? InvitationToken { get; private set; }
+    /// <summary>True once a TOTP authenticator has been enrolled and confirmed.</summary>
+    public bool MfaEnabled { get; private set; }
+
+    /// <summary>Data-Protection-encrypted TOTP secret. Set during enrollment (pending until confirmed).</summary>
+    public string? MfaSecret { get; private set; }
+
+    /// <summary>Hashes of the unused one-time recovery codes; a redeemed code is removed.</summary>
+    public IReadOnlyList<string> RecoveryCodeHashes => _recoveryCodeHashes;
+
+    /// <summary>System Administrators must use MFA; the requirement is enforced once enrolled at activation.</summary>
+    public bool MfaRequired => UserType == UserType.SystemAdministrator;
+
+    /// <summary>SHA-256 hash of the invitation token; the raw token is never stored or returned.</summary>
+    public string? InvitationToken { get; private set; }
     public DateTimeOffset? InvitationExpiresAtUtc { get; private set; }
+
+    /// <summary>SHA-256 hash of the active password-reset token; the raw token is never stored.</summary>
+    public string? PasswordResetToken { get; private set; }
+    public DateTimeOffset? PasswordResetExpiresAtUtc { get; private set; }
 
     public int AccessFailedCount { get; private set; }
     public DateTimeOffset? LockoutEndUtc { get; private set; }
@@ -57,7 +82,7 @@ public sealed class User : AggregateRoot<Guid>
         Email email,
         string? displayName,
         Guid roleId,
-        Guid invitationToken,
+        string invitationTokenHash,
         DateTimeOffset invitationExpiresAtUtc,
         DateTimeOffset now,
         UserType userType = UserType.SystemAdministrator,
@@ -84,7 +109,7 @@ public sealed class User : AggregateRoot<Guid>
             UserType = userType,
             ExternalReferenceId = externalReferenceId,
             SecurityStamp = Guid.NewGuid(),
-            InvitationToken = invitationToken,
+            InvitationToken = invitationTokenHash,
             InvitationExpiresAtUtc = invitationExpiresAtUtc,
             CreatedAtUtc = now
         };
@@ -136,7 +161,7 @@ public sealed class User : AggregateRoot<Guid>
     /// Starts a linked email-change. The login email does not change until the new address is
     /// verified, so a typo or undeliverable address cannot lock the account out.
     /// </summary>
-    public Result RequestEmailChange(Email newEmail, Guid token, DateTimeOffset expiresAtUtc, DateTimeOffset now)
+    public Result RequestEmailChange(Email newEmail, string tokenHash, DateTimeOffset expiresAtUtc, DateTimeOffset now)
     {
         if (Status == UserStatus.Deactivated)
             return Error.Conflict("Cannot change the email of a deactivated account.", "Identity.User.Deactivated");
@@ -145,7 +170,7 @@ public sealed class User : AggregateRoot<Guid>
             return Error.Validation("The new email matches the current email.", "Identity.User.EmailUnchanged");
 
         PendingEmail = newEmail.Value;
-        EmailChangeToken = token;
+        EmailChangeToken = tokenHash;
         EmailChangeExpiresAtUtc = expiresAtUtc;
         UpdatedAtUtc = now;
         return Result.Success();
@@ -185,12 +210,12 @@ public sealed class User : AggregateRoot<Guid>
         return Result.Success();
     }
 
-    public Result Activate(Guid invitationToken, string passwordHash, DateTimeOffset now)
+    public Result Activate(string invitationTokenHash, string passwordHash, DateTimeOffset now)
     {
         if (Status != UserStatus.Invited)
             return Error.Conflict("Only an invited account can be activated.", "Identity.User.NotInvited");
 
-        if (InvitationToken is null || InvitationToken != invitationToken)
+        if (InvitationToken is null || !string.Equals(InvitationToken, invitationTokenHash, StringComparison.Ordinal))
             return Error.Validation("Invitation token is invalid.", "Identity.User.InvalidInvitation");
 
         if (InvitationExpiresAtUtc is { } expiry && expiry <= now)
@@ -209,13 +234,109 @@ public sealed class User : AggregateRoot<Guid>
         return Result.Success();
     }
 
-    public Result ResendInvitation(Guid invitationToken, DateTimeOffset invitationExpiresAtUtc, DateTimeOffset now)
+    public Result ResendInvitation(string invitationTokenHash, DateTimeOffset invitationExpiresAtUtc, DateTimeOffset now)
     {
         if (Status != UserStatus.Invited)
             return Error.Conflict("Only an invited account can have its invitation resent.", "Identity.User.NotInvited");
 
-        InvitationToken = invitationToken;
+        InvitationToken = invitationTokenHash;
         InvitationExpiresAtUtc = invitationExpiresAtUtc;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Begins a password reset by storing the hash of a freshly issued token. Only an active account
+    /// can reset its password; invited accounts activate instead, and deactivated accounts cannot.
+    /// </summary>
+    public Result RequestPasswordReset(string tokenHash, DateTimeOffset expiresAtUtc, DateTimeOffset now)
+    {
+        if (Status != UserStatus.Active)
+            return Error.Conflict("Only an active account can reset its password.", "Identity.User.NotActive");
+
+        PasswordResetToken = tokenHash;
+        PasswordResetExpiresAtUtc = expiresAtUtc;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>Completes a password reset, rotating the security stamp so existing sessions are invalidated.</summary>
+    public Result ResetPassword(string tokenHash, string passwordHash, DateTimeOffset now)
+    {
+        if (Status != UserStatus.Active || PasswordResetToken is null)
+            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
+
+        if (!string.Equals(PasswordResetToken, tokenHash, StringComparison.Ordinal))
+            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
+
+        if (PasswordResetExpiresAtUtc is { } expiry && expiry <= now)
+            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
+
+        if (string.IsNullOrWhiteSpace(passwordHash))
+            return Error.Validation("Password hash is required.", "Identity.User.PasswordRequired");
+
+        PasswordHash = passwordHash;
+        PasswordResetToken = null;
+        PasswordResetExpiresAtUtc = null;
+        SecurityStamp = Guid.NewGuid();
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new UserPasswordChangedEvent(Id));
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Stores a freshly generated (encrypted) TOTP secret as a pending enrollment. MFA is not yet in
+    /// effect; the user must confirm with a valid code first.
+    /// </summary>
+    public Result BeginMfaEnrollment(string encryptedSecret, DateTimeOffset now)
+    {
+        if (Status != UserStatus.Active)
+            return Error.Conflict("Only an active account can enroll MFA.", "Identity.User.NotActive");
+
+        if (string.IsNullOrWhiteSpace(encryptedSecret))
+            return Error.Validation("An MFA secret is required.", "Identity.User.MfaSecretRequired");
+
+        MfaSecret = encryptedSecret;
+        MfaEnabled = false;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Confirms a pending enrollment after a valid code was verified, enabling MFA and replacing the
+    /// recovery codes. Rotates the security stamp.
+    /// </summary>
+    public Result ConfirmMfaEnrollment(IEnumerable<string> recoveryCodeHashes, DateTimeOffset now)
+    {
+        if (MfaSecret is null)
+            return Error.Conflict("There is no pending MFA enrollment to confirm.", "Identity.User.NoPendingMfa");
+
+        MfaEnabled = true;
+        _recoveryCodeHashes.Clear();
+        _recoveryCodeHashes.AddRange(recoveryCodeHashes);
+
+        SecurityStamp = Guid.NewGuid();
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>Redeems an unused recovery code (by hash). Returns failure if no matching code exists.</summary>
+    public Result ConsumeRecoveryCode(string codeHash, DateTimeOffset now)
+    {
+        if (!_recoveryCodeHashes.Remove(codeHash))
+            return Error.Validation("Invalid recovery code.", "Identity.User.InvalidRecoveryCode");
+
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>Administrative MFA reset: clears the authenticator and recovery codes; the user must re-enroll.</summary>
+    public Result ResetMfa(DateTimeOffset now)
+    {
+        MfaEnabled = false;
+        MfaSecret = null;
+        _recoveryCodeHashes.Clear();
+        SecurityStamp = Guid.NewGuid();
         UpdatedAtUtc = now;
         return Result.Success();
     }
@@ -253,9 +374,19 @@ public sealed class User : AggregateRoot<Guid>
             return Error.Validation("A role is required.", "Identity.User.RoleRequired");
 
         RoleId = roleId;
+        // A role change alters the permission set; rotate the stamp so outstanding access tokens
+        // (which carry the old permissions) are rejected on their next request.
+        SecurityStamp = Guid.NewGuid();
         UpdatedAtUtc = now;
         RaiseDomainEvent(new UserRoleAssignedEvent(Id, roleId));
         return Result.Success();
+    }
+
+    /// <summary>Rotates the security stamp without other state changes (e.g. when the role's permissions change).</summary>
+    public void RotateSecurityStamp(DateTimeOffset now)
+    {
+        SecurityStamp = Guid.NewGuid();
+        UpdatedAtUtc = now;
     }
 
     /// <summary>Locks the account indefinitely (manual administrative lock).</summary>
@@ -289,6 +420,47 @@ public sealed class User : AggregateRoot<Guid>
         UpdatedAtUtc = now;
         RaiseDomainEvent(new UserDeactivatedEvent(Id));
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Reversibly blocks sign-in while preserving the User link. The security stamp is rotated so
+    /// outstanding access tokens are rejected; the caller revokes sessions.
+    /// </summary>
+    public Result Suspend(DateTimeOffset now)
+    {
+        if (Status == UserStatus.Deactivated)
+            return Error.Conflict("Cannot suspend a deactivated account.", "Identity.User.Deactivated");
+
+        if (Status == UserStatus.Suspended)
+            return Result.Success();
+
+        Status = UserStatus.Suspended;
+        SecurityStamp = Guid.NewGuid();
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Restores access to a suspended account. An activated account (one that has set a password)
+    /// returns to <see cref="UserStatus.Active"/>; an account suspended before it was ever activated
+    /// returns to <see cref="UserStatus.Invited"/> and reports that its invitation must be requeued.
+    /// </summary>
+    public Result<AccessRestoreOutcome> RestoreAccess(DateTimeOffset now)
+    {
+        if (Status != UserStatus.Suspended)
+            return Error.Conflict("Only a suspended account can have its access restored.", "Identity.User.NotSuspended");
+
+        SecurityStamp = Guid.NewGuid();
+        UpdatedAtUtc = now;
+
+        if (PasswordHash is not null)
+        {
+            Status = UserStatus.Active;
+            return AccessRestoreOutcome.Reactivated;
+        }
+
+        Status = UserStatus.Invited;
+        return AccessRestoreOutcome.InvitationRequeued;
     }
 
     /// <summary>Records a failed sign-in, auto-locking once <paramref name="maxFailedAttempts"/> is reached.</summary>

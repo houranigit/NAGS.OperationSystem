@@ -1,4 +1,5 @@
 using BuildingBlocks.Contracts.Authorization;
+using BuildingBlocks.Infrastructure.Auditing;
 using BuildingBlocks.Infrastructure.Messaging;
 using Identity.Contracts;
 using MasterData.Application.Abstractions;
@@ -21,9 +22,14 @@ public static class MasterDataInfrastructureExtensions
             ?? configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("No 'MasterData' or 'Default' connection string configured.");
 
-        services.AddDbContext<MasterDataDbContext>(options =>
+        services.AddDbContext<MasterDataDbContext>((sp, options) =>
+        {
             options.UseSqlServer(connectionString, sql =>
-                sql.MigrationsHistoryTable("__EFMigrationsHistory", MasterDataDbContext.Schema)));
+                sql.MigrationsHistoryTable("__EFMigrationsHistory", MasterDataDbContext.Schema));
+
+            if (sp.GetService<AuditSaveChangesInterceptor>() is { } auditInterceptor)
+                options.AddInterceptors(auditInterceptor);
+        });
 
         services.AddScoped<IMasterDataDbContext>(sp => sp.GetRequiredService<MasterDataDbContext>());
 
@@ -34,6 +40,7 @@ public static class MasterDataInfrastructureExtensions
         services.AddSingleton<IPermissionCatalog, MasterDataPermissionCatalog>();
         services.AddModuleOutbox<MasterDataDbContext>();
         services.AddIntegrationEventHandler<PortalUserProvisioned, PortalUserProvisionedHandler>();
+        services.AddIntegrationEventHandler<PortalUserProvisioningFailed, PortalUserProvisioningFailedHandler>();
         services.AddIntegrationEventHandler<PortalUserDeactivated, PortalUserDeactivatedHandler>();
 
         services.AddScoped<MasterDataDataSeeder>();

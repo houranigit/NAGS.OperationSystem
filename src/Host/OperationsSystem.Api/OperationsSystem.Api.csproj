@@ -4,6 +4,8 @@
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Api\BuildingBlocks.Api.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Application\BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\..\Modules\Audit\Audit.Api\Audit.Api.csproj" />
+    <ProjectReference Include="..\..\Modules\Audit\Audit.Infrastructure\Audit.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Identity\Identity.Api\Identity.Api.csproj" />
     <ProjectReference Include="..\..\Modules\Identity\Identity.Infrastructure\Identity.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\MasterData\MasterData.Api\MasterData.Api.csproj" />
@@ -15,6 +17,7 @@
     <PackageReference Include="MediatR" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Serilog.AspNetCore" />
   </ItemGroup>

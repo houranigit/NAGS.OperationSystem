@@ -230,11 +230,17 @@ public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db,
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
-        // Deactivating a staff member deactivates the linked portal user and revokes its sessions.
-        if (staff.IsActive && staff.LinkedUserId is { } linkedUserId)
-            PortalAccess.PortalLifecycle.EnqueueDeactivation(db, staff.Id, linkedUserId);
+        var now = timeProvider.GetUtcNow();
 
-        staff.Deactivate(timeProvider.GetUtcNow());
+        // Deactivating a staff member deactivates the linked portal user and revokes its sessions.
+        // Scope resolution fails immediately (record inactive); the linked account is suspended async.
+        if (staff.IsActive && staff.LinkedUserId is { } linkedUserId)
+        {
+            staff.SuspendPortal(now);
+            PortalAccess.PortalLifecycle.EnqueueDeactivation(db, staff.Id, linkedUserId);
+        }
+
+        staff.Deactivate(now);
         db.SetOriginalRowVersion(staff, request.RowVersion);
 
         try

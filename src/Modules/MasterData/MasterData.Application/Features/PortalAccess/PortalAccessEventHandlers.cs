@@ -28,13 +28,47 @@ public sealed class PortalUserProvisionedHandler(IMasterDataDbContext db, TimePr
             case UserType.StationStaff:
                 var staff = await db.StaffMembers
                     .FirstOrDefaultAsync(s => s.Id == integrationEvent.ExternalReferenceId, cancellationToken);
-                staff?.LinkUser(integrationEvent.UserId, now);
+                staff?.LinkUser(integrationEvent.UserId, integrationEvent.CorrelationId, now);
                 break;
 
             case UserType.CustomerContact:
                 var contact = await db.CustomerContacts
                     .FirstOrDefaultAsync(c => c.Id == integrationEvent.ExternalReferenceId, cancellationToken);
-                contact?.LinkUser(integrationEvent.UserId, now);
+                contact?.LinkUser(integrationEvent.UserId, integrationEvent.CorrelationId, now);
+                break;
+        }
+
+        db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+}
+
+/// <summary>
+/// Records a provisioning failure on the originating record so it is visible and the grant can be
+/// retried. Correlation-guarded so a stale failure cannot clobber a newer successful provision.
+/// </summary>
+public sealed class PortalUserProvisioningFailedHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+    : IIntegrationEventHandler<PortalUserProvisioningFailed>
+{
+    private const string Consumer = "MasterData.PortalUserProvisioningFailed";
+
+    public async Task HandleAsync(PortalUserProvisioningFailed integrationEvent, CancellationToken cancellationToken = default)
+    {
+        if (await db.HasProcessedAsync(integrationEvent.EventId, Consumer, cancellationToken))
+            return;
+
+        var now = timeProvider.GetUtcNow();
+
+        switch (integrationEvent.UserType)
+        {
+            case UserType.StationStaff:
+                var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.Id == integrationEvent.ExternalReferenceId, cancellationToken);
+                staff?.MarkPortalFailed(integrationEvent.CorrelationId, integrationEvent.Reason, now);
+                break;
+
+            case UserType.CustomerContact:
+                var contact = await db.CustomerContacts.FirstOrDefaultAsync(c => c.Id == integrationEvent.ExternalReferenceId, cancellationToken);
+                contact?.MarkPortalFailed(integrationEvent.CorrelationId, integrationEvent.Reason, now);
                 break;
         }
 

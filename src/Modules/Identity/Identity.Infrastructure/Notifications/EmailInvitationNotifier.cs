@@ -1,30 +1,27 @@
 using System.Net;
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Email;
 using Identity.Application;
 using Identity.Application.Abstractions;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Identity.Infrastructure.Notifications;
 
 /// <summary>
-/// Delivers invitations as HTML email through the shared <see cref="IEmailSender"/>. When email is
-/// disabled the underlying sender logs instead of sending; the activation token is always logged in
-/// that case so local/dev activation remains possible without a mail server.
+/// Queues invitation emails durably: the rendered message is written to the Identity outbox (body
+/// encrypted) and delivered with retry by the outbox processor. Nothing is sent synchronously and
+/// the raw token is never logged or stored in cleartext.
 /// </summary>
 public sealed class EmailInvitationNotifier(
-    IEmailSender emailSender,
-    IOptions<IdentityModuleOptions> options,
-    ILogger<EmailInvitationNotifier> logger) : IInvitationNotifier
+    IIdentityDbContext db,
+    IEmailContentProtector protector,
+    IOptions<IdentityModuleOptions> options) : IInvitationNotifier
 {
     private readonly IdentityModuleOptions _options = options.Value;
 
-    public async Task SendInvitationAsync(string email, string displayName, Guid userId, Guid invitationToken, CancellationToken cancellationToken = default)
+    public async Task SendInvitationAsync(string email, string displayName, Guid userId, string invitationToken, CancellationToken cancellationToken = default)
     {
-        var link = $"{_options.ActivationUrlBase}?email={WebUtility.UrlEncode(email)}&token={invitationToken}";
-
-        if (!emailSender.IsEnabled)
-            logger.LogInformation("Invitation for {Email} (user {UserId}). Activation token: {Token}", email, userId, invitationToken);
+        var link = $"{_options.ActivationUrlBase}?email={WebUtility.UrlEncode(email)}&token={WebUtility.UrlEncode(invitationToken)}";
 
         var html =
             $"""
@@ -34,8 +31,7 @@ public sealed class EmailInvitationNotifier(
              <p>This invitation expires in {_options.InvitationExpiryHours} hours.</p>
              """;
 
-        await emailSender.SendAsync(
-            new EmailMessage(email, displayName, "Activate your Operations System account", html),
-            cancellationToken);
+        db.EnqueueEmail(protector, new EmailMessage(email, displayName, "Activate your Operations System account", html), kind: "invitation");
+        await db.SaveChangesAsync(cancellationToken);
     }
 }

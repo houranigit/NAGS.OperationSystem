@@ -1,11 +1,14 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Infrastructure.Messaging;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Shouldly;
 using Testcontainers.MsSql;
@@ -26,14 +29,22 @@ public sealed class MasterDataApiFactory : WebApplicationFactory<Program>, IAsyn
     public const string IdentityBase = "/api/v1/identity";
     public const string Base = "/api/v1/masterdata";
 
+    /// <summary>Captures emails at the delivery boundary so tests can read activation tokens.</summary>
+    public CapturingEmailSender Emails { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+
+        builder.ConfigureTestServices(services =>
+            services.Replace(ServiceDescriptor.Singleton<IEmailSender>(Emails)));
 
         var connectionString = _sql.GetConnectionString().Replace("Database=master", "Database=MasterDataTests");
 
         builder.UseSetting("ConnectionStrings:Default", connectionString);
         builder.UseSetting("Identity:DemoData:Enabled", "false");
+        // Tests share a client IP and authenticate frequently; relax the anonymous auth rate limit.
+        builder.UseSetting("Security:RateLimit:AnonymousAuthPermitLimit", "1000000");
 
         builder.ConfigureAppConfiguration((_, config) =>
         {
@@ -46,7 +57,9 @@ public sealed class MasterDataApiFactory : WebApplicationFactory<Program>, IAsyn
                 ["Identity:Admin:Email"] = AdminEmail,
                 ["Identity:Admin:DisplayName"] = "System Administrator",
                 ["Identity:Admin:Password"] = AdminPassword,
-                ["Identity:DemoData:Enabled"] = "false"
+                ["Identity:DemoData:Enabled"] = "false",
+                // Tests share a client IP and authenticate frequently; relax the anonymous auth limit.
+                ["Security:RateLimit:AnonymousAuthPermitLimit"] = "1000000"
             });
         });
     }
@@ -75,6 +88,13 @@ public sealed class MasterDataApiFactory : WebApplicationFactory<Program>, IAsyn
             foreach (var processor in scope.ServiceProvider.GetServices<IOutboxProcessor>())
                 await processor.ProcessAsync();
         }
+    }
+
+    /// <summary>Drains outboxes and returns the raw invitation token delivered to <paramref name="email"/>.</summary>
+    public async Task<string?> GetInvitationTokenAsync(string email)
+    {
+        await DrainOutboxesAsync();
+        return Emails.TokenFor(email);
     }
 
     public async Task InitializeAsync() => await _sql.StartAsync();

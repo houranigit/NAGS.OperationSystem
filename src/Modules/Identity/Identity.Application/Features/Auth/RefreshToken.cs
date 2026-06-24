@@ -34,7 +34,7 @@ public sealed class RefreshTokenCommandHandler(
             return Invalid;
 
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == session.UserId, cancellationToken);
-        if (user is null || user.Status == UserStatus.Deactivated || user.IsLockedOut(now))
+        if (user is null || user.Status != UserStatus.Active || user.IsLockedOut(now))
         {
             session.Revoke(now);
             await db.SaveChangesAsync(cancellationToken);
@@ -47,7 +47,6 @@ public sealed class RefreshTokenCommandHandler(
         var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == user.RoleId, cancellationToken);
         var permissions = role?.Permissions.ToList() ?? [];
 
-        var access = tokenService.CreateAccessToken(user, permissions);
         var refresh = tokenService.CreateRefreshToken();
 
         var newSession = UserSessionFactory(user.Id, refresh, now, request);
@@ -55,6 +54,8 @@ public sealed class RefreshTokenCommandHandler(
             return newSession.Error;
 
         db.Sessions.Add(newSession.Value);
+
+        var access = tokenService.CreateAccessToken(user, permissions, newSession.Value.Id);
         await db.SaveChangesAsync(cancellationToken);
 
         return new AuthTokensDto(access.Value, access.ExpiresAtUtc, refresh.Value, refresh.ExpiresAtUtc);

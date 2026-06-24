@@ -20,6 +20,8 @@ public sealed class IdentityDataSeeder(
     IdentityDbContext db,
     IPasswordHasher passwordHasher,
     IPermissionRegistry permissionRegistry,
+    ITokenService tokenService,
+    IInvitationNotifier invitationNotifier,
     TimeProvider timeProvider,
     IOptions<IdentityModuleOptions> options,
     ILogger<IdentityDataSeeder> logger)
@@ -70,26 +72,51 @@ public sealed class IdentityDataSeeder(
                 return;
             }
 
-            var password = string.IsNullOrWhiteSpace(_options.Admin.Password) ? "ChangeMe!123" : _options.Admin.Password;
             if (string.IsNullOrWhiteSpace(_options.Admin.Password))
-                logger.LogWarning("No Identity:Admin:Password configured. Seeding admin with a default dev password. CHANGE IT.");
-
-            var userResult = User.CreateActive(
-                emailResult.Value,
-                _options.Admin.DisplayName,
-                adminRole.Id,
-                passwordHasher.Hash(password),
-                now);
-
-            if (userResult.IsFailure)
             {
-                logger.LogError("Failed to seed admin user: {Error}", userResult.Error.Description);
-                return;
-            }
+                // Production posture: no default password. Bootstrap the first administrator as an
+                // invitation; the activation token is delivered by email (never logged or defaulted).
+                var token = tokenService.CreateSecureToken();
+                var inviteResult = User.Invite(
+                    emailResult.Value,
+                    _options.Admin.DisplayName,
+                    adminRole.Id,
+                    token.Hash,
+                    now.AddHours(_options.InvitationExpiryHours),
+                    now);
 
-            db.Users.Add(userResult.Value);
-            await db.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Seeded bootstrap admin user {Email}.", emailResult.Value.Value);
+                if (inviteResult.IsFailure)
+                {
+                    logger.LogError("Failed to seed bootstrap admin invitation: {Error}", inviteResult.Error.Description);
+                    return;
+                }
+
+                db.Users.Add(inviteResult.Value);
+                await db.SaveChangesAsync(cancellationToken);
+                await invitationNotifier.SendInvitationAsync(
+                    emailResult.Value.Value, _options.Admin.DisplayName, inviteResult.Value.Id, token.Value, cancellationToken);
+                logger.LogInformation("Seeded bootstrap admin invitation for {Email}. Activate via the emailed link.", emailResult.Value.Value);
+            }
+            else
+            {
+                // Explicit password configured (development/test): create an already-active admin.
+                var userResult = User.CreateActive(
+                    emailResult.Value,
+                    _options.Admin.DisplayName,
+                    adminRole.Id,
+                    passwordHasher.Hash(_options.Admin.Password),
+                    now);
+
+                if (userResult.IsFailure)
+                {
+                    logger.LogError("Failed to seed admin user: {Error}", userResult.Error.Description);
+                    return;
+                }
+
+                db.Users.Add(userResult.Value);
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogInformation("Seeded bootstrap admin user {Email}.", emailResult.Value.Value);
+            }
         }
 
         await SeedDemoDataAsync(cancellationToken);
