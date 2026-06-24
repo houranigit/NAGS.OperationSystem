@@ -10,6 +10,9 @@ Provide via environment variables or a secrets store (never in source control):
 
 | Setting | Notes |
 |---|---|
+| `OpenTelemetry:Enabled` | Defaults to `true`. Set `false` to disable tracing/metrics export wiring. |
+| `OpenTelemetry:ServiceName` | Service name on exported spans/metrics (default `operations-system-api`). |
+| `OpenTelemetry:OtlpEndpoint` | Optional OTLP endpoint URL. When unset, the SDK honors standard `OTEL_EXPORTER_OTLP_*` environment variables. |
 | `ConnectionStrings:Default` (or per-module `Identity`/`MasterData`/`Audit`) | SQL Server connection string. |
 | `Identity:Jwt:SigningKey` | >= 32 chars of entropy. Startup fails otherwise. |
 | `Identity:Jwt:Issuer`, `Identity:Jwt:Audience` | Required. |
@@ -37,7 +40,7 @@ first.
 - `GET /health/live` — process liveness (no dependency checks).
 - `GET /health/ready` — readiness; verifies the Identity, MasterData, and Audit databases are reachable. Wire this to the orchestrator's readiness probe.
 - Every response carries an `X-Correlation-ID` header (echoed from the request when supplied); logs are enriched with `CorrelationId`.
-- **OpenTelemetry**: tracing/metrics wiring is intentionally deferred — the current OpenTelemetry packages (`OpenTelemetry.Api`, OTLP exporter) carry open security advisories, and the build fails on vulnerable packages (`NU1902` as error). Add the instrumentation + an OTLP exporter once patched versions are published, keeping the vulnerability gate green.
+- **OpenTelemetry** (packages pinned at **1.15.3**, patched for CVE-2026-40894): ASP.NET Core + HTTP client tracing and metrics are enabled by default. Configure `OpenTelemetry:OtlpEndpoint` or standard `OTEL_EXPORTER_OTLP_ENDPOINT` to export to a collector. Health endpoints are excluded from trace instrumentation.
 - The transactional outbox retries failed integration events; after `OutboxProcessor.MaxAttempts` (10) a message is **dead-lettered** (logged at Critical, left in the outbox with its `Error` for inspection) and no longer retried.
 
 ## Backup / restore

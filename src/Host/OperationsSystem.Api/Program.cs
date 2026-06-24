@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using OperationsSystem.Api.OpenTelemetry;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -44,6 +45,8 @@ builder.Services.AddProblemDetails(options =>
 });
 
 builder.Services.AddOpenApi();
+
+builder.Services.AddOperationsOpenTelemetry(builder.Configuration);
 
 // Readiness includes the module databases so orchestrators only route traffic once data stores are
 // reachable; liveness ("/health/live") stays a cheap process check.
