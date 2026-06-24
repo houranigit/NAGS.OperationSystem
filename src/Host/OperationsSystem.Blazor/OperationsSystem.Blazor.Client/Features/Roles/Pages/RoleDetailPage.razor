@@ -4,6 +4,8 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
+@inject OperationsSystem.Blazor.Client.Api.AuditApiClient AuditApi
 
 <PageTitle>@(role?.Name ?? UiStrings.Roles.Title)</PageTitle>
 
@@ -24,17 +26,17 @@
                 <span>@UiStrings.Roles.Title</span>
             </button>
 
-            <RadzenCard class="@($"rl-hero {(r.IsSystem ? "rl-hero--system" : "rl-hero--custom")}")">
-                <div class="rl-hero-main">
-                    <div class="rl-avatar @(r.IsSystem ? "rl-avatar--system" : "rl-avatar--custom")">
-                        <RadzenIcon Icon="shield" />
+            @* ---- Profile (hero + tabs as one unit) ----------------------- *@
+            <section class="rl-profile @ProfileClass(r)">
+                <div class="rl-hero">
+                    <div class="rl-avatar @AvatarClass(r)">
+                        <span>@Initials(r.Name)</span>
+                        <span class="rl-avatar-dot @DotClass(r)"></span>
                     </div>
 
-                    <div class="rl-hero-identity">
-                        <h1 class="rl-hero-name">@r.Name</h1>
-                        <p class="rl-hero-sub os-muted">@HeroSubtitle(r)</p>
-
-                        <div class="rl-chips">
+                    <div class="rl-identity">
+                        <div class="rl-identity-headline">
+                            <h1 class="rl-name">@r.Name</h1>
                             @if (r.IsSystem)
                             {
                                 <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
@@ -43,8 +45,22 @@
                             {
                                 <StatusBadge Label="@UiStrings.Roles.Custom" Tone="success" />
                             }
-                            <span class="rl-chip"><RadzenIcon Icon="key" /><span>@selected.Count @UiStrings.Roles.Permissions.ToLowerInvariant()</span></span>
-                            <span class="rl-chip"><RadzenIcon Icon="account_circle" /><span>@r.CompatibleUserType</span></span>
+                            <span class="rl-perm-badge"><RadzenIcon Icon="key" />@selected.Count @UiStrings.Roles.Permissions.ToLowerInvariant()</span>
+                        </div>
+
+                        <div class="rl-meta-row">
+                            <RadzenIcon Icon="account_circle" />
+                            <span>@r.CompatibleUserType</span>
+
+                            <RadzenIcon Icon="notes" />
+                            <span>@(string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description)</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(r.Id)</span>
+                            <button type="button" class="rl-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(r.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
                         </div>
                     </div>
 
@@ -62,23 +78,25 @@
                         }
                     </div>
                 </div>
-            </RadzenCard>
 
-            <nav class="rl-tabs" role="tablist">
-                @foreach (var tab in tabs)
-                {
-                    <button type="button" role="tab" class="rl-tab @(activeTab == tab.Key ? "rl-tab--active" : "")"
-                            aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
-                        <RadzenIcon Icon="@tab.Icon" />
-                        <span>@tab.Label</span>
-                    </button>
-                }
-            </nav>
+                <nav class="rl-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="rl-tab @(activeTab == tab.Key ? "rl-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
+            </section>
 
+            @* ---- Tab body ------------------------------------------------ *@
             <div class="rl-tab-body" role="tabpanel">
                 @(activeTab switch
                 {
                     RoleTab.Permissions => PermissionsTab(r),
+                    RoleTab.Activity => ActivityTab(r),
                     _ => OverviewTab(r)
                 })
             </div>
@@ -86,94 +104,194 @@
     }
 </RequirePermission>
 
+@* ================================================================ Overview *@
 @code {
     private RenderFragment OverviewTab(RoleDetail r) =>@<text>
         <div class="rl-stack">
             <div class="rl-overview-grid">
+                @* --- Role type --- *@
                 <RadzenCard class="rl-card">
-                    <div class="rl-card-head"><RadzenIcon Icon="shield" /><h3>@UiStrings.Common.Details</h3></div>
-                    <div class="rl-field-list">
-                        <DetailField Label="@UiStrings.Roles.Name" Value="@r.Name" Icon="badge" />
-                        <DetailField Label="@UiStrings.Roles.CompatibleUserType" Value="@r.CompatibleUserType" Icon="account_circle" />
-                        <DetailField Label="@UiStrings.Roles.RoleDescription"
-                                     Value="@(string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description)" Icon="notes" />
-                        <DetailField Label="@UiStrings.Roles.RoleType" Icon="toggle_on">
-                            @if (r.IsSystem)
-                            {
-                                <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
-                            }
-                            else
-                            {
-                                <StatusBadge Label="@UiStrings.Roles.Custom" Tone="success" />
-                            }
-                        </DetailField>
+                    <div class="rl-card-head"><RadzenIcon Icon="shield" /><h3>@UiStrings.Roles.RoleType</h3></div>
+                    <div class="rl-lead">
+                        <span class="rl-lead-dot rl-lead-dot--@TypeToneColor(r)"></span>
+                        <div>
+                            <p class="rl-lead-title">@(r.IsSystem ? UiStrings.Roles.System : UiStrings.Roles.Custom)</p>
+                            <p class="os-muted rl-lead-desc">@TypeDescription(r)</p>
+                        </div>
                     </div>
+                    <dl class="rl-metrics">
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Roles.RoleType</dt>
+                            <dd>@(r.IsSystem ? UiStrings.Roles.System : UiStrings.Roles.Custom)</dd>
+                        </div>
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Users.Created</dt>
+                            <dd>@r.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Users.LastUpdated</dt>
+                            <dd>@(r.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                @* --- Permissions summary --- *@
+                <RadzenCard class="rl-card">
+                    <div class="rl-card-head"><RadzenIcon Icon="key" /><h3>@UiStrings.Roles.Permissions</h3></div>
+                    <div class="rl-lead">
+                        <span class="rl-lead-icon rl-lead-icon--blue"><RadzenIcon Icon="vpn_key" /></span>
+                        <div>
+                            <p class="rl-lead-title">@selected.Count / @CatalogPermissionCount</p>
+                            <p class="os-muted rl-lead-desc">@UiStrings.Roles.PermissionsDescription</p>
+                        </div>
+                    </div>
+                    <dl class="rl-metrics">
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Roles.PermissionCount</dt>
+                            <dd>@selected.Count</dd>
+                        </div>
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Users.AccessScope</dt>
+                            <dd>@AccessScope(r)</dd>
+                        </div>
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Roles.CompatibleUserType</dt>
+                            <dd>@r.CompatibleUserType</dd>
+                        </div>
+                    </dl>
+                    <button type="button" class="rl-card-link" @onclick="@(() => activeTab = RoleTab.Permissions)">
+                        @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
+                    </button>
+                </RadzenCard>
+
+                @* --- Account type --- *@
+                <RadzenCard class="rl-card">
+                    <div class="rl-card-head"><RadzenIcon Icon="account_circle" /><h3>@UiStrings.Roles.CompatibleUserType</h3></div>
+                    <dl class="rl-metrics rl-metrics--tall">
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Roles.CompatibleUserType</dt>
+                            <dd>@r.CompatibleUserType</dd>
+                        </div>
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Users.AccessScope</dt>
+                            <dd>@AccessScope(r)</dd>
+                        </div>
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Roles.Name</dt>
+                            <dd>@r.Name</dd>
+                        </div>
+                        <div class="rl-metric">
+                            <dt>@UiStrings.Roles.RoleDescription</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description)</dd>
+                        </div>
+                    </dl>
                 </RadzenCard>
             </div>
 
-            <div class="rl-stats">
-                @StatTile("key", "blue", UiStrings.Roles.PermissionCount, selected.Count.ToString())
-                @StatTile("account_circle", "blue", UiStrings.Roles.CompatibleUserType, r.CompatibleUserType)
-                @StatTile("toggle_on", r.IsSystem ? "amber" : "green", UiStrings.Roles.RoleType, r.IsSystem ? UiStrings.Roles.System : UiStrings.Roles.Custom)
-            </div>
+            @* --- Recent activity preview --- *@
+            <RadzenCard class="rl-card">
+                <div class="rl-card-head">
+                    <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
+                    @if (activity.Count > 0)
+                    {
+                        <button type="button" class="rl-link" @onclick="@(() => activeTab = RoleTab.Activity)">@UiStrings.Common.ViewAll</button>
+                    }
+                </div>
+                @ActivityTimeline(OverviewActivityPreviewCount)
+            </RadzenCard>
         </div>
     </text>;
 
+    @* ============================================================== Permissions *@
     private RenderFragment PermissionsTab(RoleDetail r) =>@<text>
         @{
             var canManage = !r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesManagePermissions);
         }
-        @if (r.IsSystem)
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
-                @UiStrings.Roles.SystemRoleLocked
-            </RadzenAlert>
-        }
-        <RadzenCard class="rl-card">
-            <div class="rl-perm-head">
-                <RadzenIcon Icon="key" />
-                <div>
-                    <h3>@UiStrings.Roles.Permissions</h3>
-                    <p class="os-muted">@UiStrings.Roles.PermissionsDescription</p>
-                </div>
-                @if (canManage)
-                {
-                    <div class="rl-perm-head-actions">
-                        <RadzenButton Text="@UiStrings.Common.Save" Icon="save" ButtonStyle="ButtonStyle.Primary"
-                                      Disabled="@isSaving" Click="@SavePermissionsAsync" />
-                    </div>
-                }
-            </div>
+        <div class="rl-stack">
+            @if (r.IsSystem)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                    @UiStrings.Roles.SystemRoleLocked
+                </RadzenAlert>
+            }
 
-            <div class="rl-perm-groups">
-                @foreach (var group in catalog)
-                {
-                    <div class="os-perm-group">
-                        <strong>@group.Resource</strong>
-                        <div class="os-perm-list">
-                            @foreach (var permission in group.Permissions)
-                            {
-                                <label class="os-perm-item">
-                                    <RadzenCheckBox TValue="bool" Value="@selected.Contains(permission)" Disabled="@(!canManage)"
-                                                    Change="@(value => TogglePermission(permission, value))" />
-                                    <span>@ActionLabel(permission)</span>
-                                </label>
-                            }
+            <RadzenCard class="rl-card">
+                <div class="rl-card-head">
+                    <RadzenIcon Icon="key" /><h3>@UiStrings.Roles.Permissions</h3>
+                    @if (canManage)
+                    {
+                        <span class="rl-count"></span>
+                        <RadzenButton Text="@UiStrings.Common.Save" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.Small" Disabled="@isSaving" Click="@SavePermissionsAsync" />
+                    }
+                </div>
+                <p class="os-muted rl-perm-intro">@UiStrings.Roles.PermissionsDescription</p>
+
+                <div class="rl-perm-groups">
+                    @foreach (var group in catalog)
+                    {
+                        <div class="rl-perm-group">
+                            <strong>@group.Resource</strong>
+                            <div class="rl-perm-list">
+                                @foreach (var permission in group.Permissions)
+                                {
+                                    <label class="rl-perm-item">
+                                        <RadzenCheckBox TValue="bool" Value="@selected.Contains(permission)" Disabled="@(!canManage)"
+                                                        Change="@(value => TogglePermission(permission, value))" />
+                                        <span>@ActionLabel(permission)</span>
+                                    </label>
+                                }
+                            </div>
                         </div>
-                    </div>
-                }
-            </div>
+                    }
+                </div>
+            </RadzenCard>
+        </div>
+    </text>;
+
+    @* ================================================================ Activity *@
+    private RenderFragment ActivityTab(RoleDetail r) =>@<text>
+        <RadzenCard class="rl-card">
+            <div class="rl-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
+            @ActivityTimeline()
         </RadzenCard>
     </text>;
 
-    private RenderFragment StatTile(string icon, string tone, string label, string value) =>@<text>
-        <RadzenCard class="rl-stat">
-            <span class="rl-stat-icon rl-stat-icon--@tone"><RadzenIcon Icon="@icon" /></span>
-            <div class="rl-stat-body">
-                <p class="rl-stat-label">@label</p>
-                <p class="rl-stat-value">@value</p>
+    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
+        @if (activity.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="rl-timeline">
+                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="rl-timeline-row" @key="entry.Id">
+                        <span class="rl-timeline-icon rl-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="rl-timeline-content">
+                            <p class="rl-timeline-title">@entry.Action</p>
+                            <p class="os-muted rl-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="rl-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="rl-timeline-empty">
+            <span class="rl-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="rl-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Description</p>
             </div>
-        </RadzenCard>
+        </div>
     </text>;
 }
 
@@ -183,21 +301,28 @@
     private RoleDetail? role;
     private IReadOnlyList<PermissionGroup> catalog = [];
     private HashSet<string> selected = [];
+    private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> activity = [];
     private bool isLoading = true;
     private bool loadError;
     private bool isSaving;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private RoleTab activeTab = RoleTab.Overview;
 
-    private enum RoleTab { Overview, Permissions }
+    private const int OverviewActivityPreviewCount = 4;
+
+    private enum RoleTab { Overview, Permissions, Activity }
 
     private sealed record TabDef(RoleTab Key, string Label, string Icon);
 
-    private static readonly TabDef[] tabs =
-    [
-        new(RoleTab.Overview, UiStrings.Common.Overview, "dashboard"),
-        new(RoleTab.Permissions, UiStrings.Roles.Permissions, "key")
-    ];
+    private int CatalogPermissionCount => catalog.Sum(g => g.Permissions.Count);
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(RoleTab.Overview, UiStrings.Common.Overview, "dashboard");
+        yield return new TabDef(RoleTab.Permissions, UiStrings.Roles.Permissions, "key");
+        if (Auth.HasPermission(AuditPermissions.TrailsView))
+            yield return new TabDef(RoleTab.Activity, UiStrings.Audit.ActivityTitle, "history");
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -210,9 +335,22 @@
         try
         {
             role = await Identity.GetRoleAsync(Id);
-            // Only show permissions compatible with this role's account type.
             catalog = await Identity.GetPermissionCatalogAsync(role.CompatibleUserType);
             selected = [.. role.Permissions];
+
+            activity = [];
+            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "Role", entityId: Id, pageSize: 25);
+                    activity = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    activity = [];
+                }
+            }
         }
         catch (ApiException ex)
         {
@@ -291,14 +429,97 @@
         }
     }
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
     private void GoBack() => Navigation.NavigateTo("/roles");
 
-    private static string HeroSubtitle(RoleDetail r) =>
-        string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description;
+    private static string ProfileClass(RoleDetail r) =>
+        r.IsSystem ? "rl-profile--system" : "rl-profile--custom";
+
+    private static string AvatarClass(RoleDetail r) =>
+        r.IsSystem ? "rl-avatar--system" : "rl-avatar--custom";
+
+    private static string DotClass(RoleDetail r) =>
+        r.IsSystem ? "rl-avatar-dot--system" : "rl-avatar-dot--custom";
+
+    private static string TypeToneColor(RoleDetail r) =>
+        r.IsSystem ? "neutral" : "success";
+
+    private static string TypeDescription(RoleDetail r) =>
+        r.IsSystem ? UiStrings.Roles.SystemRoleLocked : UiStrings.Roles.FormIntro;
+
+    private static string AccessScope(RoleDetail r) => r.CompatibleUserType switch
+    {
+        UserTypes.SystemAdministrator => UiStrings.Users.ScopeFullAccess,
+        UserTypes.StationStaff => UiStrings.Users.ScopeStation,
+        UserTypes.CustomerContact => UiStrings.Users.ScopeCustomer,
+        _ => UiStrings.Users.ScopeFullAccess
+    };
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("permission"))
+            return ("key", "blue");
+        if (a.Contains("role"))
+            return ("badge", "blue");
+        if (a.Contains("delet"))
+            return ("delete", "red");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
+    }
 
     private static string ActionLabel(string permission)
     {
         var lastDot = permission.LastIndexOf('.');
         return lastDot >= 0 && lastDot < permission.Length - 1 ? permission[(lastDot + 1)..] : permission;
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "?";
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
+        };
     }
 }
