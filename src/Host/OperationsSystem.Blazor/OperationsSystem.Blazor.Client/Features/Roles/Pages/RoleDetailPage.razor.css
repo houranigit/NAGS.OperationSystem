@@ -492,8 +492,14 @@
 .rl-timeline-icon--red { background: var(--os-color-danger-bg); color: var(--os-color-danger); }
 
 .rl-timeline-content {
+    flex: 1 1 auto;
     padding-top: 0.35rem;
     min-width: 0;
+}
+
+.rl-timeline-view {
+    flex: 0 0 auto;
+    align-self: flex-start;
 }
 
 .rl-timeline-title {
@@ -534,5 +540,13 @@
 
     .rl-name {
         font-size: 1.6rem;
+    }
+
+    .rl-timeline-row {
+        flex-wrap: wrap;
+    }
+
+    .rl-timeline-view {
+        margin-inline-start: 3.25rem;
     }
 }
