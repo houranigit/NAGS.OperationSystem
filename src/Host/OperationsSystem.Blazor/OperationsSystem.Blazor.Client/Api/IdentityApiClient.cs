@@ -24,6 +24,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
         string? search,
         string? status,
         Guid? roleId = null,
+        string? userType = null,
         string? sort = null,
         CancellationToken ct = default)
     {
@@ -33,6 +34,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
             .Add("search", search)
             .Add("status", status)
             .Add("roleId", roleId?.ToString())
+            .Add("userType", userType)
             .Add("sort", sort)
             .Build();
         return api.GetAsync<PagedResult<UserListItem>>($"/identity/users{query}", ct);

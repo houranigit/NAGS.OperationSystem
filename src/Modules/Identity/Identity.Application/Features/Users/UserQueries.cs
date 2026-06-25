@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using Identity.Application.Abstractions;
 using Identity.Application.Contracts;
@@ -10,7 +11,7 @@ namespace Identity.Application.Features.Users;
 
 // --- Paged list -----------------------------------------------------------
 
-public sealed record GetUsersQuery(int Page = 1, int PageSize = 20, string? Search = null, UserStatus? Status = null, Guid? RoleId = null, string? Sort = null)
+public sealed record GetUsersQuery(int Page = 1, int PageSize = 20, string? Search = null, UserStatus? Status = null, Guid? RoleId = null, UserType? UserType = null, string? Sort = null)
     : IQuery<PagedResult<UserListItemDto>>;
 
 public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider timeProvider)
@@ -29,6 +30,9 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
 
         if (request.RoleId is { } roleId)
             query = query.Where(u => u.RoleId == roleId);
+
+        if (request.UserType is { } userType)
+            query = query.Where(u => u.UserType == userType);
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {

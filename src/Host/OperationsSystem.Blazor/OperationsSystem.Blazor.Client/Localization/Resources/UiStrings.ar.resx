@@ -146,7 +146,12 @@
   <data name="Users.AllStatuses" xml:space="preserve"><value>جميع الحالات</value></data>
   <data name="Users.AllRoles" xml:space="preserve"><value>جميع الأدوار</value></data>
   <data name="Users.FilterByStatus" xml:space="preserve"><value>جميع الحالات</value></data>
+  <data name="Users.FilterByUserType" xml:space="preserve"><value>جميع الأنواع</value></data>
   <data name="Users.FilterByRole" xml:space="preserve"><value>جميع الأدوار</value></data>
+  <data name="Users.UserType" xml:space="preserve"><value>نوع الحساب</value></data>
+  <data name="Users.TypeSystemAdministrator" xml:space="preserve"><value>مسؤول النظام</value></data>
+  <data name="Users.TypeStationStaff" xml:space="preserve"><value>موظف المحطة</value></data>
+  <data name="Users.TypeCustomerContact" xml:space="preserve"><value>جهة اتصال العميل</value></data>
   <data name="Users.Lock" xml:space="preserve"><value>قفل</value></data>
   <data name="Users.Unlock" xml:space="preserve"><value>فتح</value></data>
   <data name="Users.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>

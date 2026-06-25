@@ -1,5 +1,6 @@
 using BuildingBlocks.Api.Authorization;
 using BuildingBlocks.Api.Results;
+using BuildingBlocks.Contracts.Authorization;
 using Identity.Application.Features.Auth;
 using Identity.Application.Features.Users;
 using Identity.Domain.Authorization;
@@ -18,9 +19,9 @@ internal static class UserEndpoints
         var users = group.MapGroup("/users").WithTags("Identity.Users");
 
         users.MapGet("/", async (ISender sender, CancellationToken ct,
-            int page = 1, int pageSize = 20, string? search = null, UserStatus? status = null, Guid? roleId = null, string? sort = null) =>
+            int page = 1, int pageSize = 20, string? search = null, UserStatus? status = null, Guid? roleId = null, UserType? userType = null, string? sort = null) =>
         {
-            var result = await sender.Send(new GetUsersQuery(page, pageSize, search, status, roleId, sort), ct);
+            var result = await sender.Send(new GetUsersQuery(page, pageSize, search, status, roleId, userType, sort), ct);
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Users.View);
 

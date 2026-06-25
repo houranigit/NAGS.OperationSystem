@@ -170,7 +170,12 @@ public static class UiStrings
         public static string AllStatuses => UiText.Get("Users.AllStatuses", "All statuses");
         public static string AllRoles => UiText.Get("Users.AllRoles", "All roles");
         public static string FilterByStatus => UiText.Get("Users.FilterByStatus", "All statuses");
+        public static string FilterByUserType => UiText.Get("Users.FilterByUserType", "All types");
         public static string FilterByRole => UiText.Get("Users.FilterByRole", "All roles");
+        public static string UserType => UiText.Get("Users.UserType", "Account type");
+        public static string TypeSystemAdministrator => UiText.Get("Users.TypeSystemAdministrator", "System administrator");
+        public static string TypeStationStaff => UiText.Get("Users.TypeStationStaff", "Station staff");
+        public static string TypeCustomerContact => UiText.Get("Users.TypeCustomerContact", "Customer contact");
         public static string Lock => UiText.Get("Users.Lock", "Lock");
         public static string Unlock => UiText.Get("Users.Unlock", "Unlock");
         public static string Deactivate => UiText.Get("Users.Deactivate", "Deactivate");

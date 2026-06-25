@@ -146,7 +146,12 @@
   <data name="Users.AllStatuses" xml:space="preserve"><value>All statuses</value></data>
   <data name="Users.AllRoles" xml:space="preserve"><value>All roles</value></data>
   <data name="Users.FilterByStatus" xml:space="preserve"><value>All statuses</value></data>
+  <data name="Users.FilterByUserType" xml:space="preserve"><value>All types</value></data>
   <data name="Users.FilterByRole" xml:space="preserve"><value>All roles</value></data>
+  <data name="Users.UserType" xml:space="preserve"><value>Account type</value></data>
+  <data name="Users.TypeSystemAdministrator" xml:space="preserve"><value>System administrator</value></data>
+  <data name="Users.TypeStationStaff" xml:space="preserve"><value>Station staff</value></data>
+  <data name="Users.TypeCustomerContact" xml:space="preserve"><value>Customer contact</value></data>
   <data name="Users.Lock" xml:space="preserve"><value>Lock</value></data>
   <data name="Users.Unlock" xml:space="preserve"><value>Unlock</value></data>
   <data name="Users.Deactivate" xml:space="preserve"><value>Deactivate</value></data>

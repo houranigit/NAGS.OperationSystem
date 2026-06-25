@@ -53,6 +53,7 @@ public sealed record UserListItem(
     bool IsLockedOut,
     Guid RoleId,
     string RoleName,
+    string UserType,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? LastLoginAtUtc);
 

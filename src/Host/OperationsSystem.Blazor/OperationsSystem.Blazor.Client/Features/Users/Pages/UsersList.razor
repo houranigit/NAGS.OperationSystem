@@ -29,6 +29,8 @@
             <Filters>
                 <DataListFilter TValue="string" Placeholder="@UiStrings.Users.FilterByStatus"
                                 Data="@statusOptions" Value="@statusFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+                <DataListFilter TValue="string" Placeholder="@UiStrings.Users.FilterByUserType"
+                                Data="@UserTypeOptions" Value="@userTypeFilter" ValueChanged="@OnUserTypeFilterChangedAsync" />
                 <DataListFilter TValue="Guid?" Placeholder="@UiStrings.Users.FilterByRole"
                                 Data="@roleOptions" Value="@roleFilter" ValueChanged="@OnRoleFilterChangedAsync" />
             </Filters>
@@ -54,6 +56,11 @@
                         {
                             <StatusBadge Label="@user.Status" Tone="@StatusTone(user.Status)" />
                         }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="UserListItem" Title="@UiStrings.Users.UserType" Sortable="false" Width="200px">
+                    <Template Context="user">
+                        @UserTypeLabel(user.UserType)
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="UserListItem" Property="RoleName" Title="@UiStrings.Users.Role" Width="180px" />
@@ -100,6 +107,7 @@
 
     private string searchTerm = string.Empty;
     private string? statusFilter;
+    private string? userTypeFilter;
     private Guid? roleFilter;
     private string? currentSort;
 
@@ -108,6 +116,13 @@
         new("Invited", "Invited"),
         new("Active", "Active"),
         new("Deactivated", "Deactivated")
+    ];
+
+    private List<UserTypeOption> UserTypeOptions =>
+    [
+        new(UiStrings.Users.TypeSystemAdministrator, UserTypes.SystemAdministrator),
+        new(UiStrings.Users.TypeStationStaff, UserTypes.StationStaff),
+        new(UiStrings.Users.TypeCustomerContact, UserTypes.CustomerContact)
     ];
 
     private List<RoleOption> roleOptions = [];
@@ -128,6 +143,12 @@
     private async Task OnStatusFilterChangedAsync(string? value)
     {
         statusFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnUserTypeFilterChangedAsync(string? value)
+    {
+        userTypeFilter = value;
         await ReloadAsync();
     }
 
@@ -167,7 +188,7 @@
         try
         {
             var result = await Identity.GetUsersAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, statusFilter, roleFilter, currentSort);
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, statusFilter, roleFilter, userTypeFilter, currentSort);
             users = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -276,6 +297,15 @@
         _ => "neutral"
     };
 
+    private static string UserTypeLabel(string userType) => userType switch
+    {
+        UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.StationStaff => UiStrings.Users.TypeStationStaff,
+        UserTypes.CustomerContact => UiStrings.Users.TypeCustomerContact,
+        _ => userType
+    };
+
     private sealed record StatusOption(string Label, string? Value);
+    private sealed record UserTypeOption(string Label, string? Value);
     private sealed record RoleOption(string Label, Guid? Value);
 }

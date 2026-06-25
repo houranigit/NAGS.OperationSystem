@@ -133,13 +133,19 @@ public sealed class IdentityDataSeeder(
 
         if (demo.RoleCount > 0)
         {
-            var existingDemoRoles = await db.Roles
-                .CountAsync(r => r.Name.StartsWith("Demo Role "), cancellationToken);
+            var existingDemoRoleNames = await db.Roles
+                .Where(r => r.Name.StartsWith("Demo Role "))
+                .Select(r => r.NormalizedName)
+                .ToHashSetAsync(cancellationToken);
 
-            for (var i = existingDemoRoles + 1; i <= demo.RoleCount; i++)
+            for (var i = 1; i <= demo.RoleCount; i++)
             {
+                var roleName = $"Demo Role {i:000}";
+                if (existingDemoRoleNames.Contains(roleName.ToUpperInvariant()))
+                    continue;
+
                 var roleResult = Role.Create(
-                    $"Demo Role {i:000}",
+                    roleName,
                     $"Pagination demo role {i}",
                     [IdentityPermissions.Roles.View],
                     UserType.SystemAdministrator,
@@ -190,13 +196,19 @@ public sealed class IdentityDataSeeder(
         if (demo.UserCount <= 0)
             return;
 
-        var existingDemoUsers = await db.Users
-            .CountAsync(u => u.Email.Value.StartsWith("demo-user-"), cancellationToken);
+        var existingDemoUserEmails = await db.Users
+            .Where(u => u.Email.Value.StartsWith("demo-user-"))
+            .Select(u => u.Email.Value)
+            .ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
 
         var usersCreated = 0;
-        for (var i = existingDemoUsers + 1; i <= demo.UserCount; i++)
+        for (var i = 1; i <= demo.UserCount; i++)
         {
-            var emailResult = Email.Create($"demo-user-{i:000}@nags.sa");
+            var email = $"demo-user-{i:000}@nags.sa";
+            if (existingDemoUserEmails.Contains(email))
+                continue;
+
+            var emailResult = Email.Create(email);
             if (emailResult.IsFailure)
                 continue;
 
