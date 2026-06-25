@@ -48,7 +48,7 @@
     /// <summary>Performs the grant against the selected role; throws <see cref="ApiException"/> on failure.</summary>
     [Parameter] public Func<Guid, CancellationToken, Task>? GrantAsync { get; set; }
 
-    private readonly List<RoleListItem> roles = [];
+    private readonly List<RoleOption> roles = [];
     private Guid? selectedRoleId;
     private bool isLoading = true;
     private bool isSubmitting;
@@ -58,9 +58,7 @@
     {
         try
         {
-            var page = await Identity.GetRolesAsync(1, 100, null);
-            roles.AddRange(page.Items.Where(r =>
-                string.Equals(r.CompatibleUserType, CompatibleUserType, StringComparison.OrdinalIgnoreCase)));
+            roles.AddRange(await Identity.GetRoleOptionsAsync(CompatibleUserType));
         }
         catch (ApiException ex)
         {

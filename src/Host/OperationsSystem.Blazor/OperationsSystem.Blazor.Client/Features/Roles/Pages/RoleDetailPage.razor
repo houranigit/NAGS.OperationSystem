@@ -332,25 +332,14 @@
         loadError = false;
         StateHasChanged();
 
+        var historyTask = LoadHistoryAsync();
+
         try
         {
             role = await Identity.GetRoleAsync(Id);
             catalog = await Identity.GetPermissionCatalogAsync(role.CompatibleUserType);
             selected = [.. role.Permissions];
-
-            history = [];
-            if (Auth.HasPermission(AuditPermissions.TrailsView))
-            {
-                try
-                {
-                    var trails = await AuditApi.GetTrailsAsync(entityType: "Role", entityId: Id, pageSize: 25);
-                    history = trails.Items;
-                }
-                catch (ApiException)
-                {
-                    history = [];
-                }
-            }
+            history = await historyTask;
         }
         catch (ApiException ex)
         {
@@ -361,6 +350,22 @@
         {
             isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task<IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem>> LoadHistoryAsync()
+    {
+        if (!Auth.HasPermission(AuditPermissions.TrailsView))
+            return [];
+
+        try
+        {
+            var trails = await AuditApi.GetTrailsAsync(entityType: "Role", entityId: Id, pageSize: 25);
+            return trails.Items;
+        }
+        catch (ApiException)
+        {
+            return [];
         }
     }
 

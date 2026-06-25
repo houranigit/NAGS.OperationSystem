@@ -130,8 +130,7 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
-        await LoadRoleOptionsAsync();
-        await FetchAsync();
+        await Task.WhenAll(LoadRoleOptionsAsync(), FetchAsync());
     }
 
     private async Task OnPageSizeChangedAsync(int pageSize)

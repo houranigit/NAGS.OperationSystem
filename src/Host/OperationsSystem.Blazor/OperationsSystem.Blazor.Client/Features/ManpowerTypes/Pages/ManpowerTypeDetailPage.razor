@@ -243,23 +243,12 @@
         loadError = false;
         StateHasChanged();
 
+        var historyTask = LoadHistoryAsync();
+
         try
         {
             item = await MasterData.GetManpowerTypeAsync(Id);
-            history = [];
-
-            if (CanViewAudit)
-            {
-                try
-                {
-                    var trails = await AuditApi.GetTrailsAsync(entityType: "ManpowerType", entityId: Id, pageSize: 25);
-                    history = trails.Items;
-                }
-                catch (ApiException)
-                {
-                    history = [];
-                }
-            }
+            history = await historyTask;
         }
         catch (ApiException ex)
         {
@@ -270,6 +259,22 @@
         {
             isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task<IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem>> LoadHistoryAsync()
+    {
+        if (!CanViewAudit)
+            return [];
+
+        try
+        {
+            var trails = await AuditApi.GetTrailsAsync(entityType: "ManpowerType", entityId: Id, pageSize: 25);
+            return trails.Items;
+        }
+        catch (ApiException)
+        {
+            return [];
         }
     }
 

@@ -189,19 +189,28 @@
     {
         try
         {
-            stations = await MasterData.GetStationOptionsAsync();
-            manpowerTypes = await MasterData.GetManpowerTypeOptionsAsync();
-            licenses = await MasterData.GetLicenseOptionsAsync();
+            var stationsTask = MasterData.GetStationOptionsAsync();
+            var manpowerTypesTask = MasterData.GetManpowerTypeOptionsAsync();
+            var licensesTask = MasterData.GetLicenseOptionsAsync();
+            var portalRolesTask = StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess)
+                ? Identity.GetRoleOptionsAsync("StationStaff")
+                : Task.FromResult<IReadOnlyList<RoleOption>>([]);
+            Task<StaffMemberDetail?> detailTask = StaffMemberId is { } id
+                ? GetStaffMemberForEditAsync(id)
+                : Task.FromResult<StaffMemberDetail?>(null);
 
-            if (StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess))
-                portalRoles = await Identity.GetRoleOptionsAsync("StationStaff");
+            await Task.WhenAll(stationsTask, manpowerTypesTask, licensesTask, portalRolesTask, detailTask);
+
+            stations = await stationsTask;
+            manpowerTypes = await manpowerTypesTask;
+            licenses = await licensesTask;
+            portalRoles = await portalRolesTask;
 
             if (PreselectedStationId is { } stationId)
                 model.StationId = stationId;
 
-            if (StaffMemberId is { } id)
+            if (await detailTask is { } detail)
             {
-                var detail = await MasterData.GetStaffMemberAsync(id);
                 model = new StaffModel
                 {
                     FullName = detail.FullName,
@@ -228,6 +237,9 @@
             errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
         }
     }
+
+    private async Task<StaffMemberDetail?> GetStaffMemberForEditAsync(Guid id) =>
+        await MasterData.GetStaffMemberAsync(id);
 
     private void AddLicense() => licenseRows.Add(new LicenseRow());
 

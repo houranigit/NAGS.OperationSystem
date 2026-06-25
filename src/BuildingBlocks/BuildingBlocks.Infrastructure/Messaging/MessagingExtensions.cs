@@ -14,21 +14,28 @@ public static class MessagingExtensions
     /// outboxes on an interval. Call once at host composition, then <see cref="AddModuleOutbox{T}"/>
     /// for each module DbContext.
     /// </summary>
-    public static IServiceCollection AddIntegrationMessaging(this IServiceCollection services, int pollSeconds = 10)
+    public static IServiceCollection AddIntegrationMessaging(
+        this IServiceCollection services,
+        int pollSeconds = 10,
+        bool dispatchOutbox = true)
     {
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IIntegrationEventDispatcher, InProcessIntegrationEventDispatcher>();
 
-        services.AddQuartz(q =>
+        if (dispatchOutbox)
         {
-            q.AddJob<OutboxDispatchJob>(j => j.WithIdentity(OutboxDispatchJob.Key));
-            q.AddTrigger(t => t
-                .ForJob(OutboxDispatchJob.Key)
-                .WithIdentity("outbox-dispatch-trigger")
-                .WithSimpleSchedule(s => s.WithIntervalInSeconds(pollSeconds).RepeatForever()));
-        });
+            services.AddQuartz(q =>
+            {
+                q.AddJob<OutboxDispatchJob>(j => j.WithIdentity(OutboxDispatchJob.Key));
+                q.AddTrigger(t => t
+                    .ForJob(OutboxDispatchJob.Key)
+                    .WithIdentity("outbox-dispatch-trigger")
+                    .WithSimpleSchedule(s => s.WithIntervalInSeconds(pollSeconds).RepeatForever()));
+            });
 
-        services.AddQuartzHostedService(o => o.WaitForJobsToComplete = true);
+            services.AddQuartzHostedService(o => o.WaitForJobsToComplete = true);
+        }
+
         return services;
     }
 

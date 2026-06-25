@@ -341,12 +341,21 @@
     private async Task LoadAsync()
     {
         isLoading = true;
+        staffLoading = true;
         loadError = false;
         StateHasChanged();
+
+        var staffTask = LoadStationStaffAsync();
+        var historyTask = LoadHistoryAsync();
 
         try
         {
             item = await MasterData.GetStationAsync(Id);
+            isLoading = false;
+            StateHasChanged();
+
+            stationStaff = await staffTask;
+            history = await historyTask;
         }
         catch (ApiException ex)
         {
@@ -356,26 +365,8 @@
         finally
         {
             isLoading = false;
+            staffLoading = false;
             StateHasChanged();
-        }
-
-        if (!loadError)
-        {
-            await LoadStaffAsync();
-
-            history = [];
-            if (CanViewAudit)
-            {
-                try
-                {
-                    var trails = await AuditApi.GetTrailsAsync(entityType: "Station", entityId: Id, pageSize: 25);
-                    history = trails.Items;
-                }
-                catch (ApiException)
-                {
-                    history = [];
-                }
-            }
         }
     }
 
@@ -384,19 +375,37 @@
         staffLoading = true;
         StateHasChanged();
 
+        stationStaff = await LoadStationStaffAsync();
+        staffLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task<IReadOnlyList<StaffMemberListItem>> LoadStationStaffAsync()
+    {
         try
         {
             var page = await MasterData.GetStaffMembersAsync(1, 100, null, stationId: Id);
-            stationStaff = page.Items;
+            return page.Items;
         }
         catch (ApiException)
         {
-            stationStaff = [];
+            return [];
         }
-        finally
+    }
+
+    private async Task<IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem>> LoadHistoryAsync()
+    {
+        if (!CanViewAudit)
+            return [];
+
+        try
         {
-            staffLoading = false;
-            StateHasChanged();
+            var trails = await AuditApi.GetTrailsAsync(entityType: "Station", entityId: Id, pageSize: 25);
+            return trails.Items;
+        }
+        catch (ApiException)
+        {
+            return [];
         }
     }
 

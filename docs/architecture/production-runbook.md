@@ -14,6 +14,8 @@ Provide via environment variables or a secrets store (never in source control):
 | `OpenTelemetry:ServiceName` | Service name on exported spans/metrics (default `operations-system-api`). |
 | `OpenTelemetry:OtlpEndpoint` | Optional OTLP endpoint URL. When unset, the SDK honors standard `OTEL_EXPORTER_OTLP_*` environment variables. |
 | `ConnectionStrings:Default` (or per-module `Identity`/`MasterData`/`Audit`) | SQL Server connection string. |
+| `Database:ApplyMigrationsOnStartup` | Set `false` for production and production-like remote testing. Apply reviewed migrations separately. |
+| `Messaging:OutboxDispatchEnabled` | Set `false` for smoke tests where background outbox polling should not touch the remote database. Keep enabled in normal deployments. |
 | `Identity:Jwt:SigningKey` | >= 32 chars of entropy. Startup fails otherwise. |
 | `Identity:Jwt:Issuer`, `Identity:Jwt:Audience` | Required. |
 | `Identity:Admin:Email`, `Identity:Admin:DisplayName` | Bootstrap administrator. **Leave `Identity:Admin:Password` unset in production** — the admin is then created as an emailed invitation (no default password). |
@@ -31,9 +33,17 @@ emails and stored MFA secrets become unreadable after a restart.
 
 ## Migrations
 
-Apply database migrations in dependency order: **Audit -> Identity -> MasterData**. The API applies
-them automatically on startup in development; in production use reviewed SQL scripts and take a backup
-first.
+Apply database migrations in dependency order: **Audit -> Identity -> MasterData**. For local
+development, `Database:ApplyMigrationsOnStartup` may be enabled to apply them automatically. For
+production and production-like remote testing, keep it disabled, use reviewed SQL scripts, and take a
+backup first.
+
+## SQL performance settings
+
+- Keep SQL Server connection pooling enabled. Do not use `Pooling=False` for remote or production-like databases; each EF command would pay for a new physical SQL connection.
+- Use bounded connection and command timeouts so slow or blocked SQL is visible instead of hanging indefinitely.
+- Keep `Identity:DemoData:Enabled=false` when pointing at real shared data.
+- For smoke testing startup only, `Messaging:OutboxDispatchEnabled=false` prevents background outbox polling from blocking or masking the request path.
 
 ## Health, readiness, and observability
 

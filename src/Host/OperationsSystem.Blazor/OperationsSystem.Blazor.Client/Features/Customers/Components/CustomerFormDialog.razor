@@ -188,11 +188,17 @@
     {
         try
         {
-            countries = await MasterData.GetCountryOptionsAsync();
+            var countriesTask = MasterData.GetCountryOptionsAsync();
+            Task<CustomerDetail?> detailTask = CustomerId is { } id
+                ? GetCustomerForEditAsync(id)
+                : Task.FromResult<CustomerDetail?>(null);
 
-            if (CustomerId is { } id)
+            await Task.WhenAll(countriesTask, detailTask);
+
+            countries = await countriesTask;
+
+            if (await detailTask is { } detail)
             {
-                var detail = await MasterData.GetCustomerAsync(id);
                 model = new CustomerModel
                 {
                     IataCode = detail.IataCode,
@@ -218,6 +224,9 @@
             errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
         }
     }
+
+    private async Task<CustomerDetail?> GetCustomerForEditAsync(Guid id) =>
+        await MasterData.GetCustomerAsync(id);
 
     private void AddContact() => contacts.Add(new ContactRow());
 

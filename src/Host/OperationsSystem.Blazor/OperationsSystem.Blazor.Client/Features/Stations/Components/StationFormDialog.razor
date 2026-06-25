@@ -69,20 +69,32 @@
     {
         try
         {
-            countries = await MasterData.GetCountryOptionsAsync();
+            var countriesTask = MasterData.GetCountryOptionsAsync();
 
             if (StationId is { } id)
             {
-                var detail = await MasterData.GetStationAsync(id);
+                var detailTask = MasterData.GetStationAsync(id);
+
+                await Task.WhenAll(countriesTask, detailTask);
+
+                countries = await countriesTask;
+                var detail = await detailTask;
                 model = new StationModel { IataCode = detail.IataCode, IcaoCode = detail.IcaoCode, Name = detail.Name, City = detail.City, CountryId = detail.CountryId };
                 rowVersion = detail.RowVersion;
             }
             else
             {
-                manpowerTypes = await MasterData.GetManpowerTypeOptionsAsync();
                 canGrantPortal = Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
-                if (canGrantPortal)
-                    stationRoles = await Identity.GetRoleOptionsAsync("StationStaff");
+                var manpowerTypesTask = MasterData.GetManpowerTypeOptionsAsync();
+                var stationRolesTask = canGrantPortal
+                    ? Identity.GetRoleOptionsAsync("StationStaff")
+                    : Task.FromResult<IReadOnlyList<RoleOption>>([]);
+
+                await Task.WhenAll(countriesTask, manpowerTypesTask, stationRolesTask);
+
+                countries = await countriesTask;
+                manpowerTypes = await manpowerTypesTask;
+                stationRoles = await stationRolesTask;
             }
         }
         catch (ApiException ex)

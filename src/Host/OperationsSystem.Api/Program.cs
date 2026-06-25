@@ -1,3 +1,5 @@
+using System.Data.Common;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -29,11 +31,15 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, services, configuration) => configuration
-    .ReadFrom.Configuration(context.Configuration)
-    .ReadFrom.Services(services)
-    .Enrich.FromLogContext()
-    .WriteTo.Console());
+var useSerilog = builder.Configuration.GetValue<bool?>("Logging:UseSerilog") ?? true;
+if (useSerilog)
+{
+    builder.Host.UseSerilog((context, services, configuration) => configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .WriteTo.Console());
+}
 
 builder.Services.AddProblemDetails(options =>
 {
@@ -76,7 +82,8 @@ foreach (var assembly in moduleApplicationAssemblies)
     builder.Services.AddValidatorsFromAssembly(assembly, includeInternalTypes: true);
 
 // Shared cross-cutting infrastructure.
-builder.Services.AddIntegrationMessaging();
+var dispatchOutbox = builder.Configuration.GetValue<bool?>("Messaging:OutboxDispatchEnabled") ?? true;
+builder.Services.AddIntegrationMessaging(dispatchOutbox: dispatchOutbox);
 builder.Services.AddLocalFileStorage(builder.Configuration);
 builder.Services.AddAuditCapture();
 builder.Services.AddDurableEmail();
@@ -162,6 +169,8 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+WarnForSlowSqlConnectionSettings(app.Logger, app.Configuration);
+
 // Assign/propagate a correlation id per request and enrich logs with it.
 app.Use(async (context, next) =>
 {
@@ -175,7 +184,8 @@ app.Use(async (context, next) =>
         await next();
 });
 
-app.UseSerilogRequestLogging();
+if (useSerilog)
+    app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -203,12 +213,84 @@ new AuditEndpointModule().MapEndpoints(app);
 new IdentityEndpointModule().MapEndpoints(app);
 new MasterDataEndpointModule().MapEndpoints(app);
 
-// Apply migrations in dependency order: Audit -> Identity -> MasterData.
-await app.Services.MigrateAuditAsync();
-await app.Services.MigrateAndSeedIdentityAsync();
-await app.Services.MigrateAndSeedMasterDataAsync();
+var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")
+    ?? app.Environment.IsDevelopment();
+
+if (applyMigrationsOnStartup)
+{
+    // Apply migrations in dependency order: Audit -> Identity -> MasterData.
+    await app.Services.MigrateAuditAsync();
+    await app.Services.MigrateAndSeedIdentityAsync();
+    await app.Services.MigrateAndSeedMasterDataAsync();
+}
+else
+{
+    app.Logger.LogInformation("Skipping startup database migrations and seed data. Apply migrations before serving traffic.");
+}
 
 app.Run();
+
+static void WarnForSlowSqlConnectionSettings(Microsoft.Extensions.Logging.ILogger logger, IConfiguration configuration)
+{
+    string[] connectionNames = ["Default", "Identity", "MasterData", "Audit"];
+    var inspected = new HashSet<string>(StringComparer.Ordinal);
+
+    foreach (var connectionName in connectionNames)
+    {
+        var connectionString = configuration.GetConnectionString(connectionName);
+        if (string.IsNullOrWhiteSpace(connectionString) || !inspected.Add(connectionString))
+            continue;
+
+        try
+        {
+            var parsed = new DbConnectionStringBuilder { ConnectionString = connectionString };
+
+            if (TryGetBool(parsed, "Pooling") is false)
+            {
+                logger.LogWarning(
+                    "Connection string '{ConnectionStringName}' has Pooling=False. Remote SQL Server requests will open a new physical connection for each EF command.",
+                    connectionName);
+            }
+
+            if (TryGetInt(parsed, "Command Timeout") == 0 || TryGetInt(parsed, "Default Command Timeout") == 0)
+            {
+                logger.LogWarning(
+                    "Connection string '{ConnectionStringName}' has an infinite SQL command timeout. Use a bounded timeout so slow SQL fails visibly.",
+                    connectionName);
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            logger.LogWarning(ex, "Could not inspect connection string '{ConnectionStringName}' for performance settings.", connectionName);
+        }
+    }
+}
+
+static bool? TryGetBool(DbConnectionStringBuilder builder, string key)
+{
+    if (!builder.TryGetValue(key, out var value))
+        return null;
+
+    if (value is bool boolean)
+        return boolean;
+
+    return bool.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), out var parsed)
+        ? parsed
+        : null;
+}
+
+static int? TryGetInt(DbConnectionStringBuilder builder, string key)
+{
+    if (!builder.TryGetValue(key, out var value))
+        return null;
+
+    if (value is int number)
+        return number;
+
+    return int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+        ? parsed
+        : null;
+}
 
 // Exposed for integration tests (WebApplicationFactory<Program>).
 public partial class Program;
