@@ -70,6 +70,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
         int page,
         int pageSize,
         string? search,
+        string? userType = null,
         string? sort = null,
         CancellationToken ct = default)
     {
@@ -77,6 +78,7 @@ public sealed class IdentityApiClient(BrowserApiClient api)
             .Add("page", page)
             .Add("pageSize", pageSize)
             .Add("search", search)
+            .Add("userType", userType)
             .Add("sort", sort)
             .Build();
         return api.GetAsync<PagedResult<RoleListItem>>($"/identity/roles{query}", ct);

@@ -26,16 +26,25 @@
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Roles.SearchPlaceholder"
                       CountLabel="@UiStrings.Roles.CountLabel" EmptyText="@UiStrings.Roles.Empty">
+            <Filters>
+                <DataListFilter TValue="string" Placeholder="@UiStrings.Users.FilterByUserType"
+                                Data="@UserTypeOptions" Value="@userTypeFilter" ValueChanged="@OnUserTypeFilterChangedAsync" />
+            </Filters>
             <Columns>
                 <RadzenDataGridColumn TItem="RoleListItem" Property="Name" Title="@UiStrings.Roles.Name">
                     <Template Context="role">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="shield" /></span>
-                            <strong>@role.Name</strong>
-                            @if (role.IsSystem)
-                            {
-                                <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
-                            }
+                            <div class="os-role-cell-text">
+                                <div class="os-role-cell-title">
+                                    <strong>@role.Name</strong>
+                                    @if (role.IsSystem)
+                                    {
+                                        <StatusBadge Label="@UiStrings.Roles.System" Tone="neutral" />
+                                    }
+                                </div>
+                                <span class="os-muted">@UserTypeLabel(role.CompatibleUserType)</span>
+                            </div>
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
@@ -82,7 +91,15 @@
     private bool loadError;
 
     private string searchTerm = string.Empty;
+    private string? userTypeFilter;
     private string? currentSort;
+
+    private List<UserTypeOption> UserTypeOptions =>
+    [
+        new(UiStrings.Users.TypeSystemAdministrator, UserTypes.SystemAdministrator),
+        new(UiStrings.Users.TypeStationStaff, UserTypes.StationStaff),
+        new(UiStrings.Users.TypeCustomerContact, UserTypes.CustomerContact)
+    ];
 
     protected override async Task OnInitializedAsync()
     {
@@ -94,6 +111,12 @@
     {
         currentPageSize = pageSize;
         await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnUserTypeFilterChangedAsync(string? value)
+    {
+        userTypeFilter = value;
+        await ReloadAsync();
     }
 
     private async Task LoadDataAsync(LoadDataArgs args)
@@ -113,7 +136,7 @@
         try
         {
             var result = await Identity.GetRolesAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, currentSort);
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, userTypeFilter, currentSort);
             roles = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -179,4 +202,14 @@
             Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
         }
     }
+
+    private static string UserTypeLabel(string userType) => userType switch
+    {
+        UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.StationStaff => UiStrings.Users.TypeStationStaff,
+        UserTypes.CustomerContact => UiStrings.Users.TypeCustomerContact,
+        _ => userType
+    };
+
+    private sealed record UserTypeOption(string Label, string? Value);
 }

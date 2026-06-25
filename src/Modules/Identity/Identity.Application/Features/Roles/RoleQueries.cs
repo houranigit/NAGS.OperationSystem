@@ -36,7 +36,12 @@ public sealed class GetPermissionCatalogQueryHandler(IPermissionRegistry permiss
 
 // --- Paged list -----------------------------------------------------------
 
-public sealed record GetRolesQuery(int Page = 1, int PageSize = 20, string? Search = null, string? Sort = null)
+public sealed record GetRolesQuery(
+    int Page = 1,
+    int PageSize = 20,
+    string? Search = null,
+    UserType? UserType = null,
+    string? Sort = null)
     : IQuery<PagedResult<RoleListItemDto>>;
 
 public sealed class GetRolesQueryHandler(IIdentityDbContext db)
@@ -54,6 +59,9 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
             var term = request.Search.Trim().ToUpperInvariant();
             query = query.Where(r => r.NormalizedName.Contains(term));
         }
+
+        if (request.UserType is { } userType)
+            query = query.Where(r => r.CompatibleUserType == userType);
 
         var total = await query.LongCountAsync(cancellationToken);
 

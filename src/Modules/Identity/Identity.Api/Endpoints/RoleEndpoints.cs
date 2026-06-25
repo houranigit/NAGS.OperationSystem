@@ -15,9 +15,16 @@ internal static class RoleEndpoints
     {
         var roles = group.MapGroup("/roles").WithTags("Identity.Roles");
 
-        roles.MapGet("/", async (ISender sender, CancellationToken ct, int page = 1, int pageSize = 20, string? search = null, string? sort = null) =>
+        roles.MapGet("/", async (
+            ISender sender,
+            CancellationToken ct,
+            int page = 1,
+            int pageSize = 20,
+            string? search = null,
+            BuildingBlocks.Contracts.Authorization.UserType? userType = null,
+            string? sort = null) =>
         {
-            var result = await sender.Send(new GetRolesQuery(page, pageSize, search, sort), ct);
+            var result = await sender.Send(new GetRolesQuery(page, pageSize, search, userType, sort), ct);
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Roles.View);
 

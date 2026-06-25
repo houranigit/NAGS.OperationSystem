@@ -171,8 +171,32 @@ a {
     font-size: 1.15rem;
 }
 
+.os-role-cell-text {
+    display: grid;
+    line-height: 1.3;
+    min-width: 0;
+}
+
+.os-role-cell-title {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-width: 0;
+}
+
+.os-role-cell-text strong,
 .os-role-cell strong {
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.os-role-cell-text span {
+    font-size: var(--os-text-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Status pills */
