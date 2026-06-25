@@ -168,42 +168,18 @@
     font-size: 1rem;
 }
 
-.st-mono {
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.01em;
-}
-
-/* --- Metadata row -------------------------------------------------------- */
-.st-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--os-space-5);
-    margin: var(--os-space-4) 0 0;
-}
-
-.st-meta-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    min-width: 0;
-}
-
-.st-meta-item dt {
-    color: var(--os-color-text-subtle);
-    font-size: var(--os-text-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-.st-meta-item dd {
+.st-meta-row {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--os-space-1);
-    margin: 0;
-    color: var(--os-color-text);
-    font-size: var(--os-text-sm);
-    font-weight: 600;
+    gap: var(--os-space-2);
+    margin-top: var(--os-space-2);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-base);
+}
+
+.st-meta-row .rz-icon {
+    font-size: 1.05rem;
 }
 
 /* --- Hero actions -------------------------------------------------------- */

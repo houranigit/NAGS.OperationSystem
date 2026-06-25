@@ -43,27 +43,20 @@
                             <span class="st-info-badge"><RadzenIcon Icon="tag" />@s.IataCode</span>
                         </div>
 
-                        <dl class="st-meta">
-                            <div class="st-meta-item">
-                                <dt>@UiStrings.Stations.City</dt>
-                                <dd><RadzenIcon Icon="location_city" /><span>@s.City</span></dd>
-                            </div>
-                            <div class="st-meta-item">
-                                <dt>@UiStrings.Stations.Country</dt>
-                                <dd><RadzenIcon Icon="public" /><span>@s.CountryName</span></dd>
-                            </div>
-                            <div class="st-meta-item">
-                                <dt>ID</dt>
-                                <dd>
-                                    <RadzenIcon Icon="id_card" />
-                                    <span class="st-mono">@ShortId(s.Id)</span>
-                                    <button type="button" class="st-copy" title="@UiStrings.Users.CopyId"
-                                            aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(s.Id.ToString()))">
-                                        <RadzenIcon Icon="content_copy" />
-                                    </button>
-                                </dd>
-                            </div>
-                        </dl>
+                        <div class="st-meta-row">
+                            <RadzenIcon Icon="location_city" />
+                            <span>@s.City</span>
+
+                            <RadzenIcon Icon="public" />
+                            <span>@s.CountryName</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(s.Id)</span>
+                            <button type="button" class="st-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(s.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="st-hero-actions">
