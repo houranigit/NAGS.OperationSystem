@@ -32,6 +32,13 @@
   <data name="Common.Overview" xml:space="preserve"><value>ملخص</value></data>
   <data name="Common.Name" xml:space="preserve"><value>اسم</value></data>
   <data name="Common.None" xml:space="preserve"><value>—</value></data>
+  <data name="Common.ViewAll" xml:space="preserve"><value>عرض الكل</value></data>
+  <data name="Common.Copy" xml:space="preserve"><value>نسخ</value></data>
+  <data name="Common.Copied" xml:space="preserve"><value>تم النسخ إلى الحافظة</value></data>
+  <data name="Common.JustNow" xml:space="preserve"><value>الآن</value></data>
+  <data name="Common.MinutesAgo" xml:space="preserve"><value>منذ {0} د</value></data>
+  <data name="Common.HoursAgo" xml:space="preserve"><value>منذ {0} س</value></data>
+  <data name="Common.DaysAgo" xml:space="preserve"><value>منذ {0} ي</value></data>
   <data name="Auth.SignInTitle" xml:space="preserve"><value>تسجيل الدخول</value></data>
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>استخدم حساب البوابة الإلكترونية الخاص بك للمتابعة.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>
@@ -90,10 +97,19 @@
   <data name="Audit.HistoryTitle" xml:space="preserve"><value>السجل</value></data>
   <data name="Audit.HistoryDescription" xml:space="preserve"><value>التغييرات التي أُجريت على حساب هذا المستخدم.</value></data>
   <data name="Audit.ActivityDescription" xml:space="preserve"><value>الإجراءات التي نفّذها هذا المستخدم في النظام.</value></data>
+  <data name="Audit.HistoryEmpty" xml:space="preserve"><value>لم يتم تسجيل أي تغييرات على حساب هذا المستخدم حتى الآن.</value></data>
+  <data name="Audit.ActivityEmpty" xml:space="preserve"><value>لم يتم تسجيل أي إجراءات لهذا المستخدم حتى الآن.</value></data>
   <data name="Audit.ViewDetails" xml:space="preserve"><value>عرض</value></data>
   <data name="Audit.DetailsTitle" xml:space="preserve"><value>تفاصيل التدقيق</value></data>
   <data name="Audit.CorrelationId" xml:space="preserve"><value>معرّف الارتباط</value></data>
   <data name="Audit.Metadata" xml:space="preserve"><value>تفاصيل إضافية</value></data>
+  <data name="Audit.Field.LockoutEndUtc" xml:space="preserve"><value>حالة القفل</value></data>
+  <data name="Audit.Field.UpdatedAtUtc" xml:space="preserve"><value>آخر تحديث</value></data>
+  <data name="Audit.Field.CreatedAtUtc" xml:space="preserve"><value>تاريخ الإنشاء</value></data>
+  <data name="Audit.Field.DisplayName" xml:space="preserve"><value>اسم العرض</value></data>
+  <data name="Audit.Field.RoleId" xml:space="preserve"><value>الدور</value></data>
+  <data name="Audit.Field.Status" xml:space="preserve"><value>الحالة</value></data>
+  <data name="Audit.Entity.User" xml:space="preserve"><value>مستخدم</value></data>
   <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>مرحبًا بعودتك</value></data>
   <data name="Dashboard.Overview" xml:space="preserve"><value>ملخص</value></data>
   <data name="Dashboard.IdentityCard" xml:space="preserve"><value>الوصول إلى الحساب</value></data>
@@ -148,6 +164,27 @@
   <data name="Users.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا المستخدم؟ سيتم تسجيل خروجهم من جميع الجلسات.</value></data>
   <data name="Users.ConfirmLock" xml:space="preserve"><value>هل تريد منع هذا المستخدم من تسجيل الدخول؟</value></data>
   <data name="Users.StatActiveSessions" xml:space="preserve"><value>جلسات نشطة</value></data>
+  <data name="Users.UserId" xml:space="preserve"><value>معرّف المستخدم</value></data>
+  <data name="Users.CopyId" xml:space="preserve"><value>نسخ معرّف المستخدم</value></data>
+  <data name="Users.CopyEmail" xml:space="preserve"><value>نسخ البريد الإلكتروني</value></data>
+  <data name="Users.AccountStatus" xml:space="preserve"><value>حالة الحساب</value></data>
+  <data name="Users.Permissions" xml:space="preserve"><value>الأذونات</value></data>
+  <data name="Users.Security" xml:space="preserve"><value>الأمان</value></data>
+  <data name="Users.MemberSince" xml:space="preserve"><value>عضو منذ</value></data>
+  <data name="Users.LastUpdated" xml:space="preserve"><value>آخر تحديث</value></data>
+  <data name="Users.LockStatus" xml:space="preserve"><value>حالة القفل</value></data>
+  <data name="Users.NotLocked" xml:space="preserve"><value>غير مقفل</value></data>
+  <data name="Users.LockedUntil" xml:space="preserve"><value>مقفل حتى {0}</value></data>
+  <data name="Users.LockedIndefinitely" xml:space="preserve"><value>مقفل إلى أجل غير محدد — يتطلب فتحًا يدويًا</value></data>
+  <data name="Users.AccessScope" xml:space="preserve"><value>نطاق الوصول</value></data>
+  <data name="Users.RecentDevice" xml:space="preserve"><value>آخر جهاز</value></data>
+  <data name="Users.StatusActiveDesc" xml:space="preserve"><value>هذا الحساب نشط ويمكنه الوصول إلى كل الموارد المعيّنة.</value></data>
+  <data name="Users.StatusInvitedDesc" xml:space="preserve"><value>تمت دعوة هذا الحساب وهو بانتظار التفعيل.</value></data>
+  <data name="Users.StatusDeactivatedDesc" xml:space="preserve"><value>هذا الحساب معطل ولا يمكنه تسجيل الدخول.</value></data>
+  <data name="Users.StatusLockedDesc" xml:space="preserve"><value>هذا الحساب مقفل مؤقتًا ولا يمكنه تسجيل الدخول.</value></data>
+  <data name="Users.ScopeFullAccess" xml:space="preserve"><value>وصول كامل للنظام</value></data>
+  <data name="Users.ScopeStation" xml:space="preserve"><value>وصول ضمن نطاق المحطة</value></data>
+  <data name="Users.ScopeCustomer" xml:space="preserve"><value>وصول ضمن نطاق العميل</value></data>
   <data name="Roles.Title" xml:space="preserve"><value>الأدوار</value></data>
   <data name="Roles.Description" xml:space="preserve"><value>تحديد الأدوار والأذونات التي يمنحونها.</value></data>
   <data name="Roles.Create" xml:space="preserve"><value>دور جديد</value></data>
@@ -184,6 +221,12 @@
   <data name="Sessions.Revoked" xml:space="preserve"><value>تم إبطاله</value></data>
   <data name="Sessions.RevokeAll" xml:space="preserve"><value>إلغاء كافة الجلسات</value></data>
   <data name="Sessions.Empty" xml:space="preserve"><value>لم يتم العثور على جلسات.</value></data>
+  <data name="Sessions.EmptyHint" xml:space="preserve"><value>ستظهر الأجهزة النشطة لهذا المستخدم هنا بعد تسجيل الدخول.</value></data>
+  <data name="Sessions.CurrentSession" xml:space="preserve"><value>الجلسة الحالية</value></data>
+  <data name="Sessions.CurrentDeviceBadge" xml:space="preserve"><value>هذا الجهاز</value></data>
+  <data name="Sessions.OtherSessions" xml:space="preserve"><value>الجلسات الأخرى</value></data>
+  <data name="Sessions.LastActivity" xml:space="preserve"><value>آخر نشاط</value></data>
+  <data name="Sessions.UnknownDevice" xml:space="preserve"><value>جهاز غير معروف</value></data>
   <data name="Countries.Title" xml:space="preserve"><value>بلدان</value></data>
   <data name="Countries.Description" xml:space="preserve"><value>الحفاظ على قائمة الدول ISO المستخدمة عبر النظام.</value></data>
   <data name="Countries.Create" xml:space="preserve"><value>بلد جديد</value></data>

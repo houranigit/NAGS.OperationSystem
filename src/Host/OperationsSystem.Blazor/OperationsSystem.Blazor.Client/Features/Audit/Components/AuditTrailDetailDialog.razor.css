@@ -85,6 +85,10 @@
     overflow-wrap: anywhere;
 }
 
+.adt-empty-value {
+    color: var(--os-color-text-muted);
+}
+
 .adt-empty {
     margin: 0;
 }

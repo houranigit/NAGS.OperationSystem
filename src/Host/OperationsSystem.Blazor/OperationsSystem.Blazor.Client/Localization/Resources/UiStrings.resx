@@ -32,6 +32,13 @@
   <data name="Common.Overview" xml:space="preserve"><value>Overview</value></data>
   <data name="Common.Name" xml:space="preserve"><value>Name</value></data>
   <data name="Common.None" xml:space="preserve"><value>—</value></data>
+  <data name="Common.ViewAll" xml:space="preserve"><value>View all</value></data>
+  <data name="Common.Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="Common.Copied" xml:space="preserve"><value>Copied to clipboard</value></data>
+  <data name="Common.JustNow" xml:space="preserve"><value>Just now</value></data>
+  <data name="Common.MinutesAgo" xml:space="preserve"><value>{0}m ago</value></data>
+  <data name="Common.HoursAgo" xml:space="preserve"><value>{0}h ago</value></data>
+  <data name="Common.DaysAgo" xml:space="preserve"><value>{0}d ago</value></data>
   <data name="Auth.SignInTitle" xml:space="preserve"><value>Sign in</value></data>
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>Use your portal account to continue.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>Email</value></data>
@@ -90,10 +97,19 @@
   <data name="Audit.HistoryTitle" xml:space="preserve"><value>History</value></data>
   <data name="Audit.HistoryDescription" xml:space="preserve"><value>Changes made to this user account.</value></data>
   <data name="Audit.ActivityDescription" xml:space="preserve"><value>Actions performed by this user across the system.</value></data>
+  <data name="Audit.HistoryEmpty" xml:space="preserve"><value>No changes have been recorded for this user account yet.</value></data>
+  <data name="Audit.ActivityEmpty" xml:space="preserve"><value>No actions have been recorded for this user yet.</value></data>
   <data name="Audit.ViewDetails" xml:space="preserve"><value>View</value></data>
   <data name="Audit.DetailsTitle" xml:space="preserve"><value>Audit details</value></data>
   <data name="Audit.CorrelationId" xml:space="preserve"><value>Correlation ID</value></data>
   <data name="Audit.Metadata" xml:space="preserve"><value>Additional details</value></data>
+  <data name="Audit.Field.LockoutEndUtc" xml:space="preserve"><value>Lock status</value></data>
+  <data name="Audit.Field.UpdatedAtUtc" xml:space="preserve"><value>Last updated</value></data>
+  <data name="Audit.Field.CreatedAtUtc" xml:space="preserve"><value>Created</value></data>
+  <data name="Audit.Field.DisplayName" xml:space="preserve"><value>Display name</value></data>
+  <data name="Audit.Field.RoleId" xml:space="preserve"><value>Role</value></data>
+  <data name="Audit.Field.Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Audit.Entity.User" xml:space="preserve"><value>User</value></data>
   <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>Welcome back</value></data>
   <data name="Dashboard.Overview" xml:space="preserve"><value>Overview</value></data>
   <data name="Dashboard.IdentityCard" xml:space="preserve"><value>Account access</value></data>
@@ -148,6 +164,27 @@
   <data name="Users.ConfirmDeactivate" xml:space="preserve"><value>Deactivate this user? They will be signed out of all sessions.</value></data>
   <data name="Users.ConfirmLock" xml:space="preserve"><value>Lock this user out of signing in?</value></data>
   <data name="Users.StatActiveSessions" xml:space="preserve"><value>Active sessions</value></data>
+  <data name="Users.UserId" xml:space="preserve"><value>User ID</value></data>
+  <data name="Users.CopyId" xml:space="preserve"><value>Copy user ID</value></data>
+  <data name="Users.CopyEmail" xml:space="preserve"><value>Copy email</value></data>
+  <data name="Users.AccountStatus" xml:space="preserve"><value>Account status</value></data>
+  <data name="Users.Permissions" xml:space="preserve"><value>Permissions</value></data>
+  <data name="Users.Security" xml:space="preserve"><value>Security</value></data>
+  <data name="Users.MemberSince" xml:space="preserve"><value>Member since</value></data>
+  <data name="Users.LastUpdated" xml:space="preserve"><value>Last updated</value></data>
+  <data name="Users.LockStatus" xml:space="preserve"><value>Lock status</value></data>
+  <data name="Users.NotLocked" xml:space="preserve"><value>Not locked</value></data>
+  <data name="Users.LockedUntil" xml:space="preserve"><value>Locked until {0}</value></data>
+  <data name="Users.LockedIndefinitely" xml:space="preserve"><value>Locked indefinitely — manual unlock required</value></data>
+  <data name="Users.AccessScope" xml:space="preserve"><value>Access scope</value></data>
+  <data name="Users.RecentDevice" xml:space="preserve"><value>Recent device</value></data>
+  <data name="Users.StatusActiveDesc" xml:space="preserve"><value>This account is active and can access all assigned resources.</value></data>
+  <data name="Users.StatusInvitedDesc" xml:space="preserve"><value>This account has been invited and is awaiting activation.</value></data>
+  <data name="Users.StatusDeactivatedDesc" xml:space="preserve"><value>This account is deactivated and cannot sign in.</value></data>
+  <data name="Users.StatusLockedDesc" xml:space="preserve"><value>This account is temporarily locked out of signing in.</value></data>
+  <data name="Users.ScopeFullAccess" xml:space="preserve"><value>Full system access</value></data>
+  <data name="Users.ScopeStation" xml:space="preserve"><value>Station-scoped access</value></data>
+  <data name="Users.ScopeCustomer" xml:space="preserve"><value>Customer-scoped access</value></data>
   <data name="Roles.Title" xml:space="preserve"><value>Roles</value></data>
   <data name="Roles.Description" xml:space="preserve"><value>Define roles and the permissions they grant.</value></data>
   <data name="Roles.Create" xml:space="preserve"><value>New role</value></data>
@@ -184,6 +221,12 @@
   <data name="Sessions.Revoked" xml:space="preserve"><value>Revoked</value></data>
   <data name="Sessions.RevokeAll" xml:space="preserve"><value>Revoke all sessions</value></data>
   <data name="Sessions.Empty" xml:space="preserve"><value>No sessions found.</value></data>
+  <data name="Sessions.EmptyHint" xml:space="preserve"><value>Active devices for this user will appear here once they sign in.</value></data>
+  <data name="Sessions.CurrentSession" xml:space="preserve"><value>Current session</value></data>
+  <data name="Sessions.CurrentDeviceBadge" xml:space="preserve"><value>This device</value></data>
+  <data name="Sessions.OtherSessions" xml:space="preserve"><value>Other sessions</value></data>
+  <data name="Sessions.LastActivity" xml:space="preserve"><value>Last activity</value></data>
+  <data name="Sessions.UnknownDevice" xml:space="preserve"><value>Unknown device</value></data>
   <data name="Countries.Title" xml:space="preserve"><value>Countries</value></data>
   <data name="Countries.Description" xml:space="preserve"><value>Maintain the ISO country list used across the system.</value></data>
   <data name="Countries.Create" xml:space="preserve"><value>New country</value></data>

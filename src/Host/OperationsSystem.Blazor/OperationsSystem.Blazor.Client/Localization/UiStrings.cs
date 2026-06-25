@@ -116,6 +116,8 @@ public static class UiStrings
         public static string HistoryTitle => UiText.Get("Audit.HistoryTitle", "History");
         public static string HistoryDescription => UiText.Get("Audit.HistoryDescription", "Changes made to this user account.");
         public static string ActivityDescription => UiText.Get("Audit.ActivityDescription", "Actions performed by this user across the system.");
+        public static string HistoryEmpty => UiText.Get("Audit.HistoryEmpty", "No changes have been recorded for this user account yet.");
+        public static string ActivityEmpty => UiText.Get("Audit.ActivityEmpty", "No actions have been recorded for this user yet.");
         public static string ViewDetails => UiText.Get("Audit.ViewDetails", "View");
         public static string DetailsTitle => UiText.Get("Audit.DetailsTitle", "Audit details");
         public static string CorrelationId => UiText.Get("Audit.CorrelationId", "Correlation ID");
@@ -197,6 +199,7 @@ public static class UiStrings
         public static string LockStatus => UiText.Get("Users.LockStatus", "Lock status");
         public static string NotLocked => UiText.Get("Users.NotLocked", "Not locked");
         public static string LockedUntil => UiText.Get("Users.LockedUntil", "Locked until {0}");
+        public static string LockedIndefinitely => UiText.Get("Users.LockedIndefinitely", "Locked indefinitely — manual unlock required");
         public static string AccessScope => UiText.Get("Users.AccessScope", "Access scope");
         public static string RecentDevice => UiText.Get("Users.RecentDevice", "Recent device");
         public static string StatusActiveDesc => UiText.Get("Users.StatusActiveDesc", "This account is active and can access all assigned resources.");

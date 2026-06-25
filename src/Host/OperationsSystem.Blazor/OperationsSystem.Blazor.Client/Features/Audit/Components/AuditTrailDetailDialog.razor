@@ -1,3 +1,4 @@
+@using System.Globalization
 @using System.Text.Json
 @inject AuditApiClient Audit
 @inject DialogService DialogService
@@ -57,9 +58,9 @@
                     @foreach (var change in entry.Changes)
                     {
                         <div class="adt-row" role="row" @key="change">
-                            <strong role="cell" data-label="@UiStrings.Audit.Field">@change.Field</strong>
-                            <span role="cell" data-label="@UiStrings.Audit.Before">@(change.Before ?? UiStrings.Common.None)</span>
-                            <span role="cell" data-label="@UiStrings.Audit.After">@(change.After ?? UiStrings.Common.None)</span>
+                            <strong role="cell" data-label="@UiStrings.Audit.Field">@FieldLabel(change.Field)</strong>
+                            <span role="cell" data-label="@UiStrings.Audit.Before" class="@ValueClass(change.Before)">@FormatValue(change.Field, change.Before)</span>
+                            <span role="cell" data-label="@UiStrings.Audit.After" class="@ValueClass(change.After)">@FormatValue(change.Field, change.After)</span>
                         </div>
                     }
                 </div>
@@ -114,8 +115,72 @@
         : entry.ActorDisplayName ?? entry.ActorId?.ToString() ?? UiStrings.Common.None;
 
     private static string EntityLabel(AuditTrailDetail entry) => entry.EntityId is { } id
-        ? $"{entry.EntityType} ({id})"
-        : entry.EntityType;
+        ? $"{EntityTypeLabel(entry.EntityType)} {ShortId(id)}"
+        : EntityTypeLabel(entry.EntityType);
+
+    private static string EntityTypeLabel(string value) => UiText.Get($"Audit.Entity.{value}", Humanize(value));
+
+    private static string FieldLabel(string field) => UiText.Get($"Audit.Field.{field}", Humanize(field));
+
+    private static string ValueClass(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "adt-empty-value" : string.Empty;
+
+    private static string FormatValue(string field, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return UiStrings.Common.None;
+
+        if (field == "LockoutEndUtc" && TryParseDate(value, out var lockout))
+        {
+            return IsIndefiniteLockout(lockout)
+                ? UiStrings.Users.LockedIndefinitely
+                : string.Format(UiStrings.Users.LockedUntil, lockout.ToLocalTime().ToString("g"));
+        }
+
+        if ((field.EndsWith("Utc", StringComparison.OrdinalIgnoreCase) ||
+             field.EndsWith("At", StringComparison.OrdinalIgnoreCase)) &&
+            TryParseDate(value, out var date))
+        {
+            return date.ToLocalTime().ToString("g");
+        }
+
+        if (bool.TryParse(value, out var boolean))
+            return boolean ? UiStrings.Common.Yes : UiStrings.Common.No;
+
+        if (Guid.TryParse(value, out var id))
+            return ShortId(id);
+
+        return value;
+    }
+
+    private static bool TryParseDate(string value, out DateTimeOffset date) =>
+        DateTimeOffset.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowWhiteSpaces,
+            out date);
+
+    private static bool IsIndefiniteLockout(DateTimeOffset value) => value.UtcDateTime.Year >= 9000;
+
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string Humanize(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return UiStrings.Common.None;
+
+        var builder = new System.Text.StringBuilder(value.Length + 8);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (i > 0 && char.IsUpper(current) && !char.IsWhiteSpace(value[i - 1]))
+                builder.Append(' ');
+
+            builder.Append(current);
+        }
+
+        return builder.ToString();
+    }
 
     private static string FormatMetadata(string metadata)
     {

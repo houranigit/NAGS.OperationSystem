@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Localization;
 
@@ -11,7 +12,7 @@ public sealed class LocaleState(IJSRuntime jsRuntime)
 {
     public const string English = UiText.English;
     public const string Arabic = UiText.Arabic;
-    private const string StorageKey = "operations-system.language";
+    public const string StorageKey = "operations-system.language";
 
     public string Language { get; private set; } = English;
 
@@ -41,6 +42,11 @@ public sealed class LocaleState(IJSRuntime jsRuntime)
     private async Task ApplyLanguageAsync(string language, bool persist)
     {
         Language = language;
+        var culture = CultureInfo.GetCultureInfo(language);
+        CultureInfo.CurrentCulture = culture;
+        CultureInfo.CurrentUICulture = culture;
+        CultureInfo.DefaultThreadCurrentCulture = culture;
+        CultureInfo.DefaultThreadCurrentUICulture = culture;
         UiText.SetLanguage(language);
 
         if (persist)

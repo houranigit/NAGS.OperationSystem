@@ -133,9 +133,7 @@
                     <dl class="us-metrics">
                         <div class="us-metric">
                             <dt>@UiStrings.Users.LockStatus</dt>
-                            <dd>@(u.IsLockedOut
-                                ? (u.LockoutEndUtc is { } end ? string.Format(UiStrings.Users.LockedUntil, end.ToLocalTime().ToString("g")) : UiStrings.Users.LockedOut)
-                                : UiStrings.Users.NotLocked)</dd>
+                            <dd>@LockStatusLabel(u)</dd>
                         </div>
                         <div class="us-metric">
                             <dt>@UiStrings.Users.MemberSince</dt>
@@ -356,7 +354,7 @@
         int? maxItems = null) =>@<text>
         @if (entries.Count == 0)
         {
-            @TimelineEmpty(showTarget ? UiStrings.Audit.ActivityDescription : UiStrings.Audit.HistoryDescription)
+            @TimelineEmpty(showTarget ? UiStrings.Audit.ActivityEmpty : UiStrings.Audit.HistoryEmpty)
         }
         else
         {
@@ -467,26 +465,17 @@
         try
         {
             user = await Identity.GetUserAsync(Id);
-            await LoadSessionsAsync();
-            await LoadRoleAsync(user.RoleId);
-
+            roleDetail = null;
+            sessions = null;
+            sessionsLoading = Auth.HasPermission(IdentityPermissions.SessionsView);
+            sessionsError = false;
             history = [];
             userActivity = [];
-            if (CanViewAudit)
-            {
-                try
-                {
-                    var historyResult = await AuditApi.GetTrailsAsync(entityType: "User", entityId: Id, pageSize: 50);
-                    var activityResult = await AuditApi.GetTrailsAsync(actorId: Id, pageSize: 50);
-                    history = historyResult.Items;
-                    userActivity = activityResult.Items;
-                }
-                catch (ApiException)
-                {
-                    history = [];
-                    userActivity = [];
-                }
-            }
+
+            await Task.WhenAll(
+                LoadSessionsCoreAsync(),
+                LoadRoleAsync(user.RoleId),
+                LoadAuditAsync());
         }
         catch (ApiException ex)
         {
@@ -521,7 +510,22 @@
         sessionsLoading = true;
         sessionsError = false;
         StateHasChanged();
+        await LoadSessionsCoreAsync();
+        StateHasChanged();
+    }
 
+    private async Task LoadSessionsCoreAsync()
+    {
+        if (!Auth.HasPermission(IdentityPermissions.SessionsView))
+        {
+            sessions = [];
+            sessionsLoading = false;
+            sessionsError = false;
+            return;
+        }
+
+        sessionsLoading = true;
+        sessionsError = false;
         try
         {
             sessions = await Identity.GetUserSessionsAsync(Id);
@@ -533,7 +537,29 @@
         finally
         {
             sessionsLoading = false;
-            StateHasChanged();
+        }
+    }
+
+    private async Task LoadAuditAsync()
+    {
+        history = [];
+        userActivity = [];
+        if (!CanViewAudit)
+            return;
+
+        try
+        {
+            var historyTask = AuditApi.GetTrailsAsync(entityType: "User", entityId: Id, pageSize: 50);
+            var activityTask = AuditApi.GetTrailsAsync(actorId: Id, pageSize: 50);
+
+            await Task.WhenAll(historyTask, activityTask);
+            history = historyTask.Result.Items;
+            userActivity = activityTask.Result.Items;
+        }
+        catch (ApiException)
+        {
+            history = [];
+            userActivity = [];
         }
     }
 
@@ -680,6 +706,21 @@
             _ => UiStrings.Users.StatusActiveDesc
         };
     }
+
+    private static string LockStatusLabel(UserDetail u)
+    {
+        if (!u.IsLockedOut)
+            return UiStrings.Users.NotLocked;
+
+        if (u.LockoutEndUtc is not { } end)
+            return UiStrings.Users.LockedOut;
+
+        return IsIndefiniteLockout(end)
+            ? UiStrings.Users.LockedIndefinitely
+            : string.Format(UiStrings.Users.LockedUntil, end.ToLocalTime().ToString("g"));
+    }
+
+    private static bool IsIndefiniteLockout(DateTimeOffset value) => value.UtcDateTime.Year >= 9000;
 
     private string AccessScope(UserDetail u)
     {

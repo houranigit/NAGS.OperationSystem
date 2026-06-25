@@ -227,7 +227,11 @@
         await Task.CompletedTask;
     }
 
-    private async Task ToggleLanguageAsync() => await Locale.ToggleAsync();
+    private async Task ToggleLanguageAsync()
+    {
+        await Locale.ToggleAsync();
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true, replace: true);
+    }
 
     private async Task LogoutAsync()
     {
