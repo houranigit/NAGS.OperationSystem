@@ -5,6 +5,7 @@
 @inject NavigationManager Navigation
 @inject AuthSession Auth
 @inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
 <PageTitle>@(country?.Name ?? UiStrings.Countries.Title)</PageTitle>
 
@@ -20,12 +21,7 @@
     else if (country is { } c)
     {
         <div class="cn-workspace">
-            <button type="button" class="cn-back" @onclick="GoBack">
-                <RadzenIcon Icon="arrow_back" />
-                <span>@UiStrings.Countries.Title</span>
-            </button>
-
-            @* ---- Profile (hero only) ------------------------------------- *@
+            @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="cn-profile @ProfileClass(c)">
                 <div class="cn-hero">
                     <div class="cn-avatar @AvatarClass(c)">
@@ -67,7 +63,7 @@
                         }
                         @if (HasMoreActions(c))
                         {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.Countries.Activate" Icon="check_circle"
                                            Permission="@MasterDataPermissions.CountriesActivate"
                                            Visible="@(!c.IsActive)" OnClick="@ActivateAsync" />
@@ -78,73 +74,177 @@
                         }
                     </div>
                 </div>
+
+                <nav class="cn-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="cn-tab @(activeTab == tab.Key ? "cn-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
             </section>
 
-            @* ---- Overview (tab-body stack) ------------------------------- *@
+            @* ---- Tab body ------------------------------------------------ *@
             <div class="cn-tab-body" role="tabpanel">
-                <div class="cn-stack">
-                    <div class="cn-overview-grid">
-                        @* --- Status --- *@
-                        <RadzenCard class="cn-card">
-                            <div class="cn-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.Countries.Status</h3></div>
-                            <div class="cn-lead">
-                                <span class="cn-lead-dot cn-lead-dot--@StatusToneColor(c)"></span>
-                                <div>
-                                    <p class="cn-lead-title">@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)</p>
-                                    <p class="os-muted cn-lead-desc">@StatusDescription(c)</p>
-                                </div>
-                            </div>
-                            <dl class="cn-metrics">
-                                <div class="cn-metric">
-                                    <dt>@UiStrings.Countries.Created</dt>
-                                    <dd>@c.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
-                                </div>
-                                <div class="cn-metric">
-                                    <dt>@UiStrings.Countries.Updated</dt>
-                                    <dd>@(c.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
-                                </div>
-                            </dl>
-                        </RadzenCard>
-
-                        @* --- Details --- *@
-                        <RadzenCard class="cn-card">
-                            <div class="cn-card-head"><RadzenIcon Icon="public" /><h3>@UiStrings.Common.Details</h3></div>
-                            <div class="cn-lead">
-                                <span class="cn-lead-icon cn-lead-icon--blue"><RadzenIcon Icon="public" /></span>
-                                <div>
-                                    <p class="cn-lead-title">@c.Name</p>
-                                    <p class="os-muted cn-lead-desc">@c.IsoCode</p>
-                                </div>
-                            </div>
-                            <dl class="cn-metrics cn-metrics--tall">
-                                <div class="cn-metric">
-                                    <dt>@UiStrings.Countries.Name</dt>
-                                    <dd>@c.Name</dd>
-                                </div>
-                                <div class="cn-metric">
-                                    <dt>@UiStrings.Countries.IsoCode</dt>
-                                    <dd>@c.IsoCode</dd>
-                                </div>
-                                <div class="cn-metric">
-                                    <dt>@UiStrings.Countries.Status</dt>
-                                    <dd>@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)</dd>
-                                </div>
-                            </dl>
-                        </RadzenCard>
-                    </div>
-                </div>
+                @(activeTab switch
+                {
+                    CountryTab.History => HistoryTab(c),
+                    _ => OverviewTab(c)
+                })
             </div>
         </div>
     }
 </RequirePermission>
 
+@* ================================================================ Overview *@
+@code {
+    private RenderFragment OverviewTab(CountryDetail c) =>@<text>
+        <div class="cn-stack">
+            <div class="cn-overview-grid">
+                @* --- Status --- *@
+                <RadzenCard class="cn-card">
+                    <div class="cn-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.Countries.Status</h3></div>
+                    <div class="cn-lead">
+                        <span class="cn-lead-dot cn-lead-dot--@StatusToneColor(c)"></span>
+                        <div>
+                            <p class="cn-lead-title">@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)</p>
+                            <p class="os-muted cn-lead-desc">@StatusDescription(c)</p>
+                        </div>
+                    </div>
+                    <dl class="cn-metrics">
+                        <div class="cn-metric">
+                            <dt>@UiStrings.Countries.Created</dt>
+                            <dd>@c.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="cn-metric">
+                            <dt>@UiStrings.Countries.Updated</dt>
+                            <dd>@(c.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                @* --- Details --- *@
+                <RadzenCard class="cn-card">
+                    <div class="cn-card-head"><RadzenIcon Icon="public" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="cn-lead">
+                        <span class="cn-lead-icon cn-lead-icon--blue"><RadzenIcon Icon="public" /></span>
+                        <div>
+                            <p class="cn-lead-title">@c.Name</p>
+                            <p class="os-muted cn-lead-desc">@c.IsoCode</p>
+                        </div>
+                    </div>
+                    <dl class="cn-metrics cn-metrics--tall">
+                        <div class="cn-metric">
+                            <dt>@UiStrings.Countries.Name</dt>
+                            <dd>@c.Name</dd>
+                        </div>
+                        <div class="cn-metric">
+                            <dt>@UiStrings.Countries.IsoCode</dt>
+                            <dd>@c.IsoCode</dd>
+                        </div>
+                        <div class="cn-metric">
+                            <dt>@UiStrings.Countries.Status</dt>
+                            <dd>@(c.IsActive ? UiStrings.Countries.Active : UiStrings.Countries.Inactive)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+            </div>
+
+            @if (CanViewAudit)
+            {
+                @* --- History preview --- *@
+                <RadzenCard class="cn-card">
+                    <div class="cn-card-head">
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
+                        {
+                            <button type="button" class="cn-link" @onclick="@(() => activeTab = CountryTab.History)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    <p class="os-muted">@UiStrings.Audit.Description</p>
+                    @HistoryTimeline(OverviewHistoryPreviewCount)
+                </RadzenCard>
+            }
+        </div>
+    </text>;
+
+    @* ================================================================ History *@
+    private RenderFragment HistoryTab(CountryDetail c) =>@<text>
+        <RadzenCard class="cn-card">
+            <div class="cn-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="cn-timeline">
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="cn-timeline-row" @key="entry.Id">
+                        <span class="cn-timeline-icon cn-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="cn-timeline-content">
+                            <p class="cn-timeline-title">@entry.Action</p>
+                            <p class="os-muted cn-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="cn-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="cn-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="cn-timeline-empty">
+            <span class="cn-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="cn-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
+            </div>
+        </div>
+    </text>;
+}
+
 @code {
     [Parameter] public Guid Id { get; set; }
 
     private CountryDetail? country;
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
+    private CountryTab activeTab = CountryTab.Overview;
+
+    private const int OverviewHistoryPreviewCount = 4;
+
+    private enum CountryTab { Overview, History }
+
+    private sealed record TabDef(CountryTab Key, string Label, string Icon);
+
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(CountryTab.Overview, UiStrings.Common.Overview, "dashboard");
+        if (CanViewAudit)
+            yield return new TabDef(CountryTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -157,6 +257,20 @@
         try
         {
             country = await MasterData.GetCountryAsync(Id);
+            history = [];
+
+            if (CanViewAudit)
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "Country", entityId: Id, pageSize: 25);
+                    history = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    history = [];
+                }
+            }
         }
         catch (ApiException ex)
         {
@@ -215,6 +329,14 @@
         }
     }
 
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
+    }
+
     private bool HasMoreActions(CountryDetail c) =>
         (!c.IsActive && Auth.HasPermission(MasterDataPermissions.CountriesActivate))
         || (c.IsActive && Auth.HasPermission(MasterDataPermissions.CountriesDeactivate));
@@ -232,8 +354,6 @@
         }
     }
 
-    private void GoBack() => Navigation.NavigateTo("/master-data/countries");
-
     private static string ProfileClass(CountryDetail c) =>
         c.IsActive ? "cn-profile--active" : "cn-profile--inactive";
 
@@ -250,4 +370,38 @@
         c.IsActive ? UiStrings.Countries.FormIntro : UiStrings.Countries.ConfirmDeactivate;
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("activ"))
+            return ("check_circle", "green");
+        if (a.Contains("deactiv"))
+            return ("cancel", "red");
+        if (a.Contains("delet"))
+            return ("delete", "red");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
+    }
 }
