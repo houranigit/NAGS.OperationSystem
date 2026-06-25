@@ -16,34 +16,6 @@
     padding: var(--os-space-5);
 }
 
-/* --- Back link ----------------------------------------------------------- */
-.rl-back {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--os-space-1);
-    align-self: flex-start;
-    padding: 0.35rem 0.85rem 0.35rem 0.55rem;
-    border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-pill);
-    background: var(--os-color-surface);
-    color: var(--os-color-text-muted);
-    font-family: inherit;
-    font-size: var(--os-text-sm);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
-}
-
-.rl-back:hover {
-    background: var(--os-color-surface-hover);
-    border-color: var(--os-color-border-strong);
-    color: var(--os-color-text);
-}
-
-.rl-back .rz-icon {
-    font-size: 1.15rem;
-}
-
 /* --- Profile surface (hero + tabs) -------------------------------------- */
 .rl-profile {
     position: relative;

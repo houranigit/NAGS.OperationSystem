@@ -21,11 +21,6 @@
     else if (role is { } r)
     {
         <div class="rl-workspace">
-            <button type="button" class="rl-back" @onclick="GoBack">
-                <RadzenIcon Icon="arrow_back" />
-                <span>@UiStrings.Roles.Title</span>
-            </button>
-
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="rl-profile @ProfileClass(r)">
                 <div class="rl-hero">
@@ -50,10 +45,7 @@
 
                         <div class="rl-meta-row">
                             <RadzenIcon Icon="account_circle" />
-                            <span>@r.CompatibleUserType</span>
-
-                            <RadzenIcon Icon="notes" />
-                            <span>@(string.IsNullOrWhiteSpace(r.Description) ? UiStrings.Roles.NoDescription : r.Description)</span>
+                            <span>@UserTypeLabel(r.CompatibleUserType)</span>
 
                             <RadzenIcon Icon="id_card" />
                             <span>@ShortId(r.Id)</span>
@@ -69,9 +61,9 @@
                         {
                             <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
                         }
-                        @if (!r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesDelete))
+                        @if (HasMoreActions(r))
                         {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.Common.Delete" Icon="delete" Danger="true"
                                            Permission="@IdentityPermissions.RolesDelete" OnClick="@DeleteAsync" />
                             </RowActionMenu>
@@ -96,7 +88,7 @@
                 @(activeTab switch
                 {
                     RoleTab.Permissions => PermissionsTab(r),
-                    RoleTab.Activity => ActivityTab(r),
+                    RoleTab.History => HistoryTab(r),
                     _ => OverviewTab(r)
                 })
             </div>
@@ -188,16 +180,17 @@
                 </RadzenCard>
             </div>
 
-            @* --- Recent activity preview --- *@
+            @* --- History preview --- *@
             <RadzenCard class="rl-card">
                 <div class="rl-card-head">
-                    <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
-                    @if (activity.Count > 0)
+                    <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                    @if (history.Count > 0)
                     {
-                        <button type="button" class="rl-link" @onclick="@(() => activeTab = RoleTab.Activity)">@UiStrings.Common.ViewAll</button>
+                        <button type="button" class="rl-link" @onclick="@(() => activeTab = RoleTab.History)">@UiStrings.Common.ViewAll</button>
                     }
                 </div>
-                @ActivityTimeline(OverviewActivityPreviewCount)
+                <p class="os-muted">@UiStrings.Audit.Description</p>
+                @HistoryTimeline(OverviewHistoryPreviewCount)
             </RadzenCard>
         </div>
     </text>;
@@ -249,23 +242,24 @@
         </div>
     </text>;
 
-    @* ================================================================ Activity *@
-    private RenderFragment ActivityTab(RoleDetail r) =>@<text>
+    @* ================================================================ History *@
+    private RenderFragment HistoryTab(RoleDetail r) =>@<text>
         <RadzenCard class="rl-card">
-            <div class="rl-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
-            @ActivityTimeline()
+            <div class="rl-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
         </RadzenCard>
     </text>;
 
-    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
-        @if (activity.Count == 0)
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
         {
             @TimelineEmpty()
         }
         else
         {
             <ol class="rl-timeline">
-                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
                 {
                     var visual = TimelineVisual(entry.Action);
                     <li class="rl-timeline-row" @key="entry.Id">
@@ -289,7 +283,7 @@
             <span class="rl-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
             <div>
                 <p class="rl-timeline-title">@UiStrings.Common.NoData</p>
-                <p class="os-muted">@UiStrings.Audit.Description</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
             </div>
         </div>
     </text>;
@@ -301,16 +295,16 @@
     private RoleDetail? role;
     private IReadOnlyList<PermissionGroup> catalog = [];
     private HashSet<string> selected = [];
-    private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> activity = [];
+    private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private bool isSaving;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private RoleTab activeTab = RoleTab.Overview;
 
-    private const int OverviewActivityPreviewCount = 4;
+    private const int OverviewHistoryPreviewCount = 4;
 
-    private enum RoleTab { Overview, Permissions, Activity }
+    private enum RoleTab { Overview, Permissions, History }
 
     private sealed record TabDef(RoleTab Key, string Label, string Icon);
 
@@ -321,8 +315,11 @@
         yield return new TabDef(RoleTab.Overview, UiStrings.Common.Overview, "dashboard");
         yield return new TabDef(RoleTab.Permissions, UiStrings.Roles.Permissions, "key");
         if (Auth.HasPermission(AuditPermissions.TrailsView))
-            yield return new TabDef(RoleTab.Activity, UiStrings.Audit.ActivityTitle, "history");
+            yield return new TabDef(RoleTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
+
+    private bool HasMoreActions(RoleDetail r) =>
+        !r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesDelete);
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -338,17 +335,17 @@
             catalog = await Identity.GetPermissionCatalogAsync(role.CompatibleUserType);
             selected = [.. role.Permissions];
 
-            activity = [];
+            history = [];
             if (Auth.HasPermission(AuditPermissions.TrailsView))
             {
                 try
                 {
                     var trails = await AuditApi.GetTrailsAsync(entityType: "Role", entityId: Id, pageSize: 25);
-                    activity = trails.Items;
+                    history = trails.Items;
                 }
                 catch (ApiException)
                 {
-                    activity = [];
+                    history = [];
                 }
             }
         }
@@ -442,8 +439,6 @@
         }
     }
 
-    private void GoBack() => Navigation.NavigateTo("/roles");
-
     private static string ProfileClass(RoleDetail r) =>
         r.IsSystem ? "rl-profile--system" : "rl-profile--custom";
 
@@ -508,6 +503,14 @@
         var lastDot = permission.LastIndexOf('.');
         return lastDot >= 0 && lastDot < permission.Length - 1 ? permission[(lastDot + 1)..] : permission;
     }
+
+    private static string UserTypeLabel(string userType) => userType switch
+    {
+        UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.StationStaff => UiStrings.Users.TypeStationStaff,
+        UserTypes.CustomerContact => UiStrings.Users.TypeCustomerContact,
+        _ => userType
+    };
 
     private static string Initials(string? name)
     {
