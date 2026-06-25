@@ -15,41 +15,13 @@
     padding: var(--os-space-5);
 }
 
-/* --- Back link ----------------------------------------------------------- */
-.st-back {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--os-space-1);
-    align-self: flex-start;
-    padding: 0.35rem 0.85rem 0.35rem 0.55rem;
-    border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radist-pill);
-    background: var(--os-color-surface);
-    color: var(--os-color-text-muted);
-    font-family: inherit;
-    font-size: var(--os-text-sm);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
-}
-
-.st-back:hover {
-    background: var(--os-color-surface-hover);
-    border-color: var(--os-color-border-strong);
-    color: var(--os-color-text);
-}
-
-.st-back .rz-icon {
-    font-size: 1.15rem;
-}
-
 /* --- Profile surface (hero + tabs) -------------------------------------- */
 .st-profile {
     position: relative;
     overflow: hidden;
     background: var(--os-color-surface);
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radist-lg);
+    border-radius: var(--os-radius-lg);
     box-shadow: var(--os-shadow-sm);
 }
 
@@ -88,7 +60,7 @@
     width: 5.5rem;
     height: 5.5rem;
     flex-shrink: 0;
-    border-radius: var(--os-radist-lg);
+    border-radius: var(--os-radius-lg);
     font-size: var(--os-text-2xl);
     font-weight: 800;
 }
@@ -149,7 +121,7 @@
     align-items: center;
     gap: var(--os-space-1);
     padding: 0.2rem 0.65rem;
-    border-radius: var(--os-radist-pill);
+    border-radius: var(--os-radius-pill);
     background: var(--os-color-info-bg);
     color: var(--os-color-info);
     font-size: var(--os-text-xs);
@@ -180,7 +152,7 @@
     width: 1.6rem;
     height: 1.6rem;
     border: none;
-    border-radius: var(--os-radist-sm);
+    border-radius: var(--os-radius-sm);
     background: transparent;
     color: var(--os-color-text-subtle);
     cursor: pointer;
@@ -401,7 +373,7 @@
     width: 2.5rem;
     height: 2.5rem;
     flex-shrink: 0;
-    border-radius: var(--os-radist-md);
+    border-radius: var(--os-radius-md);
 }
 
 .st-lead-icon--blue {
@@ -510,8 +482,14 @@
 .st-timeline-icon--red { background: var(--os-color-danger-bg); color: var(--os-color-danger); }
 
 .st-timeline-content {
+    flex: 1 1 auto;
     padding-top: 0.35rem;
     min-width: 0;
+}
+
+.st-timeline-view {
+    flex: 0 0 auto;
+    align-self: flex-start;
 }
 
 .st-timeline-title {
@@ -535,7 +513,7 @@
     gap: var(--os-space-4);
     padding: var(--os-space-5);
     border: 1px dashed var(--os-color-border-strong);
-    border-radius: var(--os-radist-md);
+    border-radius: var(--os-radius-md);
     background: var(--os-color-surface-muted);
 }
 
@@ -554,4 +532,11 @@
         font-size: 1.6rem;
     }
 
+    .st-timeline-row {
+        flex-wrap: wrap;
+    }
+
+    .st-timeline-view {
+        margin-inline-start: 3.25rem;
+    }
 }

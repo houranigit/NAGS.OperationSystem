@@ -5,8 +5,9 @@
 @inject NavigationManager Navigation
 @inject AuthSession Auth
 @inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
-<PageTitle>@(item?.Code ?? UiStrings.Licenses.Title)</PageTitle>
+<PageTitle>@(item?.Name ?? UiStrings.Licenses.Title)</PageTitle>
 
 <RequirePermission Permission="@MasterDataPermissions.LicensesView">
     @if (isLoading)
@@ -20,12 +21,6 @@
     else if (item is { } l)
     {
         <div class="lc-workspace">
-            <button type="button" class="lc-back" @onclick="GoBack">
-                <RadzenIcon Icon="arrow_back" />
-                <span>@UiStrings.Licenses.Title</span>
-            </button>
-
-            @* ---- Profile (hero only) ------------------------------------- *@
             <section class="lc-profile @ProfileClass(l)">
                 <div class="lc-hero">
                     <div class="lc-avatar @AvatarClass(l)">
@@ -48,8 +43,8 @@
                         </div>
 
                         <div class="lc-meta-row">
-                            <RadzenIcon Icon="notes" />
-                            <span>@(string.IsNullOrWhiteSpace(l.Description) ? UiStrings.Licenses.NoDescription : l.Description)</span>
+                            <RadzenIcon Icon="tag" />
+                            <span>@l.Code</span>
 
                             <RadzenIcon Icon="id_card" />
                             <span>@ShortId(l.Id)</span>
@@ -67,7 +62,7 @@
                         }
                         @if (HasMoreActions(l))
                         {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.Licenses.Activate" Icon="check_circle"
                                            Permission="@MasterDataPermissions.LicensesActivate"
                                            Visible="@(!l.IsActive)" OnClick="@ActivateAsync" />
@@ -78,77 +73,175 @@
                         }
                     </div>
                 </div>
+
+                <nav class="lc-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="lc-tab @(activeTab == tab.Key ? "lc-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
             </section>
 
-            @* ---- Overview (tab-body stack) ------------------------------- *@
             <div class="lc-tab-body" role="tabpanel">
-                <div class="lc-stack">
-                    <div class="lc-overview-grid">
-                        @* --- Status --- *@
-                        <RadzenCard class="lc-card">
-                            <div class="lc-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.Licenses.Status</h3></div>
-                            <div class="lc-lead">
-                                <span class="lc-lead-dot lc-lead-dot--@StatusToneColor(l)"></span>
-                                <div>
-                                    <p class="lc-lead-title">@(l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)</p>
-                                    <p class="os-muted lc-lead-desc">@StatusDescription(l)</p>
-                                </div>
-                            </div>
-                            <dl class="lc-metrics">
-                                <div class="lc-metric">
-                                    <dt>@UiStrings.Licenses.Created</dt>
-                                    <dd>@l.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
-                                </div>
-                                <div class="lc-metric">
-                                    <dt>@UiStrings.Licenses.Updated</dt>
-                                    <dd>@(l.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
-                                </div>
-                            </dl>
-                        </RadzenCard>
-
-                        @* --- Details --- *@
-                        <RadzenCard class="lc-card">
-                            <div class="lc-card-head"><RadzenIcon Icon="badge" /><h3>@UiStrings.Common.Details</h3></div>
-                            <div class="lc-lead">
-                                <span class="lc-lead-icon lc-lead-icon--blue"><RadzenIcon Icon="badge" /></span>
-                                <div>
-                                    <p class="lc-lead-title">@l.Name</p>
-                                    <p class="os-muted lc-lead-desc">@l.Code</p>
-                                </div>
-                            </div>
-                            <dl class="lc-metrics lc-metrics--tall">
-                                <div class="lc-metric">
-                                    <dt>@UiStrings.Licenses.Code</dt>
-                                    <dd>@l.Code</dd>
-                                </div>
-                                <div class="lc-metric">
-                                    <dt>@UiStrings.Licenses.Name</dt>
-                                    <dd>@l.Name</dd>
-                                </div>
-                                <div class="lc-metric">
-                                    <dt>@UiStrings.Licenses.LicenseDescription</dt>
-                                    <dd>@(string.IsNullOrWhiteSpace(l.Description) ? UiStrings.Licenses.NoDescription : l.Description)</dd>
-                                </div>
-                                <div class="lc-metric">
-                                    <dt>@UiStrings.Licenses.Status</dt>
-                                    <dd>@(l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)</dd>
-                                </div>
-                            </dl>
-                        </RadzenCard>
-                    </div>
-                </div>
+                @(activeTab switch
+                {
+                    LicenseTab.History => HistoryTab(l),
+                    _ => OverviewTab(l)
+                })
             </div>
         </div>
     }
 </RequirePermission>
 
 @code {
+    private RenderFragment OverviewTab(LicenseDetail l) =>@<text>
+        <div class="lc-stack">
+            <div class="lc-overview-grid">
+                <RadzenCard class="lc-card">
+                    <div class="lc-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.Licenses.Status</h3></div>
+                    <div class="lc-lead">
+                        <span class="lc-lead-dot lc-lead-dot--@StatusToneColor(l)"></span>
+                        <div>
+                            <p class="lc-lead-title">@(l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)</p>
+                            <p class="os-muted lc-lead-desc">@StatusDescription(l)</p>
+                        </div>
+                    </div>
+                    <dl class="lc-metrics">
+                        <div class="lc-metric">
+                            <dt>@UiStrings.Licenses.Created</dt>
+                            <dd>@l.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="lc-metric">
+                            <dt>@UiStrings.Licenses.Updated</dt>
+                            <dd>@(l.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                <RadzenCard class="lc-card">
+                    <div class="lc-card-head"><RadzenIcon Icon="badge" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="lc-lead">
+                        <span class="lc-lead-icon lc-lead-icon--blue"><RadzenIcon Icon="badge" /></span>
+                        <div>
+                            <p class="lc-lead-title">@l.Name</p>
+                            <p class="os-muted lc-lead-desc">@l.Code</p>
+                        </div>
+                    </div>
+                    <dl class="lc-metrics lc-metrics--tall">
+                        <div class="lc-metric">
+                            <dt>@UiStrings.Licenses.Code</dt>
+                            <dd>@l.Code</dd>
+                        </div>
+                        <div class="lc-metric">
+                            <dt>@UiStrings.Licenses.Name</dt>
+                            <dd>@l.Name</dd>
+                        </div>
+                        <div class="lc-metric">
+                            <dt>@UiStrings.Licenses.LicenseDescription</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(l.Description) ? UiStrings.Licenses.NoDescription : l.Description)</dd>
+                        </div>
+                        <div class="lc-metric">
+                            <dt>@UiStrings.Licenses.Status</dt>
+                            <dd>@(l.IsActive ? UiStrings.Licenses.Active : UiStrings.Licenses.Inactive)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+            </div>
+
+            @if (CanViewAudit)
+            {
+                <RadzenCard class="lc-card">
+                    <div class="lc-card-head">
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
+                        {
+                            <button type="button" class="lc-link" @onclick="@(() => activeTab = LicenseTab.History)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    <p class="os-muted">@UiStrings.Audit.Description</p>
+                    @HistoryTimeline(OverviewHistoryPreviewCount)
+                </RadzenCard>
+            }
+        </div>
+    </text>;
+
+    private RenderFragment HistoryTab(LicenseDetail l) =>@<text>
+        <RadzenCard class="lc-card">
+            <div class="lc-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="lc-timeline">
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="lc-timeline-row" @key="entry.Id">
+                        <span class="lc-timeline-icon lc-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="lc-timeline-content">
+                            <p class="lc-timeline-title">@entry.Action</p>
+                            <p class="os-muted lc-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="lc-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="lc-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="lc-timeline-empty">
+            <span class="lc-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="lc-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
+            </div>
+        </div>
+    </text>;
+}
+
+@code {
     [Parameter] public Guid Id { get; set; }
 
     private LicenseDetail? item;
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
+    private LicenseTab activeTab = LicenseTab.Overview;
+
+    private const int OverviewHistoryPreviewCount = 4;
+
+    private enum LicenseTab { Overview, History }
+
+    private sealed record TabDef(LicenseTab Key, string Label, string Icon);
+
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(LicenseTab.Overview, UiStrings.Common.Overview, "dashboard");
+        if (CanViewAudit)
+            yield return new TabDef(LicenseTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -161,6 +254,20 @@
         try
         {
             item = await MasterData.GetLicenseAsync(Id);
+            history = [];
+
+            if (CanViewAudit)
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "License", entityId: Id, pageSize: 25);
+                    history = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    history = [];
+                }
+            }
         }
         catch (ApiException ex)
         {
@@ -219,6 +326,14 @@
         }
     }
 
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
+    }
+
     private bool HasMoreActions(LicenseDetail l) =>
         (!l.IsActive && Auth.HasPermission(MasterDataPermissions.LicensesActivate))
         || (l.IsActive && Auth.HasPermission(MasterDataPermissions.LicensesDeactivate));
@@ -236,8 +351,6 @@
         }
     }
 
-    private void GoBack() => Navigation.NavigateTo("/master-data/licenses");
-
     private static string ProfileClass(LicenseDetail l) =>
         l.IsActive ? "lc-profile--active" : "lc-profile--inactive";
 
@@ -254,4 +367,38 @@
         l.IsActive ? UiStrings.Licenses.FormIntro : UiStrings.Licenses.ConfirmDeactivate;
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("activ"))
+            return ("check_circle", "green");
+        if (a.Contains("deactiv"))
+            return ("cancel", "red");
+        if (a.Contains("delet"))
+            return ("delete", "red");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
+    }
 }

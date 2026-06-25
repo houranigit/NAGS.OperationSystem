@@ -21,11 +21,6 @@
     else if (item is { } c)
     {
         <div class="cu-workspace">
-            <button type="button" class="cu-back" @onclick="GoBack">
-                <RadzenIcon Icon="arrow_back" />
-                <span>@UiStrings.Customers.Title</span>
-            </button>
-
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="cu-profile @ProfileClass(c)">
                 <div class="cu-hero">
@@ -78,7 +73,7 @@
                         }
                         @if (HasMoreActions(c))
                         {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.Customers.Activate" Icon="check_circle"
                                            Permission="@MasterDataPermissions.CustomersActivate"
                                            Visible="@(!c.IsActive)" OnClick="@ActivateAsync" />
@@ -109,7 +104,7 @@
                     CustomerTab.Overview => OverviewTab(c),
                     CustomerTab.Address => AddressTab(c),
                     CustomerTab.Contacts => ContactsTab(c),
-                    CustomerTab.Activity => ActivityTab(c),
+                    CustomerTab.History => HistoryTab(c),
                     _ => OverviewTab(c)
                 })
             </div>
@@ -201,18 +196,18 @@
                 </RadzenCard>
             </div>
 
-            @* --- Recent activity preview --- *@
-            @if (Auth.HasPermission(AuditPermissions.TrailsView))
+            @if (CanViewAudit)
             {
                 <RadzenCard class="cu-card">
                     <div class="cu-card-head">
-                        <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
-                        @if (activity.Count > 0)
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
                         {
-                            <button type="button" class="cu-link" @onclick="@(() => activeTab = CustomerTab.Activity)">@UiStrings.Common.ViewAll</button>
+                            <button type="button" class="cu-link" @onclick="@(() => activeTab = CustomerTab.History)">@UiStrings.Common.ViewAll</button>
                         }
                     </div>
-                    @ActivityTimeline(OverviewActivityPreviewCount)
+                    <p class="os-muted">@UiStrings.Audit.Description</p>
+                    @HistoryTimeline(OverviewHistoryPreviewCount)
                 </RadzenCard>
             }
         </div>
@@ -315,23 +310,24 @@
         </RadzenCard>
     </text>;
 
-    @* ================================================================ Activity *@
-    private RenderFragment ActivityTab(CustomerDetail c) =>@<text>
+    @* ================================================================ History *@
+    private RenderFragment HistoryTab(CustomerDetail c) =>@<text>
         <RadzenCard class="cu-card">
-            <div class="cu-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
-            @ActivityTimeline()
+            <div class="cu-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
         </RadzenCard>
     </text>;
 
-    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
-        @if (activity.Count == 0)
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
         {
             @TimelineEmpty()
         }
         else
         {
             <ol class="cu-timeline">
-                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
                 {
                     var visual = TimelineVisual(entry.Action);
                     <li class="cu-timeline-row" @key="entry.Id">
@@ -344,6 +340,9 @@
                                 @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
                         </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="cu-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
                     </li>
                 }
             </ol>
@@ -355,7 +354,7 @@
             <span class="cu-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
             <div>
                 <p class="cu-timeline-title">@UiStrings.Common.NoData</p>
-                <p class="os-muted">@UiStrings.Audit.Description</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
             </div>
         </div>
     </text>;
@@ -365,25 +364,27 @@
     [Parameter] public Guid Id { get; set; }
 
     private CustomerDetail? item;
-    private IReadOnlyList<AuditTrailListItem> activity = [];
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private CustomerTab activeTab = CustomerTab.Overview;
 
-    private const int OverviewActivityPreviewCount = 4;
+    private const int OverviewHistoryPreviewCount = 4;
 
-    private enum CustomerTab { Overview, Address, Contacts, Activity }
+    private enum CustomerTab { Overview, Address, Contacts, History }
 
     private sealed record TabDef(CustomerTab Key, string Label, string Icon);
+
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
 
     private IEnumerable<TabDef> Tabs()
     {
         yield return new TabDef(CustomerTab.Overview, UiStrings.Common.Overview, "dashboard");
         yield return new TabDef(CustomerTab.Address, UiStrings.Customers.TabAddress, "location_on");
         yield return new TabDef(CustomerTab.Contacts, UiStrings.Customers.Contacts, "contacts");
-        if (Auth.HasPermission(AuditPermissions.TrailsView))
-            yield return new TabDef(CustomerTab.Activity, UiStrings.Audit.ActivityTitle, "history");
+        if (CanViewAudit)
+            yield return new TabDef(CustomerTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
 
     private static List<CustomerContactModel> ActiveContacts(CustomerDetail c) =>
@@ -411,17 +412,17 @@
         {
             item = await MasterData.GetCustomerAsync(Id);
 
-            activity = [];
-            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            history = [];
+            if (CanViewAudit)
             {
                 try
                 {
                     var trails = await AuditApi.GetTrailsAsync(entityType: "Customer", entityId: Id, pageSize: 25);
-                    activity = trails.Items;
+                    history = trails.Items;
                 }
                 catch (ApiException)
                 {
-                    activity = [];
+                    history = [];
                 }
             }
         }
@@ -521,6 +522,14 @@
         }
     }
 
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
+    }
+
     private async Task CopyAsync(string value)
     {
         try
@@ -533,8 +542,6 @@
             // Clipboard may be unavailable (e.g. insecure context); fail silently.
         }
     }
-
-    private void GoBack() => Navigation.NavigateTo("/master-data/customers");
 
     private static string ProfileClass(CustomerDetail c) =>
         c.IsActive ? "cu-profile--active" : "cu-profile--inactive";

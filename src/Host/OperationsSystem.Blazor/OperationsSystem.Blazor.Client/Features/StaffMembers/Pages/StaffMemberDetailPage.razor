@@ -5,7 +5,7 @@
 @inject NavigationManager Navigation
 @inject AuthSession Auth
 @inject IJSRuntime JS
-@inject OperationsSystem.Blazor.Client.Api.AuditApiClient AuditApi
+@inject AuditApiClient AuditApi
 
 <PageTitle>@(item?.FullName ?? UiStrings.StaffMembers.Title)</PageTitle>
 
@@ -21,11 +21,6 @@
     else if (item is { } s)
     {
         <div class="sm-workspace">
-            <button type="button" class="sm-back" @onclick="GoBack">
-                <RadzenIcon Icon="arrow_back" />
-                <span>@UiStrings.StaffMembers.Title</span>
-            </button>
-
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="sm-profile @ProfileClass(s)">
                 <div class="sm-hero">
@@ -75,7 +70,7 @@
                         }
                         @if (HasMoreActions(s))
                         {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.StaffMembers.Activate" Icon="check_circle"
                                            Permission="@MasterDataPermissions.StaffMembersActivate"
                                            Visible="@(!s.IsActive)" OnClick="@ActivateAsync" />
@@ -111,7 +106,8 @@
                     StaffTab.Licenses => LicensesTab(s),
                     StaffTab.Schedule => ScheduleTab(s),
                     StaffTab.PortalAccess => PortalAccessTab(s),
-                    _ => ActivityTab(s)
+                    StaffTab.History => HistoryTab(s),
+                    _ => OverviewTab(s)
                 })
             </div>
         </div>
@@ -230,17 +226,20 @@
                 @ScheduleChips(s)
             </RadzenCard>
 
-            @* --- Recent activity preview --- *@
-            <RadzenCard class="sm-card">
-                <div class="sm-card-head">
-                    <RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3>
-                    @if (activity.Count > 0 && Auth.HasPermission(AuditPermissions.TrailsView))
-                    {
-                        <button type="button" class="sm-link" @onclick="@(() => activeTab = StaffTab.Activity)">@UiStrings.Common.ViewAll</button>
-                    }
-                </div>
-                @ActivityTimeline(OverviewActivityPreviewCount)
-            </RadzenCard>
+            @if (CanViewAudit)
+            {
+                <RadzenCard class="sm-card">
+                    <div class="sm-card-head">
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
+                        {
+                            <button type="button" class="sm-link" @onclick="@(() => activeTab = StaffTab.History)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    <p class="os-muted">@UiStrings.Audit.Description</p>
+                    @HistoryTimeline(OverviewHistoryPreviewCount)
+                </RadzenCard>
+            }
         </div>
     </text>;
 
@@ -331,22 +330,23 @@
         </RadzenCard>
     </text>;
 
-    private RenderFragment ActivityTab(StaffMemberDetail s) =>@<text>
+    private RenderFragment HistoryTab(StaffMemberDetail s) =>@<text>
         <RadzenCard class="sm-card">
-            <div class="sm-card-head"><RadzenIcon Icon="history" /><h3>@UiStrings.Audit.ActivityTitle</h3></div>
-            @ActivityTimeline()
+            <div class="sm-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
         </RadzenCard>
     </text>;
 
-    private RenderFragment ActivityTimeline(int? maxItems = null) =>@<text>
-        @if (activity.Count == 0)
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
         {
             @TimelineEmpty()
         }
         else
         {
             <ol class="sm-timeline">
-                @foreach (var entry in maxItems is { } take ? activity.Take(take) : activity)
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
                 {
                     var visual = TimelineVisual(entry.Action);
                     <li class="sm-timeline-row" @key="entry.Id">
@@ -359,6 +359,9 @@
                                 @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
                         </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="sm-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
                     </li>
                 }
             </ol>
@@ -397,7 +400,7 @@
             <span class="sm-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
             <div>
                 <p class="sm-timeline-title">@UiStrings.Common.NoData</p>
-                <p class="os-muted">@UiStrings.Audit.Description</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
             </div>
         </div>
     </text>;
@@ -407,17 +410,19 @@
     [Parameter] public Guid Id { get; set; }
 
     private StaffMemberDetail? item;
-    private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> activity = [];
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private StaffTab activeTab = StaffTab.Overview;
 
-    private const int OverviewActivityPreviewCount = 3;
+    private const int OverviewHistoryPreviewCount = 4;
 
-    private enum StaffTab { Overview, Licenses, Schedule, PortalAccess, Activity }
+    private enum StaffTab { Overview, Licenses, Schedule, PortalAccess, History }
 
     private sealed record TabDef(StaffTab Key, string Label, string Icon);
+
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
 
     private static readonly DayOfWeek[] WeekOrder =
     [
@@ -431,8 +436,8 @@
         yield return new TabDef(StaffTab.Licenses, UiStrings.StaffMembers.TabLicenses, "badge");
         yield return new TabDef(StaffTab.Schedule, UiStrings.StaffMembers.TabSchedule, "calendar_month");
         yield return new TabDef(StaffTab.PortalAccess, UiStrings.StaffMembers.TabPortalAccess, "vpn_key");
-        if (Auth.HasPermission(AuditPermissions.TrailsView))
-            yield return new TabDef(StaffTab.Activity, UiStrings.StaffMembers.TabActivity, "history");
+        if (CanViewAudit)
+            yield return new TabDef(StaffTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
@@ -447,17 +452,17 @@
         {
             item = await MasterData.GetStaffMemberAsync(Id);
 
-            activity = [];
-            if (Auth.HasPermission(AuditPermissions.TrailsView))
+            history = [];
+            if (CanViewAudit)
             {
                 try
                 {
                     var trails = await AuditApi.GetTrailsAsync(entityType: "StaffMember", entityId: Id, pageSize: 25);
-                    activity = trails.Items;
+                    history = trails.Items;
                 }
                 catch (ApiException)
                 {
-                    activity = [];
+                    history = [];
                 }
             }
         }
@@ -535,6 +540,14 @@
         {
             Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
         }
+    }
+
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
     }
 
     private async Task CopyAsync(string value)
@@ -654,6 +667,4 @@
             _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
         };
     }
-
-    private void GoBack() => Navigation.NavigateTo("/master-data/staff-members");
 }

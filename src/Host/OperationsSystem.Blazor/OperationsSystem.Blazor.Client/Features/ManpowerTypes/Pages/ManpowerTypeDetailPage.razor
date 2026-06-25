@@ -5,6 +5,7 @@
 @inject NavigationManager Navigation
 @inject AuthSession Auth
 @inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
 <PageTitle>@(item?.Name ?? UiStrings.ManpowerTypes.Title)</PageTitle>
 
@@ -20,12 +21,6 @@
     else if (item is { } m)
     {
         <div class="mt-workspace">
-            <button type="button" class="mt-back" @onclick="GoBack">
-                <RadzenIcon Icon="arrow_back" />
-                <span>@UiStrings.ManpowerTypes.Title</span>
-            </button>
-
-            @* ---- Profile (hero only) ------------------------------------- *@
             <section class="mt-profile @ProfileClass(m)">
                 <div class="mt-hero">
                     <div class="mt-avatar @AvatarClass(m)">
@@ -47,9 +42,6 @@
                         </div>
 
                         <div class="mt-meta-row">
-                            <RadzenIcon Icon="notes" />
-                            <span>@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</span>
-
                             <RadzenIcon Icon="id_card" />
                             <span>@ShortId(m.Id)</span>
                             <button type="button" class="mt-copy" title="@UiStrings.Users.CopyId"
@@ -66,7 +58,7 @@
                         }
                         @if (HasMoreActions(m))
                         {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions">
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.ManpowerTypes.Activate" Icon="check_circle"
                                            Permission="@MasterDataPermissions.ManpowerTypesActivate"
                                            Visible="@(!m.IsActive)" OnClick="@ActivateAsync" />
@@ -77,73 +69,171 @@
                         }
                     </div>
                 </div>
+
+                <nav class="mt-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="mt-tab @(activeTab == tab.Key ? "mt-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
             </section>
 
-            @* ---- Overview (tab-body stack) ------------------------------- *@
             <div class="mt-tab-body" role="tabpanel">
-                <div class="mt-stack">
-                    <div class="mt-overview-grid">
-                        @* --- Status --- *@
-                        <RadzenCard class="mt-card">
-                            <div class="mt-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.ManpowerTypes.Status</h3></div>
-                            <div class="mt-lead">
-                                <span class="mt-lead-dot mt-lead-dot--@StatusToneColor(m)"></span>
-                                <div>
-                                    <p class="mt-lead-title">@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)</p>
-                                    <p class="os-muted mt-lead-desc">@StatusDescription(m)</p>
-                                </div>
-                            </div>
-                            <dl class="mt-metrics">
-                                <div class="mt-metric">
-                                    <dt>@UiStrings.ManpowerTypes.Created</dt>
-                                    <dd>@m.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
-                                </div>
-                                <div class="mt-metric">
-                                    <dt>@UiStrings.ManpowerTypes.Updated</dt>
-                                    <dd>@(m.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
-                                </div>
-                            </dl>
-                        </RadzenCard>
-
-                        @* --- Details --- *@
-                        <RadzenCard class="mt-card">
-                            <div class="mt-card-head"><RadzenIcon Icon="engineering" /><h3>@UiStrings.Common.Details</h3></div>
-                            <div class="mt-lead">
-                                <span class="mt-lead-icon mt-lead-icon--blue"><RadzenIcon Icon="engineering" /></span>
-                                <div>
-                                    <p class="mt-lead-title">@m.Name</p>
-                                    <p class="os-muted mt-lead-desc">@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</p>
-                                </div>
-                            </div>
-                            <dl class="mt-metrics mt-metrics--tall">
-                                <div class="mt-metric">
-                                    <dt>@UiStrings.ManpowerTypes.Name</dt>
-                                    <dd>@m.Name</dd>
-                                </div>
-                                <div class="mt-metric">
-                                    <dt>@UiStrings.ManpowerTypes.ManpowerDescription</dt>
-                                    <dd>@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</dd>
-                                </div>
-                                <div class="mt-metric">
-                                    <dt>@UiStrings.ManpowerTypes.Status</dt>
-                                    <dd>@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)</dd>
-                                </div>
-                            </dl>
-                        </RadzenCard>
-                    </div>
-                </div>
+                @(activeTab switch
+                {
+                    ManpowerTypeTab.History => HistoryTab(m),
+                    _ => OverviewTab(m)
+                })
             </div>
         </div>
     }
 </RequirePermission>
 
 @code {
+    private RenderFragment OverviewTab(ManpowerTypeDetail m) =>@<text>
+        <div class="mt-stack">
+            <div class="mt-overview-grid">
+                <RadzenCard class="mt-card">
+                    <div class="mt-card-head"><RadzenIcon Icon="toggle_on" /><h3>@UiStrings.ManpowerTypes.Status</h3></div>
+                    <div class="mt-lead">
+                        <span class="mt-lead-dot mt-lead-dot--@StatusToneColor(m)"></span>
+                        <div>
+                            <p class="mt-lead-title">@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)</p>
+                            <p class="os-muted mt-lead-desc">@StatusDescription(m)</p>
+                        </div>
+                    </div>
+                    <dl class="mt-metrics">
+                        <div class="mt-metric">
+                            <dt>@UiStrings.ManpowerTypes.Created</dt>
+                            <dd>@m.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="mt-metric">
+                            <dt>@UiStrings.ManpowerTypes.Updated</dt>
+                            <dd>@(m.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                <RadzenCard class="mt-card">
+                    <div class="mt-card-head"><RadzenIcon Icon="engineering" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="mt-lead">
+                        <span class="mt-lead-icon mt-lead-icon--blue"><RadzenIcon Icon="engineering" /></span>
+                        <div>
+                            <p class="mt-lead-title">@m.Name</p>
+                            <p class="os-muted mt-lead-desc">@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</p>
+                        </div>
+                    </div>
+                    <dl class="mt-metrics mt-metrics--tall">
+                        <div class="mt-metric">
+                            <dt>@UiStrings.ManpowerTypes.Name</dt>
+                            <dd>@m.Name</dd>
+                        </div>
+                        <div class="mt-metric">
+                            <dt>@UiStrings.ManpowerTypes.ManpowerDescription</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(m.Description) ? UiStrings.ManpowerTypes.NoDescription : m.Description)</dd>
+                        </div>
+                        <div class="mt-metric">
+                            <dt>@UiStrings.ManpowerTypes.Status</dt>
+                            <dd>@(m.IsActive ? UiStrings.ManpowerTypes.Active : UiStrings.ManpowerTypes.Inactive)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+            </div>
+
+            @if (CanViewAudit)
+            {
+                <RadzenCard class="mt-card">
+                    <div class="mt-card-head">
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
+                        {
+                            <button type="button" class="mt-link" @onclick="@(() => activeTab = ManpowerTypeTab.History)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    <p class="os-muted">@UiStrings.Audit.Description</p>
+                    @HistoryTimeline(OverviewHistoryPreviewCount)
+                </RadzenCard>
+            }
+        </div>
+    </text>;
+
+    private RenderFragment HistoryTab(ManpowerTypeDetail m) =>@<text>
+        <RadzenCard class="mt-card">
+            <div class="mt-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="mt-timeline">
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="mt-timeline-row" @key="entry.Id">
+                        <span class="mt-timeline-icon mt-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="mt-timeline-content">
+                            <p class="mt-timeline-title">@entry.Action</p>
+                            <p class="os-muted mt-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="mt-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="mt-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="mt-timeline-empty">
+            <span class="mt-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="mt-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
+            </div>
+        </div>
+    </text>;
+}
+
+@code {
     [Parameter] public Guid Id { get; set; }
 
     private ManpowerTypeDetail? item;
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
+    private ManpowerTypeTab activeTab = ManpowerTypeTab.Overview;
+
+    private const int OverviewHistoryPreviewCount = 4;
+
+    private enum ManpowerTypeTab { Overview, History }
+
+    private sealed record TabDef(ManpowerTypeTab Key, string Label, string Icon);
+
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(ManpowerTypeTab.Overview, UiStrings.Common.Overview, "dashboard");
+        if (CanViewAudit)
+            yield return new TabDef(ManpowerTypeTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -156,6 +246,20 @@
         try
         {
             item = await MasterData.GetManpowerTypeAsync(Id);
+            history = [];
+
+            if (CanViewAudit)
+            {
+                try
+                {
+                    var trails = await AuditApi.GetTrailsAsync(entityType: "ManpowerType", entityId: Id, pageSize: 25);
+                    history = trails.Items;
+                }
+                catch (ApiException)
+                {
+                    history = [];
+                }
+            }
         }
         catch (ApiException ex)
         {
@@ -214,6 +318,14 @@
         }
     }
 
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
+    }
+
     private bool HasMoreActions(ManpowerTypeDetail m) =>
         (!m.IsActive && Auth.HasPermission(MasterDataPermissions.ManpowerTypesActivate))
         || (m.IsActive && Auth.HasPermission(MasterDataPermissions.ManpowerTypesDeactivate));
@@ -231,8 +343,6 @@
         }
     }
 
-    private void GoBack() => Navigation.NavigateTo("/master-data/manpower-types");
-
     private static string ProfileClass(ManpowerTypeDetail m) =>
         m.IsActive ? "mt-profile--active" : "mt-profile--inactive";
 
@@ -249,4 +359,38 @@
         m.IsActive ? UiStrings.ManpowerTypes.FormIntro : UiStrings.ManpowerTypes.ConfirmDeactivate;
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("activ"))
+            return ("check_circle", "green");
+        if (a.Contains("deactiv"))
+            return ("cancel", "red");
+        if (a.Contains("delet"))
+            return ("delete", "red");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
+    }
 }
