@@ -181,43 +181,76 @@
     </div>;
 
     private RenderFragment DetailsFields() =>@<section class="stf-step-content">
-        @if (StationId is null)
-        {
-            <div class="stf-step-heading">
-                <h3>@UiStrings.Stations.StepDetails</h3>
-                <p>@UiStrings.Stations.FormIntro</p>
-            </div>
-        }
-        else
+        @if (StationId is not null)
         {
             <p class="stf-intro os-muted">@UiStrings.Stations.FormIntro</p>
         }
 
+        @if (StationId is null)
+        {
+            <div class="stf-feature-heading">
+                <div class="stf-feature-icon"><RadzenIcon Icon="corporate_fare" /></div>
+                <div>
+                    <h3>@UiStrings.Stations.StepDetails</h3>
+                    <p>@UiStrings.Stations.FormIntro</p>
+                </div>
+            </div>
+        }
+
+        <div class="stf-section-line">
+            <RadzenIcon Icon="flight_takeoff" />
+            <span>Airport codes</span>
+        </div>
+
         <div class="stf-grid-2">
             <div class="stf-field-block">
-                <label class="stf-label">@UiStrings.Stations.IataCode <span class="stf-required">*</span></label>
-                <RadzenTextBox @bind-Value="model.IataCode" class="stf-control" MaxLength="3" Placeholder="e.g. JFK" />
+                <label class="stf-label">@UiStrings.Stations.IataCode <span class="stf-required">*</span> <RadzenIcon Icon="help_outline" /></label>
+                <div class="stf-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="stf-field-icon" />
+                    <RadzenTextBox @bind-Value="model.IataCode" class="stf-control stf-control-icon" MaxLength="3" Placeholder="e.g. JFK" />
+                </div>
+                <span class="stf-field-help">3 letters (e.g. JFK)</span>
             </div>
             <div class="stf-field-block">
-                <label class="stf-label">@UiStrings.Stations.IcaoCode</label>
-                <RadzenTextBox @bind-Value="model.IcaoCode" class="stf-control" MaxLength="4" Placeholder="e.g. KJFK" />
+                <label class="stf-label">@UiStrings.Stations.IcaoCode <RadzenIcon Icon="help_outline" /></label>
+                <div class="stf-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="stf-field-icon" />
+                    <RadzenTextBox @bind-Value="model.IcaoCode" class="stf-control stf-control-icon" MaxLength="4" Placeholder="e.g. KJFK" />
+                </div>
+                <span class="stf-field-help">4 letters (e.g. KJFK)</span>
             </div>
+        </div>
+
+        <div class="stf-section-line">
+            <RadzenIcon Icon="business" />
+            <span>Station information</span>
         </div>
 
         <div class="stf-field-block">
             <label class="stf-label">@UiStrings.Stations.Name <span class="stf-required">*</span></label>
-            <RadzenTextBox @bind-Value="model.Name" class="stf-control" MaxLength="150" Placeholder="e.g. John F. Kennedy International Airport" />
+            <div class="stf-input-wrap">
+                <RadzenIcon Icon="business" class="stf-field-icon" />
+                <RadzenTextBox @bind-Value="model.Name" class="stf-control stf-control-icon" MaxLength="150" Placeholder="e.g. John F. Kennedy International Airport" />
+            </div>
         </div>
 
-        <div class="stf-field-block">
-            <label class="stf-label">@UiStrings.Stations.City <span class="stf-required">*</span></label>
-            <RadzenTextBox @bind-Value="model.City" class="stf-control" MaxLength="100" Placeholder="e.g. New York" />
-        </div>
+        <div class="stf-grid-2">
+            <div class="stf-field-block">
+                <label class="stf-label">@UiStrings.Stations.City <span class="stf-required">*</span></label>
+                <div class="stf-input-wrap">
+                    <RadzenIcon Icon="location_on" class="stf-field-icon" />
+                    <RadzenTextBox @bind-Value="model.City" class="stf-control stf-control-icon" MaxLength="100" Placeholder="e.g. New York" />
+                </div>
+            </div>
 
-        <div class="stf-field-block">
-            <label class="stf-label">@UiStrings.Stations.Country <span class="stf-required">*</span></label>
-            <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
-                            AllowFiltering="true" Placeholder="@UiStrings.Stations.SelectCountry" class="stf-control" />
+            <div class="stf-field-block">
+                <label class="stf-label">@UiStrings.Stations.Country <span class="stf-required">*</span></label>
+                <div class="stf-input-wrap">
+                    <RadzenIcon Icon="public" class="stf-field-icon" />
+                    <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" Placeholder="@UiStrings.Stations.SelectCountry" class="stf-control stf-control-icon" />
+                </div>
+            </div>
         </div>
 
         @if (StationId is null)
@@ -225,9 +258,10 @@
             <div class="stf-callout">
                 <RadzenIcon Icon="info" />
                 <div>
-                    <strong>@UiStrings.Stations.CodesHelpTitle</strong>
+                    <strong>Need help with airport codes?</strong>
                     <p>@UiStrings.Stations.CodesHelpText</p>
                 </div>
+                <a href="https://www.iata.org/en/publications/directories/code-search/" target="_blank" rel="noopener">Learn more <RadzenIcon Icon="open_in_new" /></a>
             </div>
         }
     </section>;
