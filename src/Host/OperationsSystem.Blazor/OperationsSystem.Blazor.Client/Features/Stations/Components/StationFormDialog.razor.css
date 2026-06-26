@@ -23,8 +23,9 @@
 .stf-stepper {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-block: var(--os-space-2) var(--os-space-6);
     padding-inline: var(--os-space-5);
+    border-bottom: solid 1px #80808036;
+    padding-bottom: 0.75rem;
 }
 
 .stf-step {
