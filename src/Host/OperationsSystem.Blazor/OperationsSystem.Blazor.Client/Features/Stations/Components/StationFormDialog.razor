@@ -186,17 +186,6 @@
             <p class="stf-intro os-muted">@UiStrings.Stations.FormIntro</p>
         }
 
-        @if (StationId is null)
-        {
-            <div class="stf-feature-heading">
-                <div class="stf-feature-icon"><RadzenIcon Icon="corporate_fare" /></div>
-                <div>
-                    <h3>@UiStrings.Stations.StepDetails</h3>
-                    <p>@UiStrings.Stations.FormIntro</p>
-                </div>
-            </div>
-        }
-
         <div class="stf-section-line">
             <RadzenIcon Icon="flight_takeoff" />
             <span>Airport codes</span>
@@ -204,7 +193,7 @@
 
         <div class="stf-grid-2">
             <div class="stf-field-block">
-                <label class="stf-label">@UiStrings.Stations.IataCode <span class="stf-required">*</span> <RadzenIcon Icon="help_outline" /></label>
+                <label class="stf-label">@UiStrings.Stations.IataCode <span class="stf-required">*</span></label>
                 <div class="stf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="stf-field-icon" />
                     <RadzenTextBox @bind-Value="model.IataCode" class="stf-control stf-control-icon" MaxLength="3" Placeholder="e.g. JFK" />
@@ -212,7 +201,7 @@
                 <span class="stf-field-help">3 letters (e.g. JFK)</span>
             </div>
             <div class="stf-field-block">
-                <label class="stf-label">@UiStrings.Stations.IcaoCode <RadzenIcon Icon="help_outline" /></label>
+                <label class="stf-label">@UiStrings.Stations.IcaoCode</label>
                 <div class="stf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="stf-field-icon" />
                     <RadzenTextBox @bind-Value="model.IcaoCode" class="stf-control stf-control-icon" MaxLength="4" Placeholder="e.g. KJFK" />
