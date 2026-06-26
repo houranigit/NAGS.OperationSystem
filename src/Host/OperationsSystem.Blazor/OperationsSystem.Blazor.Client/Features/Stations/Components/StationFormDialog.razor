@@ -3,37 +3,50 @@
 @inject DialogService DialogService
 @inject AuthSession Auth
 
-<div class="stf-form">
+<div class="stf-form @(StationId is null ? "stf-form-create" : "stf-form-edit")">
     @if (StationId is null)
     {
-        <RadzenSteps @bind-SelectedIndex="step" ShowStepsButtons="false">
-            <Steps>
-                <RadzenStepsItem Text="@UiStrings.Stations.StepDetails">
-                    @DetailsFields()
-                </RadzenStepsItem>
-                <RadzenStepsItem Text="@UiStrings.Stations.StepStaff">
-                    @StaffStep()
-                </RadzenStepsItem>
-                <RadzenStepsItem Text="@UiStrings.Stations.StepReview">
-                    @ReviewStep()
-                </RadzenStepsItem>
-            </Steps>
-        </RadzenSteps>
+        @WizardStepper()
+
+        <div class="stf-wizard-body">
+            @if (step == 0)
+            {
+                @DetailsFields()
+            }
+            else if (step == 1)
+            {
+                @StaffStep()
+            }
+            else
+            {
+                @ReviewStep()
+            }
+        </div>
 
         @ErrorBanner()
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="stf-actions">
-            <RadzenButton Text="@UiStrings.Stations.Previous" ButtonStyle="ButtonStyle.Light" Icon="arrow_back"
-                          Click="@(() => step = Math.Max(0, step - 1))" Disabled="@(step == 0)" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+            @if (step == 0)
+            {
                 <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            }
+            else
+            {
+                <RadzenButton Text="@UiStrings.Stations.Previous" ButtonStyle="ButtonStyle.Light" Icon="arrow_back"
+                              Click="@(() => step = Math.Max(0, step - 1))" />
+            }
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                @if (step > 0)
+                {
+                    <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                }
                 @if (step < 2)
                 {
                     <RadzenButton Text="@UiStrings.Stations.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" Click="@NextAsync" />
                 }
                 else
                 {
-                    <RadzenButton Text="@UiStrings.Common.Create" Icon="check" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
+                    <RadzenButton Text="@UiStrings.Stations.CreateTitle" Icon="check" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
                 }
             </RadzenStack>
         </RadzenStack>
@@ -103,72 +116,268 @@
         }
     }
 
-    private RenderFragment DetailsFields() =>@<text>
-        <p class="stf-intro os-muted">@UiStrings.Stations.FormIntro</p>
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.Stations.IataCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenTextBox @bind-Value="model.IataCode" Style="width: 100%;" MaxLength="3" />
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.Stations.IcaoCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <RadzenTextBox @bind-Value="model.IcaoCode" Style="width: 100%;" MaxLength="4" />
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
-        <RadzenFormField Text="@UiStrings.Stations.Name" Variant="Variant.Outlined" Style="width: 100%;">
-            <RadzenTextBox @bind-Value="model.Name" Style="width: 100%;" MaxLength="150" />
-        </RadzenFormField>
-        <RadzenFormField Text="@UiStrings.Stations.City" Variant="Variant.Outlined" Style="width: 100%;">
-            <RadzenTextBox @bind-Value="model.City" Style="width: 100%;" MaxLength="100" />
-        </RadzenFormField>
-        <RadzenFormField Text="@UiStrings.Stations.Country" Variant="Variant.Outlined" Style="width: 100%;">
-            <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" Style="width: 100%;" />
-        </RadzenFormField>
-    </text>;
+    private string CountryDisplay =>
+        countries.FirstOrDefault(c => c.Id == model.CountryId) is { } country
+            ? country.Name
+            : UiStrings.Common.None;
 
-    private RenderFragment StaffStep() =>@<text>
-        <RadzenStack Gap="0.75rem">
+    private string StepLabel(int index) => index switch
+    {
+        0 => UiStrings.Stations.StepDetails,
+        1 => UiStrings.Stations.StepStaff,
+        _ => UiStrings.Stations.StepReview
+    };
+
+    private string StepClass(int index)
+    {
+        var state = index < step ? "complete" : index == step ? "active" : "pending";
+        return $"stf-step stf-step-{state}";
+    }
+
+    private void MoveToStep(int index)
+    {
+        if (index > step)
+            return;
+
+        errorMessage = null;
+        step = index;
+    }
+
+    private void AddStaff()
+    {
+        staff.Add(new StaffRow
+        {
+            ManpowerTypeId = manpowerTypes.FirstOrDefault()?.Id ?? Guid.Empty,
+            PortalRoleId = stationRoles.FirstOrDefault()?.Id
+        });
+    }
+
+    private string ManpowerTypeName(Guid id) =>
+        manpowerTypes.FirstOrDefault(t => t.Id == id)?.Name ?? UiStrings.Common.None;
+
+    private string RoleName(Guid? id) =>
+        id is { } roleId ? stationRoles.FirstOrDefault(r => r.Id == roleId)?.Name ?? UiStrings.Stations.PortalRole : UiStrings.Stations.PortalRole;
+
+    private RenderFragment WizardStepper() =>@<div class="stf-stepper">
+        @for (var i = 0; i < 3; i++)
+        {
+            var index = i;
+            <div class="@StepClass(index)">
+                <button type="button" class="stf-step-button" disabled="@(index > step)" @onclick="@(() => MoveToStep(index))">
+                    <span class="stf-step-node">
+                        @if (index < step)
+                        {
+                            <RadzenIcon Icon="check" />
+                        }
+                        else
+                        {
+                            @((index + 1).ToString())
+                        }
+                    </span>
+                    <span class="stf-step-label">@StepLabel(index)</span>
+                </button>
+            </div>
+        }
+    </div>;
+
+    private RenderFragment DetailsFields() =>@<section class="stf-step-content">
+        @if (StationId is null)
+        {
+            <div class="stf-step-heading">
+                <h3>@UiStrings.Stations.StepDetails</h3>
+                <p>@UiStrings.Stations.FormIntro</p>
+            </div>
+        }
+        else
+        {
+            <p class="stf-intro os-muted">@UiStrings.Stations.FormIntro</p>
+        }
+
+        <div class="stf-grid-2">
+            <div class="stf-field-block">
+                <label class="stf-label">@UiStrings.Stations.IataCode <span class="stf-required">*</span></label>
+                <RadzenTextBox @bind-Value="model.IataCode" class="stf-control" MaxLength="3" Placeholder="e.g. JFK" />
+            </div>
+            <div class="stf-field-block">
+                <label class="stf-label">@UiStrings.Stations.IcaoCode</label>
+                <RadzenTextBox @bind-Value="model.IcaoCode" class="stf-control" MaxLength="4" Placeholder="e.g. KJFK" />
+            </div>
+        </div>
+
+        <div class="stf-field-block">
+            <label class="stf-label">@UiStrings.Stations.Name <span class="stf-required">*</span></label>
+            <RadzenTextBox @bind-Value="model.Name" class="stf-control" MaxLength="150" Placeholder="e.g. John F. Kennedy International Airport" />
+        </div>
+
+        <div class="stf-field-block">
+            <label class="stf-label">@UiStrings.Stations.City <span class="stf-required">*</span></label>
+            <RadzenTextBox @bind-Value="model.City" class="stf-control" MaxLength="100" Placeholder="e.g. New York" />
+        </div>
+
+        <div class="stf-field-block">
+            <label class="stf-label">@UiStrings.Stations.Country <span class="stf-required">*</span></label>
+            <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
+                            AllowFiltering="true" Placeholder="@UiStrings.Stations.SelectCountry" class="stf-control" />
+        </div>
+
+        @if (StationId is null)
+        {
+            <div class="stf-callout">
+                <RadzenIcon Icon="info" />
+                <div>
+                    <strong>@UiStrings.Stations.CodesHelpTitle</strong>
+                    <p>@UiStrings.Stations.CodesHelpText</p>
+                </div>
+            </div>
+        }
+    </section>;
+
+    private RenderFragment StaffStep() =>@<section class="stf-step-content">
+        <div class="stf-step-heading">
+            <h3>@UiStrings.Stations.StepStaff</h3>
+            <p>@UiStrings.Stations.StaffStepIntro</p>
+        </div>
+
+        <div class="stf-staff-list">
             @if (staff.Count == 0)
             {
-                <p class="os-muted">@UiStrings.Stations.NoStaffYet</p>
+                <div class="stf-empty-row">
+                    <RadzenIcon Icon="group_add" />
+                    <span>@UiStrings.Stations.NoStaffYet</span>
+                </div>
             }
+
             @foreach (var row in staff)
             {
-                <RadzenCard @key="row.Key" class="stf-staff-row">
-                    <RadzenRow Gap="0.75rem">
-                        <RadzenColumn Size="4"><RadzenFormField Text="@UiStrings.Stations.StaffName" Variant="Variant.Outlined" Style="width:100%;"><RadzenTextBox @bind-Value="row.FullName" Style="width:100%;" /></RadzenFormField></RadzenColumn>
-                        <RadzenColumn Size="4"><RadzenFormField Text="@UiStrings.Stations.StaffEmail" Variant="Variant.Outlined" Style="width:100%;"><RadzenTextBox @bind-Value="row.Email" Style="width:100%;" /></RadzenFormField></RadzenColumn>
-                        <RadzenColumn Size="4"><RadzenFormField Text="@UiStrings.Stations.ManpowerType" Variant="Variant.Outlined" Style="width:100%;"><RadzenDropDown @bind-Value="row.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" Style="width:100%;" /></RadzenFormField></RadzenColumn>
-                    </RadzenRow>
+                <div @key="row.Key" class="stf-staff-card">
+                    <div class="stf-grid-3">
+                        <div class="stf-field-block">
+                            <label class="stf-label">@UiStrings.Stations.StaffName</label>
+                            <RadzenTextBox @bind-Value="row.FullName" class="stf-control" Placeholder="John Doe" MaxLength="150" />
+                        </div>
+                        <div class="stf-field-block">
+                            <label class="stf-label">@UiStrings.Stations.StaffEmail</label>
+                            <RadzenTextBox @bind-Value="row.Email" class="stf-control" Placeholder="john.doe@example.com" MaxLength="256" />
+                        </div>
+                        <div class="stf-field-block">
+                            <label class="stf-label">@UiStrings.Stations.ManpowerType</label>
+                            <RadzenDropDown @bind-Value="row.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id"
+                                            Placeholder="@UiStrings.Stations.ManpowerType" class="stf-control" />
+                        </div>
+                    </div>
+
                     @if (canGrantPortal)
                     {
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem" class="stf-portal">
-                            <RadzenCheckBox @bind-Value="row.GrantPortal" Name="@($"gp-{row.Key}")" />
-                            <RadzenLabel Text="@UiStrings.Stations.GrantPortal" Component="@($"gp-{row.Key}")" />
+                        <div class="stf-portal">
+                            <div class="stf-check-row">
+                                <RadzenCheckBox @bind-Value="row.GrantPortal" Name="@($"gp-{row.Key}")" />
+                                <RadzenLabel Text="@UiStrings.Stations.GrantPortal" Component="@($"gp-{row.Key}")" />
+                            </div>
                             @if (row.GrantPortal)
                             {
                                 <RadzenDropDown @bind-Value="row.PortalRoleId" Data="@stationRoles" TextProperty="Name" ValueProperty="Id"
-                                                Placeholder="@UiStrings.Stations.PortalRole" Style="min-width: 220px;" />
+                                                Placeholder="@UiStrings.Stations.PortalRole" class="stf-role-select" />
                             }
-                        </RadzenStack>
+                        </div>
                     }
-                    <RadzenButton Text="@UiStrings.Stations.RemoveStaff" Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
-                                  Click="@(() => staff.Remove(row))" />
-                </RadzenCard>
-            }
-            <RadzenButton Text="@UiStrings.Stations.AddStaff" Icon="person_add" ButtonStyle="ButtonStyle.Secondary"
-                          Click="@(() => staff.Add(new StaffRow()))" />
-        </RadzenStack>
-    </text>;
 
-    private RenderFragment ReviewStep() =>@<text>
-        <RadzenStack Gap="0.5rem">
-            <p><strong>@model.IataCode</strong> @model.Name — @model.City</p>
-            <p class="os-muted">@string.Format(UiStrings.Stations.ReviewStaffCount, staff.Count)</p>
-        </RadzenStack>
-    </text>;
+                    <RadzenButton Text="@UiStrings.Stations.RemoveStaff" Icon="delete" ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small" class="stf-remove-button" Click="@(() => staff.Remove(row))" />
+                </div>
+            }
+        </div>
+
+        <RadzenButton Text="@UiStrings.Stations.AddAnotherStaff" Icon="add_circle" ButtonStyle="ButtonStyle.Light"
+                      class="stf-add-staff" Click="@AddStaff" />
+
+        <div class="stf-callout stf-callout-muted">
+            <RadzenIcon Icon="info" />
+            <p>@UiStrings.Stations.StaffLaterHint</p>
+        </div>
+    </section>;
+
+    private RenderFragment ReviewStep() =>@<section class="stf-step-content">
+        <div class="stf-step-heading">
+            <h3>@UiStrings.Stations.ReviewTitle</h3>
+            <p>@UiStrings.Stations.ReviewIntro</p>
+        </div>
+
+        <div class="stf-review-card">
+            <div class="stf-review-card-head">
+                <h4>@UiStrings.Stations.StationInformation</h4>
+                <button type="button" class="stf-edit-step" @onclick="@(() => step = 0)">
+                    <RadzenIcon Icon="edit" />
+                    <span>@UiStrings.Common.Edit</span>
+                </button>
+            </div>
+            <div class="stf-review-grid">
+                <div>
+                    <span>@UiStrings.Stations.IataCode</span>
+                    <strong>@model.IataCode?.Trim().ToUpperInvariant()</strong>
+                </div>
+                <div>
+                    <span>@UiStrings.Stations.Name</span>
+                    <strong>@model.Name</strong>
+                </div>
+                <div>
+                    <span>@UiStrings.Stations.Country</span>
+                    <strong>@CountryDisplay</strong>
+                </div>
+                <div>
+                    <span>@UiStrings.Stations.IcaoCode</span>
+                    <strong>@(string.IsNullOrWhiteSpace(model.IcaoCode) ? UiStrings.Common.None : model.IcaoCode.Trim().ToUpperInvariant())</strong>
+                </div>
+                <div>
+                    <span>@UiStrings.Stations.City</span>
+                    <strong>@model.City</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="stf-review-card">
+            <div class="stf-review-card-head">
+                <h4>@UiStrings.Stations.StaffAssignments (@staff.Count)</h4>
+                <button type="button" class="stf-edit-step" @onclick="@(() => step = 1)">
+                    <RadzenIcon Icon="edit" />
+                    <span>@UiStrings.Common.Edit</span>
+                </button>
+            </div>
+
+            @if (staff.Count == 0)
+            {
+                <p class="stf-review-empty">@UiStrings.Stations.StaffMembersEmpty</p>
+            }
+            else
+            {
+                <div class="stf-review-staff">
+                    <div class="stf-review-staff-head">
+                        <span>@UiStrings.Stations.StaffName</span>
+                        <span>@UiStrings.Stations.StaffEmail</span>
+                        <span>@UiStrings.Stations.ManpowerType</span>
+                    </div>
+                    @foreach (var row in staff)
+                    {
+                        <div class="stf-review-staff-row" @key="row.Key">
+                            <strong>@row.FullName</strong>
+                            <span>@row.Email</span>
+                            <span>
+                                @ManpowerTypeName(row.ManpowerTypeId)
+                                @if (row.GrantPortal)
+                                {
+                                    <span class="stf-portal-badge">@RoleName(row.PortalRoleId)</span>
+                                }
+                            </span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="stf-review-note">
+            <RadzenIcon Icon="lock" />
+            <span>@UiStrings.Stations.ReviewNote</span>
+        </div>
+    </section>;
 
     private RenderFragment ErrorBanner() =>@<text>
         @if (!string.IsNullOrWhiteSpace(errorMessage))

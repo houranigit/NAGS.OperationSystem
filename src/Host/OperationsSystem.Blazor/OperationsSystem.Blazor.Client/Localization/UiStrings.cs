@@ -369,7 +369,7 @@ public static class UiStrings
         public static string Create => UiText.Get("Stations.Create", "New station");
         public static string Empty => UiText.Get("Stations.Empty", "No stations match your filters.");
         public static string CountLabel => UiText.Get("Stations.CountLabel", "stations");
-        public static string SearchPlaceholder => UiText.Get("Stations.SearchPlaceholder", "Search by code, name or city");
+        public static string SearchPlaceholder => UiText.Get("Stations.SearchPlaceholder", "Filter stations");
         public static string IataCode => UiText.Get("Stations.IataCode", "IATA");
         public static string IcaoCode => UiText.Get("Stations.IcaoCode", "ICAO");
         public static string Name => UiText.Get("Stations.Name", "Name");
@@ -401,6 +401,17 @@ public static class UiStrings
         public static string StepDetails => UiText.Get("Stations.StepDetails", "Station details");
         public static string StepStaff => UiText.Get("Stations.StepStaff", "Add staff (optional)");
         public static string StepReview => UiText.Get("Stations.StepReview", "Review & create");
+        public static string SelectCountry => UiText.Get("Stations.SelectCountry", "Select country");
+        public static string CodesHelpTitle => UiText.Get("Stations.CodesHelpTitle", "Not sure about the codes?");
+        public static string CodesHelpText => UiText.Get("Stations.CodesHelpText", "You can confirm IATA and ICAO codes from the official airport code references.");
+        public static string StaffStepIntro => UiText.Get("Stations.StaffStepIntro", "Add staff who will be associated with this station.");
+        public static string AddAnotherStaff => UiText.Get("Stations.AddAnotherStaff", "Add another staff member");
+        public static string StaffLaterHint => UiText.Get("Stations.StaffLaterHint", "You can add staff members later from the staff members section.");
+        public static string ReviewTitle => UiText.Get("Stations.ReviewTitle", "Review your station");
+        public static string ReviewIntro => UiText.Get("Stations.ReviewIntro", "Please review the information below before creating the station.");
+        public static string StationInformation => UiText.Get("Stations.StationInformation", "Station information");
+        public static string StaffAssignments => UiText.Get("Stations.StaffAssignments", "Staff assignments");
+        public static string ReviewNote => UiText.Get("Stations.ReviewNote", "You can review and edit any step before creating the station.");
         public static string Next => UiText.Get("Stations.Next", "Next");
         public static string Previous => UiText.Get("Stations.Previous", "Back");
         public static string AddStaff => UiText.Get("Stations.AddStaff", "Add staff member");

@@ -153,7 +153,8 @@
 
     private async Task OpenCreateAsync()
     {
-        var result = await DialogService.OpenAsync<StationFormDialog>(UiStrings.Stations.CreateTitle);
+        var result = await DialogService.OpenAsync<StationFormDialog>(UiStrings.Stations.CreateTitle,
+            null, new DialogOptions { Width = "760px" });
         if (result is true)
             await ReloadAsync();
     }
@@ -163,7 +164,8 @@
     private async Task OpenEditAsync(StationListItem s)
     {
         var result = await DialogService.OpenAsync<StationFormDialog>(UiStrings.Stations.EditTitle,
-            new Dictionary<string, object?> { [nameof(StationFormDialog.StationId)] = s.Id });
+            new Dictionary<string, object?> { [nameof(StationFormDialog.StationId)] = s.Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await ReloadAsync();

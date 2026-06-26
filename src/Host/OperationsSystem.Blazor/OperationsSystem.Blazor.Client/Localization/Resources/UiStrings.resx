@@ -318,7 +318,7 @@
   <data name="Stations.Create" xml:space="preserve"><value>New station</value></data>
   <data name="Stations.Empty" xml:space="preserve"><value>No stations match your filters.</value></data>
   <data name="Stations.CountLabel" xml:space="preserve"><value>stations</value></data>
-  <data name="Stations.SearchPlaceholder" xml:space="preserve"><value>Search by code, name or city</value></data>
+  <data name="Stations.SearchPlaceholder" xml:space="preserve"><value>Filter stations</value></data>
   <data name="Stations.IataCode" xml:space="preserve"><value>IATA</value></data>
   <data name="Stations.IcaoCode" xml:space="preserve"><value>ICAO</value></data>
   <data name="Stations.Name" xml:space="preserve"><value>Name</value></data>
@@ -350,6 +350,17 @@
   <data name="Stations.StepDetails" xml:space="preserve"><value>Station details</value></data>
   <data name="Stations.StepStaff" xml:space="preserve"><value>Add staff (optional)</value></data>
   <data name="Stations.StepReview" xml:space="preserve"><value>Review &amp; create</value></data>
+  <data name="Stations.SelectCountry" xml:space="preserve"><value>Select country</value></data>
+  <data name="Stations.CodesHelpTitle" xml:space="preserve"><value>Not sure about the codes?</value></data>
+  <data name="Stations.CodesHelpText" xml:space="preserve"><value>You can confirm IATA and ICAO codes from the official airport code references.</value></data>
+  <data name="Stations.StaffStepIntro" xml:space="preserve"><value>Add staff who will be associated with this station.</value></data>
+  <data name="Stations.AddAnotherStaff" xml:space="preserve"><value>Add another staff member</value></data>
+  <data name="Stations.StaffLaterHint" xml:space="preserve"><value>You can add staff members later from the staff members section.</value></data>
+  <data name="Stations.ReviewTitle" xml:space="preserve"><value>Review your station</value></data>
+  <data name="Stations.ReviewIntro" xml:space="preserve"><value>Please review the information below before creating the station.</value></data>
+  <data name="Stations.StationInformation" xml:space="preserve"><value>Station information</value></data>
+  <data name="Stations.StaffAssignments" xml:space="preserve"><value>Staff assignments</value></data>
+  <data name="Stations.ReviewNote" xml:space="preserve"><value>You can review and edit any step before creating the station.</value></data>
   <data name="Stations.Next" xml:space="preserve"><value>Next</value></data>
   <data name="Stations.Previous" xml:space="preserve"><value>Back</value></data>
   <data name="Stations.AddStaff" xml:space="preserve"><value>Add staff member</value></data>

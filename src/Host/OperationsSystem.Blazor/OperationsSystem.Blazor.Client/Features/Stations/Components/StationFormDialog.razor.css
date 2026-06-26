@@ -7,6 +7,96 @@
     display: flex;
     flex-direction: column;
     gap: var(--os-space-4);
+    min-width: min(700px, calc(100vw - 2rem));
+    max-width: 760px;
+}
+
+.stf-form-create {
+    gap: var(--os-space-5);
+}
+
+.stf-wizard-body {
+    min-height: 420px;
+}
+
+.stf-stepper {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-block: var(--os-space-2) var(--os-space-4);
+}
+
+.stf-step {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+}
+
+.stf-step:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset-block-start: 16px;
+    inset-inline-start: calc(50% + 26px);
+    width: calc(100% - 52px);
+    height: 2px;
+    background: var(--os-color-border);
+}
+
+.stf-step-complete:not(:last-child)::after {
+    background: var(--os-color-primary);
+}
+
+.stf-step-button {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--os-color-text-muted);
+    font: inherit;
+    text-align: center;
+}
+
+.stf-step-button:not(:disabled) {
+    cursor: pointer;
+}
+
+.stf-step-node {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    box-shadow: 0 0 0 4px white;
+}
+
+.stf-step-active .stf-step-node,
+.stf-step-complete .stf-step-node {
+    background: var(--os-color-primary);
+    color: white;
+}
+
+.stf-step-label {
+    overflow-wrap: anywhere;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    color: inherit;
+}
+
+.stf-step-active .stf-step-label,
+.stf-step-complete .stf-step-label {
+    color: var(--os-color-primary);
 }
 
 .stf-intro {
@@ -35,4 +125,295 @@
 .stf-form ::deep .rz-form-field-start .rz-icon {
     color: var(--os-color-text-muted);
     font-size: 1.1rem;
+}
+
+.stf-step-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+}
+
+.stf-step-heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-1);
+}
+
+.stf-step-heading h3 {
+    margin: 0;
+    font-size: var(--os-text-lg);
+    font-weight: 700;
+    color: var(--os-color-text);
+}
+
+.stf-step-heading p {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.stf-grid-2,
+.stf-grid-3 {
+    display: grid;
+    gap: var(--os-space-4);
+}
+
+.stf-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stf-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stf-field-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-2);
+    min-width: 0;
+}
+
+.stf-label {
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    color: var(--os-color-text);
+}
+
+.stf-required {
+    color: var(--os-color-danger);
+}
+
+.stf-form ::deep .stf-control,
+.stf-form ::deep .stf-role-select {
+    width: 100%;
+}
+
+.stf-callout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--os-space-3);
+    align-items: start;
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text);
+}
+
+.stf-callout .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 1.2rem;
+}
+
+.stf-callout strong {
+    display: block;
+    margin-block-end: var(--os-space-1);
+    font-size: var(--os-text-sm);
+}
+
+.stf-callout p {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.stf-callout-muted {
+    align-items: center;
+}
+
+.stf-staff-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-3);
+}
+
+.stf-empty-row {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: var(--os-space-4);
+    border: 1px dashed var(--os-color-border);
+    border-radius: 8px;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.stf-empty-row .rz-icon {
+    color: var(--os-color-primary);
+}
+
+.stf-staff-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-3);
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: white;
+    box-shadow: var(--os-shadow-sm);
+}
+
+.stf-portal {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+    flex-wrap: wrap;
+}
+
+.stf-check-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.stf-form ::deep .stf-role-select {
+    min-width: 220px;
+}
+
+.stf-form ::deep .stf-remove-button {
+    align-self: flex-start;
+}
+
+.stf-form ::deep .stf-add-staff {
+    width: 100%;
+    border-style: dashed;
+}
+
+.stf-review-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-3);
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: white;
+}
+
+.stf-review-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-3);
+}
+
+.stf-review-card-head h4 {
+    margin: 0;
+    font-size: var(--os-text-base);
+    font-weight: 700;
+}
+
+.stf-edit-step {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    padding: var(--os-space-1) var(--os-space-2);
+    border: 0;
+    border-radius: 8px;
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text);
+    font: inherit;
+    font-size: var(--os-text-sm);
+    cursor: pointer;
+}
+
+.stf-review-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--os-space-4);
+}
+
+.stf-review-grid div,
+.stf-review-staff-row {
+    min-width: 0;
+}
+
+.stf-review-grid span,
+.stf-review-staff-head {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.stf-review-grid strong,
+.stf-review-staff-row strong,
+.stf-review-staff-row span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--os-text-sm);
+}
+
+.stf-review-staff {
+    display: flex;
+    flex-direction: column;
+}
+
+.stf-review-staff-head,
+.stf-review-staff-row {
+    display: grid;
+    grid-template-columns: 1.1fr 1.2fr 1fr;
+    gap: var(--os-space-3);
+    align-items: center;
+    padding-block: var(--os-space-2);
+    border-block-end: 1px solid var(--os-color-border);
+}
+
+.stf-review-staff-row:last-child {
+    border-block-end: 0;
+}
+
+.stf-portal-badge {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    margin-block-start: var(--os-space-1);
+    padding: 0 var(--os-space-2);
+    border-radius: 999px;
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+    font-size: var(--os-text-xs);
+    font-weight: 700;
+}
+
+.stf-review-empty {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.stf-review-note {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--os-space-2);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.stf-actions {
+    padding-block-start: var(--os-space-2);
+}
+
+@media (max-width: 720px) {
+    .stf-form {
+        min-width: 0;
+    }
+
+    .stf-grid-2,
+    .stf-grid-3,
+    .stf-review-grid,
+    .stf-review-staff-head,
+    .stf-review-staff-row {
+        grid-template-columns: 1fr;
+    }
+
+    .stf-step-label {
+        font-size: var(--os-text-xs);
+    }
+
+    .stf-wizard-body {
+        min-height: 0;
+    }
 }

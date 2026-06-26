@@ -318,7 +318,7 @@
   <data name="Stations.Create" xml:space="preserve"><value>محطة جديدة</value></data>
   <data name="Stations.Empty" xml:space="preserve"><value>لا توجد محطات تطابق عوامل التصفية الخاصة بك.</value></data>
   <data name="Stations.CountLabel" xml:space="preserve"><value>محطات</value></data>
-  <data name="Stations.SearchPlaceholder" xml:space="preserve"><value>البحث عن طريق الرمز أو الاسم أو المدينة</value></data>
+  <data name="Stations.SearchPlaceholder" xml:space="preserve"><value>تصفية المحطات</value></data>
   <data name="Stations.IataCode" xml:space="preserve"><value>IATA</value></data>
   <data name="Stations.IcaoCode" xml:space="preserve"><value>ICAO</value></data>
   <data name="Stations.Name" xml:space="preserve"><value>اسم</value></data>
@@ -350,6 +350,17 @@
   <data name="Stations.StepDetails" xml:space="preserve"><value>تفاصيل المحطة</value></data>
   <data name="Stations.StepStaff" xml:space="preserve"><value>إضافة موظفين (اختياري)</value></data>
   <data name="Stations.StepReview" xml:space="preserve"><value>المراجعة والإنشاء</value></data>
+  <data name="Stations.SelectCountry" xml:space="preserve"><value>اختر الدولة</value></data>
+  <data name="Stations.CodesHelpTitle" xml:space="preserve"><value>لست متأكدًا من الرموز؟</value></data>
+  <data name="Stations.CodesHelpText" xml:space="preserve"><value>يمكنك تأكيد رموز IATA و ICAO من مراجع رموز المطارات الرسمية.</value></data>
+  <data name="Stations.StaffStepIntro" xml:space="preserve"><value>أضف الموظفين الذين سيتم ربطهم بهذه المحطة.</value></data>
+  <data name="Stations.AddAnotherStaff" xml:space="preserve"><value>إضافة موظف آخر</value></data>
+  <data name="Stations.StaffLaterHint" xml:space="preserve"><value>يمكنك إضافة الموظفين لاحقًا من قسم الموظفين.</value></data>
+  <data name="Stations.ReviewTitle" xml:space="preserve"><value>راجع المحطة</value></data>
+  <data name="Stations.ReviewIntro" xml:space="preserve"><value>يرجى مراجعة المعلومات أدناه قبل إنشاء المحطة.</value></data>
+  <data name="Stations.StationInformation" xml:space="preserve"><value>معلومات المحطة</value></data>
+  <data name="Stations.StaffAssignments" xml:space="preserve"><value>تعيينات الموظفين</value></data>
+  <data name="Stations.ReviewNote" xml:space="preserve"><value>يمكنك مراجعة وتعديل أي خطوة قبل إنشاء المحطة.</value></data>
   <data name="Stations.Next" xml:space="preserve"><value>التالي</value></data>
   <data name="Stations.Previous" xml:space="preserve"><value>خلف</value></data>
   <data name="Stations.AddStaff" xml:space="preserve"><value>إضافة موظف</value></data>

@@ -424,7 +424,8 @@
     private async Task OpenEditAsync()
     {
         var result = await DialogService.OpenAsync<StationFormDialog>(UiStrings.Stations.EditTitle,
-            new Dictionary<string, object?> { [nameof(StationFormDialog.StationId)] = Id });
+            new Dictionary<string, object?> { [nameof(StationFormDialog.StationId)] = Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await LoadAsync();
