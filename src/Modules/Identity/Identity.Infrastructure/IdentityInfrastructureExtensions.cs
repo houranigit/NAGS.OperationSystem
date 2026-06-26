@@ -46,6 +46,7 @@ public static class IdentityInfrastructureExtensions
         services.AddScoped<IIdentityDbContext>(sp => sp.GetRequiredService<IdentityDbContext>());
 
         services.TryAddSingleton(TimeProvider.System);
+        services.AddMemoryCache();
         services.AddHttpContextAccessor();
 
         services.AddSingleton<IPasswordHasher, PasswordHasher>();

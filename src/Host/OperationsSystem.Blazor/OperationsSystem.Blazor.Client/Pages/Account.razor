@@ -80,7 +80,7 @@
                             <p class="os-muted">@UiStrings.Account.SessionsDescription</p>
                         </div>
                         <RadzenButton Text="@UiStrings.Account.SignOutOthers" ButtonStyle="ButtonStyle.Light" Icon="devices"
-                                      Disabled="@(sessions is null || sessions.Count <= 1)" Click="@RevokeOthersAsync" />
+                                      Disabled="@(sessionsTotalCount <= 1)" Click="@RevokeOthersAsync" />
                     </RadzenStack>
 
                     @if (sessionsLoading)
@@ -97,7 +97,10 @@
                     }
                     else
                     {
-                        <RadzenDataGrid Data="@sessions" TItem="UserSession" AllowPaging="false" GridLines="DataGridGridLines.Horizontal">
+                        <RadzenDataGrid Data="@sessions" TItem="UserSession" Count="@sessionsTotalCount"
+                                        LoadData="@LoadSessionsDataAsync" AllowPaging="true" PageSize="@sessionsPageSize"
+                                        PageSizeOptions="@PageSizes" ShowPagingSummary="true"
+                                        IsLoading="@sessionsLoading" GridLines="DataGridGridLines.Horizontal">
                             <Columns>
                                 <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
                                     <Template Context="session">
@@ -149,6 +152,10 @@
     private string? passwordError;
 
     private IReadOnlyList<UserSession>? sessions;
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+    private int sessionsTotalCount;
+    private int sessionsPage = 1;
+    private int sessionsPageSize = 10;
     private bool sessionsLoading = true;
     private bool sessionsError;
 
@@ -162,17 +169,34 @@
 
     private async Task LoadSessionsAsync()
     {
+        sessionsPage = 1;
+        await LoadSessionsCoreAsync();
+    }
+
+    private async Task LoadSessionsDataAsync(LoadDataArgs args)
+    {
+        sessionsPageSize = args.Top ?? sessionsPageSize;
+        sessionsPage = ((args.Skip ?? 0) / Math.Max(sessionsPageSize, 1)) + 1;
+        await LoadSessionsCoreAsync();
+    }
+
+    private async Task LoadSessionsCoreAsync()
+    {
         sessionsLoading = true;
         sessionsError = false;
         StateHasChanged();
 
         try
         {
-            sessions = await Identity.GetMySessionsAsync();
+            var result = await Identity.GetMySessionsAsync(sessionsPage, sessionsPageSize);
+            sessions = result.Items;
+            sessionsTotalCount = (int)result.TotalCount;
         }
         catch (ApiException)
         {
             sessionsError = true;
+            sessions = [];
+            sessionsTotalCount = 0;
         }
         finally
         {

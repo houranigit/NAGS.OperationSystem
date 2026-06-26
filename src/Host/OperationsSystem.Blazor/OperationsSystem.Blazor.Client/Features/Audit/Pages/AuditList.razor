@@ -8,11 +8,7 @@
     <div class="os-list-page">
         <PageHeader Title="@UiStrings.Audit.Title" Description="@UiStrings.Audit.Description" />
 
-        @if (isLoading)
-        {
-            <LoadingCard />
-        }
-        else if (loadError)
+        @if (loadError)
         {
             <ErrorState Message="@UiStrings.Errors.LoadFailed" OnRetry="@ReloadAsync" />
         }
@@ -85,6 +81,9 @@
     private async Task ReloadAsync()
     {
         page = 1;
-        await FetchAsync();
+        if (grid is not null)
+            await grid.FirstPage(true);
+        else
+            await FetchAsync();
     }
 }

@@ -43,28 +43,22 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
 
         var total = await query.LongCountAsync(cancellationToken);
 
-        var users = await ApplySort(query, db, request.Sort)
+        var items = await ApplySort(query, db, request.Sort)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(u => new UserListItemDto(
+                u.Id,
+                u.Email.Value,
+                u.DisplayName,
+                u.Status.ToString(),
+                u.LockoutEndUtc != null && u.LockoutEndUtc > now,
+                u.RoleId,
+                db.Roles.Where(r => r.Id == u.RoleId).Select(r => r.Name).FirstOrDefault() ?? string.Empty,
+                u.UserType.ToString(),
+                u.ExternalReferenceId,
+                u.CreatedAtUtc,
+                u.LastLoginAtUtc))
             .ToListAsync(cancellationToken);
-
-        var roleIds = users.Select(u => u.RoleId).Distinct().ToList();
-        var roleNames = await db.Roles.AsNoTracking()
-            .Where(r => roleIds.Contains(r.Id))
-            .ToDictionaryAsync(r => r.Id, r => r.Name, cancellationToken);
-
-        var items = users.Select(u => new UserListItemDto(
-            u.Id,
-            u.Email.Value,
-            u.DisplayName,
-            u.Status.ToString(),
-            u.IsLockedOut(now),
-            u.RoleId,
-            roleNames.GetValueOrDefault(u.RoleId, string.Empty),
-            u.UserType.ToString(),
-            u.ExternalReferenceId,
-            u.CreatedAtUtc,
-            u.LastLoginAtUtc)).ToList();
 
         return new PagedResult<UserListItemDto>(items, page, pageSize, total);
     }

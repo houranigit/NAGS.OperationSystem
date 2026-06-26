@@ -22,9 +22,15 @@ internal static class SessionEndpoints
     {
         var users = group.MapGroup("/users").WithTags("Identity.Sessions");
 
-        users.MapGet("/{id:guid}/sessions", async (Guid id, ISender sender, CancellationToken ct, bool activeOnly = false) =>
+        users.MapGet("/{id:guid}/sessions", async (
+            Guid id,
+            ISender sender,
+            CancellationToken ct,
+            int page = 1,
+            int pageSize = 20,
+            bool activeOnly = false) =>
         {
-            var result = await sender.Send(new GetUserSessionsQuery(id, activeOnly), ct);
+            var result = await sender.Send(new GetUserSessionsQuery(id, page, pageSize, activeOnly), ct);
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Sessions.View);
 
@@ -48,10 +54,15 @@ internal static class SessionEndpoints
     {
         var me = group.MapGroup("/me/sessions").WithTags("Identity.Sessions");
 
-        me.MapGet("/", async (ISender sender, HttpContext http, CancellationToken ct) =>
+        me.MapGet("/", async (
+            ISender sender,
+            HttpContext http,
+            CancellationToken ct,
+            int page = 1,
+            int pageSize = 20) =>
         {
             var token = http.Request.Cookies[AuthCookies.RefreshTokenCookie];
-            var result = await sender.Send(new GetMySessionsQuery(token), ct);
+            var result = await sender.Send(new GetMySessionsQuery(token, page, pageSize), ct);
             return result.ToOk();
         }).RequireAuthorization();
 

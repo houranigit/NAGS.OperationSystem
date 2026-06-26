@@ -116,7 +116,7 @@ builder.Services
         };
 
         // Validate the token against live state (active user, current security stamp, active
-        // session) so credential/role/permission/suspension changes take effect immediately.
+        // session). The validator may cache briefly to avoid a remote DB trip on every API call.
         options.Events = new JwtBearerEvents
         {
             OnTokenValidated = async context =>

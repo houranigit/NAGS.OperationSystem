@@ -111,8 +111,20 @@ public sealed class IdentityApiClient(BrowserApiClient api)
 
     // --- Sessions ----------------------------------------------------------
 
-    public Task<IReadOnlyList<UserSession>> GetUserSessionsAsync(Guid userId, bool activeOnly = false, CancellationToken ct = default) =>
-        api.GetAsync<IReadOnlyList<UserSession>>($"/identity/users/{userId}/sessions?activeOnly={activeOnly.ToString().ToLowerInvariant()}", ct);
+    public Task<PagedResult<UserSession>> GetUserSessionsAsync(
+        Guid userId,
+        int page = 1,
+        int pageSize = 20,
+        bool activeOnly = false,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page)
+            .Add("pageSize", pageSize)
+            .Add("activeOnly", activeOnly.ToString().ToLowerInvariant())
+            .Build();
+        return api.GetAsync<PagedResult<UserSession>>($"/identity/users/{userId}/sessions{query}", ct);
+    }
 
     public Task RevokeUserSessionsAsync(Guid userId, CancellationToken ct = default) =>
         api.PostAsync($"/identity/users/{userId}/sessions/revoke-all", ct);
@@ -120,8 +132,14 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task RevokeSessionAsync(Guid sessionId, CancellationToken ct = default) =>
         api.DeleteAsync($"/identity/sessions/{sessionId}", ct);
 
-    public Task<IReadOnlyList<UserSession>> GetMySessionsAsync(CancellationToken ct = default) =>
-        api.GetAsync<IReadOnlyList<UserSession>>("/identity/me/sessions", ct);
+    public Task<PagedResult<UserSession>> GetMySessionsAsync(int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page)
+            .Add("pageSize", pageSize)
+            .Build();
+        return api.GetAsync<PagedResult<UserSession>>($"/identity/me/sessions{query}", ct);
+    }
 
     public Task RevokeMySessionAsync(Guid sessionId, CancellationToken ct = default) =>
         api.DeleteAsync($"/identity/me/sessions/{sessionId}", ct);

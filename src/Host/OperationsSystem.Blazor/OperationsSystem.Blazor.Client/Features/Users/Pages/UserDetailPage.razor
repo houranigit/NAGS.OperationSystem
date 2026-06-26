@@ -253,33 +253,9 @@
             }
             else
             {
-                var current = sessions.FirstOrDefault(s => s.IsCurrent);
-                var others = sessions.Where(s => !s.IsCurrent).ToList();
-
-                @if (current is { } cur)
-                {
-                    <RadzenCard class="us-card us-current">
-                        <div class="us-current-main">
-                            <span class="us-current-icon"><RadzenIcon Icon="@DeviceIcon(cur.UserAgent)" /></span>
-                            <div class="us-current-body">
-                                <div class="us-current-head">
-                                    <h3>@UiStrings.Sessions.CurrentSession</h3>
-                                    <StatusBadge Label="@UiStrings.Sessions.CurrentDeviceBadge" Tone="success" />
-                                </div>
-                                <p class="us-current-device">@DeviceLabel(cur.UserAgent)</p>
-                                <dl class="us-current-meta">
-                                    <div><dt>@UiStrings.Sessions.IpAddress</dt><dd class="us-mono">@(cur.CreatedByIp ?? UiStrings.Common.None)</dd></div>
-                                    <div><dt>@UiStrings.Sessions.LastActivity</dt><dd>@cur.CreatedAtUtc.ToLocalTime().ToString("g")</dd></div>
-                                    <div><dt>@UiStrings.Sessions.Expires</dt><dd>@cur.ExpiresAtUtc.ToLocalTime().ToString("g")</dd></div>
-                                </dl>
-                            </div>
-                        </div>
-                    </RadzenCard>
-                }
-
                 <RadzenCard class="us-card">
                     <div class="us-card-head">
-                        <RadzenIcon Icon="devices" /><h3>@UiStrings.Sessions.OtherSessions</h3>
+                        <RadzenIcon Icon="devices" /><h3>@UiStrings.Sessions.Title</h3>
                         @if (Auth.HasPermission(IdentityPermissions.SessionsRevoke))
                         {
                             <span class="us-count"></span>
@@ -288,43 +264,46 @@
                         }
                     </div>
 
-                    @if (others.Count == 0)
-                    {
-                        <EmptyState Title="@UiStrings.Sessions.Empty" Description="@UiStrings.Sessions.EmptyHint" Icon="devices" />
-                    }
-                    else
-                    {
-                        <div class="us-table" role="table">
-                            <div class="us-tr us-tr--head" role="row">
-                                <span role="columnheader">@UiStrings.Sessions.Device</span>
-                                <span role="columnheader">@UiStrings.Sessions.IpAddress</span>
-                                <span role="columnheader">@UiStrings.Sessions.LastActivity</span>
-                                <span role="columnheader">@UiStrings.Sessions.State</span>
-                                <span role="columnheader" class="us-td--actions"></span>
-                            </div>
-                            @foreach (var s in others)
-                            {
-                                <div class="us-tr" role="row" @key="s.Id">
-                                    <span role="cell" class="us-td-device" data-label="@UiStrings.Sessions.Device">
+                    <RadzenDataGrid TItem="UserSession" Data="@sessions" Count="@sessionsTotalCount"
+                                    LoadData="@LoadSessionsDataAsync" AllowPaging="true" PageSize="@sessionsPageSize"
+                                    PageSizeOptions="@PageSizes" ShowPagingSummary="true"
+                                    IsLoading="@sessionsLoading" EmptyText="@UiStrings.Sessions.Empty"
+                                    GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
+                                <Template Context="s">
+                                    <span class="us-td-device">
                                         <RadzenIcon Icon="@DeviceIcon(s.UserAgent)" />
                                         <span>@DeviceLabel(s.UserAgent)</span>
-                                    </span>
-                                    <span role="cell" class="us-mono" data-label="@UiStrings.Sessions.IpAddress">@(s.CreatedByIp ?? UiStrings.Common.None)</span>
-                                    <span role="cell" data-label="@UiStrings.Sessions.LastActivity">@s.CreatedAtUtc.ToLocalTime().ToString("g")</span>
-                                    <span role="cell" data-label="@UiStrings.Sessions.State">@SessionBadge(s)</span>
-                                    <span role="cell" class="us-td--actions">
-                                        @if (s.IsActive && Auth.HasPermission(IdentityPermissions.SessionsRevoke))
+                                        @if (s.IsCurrent)
                                         {
-                                            <RowActionMenu>
-                                                <RowAction Text="@UiStrings.Account.RevokeSession" Icon="block" Danger="true"
-                                                           OnClick="@(() => RevokeSessionAsync(s.Id))" />
-                                            </RowActionMenu>
+                                            <StatusBadge Label="@UiStrings.Sessions.CurrentDeviceBadge" Tone="success" />
                                         }
                                     </span>
-                                </div>
-                            }
-                        </div>
-                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.IpAddress" Width="150px">
+                                <Template Context="s"><span class="us-mono">@(s.CreatedByIp ?? UiStrings.Common.None)</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.LastActivity" Width="180px">
+                                <Template Context="s">@s.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="130px">
+                                <Template Context="s">@SessionBadge(s)</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="UserSession" Title="" Width="92px" Sortable="false" TextAlign="TextAlign.End">
+                                <Template Context="s">
+                                    @if (s.IsActive && Auth.HasPermission(IdentityPermissions.SessionsRevoke))
+                                    {
+                                        <RowActionMenu>
+                                            <RowAction Text="@UiStrings.Account.RevokeSession" Icon="block" Danger="true"
+                                                       OnClick="@(() => RevokeSessionAsync(s.Id))" />
+                                        </RowActionMenu>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
                 </RadzenCard>
             }
         </div>
@@ -421,6 +400,10 @@
     private string errorMessage = UiStrings.Errors.LoadFailed;
 
     private IReadOnlyList<UserSession>? sessions;
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+    private int sessionsTotalCount;
+    private int sessionsPage = 1;
+    private int sessionsPageSize = 10;
     private bool sessionsLoading;
     private bool sessionsError;
     private UserTab activeTab = UserTab.Overview;
@@ -431,7 +414,7 @@
 
     private sealed record TabDef(UserTab Key, string Label, string Icon);
 
-    private bool HasActiveSessions => sessions?.Any(s => s.IsActive) ?? false;
+    private bool HasActiveSessions => sessionsTotalCount > 0 || (sessions?.Any(s => s.IsActive) ?? false);
     private int ActiveSessionCount => sessions?.Count(s => s.IsActive) ?? 0;
     private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
 
@@ -467,6 +450,8 @@
             user = await Identity.GetUserAsync(Id);
             roleDetail = null;
             sessions = null;
+            sessionsPage = 1;
+            sessionsTotalCount = 0;
             sessionsLoading = Auth.HasPermission(IdentityPermissions.SessionsView);
             sessionsError = false;
             history = [];
@@ -507,9 +492,18 @@
 
     private async Task LoadSessionsAsync()
     {
+        sessionsPage = 1;
         sessionsLoading = true;
         sessionsError = false;
         StateHasChanged();
+        await LoadSessionsCoreAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadSessionsDataAsync(LoadDataArgs args)
+    {
+        sessionsPageSize = args.Top ?? sessionsPageSize;
+        sessionsPage = ((args.Skip ?? 0) / Math.Max(sessionsPageSize, 1)) + 1;
         await LoadSessionsCoreAsync();
         StateHasChanged();
     }
@@ -519,6 +513,7 @@
         if (!Auth.HasPermission(IdentityPermissions.SessionsView))
         {
             sessions = [];
+            sessionsTotalCount = 0;
             sessionsLoading = false;
             sessionsError = false;
             return;
@@ -528,11 +523,15 @@
         sessionsError = false;
         try
         {
-            sessions = await Identity.GetUserSessionsAsync(Id);
+            var result = await Identity.GetUserSessionsAsync(Id, sessionsPage, sessionsPageSize);
+            sessions = result.Items;
+            sessionsTotalCount = (int)result.TotalCount;
         }
         catch (ApiException)
         {
             sessionsError = true;
+            sessions = [];
+            sessionsTotalCount = 0;
         }
         finally
         {

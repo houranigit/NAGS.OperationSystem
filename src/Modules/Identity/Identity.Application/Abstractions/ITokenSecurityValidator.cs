@@ -3,8 +3,8 @@ namespace Identity.Application.Abstractions;
 /// <summary>
 /// Validates a presented access token against live state on every request: the user must still be
 /// active, the token's security stamp must match the user's current stamp, and the backing session
-/// must still be active. This bounds the lifetime of a token after a password, role, permission,
-/// suspension, or MFA change to the time it takes the next request to arrive.
+/// must still be active. Implementations may cache positive validation briefly so remote database
+/// latency is not paid on every API request.
 /// </summary>
 public interface ITokenSecurityValidator
 {

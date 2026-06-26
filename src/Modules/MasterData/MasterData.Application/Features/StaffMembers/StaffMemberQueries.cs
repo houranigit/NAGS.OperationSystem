@@ -94,8 +94,29 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
     public async Task<Result<StaffMemberDto>> Handle(GetStaffMemberByIdQuery request, CancellationToken cancellationToken)
     {
         var staff = await db.StaffMembers.AsNoTracking()
-            .Include(s => s.Licenses)
-            .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
+            .Where(s => s.Id == request.Id)
+            .Select(s => new
+            {
+                s.Id,
+                s.FullName,
+                s.Email,
+                s.StationId,
+                StationCode = db.Stations.Where(st => st.Id == s.StationId).Select(st => st.IataCode).FirstOrDefault() ?? string.Empty,
+                StationName = db.Stations.Where(st => st.Id == s.StationId).Select(st => st.Name).FirstOrDefault() ?? string.Empty,
+                s.ManpowerTypeId,
+                ManpowerTypeName = db.ManpowerTypes.Where(m => m.Id == s.ManpowerTypeId).Select(m => m.Name).FirstOrDefault() ?? string.Empty,
+                s.EmploymentStartDate,
+                s.EmploymentEndDate,
+                s.WorkingScheduleMask,
+                s.LinkedUserId,
+                s.PortalState,
+                s.PortalFailureReason,
+                s.IsActive,
+                s.CreatedAtUtc,
+                s.UpdatedAtUtc,
+                s.RowVersion
+            })
+            .FirstOrDefaultAsync(cancellationToken);
         if (staff is null)
             return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
 
@@ -103,38 +124,30 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
-        var station = await db.Stations.AsNoTracking()
-            .Where(s => s.Id == staff.StationId)
-            .Select(s => new { s.IataCode, s.Name })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var manpowerTypeName = await db.ManpowerTypes.AsNoTracking()
-            .Where(m => m.Id == staff.ManpowerTypeId)
-            .Select(m => m.Name)
-            .FirstOrDefaultAsync(cancellationToken) ?? string.Empty;
-
-        var licenseIds = staff.Licenses.Select(l => l.LicenseId).ToList();
-        var licenseLookup = await db.Licenses.AsNoTracking()
-            .Where(l => licenseIds.Contains(l.Id))
-            .Select(l => new { l.Id, l.Code, l.Name })
+        var licenses = await (
+            from assignment in db.StaffMemberLicenses.AsNoTracking()
+            join license in db.Licenses.AsNoTracking() on assignment.LicenseId equals license.Id
+            where assignment.StaffMemberId == staff.Id
+            orderby license.Code
+            select new StaffMemberLicenseDto(
+                assignment.Id,
+                assignment.LicenseId,
+                license.Code,
+                license.Name,
+                assignment.LicenseNumber))
             .ToListAsync(cancellationToken);
 
-        var licenses = staff.Licenses
-            .Select(l =>
-            {
-                var info = licenseLookup.FirstOrDefault(x => x.Id == l.LicenseId);
-                return new StaffMemberLicenseDto(l.Id, l.LicenseId, info?.Code ?? string.Empty, info?.Name ?? string.Empty, l.LicenseNumber);
-            })
-            .OrderBy(l => l.LicenseCode)
-            .ToList();
-
-        var contract = staff.EmploymentContract is { } ec ? new EmploymentContractDto(ec.StartDate, ec.EndDate) : null;
-        IReadOnlyList<DayOfWeek>? workingDays = staff.WorkingSchedule?.Days.ToList();
+        var contract = staff.EmploymentStartDate is { } start
+            ? new EmploymentContractDto(start, staff.EmploymentEndDate)
+            : null;
+        IReadOnlyList<DayOfWeek>? workingDays = staff.WorkingScheduleMask is { } mask
+            ? WorkingSchedule.FromMask(mask).Days.ToList()
+            : null;
 
         return new StaffMemberDto(
             staff.Id, staff.FullName, staff.Email,
-            staff.StationId, station?.IataCode ?? string.Empty, station?.Name ?? string.Empty,
-            staff.ManpowerTypeId, manpowerTypeName,
+            staff.StationId, staff.StationCode, staff.StationName,
+            staff.ManpowerTypeId, staff.ManpowerTypeName,
             contract, workingDays, staff.LinkedUserId, staff.PortalState.ToString(), staff.PortalFailureReason, staff.IsActive,
             staff.CreatedAtUtc, staff.UpdatedAtUtc, Convert.ToBase64String(staff.RowVersion),
             licenses);
