@@ -4,22 +4,27 @@
 <div class="cuf-form">
     @if (IsCreate)
     {
-        <RadzenSteps @bind-SelectedIndex="step" ShowStepsButtons="false">
-            <Steps>
-                <RadzenStepsItem Text="@UiStrings.Customers.StepDetails"><div class="cuf-step">@DetailsSection()</div></RadzenStepsItem>
-                <RadzenStepsItem Text="@UiStrings.Customers.StepAddress"><div class="cuf-step">@AddressSection()</div></RadzenStepsItem>
-                <RadzenStepsItem Text="@UiStrings.Customers.StepContacts"><div class="cuf-step">@ContactsSection()</div></RadzenStepsItem>
-                <RadzenStepsItem Text="@UiStrings.Customers.StepReview"><div class="cuf-step">@ReviewSection()</div></RadzenStepsItem>
-            </Steps>
-        </RadzenSteps>
+        @WizardStepper()
+        <div class="cuf-wizard-body">
+            @(step switch { 0 => DetailsSection(), 1 => AddressSection(), 2 => ContactsSection(), _ => ReviewSection() })
+        </div>
 
         @ErrorBanner()
 
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem">
-            <RadzenButton Text="@UiStrings.Customers.Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
-                          Click="@(() => step = Math.Max(0, step - 1))" Disabled="@(step == 0)" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="cuf-actions">
+            @if (step == 0)
+            {
                 <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            }
+            else
+            {
+                <RadzenButton Text="@UiStrings.Customers.Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@Previous" />
+            }
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                @if (step > 0)
+                {
+                    <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                }
                 @if (step < 3)
                 {
                     <RadzenButton Text="@UiStrings.Customers.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" Click="@NextAsync" />
@@ -58,88 +63,62 @@
 
     private bool IsCreate => CustomerId is null;
 
-    private RenderFragment DetailsSection() =>@<text>
-        <div class="cuf-section"><RadzenIcon Icon="business" /><h4>@UiStrings.Common.Details</h4></div>
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="4">
-                <RadzenFormField Text="@UiStrings.Customers.IataCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="tag" /></Start>
-                    <ChildContent><RadzenTextBox @bind-Value="model.IataCode" Name="iataCode" Style="width: 100%;" MaxLength="2" /></ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="4">
-                <RadzenFormField Text="@UiStrings.Customers.IcaoCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="tag" /></Start>
-                    <ChildContent><RadzenTextBox @bind-Value="model.IcaoCode" Name="icaoCode" Style="width: 100%;" MaxLength="3" /></ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="4">
-                <RadzenFormField Text="@UiStrings.Customers.Country" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="public" /></Start>
-                    <ChildContent>
-                        <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
-                                        AllowFiltering="true" Name="country" Style="width: 100%;" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
+    private RenderFragment WizardStepper() =>@<div class="cuf-stepper">
+        @for (var i = 0; i < 4; i++)
+        {
+            var index = i;
+            <div class="@StepClass(index)">
+                <button type="button" class="cuf-step-button" disabled="@(index > step)" @onclick="@(() => MoveToStep(index))">
+                    <span class="cuf-step-node">
+                        @if (index < step) { <RadzenIcon Icon="check" /> }
+                        else { @((index + 1).ToString()) }
+                    </span>
+                    <span class="cuf-step-label">@StepLabel(index)</span>
+                </button>
+            </div>
+        }
+    </div>;
 
-        <RadzenFormField Text="@UiStrings.Customers.Name" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="badge" /></Start>
-            <ChildContent><RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="200" /></ChildContent>
-        </RadzenFormField>
+    private string StepLabel(int index) => index switch
+    {
+        0 => UiStrings.Customers.StepDetails,
+        1 => UiStrings.Customers.StepAddress,
+        2 => UiStrings.Customers.StepContacts,
+        _ => UiStrings.Customers.StepReview
+    };
 
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.Customers.OfficialEmail" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="mail" /></Start>
-                    <ChildContent><RadzenTextBox @bind-Value="model.OfficialEmail" Name="officialEmail" Style="width: 100%;" MaxLength="256" /></ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.Customers.OfficialPhone" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="call" /></Start>
-                    <ChildContent><RadzenTextBox @bind-Value="model.OfficialPhone" Name="officialPhone" Style="width: 100%;" MaxLength="30" /></ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
-    </text>;
+    private string StepClass(int index) => $"cuf-step-item cuf-step-{(index < step ? "complete" : index == step ? "active" : "pending")}";
+    private void MoveToStep(int index) { if (index > step) return; errorMessage = null; step = index; }
+    private void Previous() { errorMessage = null; step = Math.Max(0, step - 1); }
 
-    private RenderFragment AddressSection() =>@<text>
-        <div class="cuf-section"><RadzenIcon Icon="location_on" /><h4>@UiStrings.Customers.Address</h4></div>
-        <RadzenFormField Text="@UiStrings.Customers.AddressLine1" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="home" /></Start>
-            <ChildContent><RadzenTextBox @bind-Value="model.AddressLine1" Name="addressLine1" Style="width: 100%;" MaxLength="200" /></ChildContent>
-        </RadzenFormField>
-        <RadzenFormField Text="@UiStrings.Customers.AddressLine2" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="home" /></Start>
-            <ChildContent><RadzenTextBox @bind-Value="model.AddressLine2" Name="addressLine2" Style="width: 100%;" MaxLength="200" /></ChildContent>
-        </RadzenFormField>
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="4">
-                <RadzenFormField Text="@UiStrings.Customers.City" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="location_city" /></Start>
-                    <ChildContent><RadzenTextBox @bind-Value="model.AddressCity" Name="addressCity" Style="width: 100%;" MaxLength="100" /></ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="4">
-                <RadzenFormField Text="@UiStrings.Customers.Region" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="map" /></Start>
-                    <ChildContent><RadzenTextBox @bind-Value="model.AddressRegion" Name="addressRegion" Style="width: 100%;" MaxLength="100" /></ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="4">
-                <RadzenFormField Text="@UiStrings.Customers.PostalCode" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="local_post_office" /></Start>
-                    <ChildContent><RadzenTextBox @bind-Value="model.AddressPostalCode" Name="addressPostalCode" Style="width: 100%;" MaxLength="20" /></ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
-    </text>;
+    private RenderFragment DetailsSection() =>@<section class="cuf-step-content">
+        <div class="cuf-section-line"><RadzenIcon Icon="business" /><span>@UiStrings.Common.Details</span></div>
+        <div class="cuf-grid-2">
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IataCode <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IataCode" class="cuf-control cuf-control-icon" MaxLength="2" Placeholder="e.g. SV" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IcaoCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IcaoCode" class="cuf-control cuf-control-icon" MaxLength="3" Placeholder="e.g. SVA" /></div></div>
+        </div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Name <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="badge" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.Name" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="e.g. Saudi Arabian Airlines" /></div></div>
+        <div class="cuf-grid-2">
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Country <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="public" class="cuf-field-icon" /><RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="cuf-control cuf-control-icon" Placeholder="@UiStrings.Stations.SelectCountry" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.OfficialPhone</label><div class="cuf-input-wrap"><RadzenIcon Icon="call" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.OfficialPhone" class="cuf-control cuf-control-icon" MaxLength="30" Placeholder="e.g. +966 11 000 0000" /></div></div>
+        </div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.OfficialEmail</label><div class="cuf-input-wrap"><RadzenIcon Icon="mail" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.OfficialEmail" class="cuf-control cuf-control-icon" MaxLength="256" Placeholder="operations@example.com" /></div></div>
+    </section>;
 
-    private RenderFragment ContactsSection() =>@<text>
-        <div class="cuf-section">
-            <RadzenIcon Icon="contacts" /><h4>@UiStrings.Customers.Contacts</h4>
+    private RenderFragment AddressSection() =>@<section class="cuf-step-content">
+        <div class="cuf-section-line"><RadzenIcon Icon="location_on" /><span>@UiStrings.Customers.Address</span></div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.AddressLine1 <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="home" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressLine1" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="Building, street and district" /></div></div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.AddressLine2</label><div class="cuf-input-wrap"><RadzenIcon Icon="home" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressLine2" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="Suite, floor or additional details" /></div></div>
+        <div class="cuf-grid-2">
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.City <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="location_city" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressCity" class="cuf-control cuf-control-icon" MaxLength="100" Placeholder="e.g. Riyadh" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Region</label><div class="cuf-input-wrap"><RadzenIcon Icon="map" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressRegion" class="cuf-control cuf-control-icon" MaxLength="100" Placeholder="e.g. Riyadh Province" /></div></div>
+        </div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.PostalCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="local_post_office" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressPostalCode" class="cuf-control cuf-control-icon" MaxLength="20" Placeholder="e.g. 12345" /></div></div>
+    </section>;
+
+    private RenderFragment ContactsSection() =>@<section class="cuf-step-content">
+        <div class="cuf-section-line cuf-section-line-action">
+            <RadzenIcon Icon="contacts" /><span>@UiStrings.Customers.Contacts</span>
             <div class="cuf-section-actions">
                 <RadzenButton Text="@UiStrings.Customers.AddContact" Icon="person_add" ButtonStyle="ButtonStyle.Light"
                               Size="ButtonSize.Small" Click="@AddContact" />
@@ -148,39 +127,41 @@
 
         @if (contacts.Count(c => !c.Removed) == 0)
         {
-            <p class="cuf-empty os-muted">@UiStrings.Customers.ContactsEmpty</p>
+            <div class="cuf-empty"><RadzenIcon Icon="person_add" /><span>@UiStrings.Customers.ContactsEmpty</span></div>
         }
         else
         {
             <div class="cuf-contacts">
                 @foreach (var contact in contacts.Where(c => !c.Removed))
                 {
-                    <RadzenCard Variant="Variant.Outlined" class="cuf-contact" @key="contact">
-                        <RadzenRow Gap="0.75rem" AlignItems="AlignItems.Center">
-                            <RadzenColumn Size="3"><RadzenTextBox @bind-Value="contact.Name" Placeholder="@UiStrings.Customers.ContactName" Style="width: 100%;" MaxLength="150" /></RadzenColumn>
-                            <RadzenColumn Size="3"><RadzenTextBox @bind-Value="contact.Email" Placeholder="@UiStrings.Customers.ContactEmail" Style="width: 100%;" MaxLength="256" /></RadzenColumn>
-                            <RadzenColumn Size="3"><RadzenTextBox @bind-Value="contact.JobTitle" Placeholder="@UiStrings.Customers.ContactJobTitle" Style="width: 100%;" MaxLength="100" /></RadzenColumn>
-                            <RadzenColumn Size="2"><RadzenTextBox @bind-Value="contact.Phone" Placeholder="@UiStrings.Customers.ContactPhone" Style="width: 100%;" MaxLength="30" /></RadzenColumn>
-                            <RadzenColumn Size="1">
-                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
-                                              Size="ButtonSize.Small" Click="@(() => RemoveContact(contact))" />
-                            </RadzenColumn>
-                        </RadzenRow>
-                    </RadzenCard>
+                    <div class="cuf-contact" @key="contact">
+                        <RadzenTextBox @bind-Value="contact.Name" Placeholder="@UiStrings.Customers.ContactName" class="cuf-control" MaxLength="150" />
+                        <RadzenTextBox @bind-Value="contact.Email" Placeholder="@UiStrings.Customers.ContactEmail" class="cuf-control" MaxLength="256" />
+                        <RadzenTextBox @bind-Value="contact.JobTitle" Placeholder="@UiStrings.Customers.ContactJobTitle" class="cuf-control" MaxLength="100" />
+                        <RadzenTextBox @bind-Value="contact.Phone" Placeholder="@UiStrings.Customers.ContactPhone" class="cuf-control" MaxLength="30" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small" Click="@(() => RemoveContact(contact))" />
+                    </div>
                 }
             </div>
         }
-    </text>;
+        <div class="cuf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.Customers.Contacts</strong><p>@UiStrings.Customers.ContactsEmpty</p></div></div>
+    </section>;
 
-    private RenderFragment ReviewSection() =>@<text>
-        <div class="cuf-section"><RadzenIcon Icon="fact_check" /><h4>@UiStrings.Customers.StepReview</h4></div>
-        <p>@string.Format(UiStrings.Customers.ReviewSummary, model.IataCode, model.Name, contacts.Count(c => !c.Removed))</p>
-    </text>;
+    private RenderFragment ReviewSection() =>@<section class="cuf-step-content">
+        <div class="cuf-review-intro"><h3>@UiStrings.Customers.StepReview</h3><p>@string.Format(UiStrings.Customers.ReviewSummary, model.IataCode, model.Name, contacts.Count(c => !c.Removed))</p></div>
+        <div class="cuf-review-card"><div class="cuf-review-head"><h4>@UiStrings.Common.Details</h4><button type="button" @onclick="@(() => step = 0)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
+            <dl class="cuf-review-grid"><div><dt>@UiStrings.Customers.IataCode</dt><dd>@model.IataCode</dd></div><div><dt>@UiStrings.Customers.IcaoCode</dt><dd>@Display(model.IcaoCode)</dd></div><div><dt>@UiStrings.Customers.Name</dt><dd>@model.Name</dd></div><div><dt>@UiStrings.Customers.Country</dt><dd>@CountryName</dd></div><div><dt>@UiStrings.Customers.OfficialEmail</dt><dd>@Display(model.OfficialEmail)</dd></div><div><dt>@UiStrings.Customers.OfficialPhone</dt><dd>@Display(model.OfficialPhone)</dd></div></dl>
+        </div>
+        <div class="cuf-review-card"><div class="cuf-review-head"><h4>@UiStrings.Customers.Address</h4><button type="button" @onclick="@(() => step = 1)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
+            <dl class="cuf-review-grid"><div><dt>@UiStrings.Customers.AddressLine1</dt><dd>@model.AddressLine1</dd></div><div><dt>@UiStrings.Customers.City</dt><dd>@model.AddressCity</dd></div><div><dt>@UiStrings.Customers.Region</dt><dd>@Display(model.AddressRegion)</dd></div><div><dt>@UiStrings.Customers.PostalCode</dt><dd>@Display(model.AddressPostalCode)</dd></div></dl>
+        </div>
+        <div class="cuf-review-note"><RadzenIcon Icon="lock" /><span>@UiStrings.Customers.StepReview</span></div>
+    </section>;
 
     private RenderFragment ErrorBanner() =>@<text>
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+            <div class="cuf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
         }
     </text>;
 
@@ -327,6 +308,8 @@
     }
 
     private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private string CountryName => countries.FirstOrDefault(c => c.Id == model.CountryId)?.Name ?? UiStrings.Common.None;
+    private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? UiStrings.Common.None : value;
 
     private sealed class CustomerModel
     {

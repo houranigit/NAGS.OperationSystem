@@ -1,59 +1,55 @@
-/* ==========================================================================
-   Customer form dialog — polished sectioned create/edit form.
-   Token-driven and RTL-safe (logical properties). Mirrors the Staff Member
-   form design language (section heads with icons, leading field icons).
-   ========================================================================== */
-
-.cuf-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--os-space-4);
-}
-
-.cuf-intro {
-    margin: 0;
-    font-size: var(--os-text-sm);
-}
-
-.cuf-section {
-    display: flex;
-    align-items: center;
-    gap: var(--os-space-2);
-    margin-block: var(--os-space-2) 0;
-}
-
-.cuf-section h4 {
-    margin: 0;
-    font-size: var(--os-text-lg);
-    font-weight: 600;
-}
-
-.cuf-section .rz-icon {
-    color: var(--os-color-primary);
-    font-size: 1.2rem;
-}
-
-.cuf-section-actions {
-    margin-inline-start: auto;
-}
-
-.cuf-form ::deep .rz-form-field-start .rz-icon {
-    color: var(--os-color-text-muted);
-    font-size: 1.1rem;
-}
-
-/* --- Contact rows -------------------------------------------------------- */
-.cuf-contacts {
-    display: flex;
-    flex-direction: column;
-    gap: var(--os-space-3);
-}
-
-.cuf-empty {
-    margin: 0;
-    font-size: var(--os-text-sm);
-}
-
-.cuf-contact ::deep .rz-card {
-    padding: var(--os-space-3);
-}
+.cuf-form { display: flex; flex-direction: column; gap: var(--os-space-4); width: min(688px, calc(100vw - 3rem)); max-width: 688px; margin-inline: auto; color: var(--os-color-text); }
+.cuf-wizard-body { min-height: 0; }
+.cuf-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-inline: var(--os-space-3); padding-block-end: .75rem; border-block-end: 1px solid #80808036; }
+.cuf-step-item { position: relative; display: flex; justify-content: center; min-width: 0; }
+.cuf-step-item:not(:last-child)::after { content: ""; position: absolute; z-index: 0; inset-block-start: 16px; inset-inline-start: calc(50% + 25px); width: calc(100% - 50px); height: 2px; background: var(--os-color-border); }
+.cuf-step-complete:not(:last-child)::after { background: var(--os-color-primary); }
+.cuf-step-button { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: var(--os-space-3); min-width: 0; padding: 0; border: 0; background: transparent; color: var(--os-color-text-muted); font: inherit; text-align: center; }
+.cuf-step-button:not(:disabled) { cursor: pointer; }
+.cuf-step-node { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 999px; background: var(--os-color-surface-muted); color: var(--os-color-text); font-size: var(--os-text-base); font-weight: 700; box-shadow: 0 0 0 4px white; }
+.cuf-step-active .cuf-step-node, .cuf-step-complete .cuf-step-node { background: var(--os-color-primary); color: white; }
+.cuf-step-label { overflow-wrap: anywhere; font-size: var(--os-text-sm); font-weight: 700; color: inherit; }
+.cuf-step-active .cuf-step-label, .cuf-step-complete .cuf-step-label { color: var(--os-color-primary); }
+.cuf-step-content { display: flex; flex-direction: column; gap: var(--os-space-2); }
+.cuf-intro { margin: 0; font-size: var(--os-text-sm); }
+.cuf-section-line { display: grid; grid-template-columns: auto auto minmax(24px, 1fr); align-items: center; gap: var(--os-space-2); margin-block-start: var(--os-space-1); color: var(--os-color-text); font-weight: 800; }
+.cuf-section-line::after { content: ""; height: 1px; background: var(--os-color-border); }
+.cuf-section-line ::deep .rz-icon { color: var(--os-color-text-muted); font-size: 1.25rem; }
+.cuf-section-line-action { grid-template-columns: auto auto minmax(24px, 1fr) auto; }
+.cuf-section-actions { margin-inline-start: auto; }
+.cuf-section { display: flex; align-items: center; gap: var(--os-space-2); margin-block: var(--os-space-2) 0; }
+.cuf-section h4 { margin: 0; font-size: var(--os-text-lg); font-weight: 600; }
+.cuf-section .rz-icon { color: var(--os-color-primary); font-size: 1.2rem; }
+.cuf-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--os-space-4); }
+.cuf-field-block { display: flex; flex-direction: column; gap: var(--os-space-1); min-width: 0; }
+.cuf-label { display: inline-flex; align-items: center; gap: var(--os-space-1); color: var(--os-color-text); font-size: var(--os-text-sm); font-weight: 800; }
+.cuf-required { color: var(--os-color-danger); }
+.cuf-input-wrap { position: relative; }
+.cuf-form ::deep .cuf-control { width: 100%; }
+.cuf-input-wrap ::deep .cuf-field-icon { position: absolute; z-index: 2; inset-block-start: 50%; inset-inline-start: var(--os-space-4); transform: translateY(-50%); color: var(--os-color-text-muted); font-size: 1.25rem; pointer-events: none; }
+.cuf-form ::deep .cuf-control-icon input, .cuf-form ::deep input.cuf-control-icon, .cuf-form ::deep .cuf-control-icon .rz-dropdown-label { padding-inline-start: 52px; }
+.cuf-contacts { display: flex; flex-direction: column; gap: var(--os-space-3); }
+.cuf-contact { display: grid; grid-template-columns: 1fr 1.2fr 1fr .8fr 40px; gap: var(--os-space-2); align-items: center; padding: var(--os-space-3); border: 1px solid var(--os-color-border); border-radius: 8px; background: white; }
+.cuf-empty { display: flex; align-items: center; justify-content: center; gap: var(--os-space-2); min-height: 96px; border: 1px dashed var(--os-color-border); border-radius: 8px; color: var(--os-color-text-muted); font-size: var(--os-text-sm); }
+.cuf-empty ::deep .rz-icon { color: var(--os-color-primary); }
+.cuf-callout { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--os-space-3); align-items: center; padding: var(--os-space-3) var(--os-space-4); border: 1px solid var(--os-color-primary-soft-border); border-radius: 8px; background: var(--os-color-surface-muted); }
+.cuf-callout > .rz-icon { color: var(--os-color-primary); font-size: 1.2rem; }
+.cuf-callout strong { display: block; margin-block-end: var(--os-space-1); font-size: var(--os-text-sm); font-weight: 800; }
+.cuf-callout p { margin: 0; color: var(--os-color-text-muted); font-size: var(--os-text-sm); }
+.cuf-review-intro h3, .cuf-review-intro p { margin: 0; }
+.cuf-review-intro p { margin-block-start: var(--os-space-1); color: var(--os-color-text-muted); font-size: var(--os-text-sm); }
+.cuf-review-card { display: flex; flex-direction: column; gap: var(--os-space-3); padding: var(--os-space-4); border: 1px solid var(--os-color-border); border-radius: 8px; background: white; }
+.cuf-review-head { display: flex; align-items: center; justify-content: space-between; gap: var(--os-space-3); }
+.cuf-review-head h4 { margin: 0; font-size: var(--os-text-base); font-weight: 700; }
+.cuf-review-head button { display: inline-flex; align-items: center; gap: var(--os-space-1); padding: var(--os-space-1) var(--os-space-2); border: 0; border-radius: 8px; background: var(--os-color-surface-muted); color: var(--os-color-text); font: inherit; font-size: var(--os-text-sm); cursor: pointer; }
+.cuf-review-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--os-space-4); margin: 0; }
+.cuf-review-grid div { min-width: 0; }
+.cuf-review-grid dt { color: var(--os-color-text-muted); font-size: var(--os-text-xs); font-weight: 700; text-transform: uppercase; }
+.cuf-review-grid dd { margin: var(--os-space-1) 0 0; overflow-wrap: anywhere; font-size: var(--os-text-sm); font-weight: 700; }
+.cuf-review-note { display: inline-flex; align-items: center; justify-content: center; gap: var(--os-space-2); color: var(--os-color-text-muted); font-size: var(--os-text-sm); }
+.cuf-error-panel { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--os-space-3); align-items: start; padding: var(--os-space-4); border: 2px solid color-mix(in srgb, var(--os-color-danger) 62%, white); border-radius: 8px; background: color-mix(in srgb, var(--os-color-danger-bg) 72%, white); }
+.cuf-error-panel > .rz-icon { color: var(--os-color-danger); font-size: 1.35rem; }
+.cuf-error-panel strong { display: block; margin-block-end: var(--os-space-2); font-weight: 800; }
+.cuf-error-panel ul { margin: 0; padding-inline-start: 1.25rem; color: var(--os-color-text-muted); }
+.cuf-actions { padding-block-start: var(--os-space-2); }
+@media (max-width: 720px) { .cuf-form { min-width: 0; } .cuf-grid-2, .cuf-review-grid { grid-template-columns: 1fr; } .cuf-contact { grid-template-columns: 1fr; } .cuf-step-label { font-size: var(--os-text-xs); } .cuf-wizard-body { min-height: 0; } }
