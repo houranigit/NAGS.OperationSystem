@@ -5,8 +5,9 @@ using BuildingBlocks.Domain.Results;
 namespace MasterData.Domain.Customers;
 
 /// <summary>
-/// An airline customer the operation serves. Identified by a globally-unique 2-character IATA airline
-/// code with an optional globally-unique 3-letter ICAO airline code. References a required active
+/// An airline customer the operation serves. May have a 2-character IATA airline code and an optional
+/// globally-unique 3-letter ICAO airline code. IATA codes are not unique because multiple operators
+/// can legitimately share one. References a required active
 /// <see cref="Countries.Country"/>. Owns its <see cref="CustomerContact"/> collection, reconciled by
 /// stable contact id. Long-lived master data with an active/inactive lifecycle; never hard-deleted.
 /// </summary>
@@ -19,7 +20,7 @@ public sealed class Customer : AggregateRoot<Guid>, IAuditable
     string IAuditable.AuditEntityType => "Customer";
     Guid IAuditable.AuditEntityId => Id;
 
-    public string IataCode { get; private set; } = null!;
+    public string? IataCode { get; private set; }
     public string? IcaoCode { get; private set; }
     public string Name { get; private set; } = null!;
     public Guid CountryId { get; private set; }
@@ -277,16 +278,16 @@ public sealed class Customer : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
-    private static Result<string> NormalizeIata(string? iataCode)
+    private static Result<string?> NormalizeIata(string? iataCode)
     {
         if (string.IsNullOrWhiteSpace(iataCode))
-            return Error.Validation("IATA code is required.", "MasterData.Customer.IataRequired");
+            return Result.Success<string?>(null);
 
         var normalized = iataCode.Trim().ToUpperInvariant();
         if (normalized.Length != 2 || !normalized.All(char.IsAsciiLetterOrDigit))
             return Error.Validation("IATA airline code must be exactly two letters or digits.", "MasterData.Customer.IataInvalid");
 
-        return normalized;
+        return Result.Success<string?>(normalized);
     }
 
     private static Result<string?> NormalizeIcao(string? icaoCode)

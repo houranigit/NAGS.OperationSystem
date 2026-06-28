@@ -31,6 +31,15 @@ public sealed class StationTests
         result.Value.IcaoCode.ShouldBeNull();
     }
 
+    [Fact]
+    public void Create_allows_missing_city()
+    {
+        var result = Station.Create("JED", null, "King Abdulaziz", null, CountryId, Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.City.ShouldBeNull();
+    }
+
     [Theory]
     [InlineData("JE")]
     [InlineData("JEDD")]

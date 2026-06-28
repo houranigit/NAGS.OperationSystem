@@ -75,7 +75,7 @@ public sealed record StationListItem(
     string IataCode,
     string? IcaoCode,
     string Name,
-    string City,
+    string? City,
     Guid CountryId,
     string CountryName,
     bool IsActive);
@@ -85,7 +85,7 @@ public sealed record StationDetail(
     string IataCode,
     string? IcaoCode,
     string Name,
-    string City,
+    string? City,
     Guid CountryId,
     string CountryName,
     bool IsActive,
@@ -109,16 +109,16 @@ public sealed record CreateStationRequest(
     string IataCode,
     string? IcaoCode,
     string Name,
-    string City,
+    string? City,
     Guid CountryId,
     IReadOnlyList<NewStationStaffRequest>? Staff);
-public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string City, Guid CountryId);
+public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId);
 
 // --- Customers -------------------------------------------------------------
 
 public sealed record CustomerListItem(
     Guid Id,
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,
@@ -126,7 +126,7 @@ public sealed record CustomerListItem(
     bool IsActive,
     int ContactCount);
 
-public sealed record AddressModel(string Line1, string? Line2, string City, string? Region, string? PostalCode);
+public sealed record AddressModel(string? Line1, string? Line2, string? City, string? Region, string? PostalCode);
 
 public sealed record CustomerContactModel(
     Guid Id,
@@ -141,7 +141,7 @@ public sealed record CustomerContactModel(
 
 public sealed record CustomerDetail(
     Guid Id,
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,
@@ -156,13 +156,13 @@ public sealed record CustomerDetail(
     string RowVersion,
     IReadOnlyList<CustomerContactModel> Contacts);
 
-public sealed record CustomerOption(Guid Id, string IataCode, string Name);
+public sealed record CustomerOption(Guid Id, string? IataCode, string Name);
 
-public sealed record AddressRequest(string Line1, string? Line2, string City, string? Region, string? PostalCode);
+public sealed record AddressRequest(string? Line1, string? Line2, string? City, string? Region, string? PostalCode);
 public sealed record CustomerContactRequest(Guid? Id, string Name, string? JobTitle, string Email, string? Phone);
 
 public sealed record CreateCustomerRequest(
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,
@@ -172,7 +172,7 @@ public sealed record CreateCustomerRequest(
     IReadOnlyList<CustomerContactRequest> Contacts);
 
 public sealed record UpdateCustomerRequest(
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,

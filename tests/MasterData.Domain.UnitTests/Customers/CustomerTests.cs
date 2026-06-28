@@ -36,7 +36,16 @@ public sealed class CustomerTests
         var result = Customer.Create(iata, null, "Name", CountryId, null, null, null, ValidAddress(), Now);
 
         result.IsFailure.ShouldBeTrue();
-        result.Error.Code.ShouldBeOneOf("MasterData.Customer.IataInvalid", "MasterData.Customer.IataRequired");
+        result.Error.Code.ShouldBe("MasterData.Customer.IataInvalid");
+    }
+
+    [Fact]
+    public void Create_without_iata_succeeds()
+    {
+        var result = Customer.Create(null, "ROJ", "Royal Jet", CountryId, null, null, null, ValidAddress(), Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.IataCode.ShouldBeNull();
     }
 
     [Theory]
@@ -138,10 +147,18 @@ public sealed class CustomerTests
     }
 
     [Fact]
-    public void Address_requires_line1_and_city()
+    public void Address_allows_partial_or_blank_legacy_values()
     {
-        Address.Create(null, null, "City", null, null).IsFailure.ShouldBeTrue();
-        Address.Create("Line 1", null, null, null, null).IsFailure.ShouldBeTrue();
+        Address.Create(null, null, "City", null, null).IsSuccess.ShouldBeTrue();
+        Address.Create("Line 1", null, null, null, null).IsSuccess.ShouldBeTrue();
+        Address.Create(null, null, null, null, null).IsSuccess.ShouldBeTrue();
         Address.Create("Line 1", "Suite 2", "City", "Region", "11118").IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Address_still_enforces_field_lengths()
+    {
+        Address.Create(new string('x', 201), null, null, null, null).IsFailure.ShouldBeTrue();
+        Address.Create(null, null, new string('x', 101), null, null).IsFailure.ShouldBeTrue();
     }
 }

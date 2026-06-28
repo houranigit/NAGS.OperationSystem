@@ -4,33 +4,28 @@ using BuildingBlocks.Domain.ValueObjects;
 namespace MasterData.Domain.Customers;
 
 /// <summary>
-/// The official address of a <see cref="Customer"/>. Line 1 and City are required; the owning
-/// Customer's Country reference is authoritative, so the address never stores a second Country.
+/// The official address of a <see cref="Customer"/>. Legacy customer records may contain a partial
+/// or entirely blank address, so every address field is optional. The owning Customer's Country
+/// reference is authoritative, so the address never stores a second Country.
 /// </summary>
 public sealed class Address : ValueObject
 {
     private Address() { }
 
-    public string Line1 { get; private set; } = null!;
+    public string? Line1 { get; private set; }
     public string? Line2 { get; private set; }
-    public string City { get; private set; } = null!;
+    public string? City { get; private set; }
     public string? Region { get; private set; }
     public string? PostalCode { get; private set; }
 
     public static Result<Address> Create(string? line1, string? line2, string? city, string? region, string? postalCode)
     {
-        if (string.IsNullOrWhiteSpace(line1))
-            return Error.Validation("Address line 1 is required.", "MasterData.Address.Line1Required");
-
-        var trimmedLine1 = line1.Trim();
-        if (trimmedLine1.Length > 200)
+        var trimmedLine1 = Normalize(line1);
+        if (trimmedLine1 is { Length: > 200 })
             return Error.Validation("Address line 1 must be at most 200 characters.", "MasterData.Address.Line1TooLong");
 
-        if (string.IsNullOrWhiteSpace(city))
-            return Error.Validation("Address city is required.", "MasterData.Address.CityRequired");
-
-        var trimmedCity = city.Trim();
-        if (trimmedCity.Length > 100)
+        var trimmedCity = Normalize(city);
+        if (trimmedCity is { Length: > 100 })
             return Error.Validation("Address city must be at most 100 characters.", "MasterData.Address.CityTooLong");
 
         var trimmedLine2 = Normalize(line2);

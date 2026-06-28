@@ -67,7 +67,7 @@ public sealed record StationListItemDto(
     string IataCode,
     string? IcaoCode,
     string Name,
-    string City,
+    string? City,
     Guid CountryId,
     string CountryName,
     bool IsActive);
@@ -77,7 +77,7 @@ public sealed record StationDto(
     string IataCode,
     string? IcaoCode,
     string Name,
-    string City,
+    string? City,
     Guid CountryId,
     string CountryName,
     bool IsActive,
@@ -91,7 +91,7 @@ public sealed record StationOptionDto(Guid Id, string IataCode, string Name);
 
 public sealed record CustomerListItemDto(
     Guid Id,
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,
@@ -100,9 +100,9 @@ public sealed record CustomerListItemDto(
     int ContactCount);
 
 public sealed record AddressDto(
-    string Line1,
+    string? Line1,
     string? Line2,
-    string City,
+    string? City,
     string? Region,
     string? PostalCode);
 
@@ -119,7 +119,7 @@ public sealed record CustomerContactDto(
 
 public sealed record CustomerDto(
     Guid Id,
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,
@@ -134,7 +134,7 @@ public sealed record CustomerDto(
     string RowVersion,
     IReadOnlyList<CustomerContactDto> Contacts);
 
-public sealed record CustomerOptionDto(Guid Id, string IataCode, string Name);
+public sealed record CustomerOptionDto(Guid Id, string? IataCode, string Name);
 
 // --- StaffMembers ----------------------------------------------------------
 

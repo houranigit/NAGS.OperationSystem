@@ -9,10 +9,10 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
     private const string Base = MasterDataApiFactory.Base;
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
-    private sealed record CustomerItem(Guid Id, string IataCode, string? IcaoCode, string Name, Guid CountryId, string CountryName, bool IsActive, int ContactCount);
-    private sealed record AddressBody(string Line1, string? Line2, string City, string? Region, string? PostalCode);
+    private sealed record CustomerItem(Guid Id, string? IataCode, string? IcaoCode, string Name, Guid CountryId, string CountryName, bool IsActive, int ContactCount);
+    private sealed record AddressBody(string? Line1, string? Line2, string? City, string? Region, string? PostalCode);
     private sealed record ContactBody(Guid Id, string Name, string? JobTitle, string Email, string? Phone, Guid? LinkedUserId, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);
-    private sealed record CustomerDetail(Guid Id, string IataCode, string? IcaoCode, string Name, Guid CountryId, string CountryName,
+    private sealed record CustomerDetail(Guid Id, string? IataCode, string? IcaoCode, string Name, Guid CountryId, string CountryName,
         string? OfficialEmail, string? OfficialPhone, string? LogoFileReference, AddressBody Address, bool IsActive,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, List<ContactBody> Contacts);
     private sealed record CountryItem(Guid Id, string Name, string IsoCode, bool IsActive);
@@ -60,7 +60,7 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
     }
 
     [Fact]
-    public async Task Create_with_duplicate_iata_returns_409()
+    public async Task Create_with_duplicate_iata_is_allowed()
     {
         var client = await factory.CreateAuthenticatedAdminClientAsync();
         var countryId = await CreateCountryAsync(client);
@@ -70,7 +70,58 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
             .StatusCode.ShouldBe(HttpStatusCode.Created);
 
         (await client.PostAsJsonAsync($"{Base}/customers", CustomerPayload(iata, countryId, "Second")))
-            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+            .StatusCode.ShouldBe(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Create_without_iata_round_trips_null()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await CreateCountryAsync(client);
+        var icao = await UnusedIcaoAsync(client);
+
+        var create = await client.PostAsJsonAsync($"{Base}/customers", new
+        {
+            iataCode = (string?)null,
+            icaoCode = icao,
+            name = "Royal Jet",
+            countryId,
+            officialEmail = (string?)null,
+            officialPhone = (string?)null,
+            address = AddressPayload(),
+            contacts = Array.Empty<object>()
+        });
+
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var id = await create.Content.ReadFromJsonAsync<Guid>();
+        var detail = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{id}");
+        detail!.IataCode.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Create_with_blank_address_fields_round_trips_nulls()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await CreateCountryAsync(client);
+        var iata = await UnusedIataAsync(client);
+
+        var create = await client.PostAsJsonAsync($"{Base}/customers", new
+        {
+            iataCode = iata,
+            icaoCode = (string?)null,
+            name = "Legacy Blank Address",
+            countryId,
+            officialEmail = (string?)null,
+            officialPhone = (string?)null,
+            address = new { line1 = (string?)null, line2 = (string?)null, city = (string?)null, region = (string?)null, postalCode = (string?)null },
+            contacts = Array.Empty<object>()
+        });
+
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var id = await create.Content.ReadFromJsonAsync<Guid>();
+        var detail = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{id}");
+        detail!.Address.Line1.ShouldBeNull();
+        detail.Address.City.ShouldBeNull();
     }
 
     [Fact]
@@ -238,7 +289,7 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
 
     private static async Task<string> UnusedIataAsync(HttpClient client)
     {
-        var used = await CollectAsync<CustomerItem>(client, $"{Base}/customers", c => c.IataCode);
+        var used = await CollectAsync<CustomerItem>(client, $"{Base}/customers", c => c.IataCode ?? string.Empty);
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         foreach (var a in chars)
             foreach (var b in chars)
@@ -248,6 +299,21 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
                     return code;
             }
         throw new InvalidOperationException("No unused customer IATA code remains.");
+    }
+
+    private static async Task<string> UnusedIcaoAsync(HttpClient client)
+    {
+        var used = await CollectAsync<CustomerItem>(client, $"{Base}/customers", c => c.IcaoCode ?? string.Empty);
+        const string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        foreach (var a in letters)
+            foreach (var b in letters)
+                foreach (var c in letters)
+                {
+                    var code = $"{a}{b}{c}";
+                    if (used.Add(code))
+                        return code;
+                }
+        throw new InvalidOperationException("No unused customer ICAO code remains.");
     }
 
     private static async Task<string> UnusedCountryCodeAsync(HttpClient client)

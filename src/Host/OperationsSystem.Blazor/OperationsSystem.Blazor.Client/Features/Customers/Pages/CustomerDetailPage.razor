@@ -47,7 +47,7 @@
                             {
                                 <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
                             }
-                            <span class="cu-info-badge"><RadzenIcon Icon="tag" />@c.IataCode</span>
+                            <span class="cu-info-badge"><RadzenIcon Icon="tag" />@Display(c.IataCode)</span>
                         </div>
 
                         <div class="cu-meta-row">
@@ -137,7 +137,7 @@
                     <dl class="cu-metrics">
                         <div class="cu-metric">
                             <dt>@UiStrings.Customers.IataCode</dt>
-                            <dd>@c.IataCode</dd>
+                            <dd>@Display(c.IataCode)</dd>
                         </div>
                         <div class="cu-metric">
                             <dt>@UiStrings.Customers.IcaoCode</dt>
@@ -227,7 +227,7 @@
             <dl class="cu-metrics cu-metrics--tall">
                 <div class="cu-metric">
                     <dt>@UiStrings.Customers.AddressLine1</dt>
-                    <dd>@c.Address.Line1</dd>
+                    <dd>@Display(c.Address.Line1)</dd>
                 </div>
                 @if (!string.IsNullOrWhiteSpace(c.Address.Line2))
                 {
@@ -238,7 +238,7 @@
                 }
                 <div class="cu-metric">
                     <dt>@UiStrings.Customers.City</dt>
-                    <dd>@c.Address.City</dd>
+                    <dd>@Display(c.Address.City)</dd>
                 </div>
                 @if (!string.IsNullOrWhiteSpace(c.Address.Region))
                 {
@@ -591,6 +591,9 @@
         c.IsActive ? UiStrings.Customers.FormIntro : UiStrings.Customers.ConfirmDeactivate;
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string Display(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? UiStrings.Common.None : value;
 
     private static string RelativeTime(DateTimeOffset value)
     {

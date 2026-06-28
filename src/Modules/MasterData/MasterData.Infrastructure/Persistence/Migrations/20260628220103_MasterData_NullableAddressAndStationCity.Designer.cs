@@ -4,6 +4,7 @@ using MasterData.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MasterData.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MasterDataDbContext))]
-    partial class MasterDataDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260628220103_MasterData_NullableAddressAndStationCity")]
+    partial class MasterData_NullableAddressAndStationCity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -126,6 +129,7 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("IataCode")
+                        .IsRequired()
                         .HasMaxLength(2)
                         .HasColumnType("nvarchar(2)");
 
@@ -166,7 +170,8 @@ namespace MasterData.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CountryId");
 
-                    b.HasIndex("IataCode");
+                    b.HasIndex("IataCode")
+                        .IsUnique();
 
                     b.HasIndex("IcaoCode")
                         .IsUnique()

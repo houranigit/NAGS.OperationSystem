@@ -138,7 +138,7 @@
                         <span class="st-lead-icon st-lead-icon--blue"><RadzenIcon Icon="flight_takeoff" /></span>
                         <div>
                             <p class="st-lead-title">@s.Name</p>
-                            <p class="os-muted st-lead-desc">@($"{s.City}, {s.CountryName}")</p>
+                            <p class="os-muted st-lead-desc">@(string.IsNullOrWhiteSpace(s.City) ? s.CountryName : $"{s.City}, {s.CountryName}")</p>
                         </div>
                     </div>
                     <dl class="st-metrics">
@@ -152,7 +152,7 @@
                         </div>
                         <div class="st-metric">
                             <dt>@UiStrings.Stations.City</dt>
-                            <dd>@s.City</dd>
+                            <dd>@(string.IsNullOrWhiteSpace(s.City) ? UiStrings.Common.None : s.City)</dd>
                         </div>
                         <div class="st-metric">
                             <dt>@UiStrings.Stations.Country</dt>

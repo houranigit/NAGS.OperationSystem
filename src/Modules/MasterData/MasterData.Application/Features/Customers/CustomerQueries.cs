@@ -47,7 +47,7 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
         {
             var term = request.Search.Trim();
             var upper = term.ToUpperInvariant();
-            query = query.Where(c => c.Name.Contains(term) || c.IataCode.Contains(upper) || (c.IcaoCode != null && c.IcaoCode.Contains(upper)));
+            query = query.Where(c => c.Name.Contains(term) || (c.IataCode != null && c.IataCode.Contains(upper)) || (c.IcaoCode != null && c.IcaoCode.Contains(upper)));
         }
 
         var total = await query.LongCountAsync(cancellationToken);

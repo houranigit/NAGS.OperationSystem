@@ -32,7 +32,7 @@
             </Filters>
             <Columns>
                 <RadzenDataGridColumn TItem="CustomerListItem" Property="IataCode" Title="@UiStrings.Customers.IataCode" Width="100px">
-                    <Template Context="c"><strong>@c.IataCode</strong></Template>
+                    <Template Context="c"><strong>@(string.IsNullOrWhiteSpace(c.IataCode) ? UiStrings.Common.None : c.IataCode)</strong></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="CustomerListItem" Property="IcaoCode" Title="@UiStrings.Customers.IcaoCode" Width="100px" Sortable="false">
                     <Template Context="c">@(string.IsNullOrWhiteSpace(c.IcaoCode) ? UiStrings.Customers.NoIcao : c.IcaoCode)</Template>

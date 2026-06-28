@@ -19,7 +19,7 @@ public sealed class StationConfiguration : IEntityTypeConfiguration<Station>
         builder.HasIndex(s => s.IcaoCode).IsUnique().HasFilter("[IcaoCode] IS NOT NULL");
 
         builder.Property(s => s.Name).HasMaxLength(150).IsRequired();
-        builder.Property(s => s.City).HasMaxLength(100).IsRequired();
+        builder.Property(s => s.City).HasMaxLength(100);
 
         builder.Property(s => s.CountryId).IsRequired();
         builder.HasIndex(s => s.CountryId);

@@ -19,7 +19,7 @@ public sealed class Station : AggregateRoot<Guid>, IAuditable
     public string IataCode { get; private set; } = null!;
     public string? IcaoCode { get; private set; }
     public string Name { get; private set; } = null!;
-    public string City { get; private set; } = null!;
+    public string? City { get; private set; }
     public Guid CountryId { get; private set; }
     public bool IsActive { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
@@ -161,15 +161,15 @@ public sealed class Station : AggregateRoot<Guid>, IAuditable
         return trimmed;
     }
 
-    private static Result<string> ValidateCity(string? city)
+    private static Result<string?> ValidateCity(string? city)
     {
         if (string.IsNullOrWhiteSpace(city))
-            return Error.Validation("City is required.", "MasterData.Station.CityRequired");
+            return Result.Success<string?>(null);
 
         var trimmed = city.Trim();
         if (trimmed.Length > 100)
             return Error.Validation("City must be at most 100 characters.", "MasterData.Station.CityTooLong");
 
-        return trimmed;
+        return Result.Success<string?>(trimmed);
     }
 }

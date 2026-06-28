@@ -51,7 +51,7 @@ public sealed class GetStationsQueryHandler(IMasterDataDbContext db, IMasterData
             query = query.Where(s =>
                 (matchesId && s.Id == stationId) ||
                 s.Name.Contains(term) ||
-                s.City.Contains(term) ||
+                (s.City != null && s.City.Contains(term)) ||
                 s.IataCode.Contains(upper) ||
                 (s.IcaoCode != null && s.IcaoCode.Contains(upper)));
         }

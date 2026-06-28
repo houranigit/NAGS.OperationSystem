@@ -225,7 +225,7 @@
 
         <div class="stf-grid-2">
             <div class="stf-field-block">
-                <label class="stf-label">@UiStrings.Stations.City <span class="stf-required">*</span></label>
+                <label class="stf-label">@UiStrings.Stations.City</label>
                 <div class="stf-input-wrap">
                     <RadzenIcon Icon="location_on" class="stf-field-icon" />
                     <RadzenTextBox @bind-Value="model.City" class="stf-control stf-control-icon" MaxLength="100" Placeholder="e.g. New York" />
@@ -356,7 +356,7 @@
                 </div>
                 <div>
                     <span>@UiStrings.Stations.City</span>
-                    <strong>@model.City</strong>
+                    <strong>@Display(model.City)</strong>
                 </div>
             </div>
         </div>
@@ -445,7 +445,6 @@
         if (string.IsNullOrWhiteSpace(model.IataCode) || model.IataCode.Trim().Length != 3) { errorMessage = UiStrings.Stations.IataRequired; return false; }
         if (!string.IsNullOrWhiteSpace(model.IcaoCode) && model.IcaoCode.Trim().Length != 4) { errorMessage = UiStrings.Stations.IcaoInvalid; return false; }
         if (string.IsNullOrWhiteSpace(model.Name)) { errorMessage = UiStrings.Stations.NameRequired; return false; }
-        if (string.IsNullOrWhiteSpace(model.City)) { errorMessage = UiStrings.Stations.CityRequired; return false; }
         if (model.CountryId == Guid.Empty) { errorMessage = UiStrings.Stations.CountryRequired; return false; }
         return true;
     }
@@ -480,7 +479,7 @@
             var iata = model.IataCode.Trim().ToUpperInvariant();
             var icao = string.IsNullOrWhiteSpace(model.IcaoCode) ? null : model.IcaoCode.Trim().ToUpperInvariant();
             var name = model.Name.Trim();
-            var city = model.City.Trim();
+            var city = Trim(model.City);
 
             if (StationId is { } id)
             {
@@ -512,9 +511,12 @@
         public string IataCode { get; set; } = string.Empty;
         public string? IcaoCode { get; set; }
         public string Name { get; set; } = string.Empty;
-        public string City { get; set; } = string.Empty;
+        public string? City { get; set; }
         public Guid CountryId { get; set; }
     }
+
+    private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? UiStrings.Common.None : value;
 
     private sealed class StaffRow
     {

@@ -9,8 +9,8 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     private const string Base = MasterDataApiFactory.Base;
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
-    private sealed record StationItem(Guid Id, string IataCode, string? IcaoCode, string Name, string City, Guid CountryId, string CountryName, bool IsActive);
-    private sealed record StationDetail(Guid Id, string IataCode, string? IcaoCode, string Name, string City, Guid CountryId, string CountryName, bool IsActive,
+    private sealed record StationItem(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string CountryName, bool IsActive);
+    private sealed record StationDetail(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string CountryName, bool IsActive,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
     private sealed record CountryDetail(Guid Id, string Name, string IsoCode, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
 
@@ -55,6 +55,22 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         var second = await client.PostAsJsonAsync($"{Base}/stations",
             new { iataCode = iata, icaoCode = (string?)null, name = "Second", city = "City", countryId });
         second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Create_with_missing_city_round_trips_null()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await EnsureActiveCountryAsync(client);
+        var iata = await UnusedIataAsync(client);
+
+        var create = await client.PostAsJsonAsync($"{Base}/stations",
+            new { iataCode = iata, icaoCode = (string?)null, name = "Legacy Station", city = (string?)null, countryId });
+
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var id = await create.Content.ReadFromJsonAsync<Guid>();
+        var detail = await client.GetFromJsonAsync<StationDetail>($"{Base}/stations/{id}");
+        detail!.City.ShouldBeNull();
     }
 
     [Fact]

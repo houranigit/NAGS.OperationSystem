@@ -12,8 +12,8 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         builder.HasKey(c => c.Id);
         builder.Property(c => c.Id).ValueGeneratedNever();
 
-        builder.Property(c => c.IataCode).HasMaxLength(2).IsRequired();
-        builder.HasIndex(c => c.IataCode).IsUnique();
+        builder.Property(c => c.IataCode).HasMaxLength(2);
+        builder.HasIndex(c => c.IataCode);
 
         builder.Property(c => c.IcaoCode).HasMaxLength(3);
         builder.HasIndex(c => c.IcaoCode).IsUnique().HasFilter("[IcaoCode] IS NOT NULL");
@@ -36,9 +36,9 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             address.WithOwner().HasForeignKey("CustomerId");
             address.Property<Guid>("CustomerId");
             address.HasKey("CustomerId");
-            address.Property(a => a.Line1).HasColumnName("Line1").HasMaxLength(200).IsRequired();
+            address.Property(a => a.Line1).HasColumnName("Line1").HasMaxLength(200);
             address.Property(a => a.Line2).HasColumnName("Line2").HasMaxLength(200);
-            address.Property(a => a.City).HasColumnName("City").HasMaxLength(100).IsRequired();
+            address.Property(a => a.City).HasColumnName("City").HasMaxLength(100);
             address.Property(a => a.Region).HasColumnName("Region").HasMaxLength(100);
             address.Property(a => a.PostalCode).HasColumnName("PostalCode").HasMaxLength(20);
         });

@@ -18,7 +18,7 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
     private const string IdentityBase = MasterDataApiFactory.IdentityBase;
 
     private sealed record StaffDetail(Guid Id, string FullName, string Email, Guid StationId, bool IsActive, Guid? LinkedUserId, string PortalState, string? PortalFailureReason, string RowVersion);
-    private sealed record CustomerDetail(Guid Id, string IataCode, bool IsActive, string RowVersion, List<ContactBody> Contacts);
+    private sealed record CustomerDetail(Guid Id, string? IataCode, bool IsActive, string RowVersion, List<ContactBody> Contacts);
     private sealed record ContactBody(Guid Id, string Name, string Email, Guid? LinkedUserId, bool IsActive);
     private sealed record StationDetail(Guid Id, string RowVersion);
 

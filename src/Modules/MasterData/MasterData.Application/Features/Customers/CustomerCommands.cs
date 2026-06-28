@@ -19,7 +19,7 @@ public sealed record CustomerContactInput(Guid? Id, string? Name, string? JobTit
 // --- Create ---------------------------------------------------------------
 
 public sealed record CreateCustomerCommand(
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,
@@ -32,7 +32,6 @@ public sealed class CreateCustomerCommandValidator : AbstractValidator<CreateCus
 {
     public CreateCustomerCommandValidator()
     {
-        RuleFor(x => x.IataCode).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.CountryId).NotEmpty();
         RuleFor(x => x.Address).NotNull();
@@ -62,7 +61,7 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, TimePr
 
         var customer = result.Value;
 
-        var conflict = await CustomerGuards.EnsureCodesAvailableAsync(db, customer.IataCode, customer.IcaoCode, null, cancellationToken);
+        var conflict = await CustomerGuards.EnsureIcaoAvailableAsync(db, customer.IcaoCode, null, cancellationToken);
         if (conflict.IsFailure)
             return conflict.Error;
 
@@ -85,7 +84,7 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, TimePr
 
 public sealed record UpdateCustomerCommand(
     Guid Id,
-    string IataCode,
+    string? IataCode,
     string? IcaoCode,
     string Name,
     Guid CountryId,
@@ -99,7 +98,6 @@ public sealed class UpdateCustomerCommandValidator : AbstractValidator<UpdateCus
     public UpdateCustomerCommandValidator()
     {
         RuleFor(x => x.Id).NotEmpty();
-        RuleFor(x => x.IataCode).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.CountryId).NotEmpty();
         RuleFor(x => x.Address).NotNull();
@@ -138,7 +136,7 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
         if (result.IsFailure)
             return result.Error;
 
-        var conflict = await CustomerGuards.EnsureCodesAvailableAsync(db, customer.IataCode, customer.IcaoCode, customer.Id, cancellationToken);
+        var conflict = await CustomerGuards.EnsureIcaoAvailableAsync(db, customer.IcaoCode, customer.Id, cancellationToken);
         if (conflict.IsFailure)
             return conflict.Error;
 
@@ -414,13 +412,9 @@ internal static class CustomerGuards
         return Result.Success();
     }
 
-    public static async Task<Result> EnsureCodesAvailableAsync(
-        IMasterDataDbContext db, string iataCode, string? icaoCode, Guid? excludeId, CancellationToken cancellationToken)
+    public static async Task<Result> EnsureIcaoAvailableAsync(
+        IMasterDataDbContext db, string? icaoCode, Guid? excludeId, CancellationToken cancellationToken)
     {
-        var iataTaken = await db.Customers.AnyAsync(c => c.IataCode == iataCode && (excludeId == null || c.Id != excludeId), cancellationToken);
-        if (iataTaken)
-            return Error.Conflict("A customer with this IATA code already exists.", "MasterData.Customer.DuplicateIata");
-
         if (icaoCode is not null)
         {
             var icaoTaken = await db.Customers.AnyAsync(c => c.IcaoCode == icaoCode && (excludeId == null || c.Id != excludeId), cancellationToken);

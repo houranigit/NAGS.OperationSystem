@@ -36,7 +36,7 @@ public sealed record CreateStationCommand(
     string IataCode,
     string? IcaoCode,
     string Name,
-    string City,
+    string? City,
     Guid CountryId,
     IReadOnlyList<NewStationStaffInput> Staff) : ICommand<Guid>;
 
@@ -46,7 +46,7 @@ public sealed class CreateStationCommandValidator : AbstractValidator<CreateStat
     {
         RuleFor(x => x.IataCode).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
-        RuleFor(x => x.City).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.City).MaximumLength(100);
         RuleFor(x => x.CountryId).NotEmpty();
     }
 }
@@ -161,7 +161,7 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
 
 // --- Update ---------------------------------------------------------------
 
-public sealed record UpdateStationCommand(Guid Id, string IataCode, string? IcaoCode, string Name, string City, Guid CountryId, byte[] RowVersion) : ICommand;
+public sealed record UpdateStationCommand(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, byte[] RowVersion) : ICommand;
 
 public sealed class UpdateStationCommandValidator : AbstractValidator<UpdateStationCommand>
 {
@@ -170,7 +170,7 @@ public sealed class UpdateStationCommandValidator : AbstractValidator<UpdateStat
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.IataCode).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
-        RuleFor(x => x.City).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.City).MaximumLength(100);
         RuleFor(x => x.CountryId).NotEmpty();
         RuleFor(x => x.RowVersion).NotEmpty();
     }
