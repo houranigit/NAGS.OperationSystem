@@ -84,6 +84,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mysql-database", default="nagsoperation")
     parser.add_argument("--mysql-user", default="root")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--apply-default",
+        action="store_true",
+        help="Generate a direct-run seeder with @Apply=1 by default instead of a rollback-first review draft.",
+    )
     return parser.parse_args()
 
 
@@ -199,7 +204,7 @@ def load_source(args: argparse.Namespace) -> dict[str, list[dict[str, Any]]]:
     return {name: mysql_json(args, query) for name, query in queries.items()}
 
 
-def generate(data: dict[str, list[dict[str, Any]]]) -> str:
+def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = False) -> str:
     source_customers = data["customers"]
     source_staff = data["staff"]
 
@@ -293,9 +298,13 @@ def generate(data: dict[str, list[dict[str, Any]]]) -> str:
     add("  Generated from Dump20260628.sql via an isolated MySQL restore.")
     add("")
     add("  SAFETY:")
-    add("    * @Apply defaults to 0, so a fully valid dry run rolls back.")
+    if apply_default:
+        add("    * @Apply defaults to 1, so a valid run commits the seed data.")
+        add("    * Run this only against the target SQL Server database after reviewing the draft file.")
+    else:
+        add("    * @Apply defaults to 0, so a fully valid dry run rolls back.")
     add("    * Known unresolved data causes THROW before any DELETE runs.")
-    add("    * Stop the API before an eventual real run, review every correction block, then set @Apply=1.")
+    add("    * Stop the API before an eventual real run.")
     add("    * No identity.users rows are inserted. Operational employees become masterdata.staff_members.")
     add("    * Customer IATA is optional/non-unique; customer ICAO remains optional/unique.")
     add(f"    * {len(excluded_customers)} source customer rows were explicitly rejected after review.")
@@ -308,7 +317,9 @@ def generate(data: dict[str, list[dict[str, Any]]]) -> str:
     add("*/")
     add("SET NOCOUNT ON;")
     add("SET XACT_ABORT ON;")
-    add("DECLARE @Apply bit = 0; -- REVIEW DEFAULT. Change to 1 only after every blocker is resolved.\n")
+    apply_value = 1 if apply_default else 0
+    apply_comment = "DIRECT SEED DEFAULT. Change to 0 for a dry run." if apply_default else "REVIEW DEFAULT. Change to 1 only after every blocker is resolved."
+    add(f"DECLARE @Apply bit = {apply_value}; -- {apply_comment}\n")
     add("BEGIN TRY")
     add("    BEGIN TRANSACTION;\n")
 
@@ -480,7 +491,7 @@ def generate(data: dict[str, list[dict[str, Any]]]) -> str:
 def main() -> None:
     args = parse_args()
     data = load_source(args)
-    output = generate(data)
+    output = generate(data, apply_default=args.apply_default)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(output, encoding="utf-8")
     print(f"Generated {args.output} ({len(output):,} characters)")
