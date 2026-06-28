@@ -52,6 +52,32 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     public Task DeleteAsync(string path, string? ifMatch, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, path, body: null, ifMatch, cancellationToken);
 
+    public async Task UploadFileAsync(string path, byte[] content, string fileName, string contentType, string? ifMatch, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await jsRuntime.InvokeAsync<string>("operationsSystem.api.uploadFile", cancellationToken,
+                path, content, fileName, contentType, tokenStore.AccessToken, locale.Language, ifMatch);
+        }
+        catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
+        {
+            throw new ApiException(statusCode, responseBody);
+        }
+    }
+
+    public async Task<BrowserFileContent> GetFileAsync(string path, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await jsRuntime.InvokeAsync<BrowserFileContent>("operationsSystem.api.requestFile", cancellationToken,
+                path, tokenStore.AccessToken, locale.Language);
+        }
+        catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
+        {
+            throw new ApiException(statusCode, responseBody);
+        }
+    }
+
     private async Task<TResponse> SendAsync<TResponse>(
         HttpMethod method,
         string path,
@@ -135,3 +161,5 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
         }
     }
 }
+
+public sealed record BrowserFileContent(string Base64, string ContentType);

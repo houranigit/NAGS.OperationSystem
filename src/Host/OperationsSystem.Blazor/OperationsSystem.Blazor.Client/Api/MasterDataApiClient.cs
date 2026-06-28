@@ -156,6 +156,12 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
     public Task UpdateCustomerAsync(Guid id, UpdateCustomerRequest request, string rowVersion, CancellationToken ct = default) =>
         api.PutAsync($"/masterdata/customers/{id}", request, rowVersion, ct);
 
+    public Task UploadCustomerLogoAsync(Guid id, byte[] content, string fileName, string contentType, string rowVersion, CancellationToken ct = default) =>
+        api.UploadFileAsync($"/masterdata/customers/{id}/logo", content, fileName, contentType, rowVersion, ct);
+
+    public Task<BrowserFileContent> GetCustomerLogoAsync(Guid id, CancellationToken ct = default) =>
+        api.GetFileAsync($"/masterdata/customers/{id}/logo", ct);
+
     public Task<Guid> AddCustomerContactAsync(Guid id, AddCustomerContactRequest request, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync<AddCustomerContactRequest, Guid>($"/masterdata/customers/{id}/contacts", request, rowVersion, ct);
 

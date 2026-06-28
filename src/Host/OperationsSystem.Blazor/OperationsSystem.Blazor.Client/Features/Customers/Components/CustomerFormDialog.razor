@@ -60,6 +60,12 @@
     private int step;
     private bool isSubmitting;
     private string? errorMessage;
+    private byte[]? logoContent;
+    private string? logoFileName;
+    private string? logoContentType;
+    private string? logoPreviewUrl;
+    private string? existingLogoPreviewUrl;
+    private Guid? savedCustomerId;
 
     private bool IsCreate => CustomerId is null;
 
@@ -93,6 +99,21 @@
 
     private RenderFragment DetailsSection() =>@<section class="cuf-step-content">
         <div class="cuf-section-line"><RadzenIcon Icon="business" /><span>@UiStrings.Common.Details</span></div>
+        <div class="cuf-logo-editor">
+            <div class="cuf-logo-preview">
+                @if (!string.IsNullOrWhiteSpace(logoPreviewUrl)) { <img src="@logoPreviewUrl" alt="Customer logo preview" /> }
+                else { <RadzenIcon Icon="image" /> }
+            </div>
+            <div class="cuf-logo-copy">
+                <strong>Customer logo</strong>
+                <p>PNG, JPEG, WEBP or GIF. Maximum file size 2 MB.</p>
+                <div class="cuf-logo-actions">
+                    <label class="cuf-logo-button"><RadzenIcon Icon="upload" /><span>@(logoContent is null && existingLogoPreviewUrl is null ? "Choose logo" : "Replace logo")</span><InputFile OnChange="@SelectLogoAsync" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
+                    @if (logoContent is not null) { <button type="button" class="cuf-logo-remove" @onclick="ClearSelectedLogo"><RadzenIcon Icon="close" /><span>Clear selection</span></button> }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(logoFileName)) { <span class="cuf-logo-file"><RadzenIcon Icon="check_circle" />@logoFileName (@FormatFileSize(logoContent?.LongLength ?? 0))</span> }
+            </div>
+        </div>
         <div class="cuf-grid-2">
             <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IataCode <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IataCode" class="cuf-control cuf-control-icon" MaxLength="2" Placeholder="e.g. SV" /></div></div>
             <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IcaoCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IcaoCode" class="cuf-control cuf-control-icon" MaxLength="3" Placeholder="e.g. SVA" /></div></div>
@@ -196,6 +217,13 @@
                 };
                 rowVersion = detail.RowVersion;
 
+                if (!string.IsNullOrWhiteSpace(detail.LogoFileReference))
+                {
+                    var logo = await MasterData.GetCustomerLogoAsync(detail.Id);
+                    existingLogoPreviewUrl = $"data:{logo.ContentType};base64,{logo.Base64}";
+                    logoPreviewUrl = existingLogoPreviewUrl;
+                }
+
                 foreach (var c in detail.Contacts.Where(c => c.IsActive))
                     contacts.Add(new ContactRow { Id = c.Id, Name = c.Name, JobTitle = c.JobTitle, Email = c.Email, Phone = c.Phone });
             }
@@ -210,6 +238,38 @@
         await MasterData.GetCustomerAsync(id);
 
     private void AddContact() => contacts.Add(new ContactRow());
+
+    private async Task SelectLogoAsync(InputFileChangeEventArgs args)
+    {
+        errorMessage = null;
+        var file = args.File;
+        if (file.ContentType is not ("image/png" or "image/jpeg" or "image/webp" or "image/gif"))
+        {
+            errorMessage = "The logo must be a PNG, JPEG, WEBP, or GIF image.";
+            return;
+        }
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            errorMessage = "The logo file must be at most 2 MB.";
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        logoContent = memory.ToArray();
+        logoFileName = file.Name;
+        logoContentType = file.ContentType;
+        logoPreviewUrl = $"data:{logoContentType};base64,{Convert.ToBase64String(logoContent)}";
+    }
+
+    private void ClearSelectedLogo()
+    {
+        logoContent = null;
+        logoFileName = null;
+        logoContentType = null;
+        logoPreviewUrl = existingLogoPreviewUrl;
+    }
 
     private void RemoveContact(ContactRow contact)
     {
@@ -277,20 +337,37 @@
             var phone = Trim(model.OfficialPhone);
             var name = model.Name!.Trim();
 
+            Guid targetId;
             if (CustomerId is { } id)
             {
                 // Customer update changes only customer fields; contacts are managed on the detail page.
                 await MasterData.UpdateCustomerAsync(id,
                     new UpdateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address),
                     rowVersion ?? string.Empty);
+                targetId = id;
             }
             else
             {
-                var contactRequests = activeContacts
-                    .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone)))
-                    .ToList();
-                await MasterData.CreateCustomerAsync(
-                    new CreateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests));
+                if (savedCustomerId is { } existingId)
+                {
+                    targetId = existingId;
+                }
+                else
+                {
+                    var contactRequests = activeContacts
+                        .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone)))
+                        .ToList();
+                    targetId = await MasterData.CreateCustomerAsync(
+                        new CreateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests));
+                    savedCustomerId = targetId;
+                }
+            }
+
+            if (logoContent is not null && logoFileName is not null && logoContentType is not null)
+            {
+                var refreshed = await MasterData.GetCustomerAsync(targetId);
+                rowVersion = refreshed.RowVersion;
+                await MasterData.UploadCustomerLogoAsync(targetId, logoContent, logoFileName, logoContentType, rowVersion);
             }
 
             DialogService.Close(true);
@@ -310,6 +387,9 @@
     private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private string CountryName => countries.FirstOrDefault(c => c.Id == model.CountryId)?.Name ?? UiStrings.Common.None;
     private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? UiStrings.Common.None : value;
+    private static string FormatFileSize(long bytes) => bytes < 1024 * 1024
+        ? $"{Math.Max(1, bytes / 1024)} KB"
+        : $"{bytes / 1024d / 1024d:0.0} MB";
 
     private sealed class CustomerModel
     {

@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Domain.Results;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
@@ -117,6 +118,44 @@ public sealed class GetCustomerByIdQueryHandler(IMasterDataDbContext db, IMaster
             customer.IsActive, customer.CreatedAtUtc, customer.UpdatedAtUtc, Convert.ToBase64String(customer.RowVersion),
             contacts);
     }
+}
+
+public sealed record CustomerLogoContent(byte[] Content, string ContentType);
+public sealed record GetCustomerLogoQuery(Guid Id) : IQuery<CustomerLogoContent>;
+
+public sealed class GetCustomerLogoQueryHandler(IMasterDataDbContext db, IMasterDataScope scope, IFileStorage storage)
+    : IQueryHandler<GetCustomerLogoQuery, CustomerLogoContent>
+{
+    public async Task<Result<CustomerLogoContent>> Handle(GetCustomerLogoQuery request, CancellationToken cancellationToken)
+    {
+        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        if (scopeCheck.IsFailure)
+            return scopeCheck.Error;
+
+        var reference = await db.Customers.AsNoTracking()
+            .Where(c => c.Id == request.Id)
+            .Select(c => c.LogoFileReference)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(reference))
+            return Error.NotFound("Customer logo not found.", "MasterData.Customer.LogoNotFound");
+
+        await using var stream = await storage.OpenAsync(reference, cancellationToken);
+        if (stream is null)
+            return Error.NotFound("Customer logo file not found.", "MasterData.Customer.LogoFileNotFound");
+
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        return new CustomerLogoContent(memory.ToArray(), ContentType(reference));
+    }
+
+    private static string ContentType(string reference) => Path.GetExtension(reference).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        ".gif" => "image/gif",
+        _ => "application/octet-stream"
+    };
 }
 
 // --- Active options (for pickers) -----------------------------------------

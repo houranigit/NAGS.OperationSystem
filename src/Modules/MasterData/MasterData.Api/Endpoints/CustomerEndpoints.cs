@@ -37,6 +37,14 @@ internal static class CustomerEndpoints
             return result.ToOk();
         }).RequirePermission(MasterDataPermissions.Customers.View);
 
+        customers.MapGet("/{id:guid}/logo", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetCustomerLogoQuery(id), ct);
+            return result.IsFailure
+                ? ApiResults.Problem(result.Error)
+                : Results.File(result.Value.Content, result.Value.ContentType, enableRangeProcessing: false);
+        }).RequirePermission(MasterDataPermissions.Customers.View);
+
         customers.MapPost("/", async (CreateCustomerRequest request, ISender sender, CancellationToken ct) =>
         {
             var command = new CreateCustomerCommand(
