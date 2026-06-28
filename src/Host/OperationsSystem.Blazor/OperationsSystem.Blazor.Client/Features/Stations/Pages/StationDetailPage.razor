@@ -414,7 +414,7 @@
     {
         var result = await DialogService.OpenAsync<StaffMemberFormDialog>(UiStrings.StaffMembers.CreateTitle,
             new Dictionary<string, object?> { [nameof(StaffMemberFormDialog.PreselectedStationId)] = Id },
-            new DialogOptions { Width = "720px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await LoadStaffAsync();

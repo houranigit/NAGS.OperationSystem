@@ -81,39 +81,40 @@
     private int step;
 
     private RenderFragment WizardStepper() => @<div class="sf-stepper" aria-label="@UiStrings.StaffMembers.CreateTitle">
-        @for (var index = 0; index < 3; index++)
+        @for (var i = 0; i < 3; i++)
         {
-            var current = index;
-            <div class="sf-step @(step == current ? "sf-step-active" : step > current ? "sf-step-complete" : "")">
-                <span class="sf-step-number">@(step > current ? "✓" : (current + 1).ToString())</span>
-                <strong>@StepLabel(current)</strong>
+            var index = i;
+            <div class="@StepClass(index)">
+                <button type="button" class="sf-step-button" disabled="@(index > step)" @onclick="@(() => MoveToStep(index))">
+                    <span class="sf-step-node">
+                        @if (index < step) { <RadzenIcon Icon="check" /> }
+                        else { @((index + 1).ToString()) }
+                    </span>
+                    <span class="sf-step-label">@StepLabel(index)</span>
+                </button>
             </div>
-            @if (current < 2)
-            {
-                <span class="sf-step-line @(step > current ? "sf-step-line-complete" : "")"></span>
-            }
         }
     </div>;
 
     private RenderFragment IdentityStep() => @<section class="sf-step-content">
-        <div class="sf-section-heading"><RadzenIcon Icon="badge" /><h3>@UiStrings.StaffMembers.BasicInformation</h3></div>
+        <div class="sf-section-line"><RadzenIcon Icon="badge" /><span>@UiStrings.StaffMembers.BasicInformation</span></div>
         <div class="sf-grid-2">
-            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.EmployeeId <span>*</span></label><div class="sf-input-wrap"><RadzenIcon Icon="badge" /><RadzenTextBox @bind-Value="model.EmployeeId" Change="@((string? value) => model.EmployeeId = value)" class="sf-control sf-control-icon" MaxLength="50" Placeholder="e.g. EMP-1042" /></div></div>
-            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.FullName <span>*</span></label><div class="sf-input-wrap"><RadzenIcon Icon="person" /><RadzenTextBox @bind-Value="model.FullName" Change="@((string? value) => model.FullName = value)" class="sf-control sf-control-icon" MaxLength="200" Placeholder="e.g. Jane Doe" /></div></div>
+            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.EmployeeId <span class="sf-required">*</span></label><div class="sf-input-wrap"><RadzenIcon Icon="badge" class="sf-field-icon" /><RadzenTextBox @bind-Value="model.EmployeeId" Change="@((string? value) => model.EmployeeId = value)" class="sf-control sf-control-icon" MaxLength="50" Placeholder="e.g. EMP-1042" /></div></div>
+            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.FullName <span class="sf-required">*</span></label><div class="sf-input-wrap"><RadzenIcon Icon="person" class="sf-field-icon" /><RadzenTextBox @bind-Value="model.FullName" Change="@((string? value) => model.FullName = value)" class="sf-control sf-control-icon" MaxLength="200" Placeholder="e.g. Jane Doe" /></div></div>
         </div>
         <div class="sf-field-block">
-            <label class="sf-label">@UiStrings.StaffMembers.Email <span>*</span></label>
-            <div class="sf-input-wrap"><RadzenIcon Icon="mail" /><RadzenTextBox @bind-Value="model.Email" Change="@((string? value) => model.Email = value)" class="sf-control sf-control-icon" MaxLength="256" Placeholder="jane.doe@example.com" /></div>
+            <label class="sf-label">@UiStrings.StaffMembers.Email <span class="sf-required">*</span></label>
+            <div class="sf-input-wrap"><RadzenIcon Icon="mail" class="sf-field-icon" /><RadzenTextBox @bind-Value="model.Email" Change="@((string? value) => model.Email = value)" class="sf-control sf-control-icon" MaxLength="256" Placeholder="jane.doe@example.com" /></div>
         </div>
-        <div class="sf-section-heading"><RadzenIcon Icon="flight_takeoff" /><h3>@UiStrings.StaffMembers.Assignment</h3></div>
+        <div class="sf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>@UiStrings.StaffMembers.Assignment</span></div>
         <div class="sf-grid-2">
             <div class="sf-field-block">
-                <label class="sf-label">@UiStrings.StaffMembers.Station <span>*</span></label>
-                <div class="sf-input-wrap"><RadzenIcon Icon="flight_takeoff" /><RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectStation" /></div>
+                <label class="sf-label">@UiStrings.StaffMembers.Station <span class="sf-required">*</span></label>
+                <div class="sf-input-wrap"><RadzenIcon Icon="flight_takeoff" class="sf-field-icon" /><RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectStation" /></div>
             </div>
             <div class="sf-field-block">
-                <label class="sf-label">@UiStrings.StaffMembers.ManpowerType <span>*</span></label>
-                <div class="sf-input-wrap"><RadzenIcon Icon="engineering" /><RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectManpowerType" /></div>
+                <label class="sf-label">@UiStrings.StaffMembers.ManpowerType <span class="sf-required">*</span></label>
+                <div class="sf-input-wrap"><RadzenIcon Icon="engineering" class="sf-field-icon" /><RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectManpowerType" /></div>
             </div>
         </div>
         <div class="sf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.StaffMembers.EmployeeIdHintTitle</strong><p>@UiStrings.StaffMembers.EmployeeIdHint</p></div></div>
@@ -181,6 +182,8 @@
     private RenderFragment ErrorBanner() => @<text>@if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="sf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>@UiStrings.StaffMembers.FixErrors</strong><ul><li>@errorMessage</li></ul></div></div> }</text>;
 
     private string StepLabel(int index) => index switch { 0 => UiStrings.StaffMembers.StepProfile, 1 => UiStrings.StaffMembers.StepEmployment, _ => UiStrings.StaffMembers.StepReview };
+    private string StepClass(int index) => $"sf-step sf-step-{(index < step ? "complete" : index == step ? "active" : "pending")}";
+    private void MoveToStep(int index) { if (index > step) return; errorMessage = null; step = index; }
     private string StationName => stations.FirstOrDefault(s => s.Id == model.StationId)?.IataCode ?? UiStrings.Common.None;
     private string ManpowerTypeName => manpowerTypes.FirstOrDefault(m => m.Id == model.ManpowerTypeId)?.Name ?? UiStrings.Common.None;
     private string WorkingDaysDisplay => string.Join(", ", scheduleDays.Where(d => d.Selected).Select(d => d.Label)) is { Length: > 0 } value ? value : UiStrings.StaffMembers.NoSchedule;

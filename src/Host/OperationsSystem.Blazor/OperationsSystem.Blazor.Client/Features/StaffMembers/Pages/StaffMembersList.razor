@@ -154,7 +154,7 @@
     private async Task OpenCreateAsync()
     {
         var result = await DialogService.OpenAsync<StaffMemberFormDialog>(UiStrings.StaffMembers.CreateTitle,
-            null, new DialogOptions { Width = "720px" });
+            null, new DialogOptions { Width = "760px" });
         if (result is true)
             await ReloadAsync();
     }
@@ -165,7 +165,7 @@
     {
         var result = await DialogService.OpenAsync<StaffMemberFormDialog>(UiStrings.StaffMembers.EditTitle,
             new Dictionary<string, object?> { [nameof(StaffMemberFormDialog.StaffMemberId)] = s.Id },
-            new DialogOptions { Width = "720px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await ReloadAsync();
