@@ -74,6 +74,15 @@
     font-size: 2.5rem;
 }
 
+.cu-avatar-logo {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: inherit;
+    object-fit: contain;
+    background: var(--os-color-surface);
+}
+
 .cu-avatar--locked {
     background: var(--os-color-danger-bg);
     color: var(--os-color-danger);

@@ -219,9 +219,18 @@
 
                 if (!string.IsNullOrWhiteSpace(detail.LogoFileReference))
                 {
-                    var logo = await MasterData.GetCustomerLogoAsync(detail.Id);
-                    existingLogoPreviewUrl = $"data:{logo.ContentType};base64,{logo.Base64}";
-                    logoPreviewUrl = existingLogoPreviewUrl;
+                    try
+                    {
+                        var logo = await MasterData.GetCustomerLogoAsync(detail.Id);
+                        existingLogoPreviewUrl = $"data:{logo.ContentType};base64,{logo.Base64}";
+                        logoPreviewUrl = existingLogoPreviewUrl;
+                    }
+                    catch (ApiException)
+                    {
+                        // Keep the customer editable if an older logo file is unavailable.
+                        existingLogoPreviewUrl = null;
+                        logoPreviewUrl = null;
+                    }
                 }
 
                 foreach (var c in detail.Contacts.Where(c => c.IsActive))

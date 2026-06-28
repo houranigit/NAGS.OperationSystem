@@ -25,7 +25,14 @@
             <section class="cu-profile @ProfileClass(c)">
                 <div class="cu-hero">
                     <div class="cu-avatar @AvatarClass(c)">
-                        <RadzenIcon Icon="business" />
+                        @if (!string.IsNullOrWhiteSpace(logoPreviewUrl))
+                        {
+                            <img class="cu-avatar-logo" src="@logoPreviewUrl" alt="@($"{c.Name} logo")" />
+                        }
+                        else
+                        {
+                            <RadzenIcon Icon="business" />
+                        }
                         <span class="cu-avatar-dot @DotClass(c)"></span>
                     </div>
 
@@ -364,6 +371,7 @@
     [Parameter] public Guid Id { get; set; }
 
     private CustomerDetail? item;
+    private string? logoPreviewUrl;
     private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
@@ -406,6 +414,7 @@
     {
         isLoading = true;
         loadError = false;
+        logoPreviewUrl = null;
         StateHasChanged();
 
         var historyTask = LoadHistoryAsync();
@@ -413,6 +422,7 @@
         try
         {
             item = await MasterData.GetCustomerAsync(Id);
+            logoPreviewUrl = await LoadLogoAsync(item);
             history = await historyTask;
         }
         catch (ApiException ex)
@@ -424,6 +434,23 @@
         {
             isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task<string?> LoadLogoAsync(CustomerDetail customer)
+    {
+        if (string.IsNullOrWhiteSpace(customer.LogoFileReference))
+            return null;
+
+        try
+        {
+            var logo = await MasterData.GetCustomerLogoAsync(customer.Id);
+            return $"data:{logo.ContentType};base64,{logo.Base64}";
+        }
+        catch (ApiException)
+        {
+            // A missing logo file must not prevent the customer profile from loading.
+            return null;
         }
     }
 
