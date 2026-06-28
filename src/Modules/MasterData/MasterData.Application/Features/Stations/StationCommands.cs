@@ -24,6 +24,7 @@ namespace MasterData.Application.Features.Stations;
 /// </summary>
 public sealed record NewStationStaffInput(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid ManpowerTypeId,
     EmploymentContractInput? EmploymentContract,
@@ -77,9 +78,10 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
         // create (single SaveChanges below). Supplying portal access requires the grant-access
         // permission, enforced here as well as at the endpoint.
         var pendingEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pendingEmployeeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var input in request.Staff ?? [])
         {
-            var staffResult = await BuildStaffAsync(station.Id, input, pendingEmails, now, cancellationToken);
+            var staffResult = await BuildStaffAsync(station.Id, input, pendingEmails, pendingEmployeeIds, now, cancellationToken);
             if (staffResult.IsFailure)
                 return staffResult.Error;
 
@@ -106,7 +108,8 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
     }
 
     private async Task<Result<StaffMember>> BuildStaffAsync(
-        Guid stationId, NewStationStaffInput input, HashSet<string> pendingEmails, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid stationId, NewStationStaffInput input, HashSet<string> pendingEmails, HashSet<string> pendingEmployeeIds,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
         // The station is the freshly-created active one (not yet persisted), so only the manpower
         // type needs to be validated against the database here.
@@ -124,11 +127,18 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
         if (schedule.IsFailure)
             return schedule.Error;
 
-        var created = StaffMember.Create(input.FullName, input.Email, stationId, input.ManpowerTypeId, contract.Value, schedule.Value, now);
+        var created = StaffMember.Create(input.FullName, input.EmployeeId, input.Email, stationId, input.ManpowerTypeId, contract.Value, schedule.Value, now);
         if (created.IsFailure)
             return created.Error;
 
         var staff = created.Value;
+
+        var employeeIdCheck = await StaffMemberGuards.EnsureEmployeeIdAvailableAsync(db, staff.EmployeeId, null, cancellationToken);
+        if (employeeIdCheck.IsFailure)
+            return employeeIdCheck.Error;
+
+        if (!pendingEmployeeIds.Add(staff.EmployeeId))
+            return Error.Conflict("Two staff members in the request share an employee ID.", "MasterData.StaffMember.DuplicateEmployeeId");
 
         if (!pendingEmails.Add(staff.Email))
             return Error.Conflict("Two staff members in the request share an email.", "MasterData.StaffMember.DuplicateEmail");

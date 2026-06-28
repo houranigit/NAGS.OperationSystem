@@ -10,15 +10,16 @@ public sealed class StaffMemberTests
     private static readonly Guid ManpowerTypeId = Guid.NewGuid();
 
     private static StaffMember NewStaff(string email = "tech@example.com") =>
-        StaffMember.Create("  Jane Technician ", $"  {email.ToUpperInvariant()} ", StationId, ManpowerTypeId, null, null, Now).Value;
+        StaffMember.Create("  Jane Technician ", " emp-100 ", $"  {email.ToUpperInvariant()} ", StationId, ManpowerTypeId, null, null, Now).Value;
 
     [Fact]
     public void Create_normalizes_name_and_email()
     {
-        var result = StaffMember.Create("  Jane Technician ", "  TECH@Example.com ", StationId, ManpowerTypeId, null, null, Now);
+        var result = StaffMember.Create("  Jane Technician ", " emp-100 ", "  TECH@Example.com ", StationId, ManpowerTypeId, null, null, Now);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.FullName.ShouldBe("Jane Technician");
+        result.Value.EmployeeId.ShouldBe("EMP-100");
         result.Value.Email.ShouldBe("tech@example.com");
         result.Value.IsActive.ShouldBeTrue();
         result.Value.EmploymentContract.ShouldBeNull();
@@ -28,16 +29,25 @@ public sealed class StaffMemberTests
     [Fact]
     public void Create_with_blank_name_fails()
     {
-        var result = StaffMember.Create("  ", "tech@example.com", StationId, ManpowerTypeId, null, null, Now);
+        var result = StaffMember.Create("  ", "EMP-100", "tech@example.com", StationId, ManpowerTypeId, null, null, Now);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("MasterData.StaffMember.NameRequired");
     }
 
     [Fact]
+    public void Create_without_employee_id_fails()
+    {
+        var result = StaffMember.Create("Jane", "  ", "tech@example.com", StationId, ManpowerTypeId, null, null, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("MasterData.StaffMember.EmployeeIdRequired");
+    }
+
+    [Fact]
     public void Create_with_invalid_email_fails()
     {
-        var result = StaffMember.Create("Jane", "not-an-email", StationId, ManpowerTypeId, null, null, Now);
+        var result = StaffMember.Create("Jane", "EMP-100", "not-an-email", StationId, ManpowerTypeId, null, null, Now);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("MasterData.StaffMember.EmailInvalid");
@@ -46,7 +56,7 @@ public sealed class StaffMemberTests
     [Fact]
     public void Create_without_station_fails()
     {
-        var result = StaffMember.Create("Jane", "tech@example.com", Guid.Empty, ManpowerTypeId, null, null, Now);
+        var result = StaffMember.Create("Jane", "EMP-100", "tech@example.com", Guid.Empty, ManpowerTypeId, null, null, Now);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("MasterData.StaffMember.StationRequired");
@@ -55,7 +65,7 @@ public sealed class StaffMemberTests
     [Fact]
     public void Create_without_manpower_type_fails()
     {
-        var result = StaffMember.Create("Jane", "tech@example.com", StationId, Guid.Empty, null, null, Now);
+        var result = StaffMember.Create("Jane", "EMP-100", "tech@example.com", StationId, Guid.Empty, null, null, Now);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("MasterData.StaffMember.ManpowerTypeRequired");
@@ -67,7 +77,7 @@ public sealed class StaffMemberTests
         var contract = EmploymentContract.Create(new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31)).Value;
         var schedule = WorkingSchedule.Create([DayOfWeek.Sunday, DayOfWeek.Monday]).Value;
 
-        var staff = StaffMember.Create("Jane", "tech@example.com", StationId, ManpowerTypeId, contract, schedule, Now).Value;
+        var staff = StaffMember.Create("Jane", "EMP-100", "tech@example.com", StationId, ManpowerTypeId, contract, schedule, Now).Value;
 
         staff.EmploymentStartDate.ShouldBe(new DateOnly(2026, 1, 1));
         staff.EmploymentEndDate.ShouldBe(new DateOnly(2026, 12, 31));
@@ -82,10 +92,11 @@ public sealed class StaffMemberTests
         var later = Now.AddDays(1);
         var newStation = Guid.NewGuid();
 
-        var result = staff.Update("  John Lead ", " LEAD@example.com ", newStation, ManpowerTypeId, null, null, later);
+        var result = staff.Update("  John Lead ", " emp-200 ", " LEAD@example.com ", newStation, ManpowerTypeId, null, null, later);
 
         result.IsSuccess.ShouldBeTrue();
         staff.FullName.ShouldBe("John Lead");
+        staff.EmployeeId.ShouldBe("EMP-200");
         staff.Email.ShouldBe("lead@example.com");
         staff.StationId.ShouldBe(newStation);
         staff.UpdatedAtUtc.ShouldBe(later);
@@ -109,7 +120,7 @@ public sealed class StaffMemberLicenseReconciliationTests
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private static StaffMember NewStaff() =>
-        StaffMember.Create("Jane", "tech@example.com", Guid.NewGuid(), Guid.NewGuid(), null, null, Now).Value;
+        StaffMember.Create("Jane", "EMP-100", "tech@example.com", Guid.NewGuid(), Guid.NewGuid(), null, null, Now).Value;
 
     [Fact]
     public void Reconcile_adds_new_licenses()

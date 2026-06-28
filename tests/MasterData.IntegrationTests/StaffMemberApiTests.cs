@@ -16,10 +16,10 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
     };
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
-    private sealed record StaffItem(Guid Id, string FullName, string Email, Guid StationId, string StationCode, Guid ManpowerTypeId, string ManpowerTypeName, bool IsActive);
+    private sealed record StaffItem(Guid Id, string FullName, string EmployeeId, string Email, Guid StationId, string StationCode, Guid ManpowerTypeId, string ManpowerTypeName, bool IsActive);
     private sealed record ContractBody(DateOnly StartDate, DateOnly? EndDate);
     private sealed record LicenseBody(Guid Id, Guid LicenseId, string LicenseCode, string LicenseName, string LicenseNumber);
-    private sealed record StaffDetail(Guid Id, string FullName, string Email, Guid StationId, string StationCode, string StationName,
+    private sealed record StaffDetail(Guid Id, string FullName, string EmployeeId, string Email, Guid StationId, string StationCode, string StationName,
         Guid ManpowerTypeId, string ManpowerTypeName, ContractBody? EmploymentContract, List<DayOfWeek>? WorkingDays,
         Guid? LinkedUserId, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, List<LicenseBody> Licenses);
     private sealed record CountryItem(Guid Id, string Name, string IsoCode, bool IsActive);
@@ -45,6 +45,7 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
         var create = await client.PostAsJsonAsync($"{Base}/staff-members", new
         {
             fullName = "Jane Technician",
+            employeeId = $"EMP-{Guid.NewGuid():N}",
             email,
             stationId,
             manpowerTypeId,
@@ -115,6 +116,7 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
         var create = await client.PostAsJsonAsync($"{Base}/staff-members", new
         {
             fullName = "Reconcile",
+            employeeId = $"EMP-{Guid.NewGuid():N}",
             email,
             stationId,
             manpowerTypeId,
@@ -132,6 +134,7 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
             Content = JsonContent.Create(new
             {
                 fullName = "Reconcile",
+                employeeId = before.EmployeeId,
                 email,
                 stationId,
                 manpowerTypeId,
@@ -202,6 +205,7 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
     private static object StaffPayload(string email, Guid stationId, Guid manpowerTypeId, string name) => new
     {
         fullName = name,
+        employeeId = $"EMP-{Guid.NewGuid():N}",
         email,
         stationId,
         manpowerTypeId,

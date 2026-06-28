@@ -279,6 +279,10 @@
                             <RadzenTextBox @bind-Value="row.FullName" class="stf-control" Placeholder="John Doe" MaxLength="150" />
                         </div>
                         <div class="stf-field-block">
+                            <label class="stf-label">@UiStrings.StaffMembers.EmployeeId</label>
+                            <RadzenTextBox @bind-Value="row.EmployeeId" class="stf-control" Placeholder="EMP-1042" MaxLength="50" />
+                        </div>
+                        <div class="stf-field-block">
                             <label class="stf-label">@UiStrings.Stations.StaffEmail</label>
                             <RadzenTextBox @bind-Value="row.Email" class="stf-control" Placeholder="john.doe@example.com" MaxLength="256" />
                         </div>
@@ -375,6 +379,7 @@
                 <div class="stf-review-staff">
                     <div class="stf-review-staff-head">
                         <span>@UiStrings.Stations.StaffName</span>
+                        <span>@UiStrings.StaffMembers.EmployeeId</span>
                         <span>@UiStrings.Stations.StaffEmail</span>
                         <span>@UiStrings.Stations.ManpowerType</span>
                     </div>
@@ -382,6 +387,7 @@
                     {
                         <div class="stf-review-staff-row" @key="row.Key">
                             <strong>@row.FullName</strong>
+                            <span>@row.EmployeeId</span>
                             <span>@row.Email</span>
                             <span>
                                 @ManpowerTypeName(row.ManpowerTypeId)
@@ -405,7 +411,15 @@
     private RenderFragment ErrorBanner() =>@<text>
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+            <div class="stf-error-panel" role="alert">
+                <RadzenIcon Icon="error_outline" />
+                <div>
+                    <strong>Please fix the following errors before continuing</strong>
+                    <ul>
+                        <li>@errorMessage</li>
+                    </ul>
+                </div>
+            </div>
         }
     </text>;
 
@@ -440,7 +454,7 @@
     {
         foreach (var row in staff)
         {
-            if (string.IsNullOrWhiteSpace(row.FullName) || string.IsNullOrWhiteSpace(row.Email) || row.ManpowerTypeId == Guid.Empty)
+            if (string.IsNullOrWhiteSpace(row.FullName) || string.IsNullOrWhiteSpace(row.EmployeeId) || string.IsNullOrWhiteSpace(row.Email) || row.ManpowerTypeId == Guid.Empty)
             {
                 errorMessage = UiStrings.Stations.StaffIncomplete;
                 return false;
@@ -475,7 +489,7 @@
             else
             {
                 var staffRequests = staff.Select(r => new NewStationStaffRequest(
-                    r.FullName.Trim(), r.Email.Trim(), r.ManpowerTypeId, null, null, null,
+                    r.FullName.Trim(), r.EmployeeId.Trim(), r.Email.Trim(), r.ManpowerTypeId, null, null, null,
                     r.GrantPortal ? r.PortalRoleId : null)).ToList();
                 await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId, staffRequests));
             }
@@ -506,6 +520,7 @@
     {
         public Guid Key { get; } = Guid.NewGuid();
         public string FullName { get; set; } = string.Empty;
+        public string EmployeeId { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public Guid ManpowerTypeId { get; set; }
         public bool GrantPortal { get; set; }

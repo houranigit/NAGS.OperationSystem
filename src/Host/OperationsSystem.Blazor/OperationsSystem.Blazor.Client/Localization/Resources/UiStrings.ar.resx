@@ -452,8 +452,24 @@
   <data name="StaffMembers.Create" xml:space="preserve"><value>موظف جديد</value></data>
   <data name="StaffMembers.Empty" xml:space="preserve"><value>لا يوجد أي موظف يتطابق مع عوامل التصفية الخاصة بك.</value></data>
   <data name="StaffMembers.CountLabel" xml:space="preserve"><value>الموظفين</value></data>
-  <data name="StaffMembers.SearchPlaceholder" xml:space="preserve"><value>البحث بالاسم أو البريد الإلكتروني</value></data>
+  <data name="StaffMembers.SearchPlaceholder" xml:space="preserve"><value>البحث بمعرف الموظف أو الاسم أو البريد الإلكتروني</value></data>
   <data name="StaffMembers.FullName" xml:space="preserve"><value>الاسم الكامل</value></data>
+  <data name="StaffMembers.EmployeeId" xml:space="preserve"><value>معرف الموظف</value></data>
+  <data name="StaffMembers.EmployeeIdRequired" xml:space="preserve"><value>معرف الموظف مطلوب.</value></data>
+  <data name="StaffMembers.EmployeeIdHintTitle" xml:space="preserve"><value>استخدم معرف الموظف الرسمي</value></data>
+  <data name="StaffMembers.EmployeeIdHint" xml:space="preserve"><value>معرف الموظف إلزامي ويجب أن يكون فريدًا بين جميع الموظفين.</value></data>
+  <data name="StaffMembers.Assignment" xml:space="preserve"><value>تعيين المحطة</value></data>
+  <data name="StaffMembers.SelectStation" xml:space="preserve"><value>اختر المحطة</value></data>
+  <data name="StaffMembers.SelectManpowerType" xml:space="preserve"><value>اختر نوع القوى العاملة</value></data>
+  <data name="StaffMembers.StepProfile" xml:space="preserve"><value>الملف والتعيين</value></data>
+  <data name="StaffMembers.StepEmployment" xml:space="preserve"><value>التوظيف والوصول</value></data>
+  <data name="StaffMembers.StepReview" xml:space="preserve"><value>المراجعة والإنشاء</value></data>
+  <data name="StaffMembers.Previous" xml:space="preserve"><value>رجوع</value></data>
+  <data name="StaffMembers.Next" xml:space="preserve"><value>التالي</value></data>
+  <data name="StaffMembers.ReviewTitle" xml:space="preserve"><value>مراجعة الموظف</value></data>
+  <data name="StaffMembers.ReviewIntro" xml:space="preserve"><value>تأكد من المعلومات أدناه قبل إنشاء الموظف.</value></data>
+  <data name="StaffMembers.ReviewNote" xml:space="preserve"><value>يمكنك الرجوع إلى أي خطوة وإجراء التغييرات قبل إنشاء الموظف.</value></data>
+  <data name="StaffMembers.FixErrors" xml:space="preserve"><value>يرجى تصحيح الأخطاء التالية قبل المتابعة</value></data>
   <data name="StaffMembers.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>
   <data name="StaffMembers.Station" xml:space="preserve"><value>محطة</value></data>
   <data name="StaffMembers.ManpowerType" xml:space="preserve"><value>نوع القوى العاملة</value></data>

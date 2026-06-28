@@ -116,8 +116,8 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
             countryId,
             staff = new[]
             {
-                new { fullName = "Staff One", email = $"one-{iata}@test.com", manpowerTypeId, employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null },
-                new { fullName = "Staff Two", email = $"two-{iata}@test.com", manpowerTypeId, employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null }
+                new { fullName = "Staff One", employeeId = $"EMP-1-{iata}", email = $"one-{iata}@test.com", manpowerTypeId, employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null },
+                new { fullName = "Staff Two", employeeId = $"EMP-2-{iata}", email = $"two-{iata}@test.com", manpowerTypeId, employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null }
             }
         });
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -144,7 +144,7 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
             countryId,
             staff = new[]
             {
-                new { fullName = "Bad Staff", email = $"bad-{iata}@test.com", manpowerTypeId = Guid.NewGuid(), employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null }
+                new { fullName = "Bad Staff", employeeId = $"EMP-BAD-{iata}", email = $"bad-{iata}@test.com", manpowerTypeId = Guid.NewGuid(), employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null }
             }
         });
         create.StatusCode.ShouldBeOneOf(HttpStatusCode.NotFound, HttpStatusCode.BadRequest);

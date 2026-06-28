@@ -187,7 +187,7 @@
 }
 
 .stf-grid-3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .stf-field-block {
@@ -293,6 +293,43 @@
 
 .stf-callout-muted {
     align-items: center;
+}
+
+.stf-error-panel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--os-space-3);
+    align-items: start;
+    padding: var(--os-space-4);
+    border: 2px solid color-mix(in srgb, var(--os-color-danger) 62%, white);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--os-color-danger-bg) 72%, white);
+    color: var(--os-color-text);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--os-color-danger) 12%, transparent);
+}
+
+.stf-error-panel ::deep .rz-icon {
+    color: var(--os-color-danger);
+    font-size: 1.35rem;
+    margin-block-start: 2px;
+}
+
+.stf-error-panel strong {
+    display: block;
+    margin-block-end: var(--os-space-2);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+}
+
+.stf-error-panel ul {
+    margin: 0;
+    padding-inline-start: 1.25rem;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-base);
+}
+
+.stf-error-panel li {
+    padding-inline-start: var(--os-space-1);
 }
 
 .stf-staff-list {
@@ -427,7 +464,7 @@
 .stf-review-staff-head,
 .stf-review-staff-row {
     display: grid;
-    grid-template-columns: 1.1fr 1.2fr 1fr;
+    grid-template-columns: 1.1fr 0.8fr 1.2fr 1fr;
     gap: var(--os-space-3);
     align-items: center;
     padding-block: var(--os-space-2);

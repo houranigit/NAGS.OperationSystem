@@ -21,6 +21,7 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
     Guid IAuditable.AuditEntityId => Id;
 
     public string FullName { get; private set; } = null!;
+    public string EmployeeId { get; private set; } = null!;
     public string Email { get; private set; } = null!;
     public Guid StationId { get; private set; }
     public Guid ManpowerTypeId { get; private set; }
@@ -58,6 +59,7 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
 
     public static Result<StaffMember> Create(
         string? fullName,
+        string? employeeId,
         string? email,
         Guid stationId,
         Guid manpowerTypeId,
@@ -69,6 +71,10 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
         var nameCheck = ValidateName(fullName);
         if (nameCheck.IsFailure)
             return nameCheck.Error;
+
+        var employeeIdCheck = NormalizeEmployeeId(employeeId);
+        if (employeeIdCheck.IsFailure)
+            return employeeIdCheck.Error;
 
         var emailCheck = NormalizeEmail(email);
         if (emailCheck.IsFailure)
@@ -84,6 +90,7 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
         {
             Id = id ?? Guid.NewGuid(),
             FullName = nameCheck.Value,
+            EmployeeId = employeeIdCheck.Value,
             Email = emailCheck.Value,
             StationId = stationId,
             ManpowerTypeId = manpowerTypeId,
@@ -97,6 +104,7 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
 
     public Result Update(
         string? fullName,
+        string? employeeId,
         string? email,
         Guid stationId,
         Guid manpowerTypeId,
@@ -107,6 +115,10 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
         var nameCheck = ValidateName(fullName);
         if (nameCheck.IsFailure)
             return nameCheck.Error;
+
+        var employeeIdCheck = NormalizeEmployeeId(employeeId);
+        if (employeeIdCheck.IsFailure)
+            return employeeIdCheck.Error;
 
         var emailCheck = NormalizeEmail(email);
         if (emailCheck.IsFailure)
@@ -119,6 +131,7 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
             return Error.Validation("A manpower type is required.", "MasterData.StaffMember.ManpowerTypeRequired");
 
         FullName = nameCheck.Value;
+        EmployeeId = employeeIdCheck.Value;
         Email = emailCheck.Value;
         StationId = stationId;
         ManpowerTypeId = manpowerTypeId;
@@ -269,6 +282,18 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
         var normalized = email.Trim().ToLowerInvariant();
         if (normalized.Length > 256 || !EmailValidation.IsValid(normalized))
             return Error.Validation("Email is invalid.", "MasterData.StaffMember.EmailInvalid");
+
+        return normalized;
+    }
+
+    private static Result<string> NormalizeEmployeeId(string? employeeId)
+    {
+        if (string.IsNullOrWhiteSpace(employeeId))
+            return Error.Validation("Employee ID is required.", "MasterData.StaffMember.EmployeeIdRequired");
+
+        var normalized = employeeId.Trim().ToUpperInvariant();
+        if (normalized.Length > 50)
+            return Error.Validation("Employee ID must be at most 50 characters.", "MasterData.StaffMember.EmployeeIdTooLong");
 
         return normalized;
     }

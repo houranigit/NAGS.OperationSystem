@@ -452,8 +452,24 @@
   <data name="StaffMembers.Create" xml:space="preserve"><value>New staff member</value></data>
   <data name="StaffMembers.Empty" xml:space="preserve"><value>No staff members match your filters.</value></data>
   <data name="StaffMembers.CountLabel" xml:space="preserve"><value>staff members</value></data>
-  <data name="StaffMembers.SearchPlaceholder" xml:space="preserve"><value>Search by name or email</value></data>
+  <data name="StaffMembers.SearchPlaceholder" xml:space="preserve"><value>Search by employee ID, name or email</value></data>
   <data name="StaffMembers.FullName" xml:space="preserve"><value>Full name</value></data>
+  <data name="StaffMembers.EmployeeId" xml:space="preserve"><value>Employee ID</value></data>
+  <data name="StaffMembers.EmployeeIdRequired" xml:space="preserve"><value>An employee ID is required.</value></data>
+  <data name="StaffMembers.EmployeeIdHintTitle" xml:space="preserve"><value>Use the official employee identifier</value></data>
+  <data name="StaffMembers.EmployeeIdHint" xml:space="preserve"><value>Employee IDs are mandatory and must be unique across all staff members.</value></data>
+  <data name="StaffMembers.Assignment" xml:space="preserve"><value>Station assignment</value></data>
+  <data name="StaffMembers.SelectStation" xml:space="preserve"><value>Select station</value></data>
+  <data name="StaffMembers.SelectManpowerType" xml:space="preserve"><value>Select manpower type</value></data>
+  <data name="StaffMembers.StepProfile" xml:space="preserve"><value>Profile &amp; assignment</value></data>
+  <data name="StaffMembers.StepEmployment" xml:space="preserve"><value>Employment &amp; access</value></data>
+  <data name="StaffMembers.StepReview" xml:space="preserve"><value>Review &amp; create</value></data>
+  <data name="StaffMembers.Previous" xml:space="preserve"><value>Back</value></data>
+  <data name="StaffMembers.Next" xml:space="preserve"><value>Next</value></data>
+  <data name="StaffMembers.ReviewTitle" xml:space="preserve"><value>Review staff member</value></data>
+  <data name="StaffMembers.ReviewIntro" xml:space="preserve"><value>Confirm the information below before creating this staff member.</value></data>
+  <data name="StaffMembers.ReviewNote" xml:space="preserve"><value>You can return to any step and make changes before creating the staff member.</value></data>
+  <data name="StaffMembers.FixErrors" xml:space="preserve"><value>Please fix the following errors before continuing</value></data>
   <data name="StaffMembers.Email" xml:space="preserve"><value>Email</value></data>
   <data name="StaffMembers.Station" xml:space="preserve"><value>Station</value></data>
   <data name="StaffMembers.ManpowerType" xml:space="preserve"><value>Manpower type</value></data>

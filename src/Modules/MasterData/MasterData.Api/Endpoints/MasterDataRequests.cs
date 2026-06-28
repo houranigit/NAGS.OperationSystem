@@ -24,6 +24,7 @@ public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, str
 
 public sealed record NewStationStaffRequest(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid ManpowerTypeId,
     EmploymentContractRequest? EmploymentContract,
@@ -66,6 +67,7 @@ public sealed record StaffLicenseRequest(Guid? Id, Guid LicenseId, string Licens
 
 public sealed record CreateStaffMemberRequest(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     Guid ManpowerTypeId,
@@ -75,6 +77,7 @@ public sealed record CreateStaffMemberRequest(
 
 public sealed record UpdateStaffMemberRequest(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     Guid ManpowerTypeId,

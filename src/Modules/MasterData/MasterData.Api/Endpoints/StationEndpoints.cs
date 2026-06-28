@@ -40,7 +40,7 @@ internal static class StationEndpoints
         stations.MapPost("/", async (CreateStationRequest request, ISender sender, CancellationToken ct) =>
         {
             var staff = (request.Staff ?? []).Select(s => new NewStationStaffInput(
-                s.FullName, s.Email, s.ManpowerTypeId,
+                s.FullName, s.EmployeeId, s.Email, s.ManpowerTypeId,
                 s.EmploymentContract is { } c ? new EmploymentContractInput(c.StartDate, c.EndDate) : null,
                 s.WorkingDays,
                 (s.Licenses ?? []).Select(l => new StaffLicenseInput(l.Id, l.LicenseId, l.LicenseNumber)).ToList(),

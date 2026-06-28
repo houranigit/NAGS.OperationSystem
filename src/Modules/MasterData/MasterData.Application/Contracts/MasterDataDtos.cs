@@ -141,6 +141,7 @@ public sealed record CustomerOptionDto(Guid Id, string IataCode, string Name);
 public sealed record StaffMemberListItemDto(
     Guid Id,
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     string StationCode,
@@ -155,6 +156,7 @@ public sealed record StaffMemberLicenseDto(Guid Id, Guid LicenseId, string Licen
 public sealed record StaffMemberDto(
     Guid Id,
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     string StationCode,

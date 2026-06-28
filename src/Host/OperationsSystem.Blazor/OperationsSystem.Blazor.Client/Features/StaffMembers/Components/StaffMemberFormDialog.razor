@@ -3,161 +3,55 @@
 @inject AuthSession Auth
 @inject DialogService DialogService
 
-<RadzenTemplateForm TItem="StaffModel" Data="@model" Submit="@SubmitAsync">
-    <div class="sf-form">
-        <p class="sf-intro os-muted">@UiStrings.StaffMembers.FormIntro</p>
-
-        <div class="sf-section"><RadzenIcon Icon="badge" /><h4>@UiStrings.StaffMembers.BasicInformation</h4></div>
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.StaffMembers.FullName" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="person" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.FullName" Name="fullName" Style="width: 100%;" MaxLength="200" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.StaffMembers.Email" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="mail" /></Start>
-                    <ChildContent>
-                        <RadzenTextBox @bind-Value="model.Email" Name="email" Style="width: 100%;" MaxLength="256" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
-
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.StaffMembers.Station" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="flight_takeoff" /></Start>
-                    <ChildContent>
-                        <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
-                                        AllowFiltering="true" Name="station" Style="width: 100%;" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.StaffMembers.ManpowerType" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="engineering" /></Start>
-                    <ChildContent>
-                        <RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id"
-                                        AllowFiltering="true" Name="manpowerType" Style="width: 100%;" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
-
-        <div class="sf-section"><RadzenIcon Icon="event" /><h4>@UiStrings.StaffMembers.EmploymentContract</h4></div>
-        <RadzenRow Gap="1rem">
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.StaffMembers.StartDate" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="event" /></Start>
-                    <ChildContent>
-                        <RadzenDatePicker @bind-Value="model.StartDate" DateFormat="yyyy-MM-dd" Name="startDate" Style="width: 100%;" ShowTime="false" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-            <RadzenColumn Size="6">
-                <RadzenFormField Text="@UiStrings.StaffMembers.EndDate" Variant="Variant.Outlined" Style="width: 100%;">
-                    <Start><RadzenIcon Icon="event" /></Start>
-                    <ChildContent>
-                        <RadzenDatePicker @bind-Value="model.EndDate" DateFormat="yyyy-MM-dd" Name="endDate" Style="width: 100%;" ShowTime="false" />
-                    </ChildContent>
-                </RadzenFormField>
-            </RadzenColumn>
-        </RadzenRow>
-
-        <div class="sf-section"><RadzenIcon Icon="calendar_month" /><h4>@UiStrings.StaffMembers.WorkingSchedule</h4></div>
-        <div class="sf-days">
-            @foreach (var day in scheduleDays)
-            {
-                <button type="button" class="sf-day @(day.Selected ? "sf-day--on" : "")"
-                        @onclick="@(() => day.Selected = !day.Selected)">
-                    @if (day.Selected)
-                    {
-                        <RadzenIcon Icon="check" />
-                    }
-                    <span>@day.Label</span>
-                </button>
-            }
+<div class="sf-form @(StaffMemberId is null ? "sf-form-create" : "sf-form-edit")">
+    @if (StaffMemberId is null)
+    {
+        @WizardStepper()
+        <div class="sf-wizard-body">
+            @(step switch { 0 => IdentityStep(), 1 => EmploymentStep(), _ => ReviewStep() })
         </div>
-        <p class="sf-hint os-muted">@UiStrings.StaffMembers.ScheduleHint</p>
-
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
-            <div class="sf-section"><RadzenIcon Icon="badge" /><h4>@UiStrings.StaffMembers.Licenses</h4></div>
-            <RadzenButton Text="@UiStrings.StaffMembers.AddLicense" Icon="add" ButtonStyle="ButtonStyle.Light"
-                          Size="ButtonSize.Small" Click="@AddLicense" />
-        </RadzenStack>
-
-        @if (licenseRows.Count == 0)
-        {
-            <p class="os-muted">@UiStrings.StaffMembers.LicensesEmpty</p>
-        }
-        else
-        {
-            <RadzenStack Gap="0.75rem">
-                @foreach (var row in licenseRows)
+        @ErrorBanner()
+        <div class="sf-actions">
+            @if (step == 0)
+            {
+                <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            }
+            else
+            {
+                <RadzenButton Text="@UiStrings.StaffMembers.Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@Previous" />
+            }
+            <div class="sf-actions-end">
+                @if (step > 0)
                 {
-                    <RadzenCard Variant="Variant.Outlined" class="sf-license-card">
-                        <RadzenRow Gap="0.75rem" AlignItems="AlignItems.Center">
-                            <RadzenColumn Size="6">
-                                <RadzenDropDown @bind-Value="row.LicenseId" Data="@licenses" TextProperty="Code" ValueProperty="Id"
-                                                AllowFiltering="true" Placeholder="@UiStrings.StaffMembers.License" Style="width: 100%;" />
-                            </RadzenColumn>
-                            <RadzenColumn Size="5">
-                                <RadzenTextBox @bind-Value="row.LicenseNumber" Placeholder="@UiStrings.StaffMembers.LicenseNumber" Style="width: 100%;" MaxLength="100" />
-                            </RadzenColumn>
-                            <RadzenColumn Size="1">
-                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
-                                              Size="ButtonSize.Small" Click="@(() => licenseRows.Remove(row))" />
-                            </RadzenColumn>
-                        </RadzenRow>
-                    </RadzenCard>
+                    <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
                 }
-            </RadzenStack>
-        }
-
-        @if (StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess))
-        {
-            <div class="sf-section"><RadzenIcon Icon="vpn_key" /><h4>@UiStrings.PortalAccess.GrantTitle</h4></div>
-            <RadzenStack Gap="0.5rem">
-                <RadzenSwitch @bind-Value="grantPortal" Name="grantPortal" />
-                <RadzenLabel Text="@UiStrings.PortalAccess.GrantOnCreate" Component="grantPortal" />
-                <p class="sf-hint os-muted">@UiStrings.PortalAccess.GrantOnCreateHint</p>
-                @if (grantPortal)
+                @if (step < 2)
                 {
-                    @if (portalRoles.Count == 0)
-                    {
-                        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@UiStrings.PortalAccess.NoCompatibleRoles</RadzenAlert>
-                    }
-                    else
-                    {
-                        <RadzenFormField Text="@UiStrings.PortalAccess.Role" Variant="Variant.Outlined" Style="width: 100%;">
-                            <Start><RadzenIcon Icon="badge" /></Start>
-                            <ChildContent>
-                                <RadzenDropDown @bind-Value="portalRoleId" Data="@portalRoles" TextProperty="Name" ValueProperty="Id"
-                                                Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" Style="width: 100%;" />
-                            </ChildContent>
-                        </RadzenFormField>
-                    }
+                    <RadzenButton Text="@UiStrings.StaffMembers.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" Click="@NextAsync" />
                 }
-            </RadzenStack>
-        }
-
-        @if (!string.IsNullOrWhiteSpace(errorMessage))
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
-        }
-
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
-            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton ButtonType="ButtonType.Submit" Icon="check"
-                          Text="@(StaffMemberId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
-                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
-        </RadzenStack>
-    </div>
-</RadzenTemplateForm>
+                else
+                {
+                    <RadzenButton Text="@UiStrings.StaffMembers.CreateTitle" Icon="check" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <RadzenTemplateForm TItem="StaffModel" Data="@model" Submit="@SubmitAsync">
+            @IdentityStep()
+            @EmploymentStep()
+            @ErrorBanner()
+            <div class="sf-actions sf-actions-edit">
+                <span></span>
+                <div class="sf-actions-end">
+                    <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                    <RadzenButton ButtonType="ButtonType.Submit" Icon="check" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+                </div>
+            </div>
+        </RadzenTemplateForm>
+    }
+</div>
 
 @code {
     [Parameter] public Guid? StaffMemberId { get; set; }
@@ -184,6 +78,123 @@
     private bool grantPortal;
     private Guid? portalRoleId;
     private IReadOnlyList<RoleOption> portalRoles = [];
+    private int step;
+
+    private RenderFragment WizardStepper() => @<div class="sf-stepper" aria-label="@UiStrings.StaffMembers.CreateTitle">
+        @for (var index = 0; index < 3; index++)
+        {
+            var current = index;
+            <div class="sf-step @(step == current ? "sf-step-active" : step > current ? "sf-step-complete" : "")">
+                <span class="sf-step-number">@(step > current ? "✓" : (current + 1).ToString())</span>
+                <strong>@StepLabel(current)</strong>
+            </div>
+            @if (current < 2)
+            {
+                <span class="sf-step-line @(step > current ? "sf-step-line-complete" : "")"></span>
+            }
+        }
+    </div>;
+
+    private RenderFragment IdentityStep() => @<section class="sf-step-content">
+        <div class="sf-section-heading"><RadzenIcon Icon="badge" /><h3>@UiStrings.StaffMembers.BasicInformation</h3></div>
+        <div class="sf-grid-2">
+            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.EmployeeId <span>*</span></label><div class="sf-input-wrap"><RadzenIcon Icon="badge" /><RadzenTextBox @bind-Value="model.EmployeeId" Change="@((string? value) => model.EmployeeId = value)" class="sf-control sf-control-icon" MaxLength="50" Placeholder="e.g. EMP-1042" /></div></div>
+            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.FullName <span>*</span></label><div class="sf-input-wrap"><RadzenIcon Icon="person" /><RadzenTextBox @bind-Value="model.FullName" Change="@((string? value) => model.FullName = value)" class="sf-control sf-control-icon" MaxLength="200" Placeholder="e.g. Jane Doe" /></div></div>
+        </div>
+        <div class="sf-field-block">
+            <label class="sf-label">@UiStrings.StaffMembers.Email <span>*</span></label>
+            <div class="sf-input-wrap"><RadzenIcon Icon="mail" /><RadzenTextBox @bind-Value="model.Email" Change="@((string? value) => model.Email = value)" class="sf-control sf-control-icon" MaxLength="256" Placeholder="jane.doe@example.com" /></div>
+        </div>
+        <div class="sf-section-heading"><RadzenIcon Icon="flight_takeoff" /><h3>@UiStrings.StaffMembers.Assignment</h3></div>
+        <div class="sf-grid-2">
+            <div class="sf-field-block">
+                <label class="sf-label">@UiStrings.StaffMembers.Station <span>*</span></label>
+                <div class="sf-input-wrap"><RadzenIcon Icon="flight_takeoff" /><RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectStation" /></div>
+            </div>
+            <div class="sf-field-block">
+                <label class="sf-label">@UiStrings.StaffMembers.ManpowerType <span>*</span></label>
+                <div class="sf-input-wrap"><RadzenIcon Icon="engineering" /><RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectManpowerType" /></div>
+            </div>
+        </div>
+        <div class="sf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.StaffMembers.EmployeeIdHintTitle</strong><p>@UiStrings.StaffMembers.EmployeeIdHint</p></div></div>
+    </section>;
+
+    private RenderFragment EmploymentStep() => @<section class="sf-step-content">
+        <div class="sf-section-heading"><RadzenIcon Icon="event" /><h3>@UiStrings.StaffMembers.EmploymentContract</h3></div>
+        <div class="sf-grid-2">
+            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.StartDate</label><RadzenDatePicker @bind-Value="model.StartDate" DateFormat="yyyy-MM-dd" class="sf-control" ShowTime="false" /></div>
+            <div class="sf-field-block"><label class="sf-label">@UiStrings.StaffMembers.EndDate</label><RadzenDatePicker @bind-Value="model.EndDate" DateFormat="yyyy-MM-dd" class="sf-control" ShowTime="false" /></div>
+        </div>
+        <div class="sf-section-heading"><RadzenIcon Icon="calendar_month" /><h3>@UiStrings.StaffMembers.WorkingSchedule</h3></div>
+        <div class="sf-days">
+            @foreach (var day in scheduleDays)
+            {
+                <button type="button" class="sf-day @(day.Selected ? "sf-day--on" : "")" @onclick="@(() => day.Selected = !day.Selected)">
+                    @if (day.Selected) { <RadzenIcon Icon="check" /> }<span>@day.Label</span>
+                </button>
+            }
+        </div>
+        <p class="sf-hint">@UiStrings.StaffMembers.ScheduleHint</p>
+        <div class="sf-section-heading sf-section-heading-action">
+            <div><RadzenIcon Icon="workspace_premium" /><h3>@UiStrings.StaffMembers.Licenses</h3></div>
+            <RadzenButton Text="@UiStrings.StaffMembers.AddLicense" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@AddLicense" />
+        </div>
+        @if (licenseRows.Count == 0)
+        {
+            <div class="sf-empty"><RadzenIcon Icon="workspace_premium" /><span>@UiStrings.StaffMembers.LicensesEmpty</span></div>
+        }
+        else
+        {
+            <div class="sf-license-list">
+                @foreach (var row in licenseRows)
+                {
+                    <div class="sf-license-row" @key="row.Key">
+                        <RadzenDropDown @bind-Value="row.LicenseId" Data="@licenses" TextProperty="Code" ValueProperty="Id" AllowFiltering="true" Placeholder="@UiStrings.StaffMembers.License" class="sf-control" />
+                        <RadzenTextBox @bind-Value="row.LicenseNumber" Placeholder="@UiStrings.StaffMembers.LicenseNumber" class="sf-control" MaxLength="100" />
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small" Click="@(() => licenseRows.Remove(row))" />
+                    </div>
+                }
+            </div>
+        }
+        @if (StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess))
+        {
+            <div class="sf-section-heading"><RadzenIcon Icon="vpn_key" /><h3>@UiStrings.PortalAccess.GrantTitle</h3></div>
+            <div class="sf-portal-row"><RadzenSwitch @bind-Value="grantPortal" Name="grantPortal" /><div><RadzenLabel Text="@UiStrings.PortalAccess.GrantOnCreate" Component="grantPortal" /><p>@UiStrings.PortalAccess.GrantOnCreateHint</p></div></div>
+            @if (grantPortal)
+            {
+                <RadzenDropDown @bind-Value="portalRoleId" Data="@portalRoles" TextProperty="Name" ValueProperty="Id" Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" class="sf-control" />
+            }
+        }
+    </section>;
+
+    private RenderFragment ReviewStep() => @<section class="sf-step-content">
+        <div class="sf-review-intro"><h3>@UiStrings.StaffMembers.ReviewTitle</h3><p>@UiStrings.StaffMembers.ReviewIntro</p></div>
+        <div class="sf-review-card"><div class="sf-review-head"><h4>@UiStrings.StaffMembers.BasicInformation</h4><button type="button" @onclick="@(() => step = 0)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
+            <dl class="sf-review-grid"><div><dt>@UiStrings.StaffMembers.EmployeeId</dt><dd>@model.EmployeeId</dd></div><div><dt>@UiStrings.StaffMembers.FullName</dt><dd>@model.FullName</dd></div><div><dt>@UiStrings.StaffMembers.Email</dt><dd>@model.Email</dd></div><div><dt>@UiStrings.StaffMembers.Station</dt><dd>@StationName</dd></div><div><dt>@UiStrings.StaffMembers.ManpowerType</dt><dd>@ManpowerTypeName</dd></div></dl>
+        </div>
+        <div class="sf-review-card"><div class="sf-review-head"><h4>@UiStrings.StaffMembers.EmploymentDetails</h4><button type="button" @onclick="@(() => step = 1)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
+            <dl class="sf-review-grid"><div><dt>@UiStrings.StaffMembers.StartDate</dt><dd>@DateDisplay(model.StartDate)</dd></div><div><dt>@UiStrings.StaffMembers.EndDate</dt><dd>@DateDisplay(model.EndDate)</dd></div><div><dt>@UiStrings.StaffMembers.WorkingSchedule</dt><dd>@WorkingDaysDisplay</dd></div><div><dt>@UiStrings.StaffMembers.Licenses</dt><dd>@licenseRows.Count</dd></div><div><dt>@UiStrings.PortalAccess.GrantTitle</dt><dd>@(grantPortal ? UiStrings.Common.Yes : UiStrings.Common.No)</dd></div></dl>
+        </div>
+        <div class="sf-review-note"><RadzenIcon Icon="lock" /><span>@UiStrings.StaffMembers.ReviewNote</span></div>
+    </section>;
+
+    private RenderFragment ErrorBanner() => @<text>@if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="sf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>@UiStrings.StaffMembers.FixErrors</strong><ul><li>@errorMessage</li></ul></div></div> }</text>;
+
+    private string StepLabel(int index) => index switch { 0 => UiStrings.StaffMembers.StepProfile, 1 => UiStrings.StaffMembers.StepEmployment, _ => UiStrings.StaffMembers.StepReview };
+    private string StationName => stations.FirstOrDefault(s => s.Id == model.StationId)?.IataCode ?? UiStrings.Common.None;
+    private string ManpowerTypeName => manpowerTypes.FirstOrDefault(m => m.Id == model.ManpowerTypeId)?.Name ?? UiStrings.Common.None;
+    private string WorkingDaysDisplay => string.Join(", ", scheduleDays.Where(d => d.Selected).Select(d => d.Label)) is { Length: > 0 } value ? value : UiStrings.StaffMembers.NoSchedule;
+    private static string DateDisplay(DateTime? value) => value?.ToString("yyyy-MM-dd") ?? UiStrings.Common.None;
+    private void Previous() { errorMessage = null; step = Math.Max(0, step - 1); }
+
+    private async Task NextAsync()
+    {
+        errorMessage = null;
+        if (step == 0 && !ValidateIdentity()) return;
+        if (step == 1 && !ValidateEmployment()) return;
+        step = Math.Min(2, step + 1);
+        await Task.CompletedTask;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -214,6 +225,7 @@
                 model = new StaffModel
                 {
                     FullName = detail.FullName,
+                    EmployeeId = detail.EmployeeId,
                     Email = detail.Email,
                     StationId = detail.StationId,
                     ManpowerTypeId = detail.ManpowerTypeId,
@@ -247,65 +259,8 @@
     {
         errorMessage = null;
 
-        if (string.IsNullOrWhiteSpace(model.FullName))
-        {
-            errorMessage = UiStrings.StaffMembers.NameRequired;
+        if (!ValidateIdentity() || !ValidateEmployment())
             return;
-        }
-
-        if (string.IsNullOrWhiteSpace(model.Email))
-        {
-            errorMessage = UiStrings.StaffMembers.EmailRequired;
-            return;
-        }
-
-        if (model.StationId == Guid.Empty)
-        {
-            errorMessage = UiStrings.StaffMembers.StationRequired;
-            return;
-        }
-
-        if (model.ManpowerTypeId == Guid.Empty)
-        {
-            errorMessage = UiStrings.StaffMembers.ManpowerTypeRequired;
-            return;
-        }
-
-        if (model.StartDate is null && model.EndDate is not null)
-        {
-            errorMessage = UiStrings.StaffMembers.EndBeforeStart;
-            return;
-        }
-
-        if (model is { StartDate: { } start, EndDate: { } end } && end < start)
-        {
-            errorMessage = UiStrings.StaffMembers.EndBeforeStart;
-            return;
-        }
-
-        if (licenseRows.Any(r => r.LicenseId == Guid.Empty))
-        {
-            errorMessage = UiStrings.StaffMembers.LicenseRequired;
-            return;
-        }
-
-        if (licenseRows.Any(r => string.IsNullOrWhiteSpace(r.LicenseNumber)))
-        {
-            errorMessage = UiStrings.StaffMembers.LicenseNumberRequired;
-            return;
-        }
-
-        if (licenseRows.GroupBy(r => r.LicenseId).Any(g => g.Count() > 1))
-        {
-            errorMessage = UiStrings.StaffMembers.LicenseDuplicate;
-            return;
-        }
-
-        if (StaffMemberId is null && grantPortal && portalRoleId is null)
-        {
-            errorMessage = UiStrings.PortalAccess.RoleRequired;
-            return;
-        }
 
         isSubmitting = true;
 
@@ -323,18 +278,19 @@
                 .ToList();
 
             var name = model.FullName!.Trim();
+            var employeeId = model.EmployeeId!.Trim();
             var email = model.Email!.Trim();
 
             if (StaffMemberId is { } id)
             {
                 await MasterData.UpdateStaffMemberAsync(id,
-                    new UpdateStaffMemberRequest(name, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests),
+                    new UpdateStaffMemberRequest(name, employeeId, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests),
                     rowVersion ?? string.Empty);
             }
             else
             {
                 var newId = await MasterData.CreateStaffMemberAsync(
-                    new CreateStaffMemberRequest(name, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests));
+                    new CreateStaffMemberRequest(name, employeeId, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests));
 
                 if (grantPortal && portalRoleId is { } roleId)
                     await MasterData.GrantStaffPortalAccessAsync(newId, new GrantPortalAccessRequest(roleId));
@@ -352,9 +308,87 @@
         }
     }
 
+    private bool ValidateIdentity()
+    {
+        if (string.IsNullOrWhiteSpace(model.EmployeeId))
+        {
+            errorMessage = UiStrings.StaffMembers.EmployeeIdRequired;
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.FullName))
+        {
+            errorMessage = UiStrings.StaffMembers.NameRequired;
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Email))
+        {
+            errorMessage = UiStrings.StaffMembers.EmailRequired;
+            return false;
+        }
+
+        if (model.StationId == Guid.Empty)
+        {
+            errorMessage = UiStrings.StaffMembers.StationRequired;
+            return false;
+        }
+
+        if (model.ManpowerTypeId == Guid.Empty)
+        {
+            errorMessage = UiStrings.StaffMembers.ManpowerTypeRequired;
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool ValidateEmployment()
+    {
+
+        if (model.StartDate is null && model.EndDate is not null)
+        {
+            errorMessage = UiStrings.StaffMembers.EndBeforeStart;
+            return false;
+        }
+
+        if (model is { StartDate: { } start, EndDate: { } end } && end < start)
+        {
+            errorMessage = UiStrings.StaffMembers.EndBeforeStart;
+            return false;
+        }
+
+        if (licenseRows.Any(r => r.LicenseId == Guid.Empty))
+        {
+            errorMessage = UiStrings.StaffMembers.LicenseRequired;
+            return false;
+        }
+
+        if (licenseRows.Any(r => string.IsNullOrWhiteSpace(r.LicenseNumber)))
+        {
+            errorMessage = UiStrings.StaffMembers.LicenseNumberRequired;
+            return false;
+        }
+
+        if (licenseRows.GroupBy(r => r.LicenseId).Any(g => g.Count() > 1))
+        {
+            errorMessage = UiStrings.StaffMembers.LicenseDuplicate;
+            return false;
+        }
+
+        if (StaffMemberId is null && grantPortal && portalRoleId is null)
+        {
+            errorMessage = UiStrings.PortalAccess.RoleRequired;
+            return false;
+        }
+
+        return true;
+    }
+
     private sealed class StaffModel
     {
         public string? FullName { get; set; }
+        public string? EmployeeId { get; set; }
         public string? Email { get; set; }
         public Guid StationId { get; set; }
         public Guid ManpowerTypeId { get; set; }
@@ -364,6 +398,7 @@
 
     private sealed class LicenseRow
     {
+        public Guid Key { get; } = Guid.NewGuid();
         public Guid? Id { get; set; }
         public Guid LicenseId { get; set; }
         public string? LicenseNumber { get; set; }

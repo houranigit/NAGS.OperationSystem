@@ -298,6 +298,7 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var create = await client.PostAsJsonAsync($"{Base}/staff-members", new
         {
             fullName = "Portal Staff",
+            employeeId = $"EMP-{Guid.NewGuid():N}",
             email,
             stationId,
             manpowerTypeId,

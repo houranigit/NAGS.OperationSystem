@@ -31,6 +31,9 @@
                                 Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="EmployeeId" Title="@UiStrings.StaffMembers.EmployeeId" Width="140px">
+                    <Template Context="s"><strong>@s.EmployeeId</strong></Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="StaffMemberListItem" Property="FullName" Title="@UiStrings.StaffMembers.FullName">
                     <Template Context="s"><strong>@s.FullName</strong></Template>
                 </RadzenDataGridColumn>

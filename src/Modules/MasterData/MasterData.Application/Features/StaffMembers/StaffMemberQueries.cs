@@ -50,7 +50,7 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var term = request.Search.Trim();
-            query = query.Where(s => s.FullName.Contains(term) || s.Email.Contains(term));
+            query = query.Where(s => s.FullName.Contains(term) || s.EmployeeId.Contains(term) || s.Email.Contains(term));
         }
 
         var total = await query.LongCountAsync(cancellationToken);
@@ -59,7 +59,7 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(s => new StaffMemberListItemDto(
-                s.Id, s.FullName, s.Email, s.StationId,
+                s.Id, s.FullName, s.EmployeeId, s.Email, s.StationId,
                 db.Stations.Where(st => st.Id == s.StationId).Select(st => st.IataCode).FirstOrDefault() ?? string.Empty,
                 s.ManpowerTypeId,
                 db.ManpowerTypes.Where(m => m.Id == s.ManpowerTypeId).Select(m => m.Name).FirstOrDefault() ?? string.Empty,
@@ -77,6 +77,7 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
         return spec.Field switch
         {
             "fullname" => spec.Descending ? query.OrderByDescending(s => s.FullName) : query.OrderBy(s => s.FullName),
+            "employeeid" => spec.Descending ? query.OrderByDescending(s => s.EmployeeId) : query.OrderBy(s => s.EmployeeId),
             "email" => spec.Descending ? query.OrderByDescending(s => s.Email) : query.OrderBy(s => s.Email),
             "isactive" => spec.Descending ? query.OrderByDescending(s => s.IsActive) : query.OrderBy(s => s.IsActive),
             _ => query.OrderBy(s => s.FullName)
@@ -99,6 +100,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             {
                 s.Id,
                 s.FullName,
+                s.EmployeeId,
                 s.Email,
                 s.StationId,
                 StationCode = db.Stations.Where(st => st.Id == s.StationId).Select(st => st.IataCode).FirstOrDefault() ?? string.Empty,
@@ -145,7 +147,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             : null;
 
         return new StaffMemberDto(
-            staff.Id, staff.FullName, staff.Email,
+            staff.Id, staff.FullName, staff.EmployeeId, staff.Email,
             staff.StationId, staff.StationCode, staff.StationName,
             staff.ManpowerTypeId, staff.ManpowerTypeName,
             contract, workingDays, staff.LinkedUserId, staff.PortalState.ToString(), staff.PortalFailureReason, staff.IsActive,

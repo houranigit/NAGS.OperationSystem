@@ -35,7 +35,7 @@ internal static class StaffMemberEndpoints
         staff.MapPost("/", async (CreateStaffMemberRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new CreateStaffMemberCommand(
-                request.FullName, request.Email, request.StationId, request.ManpowerTypeId,
+                request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
                 MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses)), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/staff-members/{id}");
         }).RequirePermission(MasterDataPermissions.StaffMembers.Create);
@@ -46,7 +46,7 @@ internal static class StaffMemberEndpoints
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
             var result = await sender.Send(new UpdateStaffMemberCommand(
-                id, request.FullName, request.Email, request.StationId, request.ManpowerTypeId,
+                id, request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
                 MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses), rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.StaffMembers.Update);

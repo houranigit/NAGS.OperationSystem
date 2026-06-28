@@ -121,6 +121,7 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
             var create = await client.PostAsJsonAsync($"{Base}/staff-members", new
             {
                 fullName = "Scoped Staff",
+                employeeId = $"EMP-{Guid.NewGuid():N}",
                 email,
                 stationId,
                 manpowerTypeId,

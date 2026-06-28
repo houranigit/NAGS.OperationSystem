@@ -232,6 +232,7 @@
                 <RadzenDataGrid TItem="StaffMemberListItem" Data="@stationStaff" AllowSorting="false"
                                 GridLines="DataGridGridLines.Horizontal" RowSelect="@(st => NavigateToStaff(st.Id))">
                     <Columns>
+                        <RadzenDataGridColumn TItem="StaffMemberListItem" Property="EmployeeId" Title="@UiStrings.StaffMembers.EmployeeId" />
                         <RadzenDataGridColumn TItem="StaffMemberListItem" Property="FullName" Title="@UiStrings.StaffMembers.FullName" />
                         <RadzenDataGridColumn TItem="StaffMemberListItem" Property="Email" Title="@UiStrings.StaffMembers.Email" />
                         <RadzenDataGridColumn TItem="StaffMemberListItem" Property="ManpowerTypeName" Title="@UiStrings.StaffMembers.ManpowerType" />

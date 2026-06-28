@@ -19,6 +19,7 @@ public sealed record StaffLicenseInput(Guid? Id, Guid LicenseId, string? License
 
 public sealed record CreateStaffMemberCommand(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     Guid ManpowerTypeId,
@@ -31,6 +32,7 @@ public sealed class CreateStaffMemberCommandValidator : AbstractValidator<Create
     public CreateStaffMemberCommandValidator()
     {
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.EmployeeId).NotEmpty().MaximumLength(50);
         RuleFor(x => x.Email).NotEmpty();
         RuleFor(x => x.StationId).NotEmpty();
         RuleFor(x => x.ManpowerTypeId).NotEmpty();
@@ -60,12 +62,16 @@ public sealed class CreateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
 
         var now = timeProvider.GetUtcNow();
         var result = StaffMember.Create(
-            request.FullName, request.Email, request.StationId, request.ManpowerTypeId,
+            request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
             contract.Value, schedule.Value, now);
         if (result.IsFailure)
             return result.Error;
 
         var staff = result.Value;
+
+        var employeeIdCheck = await StaffMemberGuards.EnsureEmployeeIdAvailableAsync(db, staff.EmployeeId, null, cancellationToken);
+        if (employeeIdCheck.IsFailure)
+            return employeeIdCheck.Error;
 
         var emailCheck = await StaffMemberGuards.EnsureEmailAvailableAsync(db, staff.Email, null, cancellationToken);
         if (emailCheck.IsFailure)
@@ -90,6 +96,7 @@ public sealed class CreateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
 public sealed record UpdateStaffMemberCommand(
     Guid Id,
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     Guid ManpowerTypeId,
@@ -104,6 +111,7 @@ public sealed class UpdateStaffMemberCommandValidator : AbstractValidator<Update
     {
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.EmployeeId).NotEmpty().MaximumLength(50);
         RuleFor(x => x.Email).NotEmpty();
         RuleFor(x => x.StationId).NotEmpty();
         RuleFor(x => x.ManpowerTypeId).NotEmpty();
@@ -145,10 +153,14 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
         var now = timeProvider.GetUtcNow();
         var previousEmail = staff.Email;
         var result = staff.Update(
-            request.FullName, request.Email, request.StationId, request.ManpowerTypeId,
+            request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
             contract.Value, schedule.Value, now);
         if (result.IsFailure)
             return result.Error;
+
+        var employeeIdCheck = await StaffMemberGuards.EnsureEmployeeIdAvailableAsync(db, staff.EmployeeId, staff.Id, cancellationToken);
+        if (employeeIdCheck.IsFailure)
+            return employeeIdCheck.Error;
 
         var emailCheck = await StaffMemberGuards.EnsureEmailAvailableAsync(db, staff.Email, staff.Id, cancellationToken);
         if (emailCheck.IsFailure)
@@ -282,6 +294,17 @@ internal static class StaffMemberGuards
         var taken = await db.StaffMembers.AnyAsync(s => s.Email == email && (excludeId == null || s.Id != excludeId), cancellationToken);
         if (taken)
             return Error.Conflict("A staff member with this email already exists.", "MasterData.StaffMember.DuplicateEmail");
+
+        return Result.Success();
+    }
+
+    public static async Task<Result> EnsureEmployeeIdAvailableAsync(
+        IMasterDataDbContext db, string employeeId, Guid? excludeId, CancellationToken cancellationToken)
+    {
+        var taken = await db.StaffMembers.AnyAsync(
+            s => s.EmployeeId == employeeId && (excludeId == null || s.Id != excludeId), cancellationToken);
+        if (taken)
+            return Error.Conflict("A staff member with this employee ID already exists.", "MasterData.StaffMember.DuplicateEmployeeId");
 
         return Result.Success();
     }

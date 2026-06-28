@@ -13,6 +13,8 @@ public sealed class StaffMemberConfiguration : IEntityTypeConfiguration<StaffMem
         builder.Property(s => s.Id).ValueGeneratedNever();
 
         builder.Property(s => s.FullName).HasMaxLength(200).IsRequired();
+        builder.Property(s => s.EmployeeId).HasMaxLength(50).IsRequired();
+        builder.HasIndex(s => s.EmployeeId).IsUnique();
         builder.Property(s => s.Email).HasMaxLength(256).IsRequired();
         builder.HasIndex(s => s.Email).IsUnique();
 

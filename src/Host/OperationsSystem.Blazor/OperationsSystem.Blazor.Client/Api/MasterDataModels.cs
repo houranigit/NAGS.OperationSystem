@@ -97,6 +97,7 @@ public sealed record StationOption(Guid Id, string IataCode, string Name);
 
 public sealed record NewStationStaffRequest(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid ManpowerTypeId,
     EmploymentContractRequest? EmploymentContract,
@@ -187,6 +188,7 @@ public sealed record UpdateCustomerContactRequest(string Name, string? JobTitle,
 public sealed record StaffMemberListItem(
     Guid Id,
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     string StationCode,
@@ -201,6 +203,7 @@ public sealed record StaffMemberLicenseModel(Guid Id, Guid LicenseId, string Lic
 public sealed record StaffMemberDetail(
     Guid Id,
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     string StationCode,
@@ -221,6 +224,7 @@ public sealed record StaffLicenseRequest(Guid? Id, Guid LicenseId, string Licens
 
 public sealed record CreateStaffMemberRequest(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     Guid ManpowerTypeId,
@@ -230,6 +234,7 @@ public sealed record CreateStaffMemberRequest(
 
 public sealed record UpdateStaffMemberRequest(
     string FullName,
+    string EmployeeId,
     string Email,
     Guid StationId,
     Guid ManpowerTypeId,
