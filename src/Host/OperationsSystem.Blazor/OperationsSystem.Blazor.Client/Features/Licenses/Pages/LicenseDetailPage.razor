@@ -289,7 +289,8 @@
     private async Task OpenEditAsync()
     {
         var result = await DialogService.OpenAsync<LicenseFormDialog>(UiStrings.Licenses.EditTitle,
-            new Dictionary<string, object?> { [nameof(LicenseFormDialog.LicenseId)] = Id });
+            new Dictionary<string, object?> { [nameof(LicenseFormDialog.LicenseId)] = Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await LoadAsync();

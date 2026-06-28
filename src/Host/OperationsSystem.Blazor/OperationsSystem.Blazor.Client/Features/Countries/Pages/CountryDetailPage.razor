@@ -292,7 +292,8 @@
     private async Task OpenEditAsync()
     {
         var result = await DialogService.OpenAsync<CountryFormDialog>(UiStrings.Countries.EditTitle,
-            new Dictionary<string, object?> { [nameof(CountryFormDialog.CountryId)] = Id });
+            new Dictionary<string, object?> { [nameof(CountryFormDialog.CountryId)] = Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await LoadAsync();

@@ -4,29 +4,19 @@
 <RadzenTemplateForm TItem="CountryModel" Data="@model" Submit="@SubmitAsync">
     <div class="cnf-form">
         <p class="cnf-intro os-muted">@UiStrings.Countries.FormIntro</p>
-
-        <div class="cnf-section"><RadzenIcon Icon="public" /><h4>@UiStrings.Common.Details</h4></div>
-
-        <RadzenFormField Text="@UiStrings.Countries.Name" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="public" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
-            </ChildContent>
-        </RadzenFormField>
-
-        <RadzenFormField Text="@UiStrings.Countries.IsoCode" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="tag" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.IsoCode" Name="isoCode" Style="width: 100%;" MaxLength="2" />
-            </ChildContent>
-        </RadzenFormField>
+        <div class="cnf-section-line"><RadzenIcon Icon="public" /><span>@UiStrings.Common.Details</span></div>
+        <div class="cnf-grid-2">
+            <div class="cnf-field-block"><label class="cnf-label">@UiStrings.Countries.Name <span>*</span></label><div class="cnf-input-wrap"><RadzenIcon Icon="public" class="cnf-field-icon" /><RadzenTextBox @bind-Value="model.Name" Name="name" class="cnf-control cnf-control-icon" MaxLength="100" Placeholder="e.g. Saudi Arabia" /></div></div>
+            <div class="cnf-field-block"><label class="cnf-label">@UiStrings.Countries.IsoCode <span>*</span></label><div class="cnf-input-wrap"><RadzenIcon Icon="tag" class="cnf-field-icon" /><RadzenTextBox @bind-Value="model.IsoCode" Name="isoCode" class="cnf-control cnf-control-icon" MaxLength="2" Placeholder="e.g. SA" /></div><span class="cnf-help">2-letter ISO code</span></div>
+        </div>
+        <div class="cnf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.Countries.IsoCode</strong><p>Use the official ISO 3166-1 alpha-2 country code.</p></div></div>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+            <div class="cnf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
         }
 
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="cnf-actions">
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
             <RadzenButton ButtonType="ButtonType.Submit" Text="@(CountryId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />

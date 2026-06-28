@@ -281,7 +281,8 @@
     private async Task OpenEditAsync()
     {
         var result = await DialogService.OpenAsync<ManpowerTypeFormDialog>(UiStrings.ManpowerTypes.EditTitle,
-            new Dictionary<string, object?> { [nameof(ManpowerTypeFormDialog.ManpowerTypeId)] = Id });
+            new Dictionary<string, object?> { [nameof(ManpowerTypeFormDialog.ManpowerTypeId)] = Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await LoadAsync();

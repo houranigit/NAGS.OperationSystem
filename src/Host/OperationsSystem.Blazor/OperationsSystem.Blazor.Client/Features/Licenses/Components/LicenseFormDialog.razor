@@ -5,39 +5,20 @@
     <div class="lcf-form">
         <p class="lcf-intro os-muted">@UiStrings.Licenses.FormIntro</p>
 
-        <div class="lcf-section"><RadzenIcon Icon="badge" /><h4>@UiStrings.Common.Details</h4></div>
-
-        <RadzenFormField Text="@UiStrings.Licenses.Code" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="tag" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.Code" Name="code" Style="width: 100%;" MaxLength="10" Disabled="@(LicenseId is not null)" />
-            </ChildContent>
-        </RadzenFormField>
-        @if (LicenseId is not null)
-        {
-            <p class="lcf-hint os-muted">@UiStrings.Licenses.CodeImmutable</p>
-        }
-
-        <RadzenFormField Text="@UiStrings.Licenses.Name" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="badge" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" MaxLength="100" />
-            </ChildContent>
-        </RadzenFormField>
-
-        <RadzenFormField Text="@UiStrings.Licenses.LicenseDescription" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="notes" /></Start>
-            <ChildContent>
-                <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" MaxLength="500" />
-            </ChildContent>
-        </RadzenFormField>
+        <div class="lcf-section-line"><RadzenIcon Icon="badge" /><span>@UiStrings.Common.Details</span></div>
+        <div class="lcf-grid-2">
+            <div class="lcf-field-block"><label class="lcf-label">@UiStrings.Licenses.Code <span>*</span></label><div class="lcf-input-wrap"><RadzenIcon Icon="tag" class="lcf-field-icon" /><RadzenTextBox @bind-Value="model.Code" Name="code" class="lcf-control lcf-control-icon" MaxLength="10" Disabled="@(LicenseId is not null)" Placeholder="e.g. GSE" /></div></div>
+            <div class="lcf-field-block"><label class="lcf-label">@UiStrings.Licenses.Name <span>*</span></label><div class="lcf-input-wrap"><RadzenIcon Icon="badge" class="lcf-field-icon" /><RadzenTextBox @bind-Value="model.Name" Name="name" class="lcf-control lcf-control-icon" MaxLength="100" Placeholder="e.g. Ground Support Equipment" /></div></div>
+        </div>
+        <div class="lcf-field-block"><label class="lcf-label">@UiStrings.Licenses.LicenseDescription</label><RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="lcf-control" MaxLength="500" Placeholder="Describe what this license authorizes" /></div>
+        <div class="lcf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.Licenses.Code</strong><p>@(LicenseId is null ? "Choose the short code carefully; it cannot be changed after creation." : UiStrings.Licenses.CodeImmutable)</p></div></div>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+            <div class="lcf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
         }
 
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="lcf-actions">
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
             <RadzenButton ButtonType="ButtonType.Submit" Text="@(LicenseId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />

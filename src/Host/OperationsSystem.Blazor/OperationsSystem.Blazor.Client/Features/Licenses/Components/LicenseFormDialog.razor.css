@@ -1,44 +1,24 @@
-/* ==========================================================================
-   License form dialog — polished create/edit form.
-   Token-driven and RTL-safe (logical properties). Mirrors the Staff Member
-   form design language (section heads with icons, leading field icons).
-   ========================================================================== */
-
-.lcf-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--os-space-4);
-}
-
-.lcf-intro {
-    margin: 0;
-    font-size: var(--os-text-sm);
-}
-
-.lcf-section {
-    display: flex;
-    align-items: center;
-    gap: var(--os-space-2);
-    margin-block: var(--os-space-2) 0;
-}
-
-.lcf-section h4 {
-    margin: 0;
-    font-size: var(--os-text-lg);
-    font-weight: 600;
-}
-
-.lcf-section .rz-icon {
-    color: var(--os-color-primary);
-    font-size: 1.2rem;
-}
-
-.lcf-form ::deep .rz-form-field-start .rz-icon {
-    color: var(--os-color-text-muted);
-    font-size: 1.1rem;
-}
-
-.lcf-hint {
-    margin: calc(-1 * var(--os-space-2)) 0 0;
-    font-size: var(--os-text-sm);
-}
+.lcf-form { display:flex; flex-direction:column; gap:var(--os-space-4); width:min(688px,calc(100vw - 3rem)); max-width:688px; margin-inline:auto; color:var(--os-color-text); }
+.lcf-intro { margin:0; font-size:var(--os-text-sm); }
+.lcf-section-line { display:grid; grid-template-columns:auto auto minmax(24px,1fr); align-items:center; gap:var(--os-space-2); color:var(--os-color-text); font-weight:800; }
+.lcf-section-line::after { content:""; height:1px; background:var(--os-color-border); }
+.lcf-section-line ::deep .rz-icon { color:var(--os-color-text-muted); font-size:1.25rem; }
+.lcf-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--os-space-4); }
+.lcf-field-block { display:flex; flex-direction:column; gap:var(--os-space-1); min-width:0; }
+.lcf-label { display:inline-flex; align-items:center; gap:var(--os-space-1); font-size:var(--os-text-sm); font-weight:800; }
+.lcf-label span { color:var(--os-color-danger); }
+.lcf-input-wrap { position:relative; }
+.lcf-form ::deep .lcf-control { width:100%; }
+.lcf-input-wrap ::deep .lcf-field-icon { position:absolute; z-index:2; inset-block-start:50%; inset-inline-start:var(--os-space-4); transform:translateY(-50%); color:var(--os-color-text-muted); font-size:1.25rem; pointer-events:none; }
+.lcf-form ::deep .lcf-control-icon input, .lcf-form ::deep input.lcf-control-icon { padding-inline-start:52px; }
+.lcf-hint { margin:calc(-1 * var(--os-space-2)) 0 0; color:var(--os-color-text-muted); font-size:var(--os-text-sm); }
+.lcf-callout { display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--os-space-3); align-items:center; padding:var(--os-space-3) var(--os-space-4); border:1px solid var(--os-color-primary-soft-border); border-radius:8px; background:var(--os-color-surface-muted); }
+.lcf-callout > .rz-icon { color:var(--os-color-primary); font-size:1.2rem; }
+.lcf-callout strong { display:block; margin-block-end:var(--os-space-1); font-size:var(--os-text-sm); font-weight:800; }
+.lcf-callout p { margin:0; color:var(--os-color-text-muted); font-size:var(--os-text-sm); }
+.lcf-error-panel { display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--os-space-3); padding:var(--os-space-4); border:2px solid color-mix(in srgb,var(--os-color-danger) 62%,white); border-radius:8px; background:color-mix(in srgb,var(--os-color-danger-bg) 72%,white); }
+.lcf-error-panel > .rz-icon { color:var(--os-color-danger); font-size:1.35rem; }
+.lcf-error-panel strong { font-weight:800; }
+.lcf-error-panel ul { margin:var(--os-space-2) 0 0; padding-inline-start:1.25rem; color:var(--os-color-text-muted); }
+.lcf-actions { padding-block-start:var(--os-space-2); }
+@media(max-width:720px){.lcf-form{min-width:0}.lcf-grid-2{grid-template-columns:1fr}}

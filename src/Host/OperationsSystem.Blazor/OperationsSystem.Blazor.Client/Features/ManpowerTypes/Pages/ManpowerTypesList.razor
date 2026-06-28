@@ -164,7 +164,7 @@
 
     private async Task OpenCreateAsync()
     {
-        var result = await DialogService.OpenAsync<ManpowerTypeFormDialog>(UiStrings.ManpowerTypes.CreateTitle);
+        var result = await DialogService.OpenAsync<ManpowerTypeFormDialog>(UiStrings.ManpowerTypes.CreateTitle, null, new DialogOptions { Width = "760px" });
         if (result is true)
             await ReloadAsync();
     }
@@ -174,7 +174,8 @@
     private async Task OpenEditAsync(ManpowerTypeListItem item)
     {
         var result = await DialogService.OpenAsync<ManpowerTypeFormDialog>(UiStrings.ManpowerTypes.EditTitle,
-            new Dictionary<string, object?> { [nameof(ManpowerTypeFormDialog.ManpowerTypeId)] = item.Id });
+            new Dictionary<string, object?> { [nameof(ManpowerTypeFormDialog.ManpowerTypeId)] = item.Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await ReloadAsync();

@@ -150,7 +150,7 @@
 
     private async Task OpenCreateAsync()
     {
-        var result = await DialogService.OpenAsync<LicenseFormDialog>(UiStrings.Licenses.CreateTitle);
+        var result = await DialogService.OpenAsync<LicenseFormDialog>(UiStrings.Licenses.CreateTitle, null, new DialogOptions { Width = "760px" });
         if (result is true)
             await ReloadAsync();
     }
@@ -160,7 +160,8 @@
     private async Task OpenEditAsync(LicenseListItem item)
     {
         var result = await DialogService.OpenAsync<LicenseFormDialog>(UiStrings.Licenses.EditTitle,
-            new Dictionary<string, object?> { [nameof(LicenseFormDialog.LicenseId)] = item.Id });
+            new Dictionary<string, object?> { [nameof(LicenseFormDialog.LicenseId)] = item.Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await ReloadAsync();

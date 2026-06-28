@@ -153,7 +153,7 @@
 
     private async Task OpenCreateAsync()
     {
-        var result = await DialogService.OpenAsync<CountryFormDialog>(UiStrings.Countries.CreateTitle);
+        var result = await DialogService.OpenAsync<CountryFormDialog>(UiStrings.Countries.CreateTitle, null, new DialogOptions { Width = "760px" });
         if (result is true)
             await ReloadAsync();
     }
@@ -163,7 +163,8 @@
     private async Task OpenEditAsync(CountryListItem country)
     {
         var result = await DialogService.OpenAsync<CountryFormDialog>(UiStrings.Countries.EditTitle,
-            new Dictionary<string, object?> { [nameof(CountryFormDialog.CountryId)] = country.Id });
+            new Dictionary<string, object?> { [nameof(CountryFormDialog.CountryId)] = country.Id },
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await ReloadAsync();
