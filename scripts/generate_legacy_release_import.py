@@ -301,6 +301,7 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     if apply_default:
         add("    * @Apply defaults to 1, so a valid run commits the seed data.")
         add("    * Run this only against the target SQL Server database after reviewing the draft file.")
+        add("    * This direct seeder applies the small schema-prep changes required by the import.")
     else:
         add("    * @Apply defaults to 0, so a fully valid dry run rolls back.")
     add("    * Known unresolved data causes THROW before any DELETE runs.")
@@ -317,11 +318,37 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("*/")
     add("SET NOCOUNT ON;")
     add("SET XACT_ABORT ON;")
+    add("SET ANSI_NULLS ON;")
+    add("SET ANSI_PADDING ON;")
+    add("SET ANSI_WARNINGS ON;")
+    add("SET ARITHABORT ON;")
+    add("SET CONCAT_NULL_YIELDS_NULL ON;")
+    add("SET QUOTED_IDENTIFIER ON;")
+    add("SET NUMERIC_ROUNDABORT OFF;")
     apply_value = 1 if apply_default else 0
     apply_comment = "DIRECT SEED DEFAULT. Change to 0 for a dry run." if apply_default else "REVIEW DEFAULT. Change to 1 only after every blocker is resolved."
     add(f"DECLARE @Apply bit = {apply_value}; -- {apply_comment}\n")
     add("BEGIN TRY")
     add("    BEGIN TRANSACTION;\n")
+
+    if apply_default:
+        add("    /* Direct-run schema prep matching the EF migrations required by this legacy import. */")
+        add("    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'masterdata.customer_addresses') AND name=N'Line1' AND is_nullable=0)")
+        add("        ALTER TABLE masterdata.customer_addresses ALTER COLUMN Line1 nvarchar(200) NULL;")
+        add("    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'masterdata.customer_addresses') AND name=N'City' AND is_nullable=0)")
+        add("        ALTER TABLE masterdata.customer_addresses ALTER COLUMN City nvarchar(100) NULL;")
+        add("    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'masterdata.stations') AND name=N'City' AND is_nullable=0)")
+        add("        ALTER TABLE masterdata.stations ALTER COLUMN City nvarchar(100) NULL;")
+        add("    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.customers') AND name=N'IX_customers_IataCode' AND is_unique=1)")
+        add("        DROP INDEX IX_customers_IataCode ON masterdata.customers;")
+        add("    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'masterdata.customers') AND name=N'IataCode' AND is_nullable=0)")
+        add("        ALTER TABLE masterdata.customers ALTER COLUMN IataCode nvarchar(2) NULL;")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.customers') AND name=N'IX_customers_IataCode')")
+        add("        CREATE INDEX IX_customers_IataCode ON masterdata.customers(IataCode);")
+        add("    IF OBJECT_ID(N'masterdata.__EFMigrationsHistory') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM masterdata.__EFMigrationsHistory WHERE MigrationId=N'20260628220103_MasterData_NullableAddressAndStationCity')")
+        add("        INSERT INTO masterdata.__EFMigrationsHistory (MigrationId, ProductVersion) VALUES (N'20260628220103_MasterData_NullableAddressAndStationCity', N'10.0.9');")
+        add("    IF OBJECT_ID(N'masterdata.__EFMigrationsHistory') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM masterdata.__EFMigrationsHistory WHERE MigrationId=N'20260628223103_MasterData_OptionalNonUniqueCustomerIata')")
+        add("        INSERT INTO masterdata.__EFMigrationsHistory (MigrationId, ProductVersion) VALUES (N'20260628223103_MasterData_OptionalNonUniqueCustomerIata', N'10.0.9');\n")
 
     add("    CREATE TABLE #LegacyLicenses (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Code nvarchar(10) NOT NULL, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
     add("    CREATE TABLE #LegacyManpower (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
