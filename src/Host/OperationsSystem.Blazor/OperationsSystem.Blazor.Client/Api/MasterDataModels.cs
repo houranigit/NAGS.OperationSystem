@@ -68,6 +68,66 @@ public sealed record LicenseOption(Guid Id, string Code, string Name);
 public sealed record CreateLicenseRequest(string Code, string Name, string? Description);
 public sealed record UpdateLicenseRequest(string Name, string? Description);
 
+// --- Services --------------------------------------------------------------
+
+public sealed record ServiceListItem(Guid Id, string Name, string? Description, bool IsActive);
+public sealed record ServiceDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record ServiceOption(Guid Id, string Name);
+public sealed record CreateServiceRequest(string Name, string? Description);
+public sealed record UpdateServiceRequest(string Name, string? Description);
+
+// --- OperationTypes --------------------------------------------------------
+
+public sealed record OperationTypeListItem(Guid Id, string Name, string? Description, bool IsActive);
+public sealed record OperationTypeDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record OperationTypeOption(Guid Id, string Name);
+public sealed record CreateOperationTypeRequest(string Name, string? Description);
+public sealed record UpdateOperationTypeRequest(string Name, string? Description);
+
+// --- AircraftTypes ---------------------------------------------------------
+
+public enum AircraftManufacturer
+{
+    Boeing,
+    Airbus,
+    Embraer,
+    ATR,
+    Bombardier,
+    Other
+}
+
+public sealed record AircraftTypeListItem(Guid Id, AircraftManufacturer Manufacturer, string Model, string? Notes, bool IsActive);
+public sealed record AircraftTypeDetail(Guid Id, AircraftManufacturer Manufacturer, string Model, string? Notes, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record AircraftTypeOption(Guid Id, AircraftManufacturer Manufacturer, string Model);
+public sealed record CreateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
+public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
+
+// --- Tools ----------------------------------------------------------------
+
+public sealed record ToolListItem(Guid Id, string Name, string? Description, bool IsActive, int EquipmentCount);
+public sealed record ToolEquipmentModel(Guid Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
+public sealed record ToolDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, IReadOnlyList<ToolEquipmentModel> Equipments);
+public sealed record ToolOption(Guid Id, string Name);
+public sealed record ToolEquipmentRequest(Guid? Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
+public sealed record CreateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest> Equipments);
+public sealed record UpdateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest> Equipments);
+
+// --- Materials -------------------------------------------------------------
+
+public sealed record MaterialListItem(Guid Id, string Name, string? Description, bool IsActive);
+public sealed record MaterialDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record MaterialOption(Guid Id, string Name);
+public sealed record CreateMaterialRequest(string Name, string? Description);
+public sealed record UpdateMaterialRequest(string Name, string? Description);
+
+// --- GeneralSupports -------------------------------------------------------
+
+public sealed record GeneralSupportListItem(Guid Id, string Name, string? Description, bool IsActive);
+public sealed record GeneralSupportDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record GeneralSupportOption(Guid Id, string Name);
+public sealed record CreateGeneralSupportRequest(string Name, string? Description);
+public sealed record UpdateGeneralSupportRequest(string Name, string? Description);
+
 // --- Stations --------------------------------------------------------------
 
 public sealed record StationListItem(

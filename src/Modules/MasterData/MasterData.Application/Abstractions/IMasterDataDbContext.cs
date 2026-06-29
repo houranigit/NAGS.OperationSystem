@@ -1,10 +1,16 @@
 using BuildingBlocks.Application.Messaging;
+using MasterData.Domain.AircraftTypes;
 using MasterData.Domain.Countries;
 using MasterData.Domain.Customers;
+using MasterData.Domain.GeneralSupports;
 using MasterData.Domain.Licenses;
 using MasterData.Domain.ManpowerTypes;
+using MasterData.Domain.Materials;
+using MasterData.Domain.OperationTypes;
+using MasterData.Domain.Services;
 using MasterData.Domain.StaffMembers;
 using MasterData.Domain.Stations;
+using MasterData.Domain.Tools;
 using Microsoft.EntityFrameworkCore;
 
 namespace MasterData.Application.Abstractions;
@@ -22,6 +28,20 @@ public interface IMasterDataDbContext : IOutboxDbContext
     public DbSet<ManpowerType> ManpowerTypes { get; }
 
     public DbSet<License> Licenses { get; }
+
+    public DbSet<Service> Services { get; }
+
+    public DbSet<OperationType> OperationTypes { get; }
+
+    public DbSet<AircraftType> AircraftTypes { get; }
+
+    public DbSet<Tool> Tools { get; }
+
+    public DbSet<Equipment> ToolEquipments { get; }
+
+    public DbSet<Material> Materials { get; }
+
+    public DbSet<GeneralSupport> GeneralSupports { get; }
 
     public DbSet<Station> Stations { get; }
 

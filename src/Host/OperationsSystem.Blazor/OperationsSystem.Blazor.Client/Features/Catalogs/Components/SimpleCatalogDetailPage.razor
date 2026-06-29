@@ -1,0 +1,176 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject AuthSession Auth
+
+<PageTitle>@(item?.Name ?? Title)</PageTitle>
+
+<RequirePermission Permission="@ViewPermission">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (item is { } catalog)
+    {
+        <div class="os-list-page">
+            <PageHeader Title="@catalog.Name" Description="@Title">
+                <Actions>
+                    <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@GoBack" />
+                    @if (Auth.HasPermission(UpdatePermission))
+                    {
+                        <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                    }
+                </Actions>
+            </PageHeader>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <div class="os-role-cell">
+                        <span class="os-role-cell-icon"><RadzenIcon Icon="@Icon" /></span>
+                        <div>
+                            <strong>@catalog.Name</strong>
+                            <p class="os-muted">@(string.IsNullOrWhiteSpace(catalog.Description) ? UiStrings.Common.None : catalog.Description)</p>
+                        </div>
+                    </div>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" AlignItems="AlignItems.Center">
+                        @if (catalog.IsActive)
+                        {
+                            <StatusBadge Label="Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="Inactive" Tone="neutral" />
+                        }
+                        <span class="os-muted">Created @catalog.CreatedAtUtc.ToLocalTime().ToString("g")</span>
+                        <span class="os-muted">Updated @(catalog.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</span>
+                    </RadzenStack>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        @if (!catalog.IsActive && Auth.HasPermission(ActivatePermission))
+                        {
+                            <RadzenButton Text="Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
+                        }
+                        @if (catalog.IsActive && Auth.HasPermission(DeactivatePermission))
+                        {
+                            <RadzenButton Text="Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                        }
+                    </RadzenStack>
+                </RadzenStack>
+            </RadzenCard>
+        </div>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public SimpleCatalogKind Kind { get; set; }
+    [Parameter] public Guid Id { get; set; }
+
+    private SimpleCatalogDetail? item;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    private string Title => SimpleCatalogText.Title(Kind);
+    private string Icon => SimpleCatalogText.Icon(Kind);
+    private string Route => SimpleCatalogText.Route(Kind);
+    private string ViewPermission => SimpleCatalogText.ViewPermission(Kind);
+    private string UpdatePermission => SimpleCatalogText.UpdatePermission(Kind);
+    private string ActivatePermission => SimpleCatalogText.ActivatePermission(Kind);
+    private string DeactivatePermission => SimpleCatalogText.DeactivatePermission(Kind);
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+
+        try
+        {
+            item = await LoadDetailAsync();
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        var result = await DialogService.OpenAsync<SimpleCatalogFormDialog>($"Edit {SimpleCatalogText.Singular(Kind)}",
+            new Dictionary<string, object?> { [nameof(SimpleCatalogFormDialog.Kind)] = Kind, [nameof(SimpleCatalogFormDialog.EntityId)] = Id },
+            new DialogOptions { Width = "760px" });
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task ActivateAsync() => await RunAsync((rv, ct) => ActivateAsync(rv, ct), $"{SimpleCatalogText.Singular(Kind)} activated.");
+
+    private async Task DeactivateAsync()
+    {
+        var confirmed = await DialogService.Confirm($"Deactivate this {SimpleCatalogText.Singular(Kind)}?", "Deactivate",
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+        if (confirmed)
+            await RunAsync((rv, ct) => DeactivateAsync(rv, ct), $"{SimpleCatalogText.Singular(Kind)} deactivated.");
+    }
+
+    private async Task RunAsync(Func<string, CancellationToken, Task> action, string message)
+    {
+        if (item is null)
+            return;
+
+        try
+        {
+            await action(item.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, message);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private Task ActivateAsync(string rowVersion, CancellationToken ct) => Kind switch
+    {
+        SimpleCatalogKind.Services => MasterData.ActivateServiceAsync(Id, rowVersion, ct),
+        SimpleCatalogKind.OperationTypes => MasterData.ActivateOperationTypeAsync(Id, rowVersion, ct),
+        SimpleCatalogKind.Materials => MasterData.ActivateMaterialAsync(Id, rowVersion, ct),
+        SimpleCatalogKind.GeneralSupports => MasterData.ActivateGeneralSupportAsync(Id, rowVersion, ct),
+        _ => Task.CompletedTask
+    };
+
+    private Task DeactivateAsync(string rowVersion, CancellationToken ct) => Kind switch
+    {
+        SimpleCatalogKind.Services => MasterData.DeactivateServiceAsync(Id, rowVersion, ct),
+        SimpleCatalogKind.OperationTypes => MasterData.DeactivateOperationTypeAsync(Id, rowVersion, ct),
+        SimpleCatalogKind.Materials => MasterData.DeactivateMaterialAsync(Id, rowVersion, ct),
+        SimpleCatalogKind.GeneralSupports => MasterData.DeactivateGeneralSupportAsync(Id, rowVersion, ct),
+        _ => Task.CompletedTask
+    };
+
+    private async Task<SimpleCatalogDetail> LoadDetailAsync() => Kind switch
+    {
+        SimpleCatalogKind.Services => ToDetail(await MasterData.GetServiceAsync(Id)),
+        SimpleCatalogKind.OperationTypes => ToDetail(await MasterData.GetOperationTypeAsync(Id)),
+        SimpleCatalogKind.Materials => ToDetail(await MasterData.GetMaterialAsync(Id)),
+        SimpleCatalogKind.GeneralSupports => ToDetail(await MasterData.GetGeneralSupportAsync(Id)),
+        _ => throw new InvalidOperationException("Unsupported catalog kind.")
+    };
+
+    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+
+    private void GoBack() => Navigation.NavigateTo($"/master-data/{Route}");
+}

@@ -1,4 +1,7 @@
+using MasterData.Contracts.Seeding;
 using MasterData.Domain.Countries;
+using MasterData.Domain.OperationTypes;
+using MasterData.Domain.Services;
 using MasterData.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -17,6 +20,8 @@ public sealed class MasterDataDataSeeder(
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow();
+        await SeedCatalogsAsync(now, cancellationToken);
+
         var existingCodes = await db.Countries
             .Select(c => c.IsoCode)
             .ToListAsync(cancellationToken);
@@ -44,6 +49,74 @@ public sealed class MasterDataDataSeeder(
         {
             await db.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Seeded {Count} baseline countries.", added);
+        }
+    }
+
+    private async Task SeedCatalogsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var changed = false;
+
+        if (!await db.OperationTypes.AnyAsync(o => o.Id == WellKnownMasterDataIds.AdHocOperationType, cancellationToken))
+        {
+            var result = OperationType.Create(
+                "Ad Hoc",
+                "Unscheduled, on-demand operations not tied to a regular programme.",
+                now,
+                WellKnownMasterDataIds.AdHocOperationType);
+
+            if (result.IsSuccess)
+            {
+                db.OperationTypes.Add(result.Value);
+                changed = true;
+            }
+            else
+            {
+                logger.LogWarning("Skipped seeding Ad Hoc operation type: {Error}", result.Error.Description);
+            }
+        }
+
+        if (!await db.Services.AnyAsync(s => s.Id == WellKnownMasterDataIds.AircraftPerLandingService, cancellationToken))
+        {
+            var result = Service.Create(
+                "Aircraft Per Landing",
+                "Aircraft service billed per landing.",
+                now,
+                WellKnownMasterDataIds.AircraftPerLandingService);
+
+            if (result.IsSuccess)
+            {
+                db.Services.Add(result.Value);
+                changed = true;
+            }
+            else
+            {
+                logger.LogWarning("Skipped seeding Aircraft Per Landing service: {Error}", result.Error.Description);
+            }
+        }
+
+        if (!await db.Services.AnyAsync(s => s.Id == WellKnownMasterDataIds.OnCallService, cancellationToken))
+        {
+            var result = Service.Create(
+                "On Call",
+                "On-call standby technical support billed per hour.",
+                now,
+                WellKnownMasterDataIds.OnCallService);
+
+            if (result.IsSuccess)
+            {
+                db.Services.Add(result.Value);
+                changed = true;
+            }
+            else
+            {
+                logger.LogWarning("Skipped seeding On Call service: {Error}", result.Error.Description);
+            }
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Seeded baseline MasterData operation and service catalogs.");
         }
     }
 }

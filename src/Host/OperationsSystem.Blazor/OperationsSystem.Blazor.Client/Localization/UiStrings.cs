@@ -89,6 +89,12 @@ public static class UiStrings
         public static string Countries => UiText.Get("Nav.Countries", "Countries");
         public static string ManpowerTypes => UiText.Get("Nav.ManpowerTypes", "Manpower types");
         public static string Licenses => UiText.Get("Nav.Licenses", "Licenses");
+        public static string Services => UiText.Get("Nav.Services", "Services");
+        public static string OperationTypes => UiText.Get("Nav.OperationTypes", "Operation types");
+        public static string AircraftTypes => UiText.Get("Nav.AircraftTypes", "Aircraft types");
+        public static string Tools => UiText.Get("Nav.Tools", "Tools");
+        public static string Materials => UiText.Get("Nav.Materials", "Materials");
+        public static string GeneralSupports => UiText.Get("Nav.GeneralSupports", "General supports");
         public static string Stations => UiText.Get("Nav.Stations", "Stations");
         public static string Customers => UiText.Get("Nav.Customers", "Customers");
         public static string StaffMembers => UiText.Get("Nav.StaffMembers", "Staff members");

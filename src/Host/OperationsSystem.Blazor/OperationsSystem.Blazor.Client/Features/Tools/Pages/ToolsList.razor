@@ -1,0 +1,188 @@
+@page "/master-data/tools"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
+
+<PageTitle>Tools</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.ToolsView">
+    <div class="os-list-page">
+        <PageHeader Title="Tools" Description="Manage tools and their informational equipment rows.">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ToolsCreate))
+                    {
+                        <RadzenButton Text="New tool" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <DataListCard @ref="list" TItem="ToolListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="Search by name" CountLabel="tools" EmptyText="No tools match your filters.">
+            <Filters>
+                <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="ToolListItem" Property="Name" Title="Name">
+                    <Template Context="item">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="construction" /></span>
+                            <strong>@item.Name</strong>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ToolListItem" Property="Description" Title="Description" Sortable="false">
+                    <Template Context="item">@(string.IsNullOrWhiteSpace(item.Description) ? UiStrings.Common.None : item.Description)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ToolListItem" Property="EquipmentCount" Title="Equipment" Width="120px" />
+                <RadzenDataGridColumn TItem="ToolListItem" Title="Status" Sortable="false" Width="140px">
+                    <Template Context="item">
+                        @if (item.IsActive)
+                        {
+                            <StatusBadge Label="Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="Inactive" Tone="neutral" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="item">
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(item.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@MasterDataPermissions.ToolsUpdate" OnClick="@(() => OpenEditAsync(item.Id))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="Activate" Icon="check_circle" Permission="@MasterDataPermissions.ToolsActivate" Visible="@(!item.IsActive)" OnClick="@(() => ActivateAsync(item.Id))" />
+                    <RowAction Text="Deactivate" Icon="cancel" Danger="true" Permission="@MasterDataPermissions.ToolsDeactivate" Visible="@item.IsActive" OnClick="@(() => DeactivateAsync(item.Id))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private const string GridKey = "tools";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+    private DataListCard<ToolListItem>? list;
+    private IReadOnlyList<ToolListItem> items = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
+    private bool loadError;
+    private string searchTerm = string.Empty;
+    private bool? activeFilter;
+    private string? currentSort;
+    private readonly List<StatusOption> statusOptions = [new("Active", true), new("Inactive", false)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(bool? value)
+    {
+        activeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MasterData.GetToolsAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, currentSort);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var result = await DialogService.OpenAsync<ToolFormDialog>("Create tool", null, new DialogOptions { Width = "860px" });
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void Open(Guid id) => Navigation.NavigateTo($"/master-data/tools/{id}");
+
+    private async Task OpenEditAsync(Guid id)
+    {
+        var result = await DialogService.OpenAsync<ToolFormDialog>("Edit tool",
+            new Dictionary<string, object?> { [nameof(ToolFormDialog.ToolId)] = id },
+            new DialogOptions { Width = "860px" });
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ActivateAsync(Guid id) => RunAsync(id, (rv, ct) => MasterData.ActivateToolAsync(id, rv, ct), "Tool activated.");
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var confirmed = await DialogService.Confirm("Deactivate this tool?", "Deactivate",
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+        if (confirmed)
+            await RunAsync(id, (rv, ct) => MasterData.DeactivateToolAsync(id, rv, ct), "Tool deactivated.");
+    }
+
+    private async Task RunAsync(Guid id, Func<string, CancellationToken, Task> action, string successMessage)
+    {
+        try
+        {
+            var detail = await MasterData.GetToolAsync(id);
+            await action(detail.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private sealed record StatusOption(string Label, bool? Value);
+}

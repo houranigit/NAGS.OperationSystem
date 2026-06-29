@@ -44,6 +44,43 @@ public sealed class MasterDataPermissionCatalog : IPermissionCatalog
         new(MasterDataPermissions.Licenses.Activate, AdminOnly),
         new(MasterDataPermissions.Licenses.Deactivate, AdminOnly),
 
+        // Operations catalogs: station staff may view/select; admin maintains.
+        new(MasterDataPermissions.Services.View, AdminAndStation),
+        new(MasterDataPermissions.Services.Create, AdminOnly),
+        new(MasterDataPermissions.Services.Update, AdminOnly),
+        new(MasterDataPermissions.Services.Activate, AdminOnly),
+        new(MasterDataPermissions.Services.Deactivate, AdminOnly),
+
+        new(MasterDataPermissions.OperationTypes.View, AdminAndStation),
+        new(MasterDataPermissions.OperationTypes.Create, AdminOnly),
+        new(MasterDataPermissions.OperationTypes.Update, AdminOnly),
+        new(MasterDataPermissions.OperationTypes.Activate, AdminOnly),
+        new(MasterDataPermissions.OperationTypes.Deactivate, AdminOnly),
+
+        new(MasterDataPermissions.AircraftTypes.View, AdminAndStation),
+        new(MasterDataPermissions.AircraftTypes.Create, AdminOnly),
+        new(MasterDataPermissions.AircraftTypes.Update, AdminOnly),
+        new(MasterDataPermissions.AircraftTypes.Activate, AdminOnly),
+        new(MasterDataPermissions.AircraftTypes.Deactivate, AdminOnly),
+
+        new(MasterDataPermissions.Tools.View, AdminAndStation),
+        new(MasterDataPermissions.Tools.Create, AdminOnly),
+        new(MasterDataPermissions.Tools.Update, AdminOnly),
+        new(MasterDataPermissions.Tools.Activate, AdminOnly),
+        new(MasterDataPermissions.Tools.Deactivate, AdminOnly),
+
+        new(MasterDataPermissions.Materials.View, AdminAndStation),
+        new(MasterDataPermissions.Materials.Create, AdminOnly),
+        new(MasterDataPermissions.Materials.Update, AdminOnly),
+        new(MasterDataPermissions.Materials.Activate, AdminOnly),
+        new(MasterDataPermissions.Materials.Deactivate, AdminOnly),
+
+        new(MasterDataPermissions.GeneralSupports.View, AdminAndStation),
+        new(MasterDataPermissions.GeneralSupports.Create, AdminOnly),
+        new(MasterDataPermissions.GeneralSupports.Update, AdminOnly),
+        new(MasterDataPermissions.GeneralSupports.Activate, AdminOnly),
+        new(MasterDataPermissions.GeneralSupports.Deactivate, AdminOnly),
+
         // Stations: station staff may view and update their station; admin creates/lifecycle.
         new(MasterDataPermissions.Stations.View, AdminAndStation),
         new(MasterDataPermissions.Stations.Update, AdminAndStation),

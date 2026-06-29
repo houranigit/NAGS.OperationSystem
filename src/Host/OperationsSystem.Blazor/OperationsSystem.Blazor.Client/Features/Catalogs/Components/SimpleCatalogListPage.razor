@@ -1,0 +1,253 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject GridPreferences GridPrefs
+
+<PageTitle>@Title</PageTitle>
+
+<RequirePermission Permission="@ViewPermission">
+    <div class="os-list-page">
+        <PageHeader Title="@Title" Description="@Description">
+            <Actions>
+                <AuthorizeView Context="create">
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, CreatePermission))
+                    {
+                        <RadzenButton Text="@CreateText" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
+
+        <DataListCard @ref="list" TItem="SimpleCatalogRow" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="Search by name" CountLabel="@Title.ToLowerInvariant()" EmptyText="@($"No {Title.ToLowerInvariant()} match your filters.")">
+            <Filters>
+                <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="SimpleCatalogRow" Property="Name" Title="Name">
+                    <Template Context="item">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="@Icon" /></span>
+                            <strong>@item.Name</strong>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="SimpleCatalogRow" Property="Description" Title="Description" Sortable="false">
+                    <Template Context="item">
+                        @(string.IsNullOrWhiteSpace(item.Description) ? UiStrings.Common.None : item.Description)
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="SimpleCatalogRow" Title="Status" Sortable="false" Width="140px">
+                    <Template Context="item">
+                        @if (item.IsActive)
+                        {
+                            <StatusBadge Label="Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="Inactive" Tone="neutral" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="item">
+                <RowActionMenu>
+                    <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(item.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@UpdatePermission" OnClick="@(() => OpenEditAsync(item.Id))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="Activate" Icon="check_circle" Permission="@ActivatePermission" Visible="@(!item.IsActive)" OnClick="@(() => ActivateAsync(item.Id))" />
+                    <RowAction Text="Deactivate" Icon="cancel" Danger="true" Permission="@DeactivatePermission" Visible="@item.IsActive" OnClick="@(() => DeactivateAsync(item.Id))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    [Parameter] public SimpleCatalogKind Kind { get; set; }
+
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+    private DataListCard<SimpleCatalogRow>? list;
+    private IReadOnlyList<SimpleCatalogRow> items = [];
+    private int totalCount;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private bool isLoading;
+    private bool loadError;
+    private string searchTerm = string.Empty;
+    private bool? activeFilter;
+    private string? currentSort;
+
+    private string Title => SimpleCatalogText.Title(Kind);
+    private string Description => SimpleCatalogText.Description(Kind);
+    private string Icon => SimpleCatalogText.Icon(Kind);
+    private string Route => SimpleCatalogText.Route(Kind);
+    private string ViewPermission => SimpleCatalogText.ViewPermission(Kind);
+    private string CreatePermission => SimpleCatalogText.CreatePermission(Kind);
+    private string UpdatePermission => SimpleCatalogText.UpdatePermission(Kind);
+    private string ActivatePermission => SimpleCatalogText.ActivatePermission(Kind);
+    private string DeactivatePermission => SimpleCatalogText.DeactivatePermission(Kind);
+    private string CreateText => $"New {SimpleCatalogText.Singular(Kind)}";
+    private string GridKey => $"catalog-{Route}";
+
+    private readonly List<StatusOption> statusOptions = [new("Active", true), new("Inactive", false)];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(bool? value)
+    {
+        activeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        currentSort = SortBuilder.From(args);
+        await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await LoadRowsAsync();
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<PagedResult<SimpleCatalogRow>> LoadRowsAsync()
+    {
+        var search = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm;
+        return Kind switch
+        {
+            SimpleCatalogKind.Services => Map(await MasterData.GetServicesAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
+            SimpleCatalogKind.OperationTypes => Map(await MasterData.GetOperationTypesAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
+            SimpleCatalogKind.Materials => Map(await MasterData.GetMaterialsAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
+            SimpleCatalogKind.GeneralSupports => Map(await MasterData.GetGeneralSupportsAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
+            _ => new PagedResult<SimpleCatalogRow>([], currentPage, currentPageSize, 0)
+        };
+    }
+
+    private static PagedResult<SimpleCatalogRow> Map<T>(PagedResult<T> result, Func<T, SimpleCatalogRow> map) =>
+        new(result.Items.Select(map).ToList(), result.Page, result.PageSize, result.TotalCount);
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenCreateAsync()
+    {
+        var result = await DialogService.OpenAsync<SimpleCatalogFormDialog>($"Create {SimpleCatalogText.Singular(Kind)}",
+            new Dictionary<string, object?> { [nameof(SimpleCatalogFormDialog.Kind)] = Kind },
+            new DialogOptions { Width = "760px" });
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private void Open(Guid id) => Navigation.NavigateTo($"/master-data/{Route}/{id}");
+
+    private async Task OpenEditAsync(Guid id)
+    {
+        var result = await DialogService.OpenAsync<SimpleCatalogFormDialog>($"Edit {SimpleCatalogText.Singular(Kind)}",
+            new Dictionary<string, object?> { [nameof(SimpleCatalogFormDialog.Kind)] = Kind, [nameof(SimpleCatalogFormDialog.EntityId)] = id },
+            new DialogOptions { Width = "760px" });
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private Task ActivateAsync(Guid id) =>
+        RunAsync(id, (rv, ct) => ActivateAsync(id, rv, ct), $"{SimpleCatalogText.Singular(Kind)} activated.");
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var confirmed = await DialogService.Confirm($"Deactivate this {SimpleCatalogText.Singular(Kind)}?", "Deactivate",
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+        if (confirmed)
+            await RunAsync(id, (rv, ct) => DeactivateAsync(id, rv, ct), $"{SimpleCatalogText.Singular(Kind)} deactivated.");
+    }
+
+    private async Task RunAsync(Guid id, Func<string, CancellationToken, Task> action, string successMessage)
+    {
+        try
+        {
+            var detail = await LoadDetailAsync(id);
+            await action(detail.RowVersion, CancellationToken.None);
+            Notifications.Notify(NotificationSeverity.Success, successMessage);
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+
+    private Task ActivateAsync(Guid id, string rowVersion, CancellationToken ct) => Kind switch
+    {
+        SimpleCatalogKind.Services => MasterData.ActivateServiceAsync(id, rowVersion, ct),
+        SimpleCatalogKind.OperationTypes => MasterData.ActivateOperationTypeAsync(id, rowVersion, ct),
+        SimpleCatalogKind.Materials => MasterData.ActivateMaterialAsync(id, rowVersion, ct),
+        SimpleCatalogKind.GeneralSupports => MasterData.ActivateGeneralSupportAsync(id, rowVersion, ct),
+        _ => Task.CompletedTask
+    };
+
+    private Task DeactivateAsync(Guid id, string rowVersion, CancellationToken ct) => Kind switch
+    {
+        SimpleCatalogKind.Services => MasterData.DeactivateServiceAsync(id, rowVersion, ct),
+        SimpleCatalogKind.OperationTypes => MasterData.DeactivateOperationTypeAsync(id, rowVersion, ct),
+        SimpleCatalogKind.Materials => MasterData.DeactivateMaterialAsync(id, rowVersion, ct),
+        SimpleCatalogKind.GeneralSupports => MasterData.DeactivateGeneralSupportAsync(id, rowVersion, ct),
+        _ => Task.CompletedTask
+    };
+
+    private async Task<SimpleCatalogDetail> LoadDetailAsync(Guid id) => Kind switch
+    {
+        SimpleCatalogKind.Services => ToDetail(await MasterData.GetServiceAsync(id)),
+        SimpleCatalogKind.OperationTypes => ToDetail(await MasterData.GetOperationTypeAsync(id)),
+        SimpleCatalogKind.Materials => ToDetail(await MasterData.GetMaterialAsync(id)),
+        SimpleCatalogKind.GeneralSupports => ToDetail(await MasterData.GetGeneralSupportAsync(id)),
+        _ => throw new InvalidOperationException("Unsupported catalog kind.")
+    };
+
+    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+
+    private sealed record StatusOption(string Label, bool? Value);
+    private sealed record SimpleCatalogRow(Guid Id, string Name, string? Description, bool IsActive);
+}

@@ -1,0 +1,155 @@
+@page "/master-data/tools/{Id:guid}"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject AuthSession Auth
+
+<PageTitle>@(item?.Name ?? "Tool")</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.ToolsView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (item is { } tool)
+    {
+        <div class="os-list-page">
+            <PageHeader Title="@tool.Name" Description="Tool">
+                <Actions>
+                    <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@(() => Navigation.NavigateTo("/master-data/tools"))" />
+                    @if (Auth.HasPermission(MasterDataPermissions.ToolsUpdate))
+                    {
+                        <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                    }
+                </Actions>
+            </PageHeader>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <div class="os-role-cell">
+                        <span class="os-role-cell-icon"><RadzenIcon Icon="construction" /></span>
+                        <div>
+                            <strong>@tool.Name</strong>
+                            <p class="os-muted">@(string.IsNullOrWhiteSpace(tool.Description) ? UiStrings.Common.None : tool.Description)</p>
+                        </div>
+                    </div>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" AlignItems="AlignItems.Center">
+                        @if (tool.IsActive)
+                        {
+                            <StatusBadge Label="Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="Inactive" Tone="neutral" />
+                        }
+                        <span class="os-muted">@tool.Equipments.Count equipment row(s)</span>
+                        <span class="os-muted">Created @tool.CreatedAtUtc.ToLocalTime().ToString("g")</span>
+                    </RadzenStack>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        @if (!tool.IsActive && Auth.HasPermission(MasterDataPermissions.ToolsActivate))
+                        {
+                            <RadzenButton Text="Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
+                        }
+                        @if (tool.IsActive && Auth.HasPermission(MasterDataPermissions.ToolsDeactivate))
+                        {
+                            <RadzenButton Text="Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                        }
+                    </RadzenStack>
+                </RadzenStack>
+            </RadzenCard>
+
+            <RadzenCard>
+                <h3>Equipment</h3>
+                @if (tool.Equipments.Count == 0)
+                {
+                    <EmptyState Message="No equipment rows have been added." />
+                }
+                else
+                {
+                    <RadzenDataGrid TItem="ToolEquipmentModel" Data="@tool.Equipments" AllowPaging="false">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="ToolEquipmentModel" Property="FactoryId" Title="Factory id" />
+                            <RadzenDataGridColumn TItem="ToolEquipmentModel" Property="SerialId" Title="Serial id" />
+                            <RadzenDataGridColumn TItem="ToolEquipmentModel" Title="Calibration date">
+                                <Template Context="equipment">
+                                    @(equipment.CalibrationDate?.ToString("yyyy-MM-dd") ?? UiStrings.Common.None)
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            </RadzenCard>
+        </div>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ToolDetail? item;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        try
+        {
+            item = await MasterData.GetToolAsync(Id);
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        var result = await DialogService.OpenAsync<ToolFormDialog>("Edit tool",
+            new Dictionary<string, object?> { [nameof(ToolFormDialog.ToolId)] = Id },
+            new DialogOptions { Width = "860px" });
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task ActivateAsync() => await RunAsync(rv => MasterData.ActivateToolAsync(Id, rv), "Tool activated.");
+
+    private async Task DeactivateAsync()
+    {
+        var confirmed = await DialogService.Confirm("Deactivate this tool?", "Deactivate",
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+        if (confirmed)
+            await RunAsync(rv => MasterData.DeactivateToolAsync(Id, rv), "Tool deactivated.");
+    }
+
+    private async Task RunAsync(Func<string, Task> action, string message)
+    {
+        if (item is null)
+            return;
+
+        try
+        {
+            await action(item.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, message);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+}

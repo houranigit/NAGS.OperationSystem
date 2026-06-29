@@ -63,11 +63,17 @@
                     var canCountries = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesView);
                     var canManpower = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ManpowerTypesView);
                     var canLicenses = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.LicensesView);
+                    var canServices = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ServicesView);
+                    var canOperationTypes = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.OperationTypesView);
+                    var canAircraftTypes = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.AircraftTypesView);
+                    var canTools = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ToolsView);
+                    var canMaterials = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.MaterialsView);
+                    var canGeneralSupports = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.GeneralSupportsView);
                     var canStations = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsView);
                     var canCustomers = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersView);
                     var canStaff = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersView);
                 }
-                @if (canCountries || canManpower || canLicenses || canStations || canCustomers || canStaff)
+                @if (canCountries || canManpower || canLicenses || canServices || canOperationTypes || canAircraftTypes || canTools || canMaterials || canGeneralSupports || canStations || canCustomers || canStaff)
                 {
                     <p class="os-nav-section">@UiStrings.Nav.MasterData</p>
                 }
@@ -90,6 +96,48 @@
                     <NavLink href="/master-data/licenses" class="os-nav-link" title="@UiStrings.Nav.Licenses" @onclick="CloseNav">
                         <RadzenIcon Icon="badge" />
                         <span>@UiStrings.Nav.Licenses</span>
+                    </NavLink>
+                }
+                @if (canServices)
+                {
+                    <NavLink href="/master-data/services" class="os-nav-link" title="@UiStrings.Nav.Services" @onclick="CloseNav">
+                        <RadzenIcon Icon="miscellaneous_services" />
+                        <span>@UiStrings.Nav.Services</span>
+                    </NavLink>
+                }
+                @if (canOperationTypes)
+                {
+                    <NavLink href="/master-data/operation-types" class="os-nav-link" title="@UiStrings.Nav.OperationTypes" @onclick="CloseNav">
+                        <RadzenIcon Icon="route" />
+                        <span>@UiStrings.Nav.OperationTypes</span>
+                    </NavLink>
+                }
+                @if (canAircraftTypes)
+                {
+                    <NavLink href="/master-data/aircraft-types" class="os-nav-link" title="@UiStrings.Nav.AircraftTypes" @onclick="CloseNav">
+                        <RadzenIcon Icon="flight" />
+                        <span>@UiStrings.Nav.AircraftTypes</span>
+                    </NavLink>
+                }
+                @if (canTools)
+                {
+                    <NavLink href="/master-data/tools" class="os-nav-link" title="@UiStrings.Nav.Tools" @onclick="CloseNav">
+                        <RadzenIcon Icon="construction" />
+                        <span>@UiStrings.Nav.Tools</span>
+                    </NavLink>
+                }
+                @if (canMaterials)
+                {
+                    <NavLink href="/master-data/materials" class="os-nav-link" title="@UiStrings.Nav.Materials" @onclick="CloseNav">
+                        <RadzenIcon Icon="inventory_2" />
+                        <span>@UiStrings.Nav.Materials</span>
+                    </NavLink>
+                }
+                @if (canGeneralSupports)
+                {
+                    <NavLink href="/master-data/general-supports" class="os-nav-link" title="@UiStrings.Nav.GeneralSupports" @onclick="CloseNav">
+                        <RadzenIcon Icon="support_agent" />
+                        <span>@UiStrings.Nav.GeneralSupports</span>
                     </NavLink>
                 }
                 @if (canStations)

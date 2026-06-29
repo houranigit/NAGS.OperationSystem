@@ -1,3 +1,5 @@
+using MasterData.Domain.AircraftTypes;
+
 namespace MasterData.Application.Contracts;
 
 // --- Countries -------------------------------------------------------------
@@ -59,6 +61,126 @@ public sealed record LicenseDto(
     string RowVersion);
 
 public sealed record LicenseOptionDto(Guid Id, string Code, string Name);
+
+// --- Services --------------------------------------------------------------
+
+public sealed record ServiceListItemDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive);
+
+public sealed record ServiceDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion);
+
+public sealed record ServiceOptionDto(Guid Id, string Name);
+
+// --- OperationTypes --------------------------------------------------------
+
+public sealed record OperationTypeListItemDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive);
+
+public sealed record OperationTypeDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion);
+
+public sealed record OperationTypeOptionDto(Guid Id, string Name);
+
+// --- AircraftTypes ---------------------------------------------------------
+
+public sealed record AircraftTypeListItemDto(
+    Guid Id,
+    AircraftManufacturer Manufacturer,
+    string Model,
+    string? Notes,
+    bool IsActive);
+
+public sealed record AircraftTypeDto(
+    Guid Id,
+    AircraftManufacturer Manufacturer,
+    string Model,
+    string? Notes,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion);
+
+public sealed record AircraftTypeOptionDto(Guid Id, AircraftManufacturer Manufacturer, string Model);
+
+// --- Tools ----------------------------------------------------------------
+
+public sealed record ToolListItemDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    int EquipmentCount);
+
+public sealed record ToolEquipmentDto(Guid Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
+
+public sealed record ToolDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion,
+    IReadOnlyList<ToolEquipmentDto> Equipments);
+
+public sealed record ToolOptionDto(Guid Id, string Name);
+
+// --- Materials -------------------------------------------------------------
+
+public sealed record MaterialListItemDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive);
+
+public sealed record MaterialDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion);
+
+public sealed record MaterialOptionDto(Guid Id, string Name);
+
+// --- GeneralSupports -------------------------------------------------------
+
+public sealed record GeneralSupportListItemDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive);
+
+public sealed record GeneralSupportDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion);
+
+public sealed record GeneralSupportOptionDto(Guid Id, string Name);
 
 // --- Stations --------------------------------------------------------------
 

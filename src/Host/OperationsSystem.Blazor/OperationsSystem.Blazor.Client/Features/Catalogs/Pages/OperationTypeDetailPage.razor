@@ -1,0 +1,7 @@
+@page "/master-data/operation-types/{Id:guid}"
+
+<SimpleCatalogDetailPage Kind="SimpleCatalogKind.OperationTypes" Id="@Id" />
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+}

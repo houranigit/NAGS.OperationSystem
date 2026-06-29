@@ -15,6 +15,12 @@ public sealed class MasterDataEndpointModule : IEndpointModule
         CountryEndpoints.Map(group);
         ManpowerTypeEndpoints.Map(group);
         LicenseEndpoints.Map(group);
+        ServiceEndpoints.Map(group);
+        OperationTypeEndpoints.Map(group);
+        AircraftTypeEndpoints.Map(group);
+        ToolEndpoints.Map(group);
+        MaterialEndpoints.Map(group);
+        GeneralSupportEndpoints.Map(group);
         StationEndpoints.Map(group);
         CustomerEndpoints.Map(group);
         StaffMemberEndpoints.Map(group);

@@ -43,6 +43,60 @@ public static class MasterDataPermissions
         public const string Deactivate = "masterdata.licenses.deactivate";
     }
 
+    public static class Services
+    {
+        public const string View = "masterdata.services.view";
+        public const string Create = "masterdata.services.create";
+        public const string Update = "masterdata.services.update";
+        public const string Activate = "masterdata.services.activate";
+        public const string Deactivate = "masterdata.services.deactivate";
+    }
+
+    public static class OperationTypes
+    {
+        public const string View = "masterdata.operation-types.view";
+        public const string Create = "masterdata.operation-types.create";
+        public const string Update = "masterdata.operation-types.update";
+        public const string Activate = "masterdata.operation-types.activate";
+        public const string Deactivate = "masterdata.operation-types.deactivate";
+    }
+
+    public static class AircraftTypes
+    {
+        public const string View = "masterdata.aircraft-types.view";
+        public const string Create = "masterdata.aircraft-types.create";
+        public const string Update = "masterdata.aircraft-types.update";
+        public const string Activate = "masterdata.aircraft-types.activate";
+        public const string Deactivate = "masterdata.aircraft-types.deactivate";
+    }
+
+    public static class Tools
+    {
+        public const string View = "masterdata.tools.view";
+        public const string Create = "masterdata.tools.create";
+        public const string Update = "masterdata.tools.update";
+        public const string Activate = "masterdata.tools.activate";
+        public const string Deactivate = "masterdata.tools.deactivate";
+    }
+
+    public static class Materials
+    {
+        public const string View = "masterdata.materials.view";
+        public const string Create = "masterdata.materials.create";
+        public const string Update = "masterdata.materials.update";
+        public const string Activate = "masterdata.materials.activate";
+        public const string Deactivate = "masterdata.materials.deactivate";
+    }
+
+    public static class GeneralSupports
+    {
+        public const string View = "masterdata.general-supports.view";
+        public const string Create = "masterdata.general-supports.create";
+        public const string Update = "masterdata.general-supports.update";
+        public const string Activate = "masterdata.general-supports.activate";
+        public const string Deactivate = "masterdata.general-supports.deactivate";
+    }
+
     public static class Stations
     {
         public const string View = "masterdata.stations.view";

@@ -1,0 +1,107 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="AircraftTypeModel" Data="@model" Submit="@SubmitAsync">
+    <div class="mtf-form">
+        <p class="mtf-intro os-muted">Define an aircraft manufacturer and model for operational use.</p>
+        <div class="mtf-section-line"><RadzenIcon Icon="flight" /><span>@UiStrings.Common.Details</span></div>
+
+        <div class="mtf-field-block">
+            <label class="mtf-label">Manufacturer <span>*</span></label>
+            <RadzenDropDown @bind-Value="model.Manufacturer" Data="@manufacturers" Name="manufacturer" class="mtf-control" />
+        </div>
+        <div class="mtf-field-block">
+            <label class="mtf-label">Model <span>*</span></label>
+            <div class="mtf-input-wrap">
+                <RadzenIcon Icon="flight" class="mtf-field-icon" />
+                <RadzenTextBox @bind-Value="model.Model" Name="model" class="mtf-control mtf-control-icon" MaxLength="50" />
+            </div>
+        </div>
+        <div class="mtf-field-block">
+            <label class="mtf-label">Notes</label>
+            <RadzenTextArea @bind-Value="model.Notes" Name="notes" Rows="4" class="mtf-control" MaxLength="500" />
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="mtf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="mtf-actions">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@(AircraftTypeId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
+                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </div>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid? AircraftTypeId { get; set; }
+
+    private readonly IReadOnlyList<AircraftManufacturer> manufacturers = Enum.GetValues<AircraftManufacturer>();
+    private AircraftTypeModel model = new();
+    private string? rowVersion;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AircraftTypeId is not { } id)
+            return;
+
+        try
+        {
+            var detail = await MasterData.GetAircraftTypeAsync(id);
+            model = new AircraftTypeModel
+            {
+                Manufacturer = detail.Manufacturer,
+                Model = detail.Model,
+                Notes = detail.Notes
+            };
+            rowVersion = detail.RowVersion;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+        if (string.IsNullOrWhiteSpace(model.Model))
+        {
+            errorMessage = "A model is required.";
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var modelName = model.Model.Trim();
+            var notes = string.IsNullOrWhiteSpace(model.Notes) ? null : model.Notes.Trim();
+
+            if (AircraftTypeId is { } id)
+                await MasterData.UpdateAircraftTypeAsync(id, new UpdateAircraftTypeRequest(model.Manufacturer, modelName, notes), rowVersion ?? string.Empty);
+            else
+                await MasterData.CreateAircraftTypeAsync(new CreateAircraftTypeRequest(model.Manufacturer, modelName, notes));
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class AircraftTypeModel
+    {
+        public AircraftManufacturer Manufacturer { get; set; } = AircraftManufacturer.Boeing;
+        public string Model { get; set; } = string.Empty;
+        public string? Notes { get; set; }
+    }
+}

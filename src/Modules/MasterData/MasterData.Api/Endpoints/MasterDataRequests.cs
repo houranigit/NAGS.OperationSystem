@@ -1,3 +1,5 @@
+using MasterData.Domain.AircraftTypes;
+
 namespace MasterData.Api.Endpoints;
 
 // Countries
@@ -11,6 +13,31 @@ public sealed record UpdateManpowerTypeRequest(string Name, string? Description)
 // Licenses
 public sealed record CreateLicenseRequest(string Code, string Name, string? Description);
 public sealed record UpdateLicenseRequest(string Name, string? Description);
+
+// Services
+public sealed record CreateServiceRequest(string Name, string? Description);
+public sealed record UpdateServiceRequest(string Name, string? Description);
+
+// OperationTypes
+public sealed record CreateOperationTypeRequest(string Name, string? Description);
+public sealed record UpdateOperationTypeRequest(string Name, string? Description);
+
+// AircraftTypes
+public sealed record CreateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
+public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
+
+// Tools
+public sealed record ToolEquipmentRequest(Guid? Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
+public sealed record CreateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest>? Equipments);
+public sealed record UpdateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest>? Equipments);
+
+// Materials
+public sealed record CreateMaterialRequest(string Name, string? Description);
+public sealed record UpdateMaterialRequest(string Name, string? Description);
+
+// GeneralSupports
+public sealed record CreateGeneralSupportRequest(string Name, string? Description);
+public sealed record UpdateGeneralSupportRequest(string Name, string? Description);
 
 // Stations
 public sealed record CreateStationRequest(

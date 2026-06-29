@@ -1,0 +1,134 @@
+@page "/master-data/aircraft-types/{Id:guid}"
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject NavigationManager Navigation
+@inject AuthSession Auth
+
+<PageTitle>@(item is null ? "Aircraft type" : $"{item.Manufacturer} {item.Model}")</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.AircraftTypesView">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (loadError)
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (item is { } aircraftType)
+    {
+        <div class="os-list-page">
+            <PageHeader Title="@($"{aircraftType.Manufacturer} {aircraftType.Model}")" Description="Aircraft type">
+                <Actions>
+                    <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@(() => Navigation.NavigateTo("/master-data/aircraft-types"))" />
+                    @if (Auth.HasPermission(MasterDataPermissions.AircraftTypesUpdate))
+                    {
+                        <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                    }
+                </Actions>
+            </PageHeader>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <div class="os-role-cell">
+                        <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
+                        <div>
+                            <strong>@aircraftType.Model</strong>
+                            <p class="os-muted">@aircraftType.Manufacturer</p>
+                        </div>
+                    </div>
+                    <p>@(string.IsNullOrWhiteSpace(aircraftType.Notes) ? UiStrings.Common.None : aircraftType.Notes)</p>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" AlignItems="AlignItems.Center">
+                        @if (aircraftType.IsActive)
+                        {
+                            <StatusBadge Label="Active" Tone="success" />
+                        }
+                        else
+                        {
+                            <StatusBadge Label="Inactive" Tone="neutral" />
+                        }
+                        <span class="os-muted">Created @aircraftType.CreatedAtUtc.ToLocalTime().ToString("g")</span>
+                        <span class="os-muted">Updated @(aircraftType.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</span>
+                    </RadzenStack>
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        @if (!aircraftType.IsActive && Auth.HasPermission(MasterDataPermissions.AircraftTypesActivate))
+                        {
+                            <RadzenButton Text="Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
+                        }
+                        @if (aircraftType.IsActive && Auth.HasPermission(MasterDataPermissions.AircraftTypesDeactivate))
+                        {
+                            <RadzenButton Text="Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
+                        }
+                    </RadzenStack>
+                </RadzenStack>
+            </RadzenCard>
+        </div>
+    }
+</RequirePermission>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private AircraftTypeDetail? item;
+    private bool isLoading = true;
+    private bool loadError;
+    private string errorMessage = UiStrings.Errors.LoadFailed;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        try
+        {
+            item = await MasterData.GetAircraftTypeAsync(Id);
+        }
+        catch (ApiException ex)
+        {
+            loadError = true;
+            errorMessage = ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OpenEditAsync()
+    {
+        var result = await DialogService.OpenAsync<AircraftTypeFormDialog>("Edit aircraft type",
+            new Dictionary<string, object?> { [nameof(AircraftTypeFormDialog.AircraftTypeId)] = Id },
+            new DialogOptions { Width = "760px" });
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private async Task ActivateAsync() => await RunAsync(rv => MasterData.ActivateAircraftTypeAsync(Id, rv), "Aircraft type activated.");
+
+    private async Task DeactivateAsync()
+    {
+        var confirmed = await DialogService.Confirm("Deactivate this aircraft type?", "Deactivate",
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+        if (confirmed)
+            await RunAsync(rv => MasterData.DeactivateAircraftTypeAsync(Id, rv), "Aircraft type deactivated.");
+    }
+
+    private async Task RunAsync(Func<string, Task> action, string message)
+    {
+        if (item is null)
+            return;
+
+        try
+        {
+            await action(item.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, message);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
+        }
+    }
+}

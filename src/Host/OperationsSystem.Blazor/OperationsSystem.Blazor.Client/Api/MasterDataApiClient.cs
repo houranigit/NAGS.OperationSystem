@@ -104,6 +104,180 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
     public Task DeactivateLicenseAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/masterdata/licenses/{id}/deactivate", rowVersion, ct);
 
+    // --- Services ----------------------------------------------------------
+
+    public Task<PagedResult<ServiceListItem>> GetServicesAsync(
+        int page, int pageSize, string? search, bool? isActive = null, string? sort = null, CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search)
+            .Add("isActive", isActive).Add("sort", sort).Build();
+        return api.GetAsync<PagedResult<ServiceListItem>>($"/masterdata/services{query}", ct);
+    }
+
+    public Task<IReadOnlyList<ServiceOption>> GetServiceOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<ServiceOption>>("/masterdata/services/options", ct);
+
+    public Task<ServiceDetail> GetServiceAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<ServiceDetail>($"/masterdata/services/{id}", ct);
+
+    public Task<Guid> CreateServiceAsync(CreateServiceRequest request, CancellationToken ct = default) =>
+        api.PostAsync<CreateServiceRequest, Guid>("/masterdata/services", request, ct);
+
+    public Task UpdateServiceAsync(Guid id, UpdateServiceRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/services/{id}", request, rowVersion, ct);
+
+    public Task ActivateServiceAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/services/{id}/activate", rowVersion, ct);
+
+    public Task DeactivateServiceAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/services/{id}/deactivate", rowVersion, ct);
+
+    // --- OperationTypes ----------------------------------------------------
+
+    public Task<PagedResult<OperationTypeListItem>> GetOperationTypesAsync(
+        int page, int pageSize, string? search, bool? isActive = null, string? sort = null, CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search)
+            .Add("isActive", isActive).Add("sort", sort).Build();
+        return api.GetAsync<PagedResult<OperationTypeListItem>>($"/masterdata/operation-types{query}", ct);
+    }
+
+    public Task<IReadOnlyList<OperationTypeOption>> GetOperationTypeOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<OperationTypeOption>>("/masterdata/operation-types/options", ct);
+
+    public Task<OperationTypeDetail> GetOperationTypeAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<OperationTypeDetail>($"/masterdata/operation-types/{id}", ct);
+
+    public Task<Guid> CreateOperationTypeAsync(CreateOperationTypeRequest request, CancellationToken ct = default) =>
+        api.PostAsync<CreateOperationTypeRequest, Guid>("/masterdata/operation-types", request, ct);
+
+    public Task UpdateOperationTypeAsync(Guid id, UpdateOperationTypeRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/operation-types/{id}", request, rowVersion, ct);
+
+    public Task ActivateOperationTypeAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/operation-types/{id}/activate", rowVersion, ct);
+
+    public Task DeactivateOperationTypeAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/operation-types/{id}/deactivate", rowVersion, ct);
+
+    // --- AircraftTypes -----------------------------------------------------
+
+    public Task<PagedResult<AircraftTypeListItem>> GetAircraftTypesAsync(
+        int page, int pageSize, string? search, bool? isActive = null, string? sort = null, CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search)
+            .Add("isActive", isActive).Add("sort", sort).Build();
+        return api.GetAsync<PagedResult<AircraftTypeListItem>>($"/masterdata/aircraft-types{query}", ct);
+    }
+
+    public Task<IReadOnlyList<AircraftTypeOption>> GetAircraftTypeOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<AircraftTypeOption>>("/masterdata/aircraft-types/options", ct);
+
+    public Task<AircraftTypeDetail> GetAircraftTypeAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<AircraftTypeDetail>($"/masterdata/aircraft-types/{id}", ct);
+
+    public Task<Guid> CreateAircraftTypeAsync(CreateAircraftTypeRequest request, CancellationToken ct = default) =>
+        api.PostAsync<CreateAircraftTypeRequest, Guid>("/masterdata/aircraft-types", request, ct);
+
+    public Task UpdateAircraftTypeAsync(Guid id, UpdateAircraftTypeRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/aircraft-types/{id}", request, rowVersion, ct);
+
+    public Task ActivateAircraftTypeAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/aircraft-types/{id}/activate", rowVersion, ct);
+
+    public Task DeactivateAircraftTypeAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/aircraft-types/{id}/deactivate", rowVersion, ct);
+
+    // --- Tools -------------------------------------------------------------
+
+    public Task<PagedResult<ToolListItem>> GetToolsAsync(
+        int page, int pageSize, string? search, bool? isActive = null, string? sort = null, CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search)
+            .Add("isActive", isActive).Add("sort", sort).Build();
+        return api.GetAsync<PagedResult<ToolListItem>>($"/masterdata/tools{query}", ct);
+    }
+
+    public Task<IReadOnlyList<ToolOption>> GetToolOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<ToolOption>>("/masterdata/tools/options", ct);
+
+    public Task<ToolDetail> GetToolAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<ToolDetail>($"/masterdata/tools/{id}", ct);
+
+    public Task<Guid> CreateToolAsync(CreateToolRequest request, CancellationToken ct = default) =>
+        api.PostAsync<CreateToolRequest, Guid>("/masterdata/tools", request, ct);
+
+    public Task UpdateToolAsync(Guid id, UpdateToolRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/tools/{id}", request, rowVersion, ct);
+
+    public Task ActivateToolAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/tools/{id}/activate", rowVersion, ct);
+
+    public Task DeactivateToolAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/tools/{id}/deactivate", rowVersion, ct);
+
+    // --- Materials ---------------------------------------------------------
+
+    public Task<PagedResult<MaterialListItem>> GetMaterialsAsync(
+        int page, int pageSize, string? search, bool? isActive = null, string? sort = null, CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search)
+            .Add("isActive", isActive).Add("sort", sort).Build();
+        return api.GetAsync<PagedResult<MaterialListItem>>($"/masterdata/materials{query}", ct);
+    }
+
+    public Task<IReadOnlyList<MaterialOption>> GetMaterialOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<MaterialOption>>("/masterdata/materials/options", ct);
+
+    public Task<MaterialDetail> GetMaterialAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<MaterialDetail>($"/masterdata/materials/{id}", ct);
+
+    public Task<Guid> CreateMaterialAsync(CreateMaterialRequest request, CancellationToken ct = default) =>
+        api.PostAsync<CreateMaterialRequest, Guid>("/masterdata/materials", request, ct);
+
+    public Task UpdateMaterialAsync(Guid id, UpdateMaterialRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/materials/{id}", request, rowVersion, ct);
+
+    public Task ActivateMaterialAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/materials/{id}/activate", rowVersion, ct);
+
+    public Task DeactivateMaterialAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/materials/{id}/deactivate", rowVersion, ct);
+
+    // --- GeneralSupports ---------------------------------------------------
+
+    public Task<PagedResult<GeneralSupportListItem>> GetGeneralSupportsAsync(
+        int page, int pageSize, string? search, bool? isActive = null, string? sort = null, CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search)
+            .Add("isActive", isActive).Add("sort", sort).Build();
+        return api.GetAsync<PagedResult<GeneralSupportListItem>>($"/masterdata/general-supports{query}", ct);
+    }
+
+    public Task<IReadOnlyList<GeneralSupportOption>> GetGeneralSupportOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<GeneralSupportOption>>("/masterdata/general-supports/options", ct);
+
+    public Task<GeneralSupportDetail> GetGeneralSupportAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<GeneralSupportDetail>($"/masterdata/general-supports/{id}", ct);
+
+    public Task<Guid> CreateGeneralSupportAsync(CreateGeneralSupportRequest request, CancellationToken ct = default) =>
+        api.PostAsync<CreateGeneralSupportRequest, Guid>("/masterdata/general-supports", request, ct);
+
+    public Task UpdateGeneralSupportAsync(Guid id, UpdateGeneralSupportRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/general-supports/{id}", request, rowVersion, ct);
+
+    public Task ActivateGeneralSupportAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/general-supports/{id}/activate", rowVersion, ct);
+
+    public Task DeactivateGeneralSupportAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/general-supports/{id}/deactivate", rowVersion, ct);
+
     // --- Stations ----------------------------------------------------------
 
     public Task<PagedResult<StationListItem>> GetStationsAsync(
