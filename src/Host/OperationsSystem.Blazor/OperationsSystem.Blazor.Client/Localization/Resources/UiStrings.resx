@@ -324,7 +324,7 @@
   <data name="Stations.Name" xml:space="preserve"><value>Name</value></data>
   <data name="Stations.City" xml:space="preserve"><value>City</value></data>
   <data name="Stations.Country" xml:space="preserve"><value>Country</value></data>
-  <data name="Stations.NoIcao" xml:space="preserve"><value>â</value></data>
+  <data name="Stations.NoIcao" xml:space="preserve"><value>&#x2014;</value></data>
   <data name="Stations.Status" xml:space="preserve"><value>Status</value></data>
   <data name="Stations.Active" xml:space="preserve"><value>Active</value></data>
   <data name="Stations.Inactive" xml:space="preserve"><value>Inactive</value></data>

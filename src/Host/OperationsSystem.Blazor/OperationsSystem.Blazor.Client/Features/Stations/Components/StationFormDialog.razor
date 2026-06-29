@@ -56,10 +56,13 @@
         <RadzenTemplateForm TItem="StationModel" Data="@model" Submit="@SubmitAsync">
             @DetailsFields()
             @ErrorBanner()
-            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
-                <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-                <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
-            </RadzenStack>
+            <div class="stf-actions stf-actions-edit">
+                <span></span>
+                <div class="stf-actions-end">
+                    <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                    <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+                </div>
+            </div>
         </RadzenTemplateForm>
     }
 </div>

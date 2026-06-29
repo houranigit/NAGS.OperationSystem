@@ -375,7 +375,7 @@ public static class UiStrings
         public static string Name => UiText.Get("Stations.Name", "Name");
         public static string City => UiText.Get("Stations.City", "City");
         public static string Country => UiText.Get("Stations.Country", "Country");
-        public static string NoIcao => UiText.Get("Stations.NoIcao", "â");
+        public static string NoIcao => UiText.Get("Stations.NoIcao", "\u2014");
         public static string Status => UiText.Get("Stations.Status", "Status");
         public static string Active => UiText.Get("Stations.Active", "Active");
         public static string Inactive => UiText.Get("Stations.Inactive", "Inactive");

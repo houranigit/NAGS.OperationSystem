@@ -324,7 +324,7 @@
   <data name="Stations.Name" xml:space="preserve"><value>اسم</value></data>
   <data name="Stations.City" xml:space="preserve"><value>مدينة</value></data>
   <data name="Stations.Country" xml:space="preserve"><value>دولة</value></data>
-  <data name="Stations.NoIcao" xml:space="preserve"><value>â</value></data>
+  <data name="Stations.NoIcao" xml:space="preserve"><value>&#x2014;</value></data>
   <data name="Stations.Status" xml:space="preserve"><value>حالة</value></data>
   <data name="Stations.Active" xml:space="preserve"><value>نشيط</value></data>
   <data name="Stations.Inactive" xml:space="preserve"><value>غير نشط</value></data>
