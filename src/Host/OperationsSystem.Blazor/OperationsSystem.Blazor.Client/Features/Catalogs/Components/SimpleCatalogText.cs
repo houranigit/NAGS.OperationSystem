@@ -43,10 +43,10 @@ internal static class SimpleCatalogText
 
     public static string Icon(SimpleCatalogKind kind) => kind switch
     {
-        SimpleCatalogKind.Services => "miscellaneous_services",
-        SimpleCatalogKind.OperationTypes => "route",
-        SimpleCatalogKind.Materials => "inventory_2",
-        SimpleCatalogKind.GeneralSupports => "support_agent",
+        SimpleCatalogKind.Services => "settings",
+        SimpleCatalogKind.OperationTypes => "timeline",
+        SimpleCatalogKind.Materials => "category",
+        SimpleCatalogKind.GeneralSupports => "headset_mic",
         _ => "category"
     };
 

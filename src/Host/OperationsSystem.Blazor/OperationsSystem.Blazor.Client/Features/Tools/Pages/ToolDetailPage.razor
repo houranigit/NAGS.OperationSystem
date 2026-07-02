@@ -4,6 +4,8 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
 <PageTitle>@(item?.Name ?? "Tool")</PageTitle>
 
@@ -18,60 +20,136 @@
     }
     else if (item is { } tool)
     {
-        <div class="os-list-page">
-            <PageHeader Title="@tool.Name" Description="Tool">
-                <Actions>
-                    <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@(() => Navigation.NavigateTo("/master-data/tools"))" />
-                    @if (Auth.HasPermission(MasterDataPermissions.ToolsUpdate))
-                    {
-                        <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                    }
-                </Actions>
-            </PageHeader>
+        <div class="md-workspace">
+            <section class="md-profile @ProfileClass(tool)">
+                <div class="md-hero">
+                    <div class="md-avatar @AvatarClass(tool)">
+                        <RadzenIcon Icon="build" />
+                        <span class="md-avatar-dot @DotClass(tool)"></span>
+                    </div>
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <div class="os-role-cell">
-                        <span class="os-role-cell-icon"><RadzenIcon Icon="construction" /></span>
-                        <div>
-                            <strong>@tool.Name</strong>
-                            <p class="os-muted">@(string.IsNullOrWhiteSpace(tool.Description) ? UiStrings.Common.None : tool.Description)</p>
+                    <div class="md-identity">
+                        <div class="md-identity-headline">
+                            <h1 class="md-name">@tool.Name</h1>
+                            <StatusBadge Label="@(tool.IsActive ? "Active" : "Inactive")" Tone="@(tool.IsActive ? "success" : "neutral")" />
+                            <span class="md-info-badge"><RadzenIcon Icon="memory" />@tool.Equipments.Count equipment row(s)</span>
+                        </div>
+
+                        <div class="md-meta-row">
+                            <RadzenIcon Icon="build" />
+                            <span>Tool</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(tool.Id)</span>
+                            <button type="button" class="md-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(tool.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
                         </div>
                     </div>
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" AlignItems="AlignItems.Center">
-                        @if (tool.IsActive)
-                        {
-                            <StatusBadge Label="Active" Tone="success" />
-                        }
-                        else
-                        {
-                            <StatusBadge Label="Inactive" Tone="neutral" />
-                        }
-                        <span class="os-muted">@tool.Equipments.Count equipment row(s)</span>
-                        <span class="os-muted">Created @tool.CreatedAtUtc.ToLocalTime().ToString("g")</span>
-                    </RadzenStack>
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        @if (!tool.IsActive && Auth.HasPermission(MasterDataPermissions.ToolsActivate))
-                        {
-                            <RadzenButton Text="Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
-                        }
-                        @if (tool.IsActive && Auth.HasPermission(MasterDataPermissions.ToolsDeactivate))
-                        {
-                            <RadzenButton Text="Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
-                        }
-                    </RadzenStack>
-                </RadzenStack>
-            </RadzenCard>
 
-            <RadzenCard>
-                <h3>Equipment</h3>
+                    <div class="md-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.ToolsUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(tool))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.ToolsActivate"
+                                           Visible="@(!tool.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.ToolsDeactivate"
+                                           Visible="@tool.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </div>
+
+                <nav class="md-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="md-tab @(activeTab == tab.Key ? "md-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
+            </section>
+
+            <div class="md-tab-body" role="tabpanel">
+                @(activeTab switch
+                {
+                    ToolTab.History => HistoryTab(tool),
+                    _ => OverviewTab(tool)
+                })
+            </div>
+        </div>
+    }
+</RequirePermission>
+
+@code {
+    private RenderFragment OverviewTab(ToolDetail tool) =>@<text>
+        <div class="md-stack">
+            <div class="md-overview-grid">
+                <RadzenCard class="md-card">
+                    <div class="md-card-head"><RadzenIcon Icon="toggle_on" /><h3>Status</h3></div>
+                    <div class="md-lead">
+                        <span class="md-lead-dot md-lead-dot--@StatusToneColor(tool)"></span>
+                        <div>
+                            <p class="md-lead-title">@(tool.IsActive ? "Active" : "Inactive")</p>
+                            <p class="os-muted md-lead-desc">@StatusDescription(tool)</p>
+                        </div>
+                    </div>
+                    <dl class="md-metrics">
+                        <div class="md-metric">
+                            <dt>Created</dt>
+                            <dd>@tool.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="md-metric">
+                            <dt>Updated</dt>
+                            <dd>@(tool.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                <RadzenCard class="md-card">
+                    <div class="md-card-head"><RadzenIcon Icon="build" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="md-lead">
+                        <span class="md-lead-icon md-lead-icon--blue"><RadzenIcon Icon="build" /></span>
+                        <div>
+                            <p class="md-lead-title">@tool.Name</p>
+                            <p class="os-muted md-lead-desc">@DescriptionOrNone(tool.Description)</p>
+                        </div>
+                    </div>
+                    <dl class="md-metrics md-metrics--tall">
+                        <div class="md-metric">
+                            <dt>Name</dt>
+                            <dd>@tool.Name</dd>
+                        </div>
+                        <div class="md-metric">
+                            <dt>Description</dt>
+                            <dd>@DescriptionOrNone(tool.Description)</dd>
+                        </div>
+                        <div class="md-metric">
+                            <dt>Equipment rows</dt>
+                            <dd>@tool.Equipments.Count</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+            </div>
+
+            <RadzenCard class="md-card">
+                <div class="md-card-head"><RadzenIcon Icon="memory" /><h3>Equipment</h3></div>
                 @if (tool.Equipments.Count == 0)
                 {
-                    <EmptyState Message="No equipment rows have been added." />
+                    <EmptyState Title="@UiStrings.Common.NoData" Description="No equipment rows have been added." Icon="memory" />
                 }
                 else
                 {
-                    <RadzenDataGrid TItem="ToolEquipmentModel" Data="@tool.Equipments" AllowPaging="false">
+                    <RadzenDataGrid TItem="ToolEquipmentModel" Data="@tool.Equipments" AllowPaging="false" GridLines="DataGridGridLines.Horizontal">
                         <Columns>
                             <RadzenDataGridColumn TItem="ToolEquipmentModel" Property="FactoryId" Title="Factory id" />
                             <RadzenDataGridColumn TItem="ToolEquipmentModel" Property="SerialId" Title="Serial id" />
@@ -84,17 +162,97 @@
                     </RadzenDataGrid>
                 }
             </RadzenCard>
+
+            @if (CanViewAudit)
+            {
+                <RadzenCard class="md-card">
+                    <div class="md-card-head">
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
+                        {
+                            <button type="button" class="md-link" @onclick="@(() => activeTab = ToolTab.History)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    <p class="os-muted">@UiStrings.Audit.Description</p>
+                    @HistoryTimeline(OverviewHistoryPreviewCount)
+                </RadzenCard>
+            }
         </div>
-    }
-</RequirePermission>
+    </text>;
+
+    private RenderFragment HistoryTab(ToolDetail tool) =>@<text>
+        <RadzenCard class="md-card">
+            <div class="md-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="md-timeline">
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="md-timeline-row" @key="entry.Id">
+                        <span class="md-timeline-icon md-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="md-timeline-content">
+                            <p class="md-timeline-title">@entry.Action</p>
+                            <p class="os-muted md-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="md-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="md-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="md-timeline-empty">
+            <span class="md-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="md-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
+            </div>
+        </div>
+    </text>;
+}
 
 @code {
     [Parameter] public Guid Id { get; set; }
 
     private ToolDetail? item;
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
+    private ToolTab activeTab = ToolTab.Overview;
+
+    private const int OverviewHistoryPreviewCount = 4;
+
+    private enum ToolTab { Overview, History }
+
+    private sealed record TabDef(ToolTab Key, string Label, string Icon);
+
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(ToolTab.Overview, UiStrings.Common.Overview, "dashboard");
+        if (CanViewAudit)
+            yield return new TabDef(ToolTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -102,9 +260,14 @@
     {
         isLoading = true;
         loadError = false;
+        StateHasChanged();
+
+        var historyTask = LoadHistoryAsync();
+
         try
         {
             item = await MasterData.GetToolAsync(Id);
+            history = await historyTask;
         }
         catch (ApiException ex)
         {
@@ -114,6 +277,23 @@
         finally
         {
             isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<IReadOnlyList<AuditTrailListItem>> LoadHistoryAsync()
+    {
+        if (!CanViewAudit)
+            return [];
+
+        try
+        {
+            var trails = await AuditApi.GetTrailsAsync(entityType: "Tool", entityId: Id, pageSize: 25);
+            return trails.Items;
+        }
+        catch (ApiException)
+        {
+            return [];
         }
     }
 
@@ -126,24 +306,32 @@
             await LoadAsync();
     }
 
-    private async Task ActivateAsync() => await RunAsync(rv => MasterData.ActivateToolAsync(Id, rv), "Tool activated.");
+    private async Task ActivateAsync()
+    {
+        if (item is not { } tool)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.ActivateToolAsync(Id, rv, ct), "Tool activated.", tool.RowVersion);
+    }
 
     private async Task DeactivateAsync()
     {
-        var confirmed = await DialogService.Confirm("Deactivate this tool?", "Deactivate",
-            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
-        if (confirmed)
-            await RunAsync(rv => MasterData.DeactivateToolAsync(Id, rv), "Tool deactivated.");
-    }
-
-    private async Task RunAsync(Func<string, Task> action, string message)
-    {
-        if (item is null)
+        if (item is not { } tool)
             return;
 
+        var confirmed = await DialogService.Confirm("Deactivate this tool?", "Deactivate",
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+        if (!confirmed)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.DeactivateToolAsync(Id, rv, ct), "Tool deactivated.", tool.RowVersion);
+    }
+
+    private async Task RunAsync(Func<string, CancellationToken, Task> action, string message, string rowVersion)
+    {
         try
         {
-            await action(item.RowVersion);
+            await action(rowVersion, CancellationToken.None);
             Notifications.Notify(NotificationSeverity.Success, message);
             await LoadAsync();
         }
@@ -151,5 +339,72 @@
         {
             Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
         }
+    }
+
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
+    }
+
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
+    private bool HasMoreActions(ToolDetail tool) =>
+        (!tool.IsActive && Auth.HasPermission(MasterDataPermissions.ToolsActivate))
+        || (tool.IsActive && Auth.HasPermission(MasterDataPermissions.ToolsDeactivate));
+
+    private static string DescriptionOrNone(string? value) => string.IsNullOrWhiteSpace(value) ? UiStrings.Common.None : value;
+    private static string ProfileClass(ToolDetail tool) => tool.IsActive ? "md-profile--active" : "md-profile--inactive";
+    private static string AvatarClass(ToolDetail tool) => tool.IsActive ? "md-avatar--active" : "md-avatar--inactive";
+    private static string DotClass(ToolDetail tool) => tool.IsActive ? "md-avatar-dot--active" : "md-avatar-dot--inactive";
+    private static string StatusToneColor(ToolDetail tool) => tool.IsActive ? "success" : "neutral";
+    private static string StatusDescription(ToolDetail tool) => tool.IsActive ? "Available for operation setup and selection." : "Hidden from active selection lists until reactivated.";
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("activ"))
+            return ("check_circle", "green");
+        if (a.Contains("deactiv"))
+            return ("cancel", "red");
+        if (a.Contains("delet"))
+            return ("delete", "red");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
     }
 }

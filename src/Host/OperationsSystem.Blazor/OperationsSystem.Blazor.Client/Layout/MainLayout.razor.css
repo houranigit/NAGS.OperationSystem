@@ -111,7 +111,11 @@
 }
 
 .os-nav ::deep .os-nav-link .rz-icon {
+    width: 1.25rem;
+    max-width: 1.25rem;
     font-size: 1.25rem;
+    line-height: 1;
+    overflow: hidden;
     color: var(--os-color-sidebar-muted);
     flex-shrink: 0;
     transition: color var(--os-transition);

@@ -4,8 +4,10 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject AuthSession Auth
+@inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
-<PageTitle>@(item is null ? "Aircraft type" : $"{item.Manufacturer} {item.Model}")</PageTitle>
+<PageTitle>@(item is null ? "Aircraft type" : DisplayName(item))</PageTitle>
 
 <RequirePermission Permission="@MasterDataPermissions.AircraftTypesView">
     @if (isLoading)
@@ -18,62 +20,221 @@
     }
     else if (item is { } aircraftType)
     {
-        <div class="os-list-page">
-            <PageHeader Title="@($"{aircraftType.Manufacturer} {aircraftType.Model}")" Description="Aircraft type">
-                <Actions>
-                    <RadzenButton Text="@UiStrings.Common.Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@(() => Navigation.NavigateTo("/master-data/aircraft-types"))" />
-                    @if (Auth.HasPermission(MasterDataPermissions.AircraftTypesUpdate))
-                    {
-                        <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                    }
-                </Actions>
-            </PageHeader>
+        <div class="md-workspace">
+            <section class="md-profile @ProfileClass(aircraftType)">
+                <div class="md-hero">
+                    <div class="md-avatar @AvatarClass(aircraftType)">
+                        <RadzenIcon Icon="flight" />
+                        <span class="md-avatar-dot @DotClass(aircraftType)"></span>
+                    </div>
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <div class="os-role-cell">
-                        <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
-                        <div>
-                            <strong>@aircraftType.Model</strong>
-                            <p class="os-muted">@aircraftType.Manufacturer</p>
+                    <div class="md-identity">
+                        <div class="md-identity-headline">
+                            <h1 class="md-name">@DisplayName(aircraftType)</h1>
+                            <StatusBadge Label="@(aircraftType.IsActive ? "Active" : "Inactive")" Tone="@(aircraftType.IsActive ? "success" : "neutral")" />
+                            <span class="md-info-badge"><RadzenIcon Icon="flight" />Aircraft type</span>
+                        </div>
+
+                        <div class="md-meta-row">
+                            <RadzenIcon Icon="business" />
+                            <span>@aircraftType.Manufacturer</span>
+
+                            <RadzenIcon Icon="id_card" />
+                            <span>@ShortId(aircraftType.Id)</span>
+                            <button type="button" class="md-copy" title="@UiStrings.Users.CopyId"
+                                    aria-label="@UiStrings.Users.CopyId" @onclick="@(() => CopyAsync(aircraftType.Id.ToString()))">
+                                <RadzenIcon Icon="content_copy" />
+                            </button>
                         </div>
                     </div>
-                    <p>@(string.IsNullOrWhiteSpace(aircraftType.Notes) ? UiStrings.Common.None : aircraftType.Notes)</p>
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" AlignItems="AlignItems.Center">
-                        @if (aircraftType.IsActive)
+
+                    <div class="md-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.AircraftTypesUpdate))
                         {
-                            <StatusBadge Label="Active" Tone="success" />
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
                         }
-                        else
+                        @if (HasMoreActions(aircraftType))
                         {
-                            <StatusBadge Label="Inactive" Tone="neutral" />
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.AircraftTypesActivate"
+                                           Visible="@(!aircraftType.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.AircraftTypesDeactivate"
+                                           Visible="@aircraftType.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
                         }
-                        <span class="os-muted">Created @aircraftType.CreatedAtUtc.ToLocalTime().ToString("g")</span>
-                        <span class="os-muted">Updated @(aircraftType.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</span>
-                    </RadzenStack>
-                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                        @if (!aircraftType.IsActive && Auth.HasPermission(MasterDataPermissions.AircraftTypesActivate))
-                        {
-                            <RadzenButton Text="Activate" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Click="@ActivateAsync" />
-                        }
-                        @if (aircraftType.IsActive && Auth.HasPermission(MasterDataPermissions.AircraftTypesDeactivate))
-                        {
-                            <RadzenButton Text="Deactivate" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Click="@DeactivateAsync" />
-                        }
-                    </RadzenStack>
-                </RadzenStack>
-            </RadzenCard>
+                    </div>
+                </div>
+
+                <nav class="md-tabs" role="tablist">
+                    @foreach (var tab in Tabs())
+                    {
+                        <button type="button" role="tab" class="md-tab @(activeTab == tab.Key ? "md-tab--active" : "")"
+                                aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                            <RadzenIcon Icon="@tab.Icon" />
+                            <span>@tab.Label</span>
+                        </button>
+                    }
+                </nav>
+            </section>
+
+            <div class="md-tab-body" role="tabpanel">
+                @(activeTab switch
+                {
+                    AircraftTypeTab.History => HistoryTab(aircraftType),
+                    _ => OverviewTab(aircraftType)
+                })
+            </div>
         </div>
     }
 </RequirePermission>
 
 @code {
+    private RenderFragment OverviewTab(AircraftTypeDetail aircraftType) =>@<text>
+        <div class="md-stack">
+            <div class="md-overview-grid">
+                <RadzenCard class="md-card">
+                    <div class="md-card-head"><RadzenIcon Icon="toggle_on" /><h3>Status</h3></div>
+                    <div class="md-lead">
+                        <span class="md-lead-dot md-lead-dot--@StatusToneColor(aircraftType)"></span>
+                        <div>
+                            <p class="md-lead-title">@(aircraftType.IsActive ? "Active" : "Inactive")</p>
+                            <p class="os-muted md-lead-desc">@StatusDescription(aircraftType)</p>
+                        </div>
+                    </div>
+                    <dl class="md-metrics">
+                        <div class="md-metric">
+                            <dt>Created</dt>
+                            <dd>@aircraftType.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                        </div>
+                        <div class="md-metric">
+                            <dt>Updated</dt>
+                            <dd>@(aircraftType.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+
+                <RadzenCard class="md-card">
+                    <div class="md-card-head"><RadzenIcon Icon="flight" /><h3>@UiStrings.Common.Details</h3></div>
+                    <div class="md-lead">
+                        <span class="md-lead-icon md-lead-icon--blue"><RadzenIcon Icon="flight" /></span>
+                        <div>
+                            <p class="md-lead-title">@aircraftType.Model</p>
+                            <p class="os-muted md-lead-desc">@aircraftType.Manufacturer</p>
+                        </div>
+                    </div>
+                    <dl class="md-metrics md-metrics--tall">
+                        <div class="md-metric">
+                            <dt>Manufacturer</dt>
+                            <dd>@aircraftType.Manufacturer</dd>
+                        </div>
+                        <div class="md-metric">
+                            <dt>Model</dt>
+                            <dd>@aircraftType.Model</dd>
+                        </div>
+                        <div class="md-metric">
+                            <dt>Notes</dt>
+                            <dd>@DescriptionOrNone(aircraftType.Notes)</dd>
+                        </div>
+                        <div class="md-metric">
+                            <dt>Status</dt>
+                            <dd>@(aircraftType.IsActive ? "Active" : "Inactive")</dd>
+                        </div>
+                    </dl>
+                </RadzenCard>
+            </div>
+
+            @if (CanViewAudit)
+            {
+                <RadzenCard class="md-card">
+                    <div class="md-card-head">
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
+                        {
+                            <button type="button" class="md-link" @onclick="@(() => activeTab = AircraftTypeTab.History)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    <p class="os-muted">@UiStrings.Audit.Description</p>
+                    @HistoryTimeline(OverviewHistoryPreviewCount)
+                </RadzenCard>
+            }
+        </div>
+    </text>;
+
+    private RenderFragment HistoryTab(AircraftTypeDetail aircraftType) =>@<text>
+        <RadzenCard class="md-card">
+            <div class="md-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted">@UiStrings.Audit.Description</p>
+            @HistoryTimeline()
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
+        @if (history.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="md-timeline">
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
+                {
+                    var visual = TimelineVisual(entry.Action);
+                    <li class="md-timeline-row" @key="entry.Id">
+                        <span class="md-timeline-icon md-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="md-timeline-content">
+                            <p class="md-timeline-title">@entry.Action</p>
+                            <p class="os-muted md-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="md-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="md-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() =>@<text>
+        <div class="md-timeline-empty">
+            <span class="md-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="md-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted">@UiStrings.Audit.Empty</p>
+            </div>
+        </div>
+    </text>;
+}
+
+@code {
     [Parameter] public Guid Id { get; set; }
 
     private AircraftTypeDetail? item;
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
     private string errorMessage = UiStrings.Errors.LoadFailed;
+    private AircraftTypeTab activeTab = AircraftTypeTab.Overview;
+
+    private const int OverviewHistoryPreviewCount = 4;
+
+    private enum AircraftTypeTab { Overview, History }
+
+    private sealed record TabDef(AircraftTypeTab Key, string Label, string Icon);
+
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(AircraftTypeTab.Overview, UiStrings.Common.Overview, "dashboard");
+        if (CanViewAudit)
+            yield return new TabDef(AircraftTypeTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -81,9 +242,14 @@
     {
         isLoading = true;
         loadError = false;
+        StateHasChanged();
+
+        var historyTask = LoadHistoryAsync();
+
         try
         {
             item = await MasterData.GetAircraftTypeAsync(Id);
+            history = await historyTask;
         }
         catch (ApiException ex)
         {
@@ -93,6 +259,23 @@
         finally
         {
             isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<IReadOnlyList<AuditTrailListItem>> LoadHistoryAsync()
+    {
+        if (!CanViewAudit)
+            return [];
+
+        try
+        {
+            var trails = await AuditApi.GetTrailsAsync(entityType: "AircraftType", entityId: Id, pageSize: 25);
+            return trails.Items;
+        }
+        catch (ApiException)
+        {
+            return [];
         }
     }
 
@@ -105,24 +288,32 @@
             await LoadAsync();
     }
 
-    private async Task ActivateAsync() => await RunAsync(rv => MasterData.ActivateAircraftTypeAsync(Id, rv), "Aircraft type activated.");
+    private async Task ActivateAsync()
+    {
+        if (item is not { } aircraftType)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.ActivateAircraftTypeAsync(Id, rv, ct), "Aircraft type activated.", aircraftType.RowVersion);
+    }
 
     private async Task DeactivateAsync()
     {
-        var confirmed = await DialogService.Confirm("Deactivate this aircraft type?", "Deactivate",
-            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
-        if (confirmed)
-            await RunAsync(rv => MasterData.DeactivateAircraftTypeAsync(Id, rv), "Aircraft type deactivated.");
-    }
-
-    private async Task RunAsync(Func<string, Task> action, string message)
-    {
-        if (item is null)
+        if (item is not { } aircraftType)
             return;
 
+        var confirmed = await DialogService.Confirm("Deactivate this aircraft type?", "Deactivate",
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+        if (!confirmed)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.DeactivateAircraftTypeAsync(Id, rv, ct), "Aircraft type deactivated.", aircraftType.RowVersion);
+    }
+
+    private async Task RunAsync(Func<string, CancellationToken, Task> action, string message, string rowVersion)
+    {
         try
         {
-            await action(item.RowVersion);
+            await action(rowVersion, CancellationToken.None);
             Notifications.Notify(NotificationSeverity.Success, message);
             await LoadAsync();
         }
@@ -130,5 +321,73 @@
         {
             Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong));
         }
+    }
+
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
+    }
+
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable (e.g. insecure context); fail silently.
+        }
+    }
+
+    private bool HasMoreActions(AircraftTypeDetail aircraftType) =>
+        (!aircraftType.IsActive && Auth.HasPermission(MasterDataPermissions.AircraftTypesActivate))
+        || (aircraftType.IsActive && Auth.HasPermission(MasterDataPermissions.AircraftTypesDeactivate));
+
+    private static string DisplayName(AircraftTypeDetail aircraftType) => $"{aircraftType.Manufacturer} {aircraftType.Model}";
+    private static string DescriptionOrNone(string? value) => string.IsNullOrWhiteSpace(value) ? UiStrings.Common.None : value;
+    private static string ProfileClass(AircraftTypeDetail aircraftType) => aircraftType.IsActive ? "md-profile--active" : "md-profile--inactive";
+    private static string AvatarClass(AircraftTypeDetail aircraftType) => aircraftType.IsActive ? "md-avatar--active" : "md-avatar--inactive";
+    private static string DotClass(AircraftTypeDetail aircraftType) => aircraftType.IsActive ? "md-avatar-dot--active" : "md-avatar-dot--inactive";
+    private static string StatusToneColor(AircraftTypeDetail aircraftType) => aircraftType.IsActive ? "success" : "neutral";
+    private static string StatusDescription(AircraftTypeDetail aircraftType) => aircraftType.IsActive ? "Available for operation setup and selection." : "Hidden from active selection lists until reactivated.";
+    private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string action)
+    {
+        var a = action.ToLowerInvariant();
+        if (a.Contains("activ"))
+            return ("check_circle", "green");
+        if (a.Contains("deactiv"))
+            return ("cancel", "red");
+        if (a.Contains("delet"))
+            return ("delete", "red");
+        if (a.Contains("creat"))
+            return ("add", "green");
+        if (a.Contains("updat") || a.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
     }
 }

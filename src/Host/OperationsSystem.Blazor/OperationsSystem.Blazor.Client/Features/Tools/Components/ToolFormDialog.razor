@@ -4,12 +4,12 @@
 <RadzenTemplateForm TItem="ToolModel" Data="@model" Submit="@SubmitAsync">
     <div class="mtf-form">
         <p class="mtf-intro os-muted">Define the tool and optional equipment rows attached to it.</p>
-        <div class="mtf-section-line"><RadzenIcon Icon="construction" /><span>@UiStrings.Common.Details</span></div>
+        <div class="mtf-section-line"><RadzenIcon Icon="build" /><span>@UiStrings.Common.Details</span></div>
 
         <div class="mtf-field-block">
             <label class="mtf-label">Name <span>*</span></label>
             <div class="mtf-input-wrap">
-                <RadzenIcon Icon="construction" class="mtf-field-icon" />
+                <RadzenIcon Icon="build" class="mtf-field-icon" />
                 <RadzenTextBox @bind-Value="model.Name" Name="name" class="mtf-control mtf-control-icon" MaxLength="100" />
             </div>
         </div>
@@ -18,7 +18,7 @@
             <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="mtf-control" MaxLength="500" />
         </div>
 
-        <div class="mtf-section-line"><RadzenIcon Icon="precision_manufacturing" /><span>Equipment</span></div>
+        <div class="mtf-section-line"><RadzenIcon Icon="memory" /><span>Equipment</span></div>
         <RadzenStack Gap="0.75rem">
             @foreach (var equipment in model.Equipments)
             {

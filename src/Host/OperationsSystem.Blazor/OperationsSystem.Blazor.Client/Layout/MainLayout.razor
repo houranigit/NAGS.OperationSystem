@@ -101,14 +101,14 @@
                 @if (canServices)
                 {
                     <NavLink href="/master-data/services" class="os-nav-link" title="@UiStrings.Nav.Services" @onclick="CloseNav">
-                        <RadzenIcon Icon="miscellaneous_services" />
+                        <RadzenIcon Icon="settings" />
                         <span>@UiStrings.Nav.Services</span>
                     </NavLink>
                 }
                 @if (canOperationTypes)
                 {
                     <NavLink href="/master-data/operation-types" class="os-nav-link" title="@UiStrings.Nav.OperationTypes" @onclick="CloseNav">
-                        <RadzenIcon Icon="route" />
+                        <RadzenIcon Icon="timeline" />
                         <span>@UiStrings.Nav.OperationTypes</span>
                     </NavLink>
                 }
@@ -122,21 +122,21 @@
                 @if (canTools)
                 {
                     <NavLink href="/master-data/tools" class="os-nav-link" title="@UiStrings.Nav.Tools" @onclick="CloseNav">
-                        <RadzenIcon Icon="construction" />
+                        <RadzenIcon Icon="build" />
                         <span>@UiStrings.Nav.Tools</span>
                     </NavLink>
                 }
                 @if (canMaterials)
                 {
                     <NavLink href="/master-data/materials" class="os-nav-link" title="@UiStrings.Nav.Materials" @onclick="CloseNav">
-                        <RadzenIcon Icon="inventory_2" />
+                        <RadzenIcon Icon="category" />
                         <span>@UiStrings.Nav.Materials</span>
                     </NavLink>
                 }
                 @if (canGeneralSupports)
                 {
                     <NavLink href="/master-data/general-supports" class="os-nav-link" title="@UiStrings.Nav.GeneralSupports" @onclick="CloseNav">
-                        <RadzenIcon Icon="support_agent" />
+                        <RadzenIcon Icon="headset_mic" />
                         <span>@UiStrings.Nav.GeneralSupports</span>
                     </NavLink>
                 }
