@@ -618,6 +618,11 @@
   <data name="PortalAccess.Explanation" xml:space="preserve"><value>An invited portal account will be created for this record using the selected role.</value></data>
   <data name="PortalAccess.GrantOnCreate" xml:space="preserve"><value>Grant portal access on creation</value></data>
   <data name="PortalAccess.GrantOnCreateHint" xml:space="preserve"><value>Send a portal invitation once this record is created.</value></data>
+  <data name="PortalAccess.PendingLoginEmail" xml:space="preserve"><value>Login email pending</value></data>
+  <data name="PortalAccess.PendingLoginEmailShort" xml:space="preserve"><value>Login verification pending</value></data>
+  <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>Waiting for {0} to confirm before the linked login email changes.</value></data>
+  <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>Login email change failed</value></data>
+  <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>Identity could not start verification: {0}</value></data>
   <data name="Errors.Forbidden" xml:space="preserve"><value>You do not have permission to view this.</value></data>
   <data name="Errors.NotFound" xml:space="preserve"><value>The requested item was not found.</value></data>
   <data name="Errors.LoadFailed" xml:space="preserve"><value>We couldn't load this. Please try again.</value></data>

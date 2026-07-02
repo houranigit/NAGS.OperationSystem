@@ -5,6 +5,7 @@ using Identity.Application.Abstractions;
 using Identity.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Identity.Application.Features.Users;
@@ -81,6 +82,7 @@ public sealed class LockUserCommandHandler(IIdentityDbContext db, ICurrentUser c
             {
                 ExternalReferenceId = externalReferenceId,
                 UserId = user.Id,
+                UserType = user.UserType,
                 ReleaseEmail = false
             });
         }
@@ -161,6 +163,7 @@ public sealed class DeactivateUserCommandHandler(IIdentityDbContext db, ICurrent
             {
                 ExternalReferenceId = externalReferenceId,
                 UserId = user.Id,
+                UserType = user.UserType,
                 ReleaseEmail = false
             });
         }
@@ -207,6 +210,7 @@ public sealed class SuspendUserCommandHandler(IIdentityDbContext db, ICurrentUse
             {
                 ExternalReferenceId = externalReferenceId,
                 UserId = user.Id,
+                UserType = user.UserType,
                 ReleaseEmail = false
             });
         }
@@ -225,7 +229,8 @@ public sealed class RestoreAccessCommandHandler(
     IInvitationNotifier invitationNotifier,
     ITokenService tokenService,
     TimeProvider timeProvider,
-    IOptions<IdentityModuleOptions> options)
+    IOptions<IdentityModuleOptions> options,
+    ILogger<RestoreAccessCommandHandler> logger)
     : ICommandHandler<RestoreAccessCommand>
 {
     private readonly IdentityModuleOptions _options = options.Value;
@@ -263,10 +268,20 @@ public sealed class RestoreAccessCommandHandler(
             });
         }
 
-        await db.SaveChangesAsync(cancellationToken);
-
         if (invitation is not null)
-            await invitationNotifier.SendInvitationAsync(user.Email.Value, user.DisplayName, user.Id, invitation.Value, cancellationToken);
+        {
+            try
+            {
+                await invitationNotifier.SendInvitationAsync(user.Email.Value, user.DisplayName, user.Id, invitation.Value, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Invitation delivery failed while restoring access for user {UserId}.", user.Id);
+                return Error.Failure("The invitation could not be queued. Access was not restored.", "Identity.User.InvitationDeliveryFailed");
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
     }
@@ -281,7 +296,8 @@ public sealed class ResendInvitationCommandHandler(
     IInvitationNotifier invitationNotifier,
     ITokenService tokenService,
     TimeProvider timeProvider,
-    IOptions<IdentityModuleOptions> options)
+    IOptions<IdentityModuleOptions> options,
+    ILogger<ResendInvitationCommandHandler> logger)
     : ICommandHandler<ResendInvitationCommand>
 {
     private readonly IdentityModuleOptions _options = options.Value;
@@ -298,8 +314,17 @@ public sealed class ResendInvitationCommandHandler(
         if (result.IsFailure)
             return result.Error;
 
+        try
+        {
+            await invitationNotifier.SendInvitationAsync(user.Email.Value, user.DisplayName, user.Id, token.Value, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Invitation delivery failed while resending invitation for user {UserId}.", user.Id);
+            return Error.Failure("The invitation could not be queued. The existing invitation remains valid.", "Identity.User.InvitationDeliveryFailed");
+        }
+
         await db.SaveChangesAsync(cancellationToken);
-        await invitationNotifier.SendInvitationAsync(user.Email.Value, user.DisplayName, user.Id, token.Value, cancellationToken);
         return Result.Success();
     }
 }

@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Application.Features.Auth;
@@ -13,7 +14,7 @@ public sealed class ChangePasswordCommandValidator : AbstractValidator<ChangePas
     public ChangePasswordCommandValidator()
     {
         RuleFor(x => x.CurrentPassword).NotEmpty();
-        RuleFor(x => x.NewPassword).NotEmpty().MinimumLength(8).MaximumLength(128);
+        RuleFor(x => x.NewPassword).UseIdentityPasswordPolicy();
     }
 }
 

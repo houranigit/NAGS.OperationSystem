@@ -13,4 +13,10 @@
     <PackageReference Include="Radzen.Blazor" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>OperationsSystem.Blazor.UnitTests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

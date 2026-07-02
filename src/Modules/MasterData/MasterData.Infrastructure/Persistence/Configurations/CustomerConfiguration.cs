@@ -75,6 +75,11 @@ public sealed class CustomerContactConfiguration : IEntityTypeConfiguration<Cust
         builder.Property(c => c.Email).HasMaxLength(256).IsRequired();
         builder.Property(c => c.Phone).HasMaxLength(30);
         builder.Property(c => c.LinkedUserId);
+        builder.HasIndex(c => c.LinkedUserId)
+            .IsUnique()
+            .HasFilter("[LinkedUserId] IS NOT NULL");
+        builder.Property(c => c.PendingLoginEmail).HasMaxLength(256);
+        builder.Property(c => c.LoginEmailChangeFailureReason).HasMaxLength(500);
         builder.Property(c => c.PortalState).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(c => c.PortalCorrelationId);
         builder.Property(c => c.PortalFailureReason).HasMaxLength(500);

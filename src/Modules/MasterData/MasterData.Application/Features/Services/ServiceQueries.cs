@@ -16,8 +16,7 @@ public sealed class GetServicesQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<ServiceListItemDto>>> Handle(GetServicesQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.Services.AsNoTracking();
 
         if (request.IsActive is { } active)
@@ -30,25 +29,28 @@ public sealed class GetServicesQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<ServiceListItemDto>(total);
+
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(s => new ServiceListItemDto(s.Id, s.Name, s.Description, s.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<ServiceListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<ServiceListItemDto>(items, total);
     }
 
     private static IQueryable<Service> ApplySort(IQueryable<Service> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(s => s.Name);
+            return query.OrderBy(s => s.Name).ThenBy(s => s.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(s => s.Name) : query.OrderBy(s => s.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(s => s.IsActive) : query.OrderBy(s => s.IsActive),
-            _ => query.OrderBy(s => s.Name)
+            "name" => spec.Descending ? query.OrderByDescending(s => s.Name).ThenByDescending(s => s.Id) : query.OrderBy(s => s.Name).ThenBy(s => s.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(s => s.IsActive).ThenByDescending(s => s.Id) : query.OrderBy(s => s.IsActive).ThenBy(s => s.Id),
+            _ => query.OrderBy(s => s.Name).ThenBy(s => s.Id)
         };
     }
 }
@@ -80,6 +82,7 @@ public sealed class GetActiveServiceOptionsQueryHandler(IMasterDataDbContext db)
         IReadOnlyList<ServiceOptionDto> options = await db.Services.AsNoTracking()
             .Where(s => s.IsActive)
             .OrderBy(s => s.Name)
+            .ThenBy(s => s.Id)
             .Select(s => new ServiceOptionDto(s.Id, s.Name))
             .ToListAsync(cancellationToken);
 

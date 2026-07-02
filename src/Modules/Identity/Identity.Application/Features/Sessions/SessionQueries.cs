@@ -33,8 +33,7 @@ public sealed class GetUserSessionsQueryHandler(IIdentityDbContext db, TimeProvi
 {
     public async Task<Result<PagedResult<UserSessionDto>>> Handle(GetUserSessionsQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var now = timeProvider.GetUtcNow();
 
         var query = db.Sessions.AsNoTracking().Where(s => s.UserId == request.UserId);
@@ -48,15 +47,18 @@ public sealed class GetUserSessionsQueryHandler(IIdentityDbContext db, TimeProvi
             if (!userExists)
                 return Error.NotFound("User not found.", "Identity.User.NotFound");
         }
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<UserSessionDto>(total);
 
         var sessions = await query
             .OrderByDescending(s => s.CreatedAtUtc)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .ThenByDescending(s => s.Id)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .ToListAsync(cancellationToken);
 
         IReadOnlyList<UserSessionDto> items = sessions.Select(s => s.ToDto(now, isCurrent: false)).ToList();
-        return new PagedResult<UserSessionDto>(items, page, pageSize, total);
+        return paging.ToResult<UserSessionDto>(items, total);
     }
 }
 
@@ -77,8 +79,7 @@ public sealed class GetMySessionsQueryHandler(
         if (currentUser.UserId is not { } userId)
             return Error.Unauthorized();
 
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var now = timeProvider.GetUtcNow();
         var currentHash = string.IsNullOrWhiteSpace(request.CurrentRefreshToken)
             ? null
@@ -86,16 +87,19 @@ public sealed class GetMySessionsQueryHandler(
 
         var query = db.Sessions.AsNoTracking().Where(s => s.UserId == userId);
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<UserSessionDto>(total);
 
         var sessions = await query
             .OrderByDescending(s => s.CreatedAtUtc)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .ThenByDescending(s => s.Id)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .ToListAsync(cancellationToken);
 
         IReadOnlyList<UserSessionDto> items = sessions
             .Select(s => s.ToDto(now, isCurrent: currentHash is not null && s.RefreshTokenHash == currentHash))
             .ToList();
-        return new PagedResult<UserSessionDto>(items, page, pageSize, total);
+        return paging.ToResult<UserSessionDto>(items, total);
     }
 }

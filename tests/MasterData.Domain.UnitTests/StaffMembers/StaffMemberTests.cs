@@ -133,6 +133,24 @@ public sealed class StaffMemberTests
     }
 
     [Fact]
+    public void Portal_access_suspension_is_idempotent()
+    {
+        var staff = NewStaff();
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        staff.RequestPortalAccess(correlationId, Now);
+        staff.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        staff.SuspendPortal(Now.AddMinutes(2));
+        var updatedAt = staff.UpdatedAtUtc;
+
+        staff.SuspendPortal(Now.AddMinutes(3));
+
+        staff.PortalState.ShouldBe(PortalAccessState.Suspended);
+        staff.UpdatedAtUtc.ShouldBe(updatedAt);
+    }
+
+    [Fact]
     public void Portal_activation_marks_same_linked_user_active()
     {
         var staff = NewStaff();
@@ -166,6 +184,35 @@ public sealed class StaffMemberTests
     }
 
     [Fact]
+    public void Login_email_change_pending_state_confirms_or_fails_for_same_linked_user()
+    {
+        var staff = NewStaff();
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        staff.RequestPortalAccess(correlationId, Now);
+        staff.LinkUser(userId, correlationId, Now.AddMinutes(1));
+
+        staff.MarkLoginEmailChangePending("new@example.com", Now.AddMinutes(2));
+        staff.PendingLoginEmail.ShouldBe("new@example.com");
+        staff.LoginEmailChangeFailureReason.ShouldBeNull();
+
+        staff.MarkLoginEmailChangeFailed(userId, "other@example.com", "duplicate", Now.AddMinutes(3));
+        staff.PendingLoginEmail.ShouldBe("new@example.com");
+
+        staff.ConfirmLoginEmailChange(userId, "new@example.com", Now.AddMinutes(4));
+        staff.PendingLoginEmail.ShouldBeNull();
+        staff.LoginEmailChangeFailureReason.ShouldBeNull();
+
+        staff.MarkLoginEmailChangePending("blocked@example.com", Now.AddMinutes(5));
+        staff.MarkLoginEmailChangeFailed(userId, "blocked@example.com", "duplicate", Now.AddMinutes(6));
+
+        staff.PendingLoginEmail.ShouldBeNull();
+        staff.LoginEmailChangeFailureReason.ShouldBe("duplicate");
+        staff.PortalState.ShouldBe(PortalAccessState.Invited);
+    }
+
+    [Fact]
     public void Portal_activation_ignores_wrong_or_inactive_link()
     {
         var staff = NewStaff();
@@ -188,13 +235,18 @@ public sealed class StaffMemberTests
     {
         var staff = NewStaff();
         var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
 
         staff.RequestPortalAccess(correlationId, Now);
+        staff.LinkUser(userId, correlationId, Now.AddMinutes(1));
         staff.MarkPortalFailed(correlationId, "duplicate email", Now.AddMinutes(1));
+        staff.MarkLoginEmailChangePending("new@example.com", Now.AddMinutes(1));
 
         staff.UnlinkUser(Now.AddMinutes(2));
 
         staff.LinkedUserId.ShouldBeNull();
+        staff.PendingLoginEmail.ShouldBeNull();
+        staff.LoginEmailChangeFailureReason.ShouldBeNull();
         staff.PortalState.ShouldBe(PortalAccessState.None);
         staff.PortalCorrelationId.ShouldBeNull();
         staff.PortalFailureReason.ShouldBeNull();

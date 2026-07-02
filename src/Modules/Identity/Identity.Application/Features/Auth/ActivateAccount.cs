@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Security;
 using Identity.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -16,7 +17,7 @@ public sealed class ActivateAccountCommandValidator : AbstractValidator<Activate
     {
         RuleFor(x => x.Email).NotEmpty();
         RuleFor(x => x.InvitationToken).NotEmpty();
-        RuleFor(x => x.NewPassword).NotEmpty().MinimumLength(8).MaximumLength(128);
+        RuleFor(x => x.NewPassword).UseIdentityPasswordPolicy();
     }
 }
 

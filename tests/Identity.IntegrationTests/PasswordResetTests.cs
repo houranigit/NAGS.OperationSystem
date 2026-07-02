@@ -1,5 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using Identity.Application.Abstractions;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Shouldly;
 
 namespace Identity.IntegrationTests;
@@ -66,5 +70,53 @@ public class PasswordResetTests(IdentityApiFactory factory) : IClassFixture<Iden
             new { email = $"nobody-{Guid.NewGuid():N}@nags.sa" });
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Failed_password_reset_delivery_keeps_existing_reset_token_valid()
+    {
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+
+        var email = $"reset-delivery-failed-{Guid.NewGuid():N}@nags.sa";
+        const string original = "Original#12345";
+
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite", new { email, displayName = "Reset Delivery User" });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+        (await admin.PostAsJsonAsync($"{Base}/auth/activate", new { email, invitationToken, newPassword = original }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var anon = factory.CreateClient();
+        (await anon.PostAsJsonAsync($"{Base}/auth/forgot-password", new { email }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var firstResetToken = factory.Emails.TokenFor(email);
+        firstResetToken.ShouldNotBeNull();
+
+        await using var failingApp = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+                services.Replace(ServiceDescriptor.Scoped<IPasswordResetNotifier, ThrowingPasswordResetNotifier>())));
+
+        var failingClient = failingApp.CreateClient();
+        (await failingClient.PostAsJsonAsync($"{Base}/auth/forgot-password", new { email }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        (await anon.PostAsJsonAsync($"{Base}/auth/reset-password",
+            new { token = firstResetToken, newPassword = "ExistingToken#12345" }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
+    private sealed class ThrowingPasswordResetNotifier : IPasswordResetNotifier
+    {
+        public Task SendPasswordResetAsync(
+            string email,
+            string displayName,
+            Guid userId,
+            string resetToken,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Synthetic password reset delivery failure.");
     }
 }

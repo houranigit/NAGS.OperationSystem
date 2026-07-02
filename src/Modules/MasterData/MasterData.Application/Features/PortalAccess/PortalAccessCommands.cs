@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Contracts.Authorization;
@@ -25,7 +26,11 @@ public sealed class GrantStaffPortalAccessCommandValidator : AbstractValidator<G
     }
 }
 
-public sealed class GrantStaffPortalAccessCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class GrantStaffPortalAccessCommandHandler(
+    IMasterDataDbContext db,
+    IMasterDataScope scope,
+    IUserContext userContext,
+    TimeProvider timeProvider)
     : ICommandHandler<GrantStaffPortalAccessCommand>
 {
     public async Task<Result> Handle(GrantStaffPortalAccessCommand request, CancellationToken cancellationToken)
@@ -34,18 +39,12 @@ public sealed class GrantStaffPortalAccessCommandHandler(IMasterDataDbContext db
         if (resolved.IsFailure)
             return resolved.Error;
 
-        if (!resolved.Value.IsAdministrator && resolved.Value.StationId is null)
-            return ScopeForbidden();
+        if (!resolved.Value.IsAdministrator || !PortalAccessAuthorization.CanGrantStaffAccess(userContext))
+            return PortalAccessAuthorization.GrantForbidden();
 
-        var query = db.StaffMembers.AsQueryable();
-        if (!resolved.Value.IsAdministrator)
-            query = query.Where(s => s.StationId == resolved.Value.StationId);
-
-        var staff = await query.FirstOrDefaultAsync(s => s.Id == request.StaffMemberId, cancellationToken);
+        var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.Id == request.StaffMemberId, cancellationToken);
         if (staff is null)
-            return resolved.Value.IsAdministrator
-                ? Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound")
-                : ScopeForbidden();
+            return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
 
         if (!staff.IsActive)
             return Error.Validation("Portal access cannot be granted to an inactive staff member.", "MasterData.StaffMember.Inactive");
@@ -83,9 +82,6 @@ public sealed class GrantStaffPortalAccessCommandHandler(IMasterDataDbContext db
 
         return Result.Success();
     }
-
-    private static Error ScopeForbidden() =>
-        Error.Forbidden("This record is outside your data scope.", "MasterData.Scope.Forbidden");
 }
 
 // --- Grant portal access to a customer contact ----------------------------
@@ -103,7 +99,11 @@ public sealed class GrantContactPortalAccessCommandValidator : AbstractValidator
     }
 }
 
-public sealed class GrantContactPortalAccessCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class GrantContactPortalAccessCommandHandler(
+    IMasterDataDbContext db,
+    IMasterDataScope scope,
+    IUserContext userContext,
+    TimeProvider timeProvider)
     : ICommandHandler<GrantContactPortalAccessCommand>
 {
     public async Task<Result> Handle(GrantContactPortalAccessCommand request, CancellationToken cancellationToken)
@@ -112,20 +112,14 @@ public sealed class GrantContactPortalAccessCommandHandler(IMasterDataDbContext 
         if (resolved.IsFailure)
             return resolved.Error;
 
-        if (!resolved.Value.IsAdministrator && resolved.Value.CustomerId is null)
-            return ScopeForbidden();
+        if (!resolved.Value.IsAdministrator || !PortalAccessAuthorization.CanGrantCustomerContactAccess(userContext))
+            return PortalAccessAuthorization.GrantForbidden();
 
-        var query = db.Customers.AsQueryable();
-        if (!resolved.Value.IsAdministrator)
-            query = query.Where(c => c.Id == resolved.Value.CustomerId);
-
-        var customer = await query
+        var customer = await db.Customers
             .Include(c => c.Contacts)
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
         if (customer is null)
-            return resolved.Value.IsAdministrator
-                ? Error.NotFound("Customer not found.", "MasterData.Customer.NotFound")
-                : ScopeForbidden();
+            return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
 
         if (!customer.IsActive)
             return Error.Validation("Portal access cannot be granted while the customer is inactive.", "MasterData.Customer.Inactive");
@@ -158,7 +152,4 @@ public sealed class GrantContactPortalAccessCommandHandler(IMasterDataDbContext 
 
         return Result.Success();
     }
-
-    private static Error ScopeForbidden() =>
-        Error.Forbidden("This record is outside your data scope.", "MasterData.Scope.Forbidden");
 }

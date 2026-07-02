@@ -16,8 +16,7 @@ public sealed class GetGeneralSupportsQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<GeneralSupportListItemDto>>> Handle(GetGeneralSupportsQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.GeneralSupports.AsNoTracking();
 
         if (request.IsActive is { } active)
@@ -30,25 +29,28 @@ public sealed class GetGeneralSupportsQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<GeneralSupportListItemDto>(total);
+
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(g => new GeneralSupportListItemDto(g.Id, g.Name, g.Description, g.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<GeneralSupportListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<GeneralSupportListItemDto>(items, total);
     }
 
     private static IQueryable<GeneralSupport> ApplySort(IQueryable<GeneralSupport> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(g => g.Name);
+            return query.OrderBy(g => g.Name).ThenBy(g => g.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(g => g.Name) : query.OrderBy(g => g.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(g => g.IsActive) : query.OrderBy(g => g.IsActive),
-            _ => query.OrderBy(g => g.Name)
+            "name" => spec.Descending ? query.OrderByDescending(g => g.Name).ThenByDescending(g => g.Id) : query.OrderBy(g => g.Name).ThenBy(g => g.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(g => g.IsActive).ThenByDescending(g => g.Id) : query.OrderBy(g => g.IsActive).ThenBy(g => g.Id),
+            _ => query.OrderBy(g => g.Name).ThenBy(g => g.Id)
         };
     }
 }
@@ -80,6 +82,7 @@ public sealed class GetActiveGeneralSupportOptionsQueryHandler(IMasterDataDbCont
         IReadOnlyList<GeneralSupportOptionDto> options = await db.GeneralSupports.AsNoTracking()
             .Where(g => g.IsActive)
             .OrderBy(g => g.Name)
+            .ThenBy(g => g.Id)
             .Select(g => new GeneralSupportOptionDto(g.Id, g.Name))
             .ToListAsync(cancellationToken);
 

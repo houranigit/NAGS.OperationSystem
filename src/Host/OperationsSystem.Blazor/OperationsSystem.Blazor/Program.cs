@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using OperationsSystem.Blazor.Api;
 using OperationsSystem.Blazor.Client;
 using OperationsSystem.Blazor.Components;
@@ -10,7 +11,10 @@ builder.Services.AddRazorComponents()
     .AddInteractiveWebAssemblyComponents();
 
 builder.Services.AddHttpClient("ApiProxy");
-builder.Services.Configure<ApiProxyOptions>(builder.Configuration.GetSection(ApiProxyOptions.SectionName));
+builder.Services.AddSingleton<IValidateOptions<ApiProxyOptions>, ApiProxyOptionsValidator>();
+builder.Services.AddOptions<ApiProxyOptions>()
+    .Bind(builder.Configuration.GetSection(ApiProxyOptions.SectionName))
+    .ValidateOnStart();
 
 // Shared portal client services (Radzen, API client, auth/locale state) so prerender and the
 // interactive-server render use the same services as the WebAssembly runtime.

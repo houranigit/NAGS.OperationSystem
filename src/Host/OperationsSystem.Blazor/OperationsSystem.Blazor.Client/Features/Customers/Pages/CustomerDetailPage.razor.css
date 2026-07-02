@@ -439,6 +439,23 @@
     word-break: break-word;
 }
 
+.cu-contact-email {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.cu-contact-email-note {
+    color: var(--os-color-warning);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.cu-contact-email-note--danger {
+    color: var(--os-color-danger);
+}
+
 /* --- Activity timeline --------------------------------------------------- */
 .cu-timeline {
     display: flex;

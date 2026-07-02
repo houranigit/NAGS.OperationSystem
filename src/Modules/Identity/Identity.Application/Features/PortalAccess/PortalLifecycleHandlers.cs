@@ -38,6 +38,18 @@ public sealed class LinkedRecordDeactivatedHandler(
             return;
         }
 
+        if (user.ExternalReferenceId != integrationEvent.ExternalReferenceId)
+        {
+            logger.LogWarning(
+                "LinkedRecordDeactivated ignored for user {UserId}: expected external reference {ExpectedExternalReferenceId}, event referenced {EventExternalReferenceId}.",
+                user.Id,
+                user.ExternalReferenceId,
+                integrationEvent.ExternalReferenceId);
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         var now = timeProvider.GetUtcNow();
         if (integrationEvent.ReleaseEmail)
         {
@@ -65,6 +77,7 @@ public sealed class LinkedRecordDeactivatedHandler(
         {
             ExternalReferenceId = integrationEvent.ExternalReferenceId,
             UserId = user.Id,
+            UserType = user.UserType,
             ReleaseEmail = integrationEvent.ReleaseEmail
         });
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
@@ -103,25 +116,63 @@ public sealed class LinkedEmailChangeRequestedHandler(
             return;
         }
 
-        var emailResult = Email.Create(integrationEvent.NewEmail);
-        if (emailResult.IsFailure)
+        if (user.ExternalReferenceId != integrationEvent.ExternalReferenceId)
         {
-            logger.LogError("LinkedEmailChangeRequested for user {UserId} had an invalid email '{Email}'.",
-                integrationEvent.UserId, integrationEvent.NewEmail);
+            logger.LogWarning(
+                "LinkedEmailChangeRequested ignored for user {UserId}: expected external reference {ExpectedExternalReferenceId}, event referenced {EventExternalReferenceId}.",
+                user.Id,
+                user.ExternalReferenceId,
+                integrationEvent.ExternalReferenceId);
             db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
             await db.SaveChangesAsync(cancellationToken);
             return;
         }
 
         var now = timeProvider.GetUtcNow();
+        var emailResult = Email.Create(integrationEvent.NewEmail);
+        if (emailResult.IsFailure)
+        {
+            logger.LogError("LinkedEmailChangeRequested for user {UserId} had an invalid email '{Email}'.",
+                integrationEvent.UserId, integrationEvent.NewEmail);
+            user.ClearPendingEmailChange(now);
+            EnqueueEmailChangeFailed(
+                user,
+                integrationEvent,
+                integrationEvent.NewEmail,
+                "The requested login email is invalid.");
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var newEmailValue = emailResult.Value.Value;
+        if (string.Equals(newEmailValue, user.Email.Value, StringComparison.Ordinal))
+        {
+            user.ClearPendingEmailChange(now);
+            db.Enqueue(new PortalUserEmailChangeConfirmed
+            {
+                ExternalReferenceId = integrationEvent.ExternalReferenceId,
+                UserId = user.Id,
+                UserType = user.UserType,
+                Email = newEmailValue
+            });
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
 
         // Duplicate handling: if the new address is already a live login email, do not start a change.
-        var newEmailValue = emailResult.Value.Value;
         var taken = await db.Users.AnyAsync(
             u => u.Email.Value == newEmailValue && !u.LoginEmailReleased && u.Id != user.Id, cancellationToken);
         if (taken)
         {
             logger.LogWarning("Linked email change for user {UserId} skipped: '{Email}' already in use.", integrationEvent.UserId, newEmailValue);
+            user.ClearPendingEmailChange(now);
+            EnqueueEmailChangeFailed(
+                user,
+                integrationEvent,
+                newEmailValue,
+                "The requested login email is already used by another portal account.");
             db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
             await db.SaveChangesAsync(cancellationToken);
             return;
@@ -136,16 +187,29 @@ public sealed class LinkedEmailChangeRequestedHandler(
         if (change.IsFailure)
         {
             logger.LogWarning("Email change for user {UserId} was rejected: {Reason}.", integrationEvent.UserId, change.Error.Description);
+            user.ClearPendingEmailChange(now);
+            EnqueueEmailChangeFailed(user, integrationEvent, newEmailValue, change.Error.Description);
             db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
             await db.SaveChangesAsync(cancellationToken);
             return;
         }
 
+        // Durable verification delivery to the pending address. The login email stays unchanged until
+        // the recipient confirms via the emailed link. Queue this before marking the integration
+        // message processed so a queueing failure is retried with the source outbox message.
+        await verificationNotifier.SendVerificationAsync(newEmailValue, user.DisplayName, user.Id, token.Value, cancellationToken);
+
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
         await db.SaveChangesAsync(cancellationToken);
-
-        // Durable verification delivery to the pending address. The login email stays unchanged until
-        // the recipient confirms via the emailed link.
-        await verificationNotifier.SendVerificationAsync(newEmailValue, user.DisplayName, user.Id, token.Value, cancellationToken);
     }
+
+    private void EnqueueEmailChangeFailed(User user, LinkedEmailChangeRequested integrationEvent, string email, string reason) =>
+        db.Enqueue(new PortalUserEmailChangeFailed
+        {
+            ExternalReferenceId = integrationEvent.ExternalReferenceId,
+            UserId = user.Id,
+            UserType = user.UserType,
+            Email = email,
+            Reason = reason
+        });
 }

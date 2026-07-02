@@ -211,7 +211,17 @@
                         </div>
                         <div class="sm-metric">
                             <dt>@UiStrings.StaffMembers.Email</dt>
-                            <dd>@s.Email</dd>
+                            <dd>
+                                <span>@s.Email</span>
+                                @if (!string.IsNullOrWhiteSpace(s.PendingLoginEmail))
+                                {
+                                    <small class="sm-email-note">@UiStrings.PortalAccess.PendingLoginEmailShort</small>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(s.LoginEmailChangeFailureReason))
+                                {
+                                    <small class="sm-email-note sm-email-note--danger">@UiStrings.PortalAccess.LoginEmailChangeFailed</small>
+                                }
+                            </dd>
                         </div>
                         <div class="sm-metric">
                             <dt>@UiStrings.StaffMembers.Status</dt>
@@ -318,6 +328,26 @@
                         </div>
                     </div>
                 }
+                @if (!string.IsNullOrWhiteSpace(s.PendingLoginEmail))
+                {
+                    <div class="sm-portal-note">
+                        <RadzenIcon Icon="mark_email_unread" />
+                        <div>
+                            <strong>@UiStrings.PortalAccess.PendingLoginEmail</strong>
+                            <p class="os-muted">@string.Format(UiStrings.PortalAccess.PendingLoginEmailDetail, s.PendingLoginEmail)</p>
+                        </div>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(s.LoginEmailChangeFailureReason))
+                {
+                    <div class="sm-portal-note sm-portal-note--danger">
+                        <RadzenIcon Icon="mail_lock" />
+                        <div>
+                            <strong>@UiStrings.PortalAccess.LoginEmailChangeFailed</strong>
+                            <p class="os-muted">@string.Format(UiStrings.PortalAccess.LoginEmailChangeFailedDetail, s.LoginEmailChangeFailureReason)</p>
+                        </div>
+                    </div>
+                }
                 @if (s.LinkedUserId is not null)
                 {
                     <div class="sm-portal-note">
@@ -343,7 +373,7 @@
                         <h3>@UiStrings.StaffMembers.PortalAccessUnlinkedTitle</h3>
                         <p class="os-muted">@UiStrings.StaffMembers.PortalAccessUnlinkedHint</p>
                     </div>
-                    @if (Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess))
+                    @if (Auth.CanGrantStaffPortalAccess)
                     {
                         <RadzenButton Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add" ButtonStyle="ButtonStyle.Primary" Click="@OpenGrantAccessAsync" />
                     }
@@ -606,7 +636,7 @@
         s.IsActive
         && s.LinkedUserId is null
         && s.PortalState != "Provisioning"
-        && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
+        && Auth.CanGrantStaffPortalAccess;
 
     private bool CanOpenLinkedAccount(StaffMemberDetail s) =>
         s.LinkedUserId is not null && Auth.HasPermission(IdentityPermissions.UsersView);

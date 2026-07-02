@@ -12,9 +12,18 @@
     }
     else if (roles.Count == 0)
     {
-        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
-            @UiStrings.PortalAccess.NoCompatibleRoles
-        </RadzenAlert>
+        @if (loadErrorMessage is not null)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+                @loadErrorMessage
+            </RadzenAlert>
+        }
+        else
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+                @UiStrings.PortalAccess.NoCompatibleRoles
+            </RadzenAlert>
+        }
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End">
             <RadzenButton Text="@UiStrings.Common.Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
         </RadzenStack>
@@ -36,7 +45,7 @@
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" Disabled="@isSubmitting" />
-            <RadzenButton Text="@UiStrings.PortalAccess.Grant" Icon="send" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@isSubmitting" />
+            <RadzenButton Text="@UiStrings.PortalAccess.Grant" Icon="send" ButtonStyle="ButtonStyle.Primary" Click="@SubmitAsync" Disabled="@(isSubmitting || selectedRoleId is null)" />
         </RadzenStack>
     }
 </div>
@@ -52,6 +61,7 @@
     private Guid? selectedRoleId;
     private bool isLoading = true;
     private bool isSubmitting;
+    private string? loadErrorMessage;
     private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
@@ -59,10 +69,11 @@
         try
         {
             roles.AddRange(await Identity.GetRoleOptionsAsync(CompatibleUserType));
+            selectedRoleId = roles.FirstOrDefault()?.Id;
         }
         catch (ApiException ex)
         {
-            errorMessage = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+            loadErrorMessage = ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
         }
         finally
         {
@@ -81,7 +92,10 @@
         }
 
         if (GrantAsync is null)
+        {
+            errorMessage = UiStrings.Common.SomethingWentWrong;
             return;
+        }
 
         isSubmitting = true;
         try

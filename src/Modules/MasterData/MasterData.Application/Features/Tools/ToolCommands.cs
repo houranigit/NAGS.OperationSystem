@@ -93,7 +93,7 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
             return result.Error;
 
         var requested = request.Equipments ?? [];
-        var requestedExistingIds = requested.Where(e => e.Id.HasValue).Select(e => e.Id!.Value).ToHashSet();
+        var keepEquipmentIds = requested.Where(e => e.Id.HasValue).Select(e => e.Id!.Value).ToHashSet();
 
         foreach (var equipment in requested)
         {
@@ -108,10 +108,14 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
                 var add = tool.AddEquipment(equipment.FactoryId, equipment.SerialId, equipment.CalibrationDate, now);
                 if (add.IsFailure)
                     return add.Error;
+
+                // Existing aggregates assign child IDs in the domain, so tell EF this child is new.
+                db.ToolEquipments.Add(add.Value);
+                keepEquipmentIds.Add(add.Value.Id);
             }
         }
 
-        foreach (var equipment in tool.Equipments.Where(e => !requestedExistingIds.Contains(e.Id)).ToList())
+        foreach (var equipment in tool.Equipments.Where(e => !keepEquipmentIds.Contains(e.Id)).ToList())
         {
             var remove = tool.RemoveEquipment(equipment.Id, now);
             if (remove.IsFailure)

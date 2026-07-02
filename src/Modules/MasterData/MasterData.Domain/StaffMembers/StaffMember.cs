@@ -33,6 +33,12 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
     /// <summary>The provisioned portal user, set later via the portal-access workflow. Null until linked.</summary>
     public Guid? LinkedUserId { get; private set; }
 
+    /// <summary>The requested login email awaiting Identity reverification for the linked user.</summary>
+    public string? PendingLoginEmail { get; private set; }
+
+    /// <summary>Safe, non-sensitive failure detail for the last linked login-email change attempt.</summary>
+    public string? LoginEmailChangeFailureReason { get; private set; }
+
     /// <summary>Portal-access lifecycle state reflected from the Identity provisioning workflow.</summary>
     public PortalAccess.PortalAccessState PortalState { get; private set; } = PortalAccess.PortalAccessState.None;
 
@@ -213,6 +219,8 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
         PortalCorrelationId = correlationId;
         PortalState = PortalAccess.PortalAccessState.Provisioning;
         PortalFailureReason = null;
+        PendingLoginEmail = null;
+        LoginEmailChangeFailureReason = null;
         UpdatedAtUtc = now;
     }
 
@@ -228,6 +236,59 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
         LinkedUserId = userId;
         PortalState = PortalAccess.PortalAccessState.Invited;
         PortalFailureReason = null;
+        UpdatedAtUtc = now;
+    }
+
+    /// <summary>Marks a linked login-email change as awaiting Identity verification.</summary>
+    public void MarkLoginEmailChangePending(string pendingEmail, DateTimeOffset now)
+    {
+        if (LinkedUserId is null)
+            return;
+
+        PendingLoginEmail = pendingEmail;
+        LoginEmailChangeFailureReason = null;
+        UpdatedAtUtc = now;
+    }
+
+    /// <summary>Clears the pending marker after Identity confirms the linked login-email change.</summary>
+    public void ConfirmLoginEmailChange(Guid userId, string confirmedEmail, DateTimeOffset now)
+    {
+        if (LinkedUserId != userId)
+            return;
+
+        if (PendingLoginEmail is null)
+        {
+            if (!string.Equals(Email, confirmedEmail, StringComparison.Ordinal))
+                return;
+        }
+        else if (!string.Equals(PendingLoginEmail, confirmedEmail, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        PendingLoginEmail = null;
+        LoginEmailChangeFailureReason = null;
+        UpdatedAtUtc = now;
+    }
+
+    /// <summary>Clears a pending linked login-email change and stores a visible retry reason.</summary>
+    public void MarkLoginEmailChangeFailed(Guid userId, string attemptedEmail, string reason, DateTimeOffset now)
+    {
+        if (LinkedUserId != userId)
+            return;
+
+        if (PendingLoginEmail is null)
+        {
+            if (!string.Equals(Email, attemptedEmail, StringComparison.Ordinal))
+                return;
+        }
+        else if (!string.Equals(PendingLoginEmail, attemptedEmail, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        PendingLoginEmail = null;
+        LoginEmailChangeFailureReason = reason;
         UpdatedAtUtc = now;
     }
 
@@ -267,7 +328,7 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
     /// <summary>Marks portal access suspended (record or parent deactivated). Keeps the User link.</summary>
     public void SuspendPortal(DateTimeOffset now)
     {
-        if (PortalState is PortalAccess.PortalAccessState.None)
+        if (PortalState is PortalAccess.PortalAccessState.None or PortalAccess.PortalAccessState.Suspended)
             return;
 
         PortalState = PortalAccess.PortalAccessState.Suspended;
@@ -278,6 +339,8 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
     public void UnlinkUser(DateTimeOffset now)
     {
         LinkedUserId = null;
+        PendingLoginEmail = null;
+        LoginEmailChangeFailureReason = null;
         PortalState = PortalAccess.PortalAccessState.None;
         PortalCorrelationId = null;
         PortalFailureReason = null;

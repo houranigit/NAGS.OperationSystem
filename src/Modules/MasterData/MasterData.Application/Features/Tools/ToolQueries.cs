@@ -16,8 +16,7 @@ public sealed class GetToolsQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<ToolListItemDto>>> Handle(GetToolsQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.Tools.AsNoTracking();
 
         if (request.IsActive is { } active)
@@ -30,25 +29,28 @@ public sealed class GetToolsQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<ToolListItemDto>(total);
+
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(t => new ToolListItemDto(t.Id, t.Name, t.Description, t.IsActive, t.Equipments.Count))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<ToolListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<ToolListItemDto>(items, total);
     }
 
     private static IQueryable<Tool> ApplySort(IQueryable<Tool> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(t => t.Name);
+            return query.OrderBy(t => t.Name).ThenBy(t => t.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(t => t.Name) : query.OrderBy(t => t.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(t => t.IsActive) : query.OrderBy(t => t.IsActive),
-            _ => query.OrderBy(t => t.Name)
+            "name" => spec.Descending ? query.OrderByDescending(t => t.Name).ThenByDescending(t => t.Id) : query.OrderBy(t => t.Name).ThenBy(t => t.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(t => t.IsActive).ThenByDescending(t => t.Id) : query.OrderBy(t => t.IsActive).ThenBy(t => t.Id),
+            _ => query.OrderBy(t => t.Name).ThenBy(t => t.Id)
         };
     }
 }
@@ -73,6 +75,7 @@ public sealed class GetToolByIdQueryHandler(IMasterDataDbContext db)
                 t.Equipments
                     .OrderBy(e => e.FactoryId)
                     .ThenBy(e => e.SerialId)
+                    .ThenBy(e => e.Id)
                     .Select(e => new ToolEquipmentDto(e.Id, e.FactoryId, e.SerialId, e.CalibrationDate))
                     .ToList()))
             .FirstOrDefaultAsync(cancellationToken);
@@ -93,6 +96,7 @@ public sealed class GetActiveToolOptionsQueryHandler(IMasterDataDbContext db)
         IReadOnlyList<ToolOptionDto> options = await db.Tools.AsNoTracking()
             .Where(t => t.IsActive)
             .OrderBy(t => t.Name)
+            .ThenBy(t => t.Id)
             .Select(t => new ToolOptionDto(t.Id, t.Name))
             .ToListAsync(cancellationToken);
 

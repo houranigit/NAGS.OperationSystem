@@ -20,8 +20,7 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
 {
     public async Task<Result<PagedResult<UserListItemDto>>> Handle(GetUsersQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var now = timeProvider.GetUtcNow();
 
         var query = db.Users.AsNoTracking();
@@ -43,6 +42,8 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<UserListItemDto>(total);
 
         var ordered = ApplySort(query, db, request.Sort);
 
@@ -51,8 +52,8 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
                 join role in db.Roles.AsNoTracking() on user.RoleId equals role.Id into roleJoin
                 from role in roleJoin.DefaultIfEmpty()
                 select new { User = user, RoleName = role == null ? string.Empty : role.Name })
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(x => new UserListItemDto(
                 x.User.Id,
                 x.User.Email.Value,
@@ -67,25 +68,25 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
                 x.User.LastLoginAtUtc))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<UserListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<UserListItemDto>(items, total);
     }
 
     private static IQueryable<User> ApplySort(IQueryable<User> query, IIdentityDbContext db, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(u => u.DisplayName);
+            return query.OrderBy(u => u.DisplayName).ThenBy(u => u.Id);
 
         return spec.Field switch
         {
-            "displayname" => spec.Descending ? query.OrderByDescending(u => u.DisplayName) : query.OrderBy(u => u.DisplayName),
-            "email" => spec.Descending ? query.OrderByDescending(u => u.Email.Value) : query.OrderBy(u => u.Email.Value),
-            "status" => spec.Descending ? query.OrderByDescending(u => u.Status) : query.OrderBy(u => u.Status),
-            "createdat" => spec.Descending ? query.OrderByDescending(u => u.CreatedAtUtc) : query.OrderBy(u => u.CreatedAtUtc),
-            "lastlogin" => spec.Descending ? query.OrderByDescending(u => u.LastLoginAtUtc) : query.OrderBy(u => u.LastLoginAtUtc),
+            "displayname" => spec.Descending ? query.OrderByDescending(u => u.DisplayName).ThenByDescending(u => u.Id) : query.OrderBy(u => u.DisplayName).ThenBy(u => u.Id),
+            "email" => spec.Descending ? query.OrderByDescending(u => u.Email.Value).ThenByDescending(u => u.Id) : query.OrderBy(u => u.Email.Value).ThenBy(u => u.Id),
+            "status" => spec.Descending ? query.OrderByDescending(u => u.Status).ThenByDescending(u => u.Id) : query.OrderBy(u => u.Status).ThenBy(u => u.Id),
+            "createdat" => spec.Descending ? query.OrderByDescending(u => u.CreatedAtUtc).ThenByDescending(u => u.Id) : query.OrderBy(u => u.CreatedAtUtc).ThenBy(u => u.Id),
+            "lastlogin" => spec.Descending ? query.OrderByDescending(u => u.LastLoginAtUtc).ThenByDescending(u => u.Id) : query.OrderBy(u => u.LastLoginAtUtc).ThenBy(u => u.Id),
             "rolename" => spec.Descending
-                ? query.OrderByDescending(u => db.Roles.Where(r => r.Id == u.RoleId).Select(r => r.Name).FirstOrDefault())
-                : query.OrderBy(u => db.Roles.Where(r => r.Id == u.RoleId).Select(r => r.Name).FirstOrDefault()),
-            _ => query.OrderBy(u => u.DisplayName)
+                ? query.OrderByDescending(u => db.Roles.Where(r => r.Id == u.RoleId).Select(r => r.Name).FirstOrDefault()).ThenByDescending(u => u.Id)
+                : query.OrderBy(u => db.Roles.Where(r => r.Id == u.RoleId).Select(r => r.Name).FirstOrDefault()).ThenBy(u => u.Id),
+            _ => query.OrderBy(u => u.DisplayName).ThenBy(u => u.Id)
         };
     }
 }

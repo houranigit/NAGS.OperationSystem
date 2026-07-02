@@ -192,6 +192,18 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
+    /// <summary>Clears a pending linked email-change when the requested address already matches the login email.</summary>
+    public void ClearPendingEmailChange(DateTimeOffset now)
+    {
+        if (PendingEmail is null && EmailChangeToken is null && EmailChangeExpiresAtUtc is null)
+            return;
+
+        PendingEmail = null;
+        EmailChangeToken = null;
+        EmailChangeExpiresAtUtc = null;
+        UpdatedAtUtc = now;
+    }
+
     /// <summary>
     /// Permanently detaches the account from its MasterData identity and releases its login email
     /// for reuse by a different identity. The row and its historical email are retained for audit.

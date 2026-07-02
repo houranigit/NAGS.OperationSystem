@@ -32,6 +32,7 @@ public sealed class IdentityDataSeeder(
     {
         var now = timeProvider.GetUtcNow();
         var normalizedAdminRole = IdentitySeedIds.SystemAdminRoleName.ToUpperInvariant();
+        var adminPermissions = AllKnownPermissions();
 
         var adminRole = await db.Roles.FirstOrDefaultAsync(r => r.NormalizedName == normalizedAdminRole, cancellationToken);
         if (adminRole is null)
@@ -39,7 +40,7 @@ public sealed class IdentityDataSeeder(
             var roleResult = Role.Create(
                 IdentitySeedIds.SystemAdminRoleName,
                 "Full system access. Seeded and protected.",
-                AllKnownPermissions(),
+                adminPermissions,
                 UserType.SystemAdministrator,
                 now,
                 isSystem: true);
@@ -57,9 +58,14 @@ public sealed class IdentityDataSeeder(
         }
         else
         {
-            // Keep the system admin role's permissions in sync as the catalog grows.
-            adminRole.SetPermissions(AllKnownPermissions(), now);
-            await db.SaveChangesAsync(cancellationToken);
+            // Keep the system admin role's permissions in sync as the catalog grows, without
+            // writing/auditing every startup when the set is already correct.
+            if (!HasSamePermissions(adminRole, adminPermissions))
+            {
+                adminRole.SetPermissions(adminPermissions, now);
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogInformation("Synchronized System Administrator role permissions with the composed catalog.");
+            }
         }
 
         await SeedBootstrapAdminAsync(adminRole.Id, now, cancellationToken);
@@ -123,17 +129,21 @@ public sealed class IdentityDataSeeder(
 
             if (roleReassigned || invitation is not null)
             {
-                await db.SaveChangesAsync(cancellationToken);
-
-                if (roleReassigned)
-                    logger.LogInformation("Reassigned bootstrap admin {Email} to the protected System Administrator role.", email.Value);
-
                 if (invitation is not null)
                 {
+                    // Commit the refreshed token and durable email outbox row together. If email
+                    // queueing fails, the old/expired invitation state remains retryable on startup.
                     await invitationNotifier.SendInvitationAsync(
                         email.Value, existing.DisplayName, existing.Id, invitation.Value, cancellationToken);
                     logger.LogInformation("Refreshed expired bootstrap admin invitation for {Email}. Activate via the emailed link.", email.Value);
                 }
+                else
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
+                if (roleReassigned)
+                    logger.LogInformation("Reassigned bootstrap admin {Email} to the protected System Administrator role.", email.Value);
             }
 
             return;
@@ -159,7 +169,8 @@ public sealed class IdentityDataSeeder(
             }
 
             db.Users.Add(inviteResult.Value);
-            await db.SaveChangesAsync(cancellationToken);
+            // Commit the first administrator and durable email outbox row together. The raw token is
+            // never logged/stored; a queueing failure must not leave a stranded invited admin.
             await invitationNotifier.SendInvitationAsync(
                 email.Value, _options.Admin.DisplayName, inviteResult.Value.Id, token.Value, cancellationToken);
             logger.LogInformation("Seeded bootstrap admin invitation for {Email}. Activate via the emailed link.", email.Value);
@@ -304,6 +315,14 @@ public sealed class IdentityDataSeeder(
     }
 
     private List<string> AllKnownPermissions() => permissionRegistry.All.Select(p => p.Code).ToList();
+
+    private static bool HasSamePermissions(Role role, IReadOnlyCollection<string> permissions)
+    {
+        if (role.Permissions.Count != permissions.Count)
+            return false;
+
+        return role.Permissions.ToHashSet(StringComparer.Ordinal).SetEquals(permissions);
+    }
 
     private static bool ShouldRequeueBootstrapInvitation(User user, DateTimeOffset now) =>
         user.Status == UserStatus.Invited

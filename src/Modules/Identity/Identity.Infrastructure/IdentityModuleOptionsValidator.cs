@@ -1,4 +1,5 @@
 using Identity.Application;
+using Identity.Application.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -53,6 +54,9 @@ public sealed class IdentityModuleOptionsValidator(
         RequireAbsoluteHttpUrl(options.ActivationUrlBase, "Identity:ActivationUrlBase", failures);
         RequireAbsoluteHttpUrl(options.PasswordResetUrlBase, "Identity:PasswordResetUrlBase", failures);
         RequireAbsoluteHttpUrl(options.EmailChangeConfirmUrlBase, "Identity:EmailChangeConfirmUrlBase", failures);
+
+        if (!string.IsNullOrWhiteSpace(options.Admin.Password))
+            failures.AddRange(PasswordPolicy.Validate(options.Admin.Password, "Identity:Admin:Password"));
 
         var emailEnabled = configuration.GetValue<bool?>("EmailSettings:EnableEmailNotifications") ?? false;
         if (string.IsNullOrWhiteSpace(options.Admin.Password) && !emailEnabled && !environment.IsDevelopment())

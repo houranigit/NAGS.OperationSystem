@@ -43,6 +43,8 @@ public static class MasterDataInfrastructureExtensions
         services.AddIntegrationEventHandler<PortalUserProvisioningFailed, PortalUserProvisioningFailedHandler>();
         services.AddIntegrationEventHandler<PortalUserActivated, PortalUserActivatedHandler>();
         services.AddIntegrationEventHandler<PortalUserAccessRestored, PortalUserAccessRestoredHandler>();
+        services.AddIntegrationEventHandler<PortalUserEmailChangeConfirmed, PortalUserEmailChangeConfirmedHandler>();
+        services.AddIntegrationEventHandler<PortalUserEmailChangeFailed, PortalUserEmailChangeFailedHandler>();
         services.AddIntegrationEventHandler<PortalUserDeactivated, PortalUserDeactivatedHandler>();
 
         services.AddScoped<MasterDataDataSeeder>();

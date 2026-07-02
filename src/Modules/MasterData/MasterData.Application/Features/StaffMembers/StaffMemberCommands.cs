@@ -7,7 +7,6 @@ using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Contracts;
-using MasterData.Domain.Authorization;
 using MasterData.Domain.StaffMembers;
 using Microsoft.EntityFrameworkCore;
 
@@ -58,8 +57,8 @@ public sealed class CreateStaffMemberCommandHandler(
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
-        if (request.PortalAccessRoleId is { } && !userContext.HasPermission(MasterDataPermissions.StaffMembers.GrantAccess))
-            return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
+        if (request.PortalAccessRoleId is { } && !PortalAccessAuthorization.CanGrantStaffAccess(userContext))
+            return PortalAccessAuthorization.GrantForbidden();
 
         var refsCheck = await StaffMemberGuards.EnsureActiveReferencesAsync(db, request.StationId, request.ManpowerTypeId, cancellationToken);
         if (refsCheck.IsFailure)
@@ -203,7 +202,10 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
         // Changing the email of a linked staff member starts an Identity-owned reverification workflow;
         // the Identity login email only changes after the new address is verified.
         if (staff.LinkedUserId is { } linkedUserId && !string.Equals(previousEmail, staff.Email, StringComparison.Ordinal))
+        {
+            staff.MarkLoginEmailChangePending(staff.Email, now);
             PortalAccess.PortalLifecycle.EnqueueEmailChange(db, staff.Id, linkedUserId, staff.Email);
+        }
 
         var licensesCheck = await StaffMemberGuards.EnsureLicensesExistAsync(db, request.Licenses, cancellationToken);
         if (licensesCheck.IsFailure)

@@ -16,8 +16,7 @@ public sealed class GetAircraftTypesQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<AircraftTypeListItemDto>>> Handle(GetAircraftTypesQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.AircraftTypes.AsNoTracking();
 
         if (request.IsActive is { } active)
@@ -30,26 +29,29 @@ public sealed class GetAircraftTypesQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<AircraftTypeListItemDto>(total);
+
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(a => new AircraftTypeListItemDto(a.Id, a.Manufacturer, a.Model, a.Notes, a.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<AircraftTypeListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<AircraftTypeListItemDto>(items, total);
     }
 
     private static IQueryable<AircraftType> ApplySort(IQueryable<AircraftType> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(a => a.Manufacturer).ThenBy(a => a.Model);
+            return query.OrderBy(a => a.Manufacturer).ThenBy(a => a.Model).ThenBy(a => a.Id);
 
         return spec.Field switch
         {
-            "manufacturer" => spec.Descending ? query.OrderByDescending(a => a.Manufacturer) : query.OrderBy(a => a.Manufacturer),
-            "model" => spec.Descending ? query.OrderByDescending(a => a.Model) : query.OrderBy(a => a.Model),
-            "isactive" => spec.Descending ? query.OrderByDescending(a => a.IsActive) : query.OrderBy(a => a.IsActive),
-            _ => query.OrderBy(a => a.Manufacturer).ThenBy(a => a.Model)
+            "manufacturer" => spec.Descending ? query.OrderByDescending(a => a.Manufacturer).ThenByDescending(a => a.Id) : query.OrderBy(a => a.Manufacturer).ThenBy(a => a.Id),
+            "model" => spec.Descending ? query.OrderByDescending(a => a.Model).ThenByDescending(a => a.Id) : query.OrderBy(a => a.Model).ThenBy(a => a.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(a => a.IsActive).ThenByDescending(a => a.Id) : query.OrderBy(a => a.IsActive).ThenBy(a => a.Id),
+            _ => query.OrderBy(a => a.Manufacturer).ThenBy(a => a.Model).ThenBy(a => a.Id)
         };
     }
 }
@@ -82,6 +84,7 @@ public sealed class GetActiveAircraftTypeOptionsQueryHandler(IMasterDataDbContex
             .Where(a => a.IsActive)
             .OrderBy(a => a.Manufacturer)
             .ThenBy(a => a.Model)
+            .ThenBy(a => a.Id)
             .Select(a => new AircraftTypeOptionDto(a.Id, a.Manufacturer, a.Model))
             .ToListAsync(cancellationToken);
 

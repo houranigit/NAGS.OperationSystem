@@ -100,7 +100,7 @@
             }
             else
             {
-                canGrantPortal = Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
+                canGrantPortal = Auth.CanGrantStaffPortalAccess;
                 var manpowerTypesTask = MasterData.GetManpowerTypeOptionsAsync();
                 var stationRolesTask = canGrantPortal
                     ? Identity.GetRoleOptionsAsync("StationStaff")

@@ -13,6 +13,9 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     private sealed record CatalogDetail(Guid Id, string Name, string? Description, bool IsActive,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
     private sealed record CatalogItem(Guid Id, string Name, string? Description, bool IsActive);
+    private sealed record AircraftTypeDetail(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive,
+        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+    private sealed record AircraftTypeItem(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive);
     private sealed record ToolDetail(Guid Id, string Name, string? Description, bool IsActive,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, List<ToolEquipment> Equipments);
     private sealed record ToolEquipment(Guid Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
@@ -32,36 +35,82 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     }
 
     [Fact]
+    public async Task List_endpoints_bound_extreme_pagination_requests()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+
+        var list = await client.GetFromJsonAsync<PagedList<CatalogItem>>(
+            $"{Base}/services?page={int.MaxValue}&pageSize={int.MaxValue}");
+
+        list.ShouldNotBeNull();
+        list!.PageSize.ShouldBe(100);
+        list.Page.ShouldBeGreaterThan(1);
+        list.TotalCount.ShouldBeGreaterThan(0);
+        list.Items.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("services", "Service")]
+    [InlineData("operation-types", "Operation Type")]
+    [InlineData("general-supports", "General Support")]
+    public async Task Simple_catalog_create_update_and_deactivate_round_trips(string route, string label)
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        await AssertSimpleCatalogRoundTripAsync(client, route, $"{label} {Guid.NewGuid():N}");
+    }
+
+    [Fact]
     public async Task Material_create_update_and_deactivate_round_trips()
     {
         var client = await factory.CreateAuthenticatedAdminClientAsync();
         var name = $"Material {Guid.NewGuid():N}";
 
-        var create = await client.PostAsJsonAsync($"{Base}/materials", new { name, description = "Initial" });
+        await AssertSimpleCatalogRoundTripAsync(client, "materials", name);
+    }
+
+    [Fact]
+    public async Task Aircraft_type_create_update_and_deactivate_round_trips()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var model = $"m{Guid.NewGuid():N}";
+
+        var create = await client.PostAsJsonAsync($"{Base}/aircraft-types", new
+        {
+            manufacturer = "Airbus",
+            model,
+            notes = "Initial"
+        });
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
         var id = await create.Content.ReadFromJsonAsync<Guid>();
 
-        var before = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/materials/{id}");
-        before!.Name.ShouldBe(name);
-        before.Description.ShouldBe("Initial");
+        var before = await client.GetFromJsonAsync<AircraftTypeDetail>($"{Base}/aircraft-types/{id}");
+        before!.Manufacturer.ShouldBe("Airbus");
+        before.Model.ShouldBe(model.ToUpperInvariant());
+        before.Notes.ShouldBe("Initial");
 
-        var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/materials/{id}")
+        var updatedModel = $"b{Guid.NewGuid():N}";
+        var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/aircraft-types/{id}")
         {
-            Content = JsonContent.Create(new { name = $"{name} Updated", description = "Updated" })
+            Content = JsonContent.Create(new { manufacturer = "Boeing", model = updatedModel, notes = "Updated" })
         };
         update.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
-        (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var updateResponse = await client.SendAsync(update);
+        updateResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await updateResponse.Content.ReadAsStringAsync());
 
-        var after = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/materials/{id}");
-        after!.Name.ShouldBe($"{name} Updated");
+        var after = await client.GetFromJsonAsync<AircraftTypeDetail>($"{Base}/aircraft-types/{id}");
+        after!.Manufacturer.ShouldBe("Boeing");
+        after.Model.ShouldBe(updatedModel.ToUpperInvariant());
+        after.Notes.ShouldBe("Updated");
         after.RowVersion.ShouldNotBe(before.RowVersion);
 
-        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/materials/{id}/deactivate");
+        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/aircraft-types/{id}/deactivate");
         deactivate.Headers.TryAddWithoutValidation("If-Match", after.RowVersion);
-        (await client.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var deactivateResponse = await client.SendAsync(deactivate);
+        deactivateResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await deactivateResponse.Content.ReadAsStringAsync());
 
-        var list = await client.GetFromJsonAsync<PagedList<CatalogItem>>($"{Base}/materials?isActive=false&search={Uri.EscapeDataString(name)}");
-        list!.Items.ShouldContain(m => m.Id == id && !m.IsActive);
+        var list = await client.GetFromJsonAsync<PagedList<AircraftTypeItem>>(
+            $"{Base}/aircraft-types?isActive=false&search={Uri.EscapeDataString(updatedModel)}");
+        list!.Items.ShouldContain(a => a.Id == id && !a.IsActive);
     }
 
     [Fact]
@@ -99,11 +148,45 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
             })
         };
         update.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
-        (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var updateResponse = await client.SendAsync(update);
+        updateResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await updateResponse.Content.ReadAsStringAsync());
 
         var after = await client.GetFromJsonAsync<ToolDetail>($"{Base}/tools/{id}");
         after!.Equipments.Count.ShouldBe(2);
         after.Equipments.ShouldContain(e => e.FactoryId == "F-2" && e.SerialId == "S-2" && e.CalibrationDate == new DateOnly(2026, 6, 1));
         after.Equipments.ShouldContain(e => e.FactoryId == "F-3" && e.SerialId == "S-3");
+    }
+
+    private static async Task AssertSimpleCatalogRoundTripAsync(HttpClient client, string route, string name)
+    {
+        var create = await client.PostAsJsonAsync($"{Base}/{route}", new { name, description = "Initial" });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var id = await create.Content.ReadFromJsonAsync<Guid>();
+
+        var before = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/{route}/{id}");
+        before!.Name.ShouldBe(name);
+        before.Description.ShouldBe("Initial");
+
+        var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/{route}/{id}")
+        {
+            Content = JsonContent.Create(new { name = $"{name} Updated", description = "Updated" })
+        };
+        update.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
+        var updateResponse = await client.SendAsync(update);
+        updateResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await updateResponse.Content.ReadAsStringAsync());
+
+        var after = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/{route}/{id}");
+        after!.Name.ShouldBe($"{name} Updated");
+        after.Description.ShouldBe("Updated");
+        after.RowVersion.ShouldNotBe(before.RowVersion);
+
+        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/{route}/{id}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", after.RowVersion);
+        var deactivateResponse = await client.SendAsync(deactivate);
+        deactivateResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await deactivateResponse.Content.ReadAsStringAsync());
+
+        var list = await client.GetFromJsonAsync<PagedList<CatalogItem>>(
+            $"{Base}/{route}?isActive=false&search={Uri.EscapeDataString(name)}");
+        list!.Items.ShouldContain(m => m.Id == id && !m.IsActive);
     }
 }

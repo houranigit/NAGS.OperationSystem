@@ -16,8 +16,7 @@ public sealed class GetOperationTypesQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<OperationTypeListItemDto>>> Handle(GetOperationTypesQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.OperationTypes.AsNoTracking();
 
         if (request.IsActive is { } active)
@@ -30,25 +29,28 @@ public sealed class GetOperationTypesQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<OperationTypeListItemDto>(total);
+
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(o => new OperationTypeListItemDto(o.Id, o.Name, o.Description, o.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<OperationTypeListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<OperationTypeListItemDto>(items, total);
     }
 
     private static IQueryable<OperationType> ApplySort(IQueryable<OperationType> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(o => o.Name);
+            return query.OrderBy(o => o.Name).ThenBy(o => o.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(o => o.Name) : query.OrderBy(o => o.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(o => o.IsActive) : query.OrderBy(o => o.IsActive),
-            _ => query.OrderBy(o => o.Name)
+            "name" => spec.Descending ? query.OrderByDescending(o => o.Name).ThenByDescending(o => o.Id) : query.OrderBy(o => o.Name).ThenBy(o => o.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(o => o.IsActive).ThenByDescending(o => o.Id) : query.OrderBy(o => o.IsActive).ThenBy(o => o.Id),
+            _ => query.OrderBy(o => o.Name).ThenBy(o => o.Id)
         };
     }
 }
@@ -80,6 +82,7 @@ public sealed class GetActiveOperationTypeOptionsQueryHandler(IMasterDataDbConte
         IReadOnlyList<OperationTypeOptionDto> options = await db.OperationTypes.AsNoTracking()
             .Where(o => o.IsActive)
             .OrderBy(o => o.Name)
+            .ThenBy(o => o.Id)
             .Select(o => new OperationTypeOptionDto(o.Id, o.Name))
             .ToListAsync(cancellationToken);
 

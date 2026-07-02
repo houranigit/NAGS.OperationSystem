@@ -35,9 +35,13 @@
     <Project Path="src/Modules/Audit/Audit.Infrastructure/Audit.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Identity.Application.UnitTests/Identity.Application.UnitTests.csproj" />
     <Project Path="tests/Identity.Domain.UnitTests/Identity.Domain.UnitTests.csproj" />
+    <Project Path="tests/Identity.Infrastructure.UnitTests/Identity.Infrastructure.UnitTests.csproj" />
     <Project Path="tests/Identity.IntegrationTests/Identity.IntegrationTests.csproj" />
+    <Project Path="tests/MasterData.Application.UnitTests/MasterData.Application.UnitTests.csproj" />
     <Project Path="tests/MasterData.Domain.UnitTests/MasterData.Domain.UnitTests.csproj" />
     <Project Path="tests/MasterData.IntegrationTests/MasterData.IntegrationTests.csproj" />
+    <Project Path="tests/OperationsSystem.Blazor.UnitTests/OperationsSystem.Blazor.UnitTests.csproj" />
   </Folder>
 </Solution>

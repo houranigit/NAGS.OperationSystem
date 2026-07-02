@@ -24,8 +24,7 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
         if (resolved.IsFailure)
             return resolved.Error;
 
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
 
         var query = db.Customers.AsNoTracking();
 
@@ -33,7 +32,7 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
         if (!resolved.Value.IsAdministrator)
         {
             if (resolved.Value.CustomerId is not { } scopedCustomer)
-                return new PagedResult<CustomerListItemDto>([], page, pageSize, 0);
+                return paging.Empty<CustomerListItemDto>();
             query = query.Where(c => c.Id == scopedCustomer);
         }
 
@@ -51,10 +50,12 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<CustomerListItemDto>(total);
 
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(c => new CustomerListItemDto(
                 c.Id, c.IataCode, c.IcaoCode, c.Name, c.CountryId,
                 db.Countries.Where(co => co.Id == c.CountryId).Select(co => co.Name).FirstOrDefault() ?? string.Empty,
@@ -62,20 +63,20 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
                 c.Contacts.Count(ct => ct.IsActive)))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<CustomerListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<CustomerListItemDto>(items, total);
     }
 
     private static IQueryable<Customer> ApplySort(IQueryable<Customer> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(c => c.IataCode);
+            return query.OrderBy(c => c.IataCode).ThenBy(c => c.Id);
 
         return spec.Field switch
         {
-            "iatacode" => spec.Descending ? query.OrderByDescending(c => c.IataCode) : query.OrderBy(c => c.IataCode),
-            "name" => spec.Descending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(c => c.IsActive) : query.OrderBy(c => c.IsActive),
-            _ => query.OrderBy(c => c.IataCode)
+            "iatacode" => spec.Descending ? query.OrderByDescending(c => c.IataCode).ThenByDescending(c => c.Id) : query.OrderBy(c => c.IataCode).ThenBy(c => c.Id),
+            "name" => spec.Descending ? query.OrderByDescending(c => c.Name).ThenByDescending(c => c.Id) : query.OrderBy(c => c.Name).ThenBy(c => c.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(c => c.IsActive).ThenByDescending(c => c.Id) : query.OrderBy(c => c.IsActive).ThenBy(c => c.Id),
+            _ => query.OrderBy(c => c.IataCode).ThenBy(c => c.Id)
         };
     }
 }
@@ -107,8 +108,9 @@ public sealed class GetCustomerByIdQueryHandler(IMasterDataDbContext db, IMaster
         var contacts = customer.Contacts
             .OrderByDescending(ct => ct.IsActive)
             .ThenBy(ct => ct.Name)
+            .ThenBy(ct => ct.Id)
             .Select(ct => new CustomerContactDto(
-                ct.Id, ct.Name, ct.JobTitle, ct.Email, ct.Phone, ct.LinkedUserId,
+                ct.Id, ct.Name, ct.JobTitle, ct.Email, ct.PendingLoginEmail, ct.LoginEmailChangeFailureReason, ct.Phone, ct.LinkedUserId,
                 ct.PortalState.ToString(), ct.PortalFailureReason, ct.IsActive, ct.CreatedAtUtc, ct.UpdatedAtUtc))
             .ToList();
 
@@ -183,6 +185,7 @@ public sealed class GetActiveCustomerOptionsQueryHandler(IMasterDataDbContext db
 
         IReadOnlyList<CustomerOptionDto> options = await query
             .OrderBy(c => c.IataCode)
+            .ThenBy(c => c.Id)
             .Select(c => new CustomerOptionDto(c.Id, c.IataCode, c.Name))
             .ToListAsync(cancellationToken);
 

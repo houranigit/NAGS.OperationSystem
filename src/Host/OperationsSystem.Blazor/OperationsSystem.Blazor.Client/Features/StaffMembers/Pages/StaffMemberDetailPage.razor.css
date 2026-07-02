@@ -433,6 +433,18 @@
     word-break: break-word;
 }
 
+.sm-email-note {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--os-color-warning);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+}
+
+.sm-email-note--danger {
+    color: var(--os-color-danger);
+}
+
 /* --- Activity timeline --------------------------------------------------- */
 .sm-timeline {
     display: flex;

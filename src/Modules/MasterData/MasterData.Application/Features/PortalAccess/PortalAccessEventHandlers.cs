@@ -168,6 +168,80 @@ public sealed class PortalUserAccessRestoredHandler(IMasterDataDbContext db, Tim
     }
 }
 
+/// <summary>Clears a pending linked login-email marker after Identity verifies the new address.</summary>
+public sealed class PortalUserEmailChangeConfirmedHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+    : IIntegrationEventHandler<PortalUserEmailChangeConfirmed>
+{
+    private const string Consumer = "MasterData.PortalUserEmailChangeConfirmed";
+
+    public async Task HandleAsync(PortalUserEmailChangeConfirmed integrationEvent, CancellationToken cancellationToken = default)
+    {
+        if (await db.HasProcessedAsync(integrationEvent.EventId, Consumer, cancellationToken))
+            return;
+
+        var now = timeProvider.GetUtcNow();
+
+        switch (integrationEvent.UserType)
+        {
+            case UserType.StationStaff:
+                var staff = await db.StaffMembers
+                    .FirstOrDefaultAsync(s =>
+                        s.Id == integrationEvent.ExternalReferenceId &&
+                        s.LinkedUserId == integrationEvent.UserId, cancellationToken);
+                staff?.ConfirmLoginEmailChange(integrationEvent.UserId, integrationEvent.Email, now);
+                break;
+
+            case UserType.CustomerContact:
+                var contact = await db.CustomerContacts
+                    .FirstOrDefaultAsync(c =>
+                        c.Id == integrationEvent.ExternalReferenceId &&
+                        c.LinkedUserId == integrationEvent.UserId, cancellationToken);
+                contact?.ConfirmLoginEmailChange(integrationEvent.UserId, integrationEvent.Email, now);
+                break;
+        }
+
+        db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+}
+
+/// <summary>Records a failed linked login-email change without changing the portal-access state.</summary>
+public sealed class PortalUserEmailChangeFailedHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+    : IIntegrationEventHandler<PortalUserEmailChangeFailed>
+{
+    private const string Consumer = "MasterData.PortalUserEmailChangeFailed";
+
+    public async Task HandleAsync(PortalUserEmailChangeFailed integrationEvent, CancellationToken cancellationToken = default)
+    {
+        if (await db.HasProcessedAsync(integrationEvent.EventId, Consumer, cancellationToken))
+            return;
+
+        var now = timeProvider.GetUtcNow();
+
+        switch (integrationEvent.UserType)
+        {
+            case UserType.StationStaff:
+                var staff = await db.StaffMembers
+                    .FirstOrDefaultAsync(s =>
+                        s.Id == integrationEvent.ExternalReferenceId &&
+                        s.LinkedUserId == integrationEvent.UserId, cancellationToken);
+                staff?.MarkLoginEmailChangeFailed(integrationEvent.UserId, integrationEvent.Email, integrationEvent.Reason, now);
+                break;
+
+            case UserType.CustomerContact:
+                var contact = await db.CustomerContacts
+                    .FirstOrDefaultAsync(c =>
+                        c.Id == integrationEvent.ExternalReferenceId &&
+                        c.LinkedUserId == integrationEvent.UserId, cancellationToken);
+                contact?.MarkLoginEmailChangeFailed(integrationEvent.UserId, integrationEvent.Email, integrationEvent.Reason, now);
+                break;
+        }
+
+        db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+}
+
 /// <summary>
 /// Reflects an Identity-side suspension/detachment back onto the MasterData record. Reversible
 /// deactivation keeps the link and marks portal access suspended; permanent removal clears the link.
@@ -184,28 +258,35 @@ public sealed class PortalUserDeactivatedHandler(IMasterDataDbContext db, TimePr
 
         var now = timeProvider.GetUtcNow();
 
-        var staff = await db.StaffMembers
-            .FirstOrDefaultAsync(s =>
-                s.Id == integrationEvent.ExternalReferenceId &&
-                s.LinkedUserId == integrationEvent.UserId, cancellationToken);
-        if (staff is not null)
+        switch (integrationEvent.UserType)
         {
-            if (integrationEvent.ReleaseEmail)
-                staff.UnlinkUser(now);
-            else
-                staff.SuspendPortal(now);
-        }
+            case UserType.StationStaff:
+                var staff = await db.StaffMembers
+                    .FirstOrDefaultAsync(s =>
+                        s.Id == integrationEvent.ExternalReferenceId &&
+                        s.LinkedUserId == integrationEvent.UserId, cancellationToken);
+                if (staff is not null)
+                {
+                    if (integrationEvent.ReleaseEmail)
+                        staff.UnlinkUser(now);
+                    else
+                        staff.SuspendPortal(now);
+                }
+                break;
 
-        var contact = await db.CustomerContacts
-            .FirstOrDefaultAsync(c =>
-                c.Id == integrationEvent.ExternalReferenceId &&
-                c.LinkedUserId == integrationEvent.UserId, cancellationToken);
-        if (contact is not null)
-        {
-            if (integrationEvent.ReleaseEmail)
-                contact.UnlinkUser(now);
-            else
-                contact.SuspendPortal(now);
+            case UserType.CustomerContact:
+                var contact = await db.CustomerContacts
+                    .FirstOrDefaultAsync(c =>
+                        c.Id == integrationEvent.ExternalReferenceId &&
+                        c.LinkedUserId == integrationEvent.UserId, cancellationToken);
+                if (contact is not null)
+                {
+                    if (integrationEvent.ReleaseEmail)
+                        contact.UnlinkUser(now);
+                    else
+                        contact.SuspendPortal(now);
+                }
+                break;
         }
 
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);

@@ -8,7 +8,6 @@ using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Application.Features.StaffMembers;
 using MasterData.Contracts;
-using MasterData.Domain.Authorization;
 using MasterData.Domain.StaffMembers;
 using MasterData.Domain.Stations;
 using Microsoft.EntityFrameworkCore;
@@ -89,8 +88,8 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
 
             if (input.PortalAccessRoleId is { } roleId)
             {
-                if (!userContext.HasPermission(MasterDataPermissions.StaffMembers.GrantAccess))
-                    return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
+                if (!PortalAccessAuthorization.CanGrantStaffAccess(userContext))
+                    return PortalAccessAuthorization.GrantForbidden();
 
                 var correlationId = Guid.NewGuid();
                 staffResult.Value.RequestPortalAccess(correlationId, now);
@@ -226,11 +225,15 @@ public sealed record ActivateStationCommand(Guid Id, byte[] RowVersion) : IComma
 
 public sealed record DeactivateStationCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
     : ICommandHandler<ActivateStationCommand>
 {
     public async Task<Result> Handle(ActivateStationCommand request, CancellationToken cancellationToken)
     {
+        var scopeCheck = await scope.CheckStationAsync(request.Id, cancellationToken);
+        if (scopeCheck.IsFailure)
+            return scopeCheck.Error;
+
         var station = await db.Stations.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
         if (station is null)
             return Error.NotFound("Station not found.", "MasterData.Station.NotFound");
@@ -251,11 +254,15 @@ public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, TimeP
     }
 }
 
-public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
     : ICommandHandler<DeactivateStationCommand>
 {
     public async Task<Result> Handle(DeactivateStationCommand request, CancellationToken cancellationToken)
     {
+        var scopeCheck = await scope.CheckStationAsync(request.Id, cancellationToken);
+        if (scopeCheck.IsFailure)
+            return scopeCheck.Error;
+
         var station = await db.Stations.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
         if (station is null)
             return Error.NotFound("Station not found.", "MasterData.Station.NotFound");

@@ -32,6 +32,14 @@ public sealed class AuthSession
 
     public bool HasPermission(string permission) => User?.Permissions.Contains(permission) ?? false;
 
+    public bool IsSystemAdministrator => User?.UserType == UserTypes.SystemAdministrator;
+
+    public bool CanGrantStaffPortalAccess =>
+        IsSystemAdministrator && HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
+
+    public bool CanGrantCustomerContactPortalAccess =>
+        IsSystemAdministrator && HasPermission(MasterDataPermissions.CustomerContactsGrantAccess);
+
     private void OnRefreshFailed()
     {
         if (Status == AuthStatus.Anonymous)

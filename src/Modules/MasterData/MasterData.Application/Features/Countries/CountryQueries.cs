@@ -18,8 +18,7 @@ public sealed class GetCountriesQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<CountryListItemDto>>> Handle(GetCountriesQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
 
         var query = db.Countries.AsNoTracking();
 
@@ -34,27 +33,29 @@ public sealed class GetCountriesQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<CountryListItemDto>(total);
 
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(c => new CountryListItemDto(c.Id, c.Name, c.IsoCode, c.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<CountryListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<CountryListItemDto>(items, total);
     }
 
     private static IQueryable<Country> ApplySort(IQueryable<Country> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(c => c.Name);
+            return query.OrderBy(c => c.Name).ThenBy(c => c.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name),
-            "isocode" => spec.Descending ? query.OrderByDescending(c => c.IsoCode) : query.OrderBy(c => c.IsoCode),
-            "isactive" => spec.Descending ? query.OrderByDescending(c => c.IsActive) : query.OrderBy(c => c.IsActive),
-            _ => query.OrderBy(c => c.Name)
+            "name" => spec.Descending ? query.OrderByDescending(c => c.Name).ThenByDescending(c => c.Id) : query.OrderBy(c => c.Name).ThenBy(c => c.Id),
+            "isocode" => spec.Descending ? query.OrderByDescending(c => c.IsoCode).ThenByDescending(c => c.Id) : query.OrderBy(c => c.IsoCode).ThenBy(c => c.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(c => c.IsActive).ThenByDescending(c => c.Id) : query.OrderBy(c => c.IsActive).ThenBy(c => c.Id),
+            _ => query.OrderBy(c => c.Name).ThenBy(c => c.Id)
         };
     }
 }
@@ -90,6 +91,7 @@ public sealed class GetActiveCountryOptionsQueryHandler(IMasterDataDbContext db)
         IReadOnlyList<CountryOptionDto> options = await db.Countries.AsNoTracking()
             .Where(c => c.IsActive)
             .OrderBy(c => c.Name)
+            .ThenBy(c => c.Id)
             .Select(c => new CountryOptionDto(c.Id, c.Name, c.IsoCode))
             .ToListAsync(cancellationToken);
 

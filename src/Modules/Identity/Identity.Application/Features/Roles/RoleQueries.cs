@@ -49,8 +49,7 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
 {
     public async Task<Result<PagedResult<RoleListItemDto>>> Handle(GetRolesQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
 
         var query = db.Roles.AsNoTracking();
 
@@ -64,10 +63,12 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
             query = query.Where(r => r.CompatibleUserType == userType);
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<RoleListItemDto>(total);
 
         var roles = await ApplySort(query, db, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .ToListAsync(cancellationToken);
 
         var roleIds = roles.Select(r => r.Id).ToList();
@@ -86,22 +87,22 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
             r.Permissions.Count,
             userCounts.GetValueOrDefault(r.Id))).ToList();
 
-        return new PagedResult<RoleListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<RoleListItemDto>(items, total);
     }
 
     private static IQueryable<Role> ApplySort(IQueryable<Role> query, IIdentityDbContext db, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(r => r.Name);
+            return query.OrderBy(r => r.Name).ThenBy(r => r.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(r => r.Name) : query.OrderBy(r => r.Name),
-            "description" => spec.Descending ? query.OrderByDescending(r => r.Description) : query.OrderBy(r => r.Description),
+            "name" => spec.Descending ? query.OrderByDescending(r => r.Name).ThenByDescending(r => r.Id) : query.OrderBy(r => r.Name).ThenBy(r => r.Id),
+            "description" => spec.Descending ? query.OrderByDescending(r => r.Description).ThenByDescending(r => r.Id) : query.OrderBy(r => r.Description).ThenBy(r => r.Id),
             "usercount" => spec.Descending
-                ? query.OrderByDescending(r => db.Users.Count(u => u.RoleId == r.Id))
-                : query.OrderBy(r => db.Users.Count(u => u.RoleId == r.Id)),
-            _ => query.OrderBy(r => r.Name)
+                ? query.OrderByDescending(r => db.Users.Count(u => u.RoleId == r.Id)).ThenByDescending(r => r.Id)
+                : query.OrderBy(r => db.Users.Count(u => u.RoleId == r.Id)).ThenBy(r => r.Id),
+            _ => query.OrderBy(r => r.Name).ThenBy(r => r.Id)
         };
     }
 }
@@ -126,6 +127,7 @@ public sealed class GetRoleOptionsQueryHandler(IIdentityDbContext db)
 
         IReadOnlyList<RoleOptionDto> options = await query
             .OrderBy(r => r.Name)
+            .ThenBy(r => r.Id)
             .Select(r => new RoleOptionDto(r.Id, r.Name, r.CompatibleUserType.ToString()))
             .ToListAsync(cancellationToken);
 

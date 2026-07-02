@@ -6,6 +6,7 @@ using Identity.Application.Abstractions;
 using Identity.Application.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Identity.Application.Features.Users;
@@ -32,7 +33,8 @@ public sealed class InviteUserCommandHandler(
     IInvitationNotifier invitationNotifier,
     ITokenService tokenService,
     TimeProvider timeProvider,
-    IOptions<IdentityModuleOptions> options)
+    IOptions<IdentityModuleOptions> options,
+    ILogger<InviteUserCommandHandler> logger)
     : ICommandHandler<InviteUserCommand, InvitedUserDto>
 {
     private readonly IdentityModuleOptions _options = options.Value;
@@ -79,7 +81,15 @@ public sealed class InviteUserCommandHandler(
         db.Users.Add(userResult.Value);
         await db.SaveChangesAsync(cancellationToken);
 
-        await invitationNotifier.SendInvitationAsync(email.Value, request.DisplayName, userResult.Value.Id, token.Value, cancellationToken);
+        try
+        {
+            await invitationNotifier.SendInvitationAsync(email.Value, request.DisplayName, userResult.Value.Id, token.Value, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Invitation delivery failed for direct user {UserId}.", userResult.Value.Id);
+            return new InvitedUserDto(userResult.Value.Id, email.Value, "Failed");
+        }
 
         return new InvitedUserDto(userResult.Value.Id, email.Value, "Queued");
     }

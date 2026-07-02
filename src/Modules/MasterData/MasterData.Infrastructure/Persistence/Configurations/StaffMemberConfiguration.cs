@@ -28,6 +28,11 @@ public sealed class StaffMemberConfiguration : IEntityTypeConfiguration<StaffMem
         builder.Property(s => s.EmploymentEndDate);
         builder.Property(s => s.WorkingScheduleMask);
         builder.Property(s => s.LinkedUserId);
+        builder.HasIndex(s => s.LinkedUserId)
+            .IsUnique()
+            .HasFilter("[LinkedUserId] IS NOT NULL");
+        builder.Property(s => s.PendingLoginEmail).HasMaxLength(256);
+        builder.Property(s => s.LoginEmailChangeFailureReason).HasMaxLength(500);
         builder.Property(s => s.PortalState).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(s => s.PortalCorrelationId);
         builder.Property(s => s.PortalFailureReason).HasMaxLength(500);

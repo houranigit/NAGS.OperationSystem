@@ -2,8 +2,10 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Security;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Identity.Application.Features.Auth;
@@ -27,7 +29,8 @@ public sealed class ForgotPasswordCommandHandler(
     IPasswordResetNotifier notifier,
     ITokenService tokenService,
     TimeProvider timeProvider,
-    IOptions<IdentityModuleOptions> options)
+    IOptions<IdentityModuleOptions> options,
+    ILogger<ForgotPasswordCommandHandler> logger)
     : ICommandHandler<ForgotPasswordCommand>
 {
     private readonly IdentityModuleOptions _options = options.Value;
@@ -51,8 +54,17 @@ public sealed class ForgotPasswordCommandHandler(
         if (request2.IsFailure)
             return Result.Success();
 
+        try
+        {
+            await notifier.SendPasswordResetAsync(user.Email.Value, user.DisplayName, user.Id, token.Value, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Password reset delivery failed for user {UserId}.", user.Id);
+            return Result.Success();
+        }
+
         await db.SaveChangesAsync(cancellationToken);
-        await notifier.SendPasswordResetAsync(user.Email.Value, user.DisplayName, user.Id, token.Value, cancellationToken);
         return Result.Success();
     }
 }
@@ -66,7 +78,7 @@ public sealed class ResetPasswordCommandValidator : AbstractValidator<ResetPassw
     public ResetPasswordCommandValidator()
     {
         RuleFor(x => x.Token).NotEmpty();
-        RuleFor(x => x.NewPassword).NotEmpty().MinimumLength(8).MaximumLength(128);
+        RuleFor(x => x.NewPassword).UseIdentityPasswordPolicy();
     }
 }
 

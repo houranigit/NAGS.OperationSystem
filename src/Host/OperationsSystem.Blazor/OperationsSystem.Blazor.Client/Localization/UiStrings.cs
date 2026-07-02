@@ -691,6 +691,11 @@ public static class UiStrings
         public static string Explanation => UiText.Get("PortalAccess.Explanation", "An invited portal account will be created for this record using the selected role.");
         public static string GrantOnCreate => UiText.Get("PortalAccess.GrantOnCreate", "Grant portal access on creation");
         public static string GrantOnCreateHint => UiText.Get("PortalAccess.GrantOnCreateHint", "Send a portal invitation once this record is created.");
+        public static string PendingLoginEmail => UiText.Get("PortalAccess.PendingLoginEmail", "Login email pending");
+        public static string PendingLoginEmailShort => UiText.Get("PortalAccess.PendingLoginEmailShort", "Login verification pending");
+        public static string PendingLoginEmailDetail => UiText.Get("PortalAccess.PendingLoginEmailDetail", "Waiting for {0} to confirm before the linked login email changes.");
+        public static string LoginEmailChangeFailed => UiText.Get("PortalAccess.LoginEmailChangeFailed", "Login email change failed");
+        public static string LoginEmailChangeFailedDetail => UiText.Get("PortalAccess.LoginEmailChangeFailedDetail", "Identity could not start verification: {0}");
     }
 
     public static class Errors

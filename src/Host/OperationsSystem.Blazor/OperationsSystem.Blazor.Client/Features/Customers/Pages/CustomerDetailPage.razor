@@ -283,7 +283,23 @@
                     <Columns>
                         <RadzenDataGridColumn TItem="CustomerContactModel" Property="Name" Title="@UiStrings.Customers.ContactName" />
                         <RadzenDataGridColumn TItem="CustomerContactModel" Property="JobTitle" Title="@UiStrings.Customers.ContactJobTitle" />
-                        <RadzenDataGridColumn TItem="CustomerContactModel" Property="Email" Title="@UiStrings.Customers.ContactEmail" />
+                        <RadzenDataGridColumn TItem="CustomerContactModel" Property="Email" Title="@UiStrings.Customers.ContactEmail">
+                            <Template Context="contact">
+                                <div class="cu-contact-email">
+                                    <span>@contact.Email</span>
+                                    @if (!string.IsNullOrWhiteSpace(contact.PendingLoginEmail))
+                                    {
+                                        <small class="cu-contact-email-note">@UiStrings.PortalAccess.PendingLoginEmailShort</small>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(contact.LoginEmailChangeFailureReason))
+                                    {
+                                        <small class="cu-contact-email-note cu-contact-email-note--danger" title="@contact.LoginEmailChangeFailureReason">
+                                            @UiStrings.PortalAccess.LoginEmailChangeFailed
+                                        </small>
+                                    }
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="CustomerContactModel" Property="Phone" Title="@UiStrings.Customers.ContactPhone" />
                         <RadzenDataGridColumn TItem="CustomerContactModel" Title="@UiStrings.Customers.PortalLinked" Width="160px">
                             <Template Context="contact">
@@ -418,7 +434,7 @@
         c.IsActive
         && contact.LinkedUserId is null
         && contact.PortalState != "Provisioning"
-        && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess);
+        && Auth.CanGrantCustomerContactPortalAccess;
 
     private bool CanEditContact(CustomerContactModel contact) =>
         contact.IsActive && Auth.HasPermission(MasterDataPermissions.CustomerContactsUpdate);

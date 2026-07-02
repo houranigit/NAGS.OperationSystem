@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
+using Identity.Application.Abstractions;
 using Identity.Infrastructure.Persistence;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Shouldly;
 
 namespace Identity.IntegrationTests;
@@ -197,6 +200,87 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     }
 
     [Fact]
+    public async Task Weak_activation_password_is_rejected_without_consuming_invitation()
+    {
+        var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+        var email = $"weak-activation-{Guid.NewGuid():N}@nags.sa";
+
+        var invite = await client.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "Weak Activation User" });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+
+        var weakActivate = await client.PostAsJsonAsync($"{Base}/auth/activate",
+            new { email, invitationToken, newPassword = "password123!" });
+        weakActivate.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        var strongActivate = await client.PostAsJsonAsync($"{Base}/auth/activate",
+            new { email, invitationToken, newPassword = "Strong#12345" });
+        strongActivate.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var loginClient = factory.CreateClient();
+        var login = await loginClient.PostAsJsonAsync($"{Base}/auth/login",
+            new { email, password = "Strong#12345" });
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Invite_keeps_user_when_invitation_delivery_fails()
+    {
+        await using var failingApp = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+                services.Replace(ServiceDescriptor.Scoped<IInvitationNotifier, ThrowingInvitationNotifier>())));
+
+        var client = failingApp.CreateClient();
+        var token = await IdentityApiTestData.LoginAsAdminAsync(client, factory);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var email = $"failed-delivery-{Guid.NewGuid():N}@nags.sa";
+        var invite = await client.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "Failed Delivery User" });
+
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        invited.ShouldNotBeNull();
+        invited!.DeliveryStatus.ShouldBe("Failed");
+
+        var detail = await client.GetFromJsonAsync<UserDetailItem>($"{Base}/users/{invited.Id}");
+        detail!.Id.ShouldBe(invited.Id);
+    }
+
+    [Fact]
+    public async Task Failed_resend_invitation_keeps_existing_activation_token_valid()
+    {
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+        var email = $"resend-failed-{Guid.NewGuid():N}@nags.sa";
+
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "Resend Failure User" });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+
+        var originalToken = await factory.GetInvitationTokenAsync(email);
+        originalToken.ShouldNotBeNull();
+
+        await using var failingApp = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+                services.Replace(ServiceDescriptor.Scoped<IInvitationNotifier, ThrowingInvitationNotifier>())));
+
+        var failingClient = failingApp.CreateClient();
+        var adminToken = await IdentityApiTestData.LoginAsAdminAsync(failingClient, factory);
+        failingClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+
+        var resend = await failingClient.PostAsync($"{Base}/users/{invited!.Id}/resend-invitation", content: null);
+        resend.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+
+        var activate = await admin.PostAsJsonAsync($"{Base}/auth/activate",
+            new { email, invitationToken = originalToken, newPassword = "OriginalStillWorks#12345" });
+        activate.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
     public async Task Seeded_demo_data_supports_multi_page_users_and_roles_lists()
     {
         var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
@@ -258,5 +342,16 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         var user = await db.Users.FirstAsync(u => u.Id == userId);
         user.ReleaseLoginEmail(DateTimeOffset.UtcNow);
         await db.SaveChangesAsync();
+    }
+
+    private sealed class ThrowingInvitationNotifier : IInvitationNotifier
+    {
+        public Task SendInvitationAsync(
+            string email,
+            string displayName,
+            Guid userId,
+            string invitationToken,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Synthetic invitation delivery failure.");
     }
 }

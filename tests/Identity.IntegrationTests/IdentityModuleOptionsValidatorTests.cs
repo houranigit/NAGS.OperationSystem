@@ -41,6 +41,18 @@ public sealed class IdentityModuleOptionsValidatorTests
     }
 
     [Fact]
+    public void Explicit_bootstrap_password_must_satisfy_identity_password_policy()
+    {
+        var validator = CreateValidator(emailEnabled: true, environmentName: Environments.Production);
+
+        var result = validator.Validate(null, ValidOptions(adminPassword: "password123"));
+
+        result.Failed.ShouldBeTrue();
+        result.FailureMessage.ShouldContain("Identity:Admin:Password must contain at least one uppercase letter.");
+        result.FailureMessage.ShouldContain("Identity:Admin:Password must contain at least one symbol.");
+    }
+
+    [Fact]
     public void Auth_link_bases_must_be_absolute_http_urls()
     {
         var validator = CreateValidator(emailEnabled: true, environmentName: Environments.Production);

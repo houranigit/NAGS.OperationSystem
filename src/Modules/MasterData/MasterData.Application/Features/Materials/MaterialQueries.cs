@@ -16,8 +16,7 @@ public sealed class GetMaterialsQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<MaterialListItemDto>>> Handle(GetMaterialsQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.Materials.AsNoTracking();
 
         if (request.IsActive is { } active)
@@ -30,25 +29,28 @@ public sealed class GetMaterialsQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<MaterialListItemDto>(total);
+
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(m => new MaterialListItemDto(m.Id, m.Name, m.Description, m.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<MaterialListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<MaterialListItemDto>(items, total);
     }
 
     private static IQueryable<Material> ApplySort(IQueryable<Material> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(m => m.Name);
+            return query.OrderBy(m => m.Name).ThenBy(m => m.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(m => m.Name) : query.OrderBy(m => m.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(m => m.IsActive) : query.OrderBy(m => m.IsActive),
-            _ => query.OrderBy(m => m.Name)
+            "name" => spec.Descending ? query.OrderByDescending(m => m.Name).ThenByDescending(m => m.Id) : query.OrderBy(m => m.Name).ThenBy(m => m.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(m => m.IsActive).ThenByDescending(m => m.Id) : query.OrderBy(m => m.IsActive).ThenBy(m => m.Id),
+            _ => query.OrderBy(m => m.Name).ThenBy(m => m.Id)
         };
     }
 }
@@ -80,6 +82,7 @@ public sealed class GetActiveMaterialOptionsQueryHandler(IMasterDataDbContext db
         IReadOnlyList<MaterialOptionDto> options = await db.Materials.AsNoTracking()
             .Where(m => m.IsActive)
             .OrderBy(m => m.Name)
+            .ThenBy(m => m.Id)
             .Select(m => new MaterialOptionDto(m.Id, m.Name))
             .ToListAsync(cancellationToken);
 

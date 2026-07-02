@@ -40,9 +40,35 @@ public sealed record PortalUserDeactivated : IntegrationEvent
 {
     public required Guid ExternalReferenceId { get; init; }
     public required Guid UserId { get; init; }
+    public required UserType UserType { get; init; }
 
     /// <summary>True when the source record was permanently detached and the MasterData link should be cleared.</summary>
     public bool ReleaseEmail { get; init; }
+}
+
+/// <summary>
+/// Raised after a linked portal user verifies a requested login-email change, allowing the owning
+/// module to clear its pending-email marker.
+/// </summary>
+public sealed record PortalUserEmailChangeConfirmed : IntegrationEvent
+{
+    public required Guid ExternalReferenceId { get; init; }
+    public required Guid UserId { get; init; }
+    public required UserType UserType { get; init; }
+    public required string Email { get; init; }
+}
+
+/// <summary>
+/// Raised when Identity cannot start a requested linked login-email change, allowing the owning
+/// module to clear the pending marker and show a retryable failure reason.
+/// </summary>
+public sealed record PortalUserEmailChangeFailed : IntegrationEvent
+{
+    public required Guid ExternalReferenceId { get; init; }
+    public required Guid UserId { get; init; }
+    public required UserType UserType { get; init; }
+    public required string Email { get; init; }
+    public required string Reason { get; init; }
 }
 
 /// <summary>

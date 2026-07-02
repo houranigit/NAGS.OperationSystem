@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
@@ -27,7 +28,11 @@ public sealed class RemoveCustomerContactCommandValidator : AbstractValidator<Re
     }
 }
 
-public sealed class RemoveCustomerContactCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class RemoveCustomerContactCommandHandler(
+    IMasterDataDbContext db,
+    IMasterDataScope scope,
+    IUserContext userContext,
+    TimeProvider timeProvider)
     : ICommandHandler<RemoveCustomerContactCommand>
 {
     public async Task<Result> Handle(RemoveCustomerContactCommand request, CancellationToken cancellationToken)
@@ -35,6 +40,9 @@ public sealed class RemoveCustomerContactCommandHandler(IMasterDataDbContext db,
         var scopeCheck = await scope.CheckCustomerAsync(request.CustomerId, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
+
+        if (request.ReleaseEmail && !PortalAccessAuthorization.CanGrantCustomerContactAccess(userContext))
+            return PortalAccessAuthorization.ReleaseEmailForbidden();
 
         var customer = await db.Customers
             .Include(c => c.Contacts)

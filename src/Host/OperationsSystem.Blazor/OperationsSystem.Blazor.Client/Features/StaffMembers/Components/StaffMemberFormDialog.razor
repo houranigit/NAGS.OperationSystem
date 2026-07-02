@@ -157,7 +157,7 @@
                 }
             </div>
         }
-        @if (StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess))
+        @if (StaffMemberId is null && Auth.CanGrantStaffPortalAccess)
         {
             <div class="sf-section-heading"><RadzenIcon Icon="vpn_key" /><h3>@UiStrings.PortalAccess.GrantTitle</h3></div>
             <div class="sf-portal-row"><RadzenSwitch @bind-Value="grantPortal" Name="grantPortal" /><div><RadzenLabel Text="@UiStrings.PortalAccess.GrantOnCreate" Component="grantPortal" /><p>@UiStrings.PortalAccess.GrantOnCreateHint</p></div></div>
@@ -213,7 +213,7 @@
             var stationsTask = MasterData.GetStationOptionsAsync();
             var manpowerTypesTask = MasterData.GetManpowerTypeOptionsAsync();
             var licensesTask = MasterData.GetLicenseOptionsAsync();
-            var portalRolesTask = StaffMemberId is null && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess)
+            var portalRolesTask = StaffMemberId is null && Auth.CanGrantStaffPortalAccess
                 ? Identity.GetRoleOptionsAsync("StationStaff")
                 : Task.FromResult<IReadOnlyList<RoleOption>>([]);
             Task<StaffMemberDetail?> detailTask = StaffMemberId is { } id

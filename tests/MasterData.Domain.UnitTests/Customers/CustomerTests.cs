@@ -101,6 +101,25 @@ public sealed class CustomerTests
     }
 
     [Fact]
+    public void Contact_portal_suspension_is_idempotent()
+    {
+        var customer = NewCustomer();
+        var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        contact.RequestPortalAccess(correlationId, Now);
+        contact.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        contact.SuspendPortal(Now.AddMinutes(2));
+        var updatedAt = contact.UpdatedAtUtc;
+
+        contact.SuspendPortal(Now.AddMinutes(3));
+
+        contact.PortalState.ShouldBe(PortalAccessState.Suspended);
+        contact.UpdatedAtUtc.ShouldBe(updatedAt);
+    }
+
+    [Fact]
     public void Contact_portal_activation_marks_same_linked_user_active()
     {
         var customer = NewCustomer();
@@ -136,6 +155,36 @@ public sealed class CustomerTests
     }
 
     [Fact]
+    public void Contact_login_email_change_pending_state_confirms_or_fails_for_same_linked_user()
+    {
+        var customer = NewCustomer();
+        var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        contact.RequestPortalAccess(correlationId, Now);
+        contact.LinkUser(userId, correlationId, Now.AddMinutes(1));
+
+        contact.MarkLoginEmailChangePending("new@example.com", Now.AddMinutes(2));
+        contact.PendingLoginEmail.ShouldBe("new@example.com");
+        contact.LoginEmailChangeFailureReason.ShouldBeNull();
+
+        contact.ConfirmLoginEmailChange(Guid.NewGuid(), "new@example.com", Now.AddMinutes(3));
+        contact.PendingLoginEmail.ShouldBe("new@example.com");
+
+        contact.ConfirmLoginEmailChange(userId, "new@example.com", Now.AddMinutes(4));
+        contact.PendingLoginEmail.ShouldBeNull();
+        contact.LoginEmailChangeFailureReason.ShouldBeNull();
+
+        contact.MarkLoginEmailChangePending("blocked@example.com", Now.AddMinutes(5));
+        contact.MarkLoginEmailChangeFailed(userId, "blocked@example.com", "duplicate", Now.AddMinutes(6));
+
+        contact.PendingLoginEmail.ShouldBeNull();
+        contact.LoginEmailChangeFailureReason.ShouldBe("duplicate");
+        contact.PortalState.ShouldBe(PortalAccessState.Invited);
+    }
+
+    [Fact]
     public void Contact_portal_activation_ignores_wrong_or_removed_link()
     {
         var customer = NewCustomer();
@@ -160,14 +209,19 @@ public sealed class CustomerTests
         var customer = NewCustomer();
         var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
         var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
         contact.RequestPortalAccess(correlationId, Now);
+        contact.LinkUser(userId, correlationId, Now.AddMinutes(1));
         contact.MarkPortalFailed(correlationId, "duplicate email", Now.AddMinutes(1));
+        contact.MarkLoginEmailChangePending("new@example.com", Now.AddMinutes(1));
 
         var removed = customer.RemoveContact(contact.Id, releaseLink: true, Now.AddMinutes(2));
 
         removed.IsSuccess.ShouldBeTrue();
         removed.Value.IsActive.ShouldBeFalse();
         removed.Value.LinkedUserId.ShouldBeNull();
+        removed.Value.PendingLoginEmail.ShouldBeNull();
+        removed.Value.LoginEmailChangeFailureReason.ShouldBeNull();
         removed.Value.PortalState.ShouldBe(PortalAccessState.None);
         removed.Value.PortalCorrelationId.ShouldBeNull();
         removed.Value.PortalFailureReason.ShouldBeNull();

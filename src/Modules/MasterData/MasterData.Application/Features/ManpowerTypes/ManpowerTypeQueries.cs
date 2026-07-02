@@ -18,8 +18,7 @@ public sealed class GetManpowerTypesQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<ManpowerTypeListItemDto>>> Handle(GetManpowerTypesQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
 
         var query = db.ManpowerTypes.AsNoTracking();
 
@@ -33,26 +32,28 @@ public sealed class GetManpowerTypesQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<ManpowerTypeListItemDto>(total);
 
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(m => new ManpowerTypeListItemDto(m.Id, m.Name, m.Description, m.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<ManpowerTypeListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<ManpowerTypeListItemDto>(items, total);
     }
 
     private static IQueryable<ManpowerType> ApplySort(IQueryable<ManpowerType> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(m => m.Name);
+            return query.OrderBy(m => m.Name).ThenBy(m => m.Id);
 
         return spec.Field switch
         {
-            "name" => spec.Descending ? query.OrderByDescending(m => m.Name) : query.OrderBy(m => m.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(m => m.IsActive) : query.OrderBy(m => m.IsActive),
-            _ => query.OrderBy(m => m.Name)
+            "name" => spec.Descending ? query.OrderByDescending(m => m.Name).ThenByDescending(m => m.Id) : query.OrderBy(m => m.Name).ThenBy(m => m.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(m => m.IsActive).ThenByDescending(m => m.Id) : query.OrderBy(m => m.IsActive).ThenBy(m => m.Id),
+            _ => query.OrderBy(m => m.Name).ThenBy(m => m.Id)
         };
     }
 }
@@ -88,6 +89,7 @@ public sealed class GetActiveManpowerTypeOptionsQueryHandler(IMasterDataDbContex
         IReadOnlyList<ManpowerTypeOptionDto> options = await db.ManpowerTypes.AsNoTracking()
             .Where(m => m.IsActive)
             .OrderBy(m => m.Name)
+            .ThenBy(m => m.Id)
             .Select(m => new ManpowerTypeOptionDto(m.Id, m.Name))
             .ToListAsync(cancellationToken);
 

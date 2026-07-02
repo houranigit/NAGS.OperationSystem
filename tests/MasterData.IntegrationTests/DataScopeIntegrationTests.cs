@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using BuildingBlocks.Contracts.Authorization;
+using Identity.Domain.Roles;
 using Identity.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -97,6 +99,59 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task Station_staff_cannot_deactivate_a_cross_scope_station_even_with_lifecycle_permission()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var (stationA, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
+        var stationB = await Helpers.CreateStationAsync(admin);
+        var staffInA = await Helpers.CreateStaffAsync(admin, stationA, manpower);
+
+        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+            admin,
+            staffInA.Id,
+            staffInA.Email,
+            "masterdata.stations.deactivate");
+
+        var otherStation = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
+        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/stations/{stationB}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", otherStation!.RowVersion);
+
+        (await scoped.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var after = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
+        after!.IsActive.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Station_staff_cannot_activate_a_cross_scope_station_even_with_lifecycle_permission()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var (stationA, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
+        var stationB = await Helpers.CreateStationAsync(admin);
+        var staffInA = await Helpers.CreateStaffAsync(admin, stationA, manpower);
+
+        var stationBDetail = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
+        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/stations/{stationB}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", stationBDetail!.RowVersion);
+        (await admin.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+            admin,
+            staffInA.Id,
+            staffInA.Email,
+            "masterdata.stations.activate");
+
+        var inactiveStation = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
+        var activate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/stations/{stationB}/activate");
+        activate.Headers.TryAddWithoutValidation("If-Match", inactiveStation!.RowVersion);
+
+        (await scoped.SendAsync(activate)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var after = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
+        after!.IsActive.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Customer_contact_only_sees_and_touches_its_own_customer()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -143,6 +198,24 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task Access_fails_closed_when_the_parent_customer_is_deactivated()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var customer = await Helpers.CreateCustomerWithContactAsync(admin);
+
+        var scoped = await ProvisionScopedContactClientAsync(admin, customer.CustomerId, customer.ContactId, customer.Email);
+        (await scoped.GetAsync($"{Base}/customers/{customer.CustomerId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var detail = await admin.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customer.CustomerId}");
+        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{customer.CustomerId}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", detail!.RowVersion);
+        (await admin.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        (await scoped.GetAsync($"{Base}/customers/{customer.CustomerId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await scoped.GetAsync($"{Base}/customers?pageSize=100")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task Customer_contact_can_load_country_options_for_customer_edit_form()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -155,7 +228,23 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
         options!.ShouldNotBeEmpty();
     }
 
-    private sealed record StationDetail(Guid Id, string RowVersion);
+    [Fact]
+    public async Task Customer_contact_cannot_release_portal_email_when_removing_contact()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var customer = await Helpers.CreateCustomerWithContactAsync(admin);
+        var scoped = await ProvisionScopedContactClientAsync(admin, customer.CustomerId, customer.ContactId, customer.Email);
+
+        var ownCustomer = await scoped.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customer.CustomerId}");
+        var remove = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{Base}/customers/{customer.CustomerId}/contacts/{customer.ContactId}/remove?releaseEmail=true");
+        remove.Headers.TryAddWithoutValidation("If-Match", ownCustomer!.RowVersion);
+
+        (await scoped.SendAsync(remove)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    private sealed record StationDetail(Guid Id, bool IsActive, string RowVersion);
 
     private async Task<HttpClient> ProvisionScopedStaffClientAsync(HttpClient admin, Guid staffId, string email)
     {
@@ -163,6 +252,31 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
             "masterdata.stations.view", "masterdata.stations.update",
             "masterdata.staff-members.view", "masterdata.staff-members.update");
 
+        return await ProvisionScopedStaffClientAsync(admin, staffId, email, roleId);
+    }
+
+    private async Task<HttpClient> ProvisionScopedStaffClientWithSeededRoleAsync(HttpClient admin, Guid staffId, string email, params string[] permissions)
+    {
+        var roleResult = Role.Create(
+            $"Legacy Scoped Role {Guid.NewGuid():N}",
+            description: null,
+            permissions,
+            UserType.StationStaff,
+            DateTimeOffset.UtcNow);
+        roleResult.IsSuccess.ShouldBeTrue();
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            db.Roles.Add(roleResult.Value);
+            await db.SaveChangesAsync();
+        }
+
+        return await ProvisionScopedStaffClientAsync(admin, staffId, email, roleResult.Value.Id);
+    }
+
+    private async Task<HttpClient> ProvisionScopedStaffClientAsync(HttpClient admin, Guid staffId, string email, Guid roleId)
+    {
         var staff = await admin.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
         var grant = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{staffId}/grant-access")
         {

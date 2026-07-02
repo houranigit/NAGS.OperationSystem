@@ -23,8 +23,7 @@ public sealed class GetStationsQueryHandler(IMasterDataDbContext db, IMasterData
         if (resolved.IsFailure)
             return resolved.Error;
 
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
 
         var query = db.Stations.AsNoTracking();
 
@@ -32,7 +31,7 @@ public sealed class GetStationsQueryHandler(IMasterDataDbContext db, IMasterData
         if (!resolved.Value.IsAdministrator)
         {
             if (resolved.Value.StationId is not { } scopedStation)
-                return new PagedResult<StationListItemDto>([], page, pageSize, 0);
+                return paging.Empty<StationListItemDto>();
             query = query.Where(s => s.Id == scopedStation);
         }
 
@@ -57,31 +56,33 @@ public sealed class GetStationsQueryHandler(IMasterDataDbContext db, IMasterData
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<StationListItemDto>(total);
 
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(s => new StationListItemDto(
                 s.Id, s.IataCode, s.IcaoCode, s.Name, s.City, s.CountryId,
                 db.Countries.Where(c => c.Id == s.CountryId).Select(c => c.Name).FirstOrDefault() ?? string.Empty,
                 s.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<StationListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<StationListItemDto>(items, total);
     }
 
     private static IQueryable<Station> ApplySort(IQueryable<Station> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(s => s.IataCode);
+            return query.OrderBy(s => s.IataCode).ThenBy(s => s.Id);
 
         return spec.Field switch
         {
-            "iatacode" => spec.Descending ? query.OrderByDescending(s => s.IataCode) : query.OrderBy(s => s.IataCode),
-            "name" => spec.Descending ? query.OrderByDescending(s => s.Name) : query.OrderBy(s => s.Name),
-            "city" => spec.Descending ? query.OrderByDescending(s => s.City) : query.OrderBy(s => s.City),
-            "isactive" => spec.Descending ? query.OrderByDescending(s => s.IsActive) : query.OrderBy(s => s.IsActive),
-            _ => query.OrderBy(s => s.IataCode)
+            "iatacode" => spec.Descending ? query.OrderByDescending(s => s.IataCode).ThenByDescending(s => s.Id) : query.OrderBy(s => s.IataCode).ThenBy(s => s.Id),
+            "name" => spec.Descending ? query.OrderByDescending(s => s.Name).ThenByDescending(s => s.Id) : query.OrderBy(s => s.Name).ThenBy(s => s.Id),
+            "city" => spec.Descending ? query.OrderByDescending(s => s.City).ThenByDescending(s => s.Id) : query.OrderBy(s => s.City).ThenBy(s => s.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(s => s.IsActive).ThenByDescending(s => s.Id) : query.OrderBy(s => s.IsActive).ThenBy(s => s.Id),
+            _ => query.OrderBy(s => s.IataCode).ThenBy(s => s.Id)
         };
     }
 }
@@ -139,6 +140,7 @@ public sealed class GetActiveStationOptionsQueryHandler(IMasterDataDbContext db,
 
         IReadOnlyList<StationOptionDto> options = await query
             .OrderBy(s => s.IataCode)
+            .ThenBy(s => s.Id)
             .Select(s => new StationOptionDto(s.Id, s.IataCode, s.Name))
             .ToListAsync(cancellationToken);
 

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using BuildingBlocks.Contracts.Authorization;
 using Identity.Domain.Users;
 using Identity.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,8 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         string FullName,
         string EmployeeId,
         string Email,
+        string? PendingLoginEmail,
+        string? LoginEmailChangeFailureReason,
         Guid StationId,
         Guid ManpowerTypeId,
         bool IsActive,
@@ -34,6 +37,8 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         Guid Id,
         string Name,
         string Email,
+        string? PendingLoginEmail,
+        string? LoginEmailChangeFailureReason,
         Guid? LinkedUserId,
         string PortalState,
         string? PortalFailureReason,
@@ -354,6 +359,42 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
     }
 
     [Fact]
+    public async Task Portal_access_idempotency_is_scoped_by_user_type_and_external_reference()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var stationRoleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
+        var contactRoleId = await CreateRoleAsync(client, "CustomerContact", "masterdata.customers.view");
+        var contactEmail = $"typed-ref-{Guid.NewGuid():N}@example.com";
+        var (customerId, contactId) = await CreateCustomerWithContactAsync(client, contactEmail);
+
+        var stationUserId = await SeedInvitedUserAsync(
+            UserType.StationStaff,
+            contactId,
+            stationRoleId,
+            $"station-collision-{Guid.NewGuid():N}@example.com");
+
+        (await GrantContactAccessAsync(client, customerId, contactId, contactRoleId))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var stationUser = await FindUserByIdAsync(stationUserId);
+        stationUser.ShouldNotBeNull();
+        stationUser!.UserType.ShouldBe(UserType.StationStaff);
+
+        var contactUser = await FindUserByExternalRefAsync(contactId, UserType.CustomerContact);
+        contactUser.ShouldNotBeNull();
+        contactUser!.Id.ShouldNotBe(stationUserId);
+        contactUser.Email.Value.ShouldBe(contactEmail);
+        contactUser.RoleId.ShouldBe(contactRoleId);
+
+        var customer = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var contact = customer!.Contacts.Single(c => c.Id == contactId);
+        contact.LinkedUserId.ShouldBe(contactUser.Id);
+
+        (await CountUsersByExternalRefAsync(contactId)).ShouldBe(2);
+    }
+
+    [Fact]
     public async Task Grant_access_with_incompatible_role_does_not_provision_a_user()
     {
         var client = await factory.CreateAuthenticatedAdminClientAsync();
@@ -427,6 +468,11 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
+        var pendingStaff = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        pendingStaff!.Email.ShouldBe(newEmail);
+        pendingStaff.PendingLoginEmail.ShouldBe(newEmail);
+        pendingStaff.LoginEmailChangeFailureReason.ShouldBeNull();
+
         // The linked user keeps the old login email until reverification, and a hashed (never
         // plaintext) verification token is recorded.
         var pending = await FindUserByExternalRefAsync(staffId);
@@ -441,10 +487,59 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var confirm = await client.PostAsJsonAsync($"{IdentityBase}/auth/confirm-email-change",
             new { token = verificationToken, newEmail });
         confirm.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
 
         var confirmed = await FindUserByExternalRefAsync(staffId);
         confirmed!.Email.Value.ShouldBe(newEmail);
         confirmed.PendingEmail.ShouldBeNull();
+
+        var confirmedStaff = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        confirmedStaff!.PendingLoginEmail.ShouldBeNull();
+        confirmedStaff.LoginEmailChangeFailureReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Linked_staff_email_change_failure_is_reflected_on_masterdata()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
+        var (staffId, originalEmail) = await CreateStaffAsync(client);
+        var duplicateEmail = $"duplicate-{Guid.NewGuid():N}@example.com";
+        await SeedInvitedUserAsync(UserType.StationStaff, Guid.NewGuid(), roleId, duplicateEmail);
+
+        (await GrantStaffAccessAsync(client, staffId, roleId))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var staff = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/staff-members/{staffId}")
+        {
+            Content = JsonContent.Create(new
+            {
+                fullName = staff!.FullName,
+                employeeId = staff.EmployeeId,
+                email = duplicateEmail,
+                stationId = staff.StationId,
+                manpowerTypeId = staff.ManpowerTypeId,
+                employmentContract = (object?)null,
+                workingDays = (string[]?)null,
+                licenses = Array.Empty<object>()
+            })
+        };
+        update.Headers.TryAddWithoutValidation("If-Match", staff.RowVersion);
+        (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var failed = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        failed!.Email.ShouldBe(duplicateEmail);
+        failed.PendingLoginEmail.ShouldBeNull();
+        failed.LoginEmailChangeFailureReason.ShouldNotBeNull();
+        failed.LoginEmailChangeFailureReason!.ShouldContain("already used");
+
+        var linkedUser = await FindUserByExternalRefAsync(staffId);
+        linkedUser!.Email.Value.ShouldBe(originalEmail);
+        linkedUser.PendingEmail.ShouldBeNull();
+        linkedUser.EmailChangeToken.ShouldBeNull();
     }
 
     [Fact]
@@ -476,6 +571,12 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
+        var pendingCustomer = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var pendingContact = pendingCustomer!.Contacts.Single(c => c.Id == contactId);
+        pendingContact.Email.ShouldBe(newEmail);
+        pendingContact.PendingLoginEmail.ShouldBe(newEmail);
+        pendingContact.LoginEmailChangeFailureReason.ShouldBeNull();
+
         var pending = await FindUserByExternalRefAsync(contactId);
         pending!.Email.Value.ShouldBe(originalEmail);
         pending.PendingEmail.ShouldBe(newEmail);
@@ -487,10 +588,16 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var confirm = await client.PostAsJsonAsync($"{IdentityBase}/auth/confirm-email-change",
             new { token = verificationToken, newEmail });
         confirm.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
 
         var confirmed = await FindUserByExternalRefAsync(contactId);
         confirmed!.Email.Value.ShouldBe(newEmail);
         confirmed.PendingEmail.ShouldBeNull();
+
+        var confirmedCustomer = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var confirmedContact = confirmedCustomer!.Contacts.Single(c => c.Id == contactId);
+        confirmedContact.PendingLoginEmail.ShouldBeNull();
+        confirmedContact.LoginEmailChangeFailureReason.ShouldBeNull();
     }
 
     [Fact]
@@ -561,6 +668,14 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.ExternalReferenceId == externalRef);
     }
 
+    private async Task<User?> FindUserByExternalRefAsync(Guid externalRef, UserType userType)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        return await db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserType == userType && u.ExternalReferenceId == externalRef);
+    }
+
     private async Task<int> CountUsersByExternalRefAsync(Guid externalRef)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -587,6 +702,29 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
         return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
+    }
+
+    private async Task<Guid> SeedInvitedUserAsync(UserType userType, Guid externalRef, Guid roleId, string email)
+    {
+        var emailResult = Email.Create(email);
+        emailResult.IsSuccess.ShouldBeTrue();
+
+        var invited = User.Invite(
+            emailResult.Value,
+            $"Seeded {userType}",
+            roleId,
+            Guid.NewGuid().ToString("N"),
+            DateTimeOffset.UtcNow.AddHours(24),
+            DateTimeOffset.UtcNow,
+            userType,
+            externalRef);
+        invited.IsSuccess.ShouldBeTrue();
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        db.Users.Add(invited.Value);
+        await db.SaveChangesAsync();
+        return invited.Value.Id;
     }
 
     // --- Setup helpers ----------------------------------------------------

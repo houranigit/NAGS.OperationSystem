@@ -37,7 +37,9 @@ public sealed class PortalAccessRequestedHandler(
         // Idempotency: a live account already exists for this MasterData record. Re-announce the link
         // in case the original reply was lost, then stop. Never create a second user for one record.
         var existing = await db.Users.FirstOrDefaultAsync(
-            u => u.ExternalReferenceId == integrationEvent.ExternalReferenceId && !u.LoginEmailReleased,
+            u => u.UserType == integrationEvent.UserType &&
+                u.ExternalReferenceId == integrationEvent.ExternalReferenceId &&
+                !u.LoginEmailReleased,
             cancellationToken);
         if (existing is not null)
         {

@@ -244,10 +244,18 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("LinkedUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("LoginEmailChangeFailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("PendingLoginEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(30)
@@ -269,6 +277,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LinkedUserId")
+                        .IsUnique()
+                        .HasFilter("[LinkedUserId] IS NOT NULL");
 
                     b.HasIndex("CustomerId", "Email")
                         .IsUnique()
@@ -547,8 +559,16 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("LinkedUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("LoginEmailChangeFailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<Guid>("ManpowerTypeId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PendingLoginEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<Guid?>("PortalCorrelationId")
                         .HasColumnType("uniqueidentifier");
@@ -584,6 +604,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EmployeeId")
                         .IsUnique();
+
+                    b.HasIndex("LinkedUserId")
+                        .IsUnique()
+                        .HasFilter("[LinkedUserId] IS NOT NULL");
 
                     b.HasIndex("ManpowerTypeId");
 

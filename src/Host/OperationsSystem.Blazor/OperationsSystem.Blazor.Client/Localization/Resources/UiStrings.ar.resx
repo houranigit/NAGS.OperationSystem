@@ -618,6 +618,11 @@
   <data name="PortalAccess.Explanation" xml:space="preserve"><value>سيتم إنشاء حساب بوابة مدعو لهذا السجل باستخدام الدور المحدد.</value></data>
   <data name="PortalAccess.GrantOnCreate" xml:space="preserve"><value>منح الوصول إلى البوابة عند الإنشاء</value></data>
   <data name="PortalAccess.GrantOnCreateHint" xml:space="preserve"><value>قم بإرسال دعوة البوابة بمجرد إنشاء هذا السجل.</value></data>
+  <data name="PortalAccess.PendingLoginEmail" xml:space="preserve"><value>بريد تسجيل الدخول قيد الانتظار</value></data>
+  <data name="PortalAccess.PendingLoginEmailShort" xml:space="preserve"><value>تأكيد تسجيل الدخول قيد الانتظار</value></data>
+  <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>بانتظار تأكيد {0} قبل تغيير بريد تسجيل الدخول المرتبط.</value></data>
+  <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
+  <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
   <data name="Errors.Forbidden" xml:space="preserve"><value>ليس لديك الإذن بمشاهدة هذا.</value></data>
   <data name="Errors.NotFound" xml:space="preserve"><value>لم يتم العثور على العنصر المطلوب.</value></data>
   <data name="Errors.LoadFailed" xml:space="preserve"><value>لم نتمكن من تحميل هذا. يرجى المحاولة مرة أخرى.</value></data>

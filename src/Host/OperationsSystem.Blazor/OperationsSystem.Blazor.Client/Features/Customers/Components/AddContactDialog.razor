@@ -32,7 +32,7 @@
             </ChildContent>
         </RadzenFormField>
 
-        @if (!IsEdit && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess))
+        @if (!IsEdit && Auth.CanGrantCustomerContactPortalAccess)
         {
             <div class="acd-section"><RadzenIcon Icon="vpn_key" /><h4>@UiStrings.PortalAccess.GrantTitle</h4></div>
             <RadzenStack Gap="0.5rem">
@@ -110,7 +110,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (!IsEdit && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess))
+        if (!IsEdit && Auth.CanGrantCustomerContactPortalAccess)
         {
             try
             {

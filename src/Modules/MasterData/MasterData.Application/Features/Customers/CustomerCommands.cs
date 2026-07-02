@@ -7,7 +7,6 @@ using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Contracts;
-using MasterData.Domain.Authorization;
 using MasterData.Domain.Customers;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,9 +49,9 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserC
     public async Task<Result<Guid>> Handle(CreateCustomerCommand request, CancellationToken cancellationToken)
     {
         if (request.Contacts.Any(c => c.PortalAccessRoleId is { }) &&
-            !userContext.HasPermission(MasterDataPermissions.CustomerContacts.GrantAccess))
+            !PortalAccessAuthorization.CanGrantCustomerContactAccess(userContext))
         {
-            return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
+            return PortalAccessAuthorization.GrantForbidden();
         }
 
         var countryCheck = await CustomerGuards.EnsureActiveCountryAsync(db, request.CountryId, cancellationToken);
@@ -237,8 +236,8 @@ public sealed class AddCustomerContactCommandHandler(
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
-        if (request.PortalAccessRoleId is { } && !userContext.HasPermission(MasterDataPermissions.CustomerContacts.GrantAccess))
-            return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
+        if (request.PortalAccessRoleId is { } && !PortalAccessAuthorization.CanGrantCustomerContactAccess(userContext))
+            return PortalAccessAuthorization.GrantForbidden();
 
         var customer = await db.Customers
             .Include(c => c.Contacts)
@@ -320,7 +319,8 @@ public sealed class UpdateCustomerContactCommandHandler(IMasterDataDbContext db,
         var previousEmail = contact?.Email;
         var linkedUserId = contact?.LinkedUserId;
 
-        var result = customer.UpdateContact(request.ContactId, request.Name, request.JobTitle, request.Email, request.Phone, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var result = customer.UpdateContact(request.ContactId, request.Name, request.JobTitle, request.Email, request.Phone, now);
         if (result.IsFailure)
             return result.Error;
 
@@ -331,6 +331,7 @@ public sealed class UpdateCustomerContactCommandHandler(IMasterDataDbContext db,
             && contact is not null
             && !string.Equals(previousEmail, contact.Email, StringComparison.Ordinal))
         {
+            contact.MarkLoginEmailChangePending(contact.Email, now);
             PortalAccess.PortalLifecycle.EnqueueEmailChange(db, contact.Id, userId, contact.Email);
         }
 

@@ -18,8 +18,7 @@ public sealed class GetLicensesQueryHandler(IMasterDataDbContext db)
 {
     public async Task<Result<PagedResult<LicenseListItemDto>>> Handle(GetLicensesQuery request, CancellationToken cancellationToken)
     {
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
 
         var query = db.Licenses.AsNoTracking();
 
@@ -34,27 +33,29 @@ public sealed class GetLicensesQueryHandler(IMasterDataDbContext db)
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<LicenseListItemDto>(total);
 
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(l => new LicenseListItemDto(l.Id, l.Code, l.Name, l.Description, l.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<LicenseListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<LicenseListItemDto>(items, total);
     }
 
     private static IQueryable<License> ApplySort(IQueryable<License> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(l => l.Code);
+            return query.OrderBy(l => l.Code).ThenBy(l => l.Id);
 
         return spec.Field switch
         {
-            "code" => spec.Descending ? query.OrderByDescending(l => l.Code) : query.OrderBy(l => l.Code),
-            "name" => spec.Descending ? query.OrderByDescending(l => l.Name) : query.OrderBy(l => l.Name),
-            "isactive" => spec.Descending ? query.OrderByDescending(l => l.IsActive) : query.OrderBy(l => l.IsActive),
-            _ => query.OrderBy(l => l.Code)
+            "code" => spec.Descending ? query.OrderByDescending(l => l.Code).ThenByDescending(l => l.Id) : query.OrderBy(l => l.Code).ThenBy(l => l.Id),
+            "name" => spec.Descending ? query.OrderByDescending(l => l.Name).ThenByDescending(l => l.Id) : query.OrderBy(l => l.Name).ThenBy(l => l.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(l => l.IsActive).ThenByDescending(l => l.Id) : query.OrderBy(l => l.IsActive).ThenBy(l => l.Id),
+            _ => query.OrderBy(l => l.Code).ThenBy(l => l.Id)
         };
     }
 }
@@ -90,6 +91,7 @@ public sealed class GetActiveLicenseOptionsQueryHandler(IMasterDataDbContext db)
         IReadOnlyList<LicenseOptionDto> options = await db.Licenses.AsNoTracking()
             .Where(l => l.IsActive)
             .OrderBy(l => l.Code)
+            .ThenBy(l => l.Id)
             .Select(l => new LicenseOptionDto(l.Id, l.Code, l.Name))
             .ToListAsync(cancellationToken);
 

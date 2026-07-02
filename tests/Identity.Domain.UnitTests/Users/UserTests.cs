@@ -198,6 +198,22 @@ public class UserTests
     }
 
     [Fact]
+    public void ClearPendingEmailChange_removes_stale_email_change_token_without_changing_login_email()
+    {
+        var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
+        user.RequestEmailChange(AnEmail("new@nags.sa"), "EMAIL-HASH", Now.AddHours(2), Now.AddMinutes(1))
+            .IsSuccess.ShouldBeTrue();
+
+        user.ClearPendingEmailChange(Now.AddMinutes(2));
+
+        user.Email.Value.ShouldBe("user@nags.sa");
+        user.PendingEmail.ShouldBeNull();
+        user.EmailChangeToken.ShouldBeNull();
+        user.EmailChangeExpiresAtUtc.ShouldBeNull();
+        user.UpdatedAtUtc.ShouldBe(Now.AddMinutes(2));
+    }
+
+    [Fact]
     public void Suspend_blocks_sign_in_and_rotates_security_stamp()
     {
         var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;

@@ -87,7 +87,7 @@ var dispatchOutbox = builder.Configuration.GetValue<bool?>("Messaging:OutboxDisp
 builder.Services.AddIntegrationMessaging(dispatchOutbox: dispatchOutbox);
 builder.Services.AddLocalFileStorage(builder.Configuration);
 builder.Services.AddAuditCapture();
-builder.Services.AddDurableEmail();
+builder.Services.AddDurableEmail(builder.Configuration, builder.Environment);
 
 // Modules. Audit is registered first so its event consumer is wired before producers run.
 builder.Services.AddAuditModule(builder.Configuration);

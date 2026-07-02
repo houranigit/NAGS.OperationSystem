@@ -1,7 +1,9 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,6 +50,17 @@ public sealed class ConfirmEmailChangeCommandHandler(IIdentityDbContext db, ITok
         var result = user.ConfirmEmailChange(emailResult.Value, now);
         if (result.IsFailure)
             return result.Error;
+
+        if (user.ExternalReferenceId is { } externalReferenceId && user.UserType != UserType.SystemAdministrator)
+        {
+            db.Enqueue(new PortalUserEmailChangeConfirmed
+            {
+                ExternalReferenceId = externalReferenceId,
+                UserId = user.Id,
+                UserType = user.UserType,
+                Email = emailValue
+            });
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();

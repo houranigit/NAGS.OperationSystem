@@ -25,8 +25,7 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
         if (resolved.IsFailure)
             return resolved.Error;
 
-        var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var paging = PageRequest.From(request.Page, request.PageSize);
 
         var query = db.StaffMembers.AsNoTracking();
 
@@ -34,7 +33,7 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
         if (!resolved.Value.IsAdministrator)
         {
             if (resolved.Value.StationId is not { } scopedStation)
-                return new PagedResult<StaffMemberListItemDto>([], page, pageSize, 0);
+                return paging.Empty<StaffMemberListItemDto>();
             query = query.Where(s => s.StationId == scopedStation);
         }
 
@@ -54,10 +53,12 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
         }
 
         var total = await query.LongCountAsync(cancellationToken);
+        if (paging.IsOutOfRange(total))
+            return paging.Empty<StaffMemberListItemDto>(total);
 
         var items = await ApplySort(query, request.Sort)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Skip(paging.Skip)
+            .Take(paging.PageSize)
             .Select(s => new StaffMemberListItemDto(
                 s.Id, s.FullName, s.EmployeeId, s.Email, s.StationId,
                 db.Stations.Where(st => st.Id == s.StationId).Select(st => st.IataCode).FirstOrDefault() ?? string.Empty,
@@ -66,21 +67,21 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
                 s.IsActive))
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<StaffMemberListItemDto>(items, page, pageSize, total);
+        return paging.ToResult<StaffMemberListItemDto>(items, total);
     }
 
     private static IQueryable<StaffMember> ApplySort(IQueryable<StaffMember> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
-            return query.OrderBy(s => s.FullName);
+            return query.OrderBy(s => s.FullName).ThenBy(s => s.Id);
 
         return spec.Field switch
         {
-            "fullname" => spec.Descending ? query.OrderByDescending(s => s.FullName) : query.OrderBy(s => s.FullName),
-            "employeeid" => spec.Descending ? query.OrderByDescending(s => s.EmployeeId) : query.OrderBy(s => s.EmployeeId),
-            "email" => spec.Descending ? query.OrderByDescending(s => s.Email) : query.OrderBy(s => s.Email),
-            "isactive" => spec.Descending ? query.OrderByDescending(s => s.IsActive) : query.OrderBy(s => s.IsActive),
-            _ => query.OrderBy(s => s.FullName)
+            "fullname" => spec.Descending ? query.OrderByDescending(s => s.FullName).ThenByDescending(s => s.Id) : query.OrderBy(s => s.FullName).ThenBy(s => s.Id),
+            "employeeid" => spec.Descending ? query.OrderByDescending(s => s.EmployeeId).ThenByDescending(s => s.Id) : query.OrderBy(s => s.EmployeeId).ThenBy(s => s.Id),
+            "email" => spec.Descending ? query.OrderByDescending(s => s.Email).ThenByDescending(s => s.Id) : query.OrderBy(s => s.Email).ThenBy(s => s.Id),
+            "isactive" => spec.Descending ? query.OrderByDescending(s => s.IsActive).ThenByDescending(s => s.Id) : query.OrderBy(s => s.IsActive).ThenBy(s => s.Id),
+            _ => query.OrderBy(s => s.FullName).ThenBy(s => s.Id)
         };
     }
 }
@@ -116,6 +117,8 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
                 s.FullName,
                 s.EmployeeId,
                 s.Email,
+                s.PendingLoginEmail,
+                s.LoginEmailChangeFailureReason,
                 s.StationId,
                 StationCode = db.Stations.Where(st => st.Id == s.StationId).Select(st => st.IataCode).FirstOrDefault() ?? string.Empty,
                 StationName = db.Stations.Where(st => st.Id == s.StationId).Select(st => st.Name).FirstOrDefault() ?? string.Empty,
@@ -159,7 +162,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             : null;
 
         return new StaffMemberDto(
-            staff.Id, staff.FullName, staff.EmployeeId, staff.Email,
+            staff.Id, staff.FullName, staff.EmployeeId, staff.Email, staff.PendingLoginEmail, staff.LoginEmailChangeFailureReason,
             staff.StationId, staff.StationCode, staff.StationName,
             staff.ManpowerTypeId, staff.ManpowerTypeName,
             contract, workingDays, staff.LinkedUserId, staff.PortalState.ToString(), staff.PortalFailureReason, staff.IsActive,
