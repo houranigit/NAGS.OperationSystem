@@ -79,7 +79,19 @@
     {
         errorMessage = null;
 
-        if (model.Password.Length < 8)
+        if (string.IsNullOrWhiteSpace(model.Email))
+        {
+            errorMessage = UiStrings.Auth.EmailRequired;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Token))
+        {
+            errorMessage = UiStrings.Auth.ActivationTokenRequired;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Password) || model.Password.Length < 8)
         {
             errorMessage = UiStrings.Auth.PasswordTooShort;
             return;
@@ -91,17 +103,11 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(model.Token))
-        {
-            errorMessage = UiStrings.Common.SomethingWentWrong;
-            return;
-        }
-
         isSubmitting = true;
 
         try
         {
-            await Identity.ActivateAsync(new ActivateAccountRequest(model.Email, model.Token, model.Password));
+            await Identity.ActivateAsync(new ActivateAccountRequest(model.Email.Trim(), model.Token.Trim(), model.Password));
             activated = true;
         }
         catch (ApiException ex)

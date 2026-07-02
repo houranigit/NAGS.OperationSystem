@@ -17,9 +17,27 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
     private const string Base = MasterDataApiFactory.Base;
     private const string IdentityBase = MasterDataApiFactory.IdentityBase;
 
-    private sealed record StaffDetail(Guid Id, string FullName, string Email, Guid StationId, bool IsActive, Guid? LinkedUserId, string PortalState, string? PortalFailureReason, string RowVersion);
+    private sealed record StaffDetail(
+        Guid Id,
+        string FullName,
+        string EmployeeId,
+        string Email,
+        Guid StationId,
+        Guid ManpowerTypeId,
+        bool IsActive,
+        Guid? LinkedUserId,
+        string PortalState,
+        string? PortalFailureReason,
+        string RowVersion);
     private sealed record CustomerDetail(Guid Id, string? IataCode, bool IsActive, string RowVersion, List<ContactBody> Contacts);
-    private sealed record ContactBody(Guid Id, string Name, string Email, Guid? LinkedUserId, bool IsActive);
+    private sealed record ContactBody(
+        Guid Id,
+        string Name,
+        string Email,
+        Guid? LinkedUserId,
+        string PortalState,
+        string? PortalFailureReason,
+        bool IsActive);
     private sealed record StationDetail(Guid Id, string RowVersion);
 
     [Fact]
@@ -29,7 +47,7 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
         var (staffId, _) = await CreateStaffAsync(client);
 
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await factory.DrainOutboxesAsync();
@@ -46,18 +64,160 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
     }
 
     [Fact]
+    public async Task Create_staff_with_portal_role_provisions_invited_user_and_links_back()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
+        var stationId = await CreateStationAsync(client);
+        var manpowerTypeId = await CreateManpowerTypeAsync(client);
+        var email = $"staff-create-{Guid.NewGuid():N}@example.com";
+
+        var create = await client.PostAsJsonAsync($"{Base}/staff-members", new
+        {
+            fullName = "Portal Staff Create",
+            employeeId = $"EMP-{Guid.NewGuid():N}",
+            email,
+            stationId,
+            manpowerTypeId,
+            employmentContract = (object?)null,
+            workingDays = (string[]?)null,
+            licenses = Array.Empty<object>(),
+            portalAccessRoleId = roleId
+        });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var staffId = await create.Content.ReadFromJsonAsync<Guid>();
+
+        var provisioning = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        provisioning!.PortalState.ShouldBe("Provisioning");
+        provisioning.LinkedUserId.ShouldBeNull();
+
+        await factory.DrainOutboxesAsync();
+
+        var invited = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        invited!.LinkedUserId.ShouldNotBeNull();
+
+        var user = await FindUserByExternalRefAsync(staffId);
+        user.ShouldNotBeNull();
+        user!.Status.ShouldBe(UserStatus.Invited);
+        user.UserType.ShouldBe(BuildingBlocks.Contracts.Authorization.UserType.StationStaff);
+        user.RoleId.ShouldBe(roleId);
+        invited.LinkedUserId.ShouldBe(user.Id);
+    }
+
+    [Fact]
+    public async Task Add_contact_with_portal_role_provisions_invited_user_and_links_back()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateRoleAsync(client, "CustomerContact", "masterdata.customers.view");
+        var customerId = await CreateCustomerAsync(client);
+        var before = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var email = $"contact-add-{Guid.NewGuid():N}@example.com";
+
+        var add = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{customerId}/contacts")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "Portal Contact Add",
+                jobTitle = (string?)null,
+                email,
+                phone = (string?)null,
+                portalAccessRoleId = roleId
+            })
+        };
+        add.Headers.TryAddWithoutValidation("If-Match", before!.RowVersion);
+        var addResponse = await client.SendAsync(add);
+        addResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var contactId = await addResponse.Content.ReadFromJsonAsync<Guid>();
+
+        await factory.DrainOutboxesAsync();
+
+        var after = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var contact = after!.Contacts.Single(c => c.Id == contactId);
+        contact.LinkedUserId.ShouldNotBeNull();
+        contact.PortalState.ShouldBe("Invited");
+
+        var user = await FindUserByExternalRefAsync(contactId);
+        user.ShouldNotBeNull();
+        user!.Status.ShouldBe(UserStatus.Invited);
+        user.UserType.ShouldBe(BuildingBlocks.Contracts.Authorization.UserType.CustomerContact);
+        user.RoleId.ShouldBe(roleId);
+        contact.LinkedUserId.ShouldBe(user.Id);
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+
+        (await client.PostAsJsonAsync($"{IdentityBase}/auth/activate",
+            new { email, invitationToken, newPassword = "Contact#12345" }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var activated = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        activated!.Contacts.Single(c => c.Id == contactId).PortalState.ShouldBe("Active");
+    }
+
+    [Fact]
+    public async Task Create_customer_with_contact_portal_role_provisions_invited_user_and_links_back()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateRoleAsync(client, "CustomerContact", "masterdata.customers.view");
+        var contactEmail = $"contact-create-{Guid.NewGuid():N}@example.com";
+
+        var create = await client.PostAsJsonAsync($"{Base}/customers", new
+        {
+            iataCode = await UnusedCustomerIataAsync(client),
+            icaoCode = (string?)null,
+            name = "Portal Customer Create",
+            countryId = await CreateCountryAsync(client),
+            officialEmail = (string?)null,
+            officialPhone = (string?)null,
+            address = new { line1 = "1 Airport Rd", line2 = (string?)null, city = "Amman", region = (string?)null, postalCode = (string?)null },
+            contacts = new[]
+            {
+                new
+                {
+                    id = (Guid?)null,
+                    name = "Portal Contact Create",
+                    jobTitle = (string?)null,
+                    email = contactEmail,
+                    phone = (string?)null,
+                    portalAccessRoleId = (Guid?)roleId
+                }
+            }
+        });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var customerId = await create.Content.ReadFromJsonAsync<Guid>();
+        var before = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var contactId = before!.Contacts.Single(c => c.Email == contactEmail).Id;
+
+        await factory.DrainOutboxesAsync();
+
+        var after = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var contact = after!.Contacts.Single(c => c.Id == contactId);
+        contact.LinkedUserId.ShouldNotBeNull();
+
+        var user = await FindUserByExternalRefAsync(contactId);
+        user.ShouldNotBeNull();
+        user!.Status.ShouldBe(UserStatus.Invited);
+        user.UserType.ShouldBe(BuildingBlocks.Contracts.Authorization.UserType.CustomerContact);
+        user.RoleId.ShouldBe(roleId);
+        contact.LinkedUserId.ShouldBe(user.Id);
+    }
+
+    [Fact]
     public async Task Portal_state_transitions_through_provisioning_invited_and_suspended()
     {
         var client = await factory.CreateAuthenticatedAdminClientAsync();
         var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
         var (staffId, _) = await CreateStaffAsync(client);
 
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         // Before draining, the request is in flight (Provisioning).
         var provisioning = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
         provisioning!.PortalState.ShouldBe("Provisioning");
+        (await GrantStaffAccessAsync(client, staffId, roleId))
+            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         await factory.DrainOutboxesAsync();
 
@@ -65,13 +225,95 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         invited!.PortalState.ShouldBe("Invited");
         invited.LinkedUserId.ShouldNotBeNull();
 
+        var invitationToken = await factory.GetInvitationTokenAsync(invited.Email);
+        invitationToken.ShouldNotBeNull();
+
+        (await client.PostAsJsonAsync($"{IdentityBase}/auth/activate",
+            new { email = invited.Email, invitationToken, newPassword = "Staff#12345" }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var active = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        active!.PortalState.ShouldBe("Active");
+        var activeUser = await FindUserByExternalRefAsync(staffId);
+        activeUser!.Status.ShouldBe(UserStatus.Active);
+
+        // Suspending directly from Identity also reflects back to MasterData.
+        (await client.PostAsync($"{IdentityBase}/users/{activeUser.Id}/suspend", content: null))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var identitySuspended = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        identitySuspended!.PortalState.ShouldBe("Suspended");
+
+        (await client.PostAsync($"{IdentityBase}/users/{activeUser.Id}/restore-access", content: null))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        active = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        active!.PortalState.ShouldBe("Active");
+
         // Deactivating the staff member suspends portal access.
         var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{staffId}/deactivate");
-        deactivate.Headers.TryAddWithoutValidation("If-Match", invited.RowVersion);
+        deactivate.Headers.TryAddWithoutValidation("If-Match", active.RowVersion);
         (await client.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         var suspended = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
         suspended!.PortalState.ShouldBe("Suspended");
+
+        await factory.DrainOutboxesAsync();
+        var suspendedUser = await FindUserByExternalRefAsync(staffId);
+        suspendedUser!.Status.ShouldBe(UserStatus.Suspended);
+
+        var activateStaff = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{staffId}/activate");
+        activateStaff.Headers.TryAddWithoutValidation("If-Match", suspended.RowVersion);
+        (await client.SendAsync(activateStaff)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        (await client.PostAsync($"{IdentityBase}/users/{suspendedUser.Id}/restore-access", content: null))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var restored = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        restored!.PortalState.ShouldBe("Active");
+    }
+
+    [Fact]
+    public async Task Identity_lock_and_unlock_reflects_on_staff_portal_state()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
+        var (staffId, email) = await CreateStaffAsync(client);
+
+        (await GrantStaffAccessAsync(client, staffId, roleId))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+
+        (await client.PostAsJsonAsync($"{IdentityBase}/auth/activate",
+            new { email, invitationToken, newPassword = "LockedStaff#12345" }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var active = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        active!.PortalState.ShouldBe("Active");
+        var user = await FindUserByExternalRefAsync(staffId);
+        user!.Status.ShouldBe(UserStatus.Active);
+
+        (await client.PostAsync($"{IdentityBase}/users/{user.Id}/lock", content: null))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var locked = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        locked!.PortalState.ShouldBe("Suspended");
+
+        (await client.PostAsync($"{IdentityBase}/users/{user.Id}/unlock", content: null))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var unlocked = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        unlocked!.PortalState.ShouldBe("Active");
     }
 
     [Fact]
@@ -82,7 +324,7 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var roleId = await CreateRoleAsync(client, "SystemAdministrator", "masterdata.staff-members.view");
         var (staffId, _) = await CreateStaffAsync(client);
 
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
@@ -99,12 +341,12 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
         var (staffId, _) = await CreateStaffAsync(client);
 
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
         // A second grant attempt is rejected because the record is already linked.
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.Conflict);
         await factory.DrainOutboxesAsync();
 
@@ -119,7 +361,7 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var roleId = await CreateRoleAsync(client, "SystemAdministrator", "masterdata.staff-members.view");
         var (staffId, _) = await CreateStaffAsync(client);
 
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
@@ -129,13 +371,13 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
     }
 
     [Fact]
-    public async Task Deactivating_staff_deactivates_the_linked_user()
+    public async Task Deactivating_staff_suspends_the_linked_user_and_keeps_the_link()
     {
         var client = await factory.CreateAuthenticatedAdminClientAsync();
         var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
         var (staffId, _) = await CreateStaffAsync(client);
 
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
@@ -147,7 +389,11 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         await factory.DrainOutboxesAsync();
 
         var user = await FindUserByExternalRefAsync(staffId);
-        user!.Status.ShouldBe(UserStatus.Deactivated);
+        user!.Status.ShouldBe(UserStatus.Suspended);
+
+        var after = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        after!.LinkedUserId.ShouldBe(user.Id);
+        after.PortalState.ShouldBe("Suspended");
     }
 
     [Fact]
@@ -157,21 +403,21 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var roleId = await CreateRoleAsync(client, "StationStaff", "masterdata.staff-members.view");
         var (staffId, originalEmail) = await CreateStaffAsync(client);
 
-        (await client.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
+        (await GrantStaffAccessAsync(client, staffId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
         var staff = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
         var newEmail = $"changed-{Guid.NewGuid():N}@example.com";
-        var manpowerTypeId = await CreateManpowerTypeAsync(client);
         var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/staff-members/{staffId}")
         {
             Content = JsonContent.Create(new
             {
                 fullName = staff!.FullName,
+                employeeId = staff.EmployeeId,
                 email = newEmail,
                 stationId = staff.StationId,
-                manpowerTypeId,
+                manpowerTypeId = staff.ManpowerTypeId,
                 employmentContract = (object?)null,
                 workingDays = (string[]?)null,
                 licenses = Array.Empty<object>()
@@ -202,6 +448,52 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
     }
 
     [Fact]
+    public async Task Changing_a_linked_contact_email_requires_reverification_before_taking_effect()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateRoleAsync(client, "CustomerContact", "masterdata.customers.view");
+        var originalEmail = $"contact-{Guid.NewGuid():N}@example.com";
+        var (customerId, contactId) = await CreateCustomerWithContactAsync(client, originalEmail);
+
+        (await GrantContactAccessAsync(client, customerId, contactId, roleId))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var customer = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var contact = customer!.Contacts.Single(c => c.Id == contactId);
+        var newEmail = $"changed-contact-{Guid.NewGuid():N}@example.com";
+        var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/customers/{customerId}/contacts/{contactId}")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = contact.Name,
+                jobTitle = (string?)null,
+                email = newEmail,
+                phone = (string?)null
+            })
+        };
+        update.Headers.TryAddWithoutValidation("If-Match", customer.RowVersion);
+        (await client.SendAsync(update)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var pending = await FindUserByExternalRefAsync(contactId);
+        pending!.Email.Value.ShouldBe(originalEmail);
+        pending.PendingEmail.ShouldBe(newEmail);
+        pending.EmailChangeToken.ShouldNotBeNull();
+
+        var verificationToken = await factory.GetInvitationTokenAsync(newEmail);
+        verificationToken.ShouldNotBeNull();
+
+        var confirm = await client.PostAsJsonAsync($"{IdentityBase}/auth/confirm-email-change",
+            new { token = verificationToken, newEmail });
+        confirm.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var confirmed = await FindUserByExternalRefAsync(contactId);
+        confirmed!.Email.Value.ShouldBe(newEmail);
+        confirmed.PendingEmail.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Permanently_removing_a_linked_contact_releases_email_for_reuse()
     {
         var client = await factory.CreateAuthenticatedAdminClientAsync();
@@ -209,7 +501,7 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
         var sharedEmail = $"reuse-{Guid.NewGuid():N}@example.com";
 
         var (customerId, contactId) = await CreateCustomerWithContactAsync(client, sharedEmail);
-        (await client.PostAsJsonAsync($"{Base}/customers/{customerId}/contacts/{contactId}/grant-access", new { roleId }))
+        (await GrantContactAccessAsync(client, customerId, contactId, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
@@ -229,13 +521,35 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
 
         // The released email can now be reused by a brand-new identity, producing a different user.
         var (customer2, contact2) = await CreateCustomerWithContactAsync(client, sharedEmail);
-        (await client.PostAsJsonAsync($"{Base}/customers/{customer2}/contacts/{contact2}/grant-access", new { roleId }))
+        (await GrantContactAccessAsync(client, customer2, contact2, roleId))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
         var secondUser = await FindActiveUserByEmailAsync(sharedEmail);
         secondUser.ShouldNotBeNull();
         secondUser!.Id.ShouldNotBe(firstUser.Id);
+    }
+
+    private static async Task<HttpResponseMessage> GrantStaffAccessAsync(HttpClient client, Guid staffId, Guid roleId)
+    {
+        var staff = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{staffId}/grant-access")
+        {
+            Content = JsonContent.Create(new { roleId })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", staff!.RowVersion);
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> GrantContactAccessAsync(HttpClient client, Guid customerId, Guid contactId, Guid roleId)
+    {
+        var customer = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{customerId}/contacts/{contactId}/grant-access")
+        {
+            Content = JsonContent.Create(new { roleId })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", customer!.RowVersion);
+        return await client.SendAsync(request);
     }
 
     // --- Identity assertions via the shared database ----------------------
@@ -312,6 +626,14 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
 
     private static async Task<(Guid CustomerId, Guid ContactId)> CreateCustomerWithContactAsync(HttpClient client, string contactEmail)
     {
+        var customerId = await CreateCustomerAsync(client, contactEmail);
+        var detail = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var contactId = detail!.Contacts.Single(c => c.Email == contactEmail).Id;
+        return (customerId, contactId);
+    }
+
+    private static async Task<Guid> CreateCustomerAsync(HttpClient client, string? contactEmail = null)
+    {
         var countryId = await CreateCountryAsync(client);
         var iata = await UnusedCustomerIataAsync(client);
         var create = await client.PostAsJsonAsync($"{Base}/customers", new
@@ -323,14 +645,12 @@ public class PortalAccessIntegrationTests(MasterDataApiFactory factory) : IClass
             officialEmail = (string?)null,
             officialPhone = (string?)null,
             address = new { line1 = "1 Airport Rd", line2 = (string?)null, city = "Amman", region = (string?)null, postalCode = (string?)null },
-            contacts = new[] { new { id = (Guid?)null, name = "Portal Contact", jobTitle = (string?)null, email = contactEmail, phone = (string?)null } }
+            contacts = contactEmail is null
+                ? Array.Empty<object>()
+                : new object[] { new { id = (Guid?)null, name = "Portal Contact", jobTitle = (string?)null, email = contactEmail, phone = (string?)null, portalAccessRoleId = (Guid?)null } }
         });
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
-        var customerId = await create.Content.ReadFromJsonAsync<Guid>();
-
-        var detail = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
-        var contactId = detail!.Contacts.Single(c => c.Email == contactEmail).Id;
-        return (customerId, contactId);
+        return await create.Content.ReadFromJsonAsync<Guid>();
     }
 
     private static async Task<Guid> CreateStationAsync(HttpClient client)

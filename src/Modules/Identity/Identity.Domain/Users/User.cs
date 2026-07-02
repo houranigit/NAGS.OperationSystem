@@ -212,14 +212,9 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
 
     public Result Activate(string invitationTokenHash, string passwordHash, DateTimeOffset now)
     {
-        if (Status != UserStatus.Invited)
-            return Error.Conflict("Only an invited account can be activated.", "Identity.User.NotInvited");
-
-        if (InvitationToken is null || !string.Equals(InvitationToken, invitationTokenHash, StringComparison.Ordinal))
-            return Error.Validation("Invitation token is invalid.", "Identity.User.InvalidInvitation");
-
-        if (InvitationExpiresAtUtc is { } expiry && expiry <= now)
-            return Error.Conflict("Invitation has expired.", "Identity.User.InvitationExpired");
+        var invitationCheck = ValidateInvitation(invitationTokenHash, now);
+        if (invitationCheck.IsFailure)
+            return invitationCheck.Error;
 
         if (string.IsNullOrWhiteSpace(passwordHash))
             return Error.Validation("Password hash is required.", "Identity.User.PasswordRequired");
@@ -231,6 +226,21 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
         SecurityStamp = Guid.NewGuid();
         UpdatedAtUtc = now;
         RaiseDomainEvent(new UserActivatedEvent(Id));
+        return Result.Success();
+    }
+
+    /// <summary>Checks whether an invitation token can currently activate this account.</summary>
+    public Result ValidateInvitation(string invitationTokenHash, DateTimeOffset now)
+    {
+        if (Status != UserStatus.Invited)
+            return Error.Conflict("Only an invited account can be activated.", "Identity.User.NotInvited");
+
+        if (InvitationToken is null || !string.Equals(InvitationToken, invitationTokenHash, StringComparison.Ordinal))
+            return Error.Validation("Invitation token is invalid.", "Identity.User.InvalidInvitation");
+
+        if (InvitationExpiresAtUtc is { } expiry && expiry <= now)
+            return Error.Conflict("Invitation has expired.", "Identity.User.InvitationExpired");
+
         return Result.Success();
     }
 
@@ -263,14 +273,9 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
     /// <summary>Completes a password reset, rotating the security stamp so existing sessions are invalidated.</summary>
     public Result ResetPassword(string tokenHash, string passwordHash, DateTimeOffset now)
     {
-        if (Status != UserStatus.Active || PasswordResetToken is null)
-            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
-
-        if (!string.Equals(PasswordResetToken, tokenHash, StringComparison.Ordinal))
-            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
-
-        if (PasswordResetExpiresAtUtc is { } expiry && expiry <= now)
-            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
+        var resetCheck = ValidatePasswordReset(tokenHash, now);
+        if (resetCheck.IsFailure)
+            return resetCheck.Error;
 
         if (string.IsNullOrWhiteSpace(passwordHash))
             return Error.Validation("Password hash is required.", "Identity.User.PasswordRequired");
@@ -284,6 +289,21 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
+    /// <summary>Checks whether a password-reset token can currently set a new password.</summary>
+    public Result ValidatePasswordReset(string tokenHash, DateTimeOffset now)
+    {
+        if (Status != UserStatus.Active || PasswordResetToken is null)
+            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
+
+        if (!string.Equals(PasswordResetToken, tokenHash, StringComparison.Ordinal))
+            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
+
+        if (PasswordResetExpiresAtUtc is { } expiry && expiry <= now)
+            return Error.Validation("The reset link is invalid or has expired.", "Identity.User.InvalidReset");
+
+        return Result.Success();
+    }
+
     /// <summary>
     /// Stores a freshly generated (encrypted) TOTP secret as a pending enrollment. MFA is not yet in
     /// effect; the user must confirm with a valid code first.
@@ -292,6 +312,9 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
     {
         if (Status != UserStatus.Active)
             return Error.Conflict("Only an active account can enroll MFA.", "Identity.User.NotActive");
+
+        if (MfaEnabled)
+            return Error.Conflict("MFA is already enabled. Reset it before starting a new enrollment.", "Identity.User.MfaAlreadyEnabled");
 
         if (string.IsNullOrWhiteSpace(encryptedSecret))
             return Error.Validation("An MFA secret is required.", "Identity.User.MfaSecretRequired");
@@ -396,6 +419,7 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
             return Error.Conflict("Cannot lock a deactivated account.", "Identity.User.Deactivated");
 
         LockoutEndUtc = DateTimeOffset.MaxValue;
+        SecurityStamp = Guid.NewGuid();
         UpdatedAtUtc = now;
         RaiseDomainEvent(new UserLockedEvent(Id, LockoutEndUtc));
         return Result.Success();
@@ -463,16 +487,24 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
         return AccessRestoreOutcome.InvitationRequeued;
     }
 
-    /// <summary>Records a failed sign-in, auto-locking once <paramref name="maxFailedAttempts"/> is reached.</summary>
-    public void RecordFailedSignIn(int maxFailedAttempts, TimeSpan lockoutDuration, DateTimeOffset now)
+    /// <summary>
+    /// Records a failed sign-in, auto-locking once <paramref name="maxFailedAttempts"/> is reached.
+    /// Returns true when this attempt locked the account so callers can revoke active sessions.
+    /// </summary>
+    public bool RecordFailedSignIn(int maxFailedAttempts, TimeSpan lockoutDuration, DateTimeOffset now)
     {
         AccessFailedCount++;
+        UpdatedAtUtc = now;
         if (AccessFailedCount >= maxFailedAttempts)
         {
             LockoutEndUtc = now.Add(lockoutDuration);
             AccessFailedCount = 0;
+            SecurityStamp = Guid.NewGuid();
             RaiseDomainEvent(new UserLockedEvent(Id, LockoutEndUtc));
+            return true;
         }
+
+        return false;
     }
 
     public void RecordSuccessfulSignIn(DateTimeOffset now)

@@ -287,25 +287,34 @@
                         <RadzenDataGridColumn TItem="CustomerContactModel" Property="Phone" Title="@UiStrings.Customers.ContactPhone" />
                         <RadzenDataGridColumn TItem="CustomerContactModel" Title="@UiStrings.Customers.PortalLinked" Width="160px">
                             <Template Context="contact">
-                                @if (contact.LinkedUserId is not null)
-                                {
-                                    <StatusBadge Label="@UiStrings.PortalAccess.HasAccess" Tone="success" />
-                                }
-                                else
-                                {
-                                    <span class="os-muted">@UiStrings.PortalAccess.NoAccess</span>
-                                }
+                                <span title="@contact.PortalFailureReason">
+                                    <StatusBadge Label="@PortalAccessLabel(contact)" Tone="@PortalAccessTone(contact)" />
+                                </span>
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="CustomerContactModel" Title="@UiStrings.Common.Actions" Width="84px" Sortable="false" TextAlign="TextAlign.Center" Frozen="true" FrozenPosition="FrozenColumnPosition.Right">
                             <Template Context="contact">
-                                @if (CanGrantContact(c, contact))
+                                @if (HasContactActions(c, contact))
                                 {
                                     <div class="os-row-actions">
                                         <RowActionMenu>
+                                            <RowAction Text="@UiStrings.Customers.EditContact" Icon="edit"
+                                                       Permission="@MasterDataPermissions.CustomerContactsUpdate"
+                                                       Visible="@CanEditContact(contact)"
+                                                       OnClick="@(() => OpenEditContactAsync(contact))" />
+                                            <RowAction Text="@UiStrings.Customers.OpenLinkedAccount" Icon="manage_accounts"
+                                                       Permission="@IdentityPermissions.UsersView"
+                                                       Visible="@(contact.LinkedUserId is not null)"
+                                                       OnClick="@(() => OpenLinkedAccount(contact.LinkedUserId!.Value))" />
                                             <RowAction Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add"
                                                        Permission="@MasterDataPermissions.CustomerContactsGrantAccess"
+                                                       Visible="@CanGrantContact(c, contact)"
                                                        OnClick="@(() => OpenGrantContactAccessAsync(contact.Id))" />
+                                            <RowAction Separator="true" />
+                                            <RowAction Text="@UiStrings.Customers.ContactRemove" Icon="delete" Danger="true"
+                                                       Permission="@MasterDataPermissions.CustomerContactsRemove"
+                                                       Visible="@CanRemoveContact(contact)"
+                                                       OnClick="@(() => RemoveContactAsync(contact))" />
                                         </RowActionMenu>
                                     </div>
                                 }
@@ -406,7 +415,46 @@
         || (c.IsActive && Auth.HasPermission(MasterDataPermissions.CustomersDeactivate));
 
     private bool CanGrantContact(CustomerDetail c, CustomerContactModel contact) =>
-        c.IsActive && contact.LinkedUserId is null && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess);
+        c.IsActive
+        && contact.LinkedUserId is null
+        && contact.PortalState != "Provisioning"
+        && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess);
+
+    private bool CanEditContact(CustomerContactModel contact) =>
+        contact.IsActive && Auth.HasPermission(MasterDataPermissions.CustomerContactsUpdate);
+
+    private bool CanRemoveContact(CustomerContactModel contact) =>
+        contact.IsActive && Auth.HasPermission(MasterDataPermissions.CustomerContactsRemove);
+
+    private bool HasContactActions(CustomerDetail c, CustomerContactModel contact) =>
+        CanEditContact(contact)
+        || CanGrantContact(c, contact)
+        || CanRemoveContact(contact)
+        || (contact.LinkedUserId is not null && Auth.HasPermission(IdentityPermissions.UsersView));
+
+    private void OpenLinkedAccount(Guid userId) => Navigation.NavigateTo($"/users/{userId}");
+
+    private static string PortalAccessTone(CustomerContactModel contact) =>
+        contact.PortalState switch
+        {
+            "Active" or "Invited" => "success",
+            "Provisioning" => "warning",
+            "Failed" => "danger",
+            "Suspended" => "warning",
+            _ when contact.LinkedUserId is not null => "success",
+            _ => "neutral"
+        };
+
+    private static string PortalAccessLabel(CustomerContactModel contact) =>
+        contact.PortalState switch
+        {
+            "Active" or "Invited" => UiStrings.PortalAccess.HasAccess,
+            "Provisioning" => UiStrings.PortalAccess.Provisioning,
+            "Failed" => UiStrings.PortalAccess.Failed,
+            "Suspended" => UiStrings.PortalAccess.Suspended,
+            _ when contact.LinkedUserId is not null => UiStrings.PortalAccess.HasAccess,
+            _ => UiStrings.PortalAccess.NoAccess
+        };
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -500,14 +548,38 @@
         }
     }
 
+    private async Task OpenEditContactAsync(CustomerContactModel contact)
+    {
+        if (item is not { } c)
+            return;
+
+        var result = await DialogService.OpenAsync<AddContactDialog>(UiStrings.Customers.EditContact,
+            new Dictionary<string, object?>
+            {
+                [nameof(AddContactDialog.CustomerId)] = Id,
+                [nameof(AddContactDialog.RowVersion)] = c.RowVersion,
+                [nameof(AddContactDialog.Contact)] = contact
+            },
+            new DialogOptions { Width = "520px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Customers.ContactUpdated);
+            await LoadAsync();
+        }
+    }
+
     private async Task OpenGrantContactAccessAsync(Guid contactId)
     {
+        if (item is not { } c)
+            return;
+
         var result = await DialogService.OpenAsync<GrantPortalAccessDialog>(UiStrings.PortalAccess.GrantTitle,
             new Dictionary<string, object?>
             {
                 [nameof(GrantPortalAccessDialog.CompatibleUserType)] = "CustomerContact",
                 [nameof(GrantPortalAccessDialog.GrantAsync)] = (Func<Guid, CancellationToken, Task>)((roleId, ct) =>
-                    MasterData.GrantContactPortalAccessAsync(Id, contactId, new GrantPortalAccessRequest(roleId), ct))
+                    MasterData.GrantContactPortalAccessAsync(Id, contactId, new GrantPortalAccessRequest(roleId), c.RowVersion, ct))
             },
             new DialogOptions { Width = "520px" });
 
@@ -516,6 +588,22 @@
             Notifications.Notify(NotificationSeverity.Success, UiStrings.PortalAccess.Granted);
             await LoadAsync();
         }
+    }
+
+    private async Task RemoveContactAsync(CustomerContactModel contact)
+    {
+        if (item is not { } c)
+            return;
+
+        var confirmed = await DialogService.Confirm(UiStrings.Customers.ConfirmRemoveContact, UiStrings.Customers.ContactRemove,
+            new ConfirmOptions { OkButtonText = UiStrings.Common.Yes, CancelButtonText = UiStrings.Common.No }) ?? false;
+
+        if (!confirmed)
+            return;
+
+        await RunAsync((rv, ct) => MasterData.RemoveCustomerContactAsync(Id, contact.Id, rv, false, ct),
+            UiStrings.Customers.ContactRemovedSuccess,
+            c.RowVersion);
     }
 
     private async Task ActivateAsync()

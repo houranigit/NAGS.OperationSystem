@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Identity.Application.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -45,7 +46,7 @@ public sealed class RefreshTokenCommandHandler(
         session.Revoke(now);
 
         var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == user.RoleId, cancellationToken);
-        var permissions = role?.Permissions.ToList() ?? [];
+        var permissions = EffectiveUserPermissions.For(user, role);
 
         var refresh = tokenService.CreateRefreshToken();
 

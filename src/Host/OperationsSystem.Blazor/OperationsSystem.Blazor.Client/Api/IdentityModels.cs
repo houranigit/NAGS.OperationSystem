@@ -66,6 +66,11 @@ public sealed record UserDetail(
     DateTimeOffset? LockoutEndUtc,
     Guid RoleId,
     string RoleName,
+    string UserType,
+    Guid? ExternalReferenceId,
+    string PortalSource,
+    bool MfaEnabled,
+    bool MfaEnrollmentRequired,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     DateTimeOffset? LastLoginAtUtc);
@@ -74,7 +79,7 @@ public sealed record InvitedUser(Guid Id, string Email, string DeliveryStatus);
 
 public sealed record RoleOption(Guid Id, string Name, string CompatibleUserType);
 
-public sealed record InviteUserRequest(string Email, string DisplayName);
+public sealed record InviteUserRequest(string Email, string DisplayName, Guid? RoleId = null);
 public sealed record UpdateUserRequest(string DisplayName);
 public sealed record AssignRoleRequest(Guid RoleId);
 
@@ -95,3 +100,9 @@ public sealed record UserSession(
 
 public sealed record ActivateAccountRequest(string Email, string InvitationToken, string NewPassword);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public sealed record ConfirmEmailChangeRequest(string Token, string NewEmail);
+public sealed record ForgotPasswordRequest(string Email);
+public sealed record ResetPasswordRequest(string Token, string NewPassword);
+public sealed record MfaEnrollment(string Secret, string OtpAuthUri);
+public sealed record MfaRecoveryCodes(IReadOnlyList<string> RecoveryCodes);
+public sealed record ConfirmMfaRequest(string Code);

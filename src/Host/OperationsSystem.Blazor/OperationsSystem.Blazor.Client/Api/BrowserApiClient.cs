@@ -31,6 +31,10 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     public Task PostAsync<TRequest>(string path, TRequest body, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Post, path, body, ifMatch: null, cancellationToken);
 
+    /// <summary>POST with a request body and optimistic concurrency that returns no body.</summary>
+    public Task PostAsync<TRequest>(string path, TRequest body, string? ifMatch, CancellationToken cancellationToken = default) =>
+        SendAsync(HttpMethod.Post, path, body, ifMatch, cancellationToken);
+
     public Task PostAsync(string path, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Post, path, body: null, ifMatch: null, cancellationToken);
 

@@ -51,7 +51,12 @@ public sealed class RemoveCustomerContactCommandHandler(IMasterDataDbContext db,
             return remove.Error;
 
         if (linkedUserId is { } userId)
+        {
+            if (!request.ReleaseEmail)
+                remove.Value.SuspendPortal(now);
+
             PortalLifecycle.EnqueueDeactivation(db, request.ContactId, userId, request.ReleaseEmail);
+        }
 
         db.SetOriginalRowVersion(customer, request.RowVersion);
 

@@ -6,13 +6,15 @@ using Identity.Domain.Users;
 using MasterData.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Application.Features.PortalAccess;
 
 /// <summary>
 /// Propagates a MasterData record deactivation (or permanent removal) onto its linked portal user:
-/// the account is deactivated and its active sessions revoked; a permanent removal also releases the
-/// login email for reuse. Idempotent via the inbox. Replies with <see cref="PortalUserDeactivated"/>.
+/// the account is suspended and its active sessions revoked; a permanent removal also detaches the
+/// user and releases the login email for reuse. Idempotent via the inbox. Replies with
+/// <see cref="PortalUserDeactivated"/>.
 /// </summary>
 public sealed class LinkedRecordDeactivatedHandler(
     IIdentityDbContext db,
@@ -38,9 +40,20 @@ public sealed class LinkedRecordDeactivatedHandler(
 
         var now = timeProvider.GetUtcNow();
         if (integrationEvent.ReleaseEmail)
+        {
             user.ReleaseLoginEmail(now);
+        }
         else
-            user.Deactivate(now);
+        {
+            var suspend = user.Suspend(now);
+            if (suspend.IsFailure)
+            {
+                logger.LogWarning(
+                    "LinkedRecordDeactivated could not suspend user {UserId}: {Reason}.",
+                    user.Id,
+                    suspend.Error.Description);
+            }
+        }
 
         var sessions = await db.Sessions
             .Where(s => s.UserId == user.Id && s.RevokedAtUtc == null)
@@ -51,7 +64,8 @@ public sealed class LinkedRecordDeactivatedHandler(
         db.Enqueue(new PortalUserDeactivated
         {
             ExternalReferenceId = integrationEvent.ExternalReferenceId,
-            UserId = user.Id
+            UserId = user.Id,
+            ReleaseEmail = integrationEvent.ReleaseEmail
         });
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
         await db.SaveChangesAsync(cancellationToken);
@@ -68,10 +82,12 @@ public sealed class LinkedEmailChangeRequestedHandler(
     ITokenService tokenService,
     ILinkedEmailVerificationNotifier verificationNotifier,
     TimeProvider timeProvider,
+    IOptions<IdentityModuleOptions> options,
     ILogger<LinkedEmailChangeRequestedHandler> logger)
     : IIntegrationEventHandler<LinkedEmailChangeRequested>
 {
     private const string Consumer = "Identity.LinkedEmailChangeRequested";
+    private readonly IdentityModuleOptions _options = options.Value;
 
     public async Task HandleAsync(LinkedEmailChangeRequested integrationEvent, CancellationToken cancellationToken = default)
     {
@@ -112,7 +128,11 @@ public sealed class LinkedEmailChangeRequestedHandler(
         }
 
         var token = tokenService.CreateSecureToken();
-        var change = user.RequestEmailChange(emailResult.Value, token.Hash, now.AddHours(72), now);
+        var change = user.RequestEmailChange(
+            emailResult.Value,
+            token.Hash,
+            now.AddHours(_options.EmailChangeExpiryHours),
+            now);
         if (change.IsFailure)
         {
             logger.LogWarning("Email change for user {UserId} was rejected: {Reason}.", integrationEvent.UserId, change.Error.Description);

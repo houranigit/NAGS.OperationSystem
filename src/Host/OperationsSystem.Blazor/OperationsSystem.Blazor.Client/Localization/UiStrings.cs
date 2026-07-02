@@ -45,7 +45,7 @@ public static class UiStrings
         public static string MinutesAgo => UiText.Get("Common.MinutesAgo", "{0}m ago");
         public static string HoursAgo => UiText.Get("Common.HoursAgo", "{0}h ago");
         public static string DaysAgo => UiText.Get("Common.DaysAgo", "{0}d ago");
-        public static string None => UiText.Get("Common.None", "—");
+        public static string None => UiText.Get("Common.None", "-");
     }
 
     public static class Auth
@@ -58,9 +58,33 @@ public static class UiStrings
         public static string CredentialsRequired => UiText.Get("Auth.CredentialsRequired", "Email and password are required.");
         public static string InvalidCredentials => UiText.Get("Auth.InvalidCredentials", "The email or password is incorrect.");
         public static string AccountLocked => UiText.Get("Auth.AccountLocked", "The account is temporarily locked. Please try again later.");
+        public static string MfaTitle => UiText.Get("Auth.MfaTitle", "Verification required");
+        public static string MfaSubtitle => UiText.Get("Auth.MfaSubtitle", "Enter an authenticator code or a recovery code to finish signing in.");
+        public static string MfaCode => UiText.Get("Auth.MfaCode", "Authenticator or recovery code");
+        public static string MfaCodeRequired => UiText.Get("Auth.MfaCodeRequired", "Enter the verification code.");
+        public static string VerifyMfaButton => UiText.Get("Auth.VerifyMfaButton", "Verify and sign in");
+        public static string BackToPassword => UiText.Get("Auth.BackToPassword", "Use a different account");
+        public static string InvalidMfaCode => UiText.Get("Auth.InvalidMfaCode", "The verification code is not valid.");
+        public static string ForgotPasswordLink => UiText.Get("Auth.ForgotPasswordLink", "Forgot password?");
+        public static string ForgotPasswordTitle => UiText.Get("Auth.ForgotPasswordTitle", "Reset your password");
+        public static string ForgotPasswordSubtitle => UiText.Get("Auth.ForgotPasswordSubtitle", "Enter your email and we will send reset instructions if the account exists.");
+        public static string ForgotPasswordButton => UiText.Get("Auth.ForgotPasswordButton", "Send reset link");
+        public static string ForgotPasswordSuccess => UiText.Get("Auth.ForgotPasswordSuccess", "If that account exists, a reset link has been sent.");
+        public static string EmailRequired => UiText.Get("Auth.EmailRequired", "Email is required.");
+        public static string ResetPasswordTitle => UiText.Get("Auth.ResetPasswordTitle", "Choose a new password");
+        public static string ResetPasswordSubtitle => UiText.Get("Auth.ResetPasswordSubtitle", "Use the reset link from your email to set a new password.");
+        public static string ResetPasswordButton => UiText.Get("Auth.ResetPasswordButton", "Reset password");
+        public static string ResetPasswordSuccess => UiText.Get("Auth.ResetPasswordSuccess", "Your password has been reset. You can sign in now.");
+        public static string ResetPasswordInvalidLink => UiText.Get("Auth.ResetPasswordInvalidLink", "The reset link is invalid or has expired.");
+        public static string ConfirmEmailChangeTitle => UiText.Get("Auth.ConfirmEmailChangeTitle", "Confirm email change");
+        public static string ConfirmEmailChangeSubtitle => UiText.Get("Auth.ConfirmEmailChangeSubtitle", "Confirm the new sign-in email for your portal account.");
+        public static string ConfirmEmailChangeButton => UiText.Get("Auth.ConfirmEmailChangeButton", "Confirm email");
+        public static string ConfirmEmailChangeSuccess => UiText.Get("Auth.ConfirmEmailChangeSuccess", "Your email address has been confirmed. You can sign in with the new address.");
+        public static string ConfirmEmailChangeInvalidLink => UiText.Get("Auth.ConfirmEmailChangeInvalidLink", "The email confirmation link is invalid or has expired.");
         public static string ActivateTitle => UiText.Get("Auth.ActivateTitle", "Activate your account");
         public static string ActivateSubtitle => UiText.Get("Auth.ActivateSubtitle", "Set a password to finish setting up your account.");
         public static string ActivationToken => UiText.Get("Auth.ActivationToken", "Activation code");
+        public static string ActivationTokenRequired => UiText.Get("Auth.ActivationTokenRequired", "Activation code is required.");
         public static string NewPassword => UiText.Get("Auth.NewPassword", "New password");
         public static string ConfirmPassword => UiText.Get("Auth.ConfirmPassword", "Confirm password");
         public static string ActivateButton => UiText.Get("Auth.ActivateButton", "Activate account");
@@ -73,7 +97,7 @@ public static class UiStrings
         public static string BrandPointAccess => UiText.Get("Auth.BrandPointAccess", "Granular role-based access control");
         public static string BrandPointSessions => UiText.Get("Auth.BrandPointSessions", "Live session and device management");
         public static string BrandPointBilingual => UiText.Get("Auth.BrandPointBilingual", "Full Arabic and English support");
-        public static string Copyright => UiText.Get("Auth.Copyright", "Â© 2026 Operations System. All rights reserved.");
+        public static string Copyright => UiText.Get("Auth.Copyright", "(c) 2026 Operations System. All rights reserved.");
     }
 
     public static class Nav
@@ -157,6 +181,18 @@ public static class UiStrings
         public static string ThisDevice => UiText.Get("Account.ThisDevice", "This device");
         public static string SignOutOthers => UiText.Get("Account.SignOutOthers", "Sign out other sessions");
         public static string RevokeSession => UiText.Get("Account.RevokeSession", "Revoke");
+        public static string MfaTitle => UiText.Get("Account.MfaTitle", "Multi-factor authentication");
+        public static string MfaRequiredHint => UiText.Get("Account.MfaRequiredHint", "This account must enroll MFA to meet administrator security requirements.");
+        public static string MfaOptionalHint => UiText.Get("Account.MfaOptionalHint", "Add an authenticator app to protect this account.");
+        public static string MfaEnabledHint => UiText.Get("Account.MfaEnabledHint", "MFA is enabled. Sign-in now requires an authenticator or recovery code.");
+        public static string StartMfa => UiText.Get("Account.StartMfa", "Start MFA setup");
+        public static string ConfirmMfa => UiText.Get("Account.ConfirmMfa", "Confirm MFA");
+        public static string MfaSecret => UiText.Get("Account.MfaSecret", "Secret");
+        public static string MfaOtpAuthUri => UiText.Get("Account.MfaOtpAuthUri", "Authenticator URI");
+        public static string MfaEnrollmentHint => UiText.Get("Account.MfaEnrollmentHint", "Add the secret or authenticator URI to your authenticator app, then enter the current code.");
+        public static string MfaEnabled => UiText.Get("Account.MfaEnabled", "MFA enabled.");
+        public static string RecoveryCodesTitle => UiText.Get("Account.RecoveryCodesTitle", "Save these recovery codes");
+        public static string RecoveryCodesHint => UiText.Get("Account.RecoveryCodesHint", "Each code can be used once if you lose access to your authenticator app.");
     }
 
     public static class Users
@@ -184,6 +220,9 @@ public static class UiStrings
         public static string TypeCustomerContact => UiText.Get("Users.TypeCustomerContact", "Customer contact");
         public static string Lock => UiText.Get("Users.Lock", "Lock");
         public static string Unlock => UiText.Get("Users.Unlock", "Unlock");
+        public static string Suspend => UiText.Get("Users.Suspend", "Suspend");
+        public static string RestoreAccess => UiText.Get("Users.RestoreAccess", "Restore access");
+        public static string ResetMfa => UiText.Get("Users.ResetMfa", "Reset MFA");
         public static string Deactivate => UiText.Get("Users.Deactivate", "Deactivate");
         public static string ResendInvitation => UiText.Get("Users.ResendInvitation", "Resend invitation");
         public static string AssignRole => UiText.Get("Users.AssignRole", "Assign role");
@@ -191,13 +230,20 @@ public static class UiStrings
         public static string Never => UiText.Get("Users.Never", "Never");
         public static string InviteTitle => UiText.Get("Users.InviteTitle", "Invite a user");
         public static string InviteIntro => UiText.Get("Users.InviteIntro", "Send an invitation so this person can set up their portal account.");
-        public static string InviteAdminNote => UiText.Get("Users.InviteAdminNote", "Direct user creation always creates a System Administrator with full access. Station staff and customer contacts are invited from their own records.");
+        public static string InviteAdminNote => UiText.Get("Users.InviteAdminNote", "Direct user creation invites a System Administrator. Station staff and customer contacts are invited from their own records.");
+        public static string DisplayNameRequired => UiText.Get("Users.DisplayNameRequired", "A display name is required.");
+        public static string RoleRequired => UiText.Get("Users.RoleRequired", "Select a role to continue.");
+        public static string NoAdminRoles => UiText.Get("Users.NoAdminRoles", "No System Administrator role is available.");
+        public static string NoCompatibleRoles => UiText.Get("Users.NoCompatibleRoles", "No compatible role is available for this account type.");
         public static string InviteSuccess => UiText.Get("Users.InviteSuccess", "Invitation sent.");
         public static string InvitationDeliveryLabel => UiText.Get("Users.InvitationDeliveryLabel", "Invitation delivery status");
         public static string EditTitle => UiText.Get("Users.EditTitle", "Edit user");
         public static string AssignRoleTitle => UiText.Get("Users.AssignRoleTitle", "Assign role");
         public static string ConfirmDeactivate => UiText.Get("Users.ConfirmDeactivate", "Deactivate this user? They will be signed out of all sessions.");
         public static string ConfirmLock => UiText.Get("Users.ConfirmLock", "Lock this user out of signing in?");
+        public static string ConfirmSuspend => UiText.Get("Users.ConfirmSuspend", "Suspend this user? They will lose access until restored.");
+        public static string ConfirmRestoreAccess => UiText.Get("Users.ConfirmRestoreAccess", "Restore access for this user?");
+        public static string ConfirmResetMfa => UiText.Get("Users.ConfirmResetMfa", "Reset MFA for this user? Active sessions will be revoked and they must enroll again.");
         public static string StatActiveSessions => UiText.Get("Users.StatActiveSessions", "Active sessions");
         public static string UserId => UiText.Get("Users.UserId", "User ID");
         public static string CopyId => UiText.Get("Users.CopyId", "Copy user ID");
@@ -210,11 +256,16 @@ public static class UiStrings
         public static string LockStatus => UiText.Get("Users.LockStatus", "Lock status");
         public static string NotLocked => UiText.Get("Users.NotLocked", "Not locked");
         public static string LockedUntil => UiText.Get("Users.LockedUntil", "Locked until {0}");
-        public static string LockedIndefinitely => UiText.Get("Users.LockedIndefinitely", "Locked indefinitely — manual unlock required");
+        public static string LockedIndefinitely => UiText.Get("Users.LockedIndefinitely", "Locked indefinitely - manual unlock required");
         public static string AccessScope => UiText.Get("Users.AccessScope", "Access scope");
         public static string RecentDevice => UiText.Get("Users.RecentDevice", "Recent device");
+        public static string Mfa => UiText.Get("Users.Mfa", "MFA");
+        public static string MfaEnabled => UiText.Get("Users.MfaEnabled", "Enabled");
+        public static string MfaRequired => UiText.Get("Users.MfaRequired", "Required");
+        public static string MfaNotEnabled => UiText.Get("Users.MfaNotEnabled", "Not enabled");
         public static string StatusActiveDesc => UiText.Get("Users.StatusActiveDesc", "This account is active and can access all assigned resources.");
         public static string StatusInvitedDesc => UiText.Get("Users.StatusInvitedDesc", "This account has been invited and is awaiting activation.");
+        public static string StatusSuspendedDesc => UiText.Get("Users.StatusSuspendedDesc", "This account is suspended and cannot sign in until access is restored.");
         public static string StatusDeactivatedDesc => UiText.Get("Users.StatusDeactivatedDesc", "This account is deactivated and cannot sign in.");
         public static string StatusLockedDesc => UiText.Get("Users.StatusLockedDesc", "This account is temporarily locked out of signing in.");
         public static string ScopeFullAccess => UiText.Get("Users.ScopeFullAccess", "Full system access");
@@ -450,7 +501,7 @@ public static class UiStrings
         public static string IcaoCode => UiText.Get("Customers.IcaoCode", "ICAO");
         public static string Name => UiText.Get("Customers.Name", "Name");
         public static string Country => UiText.Get("Customers.Country", "Country");
-        public static string NoIcao => UiText.Get("Customers.NoIcao", "â");
+        public static string NoIcao => UiText.Get("Customers.NoIcao", "-");
         public static string OfficialEmail => UiText.Get("Customers.OfficialEmail", "Official email");
         public static string OfficialPhone => UiText.Get("Customers.OfficialPhone", "Official phone");
         public static string Status => UiText.Get("Customers.Status", "Status");
@@ -469,8 +520,9 @@ public static class UiStrings
         public static string StepReview => UiText.Get("Customers.StepReview", "Review & create");
         public static string Next => UiText.Get("Customers.Next", "Next");
         public static string Previous => UiText.Get("Customers.Previous", "Back");
-        public static string ReviewSummary => UiText.Get("Customers.ReviewSummary", "{0} â {1}. {2} contact(s).");
+        public static string ReviewSummary => UiText.Get("Customers.ReviewSummary", "{0} - {1}. {2} contact(s).");
         public static string FormIntro => UiText.Get("Customers.FormIntro", "Capture the airline codes, official contact details, address and contacts.");
+        public static string EditFormIntro => UiText.Get("Customers.EditFormIntro", "Update the airline codes, official contact details, and address.");
         public static string IataRequired => UiText.Get("Customers.IataRequired", "A 2-character IATA code is required.");
         public static string IcaoInvalid => UiText.Get("Customers.IcaoInvalid", "ICAO code must be exactly three letters.");
         public static string NameRequired => UiText.Get("Customers.NameRequired", "A customer name is required.");
@@ -503,7 +555,11 @@ public static class UiStrings
         public static string ContactRemove => UiText.Get("Customers.ContactRemove", "Remove");
         public static string ContactRemoved => UiText.Get("Customers.ContactRemoved", "(will be removed)");
         public static string ContactAdded => UiText.Get("Customers.ContactAdded", "Contact added.");
+        public static string ContactUpdated => UiText.Get("Customers.ContactUpdated", "Contact updated.");
+        public static string ContactRemovedSuccess => UiText.Get("Customers.ContactRemovedSuccess", "Contact removed.");
+        public static string ConfirmRemoveContact => UiText.Get("Customers.ConfirmRemoveContact", "Remove this contact? Linked portal access will be deactivated.");
         public static string PortalLinked => UiText.Get("Customers.PortalLinked", "Portal access");
+        public static string OpenLinkedAccount => UiText.Get("Customers.OpenLinkedAccount", "Open linked account");
         public static string TabAddress => UiText.Get("Customers.TabAddress", "Address");
         public static string StatContacts => UiText.Get("Customers.StatContacts", "Contacts");
         public static string StatPortalAccounts => UiText.Get("Customers.StatPortalAccounts", "Portal accounts");
@@ -546,7 +602,7 @@ public static class UiStrings
         public static string Deactivate => UiText.Get("StaffMembers.Deactivate", "Deactivate");
         public static string Created => UiText.Get("StaffMembers.Created", "Created");
         public static string Updated => UiText.Get("StaffMembers.Updated", "Updated");
-        public static string None => UiText.Get("StaffMembers.None", "â");
+        public static string None => UiText.Get("StaffMembers.None", "-");
         public static string CreateTitle => UiText.Get("StaffMembers.CreateTitle", "Create staff member");
         public static string EditTitle => UiText.Get("StaffMembers.EditTitle", "Edit staff member");
         public static string BasicInformation => UiText.Get("StaffMembers.BasicInformation", "Basic information");
@@ -597,7 +653,8 @@ public static class UiStrings
         public static string ActivityEmpty => UiText.Get("StaffMembers.ActivityEmpty", "No activity recorded yet");
         public static string ActivityEmptyHint => UiText.Get("StaffMembers.ActivityEmptyHint", "Audit history for this staff member will appear here as actions are taken.");
         public static string PortalAccessManageTitle => UiText.Get("StaffMembers.PortalAccessManageTitle", "Account management");
-        public static string PortalAccessManageHint => UiText.Get("StaffMembers.PortalAccessManageHint", "Future account controls â password resets, session management, and role changes â will be available here.");
+        public static string PortalAccessManageHint => UiText.Get("StaffMembers.PortalAccessManageHint", "Open the linked Identity account to manage MFA, sessions, status, and role assignments.");
+        public static string OpenLinkedAccount => UiText.Get("StaffMembers.OpenLinkedAccount", "Open linked account");
         public static string PortalAccessLinkedTitle => UiText.Get("StaffMembers.PortalAccessLinkedTitle", "Portal account linked");
         public static string PortalAccessLinkedHint => UiText.Get("StaffMembers.PortalAccessLinkedHint", "This staff member can sign in to the portal with their linked account.");
         public static string PortalAccessUnlinkedTitle => UiText.Get("StaffMembers.PortalAccessUnlinkedTitle", "No portal account");
@@ -628,6 +685,9 @@ public static class UiStrings
         public static string Granted => UiText.Get("PortalAccess.Granted", "Portal access requested. An invitation will be sent shortly.");
         public static string HasAccess => UiText.Get("PortalAccess.HasAccess", "Portal account linked");
         public static string NoAccess => UiText.Get("PortalAccess.NoAccess", "No portal account");
+        public static string Provisioning => UiText.Get("PortalAccess.Provisioning", "Provisioning");
+        public static string Failed => UiText.Get("PortalAccess.Failed", "Provisioning failed");
+        public static string Suspended => UiText.Get("PortalAccess.Suspended", "Suspended");
         public static string Explanation => UiText.Get("PortalAccess.Explanation", "An invited portal account will be created for this record using the selected role.");
         public static string GrantOnCreate => UiText.Get("PortalAccess.GrantOnCreate", "Grant portal access on creation");
         public static string GrantOnCreateHint => UiText.Get("PortalAccess.GrantOnCreateHint", "Send a portal invitation once this record is created.");

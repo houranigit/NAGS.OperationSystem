@@ -1,5 +1,5 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AuthSession Auth
 @inject LocaleState Locale
 @inject NavigationManager Navigation
@@ -248,14 +248,15 @@
 
     private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
 
-    private bool HasNav => Auth.User?.Permissions.Any(p =>
-        p == IdentityPermissions.UsersView || p == IdentityPermissions.RolesView) ?? false;
+    private bool HasNav => Auth.HasPermission(IdentityPermissions.UsersView) || Auth.HasPermission(IdentityPermissions.RolesView);
 
     protected override async Task OnInitializedAsync()
     {
         await Locale.InitializeAsync();
         Auth.StateChanged += OnStateChanged;
         Locale.Changed += OnStateChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        RedirectToMfaEnrollmentIfNeeded();
     }
 
     private void ToggleNav() => navOpen = !navOpen;
@@ -302,11 +303,62 @@
         };
     }
 
-    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+    private bool RequiresMfaEnrollment =>
+        Auth.User is { MfaEnrollmentRequired: true, MfaEnabled: false };
 
-    public void Dispose()
+    private bool IsAccountRoute
+    {
+        get
+        {
+            var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+            var path = relative.Split(['?', '#'], 2)[0].TrimEnd('/');
+            return string.Equals(path, "account", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void RedirectToMfaEnrollmentIfNeeded()
+    {
+        if (RequiresMfaEnrollment && !IsAccountRoute)
+            Navigation.NavigateTo("/account", replace: true);
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                RedirectToMfaEnrollmentIfNeeded();
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    private async void OnStateChanged()
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                RedirectToMfaEnrollmentIfNeeded();
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    public ValueTask DisposeAsync()
     {
         Auth.StateChanged -= OnStateChanged;
         Locale.Changed -= OnStateChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+        return ValueTask.CompletedTask;
     }
 }

@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Identity.Application.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -36,12 +37,17 @@ public sealed class LoginMfaCommandHandler(
 
     public async Task<Result<AuthTokensDto>> Handle(LoginMfaCommand request, CancellationToken cancellationToken)
     {
-        if (tokenService.ValidateMfaChallengeToken(request.MfaToken) is not { } userId)
+        if (tokenService.ValidateMfaChallengeToken(request.MfaToken) is not { } challenge)
             return Invalid;
 
         var now = timeProvider.GetUtcNow();
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-        if (user is null || user.Status != UserStatus.Active || user.IsLockedOut(now) || !user.MfaEnabled || user.MfaSecret is null)
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == challenge.UserId, cancellationToken);
+        if (user is null
+            || user.Status != UserStatus.Active
+            || user.SecurityStamp != challenge.SecurityStamp
+            || user.IsLockedOut(now)
+            || !user.MfaEnabled
+            || user.MfaSecret is null)
             return Invalid;
 
         var secret = secretProtector.Unprotect(user.MfaSecret);
@@ -50,13 +56,16 @@ public sealed class LoginMfaCommandHandler(
 
         if (!verified)
         {
-            user.RecordFailedSignIn(_options.MaxFailedSignInAttempts, TimeSpan.FromMinutes(_options.LockoutMinutes), now);
+            var locked = user.RecordFailedSignIn(_options.MaxFailedSignInAttempts, TimeSpan.FromMinutes(_options.LockoutMinutes), now);
+            if (locked)
+                await AuthSessionRevocation.RevokeActiveSessionsAsync(db, user.Id, now, cancellationToken);
+
             await db.SaveChangesAsync(cancellationToken);
             return Invalid;
         }
 
         var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == user.RoleId, cancellationToken);
-        var permissions = role?.Permissions.ToList() ?? [];
+        var permissions = EffectiveUserPermissions.For(user, role);
 
         user.RecordSuccessfulSignIn(now);
 

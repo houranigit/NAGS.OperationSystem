@@ -94,8 +94,22 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
 {
     public async Task<Result<StaffMemberDto>> Handle(GetStaffMemberByIdQuery request, CancellationToken cancellationToken)
     {
-        var staff = await db.StaffMembers.AsNoTracking()
-            .Where(s => s.Id == request.Id)
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        var query = db.StaffMembers.AsNoTracking()
+            .Where(s => s.Id == request.Id);
+
+        if (!resolved.Value.IsAdministrator)
+        {
+            if (resolved.Value.StationId is not { } scopedStation)
+                return ScopeForbidden();
+
+            query = query.Where(s => s.StationId == scopedStation);
+        }
+
+        var staff = await query
             .Select(s => new
             {
                 s.Id,
@@ -120,11 +134,9 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             })
             .FirstOrDefaultAsync(cancellationToken);
         if (staff is null)
-            return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
-
-        var scopeCheck = await scope.CheckStationAsync(staff.StationId, cancellationToken);
-        if (scopeCheck.IsFailure)
-            return scopeCheck.Error;
+            return resolved.Value.IsAdministrator
+                ? Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound")
+                : ScopeForbidden();
 
         var licenses = await (
             from assignment in db.StaffMemberLicenses.AsNoTracking()
@@ -154,4 +166,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             staff.CreatedAtUtc, staff.UpdatedAtUtc, Convert.ToBase64String(staff.RowVersion),
             licenses);
     }
+
+    private static Error ScopeForbidden() =>
+        Error.Forbidden("This record is outside your data scope.", "MasterData.Scope.Forbidden");
 }

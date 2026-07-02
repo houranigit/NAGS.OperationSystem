@@ -30,6 +30,7 @@ using Scalar.AspNetCore;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+AddLocalConfigurationFile(builder);
 
 var useSerilog = builder.Configuration.GetValue<bool?>("Logging:UseSerilog") ?? true;
 if (useSerilog)
@@ -290,6 +291,39 @@ static int? TryGetInt(DbConnectionStringBuilder builder, string key)
     return int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
         ? parsed
         : null;
+}
+
+static void AddLocalConfigurationFile(WebApplicationBuilder builder)
+{
+    builder.Configuration.AddJsonFile(
+        $"appsettings.{builder.Environment.EnvironmentName}.local.json",
+        optional: true,
+        reloadOnChange: true);
+
+    var sources = builder.Configuration.Sources;
+    var localSource = sources[^1];
+    sources.RemoveAt(sources.Count - 1);
+
+    var insertIndex = sources.Count;
+    for (var i = 0; i < sources.Count; i++)
+    {
+        if (IsExternalOverrideSource(sources[i]))
+        {
+            insertIndex = i;
+            break;
+        }
+    }
+
+    sources.Insert(insertIndex, localSource);
+}
+
+static bool IsExternalOverrideSource(Microsoft.Extensions.Configuration.IConfigurationSource source)
+{
+    var typeName = source.GetType().FullName;
+    return typeName is
+        "Microsoft.Extensions.Configuration.UserSecrets.UserSecretsConfigurationSource" or
+        "Microsoft.Extensions.Configuration.EnvironmentVariables.EnvironmentVariablesConfigurationSource" or
+        "Microsoft.Extensions.Configuration.CommandLine.CommandLineConfigurationSource";
 }
 
 // Exposed for integration tests (WebApplicationFactory<Program>).

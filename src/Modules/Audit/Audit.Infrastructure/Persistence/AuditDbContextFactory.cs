@@ -12,10 +12,15 @@ public sealed class AuditDbContextFactory : IDesignTimeDbContextFactory<AuditDbC
     public AuditDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<AuditDbContext>()
-            .UseSqlServer("Server=localhost;Database=OperationsSystem;Trusted_Connection=False;TrustServerCertificate=True;",
+            .UseSqlServer(GetConnectionString(),
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", AuditDbContext.Schema))
             .Options;
 
         return new AuditDbContext(options);
     }
+
+    private static string GetConnectionString() =>
+        Environment.GetEnvironmentVariable("ConnectionStrings__Audit")
+        ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+        ?? "Server=localhost,1433;Database=OperationsSystem;User Id=sa;Password=Your_strong_Pass123;TrustServerCertificate=True;Encrypt=False";
 }

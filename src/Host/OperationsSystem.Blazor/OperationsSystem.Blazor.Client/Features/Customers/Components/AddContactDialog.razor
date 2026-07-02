@@ -5,7 +5,7 @@
 
 <RadzenTemplateForm TItem="ContactModel" Data="@model" Submit="@SubmitAsync">
     <div class="acd-form">
-        <div class="acd-section"><RadzenIcon Icon="contacts" /><h4>@UiStrings.Customers.AddContact</h4></div>
+        <div class="acd-section"><RadzenIcon Icon="contacts" /><h4>@DialogTitle</h4></div>
 
         <RadzenFormField Text="@UiStrings.Customers.ContactName" Variant="Variant.Outlined" Style="width: 100%;">
             <Start><RadzenIcon Icon="person" /></Start>
@@ -32,7 +32,7 @@
             </ChildContent>
         </RadzenFormField>
 
-        @if (Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess))
+        @if (!IsEdit && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess))
         {
             <div class="acd-section"><RadzenIcon Icon="vpn_key" /><h4>@UiStrings.PortalAccess.GrantTitle</h4></div>
             <RadzenStack Gap="0.5rem">
@@ -66,7 +66,7 @@
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Create" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@SubmitText" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
         </RadzenStack>
     </div>
 </RadzenTemplateForm>
@@ -74,17 +74,43 @@
 @code {
     [Parameter] public Guid CustomerId { get; set; }
     [Parameter] public string RowVersion { get; set; } = string.Empty;
+    [Parameter] public CustomerContactModel? Contact { get; set; }
 
-    private readonly ContactModel model = new();
+    private ContactModel model = new();
+    private Guid? initializedContactId;
     private bool isSubmitting;
     private string? errorMessage;
     private bool grantPortal;
     private Guid? portalRoleId;
     private IReadOnlyList<RoleOption> portalRoles = [];
 
+    private bool IsEdit => Contact is not null;
+    private string DialogTitle => IsEdit ? UiStrings.Customers.EditContact : UiStrings.Customers.AddContact;
+    private string SubmitText => IsEdit ? UiStrings.Common.Save : UiStrings.Common.Create;
+
+    protected override void OnParametersSet()
+    {
+        if (Contact is { } contact && initializedContactId != contact.Id)
+        {
+            model = new ContactModel
+            {
+                Name = contact.Name,
+                JobTitle = contact.JobTitle,
+                Email = contact.Email,
+                Phone = contact.Phone
+            };
+            initializedContactId = contact.Id;
+        }
+        else if (Contact is null && initializedContactId is not null)
+        {
+            model = new ContactModel();
+            initializedContactId = null;
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
-        if (Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess))
+        if (!IsEdit && Auth.HasPermission(MasterDataPermissions.CustomerContactsGrantAccess))
         {
             try
             {
@@ -115,7 +141,9 @@
 
         if (grantPortal && portalRoleId is null)
         {
-            errorMessage = UiStrings.PortalAccess.RoleRequired;
+            errorMessage = portalRoles.Count == 0
+                ? UiStrings.PortalAccess.NoCompatibleRoles
+                : UiStrings.PortalAccess.RoleRequired;
             return;
         }
 
@@ -123,16 +151,23 @@
 
         try
         {
-            var newContactId = await MasterData.AddCustomerContactAsync(CustomerId,
-                new AddCustomerContactRequest(
-                    model.Name!.Trim(),
-                    string.IsNullOrWhiteSpace(model.JobTitle) ? null : model.JobTitle!.Trim(),
-                    model.Email!.Trim(),
-                    string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone!.Trim()),
-                RowVersion);
+            var name = model.Name!.Trim();
+            var jobTitle = string.IsNullOrWhiteSpace(model.JobTitle) ? null : model.JobTitle!.Trim();
+            var email = model.Email!.Trim();
+            var phone = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone!.Trim();
 
-            if (grantPortal && portalRoleId is { } roleId)
-                await MasterData.GrantContactPortalAccessAsync(CustomerId, newContactId, new GrantPortalAccessRequest(roleId));
+            if (Contact is { } contact)
+            {
+                await MasterData.UpdateCustomerContactAsync(CustomerId, contact.Id,
+                    new UpdateCustomerContactRequest(name, jobTitle, email, phone),
+                    RowVersion);
+            }
+            else
+            {
+                await MasterData.AddCustomerContactAsync(CustomerId,
+                    new AddCustomerContactRequest(name, jobTitle, email, phone, grantPortal ? portalRoleId : null),
+                    RowVersion);
+            }
 
             DialogService.Close(true);
         }

@@ -1,10 +1,13 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Persistence;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
+using MasterData.Contracts;
+using MasterData.Domain.Authorization;
 using MasterData.Domain.Customers;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +17,7 @@ namespace MasterData.Application.Features.Customers;
 
 public sealed record CustomerAddressInput(string? Line1, string? Line2, string? City, string? Region, string? PostalCode);
 
-public sealed record CustomerContactInput(Guid? Id, string? Name, string? JobTitle, string? Email, string? Phone);
+public sealed record CustomerContactInput(Guid? Id, string? Name, string? JobTitle, string? Email, string? Phone, Guid? PortalAccessRoleId);
 
 // --- Create ---------------------------------------------------------------
 
@@ -35,14 +38,23 @@ public sealed class CreateCustomerCommandValidator : AbstractValidator<CreateCus
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.CountryId).NotEmpty();
         RuleFor(x => x.Address).NotNull();
+        RuleForEach(x => x.Contacts)
+            .ChildRules(contact =>
+                contact.RuleFor(x => x.PortalAccessRoleId).NotEqual(Guid.Empty).When(x => x.PortalAccessRoleId.HasValue));
     }
 }
 
-public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserContext userContext, TimeProvider timeProvider)
     : ICommandHandler<CreateCustomerCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateCustomerCommand request, CancellationToken cancellationToken)
     {
+        if (request.Contacts.Any(c => c.PortalAccessRoleId is { }) &&
+            !userContext.HasPermission(MasterDataPermissions.CustomerContacts.GrantAccess))
+        {
+            return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
+        }
+
         var countryCheck = await CustomerGuards.EnsureActiveCountryAsync(db, request.CountryId, cancellationToken);
         if (countryCheck.IsFailure)
             return countryCheck.Error;
@@ -69,6 +81,10 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, TimePr
         if (reconcile.IsFailure)
             return reconcile.Error;
 
+        var portalAccess = EnqueueInitialContactPortalAccess(customer, request.Contacts, now);
+        if (portalAccess.IsFailure)
+            return portalAccess.Error;
+
         db.Customers.Add(customer);
         await db.SaveChangesAsync(cancellationToken);
         return customer.Id;
@@ -78,6 +94,36 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, TimePr
         contacts is null
             ? []
             : contacts.Select(c => new ContactReconciliationItem(c.Id, c.Name, c.JobTitle, c.Email, c.Phone)).ToList();
+
+    private Result EnqueueInitialContactPortalAccess(Customer customer, IReadOnlyList<CustomerContactInput> contacts, DateTimeOffset now)
+    {
+        foreach (var input in contacts.Where(c => c.PortalAccessRoleId is { }))
+        {
+            var normalizedEmail = input.Email?.Trim().ToLowerInvariant();
+            var contact = customer.Contacts.FirstOrDefault(c => c.IsActive && c.Email == normalizedEmail);
+            if (contact is null)
+            {
+                return Error.Validation(
+                    "A contact selected for portal access could not be created.",
+                    "MasterData.CustomerContact.PortalAccessContactMissing");
+            }
+
+            var correlationId = Guid.NewGuid();
+            contact.RequestPortalAccess(correlationId, now);
+
+            db.Enqueue(new PortalAccessRequested
+            {
+                ExternalReferenceId = contact.Id,
+                UserType = UserType.CustomerContact,
+                RoleId = input.PortalAccessRoleId!.Value,
+                Email = contact.Email,
+                DisplayName = contact.Name,
+                CorrelationId = correlationId
+            });
+        }
+
+        return Result.Success();
+    }
 }
 
 // --- Update ---------------------------------------------------------------
@@ -157,7 +203,14 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
 
 // --- Add contact ----------------------------------------------------------
 
-public sealed record AddCustomerContactCommand(Guid CustomerId, string? Name, string? JobTitle, string? Email, string? Phone, byte[] RowVersion) : ICommand<Guid>;
+public sealed record AddCustomerContactCommand(
+    Guid CustomerId,
+    string? Name,
+    string? JobTitle,
+    string? Email,
+    string? Phone,
+    byte[] RowVersion,
+    Guid? PortalAccessRoleId) : ICommand<Guid>;
 
 public sealed class AddCustomerContactCommandValidator : AbstractValidator<AddCustomerContactCommand>
 {
@@ -167,10 +220,15 @@ public sealed class AddCustomerContactCommandValidator : AbstractValidator<AddCu
         RuleFor(x => x.Email).NotEmpty();
         RuleFor(x => x.Name).NotEmpty();
         RuleFor(x => x.RowVersion).NotEmpty();
+        RuleFor(x => x.PortalAccessRoleId).NotEqual(Guid.Empty).When(x => x.PortalAccessRoleId.HasValue);
     }
 }
 
-public sealed class AddCustomerContactCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class AddCustomerContactCommandHandler(
+    IMasterDataDbContext db,
+    IMasterDataScope scope,
+    IUserContext userContext,
+    TimeProvider timeProvider)
     : ICommandHandler<AddCustomerContactCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(AddCustomerContactCommand request, CancellationToken cancellationToken)
@@ -179,15 +237,38 @@ public sealed class AddCustomerContactCommandHandler(IMasterDataDbContext db, IM
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
+        if (request.PortalAccessRoleId is { } && !userContext.HasPermission(MasterDataPermissions.CustomerContacts.GrantAccess))
+            return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
+
         var customer = await db.Customers
             .Include(c => c.Contacts)
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
 
+        if (request.PortalAccessRoleId is { } && !customer.IsActive)
+            return Error.Validation("Portal access cannot be granted while the customer is inactive.", "MasterData.Customer.Inactive");
+
         var added = customer.AddContact(request.Name, request.JobTitle, request.Email, request.Phone, timeProvider.GetUtcNow());
         if (added.IsFailure)
             return added.Error;
+
+        if (request.PortalAccessRoleId is { } roleId)
+        {
+            var now = timeProvider.GetUtcNow();
+            var correlationId = Guid.NewGuid();
+            added.Value.RequestPortalAccess(correlationId, now);
+
+            db.Enqueue(new PortalAccessRequested
+            {
+                ExternalReferenceId = added.Value.Id,
+                UserType = UserType.CustomerContact,
+                RoleId = roleId,
+                Email = added.Value.Email,
+                DisplayName = added.Value.Name,
+                CorrelationId = correlationId
+            });
+        }
 
         db.SetOriginalRowVersion(customer, request.RowVersion);
 
@@ -235,9 +316,23 @@ public sealed class UpdateCustomerContactCommandHandler(IMasterDataDbContext db,
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
 
+        var contact = customer.Contacts.FirstOrDefault(c => c.Id == request.ContactId);
+        var previousEmail = contact?.Email;
+        var linkedUserId = contact?.LinkedUserId;
+
         var result = customer.UpdateContact(request.ContactId, request.Name, request.JobTitle, request.Email, request.Phone, timeProvider.GetUtcNow());
         if (result.IsFailure)
             return result.Error;
+
+        // Changing the email of a linked contact starts Identity-owned reverification; the login
+        // email changes only after the recipient confirms the new address.
+        if (linkedUserId is { } userId
+            && previousEmail is not null
+            && contact is not null
+            && !string.Equals(previousEmail, contact.Email, StringComparison.Ordinal))
+        {
+            PortalAccess.PortalLifecycle.EnqueueEmailChange(db, contact.Id, userId, contact.Email);
+        }
 
         db.SetOriginalRowVersion(customer, request.RowVersion);
 
@@ -261,6 +356,8 @@ public sealed record SetCustomerLogoCommand(Guid Id, byte[] Content, string File
 public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, IFileStorage storage, TimeProvider timeProvider)
     : ICommandHandler<SetCustomerLogoCommand, string>
 {
+    public const int MaxLogoBytes = 2 * 1024 * 1024;
+
     // Allow-list of raster image types for customer logos.
     private static readonly HashSet<string> AllowedContentTypes =
         new(StringComparer.OrdinalIgnoreCase) { "image/png", "image/jpeg", "image/webp", "image/gif" };
@@ -279,7 +376,7 @@ public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMast
         if (request.Content.Length == 0)
             return Error.Validation("The logo file is empty.", "MasterData.Customer.LogoEmpty");
 
-        if (request.Content.Length > 2 * 1024 * 1024)
+        if (request.Content.Length > MaxLogoBytes)
             return Error.Validation("The logo file must be at most 2 MB.", "MasterData.Customer.LogoTooLarge");
 
         if (!AllowedContentTypes.Contains(request.ContentType) || !HasImageSignature(request.Content))
@@ -339,11 +436,15 @@ public sealed record ActivateCustomerCommand(Guid Id, byte[] RowVersion) : IComm
 
 public sealed record DeactivateCustomerCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
     : ICommandHandler<ActivateCustomerCommand>
 {
     public async Task<Result> Handle(ActivateCustomerCommand request, CancellationToken cancellationToken)
     {
+        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        if (scopeCheck.IsFailure)
+            return scopeCheck.Error;
+
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
@@ -364,25 +465,34 @@ public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, Time
     }
 }
 
-public sealed class DeactivateCustomerCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class DeactivateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
     : ICommandHandler<DeactivateCustomerCommand>
 {
     public async Task<Result> Handle(DeactivateCustomerCommand request, CancellationToken cancellationToken)
     {
+        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        if (scopeCheck.IsFailure)
+            return scopeCheck.Error;
+
         var customer = await db.Customers
             .Include(c => c.Contacts)
             .FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
 
+        var now = timeProvider.GetUtcNow();
+
         if (customer.IsActive)
         {
             // Deactivating a customer blocks access for all of its linked contacts.
             foreach (var contact in customer.Contacts.Where(c => c.IsActive && c.LinkedUserId is not null))
+            {
+                contact.SuspendPortal(now);
                 PortalAccess.PortalLifecycle.EnqueueDeactivation(db, contact.Id, contact.LinkedUserId!.Value);
+            }
         }
 
-        customer.Deactivate(timeProvider.GetUtcNow());
+        customer.Deactivate(now);
         db.SetOriginalRowVersion(customer, request.RowVersion);
 
         try

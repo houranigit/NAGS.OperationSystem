@@ -77,10 +77,19 @@
                                 <RowAction Text="@UiStrings.Users.Unlock" Icon="lock_open"
                                            Permission="@IdentityPermissions.UsersUnlock"
                                            Visible="@u.IsLockedOut" OnClick="@UnlockAsync" />
+                                <RowAction Text="@UiStrings.Users.RestoreAccess" Icon="person_check"
+                                           Permission="@IdentityPermissions.UsersRestoreAccess"
+                                           Visible="@(u.Status == "Suspended")" OnClick="@RestoreAccessAsync" />
+                                <RowAction Text="@UiStrings.Users.ResetMfa" Icon="restart_alt"
+                                           Permission="@IdentityPermissions.UsersResetMfa"
+                                           Visible="@CanResetMfa(u)" OnClick="@ResetMfaAsync" />
                                 <RowAction Separator="true" />
                                 <RowAction Text="@UiStrings.Users.Lock" Icon="lock" Danger="true"
                                            Permission="@IdentityPermissions.UsersLock"
                                            Visible="@(!u.IsLockedOut)" OnClick="@LockAsync" />
+                                <RowAction Text="@UiStrings.Users.Suspend" Icon="pause_circle" Danger="true"
+                                           Permission="@IdentityPermissions.UsersSuspend"
+                                           Visible="@(u.Status != "Suspended" && u.Status != "Deactivated")" OnClick="@SuspendAsync" />
                                 <RowAction Text="@UiStrings.Users.Deactivate" Icon="person_off" Danger="true"
                                            Permission="@IdentityPermissions.UsersDeactivate"
                                            Visible="@(u.Status != "Deactivated")" OnClick="@DeactivateAsync" />
@@ -185,6 +194,10 @@
                 <RadzenCard class="us-card">
                     <div class="us-card-head"><RadzenIcon Icon="security" /><h3>@UiStrings.Users.Security</h3></div>
                     <dl class="us-metrics us-metrics--tall">
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.Mfa</dt>
+                            <dd>@MfaStatusLabel(u)</dd>
+                        </div>
                         <div class="us-metric">
                             <dt>@UiStrings.Users.LastLogin</dt>
                             <dd title="@FullStamp(u.LastLoginAtUtc)">@LoginStamp(u.LastLoginAtUtc)</dd>
@@ -434,8 +447,13 @@
         Auth.HasPermission(IdentityPermissions.UsersAssignRole)
         || (u.Status == "Invited" && Auth.HasPermission(IdentityPermissions.UsersInvite))
         || (u.IsLockedOut && Auth.HasPermission(IdentityPermissions.UsersUnlock))
+        || (u.Status == "Suspended" && Auth.HasPermission(IdentityPermissions.UsersRestoreAccess))
+        || (CanResetMfa(u) && Auth.HasPermission(IdentityPermissions.UsersResetMfa))
         || (!u.IsLockedOut && Auth.HasPermission(IdentityPermissions.UsersLock))
+        || (u.Status != "Suspended" && u.Status != "Deactivated" && Auth.HasPermission(IdentityPermissions.UsersSuspend))
         || (u.Status != "Deactivated" && Auth.HasPermission(IdentityPermissions.UsersDeactivate));
+
+    private static bool CanResetMfa(UserDetail u) => u.MfaEnabled || u.MfaEnrollmentRequired;
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -580,7 +598,12 @@
             return;
 
         var result = await DialogService.OpenAsync<AssignRoleDialog>(UiStrings.Users.AssignRoleTitle,
-            new Dictionary<string, object?> { [nameof(AssignRoleDialog.UserId)] = user.Id, [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId });
+            new Dictionary<string, object?>
+            {
+                [nameof(AssignRoleDialog.UserId)] = user.Id,
+                [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId,
+                [nameof(AssignRoleDialog.CompatibleUserType)] = user.UserType
+            });
 
         if (result is true)
             await LoadAsync();
@@ -604,6 +627,24 @@
     {
         if (await Confirm(UiStrings.Users.ConfirmLock))
             await RunActionAsync(() => Identity.LockUserAsync(Id), UiStrings.Users.Lock);
+    }
+
+    private async Task SuspendAsync()
+    {
+        if (await Confirm(UiStrings.Users.ConfirmSuspend))
+            await RunActionAsync(() => Identity.SuspendUserAsync(Id), UiStrings.Users.Suspend);
+    }
+
+    private async Task RestoreAccessAsync()
+    {
+        if (await Confirm(UiStrings.Users.ConfirmRestoreAccess))
+            await RunActionAsync(() => Identity.RestoreAccessAsync(Id), UiStrings.Users.RestoreAccess);
+    }
+
+    private async Task ResetMfaAsync()
+    {
+        if (await Confirm(UiStrings.Users.ConfirmResetMfa))
+            await RunActionAsync(() => Identity.ResetMfaAsync(Id), UiStrings.Users.ResetMfa);
     }
 
     private async Task DeactivateAsync()
@@ -689,6 +730,7 @@
         {
             "Active" => "success",
             "Invited" => "warning",
+            "Suspended" => "warning",
             _ => "neutral"
         };
 
@@ -701,6 +743,7 @@
         {
             "Active" => UiStrings.Users.StatusActiveDesc,
             "Invited" => UiStrings.Users.StatusInvitedDesc,
+            "Suspended" => UiStrings.Users.StatusSuspendedDesc,
             "Deactivated" => UiStrings.Users.StatusDeactivatedDesc,
             _ => UiStrings.Users.StatusActiveDesc
         };
@@ -733,10 +776,21 @@
         };
     }
 
+    private static string MfaStatusLabel(UserDetail u)
+    {
+        if (u.MfaEnabled)
+            return UiStrings.Users.MfaEnabled;
+
+        return u.MfaEnrollmentRequired
+            ? UiStrings.Users.MfaRequired
+            : UiStrings.Users.MfaNotEnabled;
+    }
+
     private static string StatusTone(string status) => status switch
     {
         "Active" => "success",
         "Invited" => "warning",
+        "Suspended" => "warning",
         "Deactivated" => "neutral",
         _ => "neutral"
     };

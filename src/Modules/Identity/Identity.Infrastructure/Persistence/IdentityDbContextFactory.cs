@@ -12,10 +12,15 @@ public sealed class IdentityDbContextFactory : IDesignTimeDbContextFactory<Ident
     public IdentityDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<IdentityDbContext>()
-            .UseSqlServer("Server=localhost;Database=OperationsSystem;Trusted_Connection=False;TrustServerCertificate=True;",
+            .UseSqlServer(GetConnectionString(),
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", IdentityDbContext.Schema))
             .Options;
 
         return new IdentityDbContext(options);
     }
+
+    private static string GetConnectionString() =>
+        Environment.GetEnvironmentVariable("ConnectionStrings__Identity")
+        ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+        ?? "Server=localhost,1433;Database=OperationsSystem;User Id=sa;Password=Your_strong_Pass123;TrustServerCertificate=True;Encrypt=False";
 }

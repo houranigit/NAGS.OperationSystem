@@ -9,8 +9,9 @@ using Shouldly;
 namespace MasterData.IntegrationTests;
 
 /// <summary>
-/// Server-side data scope for a provisioned StationStaff account: it may only read/act within its
-/// linked station, and access fails closed once the linked record or parent station is inactive.
+/// Server-side data scope for provisioned portal accounts: station staff may only read/act within
+/// their linked station, customer contacts within their linked customer, and access fails closed
+/// once the linked record or parent is inactive.
 /// </summary>
 public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFixture<MasterDataApiFactory>
 {
@@ -20,7 +21,12 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
     private sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record StaffItem(Guid Id, string FullName, Guid StationId);
+    private sealed record StaffDetail(Guid Id, string RowVersion);
     private sealed record StationItem(Guid Id, string IataCode);
+    private sealed record CustomerItem(Guid Id, string Name);
+    private sealed record CustomerDetail(Guid Id, string RowVersion, List<ContactDetail> Contacts);
+    private sealed record ContactDetail(Guid Id, string Name, string Email);
+    private sealed record CountryOption(Guid Id, string Name, string IsoCode);
 
     [Fact]
     public async Task Station_staff_only_sees_and_touches_its_own_station()
@@ -47,6 +53,24 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
         (await scoped.GetAsync($"{Base}/stations/{stationB}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await scoped.GetAsync($"{Base}/staff-members/{staffInB.Id}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
+        var otherStaff = await admin.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffInB.Id}");
+        var crossScopeUpdate = new HttpRequestMessage(HttpMethod.Put, $"{Base}/staff-members/{staffInB.Id}")
+        {
+            Content = JsonContent.Create(new
+            {
+                fullName = "Cross Scope Staff",
+                employeeId = $"EMP-{Guid.NewGuid():N}",
+                email = $"cross-staff-{Guid.NewGuid():N}@example.com",
+                stationId = stationB,
+                manpowerTypeId = manpower,
+                employmentContract = (object?)null,
+                workingDays = (string[]?)null,
+                licenses = Array.Empty<object>()
+            })
+        };
+        crossScopeUpdate.Headers.TryAddWithoutValidation("If-Match", otherStaff!.RowVersion);
+        (await scoped.SendAsync(crossScopeUpdate)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
         // In-scope reads succeed.
         (await scoped.GetAsync($"{Base}/stations/{stationA}")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await scoped.GetAsync($"{Base}/staff-members/{staffInA.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -72,6 +96,65 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
         (await scoped.GetAsync($"{Base}/staff-members?pageSize=100")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task Customer_contact_only_sees_and_touches_its_own_customer()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var customerA = await Helpers.CreateCustomerWithContactAsync(admin);
+        var customerB = await Helpers.CreateCustomerWithContactAsync(admin);
+
+        var scoped = await ProvisionScopedContactClientAsync(admin, customerA.CustomerId, customerA.ContactId, customerA.Email);
+
+        var customers = await scoped.GetFromJsonAsync<PagedList<CustomerItem>>($"{Base}/customers?pageSize=100");
+        customers!.Items.Select(c => c.Id).ShouldBe([customerA.CustomerId]);
+
+        (await scoped.GetAsync($"{Base}/customers/{customerB.CustomerId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await scoped.GetAsync($"{Base}/customers/{customerA.CustomerId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var ownCustomer = await scoped.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerA.CustomerId}");
+        var addOwnContact = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{customerA.CustomerId}/contacts")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "Scoped Contact",
+                jobTitle = (string?)null,
+                email = $"scoped-contact-{Guid.NewGuid():N}@example.com",
+                phone = (string?)null,
+                portalAccessRoleId = (Guid?)null
+            })
+        };
+        addOwnContact.Headers.TryAddWithoutValidation("If-Match", ownCustomer!.RowVersion);
+        (await scoped.SendAsync(addOwnContact)).StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var otherCustomer = await admin.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerB.CustomerId}");
+        var addCrossScopeContact = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{customerB.CustomerId}/contacts")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "Cross Scope Contact",
+                jobTitle = (string?)null,
+                email = $"cross-contact-{Guid.NewGuid():N}@example.com",
+                phone = (string?)null,
+                portalAccessRoleId = (Guid?)null
+            })
+        };
+        addCrossScopeContact.Headers.TryAddWithoutValidation("If-Match", otherCustomer!.RowVersion);
+        (await scoped.SendAsync(addCrossScopeContact)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Customer_contact_can_load_country_options_for_customer_edit_form()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var customer = await Helpers.CreateCustomerWithContactAsync(admin);
+        var scoped = await ProvisionScopedContactClientAsync(admin, customer.CustomerId, customer.ContactId, customer.Email);
+
+        var options = await scoped.GetFromJsonAsync<List<CountryOption>>($"{Base}/countries/options");
+
+        options.ShouldNotBeNull();
+        options!.ShouldNotBeEmpty();
+    }
+
     private sealed record StationDetail(Guid Id, string RowVersion);
 
     private async Task<HttpClient> ProvisionScopedStaffClientAsync(HttpClient admin, Guid staffId, string email)
@@ -80,14 +163,52 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
             "masterdata.stations.view", "masterdata.stations.update",
             "masterdata.staff-members.view", "masterdata.staff-members.update");
 
-        (await admin.PostAsJsonAsync($"{Base}/staff-members/{staffId}/grant-access", new { roleId }))
-            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var staff = await admin.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
+        var grant = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{staffId}/grant-access")
+        {
+            Content = JsonContent.Create(new { roleId })
+        };
+        grant.Headers.TryAddWithoutValidation("If-Match", staff!.RowVersion);
+        (await admin.SendAsync(grant)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await factory.DrainOutboxesAsync();
 
         var invitationToken = await factory.GetInvitationTokenAsync(email);
         invitationToken.ShouldNotBeNull();
 
         const string password = "Staff#12345";
+        (await admin.PostAsJsonAsync($"{IdentityBase}/auth/activate",
+            new { email, invitationToken, newPassword = password }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var client = factory.CreateClient();
+        var login = await client.PostAsJsonAsync($"{IdentityBase}/auth/login", new { email, password });
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var token = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.AccessToken);
+        return client;
+    }
+
+    private async Task<HttpClient> ProvisionScopedContactClientAsync(HttpClient admin, Guid customerId, Guid contactId, string email)
+    {
+        var roleId = await Helpers.CreateRoleAsync(admin, "CustomerContact",
+            "masterdata.countries.view",
+            "masterdata.customers.view", "masterdata.customers.update",
+            "masterdata.customer-contacts.view", "masterdata.customer-contacts.create",
+            "masterdata.customer-contacts.update", "masterdata.customer-contacts.remove");
+
+        var customer = await admin.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+        var grant = new HttpRequestMessage(HttpMethod.Post, $"{Base}/customers/{customerId}/contacts/{contactId}/grant-access")
+        {
+            Content = JsonContent.Create(new { roleId })
+        };
+        grant.Headers.TryAddWithoutValidation("If-Match", customer!.RowVersion);
+        (await admin.SendAsync(grant)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+
+        const string password = "Contact#12345";
         (await admin.PostAsJsonAsync($"{IdentityBase}/auth/activate",
             new { email, invitationToken, newPassword = password }))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
@@ -110,6 +231,53 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
                 description = (string?)null,
                 compatibleUserType,
                 permissions
+            });
+            create.StatusCode.ShouldBe(HttpStatusCode.Created);
+            return await create.Content.ReadFromJsonAsync<Guid>();
+        }
+
+        public static async Task<(Guid CustomerId, Guid ContactId, string Email)> CreateCustomerWithContactAsync(HttpClient client)
+        {
+            var email = $"contact-{Guid.NewGuid():N}@example.com";
+            var customerId = await CreateCustomerAsync(client, email);
+            var detail = await client.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");
+            var contactId = detail!.Contacts.Single(c => c.Email == email).Id;
+            return (customerId, contactId, email);
+        }
+
+        public static async Task<Guid> CreateCustomerAsync(HttpClient client, string? contactEmail = null)
+        {
+            var countryId = await CreateCountryAsync(client);
+            var create = await client.PostAsJsonAsync($"{Base}/customers", new
+            {
+                iataCode = (string?)null,
+                icaoCode = (string?)null,
+                name = $"Customer {Guid.NewGuid():N}",
+                countryId,
+                officialEmail = (string?)null,
+                officialPhone = (string?)null,
+                address = new
+                {
+                    line1 = "1 Airport Rd",
+                    line2 = (string?)null,
+                    city = "Amman",
+                    region = (string?)null,
+                    postalCode = (string?)null
+                },
+                contacts = contactEmail is null
+                    ? Array.Empty<object>()
+                    : new object[]
+                    {
+                        new
+                        {
+                            id = (Guid?)null,
+                            name = "Scoped Contact",
+                            jobTitle = (string?)null,
+                            email = contactEmail,
+                            phone = (string?)null,
+                            portalAccessRoleId = (Guid?)null
+                        }
+                    }
             });
             create.StatusCode.ShouldBe(HttpStatusCode.Created);
             return await create.Content.ReadFromJsonAsync<Guid>();

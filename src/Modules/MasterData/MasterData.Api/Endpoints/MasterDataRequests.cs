@@ -61,7 +61,7 @@ public sealed record NewStationStaffRequest(
 
 // Customers
 public sealed record AddressRequest(string? Line1, string? Line2, string? City, string? Region, string? PostalCode);
-public sealed record CustomerContactRequest(Guid? Id, string Name, string? JobTitle, string Email, string? Phone);
+public sealed record CustomerContactRequest(Guid? Id, string Name, string? JobTitle, string Email, string? Phone, Guid? PortalAccessRoleId);
 
 public sealed record CreateCustomerRequest(
     string? IataCode,
@@ -82,7 +82,7 @@ public sealed record UpdateCustomerRequest(
     string? OfficialPhone,
     AddressRequest Address);
 
-public sealed record AddCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
+public sealed record AddCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone, Guid? PortalAccessRoleId);
 public sealed record UpdateCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
 
 // Portal access
@@ -100,7 +100,8 @@ public sealed record CreateStaffMemberRequest(
     Guid ManpowerTypeId,
     EmploymentContractRequest? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
-    IReadOnlyList<StaffLicenseRequest>? Licenses);
+    IReadOnlyList<StaffLicenseRequest>? Licenses,
+    Guid? PortalAccessRoleId);
 
 public sealed record UpdateStaffMemberRequest(
     string FullName,

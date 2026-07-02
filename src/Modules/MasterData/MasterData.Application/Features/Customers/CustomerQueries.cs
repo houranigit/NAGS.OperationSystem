@@ -108,7 +108,8 @@ public sealed class GetCustomerByIdQueryHandler(IMasterDataDbContext db, IMaster
             .OrderByDescending(ct => ct.IsActive)
             .ThenBy(ct => ct.Name)
             .Select(ct => new CustomerContactDto(
-                ct.Id, ct.Name, ct.JobTitle, ct.Email, ct.Phone, ct.LinkedUserId, ct.IsActive, ct.CreatedAtUtc, ct.UpdatedAtUtc))
+                ct.Id, ct.Name, ct.JobTitle, ct.Email, ct.Phone, ct.LinkedUserId,
+                ct.PortalState.ToString(), ct.PortalFailureReason, ct.IsActive, ct.CreatedAtUtc, ct.UpdatedAtUtc))
             .ToList();
 
         return new CustomerDto(

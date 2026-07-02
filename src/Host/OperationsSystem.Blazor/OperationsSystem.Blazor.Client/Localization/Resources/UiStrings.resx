@@ -47,9 +47,33 @@
   <data name="Auth.CredentialsRequired" xml:space="preserve"><value>Email and password are required.</value></data>
   <data name="Auth.InvalidCredentials" xml:space="preserve"><value>The email or password is incorrect.</value></data>
   <data name="Auth.AccountLocked" xml:space="preserve"><value>The account is temporarily locked. Please try again later.</value></data>
+  <data name="Auth.MfaTitle" xml:space="preserve"><value>Verification required</value></data>
+  <data name="Auth.MfaSubtitle" xml:space="preserve"><value>Enter an authenticator code or a recovery code to finish signing in.</value></data>
+  <data name="Auth.MfaCode" xml:space="preserve"><value>Authenticator or recovery code</value></data>
+  <data name="Auth.MfaCodeRequired" xml:space="preserve"><value>Enter the verification code.</value></data>
+  <data name="Auth.VerifyMfaButton" xml:space="preserve"><value>Verify and sign in</value></data>
+  <data name="Auth.BackToPassword" xml:space="preserve"><value>Use a different account</value></data>
+  <data name="Auth.InvalidMfaCode" xml:space="preserve"><value>The verification code is not valid.</value></data>
+  <data name="Auth.ForgotPasswordLink" xml:space="preserve"><value>Forgot password?</value></data>
+  <data name="Auth.ForgotPasswordTitle" xml:space="preserve"><value>Reset your password</value></data>
+  <data name="Auth.ForgotPasswordSubtitle" xml:space="preserve"><value>Enter your email and we will send reset instructions if the account exists.</value></data>
+  <data name="Auth.ForgotPasswordButton" xml:space="preserve"><value>Send reset link</value></data>
+  <data name="Auth.ForgotPasswordSuccess" xml:space="preserve"><value>If that account exists, a reset link has been sent.</value></data>
+  <data name="Auth.EmailRequired" xml:space="preserve"><value>Email is required.</value></data>
+  <data name="Auth.ResetPasswordTitle" xml:space="preserve"><value>Choose a new password</value></data>
+  <data name="Auth.ResetPasswordSubtitle" xml:space="preserve"><value>Use the reset link from your email to set a new password.</value></data>
+  <data name="Auth.ResetPasswordButton" xml:space="preserve"><value>Reset password</value></data>
+  <data name="Auth.ResetPasswordSuccess" xml:space="preserve"><value>Your password has been reset. You can sign in now.</value></data>
+  <data name="Auth.ResetPasswordInvalidLink" xml:space="preserve"><value>The reset link is invalid or has expired.</value></data>
+  <data name="Auth.ConfirmEmailChangeTitle" xml:space="preserve"><value>Confirm email change</value></data>
+  <data name="Auth.ConfirmEmailChangeSubtitle" xml:space="preserve"><value>Confirm the new sign-in email for your portal account.</value></data>
+  <data name="Auth.ConfirmEmailChangeButton" xml:space="preserve"><value>Confirm email</value></data>
+  <data name="Auth.ConfirmEmailChangeSuccess" xml:space="preserve"><value>Your email address has been confirmed. You can sign in with the new address.</value></data>
+  <data name="Auth.ConfirmEmailChangeInvalidLink" xml:space="preserve"><value>The email confirmation link is invalid or has expired.</value></data>
   <data name="Auth.ActivateTitle" xml:space="preserve"><value>Activate your account</value></data>
   <data name="Auth.ActivateSubtitle" xml:space="preserve"><value>Set a password to finish setting up your account.</value></data>
   <data name="Auth.ActivationToken" xml:space="preserve"><value>Activation code</value></data>
+  <data name="Auth.ActivationTokenRequired" xml:space="preserve"><value>Activation code is required.</value></data>
   <data name="Auth.NewPassword" xml:space="preserve"><value>New password</value></data>
   <data name="Auth.ConfirmPassword" xml:space="preserve"><value>Confirm password</value></data>
   <data name="Auth.ActivateButton" xml:space="preserve"><value>Activate account</value></data>
@@ -62,7 +86,7 @@
   <data name="Auth.BrandPointAccess" xml:space="preserve"><value>Granular role-based access control</value></data>
   <data name="Auth.BrandPointSessions" xml:space="preserve"><value>Live session and device management</value></data>
   <data name="Auth.BrandPointBilingual" xml:space="preserve"><value>Full Arabic and English support</value></data>
-  <data name="Auth.Copyright" xml:space="preserve"><value>Â© 2026 Operations System. All rights reserved.</value></data>
+  <data name="Auth.Copyright" xml:space="preserve"><value>© 2026 Operations System. All rights reserved.</value></data>
   <data name="Nav.Dashboard" xml:space="preserve"><value>Dashboard</value></data>
   <data name="Nav.Users" xml:space="preserve"><value>Users</value></data>
   <data name="Nav.Roles" xml:space="preserve"><value>Roles</value></data>
@@ -131,6 +155,18 @@
   <data name="Account.ThisDevice" xml:space="preserve"><value>This device</value></data>
   <data name="Account.SignOutOthers" xml:space="preserve"><value>Sign out other sessions</value></data>
   <data name="Account.RevokeSession" xml:space="preserve"><value>Revoke</value></data>
+  <data name="Account.MfaTitle" xml:space="preserve"><value>Multi-factor authentication</value></data>
+  <data name="Account.MfaRequiredHint" xml:space="preserve"><value>This account must enroll MFA to meet administrator security requirements.</value></data>
+  <data name="Account.MfaOptionalHint" xml:space="preserve"><value>Add an authenticator app to protect this account.</value></data>
+  <data name="Account.MfaEnabledHint" xml:space="preserve"><value>MFA is enabled. Sign-in now requires an authenticator or recovery code.</value></data>
+  <data name="Account.StartMfa" xml:space="preserve"><value>Start MFA setup</value></data>
+  <data name="Account.ConfirmMfa" xml:space="preserve"><value>Confirm MFA</value></data>
+  <data name="Account.MfaSecret" xml:space="preserve"><value>Secret</value></data>
+  <data name="Account.MfaOtpAuthUri" xml:space="preserve"><value>Authenticator URI</value></data>
+  <data name="Account.MfaEnrollmentHint" xml:space="preserve"><value>Add the secret or authenticator URI to your authenticator app, then enter the current code.</value></data>
+  <data name="Account.MfaEnabled" xml:space="preserve"><value>MFA enabled.</value></data>
+  <data name="Account.RecoveryCodesTitle" xml:space="preserve"><value>Save these recovery codes</value></data>
+  <data name="Account.RecoveryCodesHint" xml:space="preserve"><value>Each code can be used once if you lose access to your authenticator app.</value></data>
   <data name="Users.Title" xml:space="preserve"><value>Users</value></data>
   <data name="Users.Description" xml:space="preserve"><value>Invite, edit, and manage portal accounts.</value></data>
   <data name="Users.Invite" xml:space="preserve"><value>Invite user</value></data>
@@ -154,6 +190,9 @@
   <data name="Users.TypeCustomerContact" xml:space="preserve"><value>Customer contact</value></data>
   <data name="Users.Lock" xml:space="preserve"><value>Lock</value></data>
   <data name="Users.Unlock" xml:space="preserve"><value>Unlock</value></data>
+  <data name="Users.Suspend" xml:space="preserve"><value>Suspend</value></data>
+  <data name="Users.RestoreAccess" xml:space="preserve"><value>Restore access</value></data>
+  <data name="Users.ResetMfa" xml:space="preserve"><value>Reset MFA</value></data>
   <data name="Users.Deactivate" xml:space="preserve"><value>Deactivate</value></data>
   <data name="Users.ResendInvitation" xml:space="preserve"><value>Resend invitation</value></data>
   <data name="Users.AssignRole" xml:space="preserve"><value>Assign role</value></data>
@@ -161,13 +200,20 @@
   <data name="Users.Never" xml:space="preserve"><value>Never</value></data>
   <data name="Users.InviteTitle" xml:space="preserve"><value>Invite a user</value></data>
   <data name="Users.InviteIntro" xml:space="preserve"><value>Send an invitation so this person can set up their portal account.</value></data>
-  <data name="Users.InviteAdminNote" xml:space="preserve"><value>Direct user creation always creates a System Administrator with full access. Station staff and customer contacts are invited from their own records.</value></data>
+  <data name="Users.InviteAdminNote" xml:space="preserve"><value>Direct user creation invites a System Administrator. Station staff and customer contacts are invited from their own records.</value></data>
+  <data name="Users.DisplayNameRequired" xml:space="preserve"><value>A display name is required.</value></data>
+  <data name="Users.RoleRequired" xml:space="preserve"><value>Select a role to continue.</value></data>
+  <data name="Users.NoAdminRoles" xml:space="preserve"><value>No System Administrator role is available.</value></data>
+  <data name="Users.NoCompatibleRoles" xml:space="preserve"><value>No compatible role is available for this account type.</value></data>
   <data name="Users.InviteSuccess" xml:space="preserve"><value>Invitation sent.</value></data>
   <data name="Users.InvitationDeliveryLabel" xml:space="preserve"><value>Invitation delivery status</value></data>
   <data name="Users.EditTitle" xml:space="preserve"><value>Edit user</value></data>
   <data name="Users.AssignRoleTitle" xml:space="preserve"><value>Assign role</value></data>
   <data name="Users.ConfirmDeactivate" xml:space="preserve"><value>Deactivate this user? They will be signed out of all sessions.</value></data>
   <data name="Users.ConfirmLock" xml:space="preserve"><value>Lock this user out of signing in?</value></data>
+  <data name="Users.ConfirmSuspend" xml:space="preserve"><value>Suspend this user? They will lose access until restored.</value></data>
+  <data name="Users.ConfirmRestoreAccess" xml:space="preserve"><value>Restore access for this user?</value></data>
+  <data name="Users.ConfirmResetMfa" xml:space="preserve"><value>Reset MFA for this user? Active sessions will be revoked and they must enroll again.</value></data>
   <data name="Users.StatActiveSessions" xml:space="preserve"><value>Active sessions</value></data>
   <data name="Users.UserId" xml:space="preserve"><value>User ID</value></data>
   <data name="Users.CopyId" xml:space="preserve"><value>Copy user ID</value></data>
@@ -183,8 +229,13 @@
   <data name="Users.LockedIndefinitely" xml:space="preserve"><value>Locked indefinitely — manual unlock required</value></data>
   <data name="Users.AccessScope" xml:space="preserve"><value>Access scope</value></data>
   <data name="Users.RecentDevice" xml:space="preserve"><value>Recent device</value></data>
+  <data name="Users.Mfa" xml:space="preserve"><value>MFA</value></data>
+  <data name="Users.MfaEnabled" xml:space="preserve"><value>Enabled</value></data>
+  <data name="Users.MfaRequired" xml:space="preserve"><value>Required</value></data>
+  <data name="Users.MfaNotEnabled" xml:space="preserve"><value>Not enabled</value></data>
   <data name="Users.StatusActiveDesc" xml:space="preserve"><value>This account is active and can access all assigned resources.</value></data>
   <data name="Users.StatusInvitedDesc" xml:space="preserve"><value>This account has been invited and is awaiting activation.</value></data>
+  <data name="Users.StatusSuspendedDesc" xml:space="preserve"><value>This account is suspended and cannot sign in until access is restored.</value></data>
   <data name="Users.StatusDeactivatedDesc" xml:space="preserve"><value>This account is deactivated and cannot sign in.</value></data>
   <data name="Users.StatusLockedDesc" xml:space="preserve"><value>This account is temporarily locked out of signing in.</value></data>
   <data name="Users.ScopeFullAccess" xml:space="preserve"><value>Full system access</value></data>
@@ -389,7 +440,7 @@
   <data name="Customers.IcaoCode" xml:space="preserve"><value>ICAO</value></data>
   <data name="Customers.Name" xml:space="preserve"><value>Name</value></data>
   <data name="Customers.Country" xml:space="preserve"><value>Country</value></data>
-  <data name="Customers.NoIcao" xml:space="preserve"><value>â</value></data>
+  <data name="Customers.NoIcao" xml:space="preserve"><value>—</value></data>
   <data name="Customers.OfficialEmail" xml:space="preserve"><value>Official email</value></data>
   <data name="Customers.OfficialPhone" xml:space="preserve"><value>Official phone</value></data>
   <data name="Customers.Status" xml:space="preserve"><value>Status</value></data>
@@ -408,8 +459,9 @@
   <data name="Customers.StepReview" xml:space="preserve"><value>Review &amp; create</value></data>
   <data name="Customers.Next" xml:space="preserve"><value>Next</value></data>
   <data name="Customers.Previous" xml:space="preserve"><value>Back</value></data>
-  <data name="Customers.ReviewSummary" xml:space="preserve"><value>{0} â {1}. {2} contact(s).</value></data>
+  <data name="Customers.ReviewSummary" xml:space="preserve"><value>{0} - {1}. {2} contact(s).</value></data>
   <data name="Customers.FormIntro" xml:space="preserve"><value>Capture the airline codes, official contact details, address and contacts.</value></data>
+  <data name="Customers.EditFormIntro" xml:space="preserve"><value>Update the airline codes, official contact details, and address.</value></data>
   <data name="Customers.IataRequired" xml:space="preserve"><value>A 2-character IATA code is required.</value></data>
   <data name="Customers.IcaoInvalid" xml:space="preserve"><value>ICAO code must be exactly three letters.</value></data>
   <data name="Customers.NameRequired" xml:space="preserve"><value>A customer name is required.</value></data>
@@ -442,7 +494,11 @@
   <data name="Customers.ContactRemove" xml:space="preserve"><value>Remove</value></data>
   <data name="Customers.ContactRemoved" xml:space="preserve"><value>(will be removed)</value></data>
   <data name="Customers.ContactAdded" xml:space="preserve"><value>Contact added.</value></data>
+  <data name="Customers.ContactUpdated" xml:space="preserve"><value>Contact updated.</value></data>
+  <data name="Customers.ContactRemovedSuccess" xml:space="preserve"><value>Contact removed.</value></data>
+  <data name="Customers.ConfirmRemoveContact" xml:space="preserve"><value>Remove this contact? Linked portal access will be deactivated.</value></data>
   <data name="Customers.PortalLinked" xml:space="preserve"><value>Portal access</value></data>
+  <data name="Customers.OpenLinkedAccount" xml:space="preserve"><value>Open linked account</value></data>
   <data name="Customers.TabAddress" xml:space="preserve"><value>Address</value></data>
   <data name="Customers.StatContacts" xml:space="preserve"><value>Contacts</value></data>
   <data name="Customers.StatPortalAccounts" xml:space="preserve"><value>Portal accounts</value></data>
@@ -481,7 +537,7 @@
   <data name="StaffMembers.Deactivate" xml:space="preserve"><value>Deactivate</value></data>
   <data name="StaffMembers.Created" xml:space="preserve"><value>Created</value></data>
   <data name="StaffMembers.Updated" xml:space="preserve"><value>Updated</value></data>
-  <data name="StaffMembers.None" xml:space="preserve"><value>â</value></data>
+  <data name="StaffMembers.None" xml:space="preserve"><value>—</value></data>
   <data name="StaffMembers.CreateTitle" xml:space="preserve"><value>Create staff member</value></data>
   <data name="StaffMembers.EditTitle" xml:space="preserve"><value>Edit staff member</value></data>
   <data name="StaffMembers.BasicInformation" xml:space="preserve"><value>Basic information</value></data>
@@ -532,7 +588,8 @@
   <data name="StaffMembers.ActivityEmpty" xml:space="preserve"><value>No activity recorded yet</value></data>
   <data name="StaffMembers.ActivityEmptyHint" xml:space="preserve"><value>Audit history for this staff member will appear here as actions are taken.</value></data>
   <data name="StaffMembers.PortalAccessManageTitle" xml:space="preserve"><value>Account management</value></data>
-  <data name="StaffMembers.PortalAccessManageHint" xml:space="preserve"><value>Future account controls â password resets, session management, and role changes â will be available here.</value></data>
+  <data name="StaffMembers.PortalAccessManageHint" xml:space="preserve"><value>Open the linked Identity account to manage MFA, sessions, status, and role assignments.</value></data>
+  <data name="StaffMembers.OpenLinkedAccount" xml:space="preserve"><value>Open linked account</value></data>
   <data name="StaffMembers.PortalAccessLinkedTitle" xml:space="preserve"><value>Portal account linked</value></data>
   <data name="StaffMembers.PortalAccessLinkedHint" xml:space="preserve"><value>This staff member can sign in to the portal with their linked account.</value></data>
   <data name="StaffMembers.PortalAccessUnlinkedTitle" xml:space="preserve"><value>No portal account</value></data>
@@ -555,6 +612,9 @@
   <data name="PortalAccess.Granted" xml:space="preserve"><value>Portal access requested. An invitation will be sent shortly.</value></data>
   <data name="PortalAccess.HasAccess" xml:space="preserve"><value>Portal account linked</value></data>
   <data name="PortalAccess.NoAccess" xml:space="preserve"><value>No portal account</value></data>
+  <data name="PortalAccess.Provisioning" xml:space="preserve"><value>Provisioning</value></data>
+  <data name="PortalAccess.Failed" xml:space="preserve"><value>Provisioning failed</value></data>
+  <data name="PortalAccess.Suspended" xml:space="preserve"><value>Suspended</value></data>
   <data name="PortalAccess.Explanation" xml:space="preserve"><value>An invited portal account will be created for this record using the selected role.</value></data>
   <data name="PortalAccess.GrantOnCreate" xml:space="preserve"><value>Grant portal access on creation</value></data>
   <data name="PortalAccess.GrantOnCreateHint" xml:space="preserve"><value>Send a portal invitation once this record is created.</value></data>

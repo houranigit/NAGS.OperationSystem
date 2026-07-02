@@ -1,0 +1,105 @@
+@page "/confirm-email-change"
+@layout AuthLayout
+@inject IdentityApiClient Identity
+@inject NavigationManager Navigation
+
+<PageTitle>@UiStrings.Auth.ConfirmEmailChangeTitle</PageTitle>
+
+<RadzenCard>
+    <RadzenStack Gap="1.25rem">
+        <div>
+            <h1 class="os-page-title">@UiStrings.Auth.ConfirmEmailChangeTitle</h1>
+            <p class="os-muted">@UiStrings.Auth.ConfirmEmailChangeSubtitle</p>
+        </div>
+
+        @if (confirmed)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                @UiStrings.Auth.ConfirmEmailChangeSuccess
+            </RadzenAlert>
+            <RadzenButton ButtonStyle="ButtonStyle.Primary" Text="@UiStrings.Auth.GoToSignIn"
+                          Click="@(() => Navigation.NavigateTo("/login"))" Style="width: 100%;" />
+        }
+        else
+        {
+            <RadzenTemplateForm TItem="ConfirmEmailChangeModel" Data="@model" Submit="@SubmitAsync">
+                <RadzenStack Gap="1rem">
+                    @if (!string.IsNullOrWhiteSpace(model.Email))
+                    {
+                        <DetailField Label="@UiStrings.Auth.Email" Value="@model.Email" />
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(errorMessage))
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                            @errorMessage
+                        </RadzenAlert>
+                    }
+
+                    <RadzenButton ButtonType="ButtonType.Submit"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@isSubmitting"
+                                  Text="@UiStrings.Auth.ConfirmEmailChangeButton"
+                                  Style="width: 100%;" />
+                    <RadzenButton ButtonType="ButtonType.Button"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Disabled="@isSubmitting"
+                                  Text="@UiStrings.Auth.GoToSignIn"
+                                  Click="@(() => Navigation.NavigateTo("/login"))" />
+                </RadzenStack>
+            </RadzenTemplateForm>
+        }
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [SupplyParameterFromQuery(Name = "email")] private string? EmailQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "token")] private string? TokenQuery { get; set; }
+
+    private readonly ConfirmEmailChangeModel model = new();
+    private bool isSubmitting;
+    private bool confirmed;
+    private string? errorMessage;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrWhiteSpace(EmailQuery) && string.IsNullOrWhiteSpace(model.Email))
+            model.Email = EmailQuery;
+
+        if (!string.IsNullOrWhiteSpace(TokenQuery) && string.IsNullOrWhiteSpace(model.Token))
+            model.Token = TokenQuery;
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Token))
+        {
+            errorMessage = UiStrings.Auth.ConfirmEmailChangeInvalidLink;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            await Identity.ConfirmEmailChangeAsync(new ConfirmEmailChangeRequest(model.Token, model.Email.Trim()));
+            confirmed = true;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Auth.ConfirmEmailChangeInvalidLink);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class ConfirmEmailChangeModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Token { get; set; } = string.Empty;
+    }
+}

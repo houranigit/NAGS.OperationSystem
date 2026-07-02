@@ -1,5 +1,5 @@
 @page "/account"
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AuthSession Auth
 @inject IdentityApiClient Identity
 @inject NavigationManager Navigation
@@ -69,6 +69,92 @@
                             </div>
                         </RadzenStack>
                     </RadzenTemplateForm>
+                </RadzenStack>
+            </RadzenCard>
+
+            <RadzenCard>
+                <RadzenStack Gap="1rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
+                        <div>
+                            <h3>@UiStrings.Account.MfaTitle</h3>
+                            <p class="os-muted">@MfaDescription(user)</p>
+                        </div>
+                        <StatusBadge Label="@MfaStatusLabel(user)" Tone="@MfaStatusTone(user)" />
+                    </RadzenStack>
+
+                    @if (user.MfaEnrollmentRequired && !user.MfaEnabled)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                            @UiStrings.Account.MfaRequiredHint
+                        </RadzenAlert>
+                    }
+
+                    @if (mfaRecoveryCodes.Count > 0)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                            <strong>@UiStrings.Account.RecoveryCodesTitle</strong>
+                            <div>@UiStrings.Account.RecoveryCodesHint</div>
+                        </RadzenAlert>
+                        <RadzenRow RowGap="0.5rem">
+                            @foreach (var recoveryCode in mfaRecoveryCodes)
+                            {
+                                <RadzenColumn Size="6" SizeMD="3" @key="recoveryCode">
+                                    <span class="os-mono">@recoveryCode</span>
+                                </RadzenColumn>
+                            }
+                        </RadzenRow>
+                    }
+                    else if (mfaEnrollment is not null)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                            @UiStrings.Account.MfaEnrollmentHint
+                        </RadzenAlert>
+
+                        <RadzenRow RowGap="1rem">
+                            <RadzenColumn Size="12" SizeMD="6">
+                                <DetailField Label="@UiStrings.Account.MfaSecret" Value="@mfaEnrollment.Secret" />
+                            </RadzenColumn>
+                            <RadzenColumn Size="12" SizeMD="6">
+                                <DetailField Label="@UiStrings.Account.MfaOtpAuthUri" Value="@mfaEnrollment.OtpAuthUri" />
+                            </RadzenColumn>
+                        </RadzenRow>
+
+                        <RadzenTemplateForm TItem="MfaConfirmModel" Data="@mfaConfirm" Submit="@ConfirmMfaAsync">
+                            <RadzenStack Gap="1rem">
+                                <RadzenFormField Text="@UiStrings.Auth.MfaCode" Variant="Variant.Outlined">
+                                    <RadzenTextBox @bind-Value="mfaConfirm.Code" Style="width: 100%;"
+                                                   Immediate="true" AutoCompleteType="AutoCompleteType.OneTimeCode" />
+                                </RadzenFormField>
+
+                                @if (!string.IsNullOrWhiteSpace(mfaError))
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                                        @mfaError
+                                    </RadzenAlert>
+                                }
+
+                                <div>
+                                    <RadzenButton ButtonType="ButtonType.Submit" ButtonStyle="ButtonStyle.Primary"
+                                                  Disabled="@isConfirmingMfa" Text="@UiStrings.Account.ConfirmMfa" />
+                                </div>
+                            </RadzenStack>
+                        </RadzenTemplateForm>
+                    }
+                    else if (!user.MfaEnabled)
+                    {
+                        @if (!string.IsNullOrWhiteSpace(mfaError))
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                                @mfaError
+                            </RadzenAlert>
+                        }
+
+                        <div>
+                            <RadzenButton ButtonStyle="ButtonStyle.Primary" Icon="security"
+                                          Disabled="@isStartingMfa" Text="@UiStrings.Account.StartMfa"
+                                          Click="@StartMfaEnrollmentAsync" />
+                        </div>
+                    }
                 </RadzenStack>
             </RadzenCard>
 
@@ -148,8 +234,14 @@
 
 @code {
     private readonly PasswordModel password = new();
+    private readonly MfaConfirmModel mfaConfirm = new();
     private bool isChangingPassword;
     private string? passwordError;
+    private bool isStartingMfa;
+    private bool isConfirmingMfa;
+    private string? mfaError;
+    private MfaEnrollment? mfaEnrollment;
+    private IReadOnlyList<string> mfaRecoveryCodes = [];
 
     private IReadOnlyList<UserSession>? sessions;
     private static readonly int[] PageSizes = [10, 25, 50, 100];
@@ -268,14 +360,110 @@
         }
     }
 
-    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+    private async Task StartMfaEnrollmentAsync()
+    {
+        mfaError = null;
+        mfaRecoveryCodes = [];
+        isStartingMfa = true;
 
-    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+        try
+        {
+            mfaEnrollment = await Identity.EnrollMfaAsync();
+            mfaConfirm.Code = string.Empty;
+        }
+        catch (ApiException ex)
+        {
+            mfaError = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isStartingMfa = false;
+        }
+    }
+
+    private async Task ConfirmMfaAsync()
+    {
+        mfaError = null;
+
+        if (string.IsNullOrWhiteSpace(mfaConfirm.Code))
+        {
+            mfaError = UiStrings.Auth.MfaCodeRequired;
+            return;
+        }
+
+        isConfirmingMfa = true;
+
+        try
+        {
+            var recovery = await Identity.ConfirmMfaAsync(new ConfirmMfaRequest(mfaConfirm.Code.Trim()));
+            mfaRecoveryCodes = recovery.RecoveryCodes;
+            mfaEnrollment = null;
+            mfaConfirm.Code = string.Empty;
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Account.MfaEnabled);
+            await Auth.ReloadUserAsync();
+        }
+        catch (ApiException ex)
+        {
+            mfaError = ex.StatusCode is 400 or 401
+                ? UiStrings.Auth.InvalidMfaCode
+                : ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isConfirmingMfa = false;
+        }
+    }
+
+    private static string MfaStatusLabel(AuthenticatedUser user)
+    {
+        if (user.MfaEnabled)
+            return UiStrings.Users.MfaEnabled;
+
+        return user.MfaEnrollmentRequired
+            ? UiStrings.Users.MfaRequired
+            : UiStrings.Users.MfaNotEnabled;
+    }
+
+    private static string MfaStatusTone(AuthenticatedUser user) =>
+        user.MfaEnabled ? "success" : (user.MfaEnrollmentRequired ? "warning" : "neutral");
+
+    private static string MfaDescription(AuthenticatedUser user)
+    {
+        if (user.MfaEnabled)
+            return UiStrings.Account.MfaEnabledHint;
+
+        return user.MfaEnrollmentRequired
+            ? UiStrings.Account.MfaRequiredHint
+            : UiStrings.Account.MfaOptionalHint;
+    }
+
+    private async void OnAuthStateChanged()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Auth.StateChanged -= OnAuthStateChanged;
+        return ValueTask.CompletedTask;
+    }
 
     private sealed class PasswordModel
     {
         public string Current { get; set; } = string.Empty;
         public string New { get; set; } = string.Empty;
         public string Confirm { get; set; } = string.Empty;
+    }
+
+    private sealed class MfaConfirmModel
+    {
+        public string Code { get; set; } = string.Empty;
     }
 }

@@ -223,6 +223,26 @@ public sealed class Customer : AggregateRoot<Guid>, IAuditable
         return contact;
     }
 
+    public Result<CustomerContact> RequestContactPortalAccess(Guid contactId, Guid correlationId, DateTimeOffset now)
+    {
+        var contact = _contacts.FirstOrDefault(c => c.Id == contactId);
+        if (contact is null)
+            return Error.NotFound("Customer contact not found.", "MasterData.CustomerContact.NotFound");
+
+        if (!contact.IsActive)
+            return Error.Validation("Portal access cannot be granted to a removed contact.", "MasterData.CustomerContact.Inactive");
+
+        if (contact.LinkedUserId is not null)
+            return Error.Conflict("This contact already has a linked portal account.", "MasterData.CustomerContact.AlreadyLinked");
+
+        if (contact.PortalState == PortalAccess.PortalAccessState.Provisioning)
+            return Error.Conflict("Portal access is already being provisioned for this contact.", "MasterData.CustomerContact.PortalAccessProvisioning");
+
+        contact.RequestPortalAccess(correlationId, now);
+        UpdatedAtUtc = now;
+        return contact;
+    }
+
     /// <summary>
     /// Reconciles the contact collection by stable id: existing contacts are updated, contacts missing
     /// from the incoming set are deactivated, and contacts without an id are created. Active emails must

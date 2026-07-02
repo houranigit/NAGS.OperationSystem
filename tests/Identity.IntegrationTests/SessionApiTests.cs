@@ -9,30 +9,26 @@ public class SessionApiTests(IdentityApiFactory factory) : IClassFixture<Identit
 {
     private const string Base = "/api/v1/identity";
 
-    private sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);
     private sealed record MeResponse(Guid Id, string Email, string DisplayName, Guid RoleId, string RoleName, List<string> Permissions);
+    private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record SessionItem(Guid Id, Guid UserId, DateTimeOffset CreatedAtUtc, DateTimeOffset ExpiresAtUtc, DateTimeOffset? RevokedAtUtc, bool IsActive, bool IsCurrent, string? CreatedByIp, string? UserAgent);
 
-    private static async Task<string> LoginAsAdminAsync(HttpClient client)
+    private static Task<string> LoginAsAdminAsync(HttpClient client, IdentityApiFactory factory)
     {
-        var response = await client.PostAsJsonAsync($"{Base}/auth/login",
-            new { email = IdentityApiFactory.AdminEmail, password = IdentityApiFactory.AdminPassword });
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
-        return token!.AccessToken;
+        return IdentityApiTestData.LoginAsAdminAsync(client, factory);
     }
 
     [Fact]
     public async Task Login_creates_a_session_visible_in_my_sessions_and_marked_current()
     {
         var client = factory.CreateClient();
-        var token = await LoginAsAdminAsync(client);
+        var token = await LoginAsAdminAsync(client, factory);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var sessions = await client.GetFromJsonAsync<List<SessionItem>>($"{Base}/me/sessions");
+        var sessions = await client.GetFromJsonAsync<PagedList<SessionItem>>($"{Base}/me/sessions");
 
-        sessions!.Count.ShouldBeGreaterThanOrEqualTo(1);
-        sessions.ShouldContain(s => s.IsCurrent && s.IsActive);
+        sessions!.Items.Count.ShouldBeGreaterThanOrEqualTo(1);
+        sessions.Items.ShouldContain(s => s.IsCurrent && s.IsActive);
     }
 
     [Fact]
@@ -42,20 +38,20 @@ public class SessionApiTests(IdentityApiFactory factory) : IClassFixture<Identit
         var primary = factory.CreateClient();
         var secondary = factory.CreateClient();
 
-        var primaryToken = await LoginAsAdminAsync(primary);
-        await LoginAsAdminAsync(secondary);
+        var primaryToken = await LoginAsAdminAsync(primary, factory);
+        await LoginAsAdminAsync(secondary, factory);
 
         primary.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", primaryToken);
 
-        var before = await primary.GetFromJsonAsync<List<SessionItem>>($"{Base}/me/sessions");
-        before!.Count(s => s.IsActive).ShouldBeGreaterThanOrEqualTo(2);
+        var before = await primary.GetFromJsonAsync<PagedList<SessionItem>>($"{Base}/me/sessions");
+        before!.Items.Count(s => s.IsActive).ShouldBeGreaterThanOrEqualTo(2);
 
         var revoke = await primary.PostAsync($"{Base}/me/sessions/revoke-others", null);
         revoke.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
-        var after = await primary.GetFromJsonAsync<List<SessionItem>>($"{Base}/me/sessions");
-        after!.Count(s => s.IsActive).ShouldBe(1);
-        after.Single(s => s.IsActive).IsCurrent.ShouldBeTrue();
+        var after = await primary.GetFromJsonAsync<PagedList<SessionItem>>($"{Base}/me/sessions");
+        after!.Items.Count(s => s.IsActive).ShouldBe(1);
+        after.Items.Single(s => s.IsActive).IsCurrent.ShouldBeTrue();
     }
 
     [Fact]
@@ -65,12 +61,11 @@ public class SessionApiTests(IdentityApiFactory factory) : IClassFixture<Identit
 
         // Use a separate target user so revoking all of THEIR sessions does not invalidate the
         // admin's own (now session-bound) access token.
-        var roleId = await IdentityApiTestData.EnsureDemoUserRoleAsync(admin);
         var email = $"sessions-{Guid.NewGuid():N}@nags.sa";
         const string password = "Sessions#12345";
 
         var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
-            new { email, displayName = "Session User", roleId });
+            new { email, displayName = "Session User" });
         invite.StatusCode.ShouldBe(HttpStatusCode.Created);
         var invited = await invite.Content.ReadFromJsonAsync<InvitedItem>();
 
@@ -82,14 +77,14 @@ public class SessionApiTests(IdentityApiFactory factory) : IClassFixture<Identit
         var target = factory.CreateClient();
         await target.PostAsJsonAsync($"{Base}/auth/login", new { email, password });
 
-        var sessions = await admin.GetFromJsonAsync<List<SessionItem>>($"{Base}/users/{invited!.Id}/sessions");
-        sessions!.ShouldNotBeEmpty();
+        var sessions = await admin.GetFromJsonAsync<PagedList<SessionItem>>($"{Base}/users/{invited!.Id}/sessions");
+        sessions!.Items.ShouldNotBeEmpty();
 
         var revoke = await admin.PostAsync($"{Base}/users/{invited.Id}/sessions/revoke-all", null);
         revoke.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
-        var active = await admin.GetFromJsonAsync<List<SessionItem>>($"{Base}/users/{invited.Id}/sessions?activeOnly=true");
-        active!.ShouldBeEmpty();
+        var active = await admin.GetFromJsonAsync<PagedList<SessionItem>>($"{Base}/users/{invited.Id}/sessions?activeOnly=true");
+        active!.Items.ShouldBeEmpty();
     }
 
     private sealed record InvitedItem(Guid Id, string Email, string DeliveryStatus);
@@ -98,7 +93,7 @@ public class SessionApiTests(IdentityApiFactory factory) : IClassFixture<Identit
     public async Task Sessions_for_unknown_user_returns_404()
     {
         var admin = factory.CreateClient();
-        var adminToken = await LoginAsAdminAsync(admin);
+        var adminToken = await LoginAsAdminAsync(admin, factory);
         admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
         var response = await admin.GetAsync($"{Base}/users/{Guid.NewGuid()}/sessions");

@@ -339,6 +339,15 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
     public Task<Guid> AddCustomerContactAsync(Guid id, AddCustomerContactRequest request, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync<AddCustomerContactRequest, Guid>($"/masterdata/customers/{id}/contacts", request, rowVersion, ct);
 
+    public Task UpdateCustomerContactAsync(Guid id, Guid contactId, UpdateCustomerContactRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/customers/{id}/contacts/{contactId}", request, rowVersion, ct);
+
+    public Task RemoveCustomerContactAsync(Guid id, Guid contactId, string rowVersion, bool releaseEmail = false, CancellationToken ct = default)
+    {
+        var query = releaseEmail ? "?releaseEmail=true" : string.Empty;
+        return api.PostAsync($"/masterdata/customers/{id}/contacts/{contactId}/remove{query}", rowVersion, ct);
+    }
+
     public Task ActivateCustomerAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/masterdata/customers/{id}/activate", rowVersion, ct);
 
@@ -373,11 +382,11 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
 
     // --- Portal access -----------------------------------------------------
 
-    public Task GrantStaffPortalAccessAsync(Guid staffMemberId, GrantPortalAccessRequest request, CancellationToken ct = default) =>
-        api.PostAsync($"/masterdata/staff-members/{staffMemberId}/grant-access", request, ct);
+    public Task GrantStaffPortalAccessAsync(Guid staffMemberId, GrantPortalAccessRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/staff-members/{staffMemberId}/grant-access", request, rowVersion, ct);
 
-    public Task GrantContactPortalAccessAsync(Guid customerId, Guid contactId, GrantPortalAccessRequest request, CancellationToken ct = default) =>
-        api.PostAsync($"/masterdata/customers/{customerId}/contacts/{contactId}/grant-access", request, ct);
+    public Task GrantContactPortalAccessAsync(Guid customerId, Guid contactId, GrantPortalAccessRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/customers/{customerId}/contacts/{contactId}/grant-access", request, rowVersion, ct);
 
     private sealed class QueryBuilder
     {

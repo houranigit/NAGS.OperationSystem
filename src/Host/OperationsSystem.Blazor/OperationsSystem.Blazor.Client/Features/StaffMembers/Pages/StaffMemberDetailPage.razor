@@ -79,7 +79,7 @@
                                            Visible="@(!s.IsActive)" OnClick="@ActivateAsync" />
                                 <RowAction Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add"
                                            Permission="@MasterDataPermissions.StaffMembersGrantAccess"
-                                           Visible="@(s is { IsActive: true, LinkedUserId: null })" OnClick="@OpenGrantAccessAsync" />
+                                           Visible="@CanGrantStaff(s)" OnClick="@OpenGrantAccessAsync" />
                                 <RowAction Separator="true" />
                                 <RowAction Text="@UiStrings.StaffMembers.Deactivate" Icon="cancel" Danger="true"
                                            Permission="@MasterDataPermissions.StaffMembersDeactivate"
@@ -198,16 +198,16 @@
                 <RadzenCard class="sm-card">
                     <div class="sm-card-head"><RadzenIcon Icon="vpn_key" /><h3>@UiStrings.StaffMembers.TabPortalAccess</h3></div>
                     <div class="sm-lead">
-                        <span class="sm-lead-dot sm-lead-dot--@(s.LinkedUserId is not null ? "success" : "warning")"></span>
+                        <span class="sm-lead-dot sm-lead-dot--@PortalAccessTone(s)"></span>
                         <div>
-                            <p class="sm-lead-title">@(s.LinkedUserId is not null ? UiStrings.PortalAccess.HasAccess : UiStrings.PortalAccess.NoAccess)</p>
+                            <p class="sm-lead-title">@PortalAccessLabel(s)</p>
                             <p class="os-muted sm-lead-desc">@PortalAccessDescription(s)</p>
                         </div>
                     </div>
                     <dl class="sm-metrics">
                         <div class="sm-metric">
                             <dt>@UiStrings.StaffMembers.StatPortalAccount</dt>
-                            <dd>@(s.LinkedUserId is not null ? UiStrings.StaffMembers.PortalLinkedShort : UiStrings.StaffMembers.PortalNotLinkedShort)</dd>
+                            <dd><span title="@s.PortalFailureReason"><StatusBadge Label="@PortalAccessLabel(s)" Tone="@PortalAccessTone(s)" /></span></dd>
                         </div>
                         <div class="sm-metric">
                             <dt>@UiStrings.StaffMembers.Email</dt>
@@ -295,22 +295,45 @@
 
     private RenderFragment PortalAccessTab(StaffMemberDetail s) =>@<text>
         <RadzenCard class="sm-card">
-            @if (s.LinkedUserId is not null)
+            @if (HasPortalLifecycle(s))
             {
                 <div class="sm-portal">
-                    <span class="sm-portal-icon sm-portal-icon--ok"><RadzenIcon Icon="verified_user" /></span>
+                    <span class="sm-portal-icon sm-portal-icon--@PortalAccessIconTone(s)"><RadzenIcon Icon="@PortalAccessIcon(s)" /></span>
                     <div class="sm-portal-body">
-                        <h3>@UiStrings.StaffMembers.PortalAccessLinkedTitle</h3>
-                        <p class="os-muted">@UiStrings.StaffMembers.PortalAccessLinkedHint</p>
+                        <h3>@PortalAccessLabel(s)</h3>
+                        <p class="os-muted">@PortalAccessDescription(s)</p>
                     </div>
+                    @if (CanGrantStaff(s))
+                    {
+                        <RadzenButton Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add" ButtonStyle="ButtonStyle.Primary" Click="@OpenGrantAccessAsync" />
+                    }
                 </div>
-                <div class="sm-portal-note">
-                    <RadzenIcon Icon="build" />
-                    <div>
-                        <strong>@UiStrings.StaffMembers.PortalAccessManageTitle</strong>
-                        <p class="os-muted">@UiStrings.StaffMembers.PortalAccessManageHint</p>
+                @if (!string.IsNullOrWhiteSpace(s.PortalFailureReason))
+                {
+                    <div class="sm-portal-note sm-portal-note--danger">
+                        <RadzenIcon Icon="error" />
+                        <div>
+                            <strong>@UiStrings.PortalAccess.Failed</strong>
+                            <p class="os-muted">@s.PortalFailureReason</p>
+                        </div>
                     </div>
-                </div>
+                }
+                @if (s.LinkedUserId is not null)
+                {
+                    <div class="sm-portal-note">
+                        <RadzenIcon Icon="build" />
+                        <div>
+                            <strong>@UiStrings.StaffMembers.PortalAccessManageTitle</strong>
+                            <p class="os-muted">@UiStrings.StaffMembers.PortalAccessManageHint</p>
+                            @if (CanOpenLinkedAccount(s))
+                            {
+                                <RadzenButton Text="@UiStrings.StaffMembers.OpenLinkedAccount" Icon="manage_accounts"
+                                              ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                              Click="@(() => OpenLinkedAccount(s.LinkedUserId!.Value))" />
+                            }
+                        </div>
+                    </div>
+                }
             }
             else if (s.IsActive)
             {
@@ -498,12 +521,15 @@
 
     private async Task OpenGrantAccessAsync()
     {
+        if (item is not { } s)
+            return;
+
         var result = await DialogService.OpenAsync<GrantPortalAccessDialog>(UiStrings.PortalAccess.GrantTitle,
             new Dictionary<string, object?>
             {
                 [nameof(GrantPortalAccessDialog.CompatibleUserType)] = "StationStaff",
                 [nameof(GrantPortalAccessDialog.GrantAsync)] = (Func<Guid, CancellationToken, Task>)((roleId, ct) =>
-                    MasterData.GrantStaffPortalAccessAsync(Id, new GrantPortalAccessRequest(roleId), ct))
+                    MasterData.GrantStaffPortalAccessAsync(Id, new GrantPortalAccessRequest(roleId), s.RowVersion, ct))
             },
             new DialogOptions { Width = "520px" });
 
@@ -574,7 +600,18 @@
     private bool HasMoreActions(StaffMemberDetail s) =>
         (!s.IsActive && Auth.HasPermission(MasterDataPermissions.StaffMembersActivate))
         || (s.IsActive && Auth.HasPermission(MasterDataPermissions.StaffMembersDeactivate))
-        || (s is { IsActive: true, LinkedUserId: null } && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess));
+        || CanGrantStaff(s);
+
+    private bool CanGrantStaff(StaffMemberDetail s) =>
+        s.IsActive
+        && s.LinkedUserId is null
+        && s.PortalState != "Provisioning"
+        && Auth.HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
+
+    private bool CanOpenLinkedAccount(StaffMemberDetail s) =>
+        s.LinkedUserId is not null && Auth.HasPermission(IdentityPermissions.UsersView);
+
+    private void OpenLinkedAccount(Guid userId) => Navigation.NavigateTo($"/users/{userId}");
 
     private string LicenseCountLabel(int count) =>
         string.Format(count == 1 ? UiStrings.StaffMembers.LicenseCountSingular : UiStrings.StaffMembers.LicenseCountPlural, count);
@@ -603,13 +640,64 @@
 
     private static string PortalAccessDescription(StaffMemberDetail s)
     {
+        if (s.PortalState == "Suspended")
+            return UiStrings.PortalAccess.Suspended;
+
         if (!s.IsActive)
             return UiStrings.StaffMembers.PortalAccessUnavailableHint;
 
-        return s.LinkedUserId is not null
-            ? UiStrings.StaffMembers.PortalAccessLinkedHint
-            : UiStrings.StaffMembers.PortalAccessUnlinkedHint;
+        return s.PortalState switch
+        {
+            "Active" or "Invited" => UiStrings.StaffMembers.PortalAccessLinkedHint,
+            "Provisioning" => UiStrings.PortalAccess.Granted,
+            "Failed" => s.PortalFailureReason ?? UiStrings.PortalAccess.Failed,
+            _ when s.LinkedUserId is not null => UiStrings.StaffMembers.PortalAccessLinkedHint,
+            _ => UiStrings.StaffMembers.PortalAccessUnlinkedHint
+        };
     }
+
+    private static bool HasPortalLifecycle(StaffMemberDetail s) =>
+        s.LinkedUserId is not null || s.PortalState is "Provisioning" or "Failed" or "Suspended" or "Active" or "Invited";
+
+    private static string PortalAccessTone(StaffMemberDetail s) =>
+        s.PortalState switch
+        {
+            "Active" or "Invited" => "success",
+            "Provisioning" or "Suspended" => "warning",
+            "Failed" => "danger",
+            _ when s.LinkedUserId is not null => "success",
+            _ => "neutral"
+        };
+
+    private static string PortalAccessLabel(StaffMemberDetail s) =>
+        s.PortalState switch
+        {
+            "Active" or "Invited" => UiStrings.PortalAccess.HasAccess,
+            "Provisioning" => UiStrings.PortalAccess.Provisioning,
+            "Failed" => UiStrings.PortalAccess.Failed,
+            "Suspended" => UiStrings.PortalAccess.Suspended,
+            _ when s.LinkedUserId is not null => UiStrings.PortalAccess.HasAccess,
+            _ => UiStrings.PortalAccess.NoAccess
+        };
+
+    private static string PortalAccessIcon(StaffMemberDetail s) =>
+        s.PortalState switch
+        {
+            "Active" or "Invited" => "verified_user",
+            "Provisioning" => "hourglass_top",
+            "Failed" => "error",
+            "Suspended" => "lock",
+            _ => "lock"
+        };
+
+    private static string PortalAccessIconTone(StaffMemberDetail s) =>
+        s.PortalState switch
+        {
+            "Active" or "Invited" => "ok",
+            "Failed" => "danger",
+            _ when s.LinkedUserId is not null => "ok",
+            _ => "warn"
+        };
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
 

@@ -3,6 +3,8 @@ using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Email;
 using Identity.Application;
 using Identity.Application.Abstractions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Identity.Infrastructure.Notifications;
@@ -15,6 +17,9 @@ namespace Identity.Infrastructure.Notifications;
 public sealed class EmailInvitationNotifier(
     IIdentityDbContext db,
     IEmailContentProtector protector,
+    IEmailSender emailSender,
+    IHostEnvironment environment,
+    ILogger<EmailInvitationNotifier> logger,
     IOptions<IdentityModuleOptions> options) : IInvitationNotifier
 {
     private readonly IdentityModuleOptions _options = options.Value;
@@ -33,5 +38,12 @@ public sealed class EmailInvitationNotifier(
 
         db.EnqueueEmail(protector, new EmailMessage(email, displayName, "Activate your Operations System account", html), kind: "invitation");
         await db.SaveChangesAsync(cancellationToken);
+
+        if (!emailSender.IsEnabled && environment.IsDevelopment())
+        {
+            logger.LogWarning(
+                "Development invitation token for {Email}: {InvitationToken}. Activation link: {ActivationLink}",
+                email, invitationToken, link);
+        }
     }
 }

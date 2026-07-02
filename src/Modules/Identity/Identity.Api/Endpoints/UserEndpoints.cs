@@ -33,7 +33,7 @@ internal static class UserEndpoints
 
         users.MapPost("/invite", async (InviteUserRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new InviteUserCommand(request.Email, request.DisplayName), ct);
+            var result = await sender.Send(new InviteUserCommand(request.Email, request.DisplayName, request.RoleId), ct);
             return result.ToCreated(u => $"/api/v1/identity/users/{u.Id}");
         }).RequirePermission(IdentityPermissions.Users.Invite);
 

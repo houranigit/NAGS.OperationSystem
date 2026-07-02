@@ -57,6 +57,12 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasIndex(u => u.RoleId);
         builder.HasIndex(u => u.ExternalReferenceId);
+        builder.HasIndex(u => u.EmailChangeToken)
+            .IsUnique()
+            .HasFilter("[EmailChangeToken] IS NOT NULL");
+        builder.HasIndex(u => u.PasswordResetToken)
+            .IsUnique()
+            .HasFilter("[PasswordResetToken] IS NOT NULL");
 
         // At most one live account per MasterData record. Filtered so released (detached) accounts and
         // administrators (no external reference) are excluded; this also blocks concurrent duplicate

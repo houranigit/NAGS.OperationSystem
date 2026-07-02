@@ -93,13 +93,14 @@ public sealed class TokenService(TimeProvider timeProvider, IOptions<IdentityMod
 
     private const string MfaPurpose = "mfa-challenge";
 
-    public string CreateMfaChallengeToken(Guid userId)
+    public string CreateMfaChallengeToken(User user)
     {
         var now = timeProvider.GetUtcNow();
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new("purpose", MfaPurpose),
+            new(IdentityClaimTypes.SecurityStamp, user.SecurityStamp.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -115,7 +116,7 @@ public sealed class TokenService(TimeProvider timeProvider, IOptions<IdentityMod
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public Guid? ValidateMfaChallengeToken(string token)
+    public MfaChallenge? ValidateMfaChallengeToken(string token)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Jwt.SigningKey));
         try
@@ -137,7 +138,13 @@ public sealed class TokenService(TimeProvider timeProvider, IOptions<IdentityMod
             if (principal.FindFirstValue("purpose") != MfaPurpose)
                 return null;
 
-            return Guid.TryParse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub), out var id) ? id : null;
+            if (!Guid.TryParse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub), out var id))
+                return null;
+
+            if (!Guid.TryParse(principal.FindFirstValue(IdentityClaimTypes.SecurityStamp), out var stamp))
+                return null;
+
+            return new MfaChallenge(id, stamp);
         }
         catch
         {

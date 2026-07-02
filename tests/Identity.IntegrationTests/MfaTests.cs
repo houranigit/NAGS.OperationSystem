@@ -18,12 +18,12 @@ public class MfaTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFac
     private sealed record EnrollmentResponse(string Secret, string OtpAuthUri);
     private sealed record RecoveryCodesResponse(List<string> RecoveryCodes);
     private sealed record ChallengeResponse(bool MfaRequired, string MfaToken);
-    private sealed record MeResponse(Guid Id, bool MfaEnabled);
+    private sealed record MeResponse(Guid Id, bool MfaEnabled, bool MfaEnrollmentRequired, List<string> Permissions);
 
     [Fact]
     public async Task Admin_can_enroll_confirm_sign_in_with_mfa_recover_and_reset()
     {
-        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory, ensureMfa: false);
 
         // Enroll: obtain the shared secret, then confirm with a freshly computed code.
         var enrollment = await (await admin.PostAsync($"{Base}/auth/mfa/enroll", content: null))
@@ -62,7 +62,8 @@ public class MfaTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFac
             new { mfaToken = challenge2!.MfaToken, code = recovery.RecoveryCodes[0] });
         recoveryLogin.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        // Administrator resets MFA; sign-in no longer requires the second step.
+        // Administrator resets MFA; sign-in can authenticate, but permissions stay withheld until
+        // the administrator enrolls MFA again.
         var freshAdmin = factory.CreateClient();
         var freshChallenge = await (await freshAdmin.PostAsJsonAsync($"{Base}/auth/login",
             new { email = IdentityApiFactory.AdminEmail, password = IdentityApiFactory.AdminPassword }))
@@ -80,6 +81,12 @@ public class MfaTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFac
             new { email = IdentityApiFactory.AdminEmail, password = IdentityApiFactory.AdminPassword });
         var tokenAfterReset = await loginAfterReset.Content.ReadFromJsonAsync<TokenResponse>();
         tokenAfterReset!.AccessToken.ShouldNotBeNullOrWhiteSpace();
+
+        afterReset.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenAfterReset.AccessToken);
+        var meAfterReset = await afterReset.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        meAfterReset!.MfaEnabled.ShouldBeFalse();
+        meAfterReset.MfaEnrollmentRequired.ShouldBeTrue();
+        meAfterReset.Permissions.ShouldBeEmpty();
     }
 
     // --- Local RFC 6238 TOTP (mirrors the server) ---------------------------

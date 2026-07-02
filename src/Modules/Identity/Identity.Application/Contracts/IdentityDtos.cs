@@ -81,6 +81,8 @@ public sealed record UserDto(
     string UserType,
     Guid? ExternalReferenceId,
     string PortalSource,
+    bool MfaEnabled,
+    bool MfaEnrollmentRequired,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     DateTimeOffset? LastLoginAtUtc);

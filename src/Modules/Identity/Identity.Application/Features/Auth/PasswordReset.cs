@@ -87,6 +87,9 @@ public sealed class ResetPasswordCommandHandler(
             return invalid;
 
         var now = timeProvider.GetUtcNow();
+        if (user.ValidatePasswordReset(tokenHash, now).IsFailure)
+            return invalid;
+
         var result = user.ResetPassword(tokenHash, passwordHasher.Hash(request.NewPassword), now);
         if (result.IsFailure)
             return invalid;

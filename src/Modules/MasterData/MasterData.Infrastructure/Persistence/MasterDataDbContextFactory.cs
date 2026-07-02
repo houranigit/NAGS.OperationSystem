@@ -9,10 +9,15 @@ public sealed class MasterDataDbContextFactory : IDesignTimeDbContextFactory<Mas
     public MasterDataDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<MasterDataDbContext>()
-            .UseSqlServer("Server=localhost;Database=OperationsSystem;Trusted_Connection=False;TrustServerCertificate=True;",
+            .UseSqlServer(GetConnectionString(),
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", MasterDataDbContext.Schema))
             .Options;
 
         return new MasterDataDbContext(options);
     }
+
+    private static string GetConnectionString() =>
+        Environment.GetEnvironmentVariable("ConnectionStrings__MasterData")
+        ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+        ?? "Server=localhost,1433;Database=OperationsSystem;User Id=sa;Password=Your_strong_Pass123;TrustServerCertificate=True;Encrypt=False";
 }

@@ -608,6 +608,11 @@
     color: var(--os-color-warning);
 }
 
+.sm-portal-icon--danger {
+    background: var(--os-color-danger-bg);
+    color: var(--os-color-danger);
+}
+
 .sm-portal-body { flex: 1 1 16rem; min-width: 0; }
 
 .sm-portal-body h3 { margin: 0; font-size: var(--os-text-lg); }
@@ -627,3 +632,10 @@
 .sm-portal-note .rz-icon { color: var(--os-color-text-muted); font-size: 1.4rem; }
 
 .sm-portal-note p { margin: var(--os-space-1) 0 0; font-size: var(--os-text-sm); }
+
+.sm-portal-note--danger {
+    border-color: var(--os-color-danger);
+    background: var(--os-color-danger-bg);
+}
+
+.sm-portal-note--danger .rz-icon { color: var(--os-color-danger); }

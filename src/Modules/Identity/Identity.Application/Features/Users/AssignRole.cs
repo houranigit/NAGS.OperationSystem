@@ -17,11 +17,14 @@ public sealed class AssignRoleCommandValidator : AbstractValidator<AssignRoleCom
     }
 }
 
-public sealed class AssignRoleCommandHandler(IIdentityDbContext db, TimeProvider timeProvider)
+public sealed class AssignRoleCommandHandler(IIdentityDbContext db, ICurrentUser currentUser, TimeProvider timeProvider)
     : ICommandHandler<AssignRoleCommand>
 {
     public async Task<Result> Handle(AssignRoleCommand request, CancellationToken cancellationToken)
     {
+        if (currentUser.UserId == request.UserId)
+            return Error.Conflict("You cannot change your own role.", "Identity.User.CannotAssignRoleSelf");
+
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == request.UserId, cancellationToken);
         if (user is null)
             return Error.NotFound("User not found.", "Identity.User.NotFound");

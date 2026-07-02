@@ -163,7 +163,14 @@
             <div class="sf-portal-row"><RadzenSwitch @bind-Value="grantPortal" Name="grantPortal" /><div><RadzenLabel Text="@UiStrings.PortalAccess.GrantOnCreate" Component="grantPortal" /><p>@UiStrings.PortalAccess.GrantOnCreateHint</p></div></div>
             @if (grantPortal)
             {
-                <RadzenDropDown @bind-Value="portalRoleId" Data="@portalRoles" TextProperty="Name" ValueProperty="Id" Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" class="sf-control" />
+                @if (portalRoles.Count == 0)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@UiStrings.PortalAccess.NoCompatibleRoles</RadzenAlert>
+                }
+                else
+                {
+                    <RadzenDropDown @bind-Value="portalRoleId" Data="@portalRoles" TextProperty="Name" ValueProperty="Id" Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" class="sf-control" />
+                }
             }
         }
     </section>;
@@ -292,11 +299,10 @@
             }
             else
             {
-                var newId = await MasterData.CreateStaffMemberAsync(
-                    new CreateStaffMemberRequest(name, employeeId, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests));
-
-                if (grantPortal && portalRoleId is { } roleId)
-                    await MasterData.GrantStaffPortalAccessAsync(newId, new GrantPortalAccessRequest(roleId));
+                await MasterData.CreateStaffMemberAsync(
+                    new CreateStaffMemberRequest(
+                        name, employeeId, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests,
+                        grantPortal ? portalRoleId : null));
             }
 
             DialogService.Close(true);
@@ -348,7 +354,6 @@
 
     private bool ValidateEmployment()
     {
-
         if (model.StartDate is null && model.EndDate is not null)
         {
             errorMessage = UiStrings.StaffMembers.EndBeforeStart;
@@ -381,7 +386,9 @@
 
         if (StaffMemberId is null && grantPortal && portalRoleId is null)
         {
-            errorMessage = UiStrings.PortalAccess.RoleRequired;
+            errorMessage = portalRoles.Count == 0
+                ? UiStrings.PortalAccess.NoCompatibleRoles
+                : UiStrings.PortalAccess.RoleRequired;
             return false;
         }
 

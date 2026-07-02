@@ -14,6 +14,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import subprocess
 import uuid
 from pathlib import Path
@@ -77,12 +78,22 @@ CUSTOMER_ADDRESS_OVERRIDES = {
     100: "Krakowiakow str. 48, Warsaw 02-255, Poland",
 }
 
+WELL_KNOWN_OPERATION_TYPE_IDS = {
+    21: "30000000-0000-0000-0000-000000000001",  # Adhoc
+}
+
+WELL_KNOWN_SERVICE_IDS = {
+    35: "40000000-0000-0000-0000-000000000001",  # Aircraft Per landing Maintenance Service
+    33: "40000000-0000-0000-0000-000000000002",  # On-Call
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mysql-container", default="nags-legacy-import")
     parser.add_argument("--mysql-database", default="nagsoperation")
     parser.add_argument("--mysql-user", default="root")
+    parser.add_argument("--dump", type=Path, help="Load source data directly from Dump20260628.sql instead of Docker/MySQL.")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--apply-default",
@@ -108,6 +119,14 @@ def dotnet_guid(kind: str, legacy_id: Any) -> str:
     return str(uuid.UUID(bytes_le=digest))
 
 
+def operation_type_guid(source_id: Any) -> str:
+    return WELL_KNOWN_OPERATION_TYPE_IDS.get(int(source_id), dotnet_guid("operation-type", source_id))
+
+
+def service_guid(source_id: Any) -> str:
+    return WELL_KNOWN_SERVICE_IDS.get(int(source_id), dotnet_guid("service", source_id))
+
+
 def normalized(value: Any) -> str | None:
     if value is None:
         return None
@@ -117,7 +136,11 @@ def normalized(value: Any) -> str | None:
 
 def utc(value: Any) -> str | None:
     text = normalized(value)
-    return f"{text}+00:00" if text else None
+    if not text:
+        return None
+    if len(text) > 10 and text[10] == " ":
+        text = f"{text[:10]}T{text[11:]}"
+    return f"{text}+00:00"
 
 
 def sql(value: Any) -> str:
@@ -146,7 +169,347 @@ def is_valid_icao(value: str | None) -> bool:
     return value is None or (len(value) == 3 and value.isascii() and value.isalpha())
 
 
+def parse_mysql_string(content: str, index: int) -> tuple[str, int]:
+    if content[index] != "'":
+        raise ValueError(f"Expected quoted string at offset {index}")
+
+    index += 1
+    chars: list[str] = []
+    escapes = {
+        "0": "\0",
+        "b": "\b",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "Z": "\x1a",
+    }
+    while index < len(content):
+        char = content[index]
+        if char == "\\":
+            index += 1
+            if index >= len(content):
+                break
+            escaped = content[index]
+            chars.append(escapes.get(escaped, escaped))
+            index += 1
+            continue
+
+        if char == "'":
+            if index + 1 < len(content) and content[index + 1] == "'":
+                chars.append("'")
+                index += 2
+                continue
+
+            return "".join(chars), index + 1
+
+        chars.append(char)
+        index += 1
+
+    raise ValueError("Unclosed MySQL string literal")
+
+
+def parse_mysql_insert_rows(content: str, table: str) -> list[list[Any]]:
+    marker = f"INSERT INTO `{table}` VALUES"
+    rows: list[list[Any]] = []
+    position = 0
+
+    while True:
+        position = content.find(marker, position)
+        if position < 0:
+            return rows
+
+        index = position + len(marker)
+        while index < len(content):
+            while index < len(content) and content[index].isspace():
+                index += 1
+
+            if index >= len(content):
+                raise ValueError(f"Unexpected end while parsing {table}")
+
+            if content[index] == ";":
+                index += 1
+                break
+
+            if content[index] == ",":
+                index += 1
+                continue
+
+            if content[index] != "(":
+                raise ValueError(f"Expected row start while parsing {table} at offset {index}: {content[index:index + 30]!r}")
+
+            index += 1
+            row: list[Any] = []
+            while True:
+                while index < len(content) and content[index].isspace():
+                    index += 1
+
+                if content.startswith("_binary", index):
+                    index += len("_binary")
+                    while index < len(content) and content[index].isspace():
+                        index += 1
+                    value, index = parse_mysql_string(content, index)
+                elif content[index] == "'":
+                    value, index = parse_mysql_string(content, index)
+                else:
+                    end = index
+                    while end < len(content) and content[end] not in ",)":
+                        end += 1
+                    token = content[index:end].strip()
+                    value = None if token.upper() == "NULL" else token
+                    index = end
+
+                row.append(value)
+
+                while index < len(content) and content[index].isspace():
+                    index += 1
+
+                if content[index] == ",":
+                    index += 1
+                    continue
+
+                if content[index] == ")":
+                    index += 1
+                    break
+
+                raise ValueError(f"Expected value separator while parsing {table} at offset {index}: {content[index:index + 30]!r}")
+
+            rows.append(row)
+
+        position = index
+
+
+def parse_mysql_columns(content: str, table: str) -> list[str]:
+    marker = f"CREATE TABLE `{table}`"
+    start = content.find(marker)
+    if start < 0:
+        raise ValueError(f"Table {table} was not found in dump")
+
+    end = content.find(") ENGINE=", start)
+    if end < 0:
+        raise ValueError(f"Table {table} create statement was not terminated in dump")
+
+    create_statement = content[start:end]
+    return re.findall(r"^\s*`([^`]+)`\s+", create_statement, flags=re.MULTILINE)
+
+
+def dump_table(content: str, table: str) -> list[dict[str, Any]]:
+    columns = parse_mysql_columns(content, table)
+    rows = parse_mysql_insert_rows(content, table)
+    records = []
+    for index, row in enumerate(rows, start=1):
+        if len(row) != len(columns):
+            raise ValueError(
+                f"Table {table} row {index} has {len(row)} values but {len(columns)} columns"
+            )
+        records.append(dict(zip(columns, row)))
+    return records
+
+
+def manufacturer_from_legacy(lkp_by_id: dict[int, dict[str, Any]], manufacturer_id: Any) -> str:
+    name = normalized(lkp_by_id.get(int(manufacturer_id), {}).get("NAME_EN"))
+    if name is None:
+        return "Other"
+
+    normalized_name = name.strip().lower()
+    if "airbus" in normalized_name:
+        return "Airbus"
+    if "boeing" in normalized_name:
+        return "Boeing"
+    if "embraer" in normalized_name:
+        return "Embraer"
+    if "atr" in normalized_name:
+        return "ATR"
+    if "bombardier" in normalized_name:
+        return "Bombardier"
+    return "Other"
+
+
+def load_source_from_dump(path: Path) -> dict[str, list[dict[str, Any]]]:
+    content = path.read_text(encoding="utf-8", errors="replace")
+    tables = {
+        name: dump_table(content, name)
+        for name in [
+            "license", "manpower", "station", "customer", "user", "operation_staff",
+            "operation_staff_license", "customer_license", "service", "operation_type",
+            "airplane", "tool", "tool_equipment", "material", "general_support", "lkp",
+        ]
+    }
+
+    operation_staff_by_id = {int(row["ID"]): row for row in tables["operation_staff"]}
+    users = sorted(tables["user"], key=lambda row: int(row["ID"]))
+    lkp_by_id = {int(row["ID"]): row for row in tables["lkp"]}
+
+    data: dict[str, list[dict[str, Any]]] = {
+        "licenses": [
+            {
+                "id": row["ID"],
+                "code": row["CODE"],
+                "name": row["NAME_EN"],
+                "description": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["license"], key=lambda row: int(row["ID"]))
+        ],
+        "manpower": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "description": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["manpower"], key=lambda row: int(row["ID"]))
+        ],
+        "stations": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "note": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["station"], key=lambda row: int(row["ID"]))
+        ],
+        "customers": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "country_id": row["COUNTRY_ID"],
+                "iata": row["IATA_CODE"],
+                "icao": row["ICAO_CODE"],
+                "email": row["CUSTOMER_EMAIL"],
+                "phone": row["CUSTOMER_TEL"],
+                "address": row["CUSTOMER_ADDRESS"],
+                "city": row["CUSTOMER_CITY"],
+                "pobox": row["CUSTOMER_POBOX"],
+                "postal": row["CUSTOMER_POSTAL_CODE"],
+                "contact_name": row["CONTACT_PERSON"],
+                "contact_email": row["CONTACT_PERSON_EMAIL"],
+                "contact_phone": row["CONTACT_PERSON_TEL"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["customer"], key=lambda row: int(row["ID"]))
+        ],
+        "staff": [
+            {
+                "id": user["ID"],
+                "employee_id": user["EMP_ID"],
+                "name": user["NAME_EN"],
+                "email": user["EMAIL_ADDRESS"],
+                "station_id": user["STATION_ID"],
+                "manpower_id": operation_staff_by_id[int(user["ID"])]["MANPOWER_ID"],
+                "license_number": operation_staff_by_id[int(user["ID"])]["LIC_ID"],
+                "status_id": user["STATUS_ID"],
+                "created": user["CREATION_DATE"],
+                "updated": user["UPDATE_DATE"],
+            }
+            for user in users if int(user["ID"]) in operation_staff_by_id
+        ],
+        "staff_licenses": [
+            {
+                "user_id": row["USER_ID"],
+                "license_id": row["LICENSE_ID"],
+                "license_number": operation_staff_by_id[int(row["USER_ID"])]["LIC_ID"],
+            }
+            for row in sorted(tables["operation_staff_license"], key=lambda row: (int(row["USER_ID"]), int(row["LICENSE_ID"])))
+        ],
+        "customer_licenses": [
+            {"customer_id": row["CUSTOMER_ID"], "license_id": row["LICENSE_ID"]}
+            for row in sorted(tables["customer_license"], key=lambda row: (int(row["CUSTOMER_ID"]), int(row["LICENSE_ID"])))
+        ],
+        "user_only": [
+            {
+                "id": user["ID"],
+                "employee_id": user["EMP_ID"],
+                "name": user["NAME_EN"],
+                "email": user["EMAIL_ADDRESS"],
+                "station_id": user["STATION_ID"],
+                "status_id": user["STATUS_ID"],
+            }
+            for user in users if int(user["ID"]) not in operation_staff_by_id
+        ],
+        "services": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "description": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["service"], key=lambda row: int(row["ID"]))
+        ],
+        "operation_types": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "description": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["operation_type"], key=lambda row: int(row["ID"]))
+        ],
+        "aircraft_types": [
+            {
+                "id": row["ID"],
+                "manufacturer": manufacturer_from_legacy(lkp_by_id, row["MANUFACTURER_ID"]),
+                "model": row["CODE"],
+                "notes": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["airplane"], key=lambda row: int(row["ID"]))
+        ],
+        "tools": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "description": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["tool"], key=lambda row: int(row["ID"]))
+        ],
+        "tool_equipments": [
+            {
+                "id": row["ID"],
+                "tool_id": row["TOOL_ID"],
+                "factory_id": row["FACTORY_ID"],
+                "serial_id": row["SERIAL_ID"],
+                "calibration_date": row["CALIBRATION_DATE"],
+            }
+            for row in sorted(tables["tool_equipment"], key=lambda row: int(row["ID"]))
+        ],
+        "materials": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "description": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["material"], key=lambda row: int(row["ID"]))
+        ],
+        "general_supports": [
+            {
+                "id": row["ID"],
+                "name": row["NAME_EN"],
+                "description": row["NOTE"],
+                "created": row["CREATION_DATE"],
+                "updated": row["UPDATE_DATE"],
+            }
+            for row in sorted(tables["general_support"], key=lambda row: int(row["ID"]))
+        ],
+    }
+
+    return data
+
+
 def load_source(args: argparse.Namespace) -> dict[str, list[dict[str, Any]]]:
+    if args.dump is not None:
+        return load_source_from_dump(args.dump)
+
     queries = {
         "licenses": """
             SELECT JSON_OBJECT('id',ID,'code',CODE,'name',NAME_EN,'description',NOTE,
@@ -199,6 +562,56 @@ def load_source(args: argparse.Namespace) -> dict[str, list[dict[str, Any]]]:
               'email',u.EMAIL_ADDRESS,'station_id',u.STATION_ID,'status_id',u.STATUS_ID)
             FROM user u LEFT JOIN operation_staff os ON os.ID=u.ID
             WHERE os.ID IS NULL ORDER BY u.ID;
+        """,
+        "services": """
+            SELECT JSON_OBJECT('id',ID,'name',NAME_EN,'description',NOTE,
+              'created',DATE_FORMAT(CREATION_DATE,'%Y-%m-%dT%H:%i:%s'),
+              'updated',IFNULL(DATE_FORMAT(UPDATE_DATE,'%Y-%m-%dT%H:%i:%s'),NULL))
+            FROM service ORDER BY ID;
+        """,
+        "operation_types": """
+            SELECT JSON_OBJECT('id',ID,'name',NAME_EN,'description',NOTE,
+              'created',DATE_FORMAT(CREATION_DATE,'%Y-%m-%dT%H:%i:%s'),
+              'updated',IFNULL(DATE_FORMAT(UPDATE_DATE,'%Y-%m-%dT%H:%i:%s'),NULL))
+            FROM operation_type ORDER BY ID;
+        """,
+        "aircraft_types": """
+            SELECT JSON_OBJECT('id',a.ID,'manufacturer',
+                CASE
+                    WHEN LOWER(l.NAME_EN) LIKE '%airbus%' THEN 'Airbus'
+                    WHEN LOWER(l.NAME_EN) LIKE '%boeing%' THEN 'Boeing'
+                    WHEN LOWER(l.NAME_EN) LIKE '%embraer%' THEN 'Embraer'
+                    WHEN LOWER(l.NAME_EN) LIKE '%atr%' THEN 'ATR'
+                    WHEN LOWER(l.NAME_EN) LIKE '%bombardier%' THEN 'Bombardier'
+                    ELSE 'Other'
+                END,
+              'model',a.CODE,'notes',a.NOTE,
+              'created',DATE_FORMAT(a.CREATION_DATE,'%Y-%m-%dT%H:%i:%s'),
+              'updated',IFNULL(DATE_FORMAT(a.UPDATE_DATE,'%Y-%m-%dT%H:%i:%s'),NULL))
+            FROM airplane a JOIN lkp l ON l.ID=a.MANUFACTURER_ID ORDER BY a.ID;
+        """,
+        "tools": """
+            SELECT JSON_OBJECT('id',ID,'name',NAME_EN,'description',NOTE,
+              'created',DATE_FORMAT(CREATION_DATE,'%Y-%m-%dT%H:%i:%s'),
+              'updated',IFNULL(DATE_FORMAT(UPDATE_DATE,'%Y-%m-%dT%H:%i:%s'),NULL))
+            FROM tool ORDER BY ID;
+        """,
+        "tool_equipments": """
+            SELECT JSON_OBJECT('id',ID,'tool_id',TOOL_ID,'factory_id',FACTORY_ID,
+              'serial_id',SERIAL_ID,'calibration_date',IFNULL(DATE_FORMAT(CALIBRATION_DATE,'%Y-%m-%d'),NULL))
+            FROM tool_equipment ORDER BY ID;
+        """,
+        "materials": """
+            SELECT JSON_OBJECT('id',ID,'name',NAME_EN,'description',NOTE,
+              'created',DATE_FORMAT(CREATION_DATE,'%Y-%m-%dT%H:%i:%s'),
+              'updated',IFNULL(DATE_FORMAT(UPDATE_DATE,'%Y-%m-%dT%H:%i:%s'),NULL))
+            FROM material ORDER BY ID;
+        """,
+        "general_supports": """
+            SELECT JSON_OBJECT('id',ID,'name',NAME_EN,'description',NOTE,
+              'created',DATE_FORMAT(CREATION_DATE,'%Y-%m-%dT%H:%i:%s'),
+              'updated',IFNULL(DATE_FORMAT(UPDATE_DATE,'%Y-%m-%dT%H:%i:%s'),NULL))
+            FROM general_support ORDER BY ID;
         """,
     }
     return {name: mysql_json(args, query) for name, query in queries.items()}
@@ -291,6 +704,33 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
         row for row in data["staff_licenses"] if int(row["user_id"]) not in imported_staff_ids
     ]
 
+    services = data["services"]
+    operation_types = data["operation_types"]
+    aircraft_types = data["aircraft_types"]
+    tools = data["tools"]
+    tool_ids = {int(row["id"]) for row in tools}
+    tool_equipments = [row for row in data["tool_equipments"] if int(row["tool_id"]) in tool_ids]
+    materials = data["materials"]
+    general_supports = data["general_supports"]
+
+    catalog_name_checks = [
+        ("services", services, "name"),
+        ("operation types", operation_types, "name"),
+        ("tools", tools, "name"),
+        ("materials", materials, "name"),
+        ("general supports", general_supports, "name"),
+    ]
+    for label, rows, field in catalog_name_checks:
+        counts = collections.Counter(normalized(row[field]) for row in rows)
+        duplicates = sorted(name for name, count in counts.items() if name is not None and count > 1)
+        if duplicates:
+            raise ValueError(f"Duplicate {label} names in legacy source: {duplicates}")
+
+    aircraft_counts = collections.Counter((normalized(row["manufacturer"]), normalized(row["model"]).upper() if normalized(row["model"]) else None) for row in aircraft_types)
+    duplicate_aircraft = sorted(key for key, count in aircraft_counts.items() if count > 1)
+    if duplicate_aircraft:
+        raise ValueError(f"Duplicate aircraft manufacturer/model pairs in legacy source: {duplicate_aircraft}")
+
     lines: list[str] = []
     add = lines.append
     add("/*")
@@ -310,10 +750,13 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("    * Customer IATA is optional/non-unique; customer ICAO remains optional/unique.")
     add(f"    * {len(excluded_customers)} source customer rows were explicitly rejected after review.")
     add(f"    * {len(excluded_staff)} duplicate-email source employees were explicitly rejected; one selected employee per email remains.")
+    add(f"    * Catalog data included: {len(services)} services, {len(operation_types)} operation types, {len(aircraft_types)} aircraft types, {len(tools)} tools, {len(tool_equipments)} tool equipment rows, {len(materials)} materials, {len(general_supports)} general supports.")
     add("    * Legacy customer-license links are intentionally skipped because the current schema has no target table.")
+    add("    * Legacy catalog prices, units, duration rules, package/time fields and aircraft-service price links are intentionally skipped.")
     add("")
     add("  INTENTIONALLY OMITTED FIELDS (approved/outside the implemented model):")
     add("    * Arabic text; manpower prices, time and package fields.")
+    add("    * Catalog prices, units, duration rules, package/time fields and aircraft-service price links.")
     add("    * Other source-only columns remain called out in the review output; no extra legacy tables are restored.")
     add("*/")
     add("SET NOCOUNT ON;")
@@ -349,6 +792,30 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
         add("        INSERT INTO masterdata.__EFMigrationsHistory (MigrationId, ProductVersion) VALUES (N'20260628220103_MasterData_NullableAddressAndStationCity', N'10.0.9');")
         add("    IF OBJECT_ID(N'masterdata.__EFMigrationsHistory') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM masterdata.__EFMigrationsHistory WHERE MigrationId=N'20260628223103_MasterData_OptionalNonUniqueCustomerIata')")
         add("        INSERT INTO masterdata.__EFMigrationsHistory (MigrationId, ProductVersion) VALUES (N'20260628223103_MasterData_OptionalNonUniqueCustomerIata', N'10.0.9');\n")
+        add("    IF OBJECT_ID(N'masterdata.services') IS NULL")
+        add("        CREATE TABLE masterdata.services (Id uniqueidentifier NOT NULL CONSTRAINT PK_services PRIMARY KEY, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, IsActive bit NOT NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL, RowVersion rowversion NOT NULL);")
+        add("    IF OBJECT_ID(N'masterdata.operation_types') IS NULL")
+        add("        CREATE TABLE masterdata.operation_types (Id uniqueidentifier NOT NULL CONSTRAINT PK_operation_types PRIMARY KEY, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, IsActive bit NOT NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL, RowVersion rowversion NOT NULL);")
+        add("    IF OBJECT_ID(N'masterdata.aircraft_types') IS NULL")
+        add("        CREATE TABLE masterdata.aircraft_types (Id uniqueidentifier NOT NULL CONSTRAINT PK_aircraft_types PRIMARY KEY, Manufacturer nvarchar(20) NOT NULL, Model nvarchar(50) NOT NULL, Notes nvarchar(500) NULL, IsActive bit NOT NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL, RowVersion rowversion NOT NULL);")
+        add("    IF OBJECT_ID(N'masterdata.tools') IS NULL")
+        add("        CREATE TABLE masterdata.tools (Id uniqueidentifier NOT NULL CONSTRAINT PK_tools PRIMARY KEY, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, IsActive bit NOT NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL, RowVersion rowversion NOT NULL);")
+        add("    IF OBJECT_ID(N'masterdata.tool_equipments') IS NULL")
+        add("        CREATE TABLE masterdata.tool_equipments (Id uniqueidentifier NOT NULL CONSTRAINT PK_tool_equipments PRIMARY KEY, ToolId uniqueidentifier NOT NULL, FactoryId nvarchar(100) NOT NULL, SerialId nvarchar(100) NOT NULL, CalibrationDate date NULL, CONSTRAINT FK_tool_equipments_tools_ToolId FOREIGN KEY (ToolId) REFERENCES masterdata.tools(Id) ON DELETE CASCADE);")
+        add("    IF OBJECT_ID(N'masterdata.materials') IS NULL")
+        add("        CREATE TABLE masterdata.materials (Id uniqueidentifier NOT NULL CONSTRAINT PK_materials PRIMARY KEY, Name nvarchar(200) NOT NULL, Description nvarchar(500) NULL, IsActive bit NOT NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL, RowVersion rowversion NOT NULL);")
+        add("    IF OBJECT_ID(N'masterdata.general_supports') IS NULL")
+        add("        CREATE TABLE masterdata.general_supports (Id uniqueidentifier NOT NULL CONSTRAINT PK_general_supports PRIMARY KEY, Name nvarchar(200) NOT NULL, Description nvarchar(500) NULL, IsActive bit NOT NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL, RowVersion rowversion NOT NULL);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.services') AND name=N'IX_services_Name') CREATE UNIQUE INDEX IX_services_Name ON masterdata.services(Name);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.operation_types') AND name=N'IX_operation_types_Name') CREATE UNIQUE INDEX IX_operation_types_Name ON masterdata.operation_types(Name);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.aircraft_types') AND name=N'IX_aircraft_types_Manufacturer_Model') CREATE UNIQUE INDEX IX_aircraft_types_Manufacturer_Model ON masterdata.aircraft_types(Manufacturer, Model);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.tools') AND name=N'IX_tools_Name') CREATE UNIQUE INDEX IX_tools_Name ON masterdata.tools(Name);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.tool_equipments') AND name=N'IX_tool_equipments_ToolId') CREATE INDEX IX_tool_equipments_ToolId ON masterdata.tool_equipments(ToolId);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.tool_equipments') AND name=N'IX_tool_equipments_ToolId_FactoryId_SerialId') CREATE UNIQUE INDEX IX_tool_equipments_ToolId_FactoryId_SerialId ON masterdata.tool_equipments(ToolId, FactoryId, SerialId);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.materials') AND name=N'IX_materials_Name') CREATE UNIQUE INDEX IX_materials_Name ON masterdata.materials(Name);")
+        add("    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'masterdata.general_supports') AND name=N'IX_general_supports_Name') CREATE UNIQUE INDEX IX_general_supports_Name ON masterdata.general_supports(Name);")
+        add("    IF OBJECT_ID(N'masterdata.__EFMigrationsHistory') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM masterdata.__EFMigrationsHistory WHERE MigrationId=N'20260629181346_MasterData_Catalogs')")
+        add("        INSERT INTO masterdata.__EFMigrationsHistory (MigrationId, ProductVersion) VALUES (N'20260629181346_MasterData_Catalogs', N'10.0.9');\n")
 
     add("    CREATE TABLE #LegacyLicenses (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Code nvarchar(10) NOT NULL, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
     add("    CREATE TABLE #LegacyManpower (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
@@ -361,7 +828,14 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("    CREATE TABLE #ExcludedSourceStaff (SourceId int PRIMARY KEY, EmployeeId nvarchar(50) NOT NULL, FullName nvarchar(200) NOT NULL, Email nvarchar(256) NOT NULL, Reason nvarchar(200) NOT NULL);")
     add("    CREATE TABLE #ExcludedCustomerLicenseRelations (SourceCustomerId int NOT NULL, SourceLicenseId int NOT NULL);")
     add("    CREATE TABLE #ExcludedStaffLicenseRelations (SourceStaffId int NOT NULL, SourceLicenseId int NOT NULL);")
-    add("    CREATE TABLE #IdentityOnlySourceUsers (SourceId int PRIMARY KEY, EmployeeId nvarchar(50) NOT NULL, FullName nvarchar(200) NOT NULL, Email nvarchar(256) NOT NULL, SourceStationId int NOT NULL, IsActive bit NOT NULL);\n")
+    add("    CREATE TABLE #IdentityOnlySourceUsers (SourceId int PRIMARY KEY, EmployeeId nvarchar(50) NOT NULL, FullName nvarchar(200) NOT NULL, Email nvarchar(256) NOT NULL, SourceStationId int NOT NULL, IsActive bit NOT NULL);")
+    add("    CREATE TABLE #LegacyServices (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
+    add("    CREATE TABLE #LegacyOperationTypes (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
+    add("    CREATE TABLE #LegacyAircraftTypes (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Manufacturer nvarchar(20) NOT NULL, Model nvarchar(50) NOT NULL, Notes nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
+    add("    CREATE TABLE #LegacyTools (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Name nvarchar(100) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
+    add("    CREATE TABLE #LegacyToolEquipments (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, SourceToolId int NOT NULL, FactoryId nvarchar(100) NOT NULL, SerialId nvarchar(100) NOT NULL, CalibrationDate date NULL);")
+    add("    CREATE TABLE #LegacyMaterials (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Name nvarchar(200) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);")
+    add("    CREATE TABLE #LegacyGeneralSupports (SourceId int PRIMARY KEY, TargetId uniqueidentifier NOT NULL, Name nvarchar(200) NOT NULL, Description nvarchar(500) NULL, CreatedAtUtc datetimeoffset NOT NULL, UpdatedAtUtc datetimeoffset NULL);\n")
 
     add(insert_values("#LegacyLicenses", ["SourceId", "TargetId", "Code", "Name", "Description", "CreatedAtUtc", "UpdatedAtUtc"], [
         (int(r["id"]), dotnet_guid("license", r["id"]), normalized(r["code"]), normalized(r["name"]), normalized(r["description"]), utc(r["created"]), utc(r["updated"]))
@@ -415,6 +889,38 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
         (int(r["id"]), normalized(r["employee_id"]).upper(), normalized(r["name"]), normalized(r["email"]).lower(), int(r["station_id"]), int(r["status_id"]) == 10)
         for r in data["user_only"]
     ]).rstrip())
+    add(insert_values("#LegacyServices", ["SourceId", "TargetId", "Name", "Description", "CreatedAtUtc", "UpdatedAtUtc"], [
+        (int(r["id"]), service_guid(r["id"]), normalized(r["name"]), normalized(r["description"]), utc(r["created"]), utc(r["updated"]))
+        for r in services
+    ]).rstrip())
+    add(insert_values("#LegacyOperationTypes", ["SourceId", "TargetId", "Name", "Description", "CreatedAtUtc", "UpdatedAtUtc"], [
+        (int(r["id"]), operation_type_guid(r["id"]), normalized(r["name"]), normalized(r["description"]), utc(r["created"]), utc(r["updated"]))
+        for r in operation_types
+    ]).rstrip())
+    add(insert_values("#LegacyAircraftTypes", ["SourceId", "TargetId", "Manufacturer", "Model", "Notes", "CreatedAtUtc", "UpdatedAtUtc"], [
+        (int(r["id"]), dotnet_guid("aircraft-type", r["id"]), normalized(r["manufacturer"]), normalized(r["model"]).upper(), normalized(r["notes"]), utc(r["created"]), utc(r["updated"]))
+        for r in aircraft_types
+    ]).rstrip())
+    add(insert_values("#LegacyTools", ["SourceId", "TargetId", "Name", "Description", "CreatedAtUtc", "UpdatedAtUtc"], [
+        (int(r["id"]), dotnet_guid("tool", r["id"]), normalized(r["name"]), normalized(r["description"]), utc(r["created"]), utc(r["updated"]))
+        for r in tools
+    ]).rstrip())
+    add(insert_values("#LegacyToolEquipments", ["SourceId", "TargetId", "SourceToolId", "FactoryId", "SerialId", "CalibrationDate"], [
+        (
+            int(r["id"]), dotnet_guid("tool-equipment", r["id"]), int(r["tool_id"]),
+            normalized(r["factory_id"]), normalized(r["serial_id"]),
+            normalized(r["calibration_date"])[:10] if normalized(r["calibration_date"]) else None,
+        )
+        for r in tool_equipments
+    ]).rstrip())
+    add(insert_values("#LegacyMaterials", ["SourceId", "TargetId", "Name", "Description", "CreatedAtUtc", "UpdatedAtUtc"], [
+        (int(r["id"]), dotnet_guid("material", r["id"]), normalized(r["name"]), normalized(r["description"]), utc(r["created"]), utc(r["updated"]))
+        for r in materials
+    ]).rstrip())
+    add(insert_values("#LegacyGeneralSupports", ["SourceId", "TargetId", "Name", "Description", "CreatedAtUtc", "UpdatedAtUtc"], [
+        (int(r["id"]), dotnet_guid("general-support", r["id"]), normalized(r["name"]), normalized(r["description"]), utc(r["created"]), utc(r["updated"]))
+        for r in general_supports
+    ]).rstrip())
 
     add("\n    /* APPROVED: corrected customer codes. Null IATA means the customer has no IATA code. */")
     add("    CREATE TABLE #CustomerCodeDecisions (SourceCustomerId int PRIMARY KEY, IataCode nvarchar(10) NULL, IcaoCode nvarchar(10) NULL);")
@@ -451,6 +957,7 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("    SELECT 'Skipped customer-license relation (no target model)' AS Issue, COUNT(*) AS RelationshipCount FROM #UnmappedCustomerLicenses;\n")
     add("    SELECT 'Relation omitted with rejected customer' AS Issue, COUNT(*) AS RelationshipCount FROM #ExcludedCustomerLicenseRelations;")
     add("    SELECT 'Staff-license relation omitted with rejected employee' AS Issue, COUNT(*) AS RelationshipCount FROM #ExcludedStaffLicenseRelations;\n")
+    add("    SELECT 'Skipped catalog legacy fields' AS Issue, N'prices, units, duration rules, package/time fields, product/system ids and aircraft-service price links are outside the current schema' AS Details;\n")
 
     add("    /* Hard safety gates: every retained record is imported or the batch stops before deletion. */")
     add("    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'masterdata.customer_addresses') AND name=N'Line1' AND is_nullable=1) THROW 50001, 'Apply the nullable-address EF migration before importing.', 1;")
@@ -464,7 +971,9 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("    IF EXISTS (SELECT 1 FROM #LegacyStations WHERE IataCode IS NULL OR LEN(IataCode)<>3) THROW 50009, 'Complete the station IATA mapping.', 1;")
     add(f"    IF (SELECT COUNT(*) FROM #LegacyCustomers)<>{len(customers)} OR (SELECT COUNT(*) FROM #ExcludedSourceCustomers)<>{len(excluded_customers)} THROW 50010, 'The reviewed customer keep/reject counts changed.', 1;")
     add(f"    IF (SELECT COUNT(*) FROM #LegacyStaff)<>{len(staff)} OR (SELECT COUNT(*) FROM #ExcludedSourceStaff)<>{len(excluded_staff)} THROW 50011, 'The reviewed employee keep/reject counts changed.', 1;")
-    add("    IF EXISTS (SELECT 1 FROM (SELECT CountryIso FROM #LegacyCustomers UNION SELECT CountryIso FROM #LegacyStations) source_codes LEFT JOIN masterdata.countries c ON c.IsoCode=source_codes.CountryIso WHERE c.Id IS NULL) THROW 50013, 'A required seeded country is missing.', 1;\n")
+    add("    IF OBJECT_ID(N'masterdata.services') IS NULL OR OBJECT_ID(N'masterdata.operation_types') IS NULL OR OBJECT_ID(N'masterdata.aircraft_types') IS NULL OR OBJECT_ID(N'masterdata.tools') IS NULL OR OBJECT_ID(N'masterdata.tool_equipments') IS NULL OR OBJECT_ID(N'masterdata.materials') IS NULL OR OBJECT_ID(N'masterdata.general_supports') IS NULL THROW 50012, 'Apply the MasterData_Catalogs migration before importing.', 1;")
+    add("    IF EXISTS (SELECT 1 FROM (SELECT CountryIso FROM #LegacyCustomers UNION SELECT CountryIso FROM #LegacyStations) source_codes LEFT JOIN masterdata.countries c ON c.IsoCode=source_codes.CountryIso WHERE c.Id IS NULL) THROW 50013, 'A required seeded country is missing.', 1;")
+    add(f"    IF (SELECT COUNT(*) FROM #LegacyServices)<>{len(services)} OR (SELECT COUNT(*) FROM #LegacyOperationTypes)<>{len(operation_types)} OR (SELECT COUNT(*) FROM #LegacyAircraftTypes)<>{len(aircraft_types)} OR (SELECT COUNT(*) FROM #LegacyTools)<>{len(tools)} OR (SELECT COUNT(*) FROM #LegacyToolEquipments)<>{len(tool_equipments)} OR (SELECT COUNT(*) FROM #LegacyMaterials)<>{len(materials)} OR (SELECT COUNT(*) FROM #LegacyGeneralSupports)<>{len(general_supports)} THROW 50014, 'The reviewed catalog row counts changed.', 1;\n")
 
     add("    /* Destructive reset starts only after all gates above pass. Countries and EF histories remain. */")
     add("    DELETE FROM audit.inbox_messages;")
@@ -483,8 +992,23 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("    DELETE FROM masterdata.stations;")
     add("    DELETE FROM masterdata.licenses;")
     add("    DELETE FROM masterdata.manpower_types;")
+    add("    DELETE FROM masterdata.tool_equipments;")
+    add("    DELETE FROM masterdata.tools;")
+    add("    DELETE FROM masterdata.materials;")
+    add("    DELETE FROM masterdata.general_supports;")
+    add("    DELETE FROM masterdata.aircraft_types;")
+    add("    DELETE FROM masterdata.operation_types;")
+    add("    DELETE FROM masterdata.services;")
     add("    DELETE FROM masterdata.inbox_messages;")
     add("    DELETE FROM masterdata.outbox_messages;\n")
+
+    add("    INSERT INTO masterdata.services (Id,Name,Description,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Name,Description,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyServices;")
+    add("    INSERT INTO masterdata.operation_types (Id,Name,Description,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Name,Description,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyOperationTypes;")
+    add("    INSERT INTO masterdata.aircraft_types (Id,Manufacturer,Model,Notes,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Manufacturer,Model,Notes,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyAircraftTypes;")
+    add("    INSERT INTO masterdata.tools (Id,Name,Description,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Name,Description,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyTools;")
+    add("    INSERT INTO masterdata.tool_equipments (Id,ToolId,FactoryId,SerialId,CalibrationDate) SELECT e.TargetId,t.TargetId,e.FactoryId,e.SerialId,e.CalibrationDate FROM #LegacyToolEquipments e JOIN #LegacyTools t ON t.SourceId=e.SourceToolId;")
+    add("    INSERT INTO masterdata.materials (Id,Name,Description,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Name,Description,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyMaterials;")
+    add("    INSERT INTO masterdata.general_supports (Id,Name,Description,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Name,Description,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyGeneralSupports;\n")
 
     add("    INSERT INTO masterdata.licenses (Id,Code,Name,Description,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Code,Name,Description,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyLicenses;")
     add("    INSERT INTO masterdata.manpower_types (Id,Name,Description,IsActive,CreatedAtUtc,UpdatedAtUtc) SELECT TargetId,Name,Description,1,CreatedAtUtc,UpdatedAtUtc FROM #LegacyManpower;")
@@ -496,7 +1020,7 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("    INSERT INTO masterdata.staff_member_licenses (Id,StaffMemberId,LicenseId,LicenseNumber) SELECT sl.TargetId,s.TargetId,l.TargetId,sl.LicenseNumber FROM #LegacyStaffLicenses sl JOIN #LegacyStaff s ON s.SourceId=sl.SourceStaffId JOIN #LegacyLicenses l ON l.SourceId=sl.SourceLicenseId;\n")
 
     add("    SELECT 'countries (preserved)' AS Entity, COUNT(*) AS [RowCount] FROM masterdata.countries UNION ALL")
-    add("    SELECT 'licenses',COUNT(*) FROM masterdata.licenses UNION ALL SELECT 'manpower types',COUNT(*) FROM masterdata.manpower_types UNION ALL SELECT 'stations',COUNT(*) FROM masterdata.stations UNION ALL SELECT 'customers',COUNT(*) FROM masterdata.customers UNION ALL SELECT 'customer contacts',COUNT(*) FROM masterdata.customer_contacts UNION ALL SELECT 'station staff',COUNT(*) FROM masterdata.staff_members UNION ALL SELECT 'staff licenses',COUNT(*) FROM masterdata.staff_member_licenses UNION ALL SELECT 'identity users',COUNT(*) FROM [identity].users;\n")
+    add("    SELECT 'licenses',COUNT(*) FROM masterdata.licenses UNION ALL SELECT 'manpower types',COUNT(*) FROM masterdata.manpower_types UNION ALL SELECT 'services',COUNT(*) FROM masterdata.services UNION ALL SELECT 'operation types',COUNT(*) FROM masterdata.operation_types UNION ALL SELECT 'aircraft types',COUNT(*) FROM masterdata.aircraft_types UNION ALL SELECT 'tools',COUNT(*) FROM masterdata.tools UNION ALL SELECT 'tool equipment',COUNT(*) FROM masterdata.tool_equipments UNION ALL SELECT 'materials',COUNT(*) FROM masterdata.materials UNION ALL SELECT 'general supports',COUNT(*) FROM masterdata.general_supports UNION ALL SELECT 'stations',COUNT(*) FROM masterdata.stations UNION ALL SELECT 'customers',COUNT(*) FROM masterdata.customers UNION ALL SELECT 'customer contacts',COUNT(*) FROM masterdata.customer_contacts UNION ALL SELECT 'station staff',COUNT(*) FROM masterdata.staff_members UNION ALL SELECT 'staff licenses',COUNT(*) FROM masterdata.staff_member_licenses UNION ALL SELECT 'identity users',COUNT(*) FROM [identity].users;\n")
     add("    IF @Apply=1")
     add("    BEGIN")
     add("        COMMIT TRANSACTION;")

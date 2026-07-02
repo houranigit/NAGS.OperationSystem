@@ -235,6 +235,8 @@ public sealed record CustomerContactDto(
     string Email,
     string? Phone,
     Guid? LinkedUserId,
+    string PortalState,
+    string? PortalFailureReason,
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc);

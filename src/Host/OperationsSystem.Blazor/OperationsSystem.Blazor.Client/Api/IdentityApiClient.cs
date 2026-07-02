@@ -16,6 +16,21 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default) =>
         api.PostAsync("/identity/auth/change-password", request, ct);
 
+    public Task ConfirmEmailChangeAsync(ConfirmEmailChangeRequest request, CancellationToken ct = default) =>
+        api.PostAsync("/identity/auth/confirm-email-change", request, ct);
+
+    public Task ForgotPasswordAsync(ForgotPasswordRequest request, CancellationToken ct = default) =>
+        api.PostAsync("/identity/auth/forgot-password", request, ct);
+
+    public Task ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct = default) =>
+        api.PostAsync("/identity/auth/reset-password", request, ct);
+
+    public Task<MfaEnrollment> EnrollMfaAsync(CancellationToken ct = default) =>
+        api.PostAsync<object, MfaEnrollment>("/identity/auth/mfa/enroll", new { }, ct);
+
+    public Task<MfaRecoveryCodes> ConfirmMfaAsync(ConfirmMfaRequest request, CancellationToken ct = default) =>
+        api.PostAsync<ConfirmMfaRequest, MfaRecoveryCodes>("/identity/auth/mfa/confirm", request, ct);
+
     // --- Users -------------------------------------------------------------
 
     public Task<PagedResult<UserListItem>> GetUsersAsync(
@@ -58,6 +73,15 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task UnlockUserAsync(Guid id, CancellationToken ct = default) =>
         api.PostAsync($"/identity/users/{id}/unlock", ct);
 
+    public Task SuspendUserAsync(Guid id, CancellationToken ct = default) =>
+        api.PostAsync($"/identity/users/{id}/suspend", ct);
+
+    public Task RestoreAccessAsync(Guid id, CancellationToken ct = default) =>
+        api.PostAsync($"/identity/users/{id}/restore-access", ct);
+
+    public Task ResetMfaAsync(Guid id, CancellationToken ct = default) =>
+        api.PostAsync($"/identity/users/{id}/mfa/reset", ct);
+
     public Task DeactivateUserAsync(Guid id, CancellationToken ct = default) =>
         api.PostAsync($"/identity/users/{id}/deactivate", ct);
 
@@ -87,9 +111,12 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task<RoleDetail> GetRoleAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<RoleDetail>($"/identity/roles/{id}", ct);
 
-    /// <summary>Roles compatible with a given user type, for portal-access pickers (server-filtered).</summary>
-    public Task<IReadOnlyList<RoleOption>> GetRoleOptionsAsync(string userType, CancellationToken ct = default) =>
-        api.GetAsync<IReadOnlyList<RoleOption>>($"/identity/roles/options?userType={Uri.EscapeDataString(userType)}", ct);
+    /// <summary>Role options, optionally compatible with a given user type, for filters and assignment pickers.</summary>
+    public Task<IReadOnlyList<RoleOption>> GetRoleOptionsAsync(string? userType = null, CancellationToken ct = default)
+    {
+        var query = string.IsNullOrWhiteSpace(userType) ? string.Empty : $"?userType={Uri.EscapeDataString(userType)}";
+        return api.GetAsync<IReadOnlyList<RoleOption>>($"/identity/roles/options{query}", ct);
+    }
 
     public Task<Guid> CreateRoleAsync(CreateRoleRequest request, CancellationToken ct = default) =>
         api.PostAsync<CreateRoleRequest, Guid>("/identity/roles", request, ct);

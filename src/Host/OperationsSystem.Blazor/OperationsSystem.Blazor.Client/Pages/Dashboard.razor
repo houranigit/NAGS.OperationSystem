@@ -1,5 +1,5 @@
 @page "/"
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AuthSession Auth
 @inject NavigationManager Navigation
 
@@ -69,7 +69,21 @@
 
     protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
 
-    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+    private async void OnAuthStateChanged()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
 
-    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+    public ValueTask DisposeAsync()
+    {
+        Auth.StateChanged -= OnAuthStateChanged;
+        return ValueTask.CompletedTask;
+    }
 }

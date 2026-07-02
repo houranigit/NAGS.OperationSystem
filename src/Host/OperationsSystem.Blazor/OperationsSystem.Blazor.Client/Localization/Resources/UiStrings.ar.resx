@@ -47,9 +47,33 @@
   <data name="Auth.CredentialsRequired" xml:space="preserve"><value>البريد الإلكتروني وكلمة المرور مطلوبة.</value></data>
   <data name="Auth.InvalidCredentials" xml:space="preserve"><value>البريد الإلكتروني أو كلمة المرور غير صحيحة.</value></data>
   <data name="Auth.AccountLocked" xml:space="preserve"><value>تم قفل الحساب مؤقتًا. يرجى المحاولة مرة أخرى لاحقًا.</value></data>
+  <data name="Auth.MfaTitle" xml:space="preserve"><value>التحقق مطلوب</value></data>
+  <data name="Auth.MfaSubtitle" xml:space="preserve"><value>أدخل رمز تطبيق المصادقة أو رمز استرداد لإكمال تسجيل الدخول.</value></data>
+  <data name="Auth.MfaCode" xml:space="preserve"><value>رمز المصادقة أو الاسترداد</value></data>
+  <data name="Auth.MfaCodeRequired" xml:space="preserve"><value>أدخل رمز التحقق.</value></data>
+  <data name="Auth.VerifyMfaButton" xml:space="preserve"><value>تحقق وسجل الدخول</value></data>
+  <data name="Auth.BackToPassword" xml:space="preserve"><value>استخدام حساب آخر</value></data>
+  <data name="Auth.InvalidMfaCode" xml:space="preserve"><value>رمز التحقق غير صالح.</value></data>
+  <data name="Auth.ForgotPasswordLink" xml:space="preserve"><value>نسيت كلمة المرور؟</value></data>
+  <data name="Auth.ForgotPasswordTitle" xml:space="preserve"><value>إعادة تعيين كلمة المرور</value></data>
+  <data name="Auth.ForgotPasswordSubtitle" xml:space="preserve"><value>أدخل بريدك الإلكتروني وسنرسل تعليمات إعادة التعيين إذا كان الحساب موجودًا.</value></data>
+  <data name="Auth.ForgotPasswordButton" xml:space="preserve"><value>إرسال رابط إعادة التعيين</value></data>
+  <data name="Auth.ForgotPasswordSuccess" xml:space="preserve"><value>إذا كان هذا الحساب موجودًا، فقد تم إرسال رابط إعادة التعيين.</value></data>
+  <data name="Auth.EmailRequired" xml:space="preserve"><value>البريد الإلكتروني مطلوب.</value></data>
+  <data name="Auth.ResetPasswordTitle" xml:space="preserve"><value>اختر كلمة مرور جديدة</value></data>
+  <data name="Auth.ResetPasswordSubtitle" xml:space="preserve"><value>استخدم رابط إعادة التعيين من بريدك الإلكتروني لتعيين كلمة مرور جديدة.</value></data>
+  <data name="Auth.ResetPasswordButton" xml:space="preserve"><value>إعادة تعيين كلمة المرور</value></data>
+  <data name="Auth.ResetPasswordSuccess" xml:space="preserve"><value>تمت إعادة تعيين كلمة المرور. يمكنك تسجيل الدخول الآن.</value></data>
+  <data name="Auth.ResetPasswordInvalidLink" xml:space="preserve"><value>رابط إعادة التعيين غير صالح أو انتهت صلاحيته.</value></data>
+  <data name="Auth.ConfirmEmailChangeTitle" xml:space="preserve"><value>تأكيد تغيير البريد الإلكتروني</value></data>
+  <data name="Auth.ConfirmEmailChangeSubtitle" xml:space="preserve"><value>تأكيد بريد تسجيل الدخول الجديد لحسابك في البوابة.</value></data>
+  <data name="Auth.ConfirmEmailChangeButton" xml:space="preserve"><value>تأكيد البريد الإلكتروني</value></data>
+  <data name="Auth.ConfirmEmailChangeSuccess" xml:space="preserve"><value>تم تأكيد عنوان بريدك الإلكتروني. يمكنك تسجيل الدخول بالعنوان الجديد.</value></data>
+  <data name="Auth.ConfirmEmailChangeInvalidLink" xml:space="preserve"><value>رابط تأكيد البريد الإلكتروني غير صالح أو انتهت صلاحيته.</value></data>
   <data name="Auth.ActivateTitle" xml:space="preserve"><value>تفعيل حسابك</value></data>
   <data name="Auth.ActivateSubtitle" xml:space="preserve"><value>قم بتعيين كلمة مرور لإنهاء إعداد حسابك.</value></data>
   <data name="Auth.ActivationToken" xml:space="preserve"><value>رمز التفعيل</value></data>
+  <data name="Auth.ActivationTokenRequired" xml:space="preserve"><value>رمز التفعيل مطلوب.</value></data>
   <data name="Auth.NewPassword" xml:space="preserve"><value>كلمة المرور الجديدة</value></data>
   <data name="Auth.ConfirmPassword" xml:space="preserve"><value>تأكيد كلمة المرور</value></data>
   <data name="Auth.ActivateButton" xml:space="preserve"><value>تفعيل الحساب</value></data>
@@ -62,7 +86,7 @@
   <data name="Auth.BrandPointAccess" xml:space="preserve"><value>التحكم في الوصول على أساس الدور الحبيبي</value></data>
   <data name="Auth.BrandPointSessions" xml:space="preserve"><value>الجلسة المباشرة وإدارة الجهاز</value></data>
   <data name="Auth.BrandPointBilingual" xml:space="preserve"><value>دعم كامل للغتين العربية والإنجليزية</value></data>
-  <data name="Auth.Copyright" xml:space="preserve"><value>Â© 2026 نظام العمليات. جميع الحقوق محفوظة.</value></data>
+  <data name="Auth.Copyright" xml:space="preserve"><value>© 2026 نظام العمليات. جميع الحقوق محفوظة.</value></data>
   <data name="Nav.Dashboard" xml:space="preserve"><value>لوحة القيادة</value></data>
   <data name="Nav.Users" xml:space="preserve"><value>المستخدمين</value></data>
   <data name="Nav.Roles" xml:space="preserve"><value>الأدوار</value></data>
@@ -131,6 +155,18 @@
   <data name="Account.ThisDevice" xml:space="preserve"><value>هذا الجهاز</value></data>
   <data name="Account.SignOutOthers" xml:space="preserve"><value>تسجيل الخروج من الجلسات الأخرى</value></data>
   <data name="Account.RevokeSession" xml:space="preserve"><value>إبطال</value></data>
+  <data name="Account.MfaTitle" xml:space="preserve"><value>المصادقة متعددة العوامل</value></data>
+  <data name="Account.MfaRequiredHint" xml:space="preserve"><value>يجب على هذا الحساب تفعيل MFA للالتزام بمتطلبات أمان المسؤول.</value></data>
+  <data name="Account.MfaOptionalHint" xml:space="preserve"><value>أضف تطبيق مصادقة لحماية هذا الحساب.</value></data>
+  <data name="Account.MfaEnabledHint" xml:space="preserve"><value>تم تفعيل MFA. يتطلب تسجيل الدخول الآن رمز مصادقة أو رمز استرداد.</value></data>
+  <data name="Account.StartMfa" xml:space="preserve"><value>بدء إعداد MFA</value></data>
+  <data name="Account.ConfirmMfa" xml:space="preserve"><value>تأكيد MFA</value></data>
+  <data name="Account.MfaSecret" xml:space="preserve"><value>السر</value></data>
+  <data name="Account.MfaOtpAuthUri" xml:space="preserve"><value>رابط تطبيق المصادقة</value></data>
+  <data name="Account.MfaEnrollmentHint" xml:space="preserve"><value>أضف السر أو رابط المصادقة إلى تطبيق المصادقة، ثم أدخل الرمز الحالي.</value></data>
+  <data name="Account.MfaEnabled" xml:space="preserve"><value>تم تفعيل MFA.</value></data>
+  <data name="Account.RecoveryCodesTitle" xml:space="preserve"><value>احفظ رموز الاسترداد هذه</value></data>
+  <data name="Account.RecoveryCodesHint" xml:space="preserve"><value>يمكن استخدام كل رمز مرة واحدة إذا فقدت الوصول إلى تطبيق المصادقة.</value></data>
   <data name="Users.Title" xml:space="preserve"><value>المستخدمين</value></data>
   <data name="Users.Description" xml:space="preserve"><value>دعوة حسابات البوابة الإلكترونية وتحريرها وإدارتها.</value></data>
   <data name="Users.Invite" xml:space="preserve"><value>دعوة المستخدم</value></data>
@@ -154,6 +190,9 @@
   <data name="Users.TypeCustomerContact" xml:space="preserve"><value>جهة اتصال العميل</value></data>
   <data name="Users.Lock" xml:space="preserve"><value>قفل</value></data>
   <data name="Users.Unlock" xml:space="preserve"><value>فتح</value></data>
+  <data name="Users.Suspend" xml:space="preserve"><value>تعليق</value></data>
+  <data name="Users.RestoreAccess" xml:space="preserve"><value>استعادة الوصول</value></data>
+  <data name="Users.ResetMfa" xml:space="preserve"><value>إعادة تعيين MFA</value></data>
   <data name="Users.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
   <data name="Users.ResendInvitation" xml:space="preserve"><value>إعادة إرسال الدعوة</value></data>
   <data name="Users.AssignRole" xml:space="preserve"><value>تعيين الدور</value></data>
@@ -161,13 +200,20 @@
   <data name="Users.Never" xml:space="preserve"><value>أبداً</value></data>
   <data name="Users.InviteTitle" xml:space="preserve"><value>دعوة مستخدم</value></data>
   <data name="Users.InviteIntro" xml:space="preserve"><value>أرسل دعوة حتى يتمكن هذا الشخص من إعداد حساب البوابة الإلكترونية الخاص به.</value></data>
-  <data name="Users.InviteAdminNote" xml:space="preserve"><value>يؤدي الإنشاء المباشر للمستخدم دائمًا إلى إنشاء مسؤول النظام مع حق الوصول الكامل. تتم دعوة موظفي المحطة وجهات اتصال العملاء من سجلاتهم الخاصة.</value></data>
+  <data name="Users.InviteAdminNote" xml:space="preserve"><value>تؤدي دعوة المستخدم المباشرة إلى إنشاء مسؤول نظام. تتم دعوة موظفي المحطة وجهات اتصال العملاء من سجلاتهم الخاصة.</value></data>
+  <data name="Users.DisplayNameRequired" xml:space="preserve"><value>اسم العرض مطلوب.</value></data>
+  <data name="Users.RoleRequired" xml:space="preserve"><value>حدد دورًا للمتابعة.</value></data>
+  <data name="Users.NoAdminRoles" xml:space="preserve"><value>لا يوجد دور مسؤول نظام متاح.</value></data>
+  <data name="Users.NoCompatibleRoles" xml:space="preserve"><value>لا يوجد دور متوافق متاح لهذا النوع من الحسابات.</value></data>
   <data name="Users.InviteSuccess" xml:space="preserve"><value>تم إرسال الدعوة.</value></data>
   <data name="Users.InvitationDeliveryLabel" xml:space="preserve"><value>حالة تسليم الدعوة</value></data>
   <data name="Users.EditTitle" xml:space="preserve"><value>تحرير المستخدم</value></data>
   <data name="Users.AssignRoleTitle" xml:space="preserve"><value>تعيين الدور</value></data>
   <data name="Users.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا المستخدم؟ سيتم تسجيل خروجهم من جميع الجلسات.</value></data>
   <data name="Users.ConfirmLock" xml:space="preserve"><value>هل تريد منع هذا المستخدم من تسجيل الدخول؟</value></data>
+  <data name="Users.ConfirmSuspend" xml:space="preserve"><value>هل تريد تعليق هذا المستخدم؟ سيفقد الوصول حتى تتم استعادته.</value></data>
+  <data name="Users.ConfirmRestoreAccess" xml:space="preserve"><value>هل تريد استعادة الوصول لهذا المستخدم؟</value></data>
+  <data name="Users.ConfirmResetMfa" xml:space="preserve"><value>هل تريد إعادة تعيين MFA لهذا المستخدم؟ سيتم إبطال الجلسات النشطة ويجب عليه التسجيل مرة أخرى.</value></data>
   <data name="Users.StatActiveSessions" xml:space="preserve"><value>جلسات نشطة</value></data>
   <data name="Users.UserId" xml:space="preserve"><value>معرّف المستخدم</value></data>
   <data name="Users.CopyId" xml:space="preserve"><value>نسخ معرّف المستخدم</value></data>
@@ -183,8 +229,13 @@
   <data name="Users.LockedIndefinitely" xml:space="preserve"><value>مقفل إلى أجل غير محدد — يتطلب فتحًا يدويًا</value></data>
   <data name="Users.AccessScope" xml:space="preserve"><value>نطاق الوصول</value></data>
   <data name="Users.RecentDevice" xml:space="preserve"><value>آخر جهاز</value></data>
+  <data name="Users.Mfa" xml:space="preserve"><value>MFA</value></data>
+  <data name="Users.MfaEnabled" xml:space="preserve"><value>مفعل</value></data>
+  <data name="Users.MfaRequired" xml:space="preserve"><value>مطلوب</value></data>
+  <data name="Users.MfaNotEnabled" xml:space="preserve"><value>غير مفعل</value></data>
   <data name="Users.StatusActiveDesc" xml:space="preserve"><value>هذا الحساب نشط ويمكنه الوصول إلى كل الموارد المعيّنة.</value></data>
   <data name="Users.StatusInvitedDesc" xml:space="preserve"><value>تمت دعوة هذا الحساب وهو بانتظار التفعيل.</value></data>
+  <data name="Users.StatusSuspendedDesc" xml:space="preserve"><value>هذا الحساب معلق ولا يمكنه تسجيل الدخول حتى تتم استعادة الوصول.</value></data>
   <data name="Users.StatusDeactivatedDesc" xml:space="preserve"><value>هذا الحساب معطل ولا يمكنه تسجيل الدخول.</value></data>
   <data name="Users.StatusLockedDesc" xml:space="preserve"><value>هذا الحساب مقفل مؤقتًا ولا يمكنه تسجيل الدخول.</value></data>
   <data name="Users.ScopeFullAccess" xml:space="preserve"><value>وصول كامل للنظام</value></data>
@@ -389,7 +440,7 @@
   <data name="Customers.IcaoCode" xml:space="preserve"><value>ICAO</value></data>
   <data name="Customers.Name" xml:space="preserve"><value>اسم</value></data>
   <data name="Customers.Country" xml:space="preserve"><value>دولة</value></data>
-  <data name="Customers.NoIcao" xml:space="preserve"><value>â</value></data>
+  <data name="Customers.NoIcao" xml:space="preserve"><value>—</value></data>
   <data name="Customers.OfficialEmail" xml:space="preserve"><value>البريد الإلكتروني الرسمي</value></data>
   <data name="Customers.OfficialPhone" xml:space="preserve"><value>الهاتف الرسمي</value></data>
   <data name="Customers.Status" xml:space="preserve"><value>حالة</value></data>
@@ -410,6 +461,7 @@
   <data name="Customers.Previous" xml:space="preserve"><value>خلف</value></data>
   <data name="Customers.ReviewSummary" xml:space="preserve"><value>{0} {1}. {2} جهة اتصال (جهات اتصال).</value></data>
   <data name="Customers.FormIntro" xml:space="preserve"><value>احصل على رموز شركات الطيران وتفاصيل الاتصال الرسمية والعنوان وجهات الاتصال.</value></data>
+  <data name="Customers.EditFormIntro" xml:space="preserve"><value>تحديث رموز شركة الطيران وتفاصيل الاتصال الرسمية والعنوان.</value></data>
   <data name="Customers.IataRequired" xml:space="preserve"><value>مطلوب رمز IATA مكون من حرفين.</value></data>
   <data name="Customers.IcaoInvalid" xml:space="preserve"><value>يجب أن يتكون رمز منظمة الطيران المدني الدولي من ثلاثة أحرف بالضبط.</value></data>
   <data name="Customers.NameRequired" xml:space="preserve"><value>مطلوب اسم العميل.</value></data>
@@ -442,7 +494,11 @@
   <data name="Customers.ContactRemove" xml:space="preserve"><value>يزيل</value></data>
   <data name="Customers.ContactRemoved" xml:space="preserve"><value>(ستتم إزالته)</value></data>
   <data name="Customers.ContactAdded" xml:space="preserve"><value>تمت إضافة جهة الاتصال.</value></data>
+  <data name="Customers.ContactUpdated" xml:space="preserve"><value>تم تحديث جهة الاتصال.</value></data>
+  <data name="Customers.ContactRemovedSuccess" xml:space="preserve"><value>تمت إزالة جهة الاتصال.</value></data>
+  <data name="Customers.ConfirmRemoveContact" xml:space="preserve"><value>هل تريد إزالة جهة الاتصال هذه؟ سيتم إلغاء تنشيط الوصول إلى البوابة المرتبط.</value></data>
   <data name="Customers.PortalLinked" xml:space="preserve"><value>الوصول إلى البوابة</value></data>
+  <data name="Customers.OpenLinkedAccount" xml:space="preserve"><value>فتح الحساب المرتبط</value></data>
   <data name="Customers.TabAddress" xml:space="preserve"><value>عنوان</value></data>
   <data name="Customers.StatContacts" xml:space="preserve"><value>اتصالات</value></data>
   <data name="Customers.StatPortalAccounts" xml:space="preserve"><value>حسابات البوابة</value></data>
@@ -481,7 +537,7 @@
   <data name="StaffMembers.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
   <data name="StaffMembers.Created" xml:space="preserve"><value>مخلوق</value></data>
   <data name="StaffMembers.Updated" xml:space="preserve"><value>تم التحديث</value></data>
-  <data name="StaffMembers.None" xml:space="preserve"><value>â</value></data>
+  <data name="StaffMembers.None" xml:space="preserve"><value>—</value></data>
   <data name="StaffMembers.CreateTitle" xml:space="preserve"><value>إنشاء موظف</value></data>
   <data name="StaffMembers.EditTitle" xml:space="preserve"><value>تحرير الموظف</value></data>
   <data name="StaffMembers.BasicInformation" xml:space="preserve"><value>المعلومات الأساسية</value></data>
@@ -532,7 +588,8 @@
   <data name="StaffMembers.ActivityEmpty" xml:space="preserve"><value>لم يتم تسجيل أي نشاط حتى الآن</value></data>
   <data name="StaffMembers.ActivityEmptyHint" xml:space="preserve"><value>سيظهر هنا سجل التدقيق لهذا الموظف عند اتخاذ الإجراءات.</value></data>
   <data name="StaffMembers.PortalAccessManageTitle" xml:space="preserve"><value>إدارة الحساب</value></data>
-  <data name="StaffMembers.PortalAccessManageHint" xml:space="preserve"><value>ستكون عناصر التحكم المستقبلية في الحساب - إعادة تعيين كلمة المرور، وإدارة الجلسة، وتغييرات الأدوار - متاحة هنا.</value></data>
+  <data name="StaffMembers.PortalAccessManageHint" xml:space="preserve"><value>افتح حساب الهوية المرتبط لإدارة المصادقة متعددة العوامل والجلسات والحالة وتعيينات الأدوار.</value></data>
+  <data name="StaffMembers.OpenLinkedAccount" xml:space="preserve"><value>فتح الحساب المرتبط</value></data>
   <data name="StaffMembers.PortalAccessLinkedTitle" xml:space="preserve"><value>تم ربط حساب البوابة</value></data>
   <data name="StaffMembers.PortalAccessLinkedHint" xml:space="preserve"><value>يمكن لهذا الموظف تسجيل الدخول إلى البوابة باستخدام حسابه المرتبط.</value></data>
   <data name="StaffMembers.PortalAccessUnlinkedTitle" xml:space="preserve"><value>لا يوجد حساب البوابة</value></data>
@@ -555,6 +612,9 @@
   <data name="PortalAccess.Granted" xml:space="preserve"><value>تم طلب الوصول إلى البوابة. سيتم إرسال دعوة قريبا.</value></data>
   <data name="PortalAccess.HasAccess" xml:space="preserve"><value>تم ربط حساب البوابة</value></data>
   <data name="PortalAccess.NoAccess" xml:space="preserve"><value>لا يوجد حساب البوابة</value></data>
+  <data name="PortalAccess.Provisioning" xml:space="preserve"><value>قيد التجهيز</value></data>
+  <data name="PortalAccess.Failed" xml:space="preserve"><value>فشل التجهيز</value></data>
+  <data name="PortalAccess.Suspended" xml:space="preserve"><value>معلق</value></data>
   <data name="PortalAccess.Explanation" xml:space="preserve"><value>سيتم إنشاء حساب بوابة مدعو لهذا السجل باستخدام الدور المحدد.</value></data>
   <data name="PortalAccess.GrantOnCreate" xml:space="preserve"><value>منح الوصول إلى البوابة عند الإنشاء</value></data>
   <data name="PortalAccess.GrantOnCreateHint" xml:space="preserve"><value>قم بإرسال دعوة البوابة بمجرد إنشاء هذا السجل.</value></data>

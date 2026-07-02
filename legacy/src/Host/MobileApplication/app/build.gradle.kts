@@ -18,7 +18,7 @@ val localProperties = Properties().apply {
 }
 val operationsApiBaseUrl = (
     localProperties.getProperty("operations.api.base.url")
-        ?: "http://80.209.234.61"
+        ?: "http://10.0.2.2:5119"
     ).trim().trimEnd('/')
 
 android {

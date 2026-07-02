@@ -8,6 +8,7 @@ using MasterData.Domain.Authorization;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 
 namespace MasterData.Api.Endpoints;
@@ -17,6 +18,7 @@ internal static class CustomerEndpoints
     public static void Map(IEndpointRouteBuilder group)
     {
         var customers = group.MapGroup("/customers").WithTags("MasterData.Customers");
+        const long MaxLogoUploadRequestBytes = SetCustomerLogoCommandHandler.MaxLogoBytes + 64 * 1024;
 
         customers.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, bool? isActive = null, Guid? countryId = null, string? sort = null) =>
@@ -77,7 +79,8 @@ internal static class CustomerEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new AddCustomerContactCommand(id, request.Name, request.JobTitle, request.Email, request.Phone, rowVersion), ct);
+            var result = await sender.Send(
+                new AddCustomerContactCommand(id, request.Name, request.JobTitle, request.Email, request.Phone, rowVersion, request.PortalAccessRoleId), ct);
             return result.ToCreated(contactId => $"/api/v1/masterdata/customers/{id}/contacts/{contactId}");
         }).RequirePermission(MasterDataPermissions.CustomerContacts.Create);
 
@@ -103,13 +106,20 @@ internal static class CustomerEndpoints
             if (file is null || file.Length == 0)
                 return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("A logo file is required.", "MasterData.Customer.LogoMissing"));
 
+            if (file.Length > SetCustomerLogoCommandHandler.MaxLogoBytes)
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("The logo file must be at most 2 MB.", "MasterData.Customer.LogoTooLarge"));
+
             using var memory = new MemoryStream();
             await file.CopyToAsync(memory, ct);
 
             var result = await sender.Send(
                 new SetCustomerLogoCommand(id, memory.ToArray(), file.FileName, file.ContentType, rowVersion), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Customers.Update).DisableAntiforgery();
+        }).RequirePermission(MasterDataPermissions.Customers.Update)
+            .DisableAntiforgery()
+            .WithMetadata(
+                new RequestSizeLimitAttribute(MaxLogoUploadRequestBytes),
+                new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxLogoUploadRequestBytes });
 
         customers.MapPost("/{id:guid}/activate", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
@@ -130,9 +140,12 @@ internal static class CustomerEndpoints
         }).RequirePermission(MasterDataPermissions.Customers.Deactivate);
 
         customers.MapPost("/{id:guid}/contacts/{contactId:guid}/grant-access",
-            async (Guid id, Guid contactId, GrantPortalAccessRequest request, ISender sender, CancellationToken ct) =>
+            async (Guid id, Guid contactId, GrantPortalAccessRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new GrantContactPortalAccessCommand(id, contactId, request.RoleId), ct);
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new GrantContactPortalAccessCommand(id, contactId, request.RoleId, rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.CustomerContacts.GrantAccess);
 
@@ -150,5 +163,5 @@ internal static class CustomerEndpoints
     private static IReadOnlyList<CustomerContactInput> MapContacts(IReadOnlyList<CustomerContactRequest>? contacts) =>
         contacts is null
             ? []
-            : contacts.Select(c => new CustomerContactInput(c.Id, c.Name, c.JobTitle, c.Email, c.Phone)).ToList();
+            : contacts.Select(c => new CustomerContactInput(c.Id, c.Name, c.JobTitle, c.Email, c.Phone, c.PortalAccessRoleId)).ToList();
 }

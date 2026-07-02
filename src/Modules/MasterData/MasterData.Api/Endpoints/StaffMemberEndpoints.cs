@@ -36,7 +36,7 @@ internal static class StaffMemberEndpoints
         {
             var result = await sender.Send(new CreateStaffMemberCommand(
                 request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
-                MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses)), ct);
+                MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses), request.PortalAccessRoleId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/staff-members/{id}");
         }).RequirePermission(MasterDataPermissions.StaffMembers.Create);
 
@@ -69,9 +69,12 @@ internal static class StaffMemberEndpoints
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.StaffMembers.Deactivate);
 
-        staff.MapPost("/{id:guid}/grant-access", async (Guid id, GrantPortalAccessRequest request, ISender sender, CancellationToken ct) =>
+        staff.MapPost("/{id:guid}/grant-access", async (Guid id, GrantPortalAccessRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new GrantStaffPortalAccessCommand(id, request.RoleId), ct);
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new GrantStaffPortalAccessCommand(id, request.RoleId, rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.StaffMembers.GrantAccess);
     }

@@ -39,6 +39,23 @@ else
                 </ChildContent>
             </RadzenFormField>
 
+            @if (roles.Count == 0)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                    @UiStrings.Users.NoAdminRoles
+                </RadzenAlert>
+            }
+            else
+            {
+                <RadzenFormField Text="@UiStrings.Users.Role" Variant="Variant.Outlined" Style="width: 100%;">
+                    <Start><RadzenIcon Icon="badge" /></Start>
+                    <ChildContent>
+                        <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleOption.Name)"
+                                        ValueProperty="@nameof(RoleOption.Id)" AllowFiltering="true" Style="width: 100%;" />
+                    </ChildContent>
+                </RadzenFormField>
+            }
+
             @if (!string.IsNullOrWhiteSpace(errorMessage))
             {
                 <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
@@ -55,17 +72,50 @@ else
 @code {
     private readonly InviteModel model = new();
     private InvitedUser? invited;
+    private IReadOnlyList<RoleOption> roles = [];
     private bool isSubmitting;
     private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            roles = await Identity.GetRoleOptionsAsync(UserTypes.SystemAdministrator);
+            model.RoleId = roles.FirstOrDefault()?.Id;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+    }
 
     private async Task SubmitAsync()
     {
         errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.Email))
+        {
+            errorMessage = UiStrings.Auth.EmailRequired;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.DisplayName))
+        {
+            errorMessage = UiStrings.Users.DisplayNameRequired;
+            return;
+        }
+
+        if (model.RoleId is null)
+        {
+            errorMessage = UiStrings.Users.RoleRequired;
+            return;
+        }
+
         isSubmitting = true;
 
         try
         {
-            invited = await Identity.InviteUserAsync(new InviteUserRequest(model.Email.Trim(), model.DisplayName.Trim()));
+            invited = await Identity.InviteUserAsync(new InviteUserRequest(model.Email.Trim(), model.DisplayName.Trim(), model.RoleId));
         }
         catch (ApiException ex)
         {
@@ -81,5 +131,6 @@ else
     {
         public string Email { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
+        public Guid? RoleId { get; set; }
     }
 }

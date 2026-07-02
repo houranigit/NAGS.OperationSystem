@@ -38,10 +38,9 @@
     }
     else
     {
-        <p class="cuf-intro os-muted">@UiStrings.Customers.FormIntro</p>
+        <p class="cuf-intro os-muted">@UiStrings.Customers.EditFormIntro</p>
         @DetailsSection()
         @AddressSection()
-        @ContactsSection()
         @ErrorBanner()
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
@@ -232,9 +231,6 @@
                         logoPreviewUrl = null;
                     }
                 }
-
-                foreach (var c in detail.Contacts.Where(c => c.IsActive))
-                    contacts.Add(new ContactRow { Id = c.Id, Name = c.Name, JobTitle = c.JobTitle, Email = c.Email, Phone = c.Phone });
             }
         }
         catch (ApiException ex)
@@ -362,7 +358,7 @@
                 else
                 {
                     var contactRequests = activeContacts
-                        .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone)))
+                        .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone), null))
                         .ToList();
                     targetId = await MasterData.CreateCustomerAsync(
                         new CreateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests));

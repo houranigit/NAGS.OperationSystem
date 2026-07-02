@@ -2,29 +2,47 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using Identity.Application.Abstractions;
+using Identity.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Identity.Application.Features.Users;
 
-/// <summary>Shared lifecycle guards used by deactivate/suspend.</summary>
+/// <summary>Shared lifecycle guards used by access-blocking account actions.</summary>
 internal static class UserLifecycleGuards
 {
     /// <summary>
-    /// True when blocking <paramref name="user"/> would leave no active System Administrator. The
-    /// system must always retain at least one administrator who can sign in.
+    /// True when blocking <paramref name="user"/> would leave no System Administrator who can
+    /// sign in. Locked, released, passwordless, and non-active accounts do not satisfy this
+    /// break-glass invariant.
     /// </summary>
-    public static async Task<bool> IsLastActiveAdminAsync(IIdentityDbContext db, Domain.Users.User user, CancellationToken ct)
+    public static async Task<bool> IsLastSignInCapableAdminAsync(
+        IIdentityDbContext db,
+        Domain.Users.User user,
+        DateTimeOffset now,
+        CancellationToken ct)
     {
-        if (user.UserType != UserType.SystemAdministrator || user.Status != UserStatus.Active)
+        if (!CanSignInAsAdmin(user, now))
             return false;
 
-        var otherActiveAdmins = await db.Users.CountAsync(u =>
-            u.Id != user.Id && u.UserType == UserType.SystemAdministrator && u.Status == UserStatus.Active, ct);
+        var otherSignInCapableAdmins = await db.Users.AnyAsync(u =>
+            u.Id != user.Id
+            && u.UserType == UserType.SystemAdministrator
+            && u.Status == UserStatus.Active
+            && u.PasswordHash != null
+            && !u.LoginEmailReleased
+            && (u.LockoutEndUtc == null || u.LockoutEndUtc <= now), ct);
 
-        return otherActiveAdmins == 0;
+        return !otherSignInCapableAdmins;
     }
+
+    private static bool CanSignInAsAdmin(Domain.Users.User user, DateTimeOffset now) =>
+        user.UserType == UserType.SystemAdministrator
+        && user.Status == UserStatus.Active
+        && user.PasswordHash is not null
+        && !user.LoginEmailReleased
+        && !user.IsLockedOut(now);
 }
 
 // --- Lock -----------------------------------------------------------------
@@ -43,9 +61,29 @@ public sealed class LockUserCommandHandler(IIdentityDbContext db, ICurrentUser c
         if (user is null)
             return Error.NotFound("User not found.", "Identity.User.NotFound");
 
-        var result = user.Lock(timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        if (await UserLifecycleGuards.IsLastSignInCapableAdminAsync(db, user, now, cancellationToken))
+            return Error.Conflict("Cannot lock the last sign-in-capable System Administrator.", "Identity.User.LastAdmin");
+
+        var result = user.Lock(now);
         if (result.IsFailure)
             return result.Error;
+
+        var sessions = await db.Sessions
+            .Where(s => s.UserId == user.Id && s.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var session in sessions)
+            session.Revoke(now);
+
+        if (user.ExternalReferenceId is { } externalReferenceId)
+        {
+            db.Enqueue(new PortalUserDeactivated
+            {
+                ExternalReferenceId = externalReferenceId,
+                UserId = user.Id,
+                ReleaseEmail = false
+            });
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
@@ -65,9 +103,22 @@ public sealed class UnlockUserCommandHandler(IIdentityDbContext db, TimeProvider
         if (user is null)
             return Error.NotFound("User not found.", "Identity.User.NotFound");
 
-        var result = user.Unlock(timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var result = user.Unlock(now);
         if (result.IsFailure)
             return result.Error;
+
+        if (user.ExternalReferenceId is { } externalReferenceId &&
+            user.Status is UserStatus.Active or UserStatus.Invited)
+        {
+            db.Enqueue(new PortalUserAccessRestored
+            {
+                ExternalReferenceId = externalReferenceId,
+                UserId = user.Id,
+                UserType = user.UserType,
+                IsActivated = user.Status == UserStatus.Active
+            });
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
@@ -90,10 +141,10 @@ public sealed class DeactivateUserCommandHandler(IIdentityDbContext db, ICurrent
         if (user is null)
             return Error.NotFound("User not found.", "Identity.User.NotFound");
 
-        if (await UserLifecycleGuards.IsLastActiveAdminAsync(db, user, cancellationToken))
-            return Error.Conflict("Cannot deactivate the last active System Administrator.", "Identity.User.LastAdmin");
-
         var now = timeProvider.GetUtcNow();
+        if (await UserLifecycleGuards.IsLastSignInCapableAdminAsync(db, user, now, cancellationToken))
+            return Error.Conflict("Cannot deactivate the last sign-in-capable System Administrator.", "Identity.User.LastAdmin");
+
         var result = user.Deactivate(now);
         if (result.IsFailure)
             return result.Error;
@@ -103,6 +154,16 @@ public sealed class DeactivateUserCommandHandler(IIdentityDbContext db, ICurrent
             .ToListAsync(cancellationToken);
         foreach (var session in sessions)
             session.Revoke(now);
+
+        if (user.ExternalReferenceId is { } externalReferenceId)
+        {
+            db.Enqueue(new PortalUserDeactivated
+            {
+                ExternalReferenceId = externalReferenceId,
+                UserId = user.Id,
+                ReleaseEmail = false
+            });
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
@@ -125,10 +186,10 @@ public sealed class SuspendUserCommandHandler(IIdentityDbContext db, ICurrentUse
         if (user is null)
             return Error.NotFound("User not found.", "Identity.User.NotFound");
 
-        if (await UserLifecycleGuards.IsLastActiveAdminAsync(db, user, cancellationToken))
-            return Error.Conflict("Cannot suspend the last active System Administrator.", "Identity.User.LastAdmin");
-
         var now = timeProvider.GetUtcNow();
+        if (await UserLifecycleGuards.IsLastSignInCapableAdminAsync(db, user, now, cancellationToken))
+            return Error.Conflict("Cannot suspend the last sign-in-capable System Administrator.", "Identity.User.LastAdmin");
+
         var result = user.Suspend(now);
         if (result.IsFailure)
             return result.Error;
@@ -139,6 +200,16 @@ public sealed class SuspendUserCommandHandler(IIdentityDbContext db, ICurrentUse
             .ToListAsync(cancellationToken);
         foreach (var session in sessions)
             session.Revoke(now);
+
+        if (user.ExternalReferenceId is { } externalReferenceId)
+        {
+            db.Enqueue(new PortalUserDeactivated
+            {
+                ExternalReferenceId = externalReferenceId,
+                UserId = user.Id,
+                ReleaseEmail = false
+            });
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
@@ -179,6 +250,17 @@ public sealed class RestoreAccessCommandHandler(
             var requeue = user.ResendInvitation(invitation.Hash, now.AddHours(_options.InvitationExpiryHours), now);
             if (requeue.IsFailure)
                 return requeue.Error;
+        }
+
+        if (user.ExternalReferenceId is { } externalReferenceId)
+        {
+            db.Enqueue(new PortalUserAccessRestored
+            {
+                ExternalReferenceId = externalReferenceId,
+                UserId = user.Id,
+                UserType = user.UserType,
+                IsActivated = result.Value == AccessRestoreOutcome.Reactivated
+            });
         }
 
         await db.SaveChangesAsync(cancellationToken);

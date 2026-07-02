@@ -25,10 +25,10 @@ public interface ITokenService
     public string HashToken(string rawToken);
 
     /// <summary>Issues a short-lived token that authorizes only the second (MFA) step of sign-in.</summary>
-    public string CreateMfaChallengeToken(Guid userId);
+    public string CreateMfaChallengeToken(User user);
 
-    /// <summary>Validates an MFA challenge token and returns the user id it authorizes, or null.</summary>
-    public Guid? ValidateMfaChallengeToken(string token);
+    /// <summary>Validates an MFA challenge token and returns the user/stamp it authorizes, or null.</summary>
+    public MfaChallenge? ValidateMfaChallengeToken(string token);
 }
 
 public sealed record AccessToken(string Value, DateTimeOffset ExpiresAtUtc);
@@ -37,3 +37,6 @@ public sealed record RefreshToken(string Value, string Hash, DateTimeOffset Expi
 
 /// <summary>A raw secret token and its storage hash. Persist only <see cref="Hash"/>.</summary>
 public sealed record SecureToken(string Value, string Hash);
+
+/// <summary>The account state bound into a first-step MFA sign-in challenge.</summary>
+public sealed record MfaChallenge(Guid UserId, Guid SecurityStamp);

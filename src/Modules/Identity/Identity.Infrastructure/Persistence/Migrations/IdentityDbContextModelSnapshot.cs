@@ -254,7 +254,15 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("EmailChangeToken")
+                        .IsUnique()
+                        .HasFilter("[EmailChangeToken] IS NOT NULL");
+
                     b.HasIndex("ExternalReferenceId");
+
+                    b.HasIndex("PasswordResetToken")
+                        .IsUnique()
+                        .HasFilter("[PasswordResetToken] IS NOT NULL");
 
                     b.HasIndex("RoleId");
 

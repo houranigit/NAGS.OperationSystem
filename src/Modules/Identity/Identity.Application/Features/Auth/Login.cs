@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Identity.Application.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -40,7 +41,8 @@ public sealed class LoginCommandHandler(
             return InvalidCredentials;
 
         var emailValue = emailResult.Value.Value;
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Email.Value == emailValue, cancellationToken);
+        var user = await db.Users.FirstOrDefaultAsync(
+            u => u.Email.Value == emailValue && !u.LoginEmailReleased, cancellationToken);
 
         var now = timeProvider.GetUtcNow();
 
@@ -54,7 +56,10 @@ public sealed class LoginCommandHandler(
 
         if (!passwordHasher.Verify(user.PasswordHash, request.Password))
         {
-            user.RecordFailedSignIn(_options.MaxFailedSignInAttempts, TimeSpan.FromMinutes(_options.LockoutMinutes), now);
+            var locked = user.RecordFailedSignIn(_options.MaxFailedSignInAttempts, TimeSpan.FromMinutes(_options.LockoutMinutes), now);
+            if (locked)
+                await AuthSessionRevocation.RevokeActiveSessionsAsync(db, user.Id, now, cancellationToken);
+
             await db.SaveChangesAsync(cancellationToken);
             return InvalidCredentials;
         }
@@ -64,12 +69,12 @@ public sealed class LoginCommandHandler(
         if (user.MfaEnabled)
         {
             await db.SaveChangesAsync(cancellationToken);
-            var mfaToken = tokenService.CreateMfaChallengeToken(user.Id);
+            var mfaToken = tokenService.CreateMfaChallengeToken(user);
             return new LoginResultDto(MfaRequired: true, MfaToken: mfaToken, Tokens: null);
         }
 
         var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == user.RoleId, cancellationToken);
-        var permissions = role?.Permissions.ToList() ?? [];
+        var permissions = EffectiveUserPermissions.For(user, role);
 
         user.RecordSuccessfulSignIn(now);
 

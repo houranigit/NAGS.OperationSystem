@@ -1,5 +1,6 @@
 using MasterData.Domain.StaffMembers;
 using Shouldly;
+using PortalAccessState = MasterData.Domain.PortalAccess.PortalAccessState;
 
 namespace MasterData.Domain.UnitTests.StaffMembers;
 
@@ -112,6 +113,91 @@ public sealed class StaffMemberTests
 
         staff.Activate(Now).IsSuccess.ShouldBeTrue();
         staff.IsActive.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Portal_access_suspension_keeps_link_for_restore()
+    {
+        var staff = NewStaff();
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        staff.RequestPortalAccess(correlationId, Now);
+        staff.LinkUser(userId, correlationId, Now.AddMinutes(1));
+
+        staff.SuspendPortal(Now.AddMinutes(2));
+
+        staff.LinkedUserId.ShouldBe(userId);
+        staff.PortalState.ShouldBe(PortalAccessState.Suspended);
+        staff.PortalCorrelationId.ShouldBe(correlationId);
+    }
+
+    [Fact]
+    public void Portal_activation_marks_same_linked_user_active()
+    {
+        var staff = NewStaff();
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        staff.RequestPortalAccess(correlationId, Now);
+        staff.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        staff.MarkPortalActive(userId, Now.AddMinutes(2));
+
+        staff.LinkedUserId.ShouldBe(userId);
+        staff.PortalState.ShouldBe(PortalAccessState.Active);
+        staff.PortalFailureReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Portal_restore_can_mark_same_linked_user_invited_again()
+    {
+        var staff = NewStaff();
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        staff.RequestPortalAccess(correlationId, Now);
+        staff.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        staff.SuspendPortal(Now.AddMinutes(2));
+        staff.MarkPortalInvited(userId, Now.AddMinutes(3));
+
+        staff.LinkedUserId.ShouldBe(userId);
+        staff.PortalState.ShouldBe(PortalAccessState.Invited);
+        staff.PortalFailureReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Portal_activation_ignores_wrong_or_inactive_link()
+    {
+        var staff = NewStaff();
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        staff.RequestPortalAccess(correlationId, Now);
+        staff.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        staff.MarkPortalActive(Guid.NewGuid(), Now.AddMinutes(2));
+        staff.PortalState.ShouldBe(PortalAccessState.Invited);
+
+        staff.Deactivate(Now.AddMinutes(3));
+        staff.MarkPortalActive(userId, Now.AddMinutes(4));
+
+        staff.PortalState.ShouldBe(PortalAccessState.Invited);
+    }
+
+    [Fact]
+    public void Portal_access_unlink_clears_link_and_retry_state()
+    {
+        var staff = NewStaff();
+        var correlationId = Guid.NewGuid();
+
+        staff.RequestPortalAccess(correlationId, Now);
+        staff.MarkPortalFailed(correlationId, "duplicate email", Now.AddMinutes(1));
+
+        staff.UnlinkUser(Now.AddMinutes(2));
+
+        staff.LinkedUserId.ShouldBeNull();
+        staff.PortalState.ShouldBe(PortalAccessState.None);
+        staff.PortalCorrelationId.ShouldBeNull();
+        staff.PortalFailureReason.ShouldBeNull();
     }
 }
 

@@ -11,11 +11,10 @@ using Microsoft.Extensions.Options;
 namespace Identity.Application.Features.Users;
 
 /// <summary>
-/// Direct user creation. v1.0.0 only creates System Administrators: the protected full-access role
-/// is assigned automatically and there is no role selection. Station Staff and Customer Contact
+/// Direct user creation only creates System Administrators. Station Staff and Customer Contact
 /// accounts are provisioned from their MasterData record via the portal-access flow.
 /// </summary>
-public sealed record InviteUserCommand(string Email, string DisplayName) : ICommand<InvitedUserDto>;
+public sealed record InviteUserCommand(string Email, string DisplayName, Guid? RoleId = null) : ICommand<InvitedUserDto>;
 
 public sealed class InviteUserCommandValidator : AbstractValidator<InviteUserCommand>
 {
@@ -23,6 +22,8 @@ public sealed class InviteUserCommandValidator : AbstractValidator<InviteUserCom
     {
         RuleFor(x => x.Email).NotEmpty().MaximumLength(256);
         RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(150);
+        RuleFor(x => x.RoleId).Must(id => id is null || id.Value != Guid.Empty)
+            .WithMessage("A valid role is required.");
     }
 }
 
@@ -50,11 +51,22 @@ public sealed class InviteUserCommandHandler(
         if (emailTaken)
             return Error.Conflict("A user with this email already exists.", "Identity.User.DuplicateEmail");
 
-        // Direct creation always assigns the protected full-access System Administrator role.
-        // StationStaff/CustomerContact accounts are provisioned from MasterData via portal access.
-        var role = await db.Roles.FirstOrDefaultAsync(r => r.IsSystem, cancellationToken);
+        // Direct creation is administrator-only, but the inviter may choose any compatible
+        // SystemAdministrator role so new accounts do not need to start with full access.
+        var role = request.RoleId is { } roleId
+            ? await db.Roles.FirstOrDefaultAsync(r => r.Id == roleId, cancellationToken)
+            : await db.Roles.FirstOrDefaultAsync(r => r.IsSystem, cancellationToken);
         if (role is null)
-            return Error.Failure("The protected System Administrator role is not available.", "Identity.User.NoAdminRole");
+            return request.RoleId is { }
+                ? Error.Validation("The selected role does not exist.", "Identity.User.RoleNotFound")
+                : Error.Failure("The protected System Administrator role is not available.", "Identity.User.NoAdminRole");
+
+        if (role.CompatibleUserType != UserType.SystemAdministrator)
+        {
+            return Error.Conflict(
+                $"Role '{role.Name}' is not compatible with direct administrator invitations.",
+                "Identity.User.IncompatibleRole");
+        }
 
         var now = timeProvider.GetUtcNow();
         var token = tokenService.CreateSecureToken();

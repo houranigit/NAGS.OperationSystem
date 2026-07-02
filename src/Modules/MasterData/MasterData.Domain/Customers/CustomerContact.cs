@@ -134,6 +134,28 @@ public sealed class CustomerContact : Entity<Guid>, IAuditable
         UpdatedAtUtc = now;
     }
 
+    /// <summary>Marks the linked portal account active after the invited user completes activation.</summary>
+    public void MarkPortalActive(Guid userId, DateTimeOffset now)
+    {
+        if (!IsActive || LinkedUserId != userId)
+            return;
+
+        PortalState = PortalAccess.PortalAccessState.Active;
+        PortalFailureReason = null;
+        UpdatedAtUtc = now;
+    }
+
+    /// <summary>Marks a restored linked portal account invited again when it has not activated yet.</summary>
+    public void MarkPortalInvited(Guid userId, DateTimeOffset now)
+    {
+        if (!IsActive || LinkedUserId != userId)
+            return;
+
+        PortalState = PortalAccess.PortalAccessState.Invited;
+        PortalFailureReason = null;
+        UpdatedAtUtc = now;
+    }
+
     /// <summary>Records a provisioning failure (visible, retryable) for the matching request.</summary>
     public void MarkPortalFailed(Guid? correlationId, string reason, DateTimeOffset now)
     {

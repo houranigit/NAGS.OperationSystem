@@ -19,10 +19,15 @@ Provide via environment variables or a secrets store (never in source control):
 | `Identity:Jwt:SigningKey` | >= 32 chars of entropy. Startup fails otherwise. |
 | `Identity:Jwt:Issuer`, `Identity:Jwt:Audience` | Required. |
 | `Identity:Admin:Email`, `Identity:Admin:DisplayName` | Bootstrap administrator. **Leave `Identity:Admin:Password` unset in production** — the admin is then created as an emailed invitation (no default password). |
+| `Identity:ActivationUrlBase`, `Identity:PasswordResetUrlBase`, `Identity:EmailChangeConfirmUrlBase` | Public portal URLs for emailed activation, reset-password, and linked-email verification links. |
 | `EmailSettings:*` with `EnableEmailNotifications=true` | SMTP host/port/credentials/from. Invitations, password reset, email verification, and MFA flows depend on durable email delivery. |
 | `Security:RateLimit:AnonymousAuthPermitLimit` / `...WindowSeconds` | Defaults 10/60. Tune per environment. |
 | `FileStorage:RootPath` | Persistent volume for customer logos (object/file storage, not the served path). |
 | Data Protection key ring | Persisted to a shared, backed-up location (see below). Encrypts MFA secrets and durable email bodies. |
+
+For local developer overrides, use `appsettings.{Environment}.local.json`, .NET user-secrets, or
+environment variables. The `.local.json` pattern is intentionally ignored by Git and has lower
+precedence than user-secrets, environment variables, and command-line arguments.
 
 ## Data Protection
 

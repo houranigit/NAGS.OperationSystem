@@ -1,6 +1,6 @@
 @page "/login"
 @layout AuthLayout
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AuthSession Auth
 @inject NavigationManager Navigation
 
@@ -21,15 +21,30 @@
         {
             <RadzenTemplateForm TItem="LoginModel" Data="@model" Submit="@SubmitAsync">
                 <RadzenStack Gap="1rem">
-                    <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="model.Email" Name="email" autofocus Style="width: 100%;"
-                                       Immediate="true" AutoCompleteType="AutoCompleteType.Username" />
-                    </RadzenFormField>
+                    @if (awaitingMfa)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                            <strong>@UiStrings.Auth.MfaTitle</strong>
+                            <div>@UiStrings.Auth.MfaSubtitle</div>
+                        </RadzenAlert>
 
-                    <RadzenFormField Text="@UiStrings.Auth.Password" Variant="Variant.Outlined">
-                        <RadzenPassword @bind-Value="model.Password" Name="password" Style="width: 100%;"
-                                        Immediate="true" AutoCompleteType="AutoCompleteType.CurrentPassword" />
-                    </RadzenFormField>
+                        <RadzenFormField Text="@UiStrings.Auth.MfaCode" Variant="Variant.Outlined">
+                            <RadzenTextBox @bind-Value="model.MfaCode" Name="mfaCode" autofocus Style="width: 100%;"
+                                           Immediate="true" AutoCompleteType="AutoCompleteType.OneTimeCode" />
+                        </RadzenFormField>
+                    }
+                    else
+                    {
+                        <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined">
+                            <RadzenTextBox @bind-Value="model.Email" Name="email" autofocus Style="width: 100%;"
+                                           Immediate="true" AutoCompleteType="AutoCompleteType.Username" />
+                        </RadzenFormField>
+
+                        <RadzenFormField Text="@UiStrings.Auth.Password" Variant="Variant.Outlined">
+                            <RadzenPassword @bind-Value="model.Password" Name="password" Style="width: 100%;"
+                                            Immediate="true" AutoCompleteType="AutoCompleteType.CurrentPassword" />
+                        </RadzenFormField>
+                    }
 
                     @if (!string.IsNullOrWhiteSpace(errorMessage))
                     {
@@ -38,11 +53,29 @@
                         </RadzenAlert>
                     }
 
-                    <RadzenButton ButtonType="ButtonType.Submit"
-                                  ButtonStyle="ButtonStyle.Primary"
-                                  Disabled="@isSubmitting"
-                                  Text="@UiStrings.Auth.SignInButton"
-                                  Style="width: 100%;" />
+                    <RadzenStack Gap="0.75rem">
+                        <RadzenButton ButtonType="ButtonType.Submit"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@isSubmitting"
+                                      Text="@(awaitingMfa ? UiStrings.Auth.VerifyMfaButton : UiStrings.Auth.SignInButton)"
+                                      Style="width: 100%;" />
+                        @if (awaitingMfa)
+                        {
+                            <RadzenButton ButtonType="ButtonType.Button"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Disabled="@isSubmitting"
+                                          Text="@UiStrings.Auth.BackToPassword"
+                                          Click="@ResetMfaChallenge" />
+                        }
+                        else
+                        {
+                            <RadzenButton ButtonType="ButtonType.Button"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Disabled="@isSubmitting"
+                                          Text="@UiStrings.Auth.ForgotPasswordLink"
+                                          Click="@(() => Navigation.NavigateTo("/forgot-password"))" />
+                        }
+                    </RadzenStack>
                 </RadzenStack>
             </RadzenTemplateForm>
         }
@@ -54,6 +87,8 @@
 
     private readonly LoginModel model = new();
     private bool isSubmitting;
+    private bool awaitingMfa;
+    private string? mfaToken;
     private string? errorMessage;
 
     protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
@@ -71,6 +106,14 @@
 
     private async Task SubmitAsync()
     {
+        if (awaitingMfa)
+            await SubmitMfaAsync();
+        else
+            await SubmitPasswordAsync();
+    }
+
+    private async Task SubmitPasswordAsync()
+    {
         errorMessage = null;
 
         if (string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
@@ -83,7 +126,15 @@
 
         try
         {
-            await Auth.LoginAsync(model.Email, model.Password);
+            var outcome = await Auth.LoginAsync(model.Email, model.Password);
+            if (outcome.MfaRequired)
+            {
+                awaitingMfa = true;
+                mfaToken = outcome.MfaToken;
+                model.Password = string.Empty;
+                return;
+            }
+
             NavigateAfterLogin();
         }
         catch (ApiException ex) when (ex.IsUnauthorized)
@@ -102,19 +153,94 @@
         }
     }
 
-    private void NavigateAfterLogin()
+    private async Task SubmitMfaAsync()
     {
-        var target = string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl;
-        Navigation.NavigateTo(target, replace: true);
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(model.MfaCode) || string.IsNullOrWhiteSpace(mfaToken))
+        {
+            errorMessage = UiStrings.Auth.MfaCodeRequired;
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            await Auth.CompleteMfaLoginAsync(mfaToken, model.MfaCode.Trim());
+            NavigateAfterLogin();
+        }
+        catch (ApiException ex) when (ex.IsUnauthorized || ex.StatusCode == 400)
+        {
+            errorMessage = UiStrings.Auth.InvalidMfaCode;
+        }
+        catch (ApiException)
+        {
+            errorMessage = UiStrings.Common.SomethingWentWrong;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
     }
 
-    private void OnAuthStateChanged() => _ = InvokeAsync(StateHasChanged);
+    private void ResetMfaChallenge()
+    {
+        awaitingMfa = false;
+        mfaToken = null;
+        model.MfaCode = string.Empty;
+        errorMessage = null;
+    }
 
-    public void Dispose() => Auth.StateChanged -= OnAuthStateChanged;
+    private void NavigateAfterLogin()
+    {
+        Navigation.NavigateTo(SafeReturnUrl(), replace: true);
+    }
+
+    private string SafeReturnUrl()
+    {
+        if (string.IsNullOrWhiteSpace(ReturnUrl))
+            return "/";
+
+        var candidate = ReturnUrl.Trim();
+        if (candidate.StartsWith("//", StringComparison.Ordinal) ||
+            candidate.Contains('\\') ||
+            !Uri.TryCreate(candidate, UriKind.Relative, out _))
+        {
+            return "/";
+        }
+
+        if (!candidate.StartsWith("/", StringComparison.Ordinal))
+            candidate = "/" + candidate;
+
+        var path = candidate.Split(['?', '#'], 2)[0].Trim('/');
+        return string.Equals(path, "login", StringComparison.OrdinalIgnoreCase)
+            ? "/"
+            : candidate;
+    }
+
+    private async void OnAuthStateChanged()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Auth.StateChanged -= OnAuthStateChanged;
+        return ValueTask.CompletedTask;
+    }
 
     private sealed class LoginModel
     {
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
+        public string MfaCode { get; set; } = string.Empty;
     }
 }

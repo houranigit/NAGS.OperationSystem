@@ -20,7 +20,11 @@ public sealed class UpdateRolePermissionsCommandValidator : AbstractValidator<Up
     }
 }
 
-public sealed class UpdateRolePermissionsCommandHandler(IIdentityDbContext db, IPermissionRegistry permissions, TimeProvider timeProvider)
+public sealed class UpdateRolePermissionsCommandHandler(
+    IIdentityDbContext db,
+    ICurrentUser currentUser,
+    IPermissionRegistry permissions,
+    TimeProvider timeProvider)
     : ICommandHandler<UpdateRolePermissionsCommand>
 {
     public async Task<Result> Handle(UpdateRolePermissionsCommand request, CancellationToken cancellationToken)
@@ -31,6 +35,15 @@ public sealed class UpdateRolePermissionsCommandHandler(IIdentityDbContext db, I
 
         if (role.IsSystem)
             return Error.Conflict("System role permissions cannot be modified.", "Identity.Role.SystemProtected");
+
+        if (currentUser.UserId is { } currentUserId)
+        {
+            var isOwnRole = await db.Users.AnyAsync(
+                u => u.Id == currentUserId && u.RoleId == role.Id && u.Status == UserStatus.Active,
+                cancellationToken);
+            if (isOwnRole)
+                return Error.Conflict("You cannot modify permissions for your own role.", "Identity.Role.CannotModifyOwnPermissions");
+        }
 
         var permissionCheck = RolePermissionValidator.Validate(request.Permissions, role.CompatibleUserType, permissions);
         if (permissionCheck.IsFailure)

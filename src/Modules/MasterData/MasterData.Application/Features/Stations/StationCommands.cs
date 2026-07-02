@@ -92,13 +92,17 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
                 if (!userContext.HasPermission(MasterDataPermissions.StaffMembers.GrantAccess))
                     return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
 
+                var correlationId = Guid.NewGuid();
+                staffResult.Value.RequestPortalAccess(correlationId, now);
+
                 db.Enqueue(new PortalAccessRequested
                 {
                     ExternalReferenceId = staffResult.Value.Id,
                     UserType = UserType.StationStaff,
                     RoleId = roleId,
                     Email = staffResult.Value.Email,
-                    DisplayName = staffResult.Value.FullName
+                    DisplayName = staffResult.Value.FullName,
+                    CorrelationId = correlationId
                 });
             }
         }
@@ -256,19 +260,23 @@ public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, Tim
         if (station is null)
             return Error.NotFound("Station not found.", "MasterData.Station.NotFound");
 
+        var now = timeProvider.GetUtcNow();
+
         if (station.IsActive)
         {
             // Deactivating a station blocks access for all of its linked staff members.
             var linkedStaff = await db.StaffMembers
                 .Where(s => s.StationId == station.Id && s.IsActive && s.LinkedUserId != null)
-                .Select(s => new { s.Id, s.LinkedUserId })
                 .ToListAsync(cancellationToken);
 
             foreach (var staff in linkedStaff)
+            {
+                staff.SuspendPortal(now);
                 PortalAccess.PortalLifecycle.EnqueueDeactivation(db, staff.Id, staff.LinkedUserId!.Value);
+            }
         }
 
-        station.Deactivate(timeProvider.GetUtcNow());
+        station.Deactivate(now);
         db.SetOriginalRowVersion(station, request.RowVersion);
 
         try

@@ -6,10 +6,15 @@
         <RadzenFormField Text="@UiStrings.Users.Role" Variant="Variant.Outlined" Style="width: 100%;">
             <Start><RadzenIcon Icon="badge" /></Start>
             <ChildContent>
-                <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleListItem.Name)"
-                                ValueProperty="@nameof(RoleListItem.Id)" Style="width: 100%;" />
+                <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleOption.Name)"
+                                ValueProperty="@nameof(RoleOption.Id)" AllowFiltering="true" Style="width: 100%;" />
             </ChildContent>
         </RadzenFormField>
+
+        @if (roles.Count == 0)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@UiStrings.Users.NoCompatibleRoles</RadzenAlert>
+        }
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
@@ -18,7 +23,7 @@
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
             <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Common.Save" ButtonStyle="ButtonStyle.Primary" Disabled="@(isSubmitting || roles.Count == 0)" />
         </RadzenStack>
     </div>
 </RadzenTemplateForm>
@@ -26,9 +31,10 @@
 @code {
     [Parameter] public Guid UserId { get; set; }
     [Parameter] public Guid CurrentRoleId { get; set; }
+    [Parameter] public string CompatibleUserType { get; set; } = UserTypes.SystemAdministrator;
 
     private AssignModel model = new();
-    private IReadOnlyList<RoleListItem> roles = [];
+    private IReadOnlyList<RoleOption> roles = [];
     private bool isSubmitting;
     private string? errorMessage;
 
@@ -38,8 +44,7 @@
 
         try
         {
-            var result = await Identity.GetRolesAsync(1, 100, null);
-            roles = result.Items;
+            roles = await Identity.GetRoleOptionsAsync(CompatibleUserType);
         }
         catch (ApiException)
         {
@@ -50,6 +55,13 @@
     private async Task SubmitAsync()
     {
         errorMessage = null;
+
+        if (model.RoleId == Guid.Empty)
+        {
+            errorMessage = UiStrings.Users.RoleRequired;
+            return;
+        }
+
         isSubmitting = true;
 
         try

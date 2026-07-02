@@ -11,4 +11,20 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(RestorePackagesPath)' == '' and '$(OS)' == 'Windows_NT' and '$(USERPROFILE)' != ''">
+    <RestorePackagesPath>$(USERPROFILE)\.nuget\packages</RestorePackagesPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RestorePackagesPath)' == '' and '$(OS)' == 'Windows_NT' and '$(UserProfile)' != ''">
+    <RestorePackagesPath>$(UserProfile)\.nuget\packages</RestorePackagesPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RestorePackagesPath)' == '' and '$(OS)' != 'Windows_NT' and '$(HOME)' != ''">
+    <RestorePackagesPath>$(HOME)/.nuget/packages</RestorePackagesPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RestorePackagesPath)' != ''">
+    <NuGetPackageRoot Condition="'$(NuGetPackageRoot)' == '' or '$(NuGetPackageRoot)' == '\.nuget\packages'">$(RestorePackagesPath)</NuGetPackageRoot>
+  </PropertyGroup>
+
 </Project>

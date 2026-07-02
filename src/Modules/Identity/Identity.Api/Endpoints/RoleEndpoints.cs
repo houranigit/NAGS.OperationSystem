@@ -1,5 +1,6 @@
 using BuildingBlocks.Api.Authorization;
 using BuildingBlocks.Api.Results;
+using BuildingBlocks.Domain.Results;
 using Identity.Application.Features.Roles;
 using Identity.Domain.Authorization;
 using MediatR;
@@ -28,7 +29,7 @@ internal static class RoleEndpoints
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Roles.View);
 
-        roles.MapGet("/options", async (BuildingBlocks.Contracts.Authorization.UserType userType, ISender sender, CancellationToken ct) =>
+        roles.MapGet("/options", async (ISender sender, CancellationToken ct, BuildingBlocks.Contracts.Authorization.UserType? userType = null) =>
         {
             var result = await sender.Send(new GetRoleOptionsQuery(userType), ct);
             return result.ToOk();
@@ -42,7 +43,10 @@ internal static class RoleEndpoints
 
         roles.MapPost("/", async (CreateRoleRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new CreateRoleCommand(request.Name, request.Description, request.CompatibleUserType, request.Permissions), ct);
+            if (request.CompatibleUserType is not { } compatibleUserType)
+                return ApiResults.Problem(Error.Validation("A compatible user type is required.", "Identity.Role.CompatibleUserTypeRequired"));
+
+            var result = await sender.Send(new CreateRoleCommand(request.Name, request.Description, compatibleUserType, request.Permissions), ct);
             return result.ToCreated(id => $"/api/v1/identity/roles/{id}");
         }).RequirePermission(IdentityPermissions.Roles.Create);
 

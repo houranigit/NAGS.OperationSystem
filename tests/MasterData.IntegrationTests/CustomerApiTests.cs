@@ -45,7 +45,7 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
             address = AddressPayload(),
             contacts = new[]
             {
-                new { id = (Guid?)null, name = "Alice", jobTitle = "Manager", email = "alice@test.com", phone = (string?)null },
+                new { id = (Guid?)null, name = "Alice", jobTitle = (string?)"Manager", email = "alice@test.com", phone = (string?)null },
                 new { id = (Guid?)null, name = "Bob", jobTitle = (string?)null, email = "bob@test.com", phone = (string?)null }
             }
         });

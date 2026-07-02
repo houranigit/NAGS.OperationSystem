@@ -13,11 +13,11 @@ public sealed record LoginMfaRequest(string MfaToken, string Code);
 public sealed record ConfirmMfaRequest(string Code);
 
 // Roles
-public sealed record CreateRoleRequest(string Name, string? Description, BuildingBlocks.Contracts.Authorization.UserType CompatibleUserType, IReadOnlyList<string> Permissions);
+public sealed record CreateRoleRequest(string Name, string? Description, BuildingBlocks.Contracts.Authorization.UserType? CompatibleUserType, IReadOnlyList<string> Permissions);
 public sealed record UpdateRoleRequest(string Name, string? Description);
 public sealed record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);
 
 // Users
-public sealed record InviteUserRequest(string Email, string DisplayName);
+public sealed record InviteUserRequest(string Email, string DisplayName, Guid? RoleId = null);
 public sealed record UpdateUserRequest(string DisplayName);
 public sealed record AssignRoleRequest(Guid RoleId);

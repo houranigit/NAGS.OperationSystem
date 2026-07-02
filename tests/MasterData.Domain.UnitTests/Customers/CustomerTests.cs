@@ -1,5 +1,6 @@
 using MasterData.Domain.Customers;
 using Shouldly;
+using PortalAccessState = MasterData.Domain.PortalAccess.PortalAccessState;
 
 namespace MasterData.Domain.UnitTests.Customers;
 
@@ -79,6 +80,97 @@ public sealed class CustomerTests
 
         duplicate.IsFailure.ShouldBeTrue();
         duplicate.Error.Code.ShouldBe("MasterData.CustomerContact.EmailNotUnique");
+    }
+
+    [Fact]
+    public void Contact_portal_suspension_keeps_link_for_restore()
+    {
+        var customer = NewCustomer();
+        var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        contact.RequestPortalAccess(correlationId, Now);
+        contact.LinkUser(userId, correlationId, Now.AddMinutes(1));
+
+        contact.SuspendPortal(Now.AddMinutes(2));
+
+        contact.LinkedUserId.ShouldBe(userId);
+        contact.PortalState.ShouldBe(PortalAccessState.Suspended);
+        contact.PortalCorrelationId.ShouldBe(correlationId);
+    }
+
+    [Fact]
+    public void Contact_portal_activation_marks_same_linked_user_active()
+    {
+        var customer = NewCustomer();
+        var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        contact.RequestPortalAccess(correlationId, Now);
+        contact.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        contact.MarkPortalActive(userId, Now.AddMinutes(2));
+
+        contact.LinkedUserId.ShouldBe(userId);
+        contact.PortalState.ShouldBe(PortalAccessState.Active);
+        contact.PortalFailureReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Contact_portal_restore_can_mark_same_linked_user_invited_again()
+    {
+        var customer = NewCustomer();
+        var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        contact.RequestPortalAccess(correlationId, Now);
+        contact.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        contact.SuspendPortal(Now.AddMinutes(2));
+        contact.MarkPortalInvited(userId, Now.AddMinutes(3));
+
+        contact.LinkedUserId.ShouldBe(userId);
+        contact.PortalState.ShouldBe(PortalAccessState.Invited);
+        contact.PortalFailureReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Contact_portal_activation_ignores_wrong_or_removed_link()
+    {
+        var customer = NewCustomer();
+        var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
+        var correlationId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        contact.RequestPortalAccess(correlationId, Now);
+        contact.LinkUser(userId, correlationId, Now.AddMinutes(1));
+        contact.MarkPortalActive(Guid.NewGuid(), Now.AddMinutes(2));
+        contact.PortalState.ShouldBe(PortalAccessState.Invited);
+
+        customer.RemoveContact(contact.Id, releaseLink: false, Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
+        contact.MarkPortalActive(userId, Now.AddMinutes(4));
+
+        contact.PortalState.ShouldBe(PortalAccessState.Invited);
+    }
+
+    [Fact]
+    public void Permanent_contact_removal_unlinks_portal_user_and_clears_retry_state()
+    {
+        var customer = NewCustomer();
+        var contact = customer.AddContact("Alice", null, "alice@rj.com", null, Now).Value;
+        var correlationId = Guid.NewGuid();
+        contact.RequestPortalAccess(correlationId, Now);
+        contact.MarkPortalFailed(correlationId, "duplicate email", Now.AddMinutes(1));
+
+        var removed = customer.RemoveContact(contact.Id, releaseLink: true, Now.AddMinutes(2));
+
+        removed.IsSuccess.ShouldBeTrue();
+        removed.Value.IsActive.ShouldBeFalse();
+        removed.Value.LinkedUserId.ShouldBeNull();
+        removed.Value.PortalState.ShouldBe(PortalAccessState.None);
+        removed.Value.PortalCorrelationId.ShouldBeNull();
+        removed.Value.PortalFailureReason.ShouldBeNull();
     }
 
     [Fact]

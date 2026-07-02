@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OperationsSystem.Blazor.Client.Api;
 
 namespace OperationsSystem.Blazor.Client.Auth;
@@ -67,13 +68,63 @@ public sealed class AuthSession
         StateChanged?.Invoke();
     }
 
-    public async Task LoginAsync(string email, string password, CancellationToken cancellationToken = default)
+    public async Task<LoginOutcome> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
     {
-        var token = await apiClient.PostAsync<LoginRequest, AccessTokenResponse>(
+        var response = await apiClient.PostAsync<LoginRequest, LoginResponse>(
             "/identity/auth/login",
             new LoginRequest(email, password),
             cancellationToken);
 
+        if (response.MfaRequired)
+        {
+            tokenStore.SetAccessToken(null);
+            User = null;
+            Status = AuthStatus.Anonymous;
+            StateChanged?.Invoke();
+
+            if (string.IsNullOrWhiteSpace(response.MfaToken))
+                throw new JsonException("The MFA challenge response did not include a challenge token.");
+
+            return LoginOutcome.RequiresMfa(response.MfaToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(response.AccessToken) || response.ExpiresAtUtc is null)
+            throw new JsonException("The login response did not include an access token.");
+
+        await EstablishAuthenticatedSessionAsync(
+            new AccessTokenResponse(response.AccessToken, response.ExpiresAtUtc.Value),
+            cancellationToken);
+
+        return LoginOutcome.SignedIn;
+    }
+
+    public async Task CompleteMfaLoginAsync(string mfaToken, string code, CancellationToken cancellationToken = default)
+    {
+        var token = await apiClient.PostAsync<LoginMfaRequest, AccessTokenResponse>(
+            "/identity/auth/login/mfa",
+            new LoginMfaRequest(mfaToken, code),
+            cancellationToken);
+
+        await EstablishAuthenticatedSessionAsync(token, cancellationToken);
+    }
+
+    public async Task ReloadUserAsync(CancellationToken cancellationToken = default)
+    {
+        if (Status is not AuthStatus.Authenticated)
+            return;
+
+        var token = await apiClient.PostAsync<object, AccessTokenResponse>(
+            "/identity/auth/refresh",
+            new { },
+            cancellationToken);
+
+        tokenStore.SetAccessToken(token.AccessToken);
+        User = await apiClient.GetAsync<AuthenticatedUser>("/identity/me", cancellationToken);
+        StateChanged?.Invoke();
+    }
+
+    private async Task EstablishAuthenticatedSessionAsync(AccessTokenResponse token, CancellationToken cancellationToken)
+    {
         tokenStore.SetAccessToken(token.AccessToken);
         User = await apiClient.GetAsync<AuthenticatedUser>("/identity/me", cancellationToken);
         Status = AuthStatus.Authenticated;

@@ -1,9 +1,13 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Persistence;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
+using MasterData.Contracts;
+using MasterData.Domain.Authorization;
 using MasterData.Domain.StaffMembers;
 using Microsoft.EntityFrameworkCore;
 
@@ -25,7 +29,8 @@ public sealed record CreateStaffMemberCommand(
     Guid ManpowerTypeId,
     EmploymentContractInput? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
-    IReadOnlyList<StaffLicenseInput> Licenses) : ICommand<Guid>;
+    IReadOnlyList<StaffLicenseInput> Licenses,
+    Guid? PortalAccessRoleId) : ICommand<Guid>;
 
 public sealed class CreateStaffMemberCommandValidator : AbstractValidator<CreateStaffMemberCommand>
 {
@@ -36,10 +41,15 @@ public sealed class CreateStaffMemberCommandValidator : AbstractValidator<Create
         RuleFor(x => x.Email).NotEmpty();
         RuleFor(x => x.StationId).NotEmpty();
         RuleFor(x => x.ManpowerTypeId).NotEmpty();
+        RuleFor(x => x.PortalAccessRoleId).NotEqual(Guid.Empty).When(x => x.PortalAccessRoleId.HasValue);
     }
 }
 
-public sealed class CreateStaffMemberCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class CreateStaffMemberCommandHandler(
+    IMasterDataDbContext db,
+    IMasterDataScope scope,
+    IUserContext userContext,
+    TimeProvider timeProvider)
     : ICommandHandler<CreateStaffMemberCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateStaffMemberCommand request, CancellationToken cancellationToken)
@@ -47,6 +57,9 @@ public sealed class CreateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
         var scopeCheck = await scope.CheckStationAsync(request.StationId, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
+
+        if (request.PortalAccessRoleId is { } && !userContext.HasPermission(MasterDataPermissions.StaffMembers.GrantAccess))
+            return Error.Forbidden("Granting portal access requires the grant-access permission.", "MasterData.PortalAccess.Forbidden");
 
         var refsCheck = await StaffMemberGuards.EnsureActiveReferencesAsync(db, request.StationId, request.ManpowerTypeId, cancellationToken);
         if (refsCheck.IsFailure)
@@ -84,6 +97,22 @@ public sealed class CreateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
         var reconcile = staff.ReconcileLicenses(StaffMemberGuards.MapLicenses(request.Licenses), now);
         if (reconcile.IsFailure)
             return reconcile.Error;
+
+        if (request.PortalAccessRoleId is { } roleId)
+        {
+            var correlationId = Guid.NewGuid();
+            staff.RequestPortalAccess(correlationId, now);
+
+            db.Enqueue(new PortalAccessRequested
+            {
+                ExternalReferenceId = staff.Id,
+                UserType = UserType.StationStaff,
+                RoleId = roleId,
+                Email = staff.Email,
+                DisplayName = staff.FullName,
+                CorrelationId = correlationId
+            });
+        }
 
         db.StaffMembers.Add(staff);
         await db.SaveChangesAsync(cancellationToken);
@@ -124,17 +153,22 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
 {
     public async Task<Result> Handle(UpdateStaffMemberCommand request, CancellationToken cancellationToken)
     {
-        var staff = await db.StaffMembers
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        if (!resolved.Value.IsAdministrator && resolved.Value.StationId is null)
+            return StaffMemberGuards.ScopeForbidden();
+
+        var staff = await StaffMemberGuards.ApplyScope(db.StaffMembers
             .Include(s => s.Licenses)
+            .AsQueryable(), resolved.Value)
             .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
         if (staff is null)
-            return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
+            return StaffMemberGuards.NotFoundOrForbidden(resolved.Value);
 
-        // A scoped caller may only touch staff in their station, and may not move staff out of it.
-        var scopeCheck = await scope.CheckStationAsync(staff.StationId, cancellationToken);
-        if (scopeCheck.IsFailure)
-            return scopeCheck.Error;
-        var targetScopeCheck = await scope.CheckStationAsync(request.StationId, cancellationToken);
+        // A scoped caller may not move staff out of their station.
+        var targetScopeCheck = StaffMemberGuards.EnsureStationInScope(resolved.Value, request.StationId);
         if (targetScopeCheck.IsFailure)
             return targetScopeCheck.Error;
 
@@ -205,13 +239,17 @@ public sealed class ActivateStaffMemberCommandHandler(IMasterDataDbContext db, I
 {
     public async Task<Result> Handle(ActivateStaffMemberCommand request, CancellationToken cancellationToken)
     {
-        var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
-        if (staff is null)
-            return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
 
-        var scopeCheck = await scope.CheckStationAsync(staff.StationId, cancellationToken);
-        if (scopeCheck.IsFailure)
-            return scopeCheck.Error;
+        if (!resolved.Value.IsAdministrator && resolved.Value.StationId is null)
+            return StaffMemberGuards.ScopeForbidden();
+
+        var staff = await StaffMemberGuards.ApplyScope(db.StaffMembers.AsQueryable(), resolved.Value)
+            .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
+        if (staff is null)
+            return StaffMemberGuards.NotFoundOrForbidden(resolved.Value);
 
         staff.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(staff, request.RowVersion);
@@ -234,13 +272,17 @@ public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db,
 {
     public async Task<Result> Handle(DeactivateStaffMemberCommand request, CancellationToken cancellationToken)
     {
-        var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
-        if (staff is null)
-            return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
 
-        var scopeCheck = await scope.CheckStationAsync(staff.StationId, cancellationToken);
-        if (scopeCheck.IsFailure)
-            return scopeCheck.Error;
+        if (!resolved.Value.IsAdministrator && resolved.Value.StationId is null)
+            return StaffMemberGuards.ScopeForbidden();
+
+        var staff = await StaffMemberGuards.ApplyScope(db.StaffMembers.AsQueryable(), resolved.Value)
+            .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
+        if (staff is null)
+            return StaffMemberGuards.NotFoundOrForbidden(resolved.Value);
 
         var now = timeProvider.GetUtcNow();
 
@@ -270,6 +312,24 @@ public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db,
 
 internal static class StaffMemberGuards
 {
+    public static IQueryable<StaffMember> ApplyScope(IQueryable<StaffMember> query, MasterDataScopeContext scope) =>
+        scope.IsAdministrator
+            ? query
+            : query.Where(s => s.StationId == scope.StationId);
+
+    public static Result EnsureStationInScope(MasterDataScopeContext scope, Guid stationId) =>
+        scope.IsAdministrator || scope.StationId == stationId
+            ? Result.Success()
+            : ScopeForbidden();
+
+    public static Error NotFoundOrForbidden(MasterDataScopeContext scope) =>
+        scope.IsAdministrator
+            ? Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound")
+            : ScopeForbidden();
+
+    public static Error ScopeForbidden() =>
+        Error.Forbidden("This record is outside your data scope.", "MasterData.Scope.Forbidden");
+
     public static async Task<Result> EnsureActiveReferencesAsync(
         IMasterDataDbContext db, Guid stationId, Guid manpowerTypeId, CancellationToken cancellationToken)
     {

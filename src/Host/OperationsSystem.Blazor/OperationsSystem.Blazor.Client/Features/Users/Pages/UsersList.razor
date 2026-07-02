@@ -82,8 +82,13 @@
                     <RowAction Separator="true" />
                     <RowAction Text="@UiStrings.Users.Unlock" Icon="lock_open" Permission="@IdentityPermissions.UsersUnlock"
                                Visible="@user.IsLockedOut" OnClick="@(() => UnlockAsync(user))" />
+                    <RowAction Text="@UiStrings.Users.RestoreAccess" Icon="person_check" Permission="@IdentityPermissions.UsersRestoreAccess"
+                               Visible="@(user.Status == "Suspended")" OnClick="@(() => RestoreAccessAsync(user))" />
                     <RowAction Text="@UiStrings.Users.Lock" Icon="lock" Permission="@IdentityPermissions.UsersLock"
                                Visible="@(!user.IsLockedOut)" OnClick="@(() => LockAsync(user))" />
+                    <RowAction Text="@UiStrings.Users.Suspend" Icon="pause_circle" Danger="true"
+                               Permission="@IdentityPermissions.UsersSuspend"
+                               Visible="@(user.Status != "Suspended" && user.Status != "Deactivated")" OnClick="@(() => SuspendAsync(user))" />
                     <RowAction Text="@UiStrings.Users.Deactivate" Icon="person_off" Danger="true"
                                Permission="@IdentityPermissions.UsersDeactivate"
                                Visible="@(user.Status != "Deactivated")" OnClick="@(() => DeactivateAsync(user))" />
@@ -115,6 +120,7 @@
     [
         new("Invited", "Invited"),
         new("Active", "Active"),
+        new("Suspended", "Suspended"),
         new("Deactivated", "Deactivated")
     ];
 
@@ -161,8 +167,8 @@
     {
         try
         {
-            var roles = await Identity.GetRolesAsync(1, 100, null);
-            roleOptions = [.. roles.Items.Select(r => new RoleOption(r.Name, r.Id))];
+            var roles = await Identity.GetRoleOptionsAsync();
+            roleOptions = [.. roles.Select(r => new RoleOption(r.Name, r.Id))];
         }
         catch (ApiException)
         {
@@ -232,7 +238,12 @@
     private async Task OpenAssignRoleAsync(UserListItem user)
     {
         var result = await DialogService.OpenAsync<AssignRoleDialog>(UiStrings.Users.AssignRoleTitle,
-            new Dictionary<string, object?> { [nameof(AssignRoleDialog.UserId)] = user.Id, [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId });
+            new Dictionary<string, object?>
+            {
+                [nameof(AssignRoleDialog.UserId)] = user.Id,
+                [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId,
+                [nameof(AssignRoleDialog.CompatibleUserType)] = user.UserType
+            });
 
         if (result is true)
             await ReloadAsync();
@@ -248,6 +259,18 @@
     {
         if (await Confirm(UiStrings.Users.ConfirmLock))
             await RunActionAsync(() => Identity.LockUserAsync(user.Id), UiStrings.Users.Lock);
+    }
+
+    private async Task SuspendAsync(UserListItem user)
+    {
+        if (await Confirm(UiStrings.Users.ConfirmSuspend))
+            await RunActionAsync(() => Identity.SuspendUserAsync(user.Id), UiStrings.Users.Suspend);
+    }
+
+    private async Task RestoreAccessAsync(UserListItem user)
+    {
+        if (await Confirm(UiStrings.Users.ConfirmRestoreAccess))
+            await RunActionAsync(() => Identity.RestoreAccessAsync(user.Id), UiStrings.Users.RestoreAccess);
     }
 
     private async Task DeactivateAsync(UserListItem user)
@@ -292,6 +315,7 @@
     {
         "Active" => "success",
         "Invited" => "warning",
+        "Suspended" => "warning",
         "Deactivated" => "neutral",
         _ => "neutral"
     };
