@@ -31,6 +31,10 @@
                         <div class="md-identity-headline">
                             <h1 class="md-name">@catalog.Name</h1>
                             <StatusBadge Label="@(catalog.IsActive ? "Active" : "Inactive")" Tone="@(catalog.IsActive ? "success" : "neutral")" />
+                            @if (catalog.IsSystem)
+                            {
+                                <StatusBadge Label="System" Tone="neutral" />
+                            }
                             <span class="md-info-badge"><RadzenIcon Icon="@Icon" />@Title</span>
                         </div>
 
@@ -45,7 +49,7 @@
                     </div>
 
                     <div class="md-hero-actions">
-                        @if (Auth.HasPermission(UpdatePermission))
+                        @if (!catalog.IsSystem && Auth.HasPermission(UpdatePermission))
                         {
                             <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
                         }
@@ -371,8 +375,9 @@
     }
 
     private bool HasMoreActions(SimpleCatalogDetail catalog) =>
-        (!catalog.IsActive && Auth.HasPermission(ActivatePermission))
-        || (catalog.IsActive && Auth.HasPermission(DeactivatePermission));
+        !catalog.IsSystem
+        && ((!catalog.IsActive && Auth.HasPermission(ActivatePermission))
+            || (catalog.IsActive && Auth.HasPermission(DeactivatePermission)));
 
     private string EntityType => Kind switch
     {
@@ -383,10 +388,10 @@
         _ => "Catalog"
     };
 
-    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
 
     private void GoBack() => Navigation.NavigateTo($"/master-data/{Route}");
 

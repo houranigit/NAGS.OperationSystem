@@ -59,6 +59,7 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
             .Select(c => new CustomerListItemDto(
                 c.Id, c.IataCode, c.IcaoCode, c.Name, c.CountryId,
                 db.Countries.Where(co => co.Id == c.CountryId).Select(co => co.Name).FirstOrDefault() ?? string.Empty,
+                c.LogoFileReference,
                 c.IsActive,
                 c.Contacts.Count(ct => ct.IsActive)))
             .ToListAsync(cancellationToken);

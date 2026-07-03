@@ -32,7 +32,15 @@
                     <Template Context="item">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="@Icon" /></span>
-                            <strong>@item.Name</strong>
+                            <div class="os-role-cell-text">
+                                <div class="os-role-cell-title">
+                                    <strong>@item.Name</strong>
+                                    @if (item.IsSystem)
+                                    {
+                                        <StatusBadge Label="System" Tone="neutral" />
+                                    }
+                                </div>
+                            </div>
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
@@ -57,10 +65,13 @@
             <RowActions Context="item">
                 <RowActionMenu>
                     <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(item.Id))" />
-                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@UpdatePermission" OnClick="@(() => OpenEditAsync(item.Id))" />
+                    <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@UpdatePermission"
+                               Visible="@(!item.IsSystem)" OnClick="@(() => OpenEditAsync(item.Id))" />
                     <RowAction Separator="true" />
-                    <RowAction Text="Activate" Icon="check_circle" Permission="@ActivatePermission" Visible="@(!item.IsActive)" OnClick="@(() => ActivateAsync(item.Id))" />
-                    <RowAction Text="Deactivate" Icon="cancel" Danger="true" Permission="@DeactivatePermission" Visible="@item.IsActive" OnClick="@(() => DeactivateAsync(item.Id))" />
+                    <RowAction Text="Activate" Icon="check_circle" Permission="@ActivatePermission"
+                               Visible="@(!item.IsSystem && !item.IsActive)" OnClick="@(() => ActivateAsync(item.Id))" />
+                    <RowAction Text="Deactivate" Icon="cancel" Danger="true" Permission="@DeactivatePermission"
+                               Visible="@(!item.IsSystem && item.IsActive)" OnClick="@(() => DeactivateAsync(item.Id))" />
                 </RowActionMenu>
             </RowActions>
         </DataListCard>
@@ -150,10 +161,10 @@
         var search = string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm;
         return Kind switch
         {
-            SimpleCatalogKind.Services => Map(await MasterData.GetServicesAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
-            SimpleCatalogKind.OperationTypes => Map(await MasterData.GetOperationTypesAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
-            SimpleCatalogKind.Materials => Map(await MasterData.GetMaterialsAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
-            SimpleCatalogKind.GeneralSupports => Map(await MasterData.GetGeneralSupportsAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive)),
+            SimpleCatalogKind.Services => Map(await MasterData.GetServicesAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive, x.IsSystem)),
+            SimpleCatalogKind.OperationTypes => Map(await MasterData.GetOperationTypesAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive, x.IsSystem)),
+            SimpleCatalogKind.Materials => Map(await MasterData.GetMaterialsAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive, false)),
+            SimpleCatalogKind.GeneralSupports => Map(await MasterData.GetGeneralSupportsAsync(currentPage, currentPageSize, search, activeFilter, currentSort), x => new SimpleCatalogRow(x.Id, x.Name, x.Description, x.IsActive, false)),
             _ => new PagedResult<SimpleCatalogRow>([], currentPage, currentPageSize, 0)
         };
     }
@@ -243,11 +254,11 @@
         _ => throw new InvalidOperationException("Unsupported catalog kind.")
     };
 
-    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
 
     private sealed record StatusOption(string Label, bool? Value);
-    private sealed record SimpleCatalogRow(Guid Id, string Name, string? Description, bool IsActive);
+    private sealed record SimpleCatalogRow(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
 }

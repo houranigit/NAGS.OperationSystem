@@ -31,13 +31,23 @@
                                 Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
+                <RadzenDataGridColumn TItem="StationListItem" Property="Name" Title="@UiStrings.Stations.Name">
+                    <Template Context="s">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="flight_takeoff" /></span>
+                            <div class="os-role-cell-text">
+                                <strong>@s.Name</strong>
+                                <span class="os-muted">@s.IataCode</span>
+                            </div>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="StationListItem" Property="IataCode" Title="@UiStrings.Stations.IataCode" Width="100px">
                     <Template Context="s"><strong>@s.IataCode</strong></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="StationListItem" Property="IcaoCode" Title="@UiStrings.Stations.IcaoCode" Width="100px" Sortable="false">
                     <Template Context="s">@(string.IsNullOrWhiteSpace(s.IcaoCode) ? UiStrings.Stations.NoIcao : s.IcaoCode)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="StationListItem" Property="Name" Title="@UiStrings.Stations.Name" />
                 <RadzenDataGridColumn TItem="StationListItem" Property="City" Title="@UiStrings.Stations.City" Width="160px" />
                 <RadzenDataGridColumn TItem="StationListItem" Property="CountryName" Title="@UiStrings.Stations.Country" Width="160px" Sortable="false" />
                 <RadzenDataGridColumn TItem="StationListItem" Title="@UiStrings.Stations.Status" Sortable="false" Width="120px">

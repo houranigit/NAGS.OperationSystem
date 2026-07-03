@@ -59,6 +59,8 @@ public sealed class UpdateOperationTypeCommandHandler(IMasterDataDbContext db, T
         var operationType = await db.OperationTypes.FirstOrDefaultAsync(o => o.Id == request.Id, cancellationToken);
         if (operationType is null)
             return Error.NotFound("Operation type not found.", "MasterData.OperationType.NotFound");
+        if (OperationTypeSystemRecords.IsSystem(operationType.Id))
+            return Error.Conflict("System operation types cannot be modified.", "MasterData.OperationType.SystemProtected");
 
         var trimmedName = request.Name.Trim();
         if (await db.OperationTypes.AnyAsync(o => o.Name == trimmedName && o.Id != request.Id, cancellationToken))
@@ -94,6 +96,8 @@ public sealed class ActivateOperationTypeCommandHandler(IMasterDataDbContext db,
         var operationType = await db.OperationTypes.FirstOrDefaultAsync(o => o.Id == request.Id, cancellationToken);
         if (operationType is null)
             return Error.NotFound("Operation type not found.", "MasterData.OperationType.NotFound");
+        if (OperationTypeSystemRecords.IsSystem(operationType.Id))
+            return Error.Conflict("System operation types cannot be activated or deactivated.", "MasterData.OperationType.SystemProtected");
 
         operationType.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(operationType, request.RowVersion);
@@ -119,6 +123,8 @@ public sealed class DeactivateOperationTypeCommandHandler(IMasterDataDbContext d
         var operationType = await db.OperationTypes.FirstOrDefaultAsync(o => o.Id == request.Id, cancellationToken);
         if (operationType is null)
             return Error.NotFound("Operation type not found.", "MasterData.OperationType.NotFound");
+        if (OperationTypeSystemRecords.IsSystem(operationType.Id))
+            return Error.Conflict("System operation types cannot be activated or deactivated.", "MasterData.OperationType.SystemProtected");
 
         operationType.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(operationType, request.RowVersion);

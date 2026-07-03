@@ -29,15 +29,36 @@
             <Filters>
                 <DataListFilter TValue="bool?" Placeholder="@UiStrings.Customers.AllStatuses"
                                 Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+                <DataListFilter TValue="Guid?" Placeholder="All countries"
+                                Data="@countryOptions" Value="@countryFilter" ValueChanged="@OnCountryFilterChangedAsync" />
             </Filters>
             <Columns>
+                <RadzenDataGridColumn TItem="CustomerListItem" Property="Name" Title="@UiStrings.Customers.Name">
+                    <Template Context="c">
+                        <div class="cu-list-cell">
+                            @if (CustomerLogoUrl(c) is { } logoUrl)
+                            {
+                                <span class="cu-list-avatar cu-list-avatar--logo">
+                                    <img src="@logoUrl" alt="@($"{c.Name} logo")" />
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="cu-list-avatar">@CustomerAvatarText(c)</span>
+                            }
+                            <div class="cu-list-text">
+                                <strong>@c.Name</strong>
+                                <span class="os-muted">@CustomerCodeText(c)</span>
+                            </div>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="CustomerListItem" Property="IataCode" Title="@UiStrings.Customers.IataCode" Width="100px">
                     <Template Context="c"><strong>@(string.IsNullOrWhiteSpace(c.IataCode) ? UiStrings.Common.None : c.IataCode)</strong></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="CustomerListItem" Property="IcaoCode" Title="@UiStrings.Customers.IcaoCode" Width="100px" Sortable="false">
                     <Template Context="c">@(string.IsNullOrWhiteSpace(c.IcaoCode) ? UiStrings.Customers.NoIcao : c.IcaoCode)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="CustomerListItem" Property="Name" Title="@UiStrings.Customers.Name" />
                 <RadzenDataGridColumn TItem="CustomerListItem" Property="CountryName" Title="@UiStrings.Customers.Country" Width="160px" Sortable="false" />
                 <RadzenDataGridColumn TItem="CustomerListItem" Title="@UiStrings.Customers.Contacts" Sortable="false" Width="110px">
                     <Template Context="c">@c.ContactCount</Template>
@@ -86,7 +107,10 @@
 
     private string searchTerm = string.Empty;
     private bool? activeFilter;
+    private Guid? countryFilter;
     private string? currentSort;
+    private IReadOnlyList<GuidFilterOption> countryOptions = [];
+    private Dictionary<Guid, string> logoUrls = [];
 
     private readonly List<StatusOption> statusOptions =
     [
@@ -97,7 +121,7 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
-        await FetchAsync();
+        await Task.WhenAll(LoadCountryOptionsAsync(), FetchAsync());
     }
 
     private async Task OnPageSizeChangedAsync(int pageSize)
@@ -110,6 +134,25 @@
     {
         activeFilter = value;
         await ReloadAsync();
+    }
+
+    private async Task OnCountryFilterChangedAsync(Guid? value)
+    {
+        countryFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadCountryOptionsAsync()
+    {
+        try
+        {
+            var countries = await MasterData.GetCountryOptionsAsync();
+            countryOptions = [.. countries.Select(c => new GuidFilterOption($"{c.Name} ({c.IsoCode})", c.Id))];
+        }
+        catch (ApiException)
+        {
+            countryOptions = [];
+        }
     }
 
     private async Task LoadDataAsync(LoadDataArgs args)
@@ -129,8 +172,9 @@
         try
         {
             var result = await MasterData.GetCustomersAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, null, currentSort);
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, countryFilter, currentSort);
             items = result.Items;
+            logoUrls = await LoadLogoUrlsAsync(items);
             totalCount = (int)result.TotalCount;
         }
         catch (ApiException)
@@ -142,6 +186,26 @@
             isLoading = false;
             StateHasChanged();
         }
+    }
+
+    private async Task<Dictionary<Guid, string>> LoadLogoUrlsAsync(IReadOnlyList<CustomerListItem> customers)
+    {
+        var result = new Dictionary<Guid, string>();
+
+        foreach (var customer in customers.Where(c => !string.IsNullOrWhiteSpace(c.LogoFileReference)))
+        {
+            try
+            {
+                var logo = await MasterData.GetCustomerLogoAsync(customer.Id);
+                result[customer.Id] = $"data:{logo.ContentType};base64,{logo.Base64}";
+            }
+            catch (ApiException)
+            {
+                // Missing or inaccessible logos fall back to the generated avatar.
+            }
+        }
+
+        return result;
     }
 
     private async Task ReloadAsync()
@@ -202,5 +266,39 @@
         }
     }
 
+    private string? CustomerLogoUrl(CustomerListItem customer) =>
+        logoUrls.TryGetValue(customer.Id, out var logoUrl) ? logoUrl : null;
+
+    private static string CustomerAvatarText(CustomerListItem customer) =>
+        string.IsNullOrWhiteSpace(customer.IataCode) ? Initials(customer.Name) : customer.IataCode.Trim().ToUpperInvariant();
+
+    private static string CustomerCodeText(CustomerListItem customer)
+    {
+        var codes = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(customer.IataCode))
+            codes.Add(customer.IataCode.Trim().ToUpperInvariant());
+
+        if (!string.IsNullOrWhiteSpace(customer.IcaoCode))
+            codes.Add(customer.IcaoCode.Trim().ToUpperInvariant());
+
+        return codes.Count == 0 ? customer.CountryName : string.Join(" / ", codes);
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "?";
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
+        };
+    }
+
     private sealed record StatusOption(string Label, bool? Value);
+    private sealed record GuidFilterOption(string Label, Guid? Value);
 }

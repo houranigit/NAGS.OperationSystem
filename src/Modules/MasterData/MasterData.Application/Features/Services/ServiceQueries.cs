@@ -3,6 +3,7 @@ using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Contracts;
+using MasterData.Contracts.Seeding;
 using MasterData.Domain.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,7 +36,12 @@ public sealed class GetServicesQueryHandler(IMasterDataDbContext db)
         var items = await ApplySort(query, request.Sort)
             .Skip(paging.Skip)
             .Take(paging.PageSize)
-            .Select(s => new ServiceListItemDto(s.Id, s.Name, s.Description, s.IsActive))
+            .Select(s => new ServiceListItemDto(
+                s.Id,
+                s.Name,
+                s.Description,
+                s.IsActive,
+                s.Id == WellKnownMasterDataIds.AircraftPerLandingService || s.Id == WellKnownMasterDataIds.OnCallService))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<ServiceListItemDto>(items, total);
@@ -67,9 +73,15 @@ public sealed class GetServiceByIdQueryHandler(IMasterDataDbContext db)
             return Error.NotFound("Service not found.", "MasterData.Service.NotFound");
 
         return new ServiceDto(
-            service.Id, service.Name, service.Description, service.IsActive,
+            service.Id, service.Name, service.Description, service.IsActive, ServiceSystemRecords.IsSystem(service.Id),
             service.CreatedAtUtc, service.UpdatedAtUtc, Convert.ToBase64String(service.RowVersion));
     }
+}
+
+internal static class ServiceSystemRecords
+{
+    public static bool IsSystem(Guid id) =>
+        id == WellKnownMasterDataIds.AircraftPerLandingService || id == WellKnownMasterDataIds.OnCallService;
 }
 
 public sealed record GetActiveServiceOptionsQuery : IQuery<IReadOnlyList<ServiceOptionDto>>;

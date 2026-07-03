@@ -1,0 +1,52 @@
+.cu-list-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+    min-width: 0;
+}
+
+.cu-list-avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--os-color-primary), var(--os-color-primary-strong));
+    color: var(--os-color-primary-contrast);
+    font-size: var(--os-text-xs);
+    font-weight: 700;
+}
+
+.cu-list-avatar--logo {
+    border: 1px solid var(--os-color-border);
+    background: var(--os-color-surface);
+}
+
+.cu-list-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 0.2rem;
+}
+
+.cu-list-text {
+    display: grid;
+    line-height: 1.3;
+    min-width: 0;
+}
+
+.cu-list-text strong {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cu-list-text span {
+    font-size: var(--os-text-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

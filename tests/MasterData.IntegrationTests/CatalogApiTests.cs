@@ -10,9 +10,9 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     private const string Base = MasterDataApiFactory.Base;
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
-    private sealed record CatalogDetail(Guid Id, string Name, string? Description, bool IsActive,
+    private sealed record CatalogDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
-    private sealed record CatalogItem(Guid Id, string Name, string? Description, bool IsActive);
+    private sealed record CatalogItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
     private sealed record AircraftTypeDetail(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
     private sealed record AircraftTypeItem(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive);
@@ -30,8 +30,44 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         var onCall = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/services/{WellKnownMasterDataIds.OnCallService}");
 
         adHoc!.Name.ShouldBe("Ad Hoc");
+        adHoc.IsSystem.ShouldBeTrue();
         aircraftPerLanding!.Name.ShouldBe("Aircraft Per Landing");
+        aircraftPerLanding.IsSystem.ShouldBeTrue();
         onCall!.Name.ShouldBe("On Call");
+        onCall.IsSystem.ShouldBeTrue();
+    }
+
+    public static IEnumerable<object[]> SeededCatalogRoutes()
+    {
+        yield return ["operation-types", WellKnownMasterDataIds.AdHocOperationType];
+        yield return ["services", WellKnownMasterDataIds.AircraftPerLandingService];
+        yield return ["services", WellKnownMasterDataIds.OnCallService];
+    }
+
+    [Theory]
+    [MemberData(nameof(SeededCatalogRoutes))]
+    public async Task Seeded_operation_and_service_catalogs_are_protected_from_update_and_deactivate(string route, Guid id)
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var before = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/{route}/{id}");
+
+        before.ShouldNotBeNull();
+        before!.IsSystem.ShouldBeTrue();
+
+        var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/{route}/{id}")
+        {
+            Content = JsonContent.Create(new { name = $"{before.Name} Updated", description = before.Description })
+        };
+        update.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
+
+        var updateResponse = await client.SendAsync(update);
+        updateResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict, await updateResponse.Content.ReadAsStringAsync());
+
+        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/{route}/{id}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
+
+        var deactivateResponse = await client.SendAsync(deactivate);
+        deactivateResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict, await deactivateResponse.Content.ReadAsStringAsync());
     }
 
     [Fact]

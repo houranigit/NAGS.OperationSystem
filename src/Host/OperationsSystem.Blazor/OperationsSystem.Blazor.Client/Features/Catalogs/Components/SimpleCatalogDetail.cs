@@ -5,6 +5,7 @@ internal sealed record SimpleCatalogDetail(
     string Name,
     string? Description,
     bool IsActive,
+    bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion);

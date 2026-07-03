@@ -3,6 +3,7 @@ using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Contracts;
+using MasterData.Contracts.Seeding;
 using MasterData.Domain.OperationTypes;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,7 +36,12 @@ public sealed class GetOperationTypesQueryHandler(IMasterDataDbContext db)
         var items = await ApplySort(query, request.Sort)
             .Skip(paging.Skip)
             .Take(paging.PageSize)
-            .Select(o => new OperationTypeListItemDto(o.Id, o.Name, o.Description, o.IsActive))
+            .Select(o => new OperationTypeListItemDto(
+                o.Id,
+                o.Name,
+                o.Description,
+                o.IsActive,
+                o.Id == WellKnownMasterDataIds.AdHocOperationType))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<OperationTypeListItemDto>(items, total);
@@ -67,9 +73,14 @@ public sealed class GetOperationTypeByIdQueryHandler(IMasterDataDbContext db)
             return Error.NotFound("Operation type not found.", "MasterData.OperationType.NotFound");
 
         return new OperationTypeDto(
-            operationType.Id, operationType.Name, operationType.Description, operationType.IsActive,
+            operationType.Id, operationType.Name, operationType.Description, operationType.IsActive, OperationTypeSystemRecords.IsSystem(operationType.Id),
             operationType.CreatedAtUtc, operationType.UpdatedAtUtc, Convert.ToBase64String(operationType.RowVersion));
     }
+}
+
+internal static class OperationTypeSystemRecords
+{
+    public static bool IsSystem(Guid id) => id == WellKnownMasterDataIds.AdHocOperationType;
 }
 
 public sealed record GetActiveOperationTypeOptionsQuery : IQuery<IReadOnlyList<OperationTypeOptionDto>>;

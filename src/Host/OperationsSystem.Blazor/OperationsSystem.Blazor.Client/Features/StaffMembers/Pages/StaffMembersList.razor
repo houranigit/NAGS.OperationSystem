@@ -29,6 +29,10 @@
             <Filters>
                 <DataListFilter TValue="bool?" Placeholder="@UiStrings.StaffMembers.AllStatuses"
                                 Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+                <DataListFilter TValue="Guid?" Placeholder="All stations"
+                                Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
+                <DataListFilter TValue="Guid?" Placeholder="All manpower types"
+                                Data="@manpowerTypeOptions" Value="@manpowerTypeFilter" ValueChanged="@OnManpowerTypeFilterChangedAsync" />
             </Filters>
             <Columns>
                 <RadzenDataGridColumn TItem="StaffMemberListItem" Property="EmployeeId" Title="@UiStrings.StaffMembers.EmployeeId" Width="140px">
@@ -84,7 +88,11 @@
 
     private string searchTerm = string.Empty;
     private bool? activeFilter;
+    private Guid? stationFilter;
+    private Guid? manpowerTypeFilter;
     private string? currentSort;
+    private IReadOnlyList<GuidFilterOption> stationOptions = [];
+    private IReadOnlyList<GuidFilterOption> manpowerTypeOptions = [];
 
     private readonly List<StatusOption> statusOptions =
     [
@@ -95,7 +103,7 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
-        await FetchAsync();
+        await Task.WhenAll(LoadFilterOptionsAsync(), FetchAsync());
     }
 
     private async Task OnPageSizeChangedAsync(int pageSize)
@@ -108,6 +116,37 @@
     {
         activeFilter = value;
         await ReloadAsync();
+    }
+
+    private async Task OnStationFilterChangedAsync(Guid? value)
+    {
+        stationFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnManpowerTypeFilterChangedAsync(Guid? value)
+    {
+        manpowerTypeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task LoadFilterOptionsAsync()
+    {
+        try
+        {
+            var stationsTask = MasterData.GetStationOptionsAsync();
+            var manpowerTypesTask = MasterData.GetManpowerTypeOptionsAsync();
+
+            await Task.WhenAll(stationsTask, manpowerTypesTask);
+
+            stationOptions = [.. (await stationsTask).Select(s => new GuidFilterOption($"{s.IataCode} - {s.Name}", s.Id))];
+            manpowerTypeOptions = [.. (await manpowerTypesTask).Select(m => new GuidFilterOption(m.Name, m.Id))];
+        }
+        catch (ApiException)
+        {
+            stationOptions = [];
+            manpowerTypeOptions = [];
+        }
     }
 
     private async Task LoadDataAsync(LoadDataArgs args)
@@ -127,7 +166,7 @@
         try
         {
             var result = await MasterData.GetStaffMembersAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, null, null, currentSort);
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, activeFilter, stationFilter, manpowerTypeFilter, currentSort);
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -201,4 +240,5 @@
     }
 
     private sealed record StatusOption(string Label, bool? Value);
+    private sealed record GuidFilterOption(string Label, Guid? Value);
 }

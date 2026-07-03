@@ -59,6 +59,8 @@ public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimePro
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
         if (service is null)
             return Error.NotFound("Service not found.", "MasterData.Service.NotFound");
+        if (ServiceSystemRecords.IsSystem(service.Id))
+            return Error.Conflict("System services cannot be modified.", "MasterData.Service.SystemProtected");
 
         var trimmedName = request.Name.Trim();
         if (await db.Services.AnyAsync(s => s.Name == trimmedName && s.Id != request.Id, cancellationToken))
@@ -94,6 +96,8 @@ public sealed class ActivateServiceCommandHandler(IMasterDataDbContext db, TimeP
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
         if (service is null)
             return Error.NotFound("Service not found.", "MasterData.Service.NotFound");
+        if (ServiceSystemRecords.IsSystem(service.Id))
+            return Error.Conflict("System services cannot be activated or deactivated.", "MasterData.Service.SystemProtected");
 
         service.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(service, request.RowVersion);
@@ -119,6 +123,8 @@ public sealed class DeactivateServiceCommandHandler(IMasterDataDbContext db, Tim
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
         if (service is null)
             return Error.NotFound("Service not found.", "MasterData.Service.NotFound");
+        if (ServiceSystemRecords.IsSystem(service.Id))
+            return Error.Conflict("System services cannot be activated or deactivated.", "MasterData.Service.SystemProtected");
 
         service.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(service, request.RowVersion);

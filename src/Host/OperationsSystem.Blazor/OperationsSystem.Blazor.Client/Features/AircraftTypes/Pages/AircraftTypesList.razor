@@ -29,7 +29,6 @@
                 <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Manufacturer" Title="Manufacturer" />
                 <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Model" Title="Model">
                     <Template Context="item">
                         <div class="os-role-cell">
@@ -38,6 +37,7 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Manufacturer" Title="Manufacturer" />
                 <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Notes" Title="Notes" Sortable="false">
                     <Template Context="item">@(string.IsNullOrWhiteSpace(item.Notes) ? UiStrings.Common.None : item.Notes)</Template>
                 </RadzenDataGridColumn>

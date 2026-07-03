@@ -11,51 +11,67 @@
 <RequireAuth>
     @if (Auth.User is { } user)
     {
-        <PageHeader Title="@UiStrings.Account.Title" Description="@user.Email" />
+        <div class="account-page">
+            <PageHeader Title="@UiStrings.Account.Title" Description="Manage your account settings and security preferences" />
 
-        <RadzenStack Gap="1.5rem">
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <h3>@UiStrings.Account.Profile</h3>
-                    <RadzenRow RowGap="1rem">
-                        <RadzenColumn Size="12" SizeMD="6">
-                            <DetailField Label="@UiStrings.Account.DisplayName" Value="@user.DisplayName" />
-                        </RadzenColumn>
-                        <RadzenColumn Size="12" SizeMD="6">
-                            <DetailField Label="@UiStrings.Auth.Email" Value="@user.Email" />
-                        </RadzenColumn>
-                        <RadzenColumn Size="12" SizeMD="6">
-                            <DetailField Label="@UiStrings.Account.Role" Value="@user.RoleName" />
-                        </RadzenColumn>
-                        <RadzenColumn Size="12" SizeMD="6">
-                            <DetailField Label="@UiStrings.Account.Permissions" Value="@user.Permissions.Count.ToString()" />
-                        </RadzenColumn>
-                    </RadzenRow>
-                </RadzenStack>
-            </RadzenCard>
+            <section class="account-summary-card">
+                <div class="account-person">
+                    <span class="account-avatar">@Initials(user.DisplayName)</span>
+                    <div class="account-person-text">
+                        <h2>@user.DisplayName</h2>
+                        <span class="account-role-chip">@user.RoleName</span>
+                        <p class="os-muted">@user.Email</p>
+                    </div>
+                </div>
 
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <h3>@UiStrings.Account.ChangePassword</h3>
+                <span class="account-summary-divider"></span>
+
+                <div class="account-stat-grid">
+                    <div class="account-stat">
+                        <span class="account-stat-icon"><RadzenIcon Icon="shield" /></span>
+                        <div>
+                            <span>@UiStrings.Account.Role</span>
+                            <strong>@user.RoleName</strong>
+                        </div>
+                    </div>
+                    <div class="account-stat">
+                        <span class="account-stat-icon"><RadzenIcon Icon="mail" /></span>
+                        <div>
+                            <span>@UiStrings.Auth.Email</span>
+                            <strong>@user.Email</strong>
+                        </div>
+                    </div>
+                    <div class="account-stat">
+                        <span class="account-stat-icon"><RadzenIcon Icon="vpn_key" /></span>
+                        <div>
+                            <span>@UiStrings.Account.Permissions</span>
+                            <strong>@user.Permissions.Count</strong>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="account-security-grid">
+                <section class="account-panel">
+                    <div class="account-panel-head">
+                        <span class="account-panel-icon"><RadzenIcon Icon="lock" /></span>
+                        <div>
+                            <h3>@UiStrings.Account.ChangePassword</h3>
+                            <p class="os-muted">Update your password to keep your account secure</p>
+                        </div>
+                    </div>
+
                     <RadzenTemplateForm TItem="PasswordModel" Data="@password" Submit="@ChangePasswordAsync">
-                        <RadzenStack Gap="1rem">
-                            <RadzenRow RowGap="1rem">
-                                <RadzenColumn Size="12" SizeMD="4">
-                                    <RadzenFormField Text="@UiStrings.Account.CurrentPassword" Variant="Variant.Outlined">
-                                        <RadzenPassword @bind-Value="password.Current" Style="width: 100%;" />
-                                    </RadzenFormField>
-                                </RadzenColumn>
-                                <RadzenColumn Size="12" SizeMD="4">
-                                    <RadzenFormField Text="@UiStrings.Auth.NewPassword" Variant="Variant.Outlined">
-                                        <RadzenPassword @bind-Value="password.New" Style="width: 100%;" />
-                                    </RadzenFormField>
-                                </RadzenColumn>
-                                <RadzenColumn Size="12" SizeMD="4">
-                                    <RadzenFormField Text="@UiStrings.Auth.ConfirmPassword" Variant="Variant.Outlined">
-                                        <RadzenPassword @bind-Value="password.Confirm" Style="width: 100%;" />
-                                    </RadzenFormField>
-                                </RadzenColumn>
-                            </RadzenRow>
+                        <div class="account-form-stack">
+                            <RadzenFormField Text="@UiStrings.Account.CurrentPassword" Variant="Variant.Outlined" class="account-field">
+                                <RadzenPassword @bind-Value="password.Current" class="account-control" />
+                            </RadzenFormField>
+                            <RadzenFormField Text="@UiStrings.Auth.NewPassword" Variant="Variant.Outlined" class="account-field">
+                                <RadzenPassword @bind-Value="password.New" class="account-control" />
+                            </RadzenFormField>
+                            <RadzenFormField Text="@UiStrings.Auth.ConfirmPassword" Variant="Variant.Outlined" class="account-field">
+                                <RadzenPassword @bind-Value="password.Confirm" class="account-control" />
+                            </RadzenFormField>
 
                             @if (!string.IsNullOrWhiteSpace(passwordError))
                             {
@@ -64,32 +80,49 @@
                                 </RadzenAlert>
                             }
 
-                            <div>
+                            <div class="account-actions">
                                 <RadzenButton ButtonType="ButtonType.Submit" ButtonStyle="ButtonStyle.Primary"
-                                              Disabled="@isChangingPassword" Text="@UiStrings.Account.ChangePassword" />
+                                              Icon="lock" Disabled="@isChangingPassword" Text="Update password" />
                             </div>
-                        </RadzenStack>
-                    </RadzenTemplateForm>
-                </RadzenStack>
-            </RadzenCard>
-
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
-                        <div>
-                            <h3>@UiStrings.Account.MfaTitle</h3>
-                            <p class="os-muted">@MfaDescription(user)</p>
                         </div>
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
-                            <StatusBadge Label="@MfaStatusLabel(user)" Tone="@MfaStatusTone(user)" />
-                            @if (user.MfaEnabled)
-                            {
-                                <RadzenButton ButtonStyle="ButtonStyle.Light" Icon="lock_open"
-                                              Disabled="@isDisablingMfa" Text="@UiStrings.Account.TurnOffMfa"
-                                              Click="@DisableMfaAsync" />
-                            }
-                        </RadzenStack>
-                    </RadzenStack>
+                    </RadzenTemplateForm>
+                </section>
+
+                <section class="account-panel">
+                    <div class="account-panel-head account-panel-head--split">
+                        <div class="account-panel-title">
+                            <span class="account-panel-icon account-panel-icon--success"><RadzenIcon Icon="verified_user" /></span>
+                            <div>
+                                <h3>@UiStrings.Account.MfaTitle</h3>
+                                <p class="os-muted">@MfaDescription(user)</p>
+                            </div>
+                        </div>
+                        <StatusBadge Label="@MfaStatusLabel(user)" Tone="@MfaStatusTone(user)" />
+                    </div>
+
+                    <div class="account-feature-list">
+                        <div class="account-feature">
+                            <span><RadzenIcon Icon="security" /></span>
+                            <div>
+                                <strong>Enhanced security</strong>
+                                <p class="os-muted">Add an extra layer of protection</p>
+                            </div>
+                        </div>
+                        <div class="account-feature">
+                            <span><RadzenIcon Icon="phone_iphone" /></span>
+                            <div>
+                                <strong>Authenticator app</strong>
+                                <p class="os-muted">Use apps like Google Authenticator</p>
+                            </div>
+                        </div>
+                        <div class="account-feature">
+                            <span><RadzenIcon Icon="lock" /></span>
+                            <div>
+                                <strong>Account protection</strong>
+                                <p class="os-muted">Protect against unauthorized access</p>
+                            </div>
+                        </div>
+                    </div>
 
                     @if (user.MfaEnrollmentRequired && !user.MfaEnabled)
                     {
@@ -104,14 +137,12 @@
                             <strong>@UiStrings.Account.RecoveryCodesTitle</strong>
                             <div>@UiStrings.Account.RecoveryCodesHint</div>
                         </RadzenAlert>
-                        <RadzenRow RowGap="0.5rem">
+                        <div class="account-recovery-grid">
                             @foreach (var recoveryCode in mfaRecoveryCodes)
                             {
-                                <RadzenColumn Size="6" SizeMD="3" @key="recoveryCode">
-                                    <span class="os-mono">@recoveryCode</span>
-                                </RadzenColumn>
+                                <span class="os-mono" @key="recoveryCode">@recoveryCode</span>
                             }
-                        </RadzenRow>
+                        </div>
                     }
                     else if (mfaEnrollment is not null)
                     {
@@ -151,9 +182,9 @@
                         </div>
 
                         <RadzenTemplateForm TItem="MfaConfirmModel" Data="@mfaConfirm" Submit="@ConfirmMfaAsync">
-                            <RadzenStack Gap="1rem">
-                                <RadzenFormField Text="@UiStrings.Auth.MfaCode" Variant="Variant.Outlined">
-                                    <RadzenTextBox @bind-Value="mfaConfirm.Code" Style="width: 100%;"
+                            <div class="account-form-stack">
+                                <RadzenFormField Text="@UiStrings.Auth.MfaCode" Variant="Variant.Outlined" class="account-field">
+                                    <RadzenTextBox @bind-Value="mfaConfirm.Code" class="account-control"
                                                    Immediate="true" AutoCompleteType="AutoCompleteType.OneTimeCode" />
                                 </RadzenFormField>
 
@@ -164,11 +195,11 @@
                                     </RadzenAlert>
                                 }
 
-                                <div>
+                                <div class="account-actions">
                                     <RadzenButton ButtonType="ButtonType.Submit" ButtonStyle="ButtonStyle.Primary"
                                                   Disabled="@isConfirmingMfa" Text="@UiStrings.Account.ConfirmMfa" />
                                 </div>
-                            </RadzenStack>
+                            </div>
                         </RadzenTemplateForm>
                     }
                     else if (!user.MfaEnabled)
@@ -180,92 +211,112 @@
                             </RadzenAlert>
                         }
 
-                        <div>
-                            <RadzenButton ButtonStyle="ButtonStyle.Primary" Icon="security"
-                                          Disabled="@isStartingMfa" Text="@UiStrings.Account.StartMfa"
-                                          Click="@StartMfaEnrollmentAsync" />
+                        <div class="account-actions">
+                            <RadzenButton ButtonStyle="ButtonStyle.Light" Icon="verified_user"
+                                          class="account-mfa-button" Disabled="@isStartingMfa"
+                                          Text="Enable MFA" Click="@StartMfaEnrollmentAsync" />
                         </div>
-                    }
-                    else if (!string.IsNullOrWhiteSpace(mfaError))
-                    {
-                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
-                            @mfaError
-                        </RadzenAlert>
-                    }
-                </RadzenStack>
-            </RadzenCard>
-
-            <RadzenCard>
-                <RadzenStack Gap="1rem">
-                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="1rem">
-                        <div>
-                            <h3>@UiStrings.Account.Sessions</h3>
-                            <p class="os-muted">@UiStrings.Account.SessionsDescription</p>
-                        </div>
-                        <RadzenButton Text="@UiStrings.Account.SignOutOthers" ButtonStyle="ButtonStyle.Light" Icon="devices"
-                                      Disabled="@(sessionsTotalCount <= 1)" Click="@RevokeOthersAsync" />
-                    </RadzenStack>
-
-                    @if (sessionsLoading)
-                    {
-                        <LoadingCard />
-                    }
-                    else if (sessionsError)
-                    {
-                        <ErrorState OnRetry="@LoadSessionsAsync" />
-                    }
-                    else if (sessions is null || sessions.Count == 0)
-                    {
-                        <EmptyState Title="@UiStrings.Sessions.Empty" Icon="devices" />
                     }
                     else
                     {
-                        <RadzenDataGrid Data="@sessions" TItem="UserSession" Count="@sessionsTotalCount"
-                                        LoadData="@LoadSessionsDataAsync" AllowPaging="true" PageSize="@sessionsPageSize"
-                                        PageSizeOptions="@PageSizes" ShowPagingSummary="true"
-                                        IsLoading="@sessionsLoading" GridLines="DataGridGridLines.Horizontal">
-                            <Columns>
-                                <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
-                                    <Template Context="session">
-                                        @(string.IsNullOrWhiteSpace(session.UserAgent) ? "—" : session.UserAgent)
+                        @if (!string.IsNullOrWhiteSpace(mfaError))
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                                @mfaError
+                            </RadzenAlert>
+                        }
+
+                        <div class="account-actions">
+                            <RadzenButton ButtonStyle="ButtonStyle.Light" Icon="lock_open"
+                                          Disabled="@isDisablingMfa" Text="@UiStrings.Account.TurnOffMfa"
+                                          Click="@DisableMfaAsync" />
+                        </div>
+                    }
+                </section>
+            </div>
+
+            <section class="account-panel account-panel--sessions">
+                <div class="account-panel-head account-panel-head--split">
+                    <div class="account-panel-title">
+                        <span class="account-panel-icon account-panel-icon--muted"><RadzenIcon Icon="desktop_windows" /></span>
+                        <div>
+                            <h3>Active sessions</h3>
+                            <p class="os-muted">@UiStrings.Account.SessionsDescription</p>
+                        </div>
+                    </div>
+                    <RadzenButton Text="@UiStrings.Account.SignOutOthers" ButtonStyle="ButtonStyle.Light" Icon="logout"
+                                  Disabled="@(sessionsTotalCount <= 1)" Click="@RevokeOthersAsync" />
+                </div>
+
+                @if (sessionsLoading)
+                {
+                    <LoadingCard />
+                }
+                else if (sessionsError)
+                {
+                    <ErrorState OnRetry="@LoadSessionsAsync" />
+                }
+                else if (sessions is null || sessions.Count == 0)
+                {
+                    <EmptyState Title="@UiStrings.Sessions.Empty" Icon="devices" />
+                }
+                else
+                {
+                    <RadzenDataGrid Data="@sessions" TItem="UserSession" Count="@sessionsTotalCount"
+                                    LoadData="@LoadSessionsDataAsync" AllowPaging="true" PageSize="@sessionsPageSize"
+                                    PageSizeOptions="@PageSizes" ShowPagingSummary="true"
+                                    IsLoading="@sessionsLoading" GridLines="DataGridGridLines.Horizontal"
+                                    class="account-sessions-grid">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Device">
+                                <Template Context="session">
+                                    <div class="account-session-device">
+                                        <span class="account-session-icon"><RadzenIcon Icon="desktop_windows" /></span>
+                                        <div>
+                                            <strong>@SessionDeviceTitle(session)</strong>
+                                            <span class="os-muted">@SessionDeviceSubtitle(session)</span>
+                                        </div>
                                         @if (session.IsCurrent)
                                         {
-                                            <span>&nbsp;</span>
                                             <StatusBadge Label="@UiStrings.Account.ThisDevice" Tone="success" />
                                         }
-                                    </Template>
-                                </RadzenDataGridColumn>
-                                <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" />
-                                <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created">
-                                    <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
-                                </RadzenDataGridColumn>
-                                <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="120px">
-                                    <Template Context="session">
-                                        @if (session.IsActive)
-                                        {
-                                            <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
-                                        }
-                                        else
-                                        {
-                                            <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="neutral" />
-                                        }
-                                    </Template>
-                                </RadzenDataGridColumn>
-                                <RadzenDataGridColumn TItem="UserSession" Title="" Width="110px" Sortable="false" TextAlign="TextAlign.End">
-                                    <Template Context="session">
-                                        @if (session is { IsActive: true, IsCurrent: false })
-                                        {
-                                            <RadzenButton Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
-                                                          Text="@UiStrings.Account.RevokeSession" Click="@(() => RevokeSessionAsync(session.Id))" />
-                                        }
-                                    </Template>
-                                </RadzenDataGridColumn>
-                            </Columns>
-                        </RadzenDataGrid>
-                    }
-                </RadzenStack>
-            </RadzenCard>
-        </RadzenStack>
+                                    </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" Width="160px" />
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created" Width="210px">
+                                <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="130px">
+                                <Template Context="session">
+                                    @if (session.IsActive)
+                                    {
+                                        <StatusBadge Label="@UiStrings.Sessions.Active" Tone="success" />
+                                    }
+                                    else
+                                    {
+                                        <StatusBadge Label="@UiStrings.Sessions.Revoked" Tone="neutral" />
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Common.Actions" Width="120px" Sortable="false" TextAlign="TextAlign.Center">
+                                <Template Context="session">
+                                    @if (session is { IsActive: true, IsCurrent: false })
+                                    {
+                                        <RadzenButton Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
+                                                      Text="@UiStrings.Account.RevokeSession" Click="@(() => RevokeSessionAsync(session.Id))" />
+                                    }
+                                    else
+                                    {
+                                        <span class="os-muted">-</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            </section>
+        </div>
     }
 </RequireAuth>
 
@@ -480,6 +531,47 @@
         {
             isDisablingMfa = false;
         }
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "?";
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
+        };
+    }
+
+    private static string SessionDeviceTitle(UserSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.UserAgent))
+            return UiStrings.Common.None;
+
+        var userAgent = session.UserAgent.Trim();
+        var closeParen = userAgent.IndexOf(')', StringComparison.Ordinal);
+        if (closeParen > 0)
+            return userAgent[..(closeParen + 1)];
+
+        return userAgent.Length <= 72 ? userAgent : userAgent[..72];
+    }
+
+    private static string SessionDeviceSubtitle(UserSession session)
+    {
+        if (string.IsNullOrWhiteSpace(session.UserAgent))
+            return UiStrings.Common.None;
+
+        var userAgent = session.UserAgent.Trim();
+        var closeParen = userAgent.IndexOf(')', StringComparison.Ordinal);
+        var subtitle = closeParen >= 0 && closeParen + 1 < userAgent.Length
+            ? userAgent[(closeParen + 1)..].Trim()
+            : userAgent;
+
+        return subtitle.Length <= 72 ? subtitle : subtitle[..72];
     }
 
     private static string MfaStatusLabel(AuthenticatedUser user)

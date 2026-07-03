@@ -68,13 +68,15 @@ public sealed record ServiceListItemDto(
     Guid Id,
     string Name,
     string? Description,
-    bool IsActive);
+    bool IsActive,
+    bool IsSystem);
 
 public sealed record ServiceDto(
     Guid Id,
     string Name,
     string? Description,
     bool IsActive,
+    bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion);
@@ -87,13 +89,15 @@ public sealed record OperationTypeListItemDto(
     Guid Id,
     string Name,
     string? Description,
-    bool IsActive);
+    bool IsActive,
+    bool IsSystem);
 
 public sealed record OperationTypeDto(
     Guid Id,
     string Name,
     string? Description,
     bool IsActive,
+    bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion);
@@ -218,6 +222,7 @@ public sealed record CustomerListItemDto(
     string Name,
     Guid CountryId,
     string CountryName,
+    string? LogoFileReference,
     bool IsActive,
     int ContactCount);
 
