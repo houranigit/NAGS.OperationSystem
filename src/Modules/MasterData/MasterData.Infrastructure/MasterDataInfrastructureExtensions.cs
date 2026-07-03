@@ -5,7 +5,9 @@ using Identity.Contracts;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Application.Features.PortalAccess;
+using MasterData.Contracts.Readers;
 using MasterData.Infrastructure.Persistence;
+using MasterData.Infrastructure.Readers;
 using MasterData.Infrastructure.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -34,6 +36,9 @@ public static class MasterDataInfrastructureExtensions
         services.AddScoped<IMasterDataDbContext>(sp => sp.GetRequiredService<MasterDataDbContext>());
 
         services.AddScoped<IMasterDataScope, MasterDataScope>();
+
+        // Cross-module read seam consumed by Operations (validation + snapshotting).
+        services.AddScoped<IMasterDataReader, MasterDataReader>();
 
         services.TryAddSingleton(TimeProvider.System);
 

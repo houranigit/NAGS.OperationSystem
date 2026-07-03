@@ -34,6 +34,13 @@
     <Project Path="src/Modules/Audit/Audit.Domain/Audit.Domain.csproj" />
     <Project Path="src/Modules/Audit/Audit.Infrastructure/Audit.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Operations/">
+    <Project Path="src/Modules/Operations/Operations.Api/Operations.Api.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Application/Operations.Application.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Contracts/Operations.Contracts.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Domain/Operations.Domain.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Infrastructure/Operations.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Identity.Application.UnitTests/Identity.Application.UnitTests.csproj" />
     <Project Path="tests/Identity.Domain.UnitTests/Identity.Domain.UnitTests.csproj" />
@@ -42,6 +49,9 @@
     <Project Path="tests/MasterData.Application.UnitTests/MasterData.Application.UnitTests.csproj" />
     <Project Path="tests/MasterData.Domain.UnitTests/MasterData.Domain.UnitTests.csproj" />
     <Project Path="tests/MasterData.IntegrationTests/MasterData.IntegrationTests.csproj" />
+    <Project Path="tests/Operations.Domain.UnitTests/Operations.Domain.UnitTests.csproj" />
+    <Project Path="tests/Operations.Application.UnitTests/Operations.Application.UnitTests.csproj" />
+    <Project Path="tests/Operations.IntegrationTests/Operations.IntegrationTests.csproj" />
     <Project Path="tests/OperationsSystem.Blazor.UnitTests/OperationsSystem.Blazor.UnitTests.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,76 @@
+@page "/operations/dashboard"
+@inject OperationsApiClient Operations
+
+<PageTitle>Operations dashboard</PageTitle>
+
+<RequirePermission Permission="@OperationsPermissions.DashboardView">
+    <div class="os-list-page">
+        <PageHeader Title="Operations" Description="Flight and work-order activity across your scope." />
+
+        @if (isLoading)
+        {
+            <LoadingCard />
+        }
+        else if (loadError)
+        {
+            <ErrorState Message="Could not load the dashboard." />
+        }
+        else if (data is not null)
+        {
+            <RadzenRow Gap="1rem" class="rz-mt-4">
+                <RadzenColumn Size="12" SizeMd="4">
+                    <RadzenCard>
+                        <RadzenText TextStyle="TextStyle.Overline">Scheduled flights</RadzenText>
+                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.ScheduledFlights</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="12" SizeMd="4">
+                    <RadzenCard>
+                        <RadzenText TextStyle="TextStyle.Overline">In progress</RadzenText>
+                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.InProgressFlights</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="12" SizeMd="4">
+                    <RadzenCard>
+                        <RadzenText TextStyle="TextStyle.Overline">Pending review</RadzenText>
+                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.PendingReviewWorkOrders</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="12" SizeMd="4">
+                    <RadzenCard>
+                        <RadzenText TextStyle="TextStyle.Overline">Completed flights</RadzenText>
+                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.CompletedFlights</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+                <RadzenColumn Size="12" SizeMd="4">
+                    <RadzenCard>
+                        <RadzenText TextStyle="TextStyle.Overline">Canceled flights</RadzenText>
+                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.CanceledFlights</RadzenText>
+                    </RadzenCard>
+                </RadzenColumn>
+            </RadzenRow>
+        }
+    </div>
+</RequirePermission>
+
+@code {
+    private OperationsDashboard? data;
+    private bool isLoading = true;
+    private bool loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            data = await Operations.GetDashboardAsync();
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

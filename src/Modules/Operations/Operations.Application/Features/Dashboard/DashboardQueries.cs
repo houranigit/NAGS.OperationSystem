@@ -1,0 +1,62 @@
+using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Domain.Results;
+using Microsoft.EntityFrameworkCore;
+using Operations.Application.Abstractions;
+using Operations.Application.Authorization;
+using Operations.Application.Contracts;
+using Operations.Application.Features.Flights;
+using Operations.Domain.Enumerations;
+
+namespace Operations.Application.Features.Dashboard;
+
+public sealed record GetOperationsDashboardQuery : IQuery<OperationsDashboardDto>;
+
+public sealed class GetOperationsDashboardQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+    : IQueryHandler<GetOperationsDashboardQuery, OperationsDashboardDto>
+{
+    public async Task<Result<OperationsDashboardDto>> Handle(GetOperationsDashboardQuery request, CancellationToken cancellationToken)
+    {
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+
+        var flights = db.Flights.AsNoTracking().AsQueryable();
+        var workOrders = db.WorkOrders.AsNoTracking().AsQueryable();
+        if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
+        {
+            flights = flights.Where(f => f.Station.StationId == stationId);
+            workOrders = workOrders.Where(w => w.Station.StationId == stationId);
+        }
+
+        var scheduled = await flights.CountAsync(f => f.Status == FlightStatus.Scheduled, cancellationToken);
+        var inProgress = await flights.CountAsync(f => f.Status == FlightStatus.InProgress, cancellationToken);
+        var completed = await flights.CountAsync(f => f.Status == FlightStatus.Completed, cancellationToken);
+        var canceled = await flights.CountAsync(f => f.Status == FlightStatus.Canceled, cancellationToken);
+        var pendingReview = await workOrders.CountAsync(w => w.Status == WorkOrderStatus.Submitted, cancellationToken);
+
+        return new OperationsDashboardDto(scheduled, inProgress, pendingReview, completed, canceled);
+    }
+}
+
+// --- Duplicate candidates lookup (called by the ad-hoc UI before creating) ---
+
+public sealed record FindDuplicateCandidatesQuery(
+    Guid CustomerId,
+    string FlightNumber,
+    DateTimeOffset ScheduledArrivalUtc) : IQuery<IReadOnlyList<DuplicateCandidateDto>>;
+
+public sealed class FindDuplicateCandidatesQueryHandler(IOperationsScope scope, FlightDuplicateDetector detector)
+    : IQueryHandler<FindDuplicateCandidatesQuery, IReadOnlyList<DuplicateCandidateDto>>
+{
+    public async Task<Result<IReadOnlyList<DuplicateCandidateDto>>> Handle(FindDuplicateCandidatesQuery request, CancellationToken cancellationToken)
+    {
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        if (scopeResult.Value.StationId is not { } stationId)
+            return Error.Forbidden("Only station staff can check for duplicates.", "Operations.Flight.DuplicateCheckNotAllowed");
+
+        var candidates = await detector.FindAsync(request.CustomerId, stationId, request.FlightNumber, request.ScheduledArrivalUtc, cancellationToken);
+        return Result.Success(candidates);
+    }
+}

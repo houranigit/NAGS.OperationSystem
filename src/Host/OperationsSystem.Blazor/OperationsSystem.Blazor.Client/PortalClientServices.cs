@@ -25,6 +25,7 @@ public static class PortalClientServices
         services.AddScoped<BrowserApiClient>();
         services.AddScoped<IdentityApiClient>();
         services.AddScoped<MasterDataApiClient>();
+        services.AddScoped<OperationsApiClient>();
         services.AddScoped<AuditApiClient>();
         services.AddScoped<AuthSession>();
 

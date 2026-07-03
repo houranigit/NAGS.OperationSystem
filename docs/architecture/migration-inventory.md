@@ -92,19 +92,23 @@ Design source of truth: `docs/modules/master-data-foundation.md`.
 
 ### Operations
 
+See `docs/modules/operations-foundation.md` (agreed domain design) and `docs/modules/operations-module-plan.md` (build plan). Backend phases 0-6 implemented; portal UI partial (dashboard, flights list, review queue).
+
 | Feature | Status | Old reference files | New location | Notes |
 |---|---|---|---|---|
-| Flight scheduling (create, batch create, update, cancel) | not-started | `Operations.Domain/Aggregates/Flight/Flight.cs`, `Operations.Application/Features/Flight/Commands/{CreateFlight,BatchCreateFlights,UpdateFlight,CancelFlight}/*` | | Customer/station/OT snapshots, services, crew |
-| AOG flights (claim, auto-WO job) | not-started | `Operations.Application/Features/Flight/Commands/ClaimAogFlight/*`, `Operations.Infrastructure/BackgroundJobs/AutoAogWorkOrderJob.cs` | | Auto-issue WO for overdue AOG flights |
-| Ad-hoc flights & work orders from scratch | not-started | `Operations.Application/Features/Flight/Commands/CreateAdHocWorkOrderFromScratch/*` | | |
-| StaffMember flight assignment / invitation | not-started | `Operations.Application/Features/Flight/Commands/{InviteEmployeeToFlight,InviteEmployeesToFlight}/*`, `Domain/Entities/FlightAssignedEmployee.cs` | | Rename legacy Employee terminology; emits a StaffMember invitation integration event |
-| Work order authoring (service lines, tasks, attachments, RTR) | not-started | `Operations.Domain/Aggregates/WorkOrder/WorkOrder.cs`, `Domain/Entities/WorkOrderTask*.cs`, `Features/WorkOrder/Commands/{CreateWorkOrderForFlight,UpdateWorkOrder,RecordReturnToRampLines}/*` | | Unified task model with staff members/tools/materials/general supports |
-| Work order review workflow (approve, reject, revoke) | not-started | `Operations.Application/Features/WorkOrder/Commands/{ApproveWorkOrder,RejectWorkOrder,RevokeWorkOrder}/*` | | Approval assigns WO number; debrief gate from contract |
-| Work order deferred deletion | not-started | `Operations.Application/Features/WorkOrder/Commands/DeleteWorkOrder/*`, `Infrastructure/BackgroundJobs/WorkOrderDeletionJob.cs` | | Mark-for-deletion → hard delete after delay |
-| Per-station work order numbering | not-started | `Operations.Domain/StationWorkOrderSequence/*`, `Operations.Infrastructure/Persistence/{StationWorkOrderCounter.cs,Repositories/StationWorkOrderSequenceRepository.cs}` | | Serializable allocation; exception to optimistic concurrency |
-| Flight queries (by id, paginated, lights, in-period) | not-started | `Operations.Application/Features/Flight/Queries/{GetFlightById,GetPaginatedFlights,GetPaginatedFlightLights,GetFlightLightsInPeriod}/*` | | Scheduler grids |
-| Operations dashboard KPIs | not-started | `Operations.Application/Features/Dashboard/Queries/GetOperationsDashboard/*` | | |
-| Customer signature capture (work order) | not-started | `Operations.Domain/Aggregates/WorkOrder/WorkOrder.cs` (CustomerSignature) | | Move bytes to object storage (metadata in DB) |
+| Flight scheduling (schedule, update, change-number) | in-progress | `Operations.Domain/Aggregates/Flight/Flight.cs`, `Operations.Application/Features/Flight/Commands/{CreateFlight,BatchCreateFlights,UpdateFlight}/*` | `Operations.Domain/Flights/Flight.cs`, `Operations.Application/Features/Flights/FlightCommands.cs` | Snapshots via MasterData read seam; original+current flight number; batch create still pending |
+| Per-Landing flights (claim, auto-WO job) | in-progress | `ClaimAogFlight/*`, `AutoAogWorkOrderJob.cs` | `Features/Flights/FlightLifecycleCommands.cs` (ClaimPerLandingFlight), `Operations.Infrastructure/BackgroundJobs/AutoWorkOrderJob.cs` | Aircraft Per Landing = no-service designation; auto-WO at STD+60m (appsettings) |
+| Ad-hoc flights + work order from scratch | in-progress | `CreateAdHocWorkOrderFromScratch/*` | `Features/Flights/FlightLifecycleCommands.cs` (CreateAdHocFlightWithWorkOrder) | Includes duplicate detection warn/link/flag |
+| Duplicate detection + merge (soft-archive) | in-progress | (none in legacy) | `Features/Flights/FlightDuplicateDetector.cs`, `Features/Merge/MergeCommands.cs` | Scored ad-hoc dedupe; deterministic WO dedupe; Superseded/Merged, never hard-deleted |
+| StaffMember flight assignment | in-progress | `InviteEmployeeToFlight/*`, `FlightAssignedEmployee.cs` | `Features/Flights/FlightCommands.cs` (AssignEmployees), `Domain/Flights/FlightAssignedEmployee.cs` | Notifications integration event pending |
+| Work order authoring (service lines, tasks, resources, attachments, RTR) | in-progress | `WorkOrder.cs`, `WorkOrderTask*.cs`, `{CreateWorkOrderForFlight,UpdateWorkOrder,RecordReturnToRampLines}/*` | `Domain/WorkOrders/*`, `Features/WorkOrders/WorkOrderCommands.cs` | Multi-employee lines & tasks; Planned/Extra tags; attachment metadata to storage; RTR append supported at domain level |
+| Cancellation as work order | in-progress | `CancelFlight/*` | `Features/Flights/FlightLifecycleCommands.cs` (CancelFlight) | Cancellation = work order (numbered, billable); competing WO = duplicate |
+| Work order review (submit, approve→billing, reject, return) | in-progress | `{ApproveWorkOrder,RejectWorkOrder,RevokeWorkOrder}/*` | `Features/WorkOrders/{WorkOrderCommands,WorkOrderReviewCommands}.cs` | Approve locks + assigns number + publishes `FlightSentToBilling` stub; admin return-to-review unlocks |
+| Per-station work order numbering | in-progress | `StationWorkOrderCounter.cs` | `Domain/Sequences/StationWorkOrderSequence.cs`, `Infrastructure/Persistence/WorkOrderNumberAllocator.cs` | Serializable allocation; `{IATA}-{nnnn}` |
+| Flight queries (list, by id, calendar) | in-progress | `{GetFlightById,GetPaginatedFlights,GetFlightLightsInPeriod}/*` | `Features/Flights/FlightQueries.cs` | Station-scoped |
+| Operations dashboard KPIs | in-progress | `GetOperationsDashboard/*` | `Features/Dashboard/DashboardQueries.cs` + Blazor `Features/Operations/Pages/OperationsDashboardPage.razor` | |
+| Blazor portal: dashboard, flights list, review queue | in-progress | (Host.Web pages) | `OperationsSystem.Blazor.Client/Features/Operations/**`, `Api/OperationsApiClient.cs` | Scheduler calendar, WO authoring/review dialogs, ad-hoc & merge screens still pending |
+| Customer signature capture (work order) | in-progress | `WorkOrder.cs` (CustomerSignature) | `Domain/WorkOrders/WorkOrder.cs` (CustomerSignatureReference) | Optional; stores storage reference, not bytes |
 | [DEFERRED] Mobile v2 BFF endpoints | not-started | `Operations.Presentation/Mobile/MobileV2Endpoints.cs` | | Reference only; mobile deferred for v1.0.0 |
 | [DEFERRED] Mobile offline sync (REST + hub) | not-started | `Operations.Presentation/Mobile/Sync/MobileSyncEndpoints.cs`, `BuildingBlocks.Application/Abstractions/Mobile/Sync/*`, `Host.Web` `MobileSyncHub` | | Reference only; mobile deferred |
 

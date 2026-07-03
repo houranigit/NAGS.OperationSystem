@@ -58,6 +58,39 @@
                 }
             </AuthorizeView>
 
+            <AuthorizeView Context="operations">
+                @{
+                    var canOpsDashboard = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.DashboardView);
+                    var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
+                    var canOpsReview = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
+                }
+                @if (canOpsDashboard || canOpsFlights || canOpsReview)
+                {
+                    <p class="os-nav-section">Operations</p>
+                }
+                @if (canOpsDashboard)
+                {
+                    <NavLink href="/operations/dashboard" class="os-nav-link" title="Operations dashboard" @onclick="CloseNav">
+                        <RadzenIcon Icon="insights" />
+                        <span>Operations</span>
+                    </NavLink>
+                }
+                @if (canOpsFlights)
+                {
+                    <NavLink href="/operations/flights" class="os-nav-link" title="Flights" @onclick="CloseNav">
+                        <RadzenIcon Icon="flight" />
+                        <span>Flights</span>
+                    </NavLink>
+                }
+                @if (canOpsReview)
+                {
+                    <NavLink href="/operations/review-queue" class="os-nav-link" title="Work order review" @onclick="CloseNav">
+                        <RadzenIcon Icon="fact_check" />
+                        <span>Work order review</span>
+                    </NavLink>
+                }
+            </AuthorizeView>
+
             <AuthorizeView Context="masterData">
                 @{
                     var canCountries = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CountriesView);

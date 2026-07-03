@@ -21,6 +21,8 @@ using Identity.Infrastructure;
 using Identity.Infrastructure.Security;
 using MasterData.Api;
 using MasterData.Infrastructure;
+using Operations.Api;
+using Operations.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +62,7 @@ builder.Services.AddOperationsOpenTelemetry(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<Identity.Infrastructure.Persistence.IdentityDbContext>("identity-db", tags: ["ready"])
     .AddDbContextCheck<MasterData.Infrastructure.Persistence.MasterDataDbContext>("masterdata-db", tags: ["ready"])
+    .AddDbContextCheck<Operations.Infrastructure.Persistence.OperationsDbContext>("operations-db", tags: ["ready"])
     .AddDbContextCheck<Audit.Infrastructure.Persistence.AuditDbContext>("audit-db", tags: ["ready"]);
 
 // Serialize enums as their names across the API so contracts are stable and human-readable.
@@ -71,7 +74,8 @@ var moduleApplicationAssemblies = new[]
 {
     Audit.Application.AssemblyReference.Assembly,
     Identity.Application.AssemblyReference.Assembly,
-    MasterData.Application.AssemblyReference.Assembly
+    MasterData.Application.AssemblyReference.Assembly,
+    Operations.Application.AssemblyReference.Assembly
 };
 
 builder.Services.AddMediatR(cfg =>
@@ -93,6 +97,7 @@ builder.Services.AddDurableEmail(builder.Configuration, builder.Environment);
 builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
 builder.Services.AddMasterDataModule(builder.Configuration);
+builder.Services.AddOperationsModule(builder.Configuration);
 
 // Compose the cross-module permission catalog after all module catalogs are registered.
 builder.Services.AddPermissionRegistry();
@@ -213,6 +218,7 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 new AuditEndpointModule().MapEndpoints(app);
 new IdentityEndpointModule().MapEndpoints(app);
 new MasterDataEndpointModule().MapEndpoints(app);
+new OperationsEndpointModule().MapEndpoints(app);
 
 var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")
     ?? app.Environment.IsDevelopment();
@@ -223,6 +229,7 @@ if (applyMigrationsOnStartup)
     await app.Services.MigrateAuditAsync();
     await app.Services.MigrateAndSeedIdentityAsync();
     await app.Services.MigrateAndSeedMasterDataAsync();
+    await app.Services.MigrateOperationsAsync();
 }
 else
 {
@@ -233,7 +240,7 @@ app.Run();
 
 static void WarnForSlowSqlConnectionSettings(Microsoft.Extensions.Logging.ILogger logger, IConfiguration configuration)
 {
-    string[] connectionNames = ["Default", "Identity", "MasterData", "Audit"];
+    string[] connectionNames = ["Default", "Identity", "MasterData", "Operations", "Audit"];
     var inspected = new HashSet<string>(StringComparer.Ordinal);
 
     foreach (var connectionName in connectionNames)

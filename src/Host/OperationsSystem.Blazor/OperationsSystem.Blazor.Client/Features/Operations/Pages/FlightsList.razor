@@ -1,0 +1,91 @@
+@page "/operations/flights"
+@inject OperationsApiClient Operations
+
+<PageTitle>Flights</PageTitle>
+
+<RequirePermission Permission="@OperationsPermissions.FlightsView">
+    <div class="os-list-page">
+        <PageHeader Title="Flights" Description="Scheduled and ad-hoc flights within your scope." />
+
+        <RadzenCard class="rz-mt-4">
+            <RadzenTextBox @bind-Value="searchTerm" Placeholder="Search flight number or customer..." class="rz-mb-3" />
+            <RadzenButton Text="Search" Icon="search" ButtonStyle="ButtonStyle.Secondary" Click="@ReloadAsync" class="rz-mb-3 rz-ml-2" />
+
+            @if (loadError)
+            {
+                <ErrorState Message="Could not load flights." />
+            }
+            else
+            {
+                <RadzenDataGrid @ref="grid" Data="@items" Count="@totalCount" LoadData="@LoadDataAsync"
+                                AllowPaging="true" PageSize="20" IsLoading="@isLoading" TItem="FlightListItem"
+                                AllowSorting="false" EmptyText="No flights found.">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" Title="Flight #" />
+                        <RadzenDataGridColumn TItem="FlightListItem" Property="CustomerName" Title="Customer" />
+                        <RadzenDataGridColumn TItem="FlightListItem" Property="StationIata" Title="Station" />
+                        <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" Title="Operation" />
+                        <RadzenDataGridColumn TItem="FlightListItem" Title="STA (UTC)">
+                            <Template Context="flight">@flight.ScheduledArrivalUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="FlightListItem" Property="Status" Title="Status" />
+                        <RadzenDataGridColumn TItem="FlightListItem" Title="Per landing">
+                            <Template Context="flight">@(flight.IsPerLanding ? "Yes" : "")</Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private RadzenDataGrid<FlightListItem>? grid;
+    private IReadOnlyList<FlightListItem> items = [];
+    private int totalCount;
+    private bool isLoading;
+    private bool loadError;
+    private string? searchTerm;
+    private int currentPage = 1;
+    private int currentPageSize = 20;
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? 20;
+        currentPage = ((args.Skip ?? 0) / currentPageSize) + 1;
+        await FetchAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (grid is not null)
+            await grid.Reload();
+        else
+            await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}
