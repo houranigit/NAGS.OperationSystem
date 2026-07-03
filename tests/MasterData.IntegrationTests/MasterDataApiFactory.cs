@@ -97,7 +97,7 @@ public sealed class MasterDataApiFactory : WebApplicationFactory<Program>, IAsyn
         var me = await client.GetFromJsonAsync<MeResponse>($"{IdentityBase}/me");
         me.ShouldNotBeNull();
 
-        if (me!.MfaEnrollmentRequired)
+        if (!me!.MfaEnabled)
         {
             var enrollmentResponse = await client.PostAsync($"{IdentityBase}/auth/mfa/enroll", content: null);
             enrollmentResponse.StatusCode.ShouldBe(HttpStatusCode.OK);

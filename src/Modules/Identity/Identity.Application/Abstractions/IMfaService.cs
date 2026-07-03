@@ -22,4 +22,6 @@ public interface IMfaSecretProtector
     public string Protect(string plaintext);
 
     public string Unprotect(string protectedValue);
+
+    public bool TryUnprotect(string protectedValue, out string plaintext);
 }

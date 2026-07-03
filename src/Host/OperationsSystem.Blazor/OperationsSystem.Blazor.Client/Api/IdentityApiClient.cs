@@ -31,6 +31,9 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task<MfaRecoveryCodes> ConfirmMfaAsync(ConfirmMfaRequest request, CancellationToken ct = default) =>
         api.PostAsync<ConfirmMfaRequest, MfaRecoveryCodes>("/identity/auth/mfa/confirm", request, ct);
 
+    public Task DisableMfaAsync(CancellationToken ct = default) =>
+        api.PostAsync("/identity/auth/mfa/disable", ct);
+
     // --- Users -------------------------------------------------------------
 
     public Task<PagedResult<UserListItem>> GetUsersAsync(

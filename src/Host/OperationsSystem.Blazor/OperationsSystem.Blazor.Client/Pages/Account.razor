@@ -4,6 +4,7 @@
 @inject IdentityApiClient Identity
 @inject NavigationManager Navigation
 @inject NotificationService Notifications
+@inject DialogService DialogService
 
 <PageTitle>@UiStrings.Account.Title</PageTitle>
 
@@ -79,7 +80,15 @@
                             <h3>@UiStrings.Account.MfaTitle</h3>
                             <p class="os-muted">@MfaDescription(user)</p>
                         </div>
-                        <StatusBadge Label="@MfaStatusLabel(user)" Tone="@MfaStatusTone(user)" />
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
+                            <StatusBadge Label="@MfaStatusLabel(user)" Tone="@MfaStatusTone(user)" />
+                            @if (user.MfaEnabled)
+                            {
+                                <RadzenButton ButtonStyle="ButtonStyle.Light" Icon="lock_open"
+                                              Disabled="@isDisablingMfa" Text="@UiStrings.Account.TurnOffMfa"
+                                              Click="@DisableMfaAsync" />
+                            }
+                        </RadzenStack>
                     </RadzenStack>
 
                     @if (user.MfaEnrollmentRequired && !user.MfaEnabled)
@@ -110,14 +119,36 @@
                             @UiStrings.Account.MfaEnrollmentHint
                         </RadzenAlert>
 
-                        <RadzenRow RowGap="1rem">
-                            <RadzenColumn Size="12" SizeMD="6">
-                                <DetailField Label="@UiStrings.Account.MfaSecret" Value="@mfaEnrollment.Secret" />
-                            </RadzenColumn>
-                            <RadzenColumn Size="12" SizeMD="6">
-                                <DetailField Label="@UiStrings.Account.MfaOtpAuthUri" Value="@mfaEnrollment.OtpAuthUri" />
-                            </RadzenColumn>
-                        </RadzenRow>
+                        <div class="account-mfa-setup">
+                            <section class="account-mfa-panel account-mfa-panel--qr">
+                                <div class="account-mfa-panel-heading">
+                                    <span class="account-mfa-panel-icon"><RadzenIcon Icon="qr_code_2" /></span>
+                                    <div>
+                                        <h4>@UiStrings.Account.MfaScanTitle</h4>
+                                        <p class="os-muted">@UiStrings.Account.MfaScanHint</p>
+                                    </div>
+                                </div>
+                                <div class="account-mfa-qr">
+                                    <RadzenQRCode Value="@mfaEnrollment.OtpAuthUri"
+                                                  Size="13rem"
+                                                  ModuleShape="QRCodeModuleShape.Rounded"
+                                                  EyeShape="QRCodeEyeShape.Rounded" />
+                                </div>
+                            </section>
+
+                            <section class="account-mfa-panel">
+                                <div class="account-mfa-panel-heading">
+                                    <span class="account-mfa-panel-icon"><RadzenIcon Icon="key" /></span>
+                                    <div>
+                                        <h4>@UiStrings.Account.MfaManualTitle</h4>
+                                        <p class="os-muted">@UiStrings.Account.MfaManualHint</p>
+                                    </div>
+                                </div>
+                                <DetailField Label="@UiStrings.Account.MfaSecret">
+                                    <span class="account-mfa-secret os-mono">@mfaEnrollment.Secret</span>
+                                </DetailField>
+                            </section>
+                        </div>
 
                         <RadzenTemplateForm TItem="MfaConfirmModel" Data="@mfaConfirm" Submit="@ConfirmMfaAsync">
                             <RadzenStack Gap="1rem">
@@ -154,6 +185,12 @@
                                           Disabled="@isStartingMfa" Text="@UiStrings.Account.StartMfa"
                                           Click="@StartMfaEnrollmentAsync" />
                         </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(mfaError))
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                            @mfaError
+                        </RadzenAlert>
                     }
                 </RadzenStack>
             </RadzenCard>
@@ -239,6 +276,7 @@
     private string? passwordError;
     private bool isStartingMfa;
     private bool isConfirmingMfa;
+    private bool isDisablingMfa;
     private string? mfaError;
     private MfaEnrollment? mfaEnrollment;
     private IReadOnlyList<string> mfaRecoveryCodes = [];
@@ -411,6 +449,36 @@
         finally
         {
             isConfirmingMfa = false;
+        }
+    }
+
+    private async Task DisableMfaAsync()
+    {
+        mfaError = null;
+
+        var confirmed = await DialogService.Confirm(UiStrings.Account.ConfirmDisableMfa, UiStrings.Account.TurnOffMfa,
+            new ConfirmOptions { OkButtonText = UiStrings.Account.TurnOffMfa, CancelButtonText = UiStrings.Common.Cancel });
+        if (confirmed is not true)
+            return;
+
+        isDisablingMfa = true;
+
+        try
+        {
+            await Identity.DisableMfaAsync();
+            mfaEnrollment = null;
+            mfaRecoveryCodes = [];
+            mfaConfirm.Code = string.Empty;
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Account.MfaDisabled);
+            await Auth.ReloadUserAsync();
+        }
+        catch (ApiException ex)
+        {
+            mfaError = ex.ToDisplayMessage(UiStrings.Common.SomethingWentWrong);
+        }
+        finally
+        {
+            isDisablingMfa = false;
         }
     }
 

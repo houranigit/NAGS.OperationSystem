@@ -50,7 +50,13 @@ public sealed class LoginMfaCommandHandler(
             || user.MfaSecret is null)
             return Invalid;
 
-        var secret = secretProtector.Unprotect(user.MfaSecret);
+        if (!secretProtector.TryUnprotect(user.MfaSecret, out var secret))
+        {
+            user.ResetMfa(now);
+            await db.SaveChangesAsync(cancellationToken);
+            return Invalid;
+        }
+
         var verified = mfaService.VerifyCode(secret, request.Code, now)
             || user.ConsumeRecoveryCode(tokenService.HashToken(request.Code.Trim()), now).IsSuccess;
 
@@ -144,7 +150,13 @@ public sealed class ConfirmMfaCommandHandler(
             return Error.Conflict("Start MFA enrollment before confirming.", "Identity.User.NoPendingMfa");
 
         var now = timeProvider.GetUtcNow();
-        var secret = secretProtector.Unprotect(user.MfaSecret);
+        if (!secretProtector.TryUnprotect(user.MfaSecret, out var secret))
+        {
+            user.ResetMfa(now);
+            await db.SaveChangesAsync(cancellationToken);
+            return Error.Conflict("MFA setup could not be verified. Start setup again.", "Identity.User.InvalidMfaSecret");
+        }
+
         if (!mfaService.VerifyCode(secret, request.Code, now))
             return Error.Validation("That code is not valid. Try again with a fresh code.", "Identity.User.InvalidMfaCode");
 
@@ -176,11 +188,36 @@ public sealed class ResetUserMfaCommandHandler(IIdentityDbContext db, TimeProvid
         var now = timeProvider.GetUtcNow();
         user.ResetMfa(now);
 
-        // Force re-authentication everywhere; the user must re-enroll MFA.
+        // Force re-authentication everywhere; the user can re-enroll MFA from account settings.
         var sessions = await db.Sessions.Where(s => s.UserId == user.Id && s.RevokedAtUtc == null).ToListAsync(cancellationToken);
         foreach (var session in sessions)
             session.Revoke(now);
 
+        await db.SaveChangesAsync(cancellationToken);
+        return Result.Success();
+    }
+}
+
+// --- Disable (current user) -----------------------------------------------
+
+public sealed record DisableMfaCommand : ICommand;
+
+public sealed class DisableMfaCommandHandler(
+    IIdentityDbContext db,
+    ICurrentUser currentUser,
+    TimeProvider timeProvider)
+    : ICommandHandler<DisableMfaCommand>
+{
+    public async Task<Result> Handle(DisableMfaCommand request, CancellationToken cancellationToken)
+    {
+        if (currentUser.UserId is not { } userId)
+            return Error.Unauthorized();
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+            return Error.NotFound("Account not found.", "Identity.User.NotFound");
+
+        user.ResetMfa(timeProvider.GetUtcNow());
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }

@@ -58,8 +58,8 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
     /// <summary>Hashes of the unused one-time recovery codes; a redeemed code is removed.</summary>
     public IReadOnlyList<string> RecoveryCodeHashes => _recoveryCodeHashes;
 
-    /// <summary>System Administrators must use MFA; the requirement is enforced once enrolled at activation.</summary>
-    public bool MfaRequired => UserType == UserType.SystemAdministrator;
+    /// <summary>MFA is user-controlled; once enabled, sign-in requires the second factor.</summary>
+    public bool MfaRequired => false;
 
     /// <summary>SHA-256 hash of the invitation token; the raw token is never stored or returned.</summary>
     public string? InvitationToken { get; private set; }

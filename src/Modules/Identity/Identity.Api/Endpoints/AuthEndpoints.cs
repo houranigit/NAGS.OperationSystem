@@ -57,6 +57,12 @@ internal static class AuthEndpoints
             return result.ToOk();
         }).RequireAuthorization();
 
+        auth.MapPost("/mfa/disable", async (ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new DisableMfaCommand(), ct);
+            return result.ToNoContent();
+        }).RequireAuthorization();
+
         auth.MapPost("/refresh", async (ISender sender, HttpContext http, CancellationToken ct) =>
         {
             var token = http.Request.Cookies[AuthCookies.RefreshTokenCookie];

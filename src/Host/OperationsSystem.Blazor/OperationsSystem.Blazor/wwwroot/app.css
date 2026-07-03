@@ -129,6 +129,12 @@ a {
     color: var(--os-color-text-muted);
 }
 
+.os-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: var(--os-text-sm);
+    letter-spacing: 0;
+}
+
 .os-page-title {
     margin: var(--os-space-1) 0 0;
     font-size: var(--os-text-2xl);

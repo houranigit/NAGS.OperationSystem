@@ -189,8 +189,15 @@ public static class UiStrings
         public static string ConfirmMfa => UiText.Get("Account.ConfirmMfa", "Confirm MFA");
         public static string MfaSecret => UiText.Get("Account.MfaSecret", "Secret");
         public static string MfaOtpAuthUri => UiText.Get("Account.MfaOtpAuthUri", "Authenticator URI");
-        public static string MfaEnrollmentHint => UiText.Get("Account.MfaEnrollmentHint", "Add the secret or authenticator URI to your authenticator app, then enter the current code.");
+        public static string MfaEnrollmentHint => UiText.Get("Account.MfaEnrollmentHint", "Scan the QR code with your authenticator app, or enter the setup key manually, then confirm with the current code.");
+        public static string MfaScanTitle => UiText.Get("Account.MfaScanTitle", "Scan QR code");
+        public static string MfaScanHint => UiText.Get("Account.MfaScanHint", "Use Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.");
+        public static string MfaManualTitle => UiText.Get("Account.MfaManualTitle", "Enter setup key manually");
+        public static string MfaManualHint => UiText.Get("Account.MfaManualHint", "Use this key only if you cannot scan the QR code.");
         public static string MfaEnabled => UiText.Get("Account.MfaEnabled", "MFA enabled.");
+        public static string TurnOffMfa => UiText.Get("Account.TurnOffMfa", "Turn off MFA");
+        public static string ConfirmDisableMfa => UiText.Get("Account.ConfirmDisableMfa", "Turn off MFA for this account? Future sign-ins will only require the password.");
+        public static string MfaDisabled => UiText.Get("Account.MfaDisabled", "MFA turned off.");
         public static string RecoveryCodesTitle => UiText.Get("Account.RecoveryCodesTitle", "Save these recovery codes");
         public static string RecoveryCodesHint => UiText.Get("Account.RecoveryCodesHint", "Each code can be used once if you lose access to your authenticator app.");
     }

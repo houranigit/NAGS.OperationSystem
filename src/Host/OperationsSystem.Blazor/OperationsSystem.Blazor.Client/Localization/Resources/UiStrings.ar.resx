@@ -163,8 +163,15 @@
   <data name="Account.ConfirmMfa" xml:space="preserve"><value>تأكيد MFA</value></data>
   <data name="Account.MfaSecret" xml:space="preserve"><value>السر</value></data>
   <data name="Account.MfaOtpAuthUri" xml:space="preserve"><value>رابط تطبيق المصادقة</value></data>
-  <data name="Account.MfaEnrollmentHint" xml:space="preserve"><value>أضف السر أو رابط المصادقة إلى تطبيق المصادقة، ثم أدخل الرمز الحالي.</value></data>
+  <data name="Account.MfaEnrollmentHint" xml:space="preserve"><value>امسح رمز QR باستخدام تطبيق المصادقة، أو أدخل مفتاح الإعداد يدويًا، ثم أكد بالرمز الحالي.</value></data>
+  <data name="Account.MfaScanTitle" xml:space="preserve"><value>مسح رمز QR</value></data>
+  <data name="Account.MfaScanHint" xml:space="preserve"><value>استخدم Google Authenticator أو Microsoft Authenticator أو 1Password أو أي تطبيق TOTP آخر.</value></data>
+  <data name="Account.MfaManualTitle" xml:space="preserve"><value>إدخال مفتاح الإعداد يدويًا</value></data>
+  <data name="Account.MfaManualHint" xml:space="preserve"><value>استخدم هذا المفتاح فقط إذا لم تتمكن من مسح رمز QR.</value></data>
   <data name="Account.MfaEnabled" xml:space="preserve"><value>تم تفعيل MFA.</value></data>
+  <data name="Account.TurnOffMfa" xml:space="preserve"><value>إيقاف MFA</value></data>
+  <data name="Account.ConfirmDisableMfa" xml:space="preserve"><value>هل تريد إيقاف MFA لهذا الحساب؟ ستتطلب عمليات تسجيل الدخول القادمة كلمة المرور فقط.</value></data>
+  <data name="Account.MfaDisabled" xml:space="preserve"><value>تم إيقاف MFA.</value></data>
   <data name="Account.RecoveryCodesTitle" xml:space="preserve"><value>احفظ رموز الاسترداد هذه</value></data>
   <data name="Account.RecoveryCodesHint" xml:space="preserve"><value>يمكن استخدام كل رمز مرة واحدة إذا فقدت الوصول إلى تطبيق المصادقة.</value></data>
   <data name="Users.Title" xml:space="preserve"><value>المستخدمين</value></data>

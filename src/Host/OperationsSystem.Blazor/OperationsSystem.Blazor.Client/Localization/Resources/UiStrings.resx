@@ -163,8 +163,15 @@
   <data name="Account.ConfirmMfa" xml:space="preserve"><value>Confirm MFA</value></data>
   <data name="Account.MfaSecret" xml:space="preserve"><value>Secret</value></data>
   <data name="Account.MfaOtpAuthUri" xml:space="preserve"><value>Authenticator URI</value></data>
-  <data name="Account.MfaEnrollmentHint" xml:space="preserve"><value>Add the secret or authenticator URI to your authenticator app, then enter the current code.</value></data>
+  <data name="Account.MfaEnrollmentHint" xml:space="preserve"><value>Scan the QR code with your authenticator app, or enter the setup key manually, then confirm with the current code.</value></data>
+  <data name="Account.MfaScanTitle" xml:space="preserve"><value>Scan QR code</value></data>
+  <data name="Account.MfaScanHint" xml:space="preserve"><value>Use Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.</value></data>
+  <data name="Account.MfaManualTitle" xml:space="preserve"><value>Enter setup key manually</value></data>
+  <data name="Account.MfaManualHint" xml:space="preserve"><value>Use this key only if you cannot scan the QR code.</value></data>
   <data name="Account.MfaEnabled" xml:space="preserve"><value>MFA enabled.</value></data>
+  <data name="Account.TurnOffMfa" xml:space="preserve"><value>Turn off MFA</value></data>
+  <data name="Account.ConfirmDisableMfa" xml:space="preserve"><value>Turn off MFA for this account? Future sign-ins will only require the password.</value></data>
+  <data name="Account.MfaDisabled" xml:space="preserve"><value>MFA turned off.</value></data>
   <data name="Account.RecoveryCodesTitle" xml:space="preserve"><value>Save these recovery codes</value></data>
   <data name="Account.RecoveryCodesHint" xml:space="preserve"><value>Each code can be used once if you lose access to your authenticator app.</value></data>
   <data name="Users.Title" xml:space="preserve"><value>Users</value></data>

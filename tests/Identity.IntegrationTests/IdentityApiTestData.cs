@@ -57,7 +57,7 @@ internal static class IdentityApiTestData
         var me = await client.GetFromJsonAsync<MeResponse>($"{Base}/me");
         me.ShouldNotBeNull();
 
-        if (me!.MfaEnrollmentRequired)
+        if (!me!.MfaEnabled)
         {
             var enrollmentResponse = await client.PostAsync($"{Base}/auth/mfa/enroll", content: null);
             enrollmentResponse.StatusCode.ShouldBe(HttpStatusCode.OK);

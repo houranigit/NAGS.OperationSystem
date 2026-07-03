@@ -25,6 +25,7 @@ public sealed class LoginCommandHandler(
     IIdentityDbContext db,
     IPasswordHasher passwordHasher,
     ITokenService tokenService,
+    IMfaSecretProtector secretProtector,
     TimeProvider timeProvider,
     IOptions<IdentityModuleOptions> options)
     : ICommandHandler<LoginCommand, LoginResultDto>
@@ -68,9 +69,17 @@ public sealed class LoginCommandHandler(
         // created and the failed-attempt counter is reset only once the full sign-in completes.
         if (user.MfaEnabled)
         {
-            await db.SaveChangesAsync(cancellationToken);
-            var mfaToken = tokenService.CreateMfaChallengeToken(user);
-            return new LoginResultDto(MfaRequired: true, MfaToken: mfaToken, Tokens: null);
+            if (string.IsNullOrWhiteSpace(user.MfaSecret)
+                || !secretProtector.TryUnprotect(user.MfaSecret, out _))
+            {
+                user.ResetMfa(now);
+            }
+            else
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                var mfaToken = tokenService.CreateMfaChallengeToken(user);
+                return new LoginResultDto(MfaRequired: true, MfaToken: mfaToken, Tokens: null);
+            }
         }
 
         var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == user.RoleId, cancellationToken);

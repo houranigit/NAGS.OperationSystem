@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using Identity.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 
 namespace Identity.IntegrationTests;
@@ -15,6 +18,7 @@ public class MfaTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFac
     private const string Base = IdentityApiTestData.Base;
 
     private sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);
+    private sealed record LoginResponse(bool MfaRequired, string? MfaToken, string? AccessToken, DateTimeOffset? ExpiresAtUtc);
     private sealed record EnrollmentResponse(string Secret, string OtpAuthUri);
     private sealed record RecoveryCodesResponse(List<string> RecoveryCodes);
     private sealed record ChallengeResponse(bool MfaRequired, string MfaToken);
@@ -62,14 +66,40 @@ public class MfaTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFac
             new { mfaToken = challenge2!.MfaToken, code = recovery.RecoveryCodes[0] });
         recoveryLogin.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        // Administrator resets MFA; sign-in can authenticate, but permissions stay withheld until
-        // the administrator enrolls MFA again.
+        // MFA is optional: the signed-in user can turn it off and then sign in with password only.
+        (await anon.PostAsync($"{Base}/auth/mfa/disable", content: null))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var refreshedAfterDisable = await anon.PostAsync($"{Base}/auth/refresh", content: null);
+        refreshedAfterDisable.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var tokenAfterDisable = await refreshedAfterDisable.Content.ReadFromJsonAsync<TokenResponse>();
+        anon.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenAfterDisable!.AccessToken);
+        var meAfterDisable = await anon.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        meAfterDisable!.MfaEnabled.ShouldBeFalse();
+        meAfterDisable.MfaEnrollmentRequired.ShouldBeFalse();
+        meAfterDisable.Permissions.ShouldNotBeEmpty();
+
+        var passwordOnly = await (await factory.CreateClient().PostAsJsonAsync($"{Base}/auth/login",
+                new { email = IdentityApiFactory.AdminEmail, password = IdentityApiFactory.AdminPassword }))
+            .Content.ReadFromJsonAsync<LoginResponse>();
+        passwordOnly!.MfaRequired.ShouldBeFalse();
+        passwordOnly.AccessToken.ShouldNotBeNullOrWhiteSpace();
+
+        // Re-enroll so administrator reset still exercises an enabled MFA account.
+        var secondEnrollment = await (await anon.PostAsync($"{Base}/auth/mfa/enroll", content: null))
+            .Content.ReadFromJsonAsync<EnrollmentResponse>();
+        secondEnrollment.ShouldNotBeNull();
+        var secondConfirm = await anon.PostAsJsonAsync($"{Base}/auth/mfa/confirm",
+            new { code = Totp(secondEnrollment!.Secret) });
+        secondConfirm.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        // Administrator resets MFA; sign-in can authenticate and permissions remain available
+        // because enrollment is optional.
         var freshAdmin = factory.CreateClient();
         var freshChallenge = await (await freshAdmin.PostAsJsonAsync($"{Base}/auth/login",
             new { email = IdentityApiFactory.AdminEmail, password = IdentityApiFactory.AdminPassword }))
             .Content.ReadFromJsonAsync<ChallengeResponse>();
         var adminToken = (await (await freshAdmin.PostAsJsonAsync($"{Base}/auth/login/mfa",
-            new { mfaToken = freshChallenge!.MfaToken, code = Totp(enrollment.Secret) }))
+            new { mfaToken = freshChallenge!.MfaToken, code = Totp(secondEnrollment.Secret) }))
             .Content.ReadFromJsonAsync<TokenResponse>())!.AccessToken;
         freshAdmin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
@@ -85,8 +115,38 @@ public class MfaTests(IdentityApiFactory factory) : IClassFixture<IdentityApiFac
         afterReset.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenAfterReset.AccessToken);
         var meAfterReset = await afterReset.GetFromJsonAsync<MeResponse>($"{Base}/me");
         meAfterReset!.MfaEnabled.ShouldBeFalse();
-        meAfterReset.MfaEnrollmentRequired.ShouldBeTrue();
-        meAfterReset.Permissions.ShouldBeEmpty();
+        meAfterReset.MfaEnrollmentRequired.ShouldBeFalse();
+        meAfterReset.Permissions.ShouldNotBeEmpty();
+
+        // If the encrypted secret was created with an unavailable Data Protection key, login should
+        // clear the unusable MFA setup instead of throwing an unhandled cryptographic exception.
+        var corruptEnrollment = await (await afterReset.PostAsync($"{Base}/auth/mfa/enroll", content: null))
+            .Content.ReadFromJsonAsync<EnrollmentResponse>();
+        corruptEnrollment.ShouldNotBeNull();
+        var corruptConfirm = await afterReset.PostAsJsonAsync($"{Base}/auth/mfa/confirm",
+            new { code = Totp(corruptEnrollment!.Secret) });
+        corruptConfirm.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await CorruptAdminMfaSecretAsync();
+
+        var staleSecretLogin = await factory.CreateClient().PostAsJsonAsync($"{Base}/auth/login",
+            new { email = IdentityApiFactory.AdminEmail, password = IdentityApiFactory.AdminPassword });
+        staleSecretLogin.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var staleSecretResult = await staleSecretLogin.Content.ReadFromJsonAsync<LoginResponse>();
+        staleSecretResult!.MfaRequired.ShouldBeFalse();
+        staleSecretResult.AccessToken.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    private async Task CorruptAdminMfaSecretAsync()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE [identity].[users]
+            SET [MfaEnabled] = CAST(1 AS bit),
+                [MfaSecret] = {"not-a-valid-data-protection-payload"}
+            WHERE [Email] = {IdentityApiFactory.AdminEmail}
+            """);
     }
 
     // --- Local RFC 6238 TOTP (mirrors the server) ---------------------------

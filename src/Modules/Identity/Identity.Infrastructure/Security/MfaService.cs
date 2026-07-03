@@ -49,4 +49,18 @@ public sealed class DataProtectionMfaSecretProtector : IMfaSecretProtector
     public string Protect(string plaintext) => _protector.Protect(plaintext);
 
     public string Unprotect(string protectedValue) => _protector.Unprotect(protectedValue);
+
+    public bool TryUnprotect(string protectedValue, out string plaintext)
+    {
+        try
+        {
+            plaintext = Unprotect(protectedValue);
+            return true;
+        }
+        catch (CryptographicException)
+        {
+            plaintext = string.Empty;
+            return false;
+        }
+    }
 }
