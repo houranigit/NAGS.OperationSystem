@@ -354,6 +354,8 @@
             return "Scheduled arrival and departure are required.";
         if (model.ScheduledDepartureUtc <= model.ScheduledArrivalUtc)
             return "Scheduled departure must be after scheduled arrival.";
+        if (model.PlannedServiceIds.Count == 0)
+            return "At least one planned service is required.";
         return null;
     }
 

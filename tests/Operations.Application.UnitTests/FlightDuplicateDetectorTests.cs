@@ -30,7 +30,7 @@ public sealed class FlightDuplicateDetectorTests
             FlightNumber.Create("SV1020").Value,
             ScheduledTime.Create(Now, Now.AddHours(1)).Value,
             aircraftType: null,
-            plannedServices: [],
+            plannedServices: [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
             creator: new StaffMemberSnapshot(Guid.NewGuid(), "Ahmed", "E1"),
             createdByUserId: Guid.NewGuid(),
             now: Now).Value;
@@ -56,7 +56,7 @@ public sealed class FlightDuplicateDetectorTests
             new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
             FlightNumber.Create("SV1020").Value,
             ScheduledTime.Create(Now, Now.AddHours(1)).Value,
-            null, [], new StaffMemberSnapshot(Guid.NewGuid(), "Ahmed", "E1"),
+            null, [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")], new StaffMemberSnapshot(Guid.NewGuid(), "Ahmed", "E1"),
             Guid.NewGuid(), Now).Value;
         db.Flights.Add(existing);
         await db.SaveChangesAsync();

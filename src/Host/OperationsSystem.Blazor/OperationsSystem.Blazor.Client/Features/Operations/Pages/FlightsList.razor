@@ -13,6 +13,12 @@
     <div class="os-list-page">
         <PageHeader Title="Flights" Description="Scheduled, in-progress, review, and settled flights within your scope.">
             <Actions>
+                <AuthorizeView Context="adhoc">
+                    @if (adhoc.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersAuthor))
+                    {
+                        <RadzenButton Text="Work order from scratch" Icon="assignment_add" ButtonStyle="ButtonStyle.Secondary" Click="@OpenAdHocAsync" />
+                    }
+                </AuthorizeView>
                 <AuthorizeView Context="schedule">
                     @if (schedule.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsSchedule))
                     {
@@ -93,7 +99,6 @@
     [
         new("Scheduled", "Scheduled"),
         new("In progress", "InProgress"),
-        new("Pending review", "PendingReview"),
         new("Completed", "Completed"),
         new("Canceled", "Canceled")
     ];
@@ -176,6 +181,16 @@
         }
     }
 
+    private async Task OpenAdHocAsync()
+    {
+        var result = await DialogService.OpenAsync<AdHocWorkOrderDialog>("Work order from scratch", null, new DialogOptions { Width = "1040px" });
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Ad-hoc flight created", "The flight and its work order were created.");
+            await ReloadAsync();
+        }
+    }
+
     private void OpenFlight(Guid id) => Navigation.NavigateTo($"/operations/flights/{id}");
 
     private async Task OpenEditAsync(Guid id)
@@ -238,8 +253,8 @@
     }
 
     private static bool CanEditFlight(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
-    private static bool CanOpenWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress" or "Returned";
-    private static bool CanCancelFlight(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress" or "PendingReview";
+    private static bool CanOpenWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
+    private static bool CanCancelFlight(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
 
     private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
@@ -248,7 +263,6 @@
     {
         "Completed" => "success",
         "Canceled" or "Merged" => "danger",
-        "PendingReview" => "warning",
         "InProgress" => "warning",
         _ => "neutral"
     };

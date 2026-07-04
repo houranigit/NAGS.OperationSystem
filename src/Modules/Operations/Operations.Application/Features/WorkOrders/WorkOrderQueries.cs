@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
@@ -28,12 +29,22 @@ public sealed class GetWorkOrderByIdQueryHandler(IOperationsDbContext db, IOpera
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
+        // Reads enforce the same visibility as writes: station staff may see a work order only when
+        // they can access its flight (Per-Landing station-wide, otherwise assigned staff only).
         var scopeResult = await scope.ResolveAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
-        var stationCheck = scopeResult.Value.EnsureStation(workOrder.Station.StationId);
-        if (stationCheck.IsFailure)
-            return stationCheck.Error;
+
+        var flight = await db.Flights.AsNoTracking()
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
+        if (accessCheck.IsFailure)
+            return accessCheck.Error;
 
         var lines = workOrder.ServiceLines.Select(l => new WorkOrderServiceLineDto(
             l.Id, l.Service.ServiceId, l.Service.Name, l.Origin.ToString(), l.Window.From, l.Window.To,
@@ -53,9 +64,13 @@ public sealed class GetWorkOrderByIdQueryHandler(IOperationsDbContext db, IOpera
             workOrder.Type.ToString(),
             workOrder.Status.ToString(),
             workOrder.Number?.Value,
+            workOrder.OwnerStaffMemberId,
+            workOrder.Owner?.FullName,
             workOrder.FlightNumber.Value,
             workOrder.Customer.Name,
             workOrder.Station.IataCode,
+            workOrder.AircraftType?.AircraftTypeId,
+            workOrder.AircraftType?.Model,
             workOrder.AircraftTailNumber,
             workOrder.Schedule.Sta,
             workOrder.Schedule.Std,
@@ -91,10 +106,21 @@ public sealed class GetReviewQueueQueryHandler(IOperationsDbContext db, IOperati
         var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.WorkOrders.AsNoTracking().Where(w => w.Status == WorkOrderStatus.Submitted);
 
+        // Station staff only see submitted work orders for flights they can access (their station's
+        // Per-Landing flights plus flights they are assigned to); admins/reviewers see everything.
         if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
-            query = query.Where(w => w.Station.StationId == stationId);
+        {
+            var staffId = scopeResult.Value.StaffMemberId;
+            query = query
+                .Where(w => w.Station.StationId == stationId)
+                .Where(w => db.Flights.Any(f => f.Id == w.FlightId &&
+                    (f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+                     || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))));
+        }
         else if (request.StationId is { } filterStation)
+        {
             query = query.Where(w => w.Station.StationId == filterStation);
+        }
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

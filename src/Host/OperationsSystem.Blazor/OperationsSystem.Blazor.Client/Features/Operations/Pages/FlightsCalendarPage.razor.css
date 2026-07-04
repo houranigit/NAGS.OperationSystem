@@ -1,0 +1,34 @@
+.ofc-card {
+    margin-top: var(--os-space-4);
+}
+
+.ofc-station-filter {
+    min-width: 220px;
+}
+
+.ofc-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-4);
+    margin-block-start: var(--os-space-3);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.ofc-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.ofc-dot {
+    inline-size: 0.65rem;
+    block-size: 0.65rem;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.ofc-dot-scheduled { background: var(--rz-primary, #2563eb); }
+.ofc-dot-inprogress { background: var(--rz-warning, #f59e0b); }
+.ofc-dot-completed { background: var(--rz-success, #16a34a); }
+.ofc-dot-canceled { background: var(--rz-danger, #dc2626); }

@@ -56,6 +56,55 @@
     margin: 0;
 }
 
+.ofd-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-3);
+}
+
+.ofd-timeline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--os-space-3);
+    padding-block-start: var(--os-space-2);
+    border-block-start: 1px solid var(--os-color-border);
+}
+
+.ofd-timeline-item:first-child {
+    border-block-start: none;
+    padding-block-start: 0;
+}
+
+.ofd-timeline-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    border-radius: 50%;
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-muted);
+    flex-shrink: 0;
+}
+
+.ofd-timeline-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.ofd-timeline-text strong {
+    font-size: var(--os-text-sm);
+}
+
+.ofd-timeline-text span {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+}
+
 @media (max-width: 900px) {
     .ofd-grid-2,
     .ofd-fields {

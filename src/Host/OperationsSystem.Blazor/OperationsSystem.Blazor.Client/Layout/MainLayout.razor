@@ -81,6 +81,10 @@
                         <RadzenIcon Icon="flight" />
                         <span>Flights</span>
                     </NavLink>
+                    <NavLink href="/operations/calendar" class="os-nav-link" title="Flight calendar" @onclick="CloseNav">
+                        <RadzenIcon Icon="calendar_month" />
+                        <span>Calendar</span>
+                    </NavLink>
                 }
                 @if (canOpsReview)
                 {

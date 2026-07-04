@@ -36,10 +36,20 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
         var paging = PageRequest.From(request.Page, request.PageSize);
         var query = db.Flights.AsNoTracking().Where(f => f.Status != FlightStatus.Merged);
 
+        // Station staff see their station's Per-Landing flights (station-wide) plus the flights they
+        // are assigned to; admins see everything (optionally filtered).
         if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
-            query = query.Where(f => f.Station.StationId == stationId);
+        {
+            var staffId = scopeResult.Value.StaffMemberId;
+            query = query
+                .Where(f => f.Station.StationId == stationId)
+                .Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+                            || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
+        }
         else if (request.StationId is { } filterStation)
+        {
             query = query.Where(f => f.Station.StationId == filterStation);
+        }
 
         if (request.CustomerId is { } customer)
             query = query.Where(f => f.Customer.CustomerId == customer);
@@ -98,9 +108,17 @@ public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IO
             .Where(f => f.Schedule.Sta >= request.FromUtc && f.Schedule.Sta <= request.ToUtc);
 
         if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
-            query = query.Where(f => f.Station.StationId == stationId);
+        {
+            var staffId = scopeResult.Value.StaffMemberId;
+            query = query
+                .Where(f => f.Station.StationId == stationId)
+                .Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+                            || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
+        }
         else if (request.StationId is { } filterStation)
+        {
             query = query.Where(f => f.Station.StationId == filterStation);
+        }
 
         IReadOnlyList<CalendarFlightDto> items = await query
             .OrderBy(f => f.Schedule.Sta)
@@ -137,15 +155,35 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         var scopeResult = await scope.ResolveAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
-        var stationCheck = scopeResult.Value.EnsureStation(flight.Station.StationId);
-        if (stationCheck.IsFailure)
-            return stationCheck.Error;
+        var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
+        if (accessCheck.IsFailure)
+            return accessCheck.Error;
 
         var workOrders = await db.WorkOrders.AsNoTracking()
             .Where(w => w.FlightId == flight.Id)
             .OrderBy(w => w.CreatedAtUtc)
-            .Select(w => new WorkOrderSummaryDto(w.Id, w.Type.ToString(), w.Status.ToString(), w.Number == null ? null : w.Number.Value))
+            .Select(w => new WorkOrderSummaryDto(
+                w.Id, w.Type.ToString(), w.Status.ToString(), w.Number == null ? null : w.Number.Value,
+                w.OwnerStaffMemberId, w.Owner == null ? null : w.Owner.FullName, w.CreatedAtUtc))
             .ToListAsync(cancellationToken);
+
+        var approved = flight.ApprovedWorkOrder is null
+            ? null
+            : new ApprovedWorkOrderDto(
+                flight.ApprovedWorkOrder.WorkOrderId,
+                flight.ApprovedWorkOrder.WorkOrderNumber,
+                flight.ApprovedWorkOrder.WorkOrderType.ToString(),
+                flight.ApprovedWorkOrder.ActualFlightNumber,
+                flight.ApprovedWorkOrder.ActualAircraftTypeId,
+                flight.ApprovedWorkOrder.ActualAircraftTypeModel,
+                flight.ApprovedWorkOrder.AircraftTailNumber,
+                flight.ApprovedWorkOrder.ActualArrivalUtc,
+                flight.ApprovedWorkOrder.ActualDepartureUtc,
+                flight.ApprovedWorkOrder.Remarks,
+                flight.ApprovedWorkOrder.CustomerSignatureReference,
+                flight.ApprovedWorkOrder.CanceledAtUtc,
+                flight.ApprovedWorkOrder.CancellationReason,
+                flight.ApprovedWorkOrder.ApprovedAtUtc);
 
         var dto = new FlightDetailDto(
             flight.Id,
@@ -167,6 +205,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.ContractNumber,
             flight.MergedIntoFlightId,
             flight.PotentialDuplicateOfFlightId,
+            approved,
             flight.PlannedServices.Select(p => new PlannedServiceDto(p.Service.ServiceId, p.Service.Name, p.IsAircraftPerLanding)).ToList(),
             flight.AssignedEmployees.Select(e => new AssignedEmployeeDto(e.Employee.StaffMemberId, e.Employee.FullName, e.Employee.EmployeeId)).ToList(),
             workOrders,
@@ -175,5 +214,39 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             Convert.ToBase64String(flight.RowVersion));
 
         return dto;
+    }
+}
+
+// --- Flight timeline / history ------------------------------------------------
+
+public sealed record GetFlightTimelineQuery(Guid FlightId) : IQuery<IReadOnlyList<FlightTimelineEntryDto>>;
+
+public sealed class GetFlightTimelineQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+    : IQueryHandler<GetFlightTimelineQuery, IReadOnlyList<FlightTimelineEntryDto>>
+{
+    public async Task<Result<IReadOnlyList<FlightTimelineEntryDto>>> Handle(GetFlightTimelineQuery request, CancellationToken cancellationToken)
+    {
+        var flight = await db.Flights.AsNoTracking()
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
+        if (accessCheck.IsFailure)
+            return accessCheck.Error;
+
+        IReadOnlyList<FlightTimelineEntryDto> items = await db.FlightTimelineEntries.AsNoTracking()
+            .Where(e => e.FlightId == flight.Id)
+            .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.Id)
+            .Select(e => new FlightTimelineEntryDto(
+                e.Id, e.EventType.ToString(), e.OccurredAtUtc, e.ActorName, e.WorkOrderId, e.WorkOrderNumber, e.Details))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success(items);
     }
 }

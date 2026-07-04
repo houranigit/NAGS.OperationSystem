@@ -5,6 +5,7 @@ using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
+using Operations.Application.Common;
 using Operations.Contracts;
 using Operations.Domain.Enumerations;
 using Operations.Domain.ValueObjects;
@@ -27,6 +28,7 @@ public sealed class ApproveWorkOrderCommandValidator : AbstractValidator<Approve
 public sealed class ApproveWorkOrderCommandHandler(
     IOperationsDbContext db,
     IWorkOrderNumberAllocator allocator,
+    IFlightTimelineWriter timeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<ApproveWorkOrderCommand>
 {
@@ -54,9 +56,11 @@ public sealed class ApproveWorkOrderCommandHandler(
         if (approve.IsFailure)
             return approve.Error;
 
+        // Capture the approved work order's values + reference onto the flight (the billing-ready
+        // source of truth); actual service lines/tasks stay on the locked approved work order.
         var settle = workOrder.IsCancellation
-            ? flight.SettleCanceled(workOrder.Id, now)
-            : flight.SettleCompleted(workOrder.Id, now);
+            ? flight.SettleCanceled(workOrder, now)
+            : flight.SettleCompleted(workOrder, now);
         if (settle.IsFailure)
             return settle.Error;
 
@@ -68,8 +72,19 @@ public sealed class ApproveWorkOrderCommandHandler(
             Outcome = workOrder.IsCancellation ? "Canceled" : "Completed",
             CustomerId = flight.Customer.CustomerId,
             StationId = flight.Station.StationId,
-            ApprovedByUserId = approverId
+            ApprovedByUserId = approverId,
+            ActualFlightNumber = workOrder.FlightNumber.Value,
+            ActualAircraftTypeId = workOrder.AircraftType?.AircraftTypeId,
+            AircraftTailNumber = workOrder.AircraftTailNumber,
+            ActualArrivalUtc = workOrder.Actuals?.Ata,
+            ActualDepartureUtc = workOrder.Actuals?.Atd,
+            CanceledAtUtc = workOrder.Cancellation?.CanceledAtUtc
         });
+
+        await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderApproved, now, workOrder.Id, number.Value, cancellationToken: cancellationToken);
+        await timeline.AppendAsync(flight.Id,
+            workOrder.IsCancellation ? FlightTimelineEventType.FlightCanceled : FlightTimelineEventType.FlightCompleted,
+            now, workOrder.Id, number.Value, cancellationToken: cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         try
@@ -91,6 +106,7 @@ public sealed record RejectWorkOrderCommand(Guid Id, byte[] RowVersion) : IComma
 
 public sealed class RejectWorkOrderCommandHandler(
     IOperationsDbContext db,
+    IFlightTimelineWriter timeline,
     TimeProvider timeProvider) : ICommandHandler<RejectWorkOrderCommand>
 {
     public async Task<Result> Handle(RejectWorkOrderCommand request, CancellationToken cancellationToken)
@@ -109,6 +125,7 @@ public sealed class RejectWorkOrderCommandHandler(
             return reject.Error;
 
         flight.OnWorkOrderReturnedToReview(now);
+        await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderRejected, now, workOrder.Id, cancellationToken: cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         try
@@ -130,6 +147,7 @@ public sealed record ReturnWorkOrderToReviewCommand(Guid Id, byte[] RowVersion) 
 
 public sealed class ReturnWorkOrderToReviewCommandHandler(
     IOperationsDbContext db,
+    IFlightTimelineWriter timeline,
     TimeProvider timeProvider) : ICommandHandler<ReturnWorkOrderToReviewCommand>
 {
     public async Task<Result> Handle(ReturnWorkOrderToReviewCommand request, CancellationToken cancellationToken)
@@ -144,12 +162,29 @@ public sealed class ReturnWorkOrderToReviewCommandHandler(
 
         var now = timeProvider.GetUtcNow();
         var wasApproved = workOrder.Status == WorkOrderStatus.Approved;
+        var previousNumber = workOrder.Number?.Value;
+
+        // Returning wipes the number/approval metadata from the work order (a re-approval later gets
+        // a fresh station-sequence number; the retired number stays visible in the timeline).
         var ret = workOrder.ReturnToReview(now);
         if (ret.IsFailure)
             return ret.Error;
 
-        flight.OnWorkOrderReturnedToReview(now);
-        _ = wasApproved;
+        if (wasApproved)
+        {
+            // Clear the captured approved values + reference from the flight and revert it to InProgress.
+            var clear = flight.ClearApprovedSnapshot(now);
+            if (clear.IsFailure)
+                return clear.Error;
+
+            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.ApprovedSnapshotCleared, now, workOrder.Id, previousNumber, cancellationToken: cancellationToken);
+        }
+        else
+        {
+            flight.OnWorkOrderReturnedToReview(now);
+        }
+
+        await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderReturned, now, workOrder.Id, previousNumber, cancellationToken: cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         try

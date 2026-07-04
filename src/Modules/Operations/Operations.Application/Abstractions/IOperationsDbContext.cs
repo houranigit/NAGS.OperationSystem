@@ -17,6 +17,8 @@ public interface IOperationsDbContext : IOutboxDbContext
 
     public DbSet<WorkOrder> WorkOrders { get; }
 
+    public DbSet<FlightTimelineEntry> FlightTimelineEntries { get; }
+
     public DbSet<StationWorkOrderSequence> StationWorkOrderSequences { get; }
 
     /// <summary>Sets the original concurrency token so a stale update fails with a concurrency conflict.</summary>

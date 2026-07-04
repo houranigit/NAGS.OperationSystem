@@ -23,6 +23,17 @@ public sealed class PerLandingPolicyTests
     }
 
     [Fact]
+    public void EmptyPlannedServices_IsRejected_UnlessExplicitlyAllowed()
+    {
+        var rejected = PerLandingPolicy.ValidatePlannedServices([]);
+        rejected.IsFailure.ShouldBeTrue();
+        rejected.Error.Code.ShouldBe("Operations.PlannedServices.Required");
+
+        var allowed = PerLandingPolicy.ValidatePlannedServices([], allowEmpty: true);
+        allowed.IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
     public void PerformedPerLandingService_IsRejected()
     {
         var result = PerLandingPolicy.ValidatePerformedService(WellKnownMasterDataIds.AircraftPerLandingService);

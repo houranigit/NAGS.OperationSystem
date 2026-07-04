@@ -1,9 +1,19 @@
 # Operations Module Plan
 
-Status: **Draft — build plan (pending approval to start implementation)**
-Last updated: 2026-07-03
+Status: **Implemented — phases 0–7 delivered, including the 2026-07-04 corrections**
+Last updated: 2026-07-04
 
-This is the phased implementation plan for the v1.0.0 `Operations` module. The agreed domain model it implements is in `docs/modules/operations-foundation.md`; read that first. No code is written until this plan is approved. The plan follows the modular-monolith conventions in `docs/architecture/operations-system-v1.md`.
+This is the phased implementation plan for the v1.0.0 `Operations` module. The domain model it implements is in `docs/modules/operations-foundation.md`; read that first. The plan follows the modular-monolith conventions in `docs/architecture/operations-system-v1.md`.
+
+**2026-07-04 corrections applied on top of the original plan** (see the foundation doc's decisions log):
+no `PendingReview` flight status (submit keeps the flight `InProgress`; opening a draft changes nothing);
+the flight captures an approved work-order snapshot + reference on approval (billing loads flight + approved work order);
+work orders are owner-scoped by StaffMember with one active per staff per flight;
+completion approval requires actual aircraft type/flight number/ATA/ATD while actual services stay optional;
+planned services are mandatory (per-landing mixing rule, ad-hoc cancellation exception);
+visibility (per-landing station-wide vs assigned-only) is enforced server-side on reads and writes;
+a per-flight timeline is queryable and shown in the portal; and the portal gained a calendar page and a
+full work-order-first dialog (planning + actual fields).
 
 ## 1. Goal And Definition Of Done
 
@@ -80,15 +90,15 @@ Contracts module integration (design seams only), Billing module (event stub onl
 
 ## 6. Milestone Checklist
 
-- [ ] Phase 0 — scaffolding, schema, permissions, scope.
-- [ ] Phase 1 — MasterData read seam + snapshots.
-- [ ] Phase 2 — Flight scheduling (domain, API, calendar/list/detail).
-- [ ] Phase 3 — Work order authoring (domain, API, detail).
-- [ ] Phase 4 — Review/approval/cancellation lifecycle + billing event stub.
-- [ ] Phase 5 — Ad-hoc, duplicate detection, merge (soft-archive).
-- [ ] Phase 6 — Auto-generation job + dashboard.
-- [ ] Phase 7 — UI polish + hardening + full tests.
-- [ ] `docs/architecture/migration-inventory.md` Operations rows updated as phases land.
+- [x] Phase 0 — scaffolding, schema, permissions, scope.
+- [x] Phase 1 — MasterData read seam + snapshots.
+- [x] Phase 2 — Flight scheduling (domain, API, calendar/list/detail).
+- [x] Phase 3 — Work order authoring (domain, API, detail).
+- [x] Phase 4 — Review/approval/cancellation lifecycle + billing event stub.
+- [x] Phase 5 — Ad-hoc, duplicate detection, merge (soft-archive).
+- [x] Phase 6 — Auto-generation job + dashboard.
+- [x] Phase 7 — UI polish + hardening + full tests (calendar page, work-order-first dialog, timeline, ownership-aware editing).
+- [x] `docs/architecture/migration-inventory.md` Operations rows updated as phases land.
 
 ## 7. Risks
 

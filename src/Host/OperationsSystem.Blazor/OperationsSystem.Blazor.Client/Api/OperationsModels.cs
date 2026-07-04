@@ -73,9 +73,13 @@ public sealed record WorkOrderDetail(
     string Type,
     string Status,
     string? Number,
+    Guid? OwnerStaffMemberId,
+    string? OwnerName,
     string FlightNumber,
     string CustomerName,
     string StationIata,
+    Guid? AircraftTypeId,
+    string? AircraftTypeModel,
     string? AircraftTailNumber,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
@@ -100,7 +104,40 @@ public sealed record OperationsDashboard(
 
 public sealed record PlannedServiceModel(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
-public sealed record WorkOrderSummaryModel(Guid Id, string Type, string Status, string? Number);
+
+public sealed record WorkOrderSummaryModel(
+    Guid Id,
+    string Type,
+    string Status,
+    string? Number,
+    Guid? OwnerStaffMemberId,
+    string? OwnerName,
+    DateTimeOffset CreatedAtUtc);
+
+public sealed record ApprovedWorkOrderModel(
+    Guid WorkOrderId,
+    string WorkOrderNumber,
+    string WorkOrderType,
+    string ActualFlightNumber,
+    Guid? ActualAircraftTypeId,
+    string? ActualAircraftTypeModel,
+    string? AircraftTailNumber,
+    DateTimeOffset? ActualArrivalUtc,
+    DateTimeOffset? ActualDepartureUtc,
+    string? Remarks,
+    string? CustomerSignatureReference,
+    DateTimeOffset? CanceledAtUtc,
+    string? CancellationReason,
+    DateTimeOffset ApprovedAtUtc);
+
+public sealed record FlightTimelineEntryModel(
+    Guid Id,
+    string EventType,
+    DateTimeOffset OccurredAtUtc,
+    string? ActorName,
+    Guid? WorkOrderId,
+    string? WorkOrderNumber,
+    string? Details);
 
 public sealed record FlightDetail(
     Guid Id,
@@ -122,6 +159,7 @@ public sealed record FlightDetail(
     string? ContractNumber,
     Guid? MergedIntoFlightId,
     Guid? PotentialDuplicateOfFlightId,
+    ApprovedWorkOrderModel? ApprovedWorkOrder,
     IReadOnlyList<PlannedServiceModel> PlannedServices,
     IReadOnlyList<AssignedEmployeeModel> AssignedEmployees,
     IReadOnlyList<WorkOrderSummaryModel> WorkOrders,
@@ -164,7 +202,19 @@ public sealed record CreateAdHocFlightRequestModel(
     DateTimeOffset ScheduledDepartureUtc,
     Guid? AircraftTypeId,
     IReadOnlyList<Guid> PlannedServiceIds,
-    bool AcknowledgeDuplicates);
+    bool AcknowledgeDuplicates,
+    bool IsCancellation,
+    DateTimeOffset? CancellationAtUtc,
+    string? CancellationReason,
+    string? ActualFlightNumber,
+    Guid? ActualAircraftTypeId,
+    string? AircraftTailNumber,
+    DateTimeOffset? ActualArrivalUtc,
+    DateTimeOffset? ActualDepartureUtc,
+    IReadOnlyList<ServiceLineRequestModel> ServiceLines,
+    IReadOnlyList<TaskRequestModel> Tasks,
+    string? Remarks,
+    string? CustomerSignatureReference);
 
 public sealed record AdHocFlightResultModel(
     Guid FlightId,
@@ -209,6 +259,8 @@ public sealed record TaskRequestModel(
 public sealed record UpdateWorkOrderRequestModel(
     IReadOnlyList<ServiceLineRequestModel> ServiceLines,
     IReadOnlyList<TaskRequestModel> Tasks,
+    string? ActualFlightNumber,
+    Guid? ActualAircraftTypeId,
     DateTimeOffset? ActualArrivalUtc,
     DateTimeOffset? ActualDepartureUtc,
     string? AircraftTailNumber,

@@ -36,13 +36,27 @@ public sealed record CreateAdHocFlightRequest(
     DateTimeOffset ScheduledDepartureUtc,
     Guid? AircraftTypeId,
     IReadOnlyList<Guid>? PlannedServiceIds,
-    bool AcknowledgeDuplicates);
+    bool AcknowledgeDuplicates,
+    bool IsCancellation,
+    DateTimeOffset? CancellationAtUtc,
+    string? CancellationReason,
+    string? ActualFlightNumber,
+    Guid? ActualAircraftTypeId,
+    string? AircraftTailNumber,
+    DateTimeOffset? ActualArrivalUtc,
+    DateTimeOffset? ActualDepartureUtc,
+    IReadOnlyList<ServiceLineRequest>? ServiceLines,
+    IReadOnlyList<TaskRequest>? Tasks,
+    string? Remarks,
+    string? CustomerSignatureReference);
 
 public sealed record MergeFlightsRequest(Guid SurvivorFlightId, Guid LoserFlightId);
 
 public sealed record UpdateWorkOrderRequest(
     IReadOnlyList<ServiceLineRequest>? ServiceLines,
     IReadOnlyList<TaskRequest>? Tasks,
+    string? ActualFlightNumber,
+    Guid? ActualAircraftTypeId,
     DateTimeOffset? ActualArrivalUtc,
     DateTimeOffset? ActualDepartureUtc,
     string? AircraftTailNumber,

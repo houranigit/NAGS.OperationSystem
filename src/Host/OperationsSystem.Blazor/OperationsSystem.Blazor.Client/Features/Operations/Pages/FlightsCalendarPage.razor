@@ -1,0 +1,133 @@
+@page "/operations/calendar"
+@inject OperationsApiClient Operations
+@inject MasterDataApiClient MasterData
+@inject NavigationManager Navigation
+@inject NotificationService Notifications
+
+<PageTitle>Flight calendar</PageTitle>
+
+<RequirePermission Permission="@OperationsPermissions.FlightsView">
+    <div class="os-list-page">
+        <PageHeader Title="Flight calendar" Description="Scheduled and ad-hoc flights in your scope. Click a flight to open it.">
+            <Actions>
+                <RadzenDropDown TValue="Guid?" Data="@stationOptions" TextProperty="Label" ValueProperty="Value"
+                                Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync"
+                                AllowClear="true" Placeholder="All stations" class="ofc-station-filter" />
+            </Actions>
+        </PageHeader>
+
+        @if (loadError)
+        {
+            <ErrorState Message="Could not load the calendar." OnRetry="@ReloadAsync" />
+        }
+        else
+        {
+            <RadzenCard class="ofc-card">
+                <RadzenScheduler @ref="scheduler" TItem="CalendarItem" Data="@items" style="height: 720px"
+                                 StartProperty="Start" EndProperty="End" TextProperty="Text"
+                                 SelectedIndex="1" LoadData="@OnLoadDataAsync"
+                                 AppointmentSelect="@OnAppointmentSelect" AppointmentRender="@OnAppointmentRender">
+                    <RadzenDayView />
+                    <RadzenWeekView />
+                    <RadzenMonthView />
+                </RadzenScheduler>
+                <div class="ofc-legend">
+                    <span class="ofc-legend-item"><span class="ofc-dot ofc-dot-scheduled"></span> Scheduled</span>
+                    <span class="ofc-legend-item"><span class="ofc-dot ofc-dot-inprogress"></span> In progress</span>
+                    <span class="ofc-legend-item"><span class="ofc-dot ofc-dot-completed"></span> Completed</span>
+                    <span class="ofc-legend-item"><span class="ofc-dot ofc-dot-canceled"></span> Canceled</span>
+                </div>
+            </RadzenCard>
+        }
+    </div>
+</RequirePermission>
+
+@code {
+    private RadzenScheduler<CalendarItem>? scheduler;
+    private IReadOnlyList<CalendarItem> items = [];
+    private IReadOnlyList<StationFilterOption> stationOptions = [];
+    private Guid? stationFilter;
+    private DateTime rangeStart = DateTime.UtcNow.Date.AddDays(-7);
+    private DateTime rangeEnd = DateTime.UtcNow.Date.AddDays(21);
+    private bool loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            stationOptions = (await MasterData.GetStationOptionsAsync())
+                .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
+                .ToList();
+        }
+        catch (ApiException)
+        {
+            // Station filter stays empty; the calendar still loads scope-filtered data.
+        }
+
+        await FetchAsync();
+    }
+
+    private async Task OnLoadDataAsync(SchedulerLoadDataEventArgs args)
+    {
+        rangeStart = args.Start;
+        rangeEnd = args.End;
+        await FetchAsync();
+    }
+
+    private async Task OnStationFilterChangedAsync(Guid? value)
+    {
+        stationFilter = value;
+        await FetchAsync();
+    }
+
+    private async Task ReloadAsync() => await FetchAsync();
+
+    private async Task FetchAsync()
+    {
+        loadError = false;
+        try
+        {
+            var flights = await Operations.GetCalendarAsync(
+                new DateTimeOffset(DateTime.SpecifyKind(rangeStart, DateTimeKind.Utc)),
+                new DateTimeOffset(DateTime.SpecifyKind(rangeEnd, DateTimeKind.Utc)),
+                stationFilter);
+
+            items = flights.Select(f => new CalendarItem(
+                f.Id,
+                $"{f.FlightNumber} · {f.CustomerName}{(f.IsPerLanding ? " · Per landing" : "")}",
+                f.ScheduledArrivalUtc.UtcDateTime,
+                f.ScheduledDepartureUtc.UtcDateTime,
+                f.Status)).ToList();
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<CalendarItem> args)
+    {
+        if (args.Data is { } item)
+            Navigation.NavigateTo($"/operations/flights/{item.FlightId}");
+    }
+
+    private void OnAppointmentRender(SchedulerAppointmentRenderEventArgs<CalendarItem> args)
+    {
+        if (args.Data is not { } item)
+            return;
+
+        var color = item.Status switch
+        {
+            "InProgress" => "var(--rz-warning, #f59e0b)",
+            "Completed" => "var(--rz-success, #16a34a)",
+            "Canceled" or "Merged" => "var(--rz-danger, #dc2626)",
+            _ => "var(--rz-primary, #2563eb)"
+        };
+        args.Attributes["style"] = $"background: {color};";
+    }
+
+    private sealed record CalendarItem(Guid FlightId, string Text, DateTime Start, DateTime End, string Status);
+    private sealed record StationFilterOption(string Label, Guid? Value);
+}

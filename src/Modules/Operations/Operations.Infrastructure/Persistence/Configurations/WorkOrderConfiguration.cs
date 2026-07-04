@@ -20,6 +20,15 @@ public sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
         builder.Property(w => w.CreatedAtUtc).IsRequired();
         builder.Property(w => w.RowVersion).IsRowVersion();
 
+        builder.Property(w => w.OwnerStaffMemberId);
+
+        builder.OwnsOne(w => w.Owner, s =>
+        {
+            s.Property(x => x.StaffMemberId).HasColumnName("OwnerSnapshotStaffMemberId");
+            s.Property(x => x.FullName).HasColumnName("OwnerFullName").HasMaxLength(200);
+            s.Property(x => x.EmployeeId).HasColumnName("OwnerEmployeeId").HasMaxLength(50);
+        });
+
         builder.OwnsOne(w => w.Number, n =>
             n.Property(p => p.Value).HasColumnName("WorkOrderNumber").HasMaxLength(30));
 
@@ -77,6 +86,7 @@ public sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
 
         builder.HasIndex(w => w.FlightId);
         builder.HasIndex(w => w.Status);
+        builder.HasIndex(w => w.OwnerStaffMemberId);
 
         builder.Ignore(w => w.IsCancellation);
         builder.Ignore(w => w.IsEditable);

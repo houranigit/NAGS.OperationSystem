@@ -26,6 +26,17 @@
             <div class="owe-section-line"><RadzenIcon Icon="schedule" /><span>Actuals</span></div>
             <div class="owe-grid-2">
                 <div class="owe-field-block">
+                    <label class="owe-label">Actual flight #</label>
+                    <RadzenTextBox @bind-Value="model.ActualFlightNumber" MaxLength="12" class="owe-control" />
+                </div>
+                <div class="owe-field-block">
+                    <label class="owe-label">Actual aircraft type</label>
+                    <RadzenDropDown @bind-Value="model.ActualAircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                                    AllowClear="true" AllowFiltering="true" class="owe-control" Placeholder="Aircraft type" />
+                </div>
+            </div>
+            <div class="owe-grid-2">
+                <div class="owe-field-block">
                     <label class="owe-label">Actual arrival (UTC)</label>
                     <RadzenDatePicker @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
                 </div>
@@ -151,6 +162,7 @@
     private WorkOrderDetail? workOrder;
     private WorkOrderEditModel model = new();
     private IReadOnlyList<ServiceOption> services = [];
+    private IReadOnlyList<AircraftTypeOption> aircraftTypes = [];
     private IReadOnlyList<StaffMemberListItem> staff = [];
     private IReadOnlyList<ToolOption> tools = [];
     private IReadOnlyList<MaterialOption> materials = [];
@@ -171,14 +183,16 @@
         {
             workOrder = await Operations.GetWorkOrderAsync(WorkOrderId);
             var servicesTask = MasterData.GetServiceOptionsAsync();
+            var aircraftTypesTask = MasterData.GetAircraftTypeOptionsAsync();
             var staffTask = MasterData.GetStaffMembersAsync(1, 250, null, true);
             var toolsTask = MasterData.GetToolOptionsAsync();
             var materialsTask = MasterData.GetMaterialOptionsAsync();
             var generalSupportsTask = MasterData.GetGeneralSupportOptionsAsync();
 
-            await Task.WhenAll(servicesTask, staffTask, toolsTask, materialsTask, generalSupportsTask);
+            await Task.WhenAll(servicesTask, aircraftTypesTask, staffTask, toolsTask, materialsTask, generalSupportsTask);
 
             services = await servicesTask;
+            aircraftTypes = await aircraftTypesTask;
             staff = (await staffTask).Items;
             tools = await toolsTask;
             materials = await materialsTask;
@@ -266,6 +280,8 @@
             await Operations.UpdateWorkOrderAsync(WorkOrderId, new UpdateWorkOrderRequestModel(
                 model.ServiceLines.Select(ToRequest).ToList(),
                 model.Tasks.Select(ToRequest).ToList(),
+                TrimToNull(model.ActualFlightNumber),
+                model.ActualAircraftTypeId,
                 model.ActualArrivalUtc is null ? null : ToUtc(model.ActualArrivalUtc.Value),
                 model.ActualDepartureUtc is null ? null : ToUtc(model.ActualDepartureUtc.Value),
                 TrimToNull(model.AircraftTailNumber),
@@ -311,6 +327,8 @@
 
     private static WorkOrderEditModel FromDetail(WorkOrderDetail detail) => new()
     {
+        ActualFlightNumber = detail.FlightNumber,
+        ActualAircraftTypeId = detail.AircraftTypeId,
         ActualArrivalUtc = detail.ActualArrivalUtc?.UtcDateTime,
         ActualDepartureUtc = detail.ActualDepartureUtc?.UtcDateTime,
         AircraftTailNumber = detail.AircraftTailNumber,
@@ -379,6 +397,8 @@
 
     private sealed class WorkOrderEditModel
     {
+        public string? ActualFlightNumber { get; set; }
+        public Guid? ActualAircraftTypeId { get; set; }
         public DateTime? ActualArrivalUtc { get; set; }
         public DateTime? ActualDepartureUtc { get; set; }
         public string? AircraftTailNumber { get; set; }

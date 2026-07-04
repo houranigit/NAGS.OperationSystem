@@ -43,7 +43,8 @@ internal static class WorkOrderEndpoints
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
             var result = await sender.Send(new UpdateWorkOrderCommand(
-                id, request.ServiceLines ?? [], request.Tasks ?? [], request.ActualArrivalUtc, request.ActualDepartureUtc,
+                id, request.ServiceLines ?? [], request.Tasks ?? [], request.ActualFlightNumber, request.ActualAircraftTypeId,
+                request.ActualArrivalUtc, request.ActualDepartureUtc,
                 request.AircraftTailNumber, request.Remarks, request.CustomerSignatureReference, rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.WorkOrders.Author);

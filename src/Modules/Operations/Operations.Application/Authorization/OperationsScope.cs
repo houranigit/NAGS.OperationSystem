@@ -2,13 +2,15 @@ using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Readers;
+using Operations.Domain.Flights;
 
 namespace Operations.Application.Authorization;
 
 /// <summary>
 /// The data boundary the current caller may act within. A <see cref="UserType.SystemAdministrator"/>
-/// is unrestricted; a <see cref="UserType.StationStaff"/> is confined to <see cref="StationId"/>.
-/// CustomerContacts have no Operations access in this release.
+/// is unrestricted; a <see cref="UserType.StationStaff"/> is confined to <see cref="StationId"/> and,
+/// for non-Per-Landing flights, to flights they are assigned to. CustomerContacts have no Operations
+/// access in this release.
 /// </summary>
 public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, Guid? StaffMemberId)
 {
@@ -18,6 +20,35 @@ public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, 
         IsAdministrator || StationId == stationId
             ? Result.Success()
             : Error.Forbidden("This flight is outside your station scope.", "Operations.Scope.Forbidden");
+
+    /// <summary>
+    /// True when the caller may see/act on <paramref name="flight"/>: administrators always; station
+    /// staff when the flight is at their station AND is Per-Landing (station-wide visibility) or has
+    /// them on its assigned-employee roster. Requires <c>PlannedServices</c> and
+    /// <c>AssignedEmployees</c> to be loaded on the flight.
+    /// </summary>
+    public bool CanAccessFlight(Flight flight)
+    {
+        if (IsAdministrator)
+            return true;
+
+        if (StationId != flight.Station.StationId)
+            return false;
+
+        if (flight.IsPerLanding)
+            return true;
+
+        return StaffMemberId is { } staffId &&
+               flight.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId);
+    }
+
+    /// <summary>Fails closed with Forbidden when <see cref="CanAccessFlight"/> is false.</summary>
+    public Result EnsureFlightAccess(Flight flight) =>
+        CanAccessFlight(flight)
+            ? Result.Success()
+            : Error.Forbidden(
+                "You do not have access to this flight. Non-Per-Landing flights are visible only to their assigned staff.",
+                "Operations.Scope.FlightForbidden");
 }
 
 /// <summary>

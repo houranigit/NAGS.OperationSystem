@@ -59,9 +59,19 @@ internal static class FlightEndpoints
         {
             var result = await sender.Send(new CreateAdHocFlightWithWorkOrderCommand(
                 request.CustomerId, request.OperationTypeId, request.FlightNumber, request.ScheduledArrivalUtc,
-                request.ScheduledDepartureUtc, request.AircraftTypeId, request.PlannedServiceIds ?? [], request.AcknowledgeDuplicates), ct);
+                request.ScheduledDepartureUtc, request.AircraftTypeId, request.PlannedServiceIds ?? [], request.AcknowledgeDuplicates,
+                request.IsCancellation, request.CancellationAtUtc, request.CancellationReason,
+                request.ActualFlightNumber, request.ActualAircraftTypeId, request.AircraftTailNumber,
+                request.ActualArrivalUtc, request.ActualDepartureUtc,
+                request.ServiceLines ?? [], request.Tasks ?? [], request.Remarks, request.CustomerSignatureReference), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+
+        flights.MapGet("/{id:guid}/timeline", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetFlightTimelineQuery(id), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
 
         flights.MapPut("/{id:guid}", async (Guid id, UpdateScheduledFlightRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
         {

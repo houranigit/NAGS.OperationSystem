@@ -23,11 +23,22 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     public WorkOrderStatus Status { get; private set; }
     public WorkOrderNumber? Number { get; private set; }
 
+    /// <summary>The staff member who owns/authors this work order; only the owner may edit it while
+    /// editable. Null for system-generated work orders (auto Per-Landing job) or admin-created ones.</summary>
+    public Guid? OwnerStaffMemberId { get; private set; }
+
+    public StaffMemberSnapshot? Owner { get; private set; }
+
     public CustomerSnapshot Customer { get; private set; } = null!;
     public StationSnapshot Station { get; private set; } = null!;
     public OperationTypeSnapshot OperationType { get; private set; } = null!;
+
+    /// <summary>The actual flight number: seeded from the flight at open, editable while the work order is editable.</summary>
     public FlightNumber FlightNumber { get; private set; } = null!;
+
+    /// <summary>The actual aircraft type: seeded from the flight at open, editable while the work order is editable.</summary>
     public AircraftTypeSnapshot? AircraftType { get; private set; }
+
     public string? AircraftTailNumber { get; private set; }
     public ScheduledTime Schedule { get; private set; } = null!;
     public ActualTime? Actuals { get; private set; }
@@ -52,22 +63,22 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     public bool IsCancellation => Type == WorkOrderType.Cancellation;
     public bool IsEditable => Status is WorkOrderStatus.Draft or WorkOrderStatus.Returned;
 
-    public static WorkOrder OpenCompletion(FlightContext flight, Guid createdByUserId, DateTimeOffset now, Guid? id = null)
+    public static WorkOrder OpenCompletion(FlightContext flight, Guid createdByUserId, StaffMemberSnapshot? owner, DateTimeOffset now, Guid? id = null)
     {
-        var workOrder = NewFrom(flight, WorkOrderType.Completion, createdByUserId, now, id);
+        var workOrder = NewFrom(flight, WorkOrderType.Completion, createdByUserId, owner, now, id);
         workOrder.RaiseDomainEvent(new WorkOrderOpened(workOrder.Id, flight.FlightId));
         return workOrder;
     }
 
-    public static WorkOrder OpenCancellation(FlightContext flight, CancellationDetails cancellation, Guid createdByUserId, DateTimeOffset now, Guid? id = null)
+    public static WorkOrder OpenCancellation(FlightContext flight, CancellationDetails cancellation, Guid createdByUserId, StaffMemberSnapshot? owner, DateTimeOffset now, Guid? id = null)
     {
-        var workOrder = NewFrom(flight, WorkOrderType.Cancellation, createdByUserId, now, id);
+        var workOrder = NewFrom(flight, WorkOrderType.Cancellation, createdByUserId, owner, now, id);
         workOrder.Cancellation = cancellation;
         workOrder.RaiseDomainEvent(new WorkOrderOpened(workOrder.Id, flight.FlightId));
         return workOrder;
     }
 
-    private static WorkOrder NewFrom(FlightContext flight, WorkOrderType type, Guid createdByUserId, DateTimeOffset now, Guid? id)
+    private static WorkOrder NewFrom(FlightContext flight, WorkOrderType type, Guid createdByUserId, StaffMemberSnapshot? owner, DateTimeOffset now, Guid? id)
     {
         return new WorkOrder
         {
@@ -75,6 +86,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>
             FlightId = flight.FlightId,
             Type = type,
             Status = WorkOrderStatus.Draft,
+            OwnerStaffMemberId = owner?.StaffMemberId,
+            Owner = owner,
             Customer = flight.Customer,
             Station = flight.Station,
             OperationType = flight.OperationType,
@@ -85,6 +98,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>
             CreatedAtUtc = now
         };
     }
+
+    /// <summary>True when <paramref name="staffMemberId"/> owns this work order.</summary>
+    public bool IsOwnedBy(Guid staffMemberId) => OwnerStaffMemberId == staffMemberId;
 
     public Result ReplaceServiceLines(IReadOnlyList<ServiceLineInput> inputs, DateTimeOffset now)
     {
@@ -165,6 +181,28 @@ public sealed class WorkOrder : AggregateRoot<Guid>
         return Result.Success();
     }
 
+    /// <summary>Sets the actual flight number recorded on this work order.</summary>
+    public Result SetActualFlightNumber(FlightNumber flightNumber, DateTimeOffset now)
+    {
+        if (!IsEditable)
+            return NotEditable();
+
+        FlightNumber = flightNumber;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>Sets the actual aircraft type recorded on this work order.</summary>
+    public Result SetActualAircraftType(AircraftTypeSnapshot? aircraftType, DateTimeOffset now)
+    {
+        if (!IsEditable)
+            return NotEditable();
+
+        AircraftType = aircraftType;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
     public Result SetAircraftTailNumber(string? tailNumber, DateTimeOffset now)
     {
         if (!IsEditable)
@@ -195,18 +233,14 @@ public sealed class WorkOrder : AggregateRoot<Guid>
         return Result.Success();
     }
 
-    public Result Submit(IReadOnlyCollection<Guid> requiredPlannedServiceIds, bool isPerLanding, DateTimeOffset now)
+    /// <summary>
+    /// Submits the work order for review. Actual services are optional at submission (billing later
+    /// compares planned vs actual); completion-specific required fields are enforced at approval.
+    /// </summary>
+    public Result Submit(DateTimeOffset now)
     {
         if (!IsEditable)
             return Error.Conflict("Only a draft or returned work order can be submitted.", "Operations.WorkOrder.NotSubmittable");
-
-        if (Type == WorkOrderType.Completion && !isPerLanding)
-        {
-            var performedIds = _serviceLines.Select(l => l.Service.ServiceId).ToHashSet();
-            var missing = requiredPlannedServiceIds.Where(id => !performedIds.Contains(id)).ToList();
-            if (missing.Count > 0)
-                return Error.Validation("A completion must include all planned services before it can be submitted.", "Operations.WorkOrder.MissingPlannedServices");
-        }
 
         Status = WorkOrderStatus.Submitted;
         UpdatedAtUtc = now;
@@ -221,6 +255,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>
 
         if (Type == WorkOrderType.Completion && Actuals is null)
             return Error.Validation("Actual arrival and departure times are required to approve a completion.", "Operations.WorkOrder.ActualsRequired");
+
+        if (Type == WorkOrderType.Completion && AircraftType is null)
+            return Error.Validation("The actual aircraft type is required to approve a completion.", "Operations.WorkOrder.ActualAircraftTypeRequired");
 
         if (Type == WorkOrderType.Cancellation && Cancellation is null)
             return Error.Validation("Cancellation details are required to approve a cancellation.", "Operations.WorkOrder.CancellationRequired");

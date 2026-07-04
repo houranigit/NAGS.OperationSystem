@@ -48,18 +48,22 @@ public sealed class AutoWorkOrderJob(
         {
             var workOrder = WorkOrder.OpenCompletion(
                 new FlightContext(flight.Id, flight.Customer, flight.Station, flight.OperationType, flight.FlightNumber, flight.Schedule, flight.AircraftType),
-                createdByUserId: Guid.Empty, now);
+                createdByUserId: Guid.Empty, owner: null, now);
 
             var actuals = ActualTime.Create(flight.Schedule.Sta, flight.Schedule.Std);
             if (actuals.IsSuccess)
                 workOrder.SetActualTimes(actuals.Value, now);
 
-            var submit = workOrder.Submit([], isPerLanding: true, now);
+            var submit = workOrder.Submit(now);
             if (submit.IsFailure)
                 continue;
 
             flight.OnWorkOrderSubmitted(now);
             db.WorkOrders.Add(workOrder);
+            db.FlightTimelineEntries.Add(new Operations.Domain.Flights.FlightTimelineEntry(
+                flight.Id, FlightTimelineEventType.WorkOrderCreated, now, actorUserId: Guid.Empty, actorName: null, workOrder.Id));
+            db.FlightTimelineEntries.Add(new Operations.Domain.Flights.FlightTimelineEntry(
+                flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now, actorUserId: Guid.Empty, actorName: null, workOrder.Id));
         }
 
         if (candidates.Count > 0)

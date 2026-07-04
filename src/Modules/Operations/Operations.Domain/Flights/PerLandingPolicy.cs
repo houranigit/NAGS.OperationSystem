@@ -14,9 +14,20 @@ public static class PerLandingPolicy
     public static bool IsAircraftPerLanding(Guid serviceId) =>
         serviceId == WellKnownMasterDataIds.AircraftPerLandingService;
 
-    /// <summary>Validates the planned-service set: Aircraft Per Landing cannot be mixed with any other service.</summary>
-    public static Result ValidatePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices)
+    /// <summary>
+    /// Validates the planned-service set: it cannot be empty (unless <paramref name="allowEmpty"/> is
+    /// set for the ad-hoc cancellation exception) and Aircraft Per Landing cannot be mixed with any
+    /// other service.
+    /// </summary>
+    public static Result ValidatePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices, bool allowEmpty = false)
     {
+        if (plannedServices.Count == 0 && !allowEmpty)
+        {
+            return Error.Validation(
+                "At least one planned service is required.",
+                "Operations.PlannedServices.Required");
+        }
+
         var distinct = plannedServices
             .GroupBy(s => s.ServiceId)
             .Select(g => g.First())

@@ -71,6 +71,32 @@
                 </div>
             </RadzenCard>
 
+            @if (flight.ApprovedWorkOrder is { } approved)
+            {
+                <RadzenCard class="ofd-card">
+                    <h2 class="os-section-title">Approved work order (captured values)</h2>
+                    <div class="ofd-fields">
+                        <DetailField Label="Work order #" Value="@approved.WorkOrderNumber" Icon="verified" />
+                        <DetailField Label="Outcome" Value="@approved.WorkOrderType" Icon="flag" />
+                        <DetailField Label="Actual flight #" Value="@approved.ActualFlightNumber" Icon="tag" />
+                        <DetailField Label="Actual aircraft type" Value="@None(approved.ActualAircraftTypeModel)" Icon="airplanemode_active" />
+                        <DetailField Label="Tail number" Value="@None(approved.AircraftTailNumber)" Icon="airplane_ticket" />
+                        <DetailField Label="ATA (UTC)" Value="@DateTimeDisplay(approved.ActualArrivalUtc)" Icon="flight_land" />
+                        <DetailField Label="ATD (UTC)" Value="@DateTimeDisplay(approved.ActualDepartureUtc)" Icon="flight_takeoff" />
+                        <DetailField Label="Approved at (UTC)" Value="@DateTimeDisplay(approved.ApprovedAtUtc)" Icon="schedule" />
+                        @if (approved.CanceledAtUtc is not null)
+                        {
+                            <DetailField Label="Canceled at (UTC)" Value="@DateTimeDisplay(approved.CanceledAtUtc)" Icon="cancel" />
+                            <DetailField Label="Cancellation reason" Value="@None(approved.CancellationReason)" Icon="notes" />
+                        }
+                        <DetailField Label="Signature" Value="@None(approved.CustomerSignatureReference)" Icon="draw" />
+                        <DetailField Label="Remarks" Value="@None(approved.Remarks)" Icon="notes" />
+                    </div>
+                    <RadzenButton Text="View approved work order" Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  Click="@(() => OpenWorkOrderDetailAsync(approved.WorkOrderId))" />
+                </RadzenCard>
+            }
+
             <div class="ofd-grid-2">
                 <RadzenCard class="ofd-card">
                     <h2 class="os-section-title">Planned services</h2>
@@ -137,6 +163,9 @@
                                 <Template Context="item">@(item.Number ?? item.Id.ToString()[..8])</Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Property="Type" Title="Type" />
+                            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Owner">
+                                <Template Context="item">@(item.OwnerName ?? "System")</Template>
+                            </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Status" Width="150px">
                                 <Template Context="item"><StatusBadge Label="@item.Status" Tone="@WorkOrderStatusTone(item.Status)" /></Template>
                             </RadzenDataGridColumn>
@@ -155,6 +184,29 @@
                     </RadzenDataGrid>
                 }
             </RadzenCard>
+
+            <RadzenCard class="ofd-card">
+                <h2 class="os-section-title">Timeline</h2>
+                @if (timeline.Count == 0)
+                {
+                    <EmptyState Title="No timeline events" Icon="history" />
+                }
+                else
+                {
+                    <ul class="ofd-timeline">
+                        @foreach (var entry in timeline)
+                        {
+                            <li @key="entry.Id" class="ofd-timeline-item">
+                                <span class="ofd-timeline-icon"><RadzenIcon Icon="@TimelineIcon(entry.EventType)" /></span>
+                                <div class="ofd-timeline-text">
+                                    <strong>@TimelineLabel(entry)</strong>
+                                    <span>@DateTimeDisplay(entry.OccurredAtUtc) UTC · @(entry.ActorName ?? "Administrator/System")</span>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </RadzenCard>
         }
     </div>
 </RequirePermission>
@@ -163,12 +215,13 @@
     [Parameter] public Guid Id { get; set; }
 
     private FlightDetail? flight;
+    private IReadOnlyList<FlightTimelineEntryModel> timeline = [];
     private bool isLoading = true;
     private bool loadError;
 
     private bool CanEditFlight => flight?.Status is "Scheduled" or "InProgress";
-    private bool CanOpenWorkOrder => flight?.Status is "Scheduled" or "InProgress" or "Returned";
-    private bool CanCancelFlight => flight?.Status is "Scheduled" or "InProgress" or "PendingReview";
+    private bool CanOpenWorkOrder => flight?.Status is "Scheduled" or "InProgress";
+    private bool CanCancelFlight => flight?.Status is "Scheduled" or "InProgress";
     private bool CanMergeFlight => flight?.Status is not "Completed" and not "Canceled" and not "Merged";
     private bool CanMergeWorkOrders => flight?.WorkOrders.Count > 1;
 
@@ -181,6 +234,7 @@
         try
         {
             flight = await Operations.GetFlightAsync(Id);
+            timeline = await Operations.GetFlightTimelineAsync(Id);
         }
         catch (ApiException)
         {
@@ -191,6 +245,39 @@
             isLoading = false;
         }
     }
+
+    private static string TimelineLabel(FlightTimelineEntryModel entry)
+    {
+        var number = string.IsNullOrWhiteSpace(entry.WorkOrderNumber) ? null : $" {entry.WorkOrderNumber}";
+        var label = entry.EventType switch
+        {
+            "FlightScheduled" => "Flight scheduled",
+            "AdHocFlightCreated" => "Ad-hoc flight created",
+            "WorkOrderCreated" => $"Work order{number} created",
+            "WorkOrderSubmitted" => $"Work order{number} submitted",
+            "WorkOrderApproved" => $"Work order{number} approved",
+            "WorkOrderReturned" => $"Work order{number} returned to review",
+            "WorkOrderRejected" => $"Work order{number} rejected",
+            "FlightCompleted" => "Flight completed",
+            "FlightCanceled" => "Flight canceled",
+            "EmployeeAssigned" => $"Employee assigned{(string.IsNullOrWhiteSpace(entry.Details) ? "" : $": {entry.Details}")}",
+            "ApprovedSnapshotCleared" => $"Approved work order snapshot{number} cleared",
+            _ => entry.EventType
+        };
+        return label;
+    }
+
+    private static string TimelineIcon(string eventType) => eventType switch
+    {
+        "FlightScheduled" or "AdHocFlightCreated" => "flight",
+        "WorkOrderCreated" => "assignment_add",
+        "WorkOrderSubmitted" => "send",
+        "WorkOrderApproved" or "FlightCompleted" => "verified",
+        "WorkOrderReturned" or "ApprovedSnapshotCleared" => "undo",
+        "WorkOrderRejected" or "FlightCanceled" => "cancel",
+        "EmployeeAssigned" => "person_add",
+        _ => "history"
+    };
 
     private void Back() => Navigation.NavigateTo("/operations/flights");
 
@@ -301,7 +388,7 @@
     {
         "Completed" => "success",
         "Canceled" or "Merged" => "danger",
-        "PendingReview" or "InProgress" => "warning",
+        "InProgress" => "warning",
         _ => "neutral"
     };
 
@@ -317,7 +404,7 @@
     {
         "Completed" => "success",
         "Canceled" or "Merged" => "danger",
-        "PendingReview" or "InProgress" => "warning",
+        "InProgress" => "warning",
         _ => "primary"
     };
 }

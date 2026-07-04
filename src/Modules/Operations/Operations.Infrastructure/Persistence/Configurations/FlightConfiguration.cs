@@ -53,6 +53,27 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
             a.Property(p => p.Model).HasColumnName("AircraftModel").HasMaxLength(50);
         });
 
+        builder.OwnsOne(f => f.ApprovedWorkOrder, a =>
+        {
+            a.Property(p => p.WorkOrderId).HasColumnName("ApprovedWorkOrderId");
+            a.Property(p => p.WorkOrderNumber).HasColumnName("ApprovedWorkOrderNumber").HasMaxLength(30);
+            a.Property(p => p.WorkOrderType).HasColumnName("ApprovedWorkOrderType").HasConversion<int>();
+            a.Property(p => p.ActualFlightNumber).HasColumnName("ApprovedActualFlightNumber").HasMaxLength(12);
+            a.Property(p => p.ActualAircraftTypeId).HasColumnName("ApprovedActualAircraftTypeId");
+            a.Property(p => p.ActualAircraftTypeManufacturer).HasColumnName("ApprovedActualAircraftManufacturer").HasMaxLength(100);
+            a.Property(p => p.ActualAircraftTypeModel).HasColumnName("ApprovedActualAircraftModel").HasMaxLength(50);
+            a.Property(p => p.AircraftTailNumber).HasColumnName("ApprovedAircraftTailNumber").HasMaxLength(20);
+            a.Property(p => p.ActualArrivalUtc).HasColumnName("ApprovedActualArrivalUtc");
+            a.Property(p => p.ActualDepartureUtc).HasColumnName("ApprovedActualDepartureUtc");
+            a.Property(p => p.Remarks).HasColumnName("ApprovedRemarks").HasMaxLength(2000);
+            a.Property(p => p.CustomerSignatureReference).HasColumnName("ApprovedCustomerSignatureReference").HasMaxLength(400);
+            a.Property(p => p.CanceledByUserId).HasColumnName("ApprovedCanceledByUserId");
+            a.Property(p => p.CanceledAtUtc).HasColumnName("ApprovedCanceledAtUtc");
+            a.Property(p => p.CancellationReason).HasColumnName("ApprovedCancellationReason").HasMaxLength(1000);
+            a.Property(p => p.ApprovedByUserId).HasColumnName("ApprovedByUserId");
+            a.Property(p => p.ApprovedAtUtc).HasColumnName("ApprovedAtUtc");
+        });
+
         builder.HasMany(f => f.PlannedServices).WithOne().HasForeignKey(p => p.FlightId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(f => f.AssignedEmployees).WithOne().HasForeignKey(e => e.FlightId).OnDelete(DeleteBehavior.Cascade);
 
@@ -100,5 +121,23 @@ public sealed class FlightAssignedEmployeeConfiguration : IEntityTypeConfigurati
         });
 
         builder.HasIndex(e => e.FlightId);
+    }
+}
+
+public sealed class FlightTimelineEntryConfiguration : IEntityTypeConfiguration<FlightTimelineEntry>
+{
+    public void Configure(EntityTypeBuilder<FlightTimelineEntry> builder)
+    {
+        builder.ToTable("flight_timeline_entries");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.FlightId).IsRequired();
+        builder.Property(e => e.EventType).HasConversion<int>();
+        builder.Property(e => e.OccurredAtUtc).IsRequired();
+        builder.Property(e => e.ActorUserId).IsRequired();
+        builder.Property(e => e.ActorName).HasMaxLength(200);
+        builder.Property(e => e.WorkOrderNumber).HasMaxLength(30);
+        builder.Property(e => e.Details).HasMaxLength(1000);
+
+        builder.HasIndex(e => new { e.FlightId, e.OccurredAtUtc });
     }
 }

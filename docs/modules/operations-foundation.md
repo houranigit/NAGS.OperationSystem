@@ -1,7 +1,7 @@
 # Operations Module Foundation
 
-Status: **Draft — active design reference (domain agreed, not yet implemented)**
-Last updated: 2026-07-03
+Status: **Implemented — living reference (matches the shipped v1.0.0 module)**
+Last updated: 2026-07-04
 
 ## 1. Purpose And Authority
 
@@ -52,25 +52,25 @@ There is **no** cross-station read-only oversight role in this release.
 ```mermaid
 flowchart TD
     subgraph scheduleFirst [Schedule-First]
-      A1[Scheduler schedules flight] --> A2[Flight appears on station calendar]
-      A2 --> A3[Staff opens work order on arrival]
+      A1[Scheduler schedules flight] --> A2[Flight appears on station calendar/list]
+      A2 --> A3["Staff opens a draft work order (flight stays Scheduled)"]
       A3 --> A4[Record actuals, services, tasks, resources, time]
-      A4 --> A5[Staff submits for review]
+      A4 --> A5["Staff submits for review (flight becomes InProgress)"]
     end
     subgraph workOrderFirst [Work-Order-First]
-      B1[Staff creates ad-hoc flight + work order] --> B2[Duplicate detection warns / links]
+      B1["Staff creates ad-hoc flight + work order (planning + actual fields)"] --> B2[Duplicate detection warns / links]
       B2 --> A4
     end
     A5 --> C1[Admin reviews]
-    C1 -->|approve| C2[Locked + sent to billing]
+    C1 -->|approve| C2[Locked + approved values captured onto flight + sent to billing]
     C1 -->|reject / return| A3
-    C2 -->|admin returns to review| A3
+    C2 -->|admin returns to review: snapshot cleared, flight InProgress| A3
     A2 -->|cancel = cancellation work order| E1[Cancellation WO -> review -> approve]
     A3 -->|cancel = cancellation work order| E1
     E1 --> C2
 ```
 
-Supporting workflows: assign/invite employees, claim a Per-Landing flight, record Return-to-Ramp follow-up, auto-generate an empty work order for overdue Per-Landing flights, and merge duplicates.
+Supporting workflows: assign/invite employees (an assigned staff member may invite others), claim a Per-Landing flight, record Return-to-Ramp follow-up, auto-generate an empty work order for overdue Per-Landing flights, and merge duplicates. Every lifecycle step is recorded on a portal-visible per-flight timeline.
 
 ## 6. Aggregate And Lifecycle Design
 
@@ -94,30 +94,74 @@ Cross-aggregate consistency (flight status reflecting work-order approval) is co
 
 ### Decided — Flight lifecycle
 
+There is **no `PendingReview` flight status**. Opening/authoring a draft work order does not change the
+flight; the flight moves to `InProgress` only when a work order is **submitted**, and it stays
+`InProgress` while submissions are under review.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Scheduled: ScheduleFlight
     [*] --> InProgress: CreateAdHocFlightWithWorkOrder
-    Scheduled --> InProgress: OpenWorkOrder / auto-generate
-    InProgress --> PendingReview: SubmitWorkOrder
-    PendingReview --> InProgress: Withdraw / Reject / Return
-    PendingReview --> Completed: ApproveWorkOrder (Completion)
-    PendingReview --> Canceled: ApproveWorkOrder (Cancellation)
-    Completed --> PendingReview: Admin return to review
-    Canceled --> PendingReview: Admin return to review
+    Scheduled --> InProgress: SubmitWorkOrder
+    InProgress --> Completed: ApproveWorkOrder (Completion)
+    InProgress --> Canceled: ApproveWorkOrder (Cancellation)
+    Completed --> InProgress: Admin return to review (snapshot cleared)
+    Canceled --> InProgress: Admin return to review (snapshot cleared)
     Scheduled --> Merged: MergeDuplicateFlights (loser)
     InProgress --> Merged: MergeDuplicateFlights (loser)
 ```
 
 - `Completed` and `Canceled` are **both** terminal, post-approval, billable outcomes reached via an approved work order.
+- On approval the flight **captures the approved work order's scalar values plus its reference** (see §6a) and becomes locked.
 - `Merged` is a terminal soft-archived state for the losing record of an ad-hoc flight merge.
 
 ### Decided — Work Order lifecycle
 
 - `WorkOrderType`: `Completion` | `Cancellation`.
 - `Status`: `Draft → Submitted → Approved`; plus `Returned`/`Rejected` (back to editable), and `Superseded` (lost a duplicate merge; soft-archived, linked to survivor).
-- Approval assigns the station work-order number, locks the work order, settles the flight, and publishes the billing hand-off event. Only an admin **return to review** unlocks it.
+- **Ownership:** every staff-authored work order carries an owner (`OwnerStaffMemberId` + `StaffMemberSnapshot`), captured at open. Only the owner (or an administrator) can edit or submit it — staff can never touch another employee's work order. System-generated work orders (auto Per-Landing job) have no owner.
+- **Multiple work orders:** multiple staff members may each hold their own work order for the same flight while it is `InProgress`; a single staff member holds at most **one active** (Draft/Submitted) work order per flight. The admin decides which one to approve.
+- Approval assigns the station work-order number, locks the work order, settles the flight (capturing the approved values), and publishes the billing hand-off event. Only an admin **return to review** unlocks it; returning an approved work order clears its number and the flight's captured snapshot and puts the flight back to `InProgress`.
 - Exactly **one `Approved`** work order per flight.
+
+### Decided — Approval requirements
+
+- **Completion:** Actual Aircraft Type, Actual Flight Number, and ATA/ATD are required at approval. Actual service lines and tasks are **optional** (billing later compares planned vs actual); tail number, remarks, and signature are optional.
+- **Cancellation:** only the cancellation date/time is required (reason optional). No actuals, aircraft type, services, tasks, or signature are needed.
+
+## 6a. Billing Readiness — Approved Work Order Snapshot On The Flight
+
+### Decided
+
+The **Flight is the billing-ready source of truth**. On work-order approval the flight captures an
+`ApprovedWorkOrderSnapshot` (owned value object):
+
+- `ApprovedWorkOrderId` + `ApprovedWorkOrderNumber` (the reference),
+- outcome type, actual flight number, actual aircraft type, tail number, ATA/ATD,
+- remarks, customer-signature reference, cancellation details (if any), approver + approval time.
+
+The collection-heavy approved data (**actual service lines and tasks**) is *not* copied; it stays on
+the locked, immutable approved `WorkOrder`. Any billing hand-off or query therefore loads **both** the
+flight snapshot and the referenced approved work order to assemble the full billing view. The
+`FlightSentToBilling` integration event carries the ids plus the key approved scalars.
+
+On **return/revert** of an approved work order:
+
+- the work order's number and approval metadata are wiped (a later re-approval draws a **new**
+  station-sequence number — numbers are never reused; the retired number stays visible in the timeline),
+- the flight's captured snapshot and reference are cleared,
+- the flight returns to `InProgress` and the work order becomes editable again for its owner.
+
+## 6b. Flight Timeline / History
+
+### Decided
+
+Every flight has an append-only, portal-visible timeline (`FlightTimelineEntry`, written by
+application handlers in the same transaction as the state change): scheduled/ad-hoc created, work
+order created/submitted/approved/returned/rejected, flight completed/canceled, employee assigned,
+approved-snapshot cleared. Entries record the actor (staff name when resolvable), the work-order
+number at the time of the event, and are queryable via
+`GET /api/v1/operations/flights/{id}/timeline` and shown on the flight detail page.
 
 ## 7. Cancellation
 
@@ -134,16 +178,17 @@ Cancellation means **the customer cancelled the flight**. Because the customer m
 
 ### Decided
 
+- **Planned services are mandatory:** a flight cannot be scheduled without at least one planned service. Ad-hoc/work-order-first flights follow the same rule, with a single exception: an ad-hoc flight created together with an explicit **cancellation** work order may carry none.
 - **Aircraft Per Landing** is a planning/billing **designation**, not a performable service. A flight whose planned service is Aircraft Per Landing was scheduled **without intended service** and is billed per landing. Such flights are **visible station-wide** and serviceable by any station employee.
 - **On Call** is a normal performable service, added when a Per-Landing flight actually requests service.
-- Staff **cannot select Aircraft Per Landing as a performed service line** (excluded from pickers).
+- Staff **cannot select Aircraft Per Landing as a performed service line** (excluded from pickers and rejected server-side).
 - **Mixing rule (enforced in Operations now):** if a flight's planned services include Aircraft Per Landing, it must be the **only** planned service. This rule lived in the legacy Contracts module; it is enforced in Operations while service selection is manual, and revisited when the Contracts module exists.
 - **Planned vs Extra:** each performed service line is tagged `Planned` (from the schedule/contract) or `Extra` (added during the work) so future billing can treat them differently.
 
-### Work-order minimum content
+### Work-order content
 
-- **Normal flight:** the work order must contain **at least the flight's planned services** to be completed. Planned services are **auto-copied** into performed lines when the work order is opened (Aircraft Per Landing is never copied).
-- **Per-Landing flight:** the work order may have **zero** service lines (or On-Call + others if service was requested).
+- **Actual service lines and tasks are optional** — a completion may be submitted and approved with zero actual services. Billing later compares planned vs actual; the work order is not forced to include the planned services.
+- Completion approval requires the actual aircraft type, actual flight number, and ATA/ATD (see §6).
 
 ## 9. Assignment And Visibility
 
@@ -153,6 +198,8 @@ Cancellation means **the customer cancelled the flight**. Because the customer m
 - **Non-Per-Landing** flights are visible only to their **assigned employees** (plus schedulers/admins).
 - **Per-Landing** flights are visible **station-wide**; any station employee can claim/serve them.
 - **Station scoping:** Station Staff see only their own station's flights; Schedulers and Admins see all stations. Fail closed if the caller's linked StaffMember or its station is inactive.
+- **Backend-enforced on reads AND writes:** visibility is enforced server-side (`OperationsScopeContext.EnsureFlightAccess`) across flight list/calendar/detail/timeline queries, work-order detail and review-queue queries, and every authoring path — never only in the UI.
+- **Assigned staff can invite:** an already-assigned staff member may assign/invite other employees onto the flight; admins/schedulers are unrestricted.
 
 ## 10. Duplicate Detection And Merge
 
@@ -196,12 +243,13 @@ A background job creates an **empty work order** (placed into the review queue) 
 
 - Within `Flight`: `FlightAssignedEmployee`, `PlannedService`.
 - Within `WorkOrder`: `WorkOrderServiceLine`, `WorkOrderTask`, `WorkOrderTaskEmployee`, `WorkOrderTaskTool`, `WorkOrderTaskMaterial`, `WorkOrderTaskGeneralSupport`, `WorkOrderTaskAttachment`.
+- Standalone (append-only): `FlightTimelineEntry` — the per-flight portal-visible history (§6b).
 
 Service lines and task lines **both support multiple employees**.
 
 ### Value objects
 
-`FlightNumber` (normalized current), `OriginalFlightNumber`, `ScheduledTime` (STA/STD, STD ≥ STA), `ActualTime` (ATA/ATD, ATD ≥ ATA), `TimeWindow` (From/To), `WorkOrderNumber` (`{IATA}-{nnnn}`), `Quantity`, `CancellationDetails` (canceledBy/at/reason), `WorkOrderMergeResolution`, `FlightMergeResolution`, and immutable MasterData snapshots: `CustomerSnapshot`, `StationSnapshot`, `OperationTypeSnapshot`, `AircraftTypeSnapshot`, `ServiceSnapshot`, `StaffMemberSnapshot`, `ToolSnapshot`, `MaterialSnapshot`, `GeneralSupportSnapshot`.
+`FlightNumber` (normalized current), `OriginalFlightNumber`, `ScheduledTime` (STA/STD, STD ≥ STA), `ActualTime` (ATA/ATD, ATD ≥ ATA), `TimeWindow` (From/To), `WorkOrderNumber` (`{IATA}-{nnnn}`), `Quantity`, `CancellationDetails` (canceledBy/at/reason), `ApprovedWorkOrderSnapshot` (the captured approved work-order scalars + reference on the flight, §6a), `WorkOrderMergeResolution`, `FlightMergeResolution`, and immutable MasterData snapshots: `CustomerSnapshot`, `StationSnapshot`, `OperationTypeSnapshot`, `AircraftTypeSnapshot`, `ServiceSnapshot`, `StaffMemberSnapshot`, `ToolSnapshot`, `MaterialSnapshot`, `GeneralSupportSnapshot`.
 
 ### Domain services
 
@@ -212,11 +260,11 @@ Service lines and task lines **both support multiple employees**.
 
 ### Domain events
 
-`FlightScheduled`, `FlightNumberChanged`, `EmployeeAssignedToFlight`, `WorkOrderOpened`, `WorkOrderSubmitted`, `WorkOrderApproved`, `WorkOrderReturnedToReview`, `WorkOrderRejected`, `WorkOrderSuperseded`, `FlightCompleted`, `FlightCanceled`, `FlightMerged`, `FlightSentToBilling`.
+`FlightScheduled`, `AdHocFlightCreated`, `FlightNumberChanged`, `EmployeeAssignedToFlight`, `WorkOrderOpened`, `WorkOrderSubmitted`, `WorkOrderApproved`, `WorkOrderReturnedToReview`, `WorkOrderRejected`, `WorkOrderSuperseded`, `FlightCompleted`, `FlightCanceled`, `FlightMerged`, `ApprovedWorkOrderSnapshotCleared`, `FlightSentToBilling` (integration).
 
 ## 14. Statuses Summary
 
-- **Flight.Status:** `Scheduled`, `InProgress`, `PendingReview`, `Completed`, `Canceled`, `Merged`.
+- **Flight.Status:** `Scheduled`, `InProgress`, `Completed`, `Canceled`, `Merged`. (There is no `PendingReview` flight status; submitted work orders leave the flight `InProgress`.)
 - **WorkOrder.Status:** `Draft`, `Submitted`, `Approved`, `Returned`, `Rejected`, `Superseded`.
 - **WorkOrder.Type:** `Completion`, `Cancellation`.
 
@@ -228,12 +276,12 @@ Service lines and task lines **both support multiple employees**.
 
 ### Queries / screens / reports
 
-- Scheduler calendar (period, station-scoped).
-- Flights list (paged; filters: status/station/customer/date; scope-aware).
-- Flight detail (schedule, crew, planned services, work order, lifecycle timeline).
-- Work order review/detail (services, tasks, resources, actuals, signature).
-- Review queue (submitted work orders + flights with multiple active work orders).
-- My assigned flights / Per-Landing flights at my station / Ad-hoc flights (station staff).
+- Scheduler calendar (period, station- and assignment-scoped; portal page at `/operations/calendar` shows scheduled and ad-hoc flights).
+- Flights list (paged; filters: status/station/customer/date; scope- and assignment-aware).
+- Flight detail (schedule, crew, planned services, work orders with owners, captured approved work-order values, lifecycle timeline).
+- Flight timeline (`GET /flights/{id}/timeline`).
+- Work order review/detail (services, tasks, resources, actuals, owner, signature) — access-scoped.
+- Review queue (submitted work orders) — access-scoped for station staff.
 - Duplicate candidates + merge-conflict resolution screen.
 - Operations dashboard / KPIs.
 
@@ -300,3 +348,11 @@ All previously open questions are now decided; there are no blocking open items.
 - 2026-07-03 — Cancellation handled like work-order creation; a cancellation after an approved completion is a duplicate resolved by admin; exactly one approved work order per flight.
 - 2026-07-03 — Auto-generation timeout is a single global appsettings value (no per-station override).
 - 2026-07-03 — Contracts ignored this release; planned services stay manual selection; only nullable contract seam retained. On Call has no special billing treatment.
+- 2026-07-04 — `PendingReview` flight status removed. Opening a draft work order does not change the flight; the flight moves `Scheduled → InProgress` only on work-order submit and stays `InProgress` until approval.
+- 2026-07-04 — The Flight is the billing-ready source of truth: approval captures an `ApprovedWorkOrderSnapshot` (scalars + `ApprovedWorkOrderId`/`ApprovedWorkOrderNumber` reference) onto the flight; actual service lines/tasks are read from the locked approved work order. Return/revert clears the snapshot, wipes the work-order number, and reverts the flight to `InProgress`; re-approval draws a new number (never reused).
+- 2026-07-04 — Work orders are owner-scoped by StaffMember (`OwnerStaffMemberId` + snapshot). Only the owner (or an admin) edits/submits; multiple staff may each hold their own work order per flight, one active per staff member per flight.
+- 2026-07-04 — Completion approval requires actual aircraft type, actual flight number, and ATA/ATD. Actual services/tasks are optional at submission and approval (the "must include all planned services" submit rule is removed); billing later compares planned vs actual.
+- 2026-07-04 — Scheduling requires at least one planned service; ad-hoc/work-order-first creation follows the same rule except for explicit cancellations.
+- 2026-07-04 — Visibility is enforced server-side on reads and writes: per-landing flights are station-wide; non-per-landing flights are assigned-staff-only (plus admins). Assigned staff may invite others.
+- 2026-07-04 — Per-flight append-only timeline (`FlightTimelineEntry`) written in-transaction by handlers, exposed at `GET /flights/{id}/timeline`, and shown on the flight detail page.
+- 2026-07-04 — Work-order-first portal flow collects flight planning fields AND work-order actual fields in one dialog; the created flight appears on the calendar and list immediately. Portal calendar page added at `/operations/calendar`.

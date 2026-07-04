@@ -15,3 +15,6 @@ public sealed record FlightCompleted(Guid FlightId, Guid WorkOrderId) : DomainEv
 public sealed record FlightCanceled(Guid FlightId, Guid WorkOrderId) : DomainEvent;
 
 public sealed record FlightMerged(Guid LoserFlightId, Guid SurvivorFlightId) : DomainEvent;
+
+/// <summary>Raised when a returned/reverted approval clears the captured work order values from the flight.</summary>
+public sealed record ApprovedWorkOrderSnapshotCleared(Guid FlightId, Guid WorkOrderId) : DomainEvent;

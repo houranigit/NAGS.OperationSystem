@@ -25,7 +25,41 @@ public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircr
 
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);
 
-public sealed record WorkOrderSummaryDto(Guid Id, string Type, string Status, string? Number);
+public sealed record WorkOrderSummaryDto(
+    Guid Id,
+    string Type,
+    string Status,
+    string? Number,
+    Guid? OwnerStaffMemberId,
+    string? OwnerName,
+    DateTimeOffset CreatedAtUtc);
+
+/// <summary>The approved work order values captured onto the flight (billing-ready scalars). The
+/// actual service lines/tasks are read from the referenced approved work order.</summary>
+public sealed record ApprovedWorkOrderDto(
+    Guid WorkOrderId,
+    string WorkOrderNumber,
+    string WorkOrderType,
+    string ActualFlightNumber,
+    Guid? ActualAircraftTypeId,
+    string? ActualAircraftTypeModel,
+    string? AircraftTailNumber,
+    DateTimeOffset? ActualArrivalUtc,
+    DateTimeOffset? ActualDepartureUtc,
+    string? Remarks,
+    string? CustomerSignatureReference,
+    DateTimeOffset? CanceledAtUtc,
+    string? CancellationReason,
+    DateTimeOffset ApprovedAtUtc);
+
+public sealed record FlightTimelineEntryDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset OccurredAtUtc,
+    string? ActorName,
+    Guid? WorkOrderId,
+    string? WorkOrderNumber,
+    string? Details);
 
 public sealed record FlightDetailDto(
     Guid Id,
@@ -47,6 +81,7 @@ public sealed record FlightDetailDto(
     string? ContractNumber,
     Guid? MergedIntoFlightId,
     Guid? PotentialDuplicateOfFlightId,
+    ApprovedWorkOrderDto? ApprovedWorkOrder,
     IReadOnlyList<PlannedServiceDto> PlannedServices,
     IReadOnlyList<AssignedEmployeeDto> AssignedEmployees,
     IReadOnlyList<WorkOrderSummaryDto> WorkOrders,
@@ -85,9 +120,13 @@ public sealed record WorkOrderDetailDto(
     string Type,
     string Status,
     string? Number,
+    Guid? OwnerStaffMemberId,
+    string? OwnerName,
     string FlightNumber,
     string CustomerName,
     string StationIata,
+    Guid? AircraftTypeId,
+    string? AircraftTypeModel,
     string? AircraftTailNumber,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
