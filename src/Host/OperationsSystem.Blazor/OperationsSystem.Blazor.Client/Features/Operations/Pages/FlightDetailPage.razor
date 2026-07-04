@@ -198,7 +198,7 @@
     {
         var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Edit flight",
             new Dictionary<string, object?> { [nameof(ScheduleFlightDialog.FlightId)] = Id },
-            new DialogOptions { Width = "920px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
         {

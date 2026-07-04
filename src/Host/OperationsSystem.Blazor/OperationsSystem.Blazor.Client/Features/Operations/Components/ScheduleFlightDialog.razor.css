@@ -1,6 +1,38 @@
 .opf-form {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: var(--os-space-4);
+    width: min(688px, calc(100vw - 3rem));
+    max-width: 688px;
+    margin-inline: auto;
+    color: var(--os-color-text);
+}
+
+.opf-step-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-2);
+}
+
+.opf-section-line {
+    display: grid;
+    grid-template-columns: auto auto minmax(24px, 1fr);
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-block-start: var(--os-space-1);
+    color: var(--os-color-text);
+    font-weight: 800;
+}
+
+.opf-section-line::after {
+    content: "";
+    height: 1px;
+    background: var(--os-color-border);
+}
+
+.opf-section-line ::deep .rz-icon {
+    color: var(--os-color-text-muted);
+    font-size: 1.25rem;
 }
 
 .opf-grid-2 {
@@ -10,35 +42,66 @@
 }
 
 .opf-field-block {
-    display: grid;
-    gap: var(--os-space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-1);
+    min-width: 0;
 }
 
 .opf-label {
-    color: var(--os-color-text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    color: var(--os-color-text);
     font-size: var(--os-text-sm);
-    font-weight: 700;
+    font-weight: 800;
 }
 
-.opf-label span {
+.opf-required {
     color: var(--os-color-danger);
 }
 
-.opf-control {
+.opf-input-wrap {
+    position: relative;
+    min-width: 0;
+}
+
+.opf-form ::deep .opf-control {
     width: 100%;
 }
 
-.opf-section-line {
-    display: flex;
-    align-items: center;
-    gap: var(--os-space-2);
-    padding-top: var(--os-space-1);
-    color: var(--os-color-text);
-    font-weight: 700;
+.opf-input-wrap ::deep .opf-field-icon {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 50%;
+    inset-inline-start: var(--os-space-4);
+    transform: translateY(-50%);
+    color: var(--os-color-text-muted);
+    font-size: 1.25rem;
+    pointer-events: none;
 }
 
-.opf-section-line .rz-icon {
-    color: var(--os-color-primary);
+.opf-form ::deep .opf-control-icon input,
+.opf-form ::deep input.opf-control-icon,
+.opf-form ::deep .opf-control-icon .rz-dropdown-label {
+    padding-inline-start: 52px;
+}
+
+.opf-form ::deep .opf-control-icon .rz-dropdown-trigger,
+.opf-form ::deep .opf-control-icon .rz-datepicker-trigger {
+    z-index: 3;
+}
+
+.opf-selection-panel {
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: white;
+}
+
+.opf-selection-panel-scroll {
+    max-height: 12rem;
+    overflow: auto;
 }
 
 .opf-chip-list {
@@ -47,31 +110,42 @@
     gap: var(--os-space-2);
 }
 
-.opf-chip-list-staff {
-    max-height: 10.5rem;
-    overflow: auto;
-    padding: 1px;
-}
-
 .opf-chip {
     display: inline-flex;
     align-items: center;
     gap: var(--os-space-2);
-    min-height: 2.35rem;
+    max-width: 100%;
+    min-height: 40px;
     padding: 0.45rem 0.75rem;
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-pill);
-    background: var(--os-color-surface);
+    border-radius: 7px;
+    background: white;
     color: var(--os-color-text-muted);
     font: inherit;
     font-size: var(--os-text-sm);
+    font-weight: 700;
     cursor: pointer;
     transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
 }
 
+.opf-chip ::deep .rz-icon {
+    flex: 0 0 auto;
+    color: currentColor;
+    font-size: 1.1rem;
+}
+
+.opf-chip span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .opf-chip small {
+    flex: 0 0 auto;
     color: var(--os-color-text-subtle);
     font-size: var(--os-text-xs);
+    font-weight: 700;
 }
 
 .opf-chip:hover {
@@ -81,19 +155,85 @@
 
 .opf-chip-selected {
     background: var(--os-color-primary-soft);
-    border-color: var(--os-color-primary-soft-border);
+    border-color: var(--os-color-primary);
     color: var(--os-color-primary-strong);
-    font-weight: 700;
+}
+
+.opf-chip-selected small {
+    color: var(--os-color-primary-strong);
+}
+
+.opf-empty-row {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: var(--os-space-4);
+    border: 1px dashed var(--os-color-border);
+    border-radius: 8px;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.opf-empty-row ::deep .rz-icon {
+    color: var(--os-color-primary);
+}
+
+.opf-warning-panel,
+.opf-error-panel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--os-space-3);
+    align-items: start;
+    padding: var(--os-space-4);
+    border-radius: 8px;
+    color: var(--os-color-text);
+}
+
+.opf-warning-panel {
+    border: 1px solid color-mix(in srgb, var(--os-color-warning) 48%, white);
+    background: color-mix(in srgb, var(--os-color-warning-bg) 70%, white);
+}
+
+.opf-error-panel {
+    border: 2px solid color-mix(in srgb, var(--os-color-danger) 62%, white);
+    background: color-mix(in srgb, var(--os-color-danger-bg) 72%, white);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--os-color-danger) 12%, transparent);
+}
+
+.opf-warning-panel ::deep .rz-icon {
+    color: var(--os-color-warning);
+    font-size: 1.35rem;
+    margin-block-start: 2px;
+}
+
+.opf-error-panel ::deep .rz-icon {
+    color: var(--os-color-danger);
+    font-size: 1.35rem;
+    margin-block-start: 2px;
+}
+
+.opf-warning-panel strong,
+.opf-error-panel strong {
+    display: block;
+    margin-block-end: var(--os-space-2);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+}
+
+.opf-error-panel ul {
+    margin: 0;
+    padding-inline-start: 1.25rem;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-base);
+}
+
+.opf-error-panel li {
+    padding-inline-start: var(--os-space-1);
 }
 
 .opf-duplicates {
     display: grid;
     gap: var(--os-space-1);
-    margin-top: var(--os-space-2);
-    font-size: var(--os-text-sm);
-}
-
-.opf-empty-line {
     color: var(--os-color-text-muted);
     font-size: var(--os-text-sm);
 }
@@ -102,7 +242,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--os-space-3);
+    gap: var(--os-space-2);
+    padding-block-start: var(--os-space-2);
 }
 
 .opf-actions-end {
@@ -112,6 +253,10 @@
 }
 
 @media (max-width: 720px) {
+    .opf-form {
+        min-width: 0;
+    }
+
     .opf-grid-2 {
         grid-template-columns: 1fr;
     }

@@ -168,7 +168,7 @@
 
     private async Task OpenScheduleAsync()
     {
-        var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Schedule flight", null, new DialogOptions { Width = "920px" });
+        var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Schedule flight", null, new DialogOptions { Width = "760px" });
         if (result is true)
         {
             Notifications.Notify(NotificationSeverity.Success, "Flight scheduled");
@@ -182,7 +182,7 @@
     {
         var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Edit flight",
             new Dictionary<string, object?> { [nameof(ScheduleFlightDialog.FlightId)] = id },
-            new DialogOptions { Width = "920px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
         {
