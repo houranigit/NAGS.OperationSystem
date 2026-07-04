@@ -1,0 +1,149 @@
+@inject OperationsApiClient Operations
+@inject DialogService DialogService
+
+<div class="omg-dialog">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (choices.Count < 2)
+    {
+        <EmptyState Title="No duplicate work orders" Description="This flight needs at least two work orders before a merge can be resolved." Icon="merge_type" />
+    }
+    else
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+            Choose the work order that should survive. The losing work order is marked superseded.
+        </RadzenAlert>
+
+        <div class="omg-grid-2">
+            <div class="omg-field-block">
+                <label class="omg-label">Survivor</label>
+                <RadzenDropDown @bind-Value="survivorId" Data="@choices" TextProperty="Label" ValueProperty="Id" class="omg-control" />
+            </div>
+            <div class="omg-field-block">
+                <label class="omg-label">Loser</label>
+                <RadzenDropDown @bind-Value="loserId" Data="@choices" TextProperty="Label" ValueProperty="Id" class="omg-control" />
+            </div>
+        </div>
+
+        <div class="omg-compare">
+            @CompareCard("Survivor", Survivor, "success")
+            @CompareCard("Loser", Loser, "danger")
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(actionError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@actionError</RadzenAlert>
+        }
+
+        <div class="omg-actions">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton Text="Merge work orders" Icon="merge_type" ButtonStyle="ButtonStyle.Primary" Click="@MergeAsync" Disabled="@isSubmitting" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid FlightId { get; set; }
+    [Parameter] public Guid? PrimaryWorkOrderId { get; set; }
+
+    private IReadOnlyList<WorkOrderDetail> workOrders = [];
+    private List<WorkOrderChoice> choices = [];
+    private Guid? survivorId;
+    private Guid? loserId;
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+    private string? actionError;
+
+    private WorkOrderDetail? Survivor => workOrders.FirstOrDefault(x => x.Id == survivorId);
+    private WorkOrderDetail? Loser => workOrders.FirstOrDefault(x => x.Id == loserId);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            var flight = await Operations.GetFlightAsync(FlightId);
+            var details = new List<WorkOrderDetail>();
+            foreach (var summary in flight.WorkOrders)
+                details.Add(await Operations.GetWorkOrderAsync(summary.Id));
+
+            workOrders = details;
+            choices = details
+                .Select(x => new WorkOrderChoice(x.Id, $"{x.Type} · {x.Status} · {x.Number ?? x.Id.ToString()[..8]}"))
+                .ToList();
+
+            survivorId = PrimaryWorkOrderId ?? choices.FirstOrDefault()?.Id;
+            loserId = choices.FirstOrDefault(x => x.Id != survivorId)?.Id;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load merge candidates.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private RenderFragment CompareCard(string title, WorkOrderDetail? value, string tone) => @<section class="@($"omg-card omg-card-{tone}")">
+        <p class="os-eyebrow">@title</p>
+        @if (value is null)
+        {
+            <strong>None selected</strong>
+        }
+        else
+        {
+            <h3>@(value.Number ?? value.FlightNumber)</h3>
+            <dl>
+                <div><dt>Type</dt><dd>@value.Type</dd></div>
+                <div><dt>Status</dt><dd>@value.Status</dd></div>
+                <div><dt>Actuals</dt><dd>@DateTimeDisplay(value.ActualArrivalUtc) - @DateTimeDisplay(value.ActualDepartureUtc)</dd></div>
+                <div><dt>Services</dt><dd>@value.ServiceLines.Count</dd></div>
+                <div><dt>Tasks</dt><dd>@value.Tasks.Count</dd></div>
+                <div><dt>Remarks</dt><dd>@None(value.Remarks)</dd></div>
+            </dl>
+        }
+    </section>;
+
+    private async Task MergeAsync()
+    {
+        actionError = null;
+        if (survivorId is null || loserId is null || survivorId == loserId)
+        {
+            actionError = "Choose two different work orders.";
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            await Operations.MergeWorkOrdersAsync(survivorId.Value, loserId.Value);
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            actionError = ex.ToDisplayMessage("Could not merge these work orders.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private static string DateTimeDisplay(DateTimeOffset? value) =>
+        value?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "None";
+
+    private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
+
+    private sealed record WorkOrderChoice(Guid Id, string Label);
+}

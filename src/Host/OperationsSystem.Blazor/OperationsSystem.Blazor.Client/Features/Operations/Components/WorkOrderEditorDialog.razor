@@ -1,0 +1,423 @@
+@inject OperationsApiClient Operations
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="WorkOrderEditModel" Data="@model" Submit="@SubmitAsync">
+    <div class="owe-form">
+        @if (isLoading)
+        {
+            <LoadingCard />
+        }
+        else if (workOrder is null)
+        {
+            <ErrorState Message="Could not load the work order." OnRetry="@LoadAsync" />
+        }
+        else
+        {
+            <div class="owe-summary">
+                <div>
+                    <p class="os-eyebrow">@workOrder.Type work order</p>
+                    <h2>@workOrder.FlightNumber</h2>
+                    <p class="os-muted">@workOrder.CustomerName · @workOrder.StationIata</p>
+                </div>
+                <StatusBadge Label="@workOrder.Status" Tone="warning" />
+            </div>
+
+            <div class="owe-section-line"><RadzenIcon Icon="schedule" /><span>Actuals</span></div>
+            <div class="owe-grid-2">
+                <div class="owe-field-block">
+                    <label class="owe-label">Actual arrival (UTC)</label>
+                    <RadzenDatePicker @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                </div>
+                <div class="owe-field-block">
+                    <label class="owe-label">Actual departure (UTC)</label>
+                    <RadzenDatePicker @bind-Value="model.ActualDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                </div>
+            </div>
+
+            <div class="owe-grid-2">
+                <div class="owe-field-block">
+                    <label class="owe-label">Aircraft tail</label>
+                    <RadzenTextBox @bind-Value="model.AircraftTailNumber" MaxLength="30" class="owe-control" />
+                </div>
+                <div class="owe-field-block">
+                    <label class="owe-label">Signature reference</label>
+                    <RadzenTextBox @bind-Value="model.CustomerSignatureReference" MaxLength="500" class="owe-control" />
+                </div>
+            </div>
+
+            <div class="owe-field-block">
+                <label class="owe-label">Remarks</label>
+                <RadzenTextArea @bind-Value="model.Remarks" Rows="3" MaxLength="2000" class="owe-control" />
+            </div>
+
+            <div class="owe-section-head">
+                <div class="owe-section-line"><RadzenIcon Icon="settings" /><span>Service lines</span></div>
+                <RadzenButton Text="Add service" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@AddServiceLine" />
+            </div>
+
+            @if (model.ServiceLines.Count == 0)
+            {
+                <div class="owe-empty">No service lines have been added.</div>
+            }
+            else
+            {
+                <div class="owe-row-list">
+                    @foreach (var line in model.ServiceLines)
+                    {
+                        <section @key="line.Key" class="owe-row-card">
+                            <div class="owe-row-head">
+                                <strong>Service line</strong>
+                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small"
+                                              ButtonType="ButtonType.Button" Click="@(() => RemoveServiceLine(line))" />
+                            </div>
+                            <div class="owe-grid-2">
+                                <RadzenDropDown @bind-Value="line.ServiceId" Data="@services" TextProperty="Name" ValueProperty="Id"
+                                                AllowFiltering="true" class="owe-control" Placeholder="Service" />
+                                <RadzenDropDown @bind-Value="line.Origin" Data="@serviceOrigins" class="owe-control" />
+                            </div>
+                            <div class="owe-grid-2">
+                                <RadzenDatePicker @bind-Value="line.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                                <RadzenDatePicker @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                            </div>
+                            <RadzenTextBox @bind-Value="line.Description" MaxLength="500" class="owe-control" Placeholder="Description" />
+                            <div class="owe-inline-check">
+                                <RadzenCheckBox @bind-Value="line.ReturnToRamp" Name="@($"line-ramp-{line.Key}")" />
+                                <RadzenLabel Text="Return to ramp" Component="@($"line-ramp-{line.Key}")" />
+                            </div>
+                            @EmployeePicker(line.EmployeeIds)
+                        </section>
+                    }
+                </div>
+            }
+
+            <div class="owe-section-head">
+                <div class="owe-section-line"><RadzenIcon Icon="checklist" /><span>Tasks</span></div>
+                <RadzenButton Text="Add task" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@AddTask" />
+            </div>
+
+            @if (model.Tasks.Count == 0)
+            {
+                <div class="owe-empty">No task rows have been added.</div>
+            }
+            else
+            {
+                <div class="owe-row-list">
+                    @foreach (var task in model.Tasks)
+                    {
+                        <section @key="task.Key" class="owe-row-card">
+                            <div class="owe-row-head">
+                                <strong>@task.TaskType task</strong>
+                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small"
+                                              ButtonType="ButtonType.Button" Click="@(() => RemoveTask(task))" />
+                            </div>
+                            <div class="owe-grid-2">
+                                <RadzenDropDown @bind-Value="task.TaskType" Data="@taskTypes" class="owe-control" />
+                                <RadzenTextBox @bind-Value="task.Description" MaxLength="1000" class="owe-control" Placeholder="Task description" />
+                            </div>
+                            <div class="owe-grid-2">
+                                <RadzenDatePicker @bind-Value="task.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                                <RadzenDatePicker @bind-Value="task.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                            </div>
+                            <div class="owe-inline-check">
+                                <RadzenCheckBox @bind-Value="task.ReturnToRamp" Name="@($"task-ramp-{task.Key}")" />
+                                <RadzenLabel Text="Return to ramp" Component="@($"task-ramp-{task.Key}")" />
+                            </div>
+                            @EmployeePicker(task.EmployeeIds)
+                            @ResourceEditor("Tools", task.Tools, tools, "build")
+                            @ResourceEditor("Materials", task.Materials, materials, "category")
+                            @ResourceEditor("General support", task.GeneralSupports, generalSupports, "headset_mic")
+                        </section>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@errorMessage</RadzenAlert>
+            }
+
+            <div class="owe-actions">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                <RadzenButton ButtonType="ButtonType.Submit" Text="Save work order" Icon="check" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+            </div>
+        }
+    </div>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid WorkOrderId { get; set; }
+
+    private WorkOrderDetail? workOrder;
+    private WorkOrderEditModel model = new();
+    private IReadOnlyList<ServiceOption> services = [];
+    private IReadOnlyList<StaffMemberListItem> staff = [];
+    private IReadOnlyList<ToolOption> tools = [];
+    private IReadOnlyList<MaterialOption> materials = [];
+    private IReadOnlyList<GeneralSupportOption> generalSupports = [];
+    private readonly WorkOrderServiceLineOriginModel[] serviceOrigins = Enum.GetValues<WorkOrderServiceLineOriginModel>();
+    private readonly WorkOrderTaskTypeModel[] taskTypes = Enum.GetValues<WorkOrderTaskTypeModel>();
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            workOrder = await Operations.GetWorkOrderAsync(WorkOrderId);
+            var servicesTask = MasterData.GetServiceOptionsAsync();
+            var staffTask = MasterData.GetStaffMembersAsync(1, 250, null, true);
+            var toolsTask = MasterData.GetToolOptionsAsync();
+            var materialsTask = MasterData.GetMaterialOptionsAsync();
+            var generalSupportsTask = MasterData.GetGeneralSupportOptionsAsync();
+
+            await Task.WhenAll(servicesTask, staffTask, toolsTask, materialsTask, generalSupportsTask);
+
+            services = await servicesTask;
+            staff = (await staffTask).Items;
+            tools = await toolsTask;
+            materials = await materialsTask;
+            generalSupports = await generalSupportsTask;
+            model = FromDetail(workOrder);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load the work order.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private RenderFragment EmployeePicker(HashSet<Guid> selected) => @<div class="owe-employee-picker">
+        <span class="owe-sub-label">Employees</span>
+        <div class="owe-chip-list">
+            @foreach (var member in staff)
+            {
+                <button type="button" @key="member.Id" class="@ChipClass(selected.Contains(member.Id))"
+                        @onclick="@(() => Toggle(selected, member.Id))">
+                    <RadzenIcon Icon="person" />
+                    <span>@member.FullName</span>
+                </button>
+            }
+        </div>
+    </div>;
+
+    private RenderFragment ResourceEditor<TOption>(string title, List<ResourceEditRow> rows, IReadOnlyList<TOption> options, string icon)
+        where TOption : notnull => @<div class="owe-resource-editor">
+        <div class="owe-resource-title">
+            <span><RadzenIcon Icon="@icon" /> @title</span>
+            <RadzenButton Text="Add" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                          ButtonType="ButtonType.Button" Click="@(() => rows.Add(new ResourceEditRow()))" />
+        </div>
+        @foreach (var row in rows)
+        {
+            <div @key="row.Key" class="owe-resource-row">
+                <RadzenDropDown @bind-Value="row.Id" Data="@options" TextProperty="Name" ValueProperty="Id"
+                                AllowFiltering="true" class="owe-control" Placeholder="@title" />
+                <RadzenNumeric @bind-Value="row.Quantity" Min="0.01m" Step="0.25m" class="owe-qty" />
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small"
+                              ButtonType="ButtonType.Button" Click="@(() => rows.Remove(row))" />
+            </div>
+        }
+    </div>;
+
+    private static string ChipClass(bool selected) => selected ? "owe-chip owe-chip-selected" : "owe-chip";
+
+    private static void Toggle(HashSet<Guid> set, Guid id)
+    {
+        if (!set.Add(id))
+            set.Remove(id);
+    }
+
+    private void AddServiceLine()
+    {
+        var from = model.ActualArrivalUtc ?? workOrder?.ScheduledArrivalUtc.UtcDateTime ?? DateTime.UtcNow;
+        var to = model.ActualDepartureUtc ?? workOrder?.ScheduledDepartureUtc.UtcDateTime ?? from.AddHours(1);
+        model.ServiceLines.Add(new ServiceLineEditRow { FromUtc = from, ToUtc = to });
+    }
+
+    private void AddTask()
+    {
+        var from = model.ActualArrivalUtc ?? workOrder?.ScheduledArrivalUtc.UtcDateTime ?? DateTime.UtcNow;
+        var to = model.ActualDepartureUtc ?? workOrder?.ScheduledDepartureUtc.UtcDateTime ?? from.AddMinutes(30);
+        model.Tasks.Add(new TaskEditRow { FromUtc = from, ToUtc = to });
+    }
+
+    private void RemoveServiceLine(ServiceLineEditRow row) => model.ServiceLines.Remove(row);
+
+    private void RemoveTask(TaskEditRow row) => model.Tasks.Remove(row);
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = Validate();
+        if (errorMessage is not null || workOrder is null)
+            return;
+
+        isSubmitting = true;
+        try
+        {
+            await Operations.UpdateWorkOrderAsync(WorkOrderId, new UpdateWorkOrderRequestModel(
+                model.ServiceLines.Select(ToRequest).ToList(),
+                model.Tasks.Select(ToRequest).ToList(),
+                model.ActualArrivalUtc is null ? null : ToUtc(model.ActualArrivalUtc.Value),
+                model.ActualDepartureUtc is null ? null : ToUtc(model.ActualDepartureUtc.Value),
+                TrimToNull(model.AircraftTailNumber),
+                TrimToNull(model.Remarks),
+                TrimToNull(model.CustomerSignatureReference)),
+                workOrder.RowVersion);
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not save the work order.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private string? Validate()
+    {
+        if (model.ActualArrivalUtc is not null && model.ActualDepartureUtc is not null && model.ActualDepartureUtc <= model.ActualArrivalUtc)
+            return "Actual departure must be after actual arrival.";
+
+        foreach (var line in model.ServiceLines)
+        {
+            if (line.ServiceId == Guid.Empty)
+                return "Every service line must have a service.";
+            if (line.FromUtc is null || line.ToUtc is null || line.ToUtc <= line.FromUtc)
+                return "Every service line must have a valid time window.";
+        }
+
+        foreach (var task in model.Tasks)
+        {
+            if (task.FromUtc is null || task.ToUtc is null || task.ToUtc <= task.FromUtc)
+                return "Every task must have a valid time window.";
+            if (task.Tools.Concat(task.Materials).Concat(task.GeneralSupports).Any(r => r.Id == Guid.Empty || r.Quantity <= 0))
+                return "Every resource row must have a resource and quantity above zero.";
+        }
+
+        return null;
+    }
+
+    private static WorkOrderEditModel FromDetail(WorkOrderDetail detail) => new()
+    {
+        ActualArrivalUtc = detail.ActualArrivalUtc?.UtcDateTime,
+        ActualDepartureUtc = detail.ActualDepartureUtc?.UtcDateTime,
+        AircraftTailNumber = detail.AircraftTailNumber,
+        Remarks = detail.Remarks,
+        CustomerSignatureReference = detail.CustomerSignatureReference,
+        ServiceLines = detail.ServiceLines.Select(line => new ServiceLineEditRow
+        {
+            ServiceId = line.ServiceId,
+            Origin = Enum.TryParse<WorkOrderServiceLineOriginModel>(line.Origin, out var origin) ? origin : WorkOrderServiceLineOriginModel.Planned,
+            FromUtc = line.FromUtc.UtcDateTime,
+            ToUtc = line.ToUtc.UtcDateTime,
+            Description = line.Description,
+            ReturnToRamp = line.ReturnToRamp,
+            EmployeeIds = line.Employees.Select(x => x.StaffMemberId).ToHashSet()
+        }).ToList(),
+        Tasks = detail.Tasks.Select(task => new TaskEditRow
+        {
+            TaskType = Enum.TryParse<WorkOrderTaskTypeModel>(task.TaskType, out var taskType) ? taskType : WorkOrderTaskTypeModel.Minor,
+            Description = task.Description,
+            FromUtc = task.FromUtc.UtcDateTime,
+            ToUtc = task.ToUtc.UtcDateTime,
+            ReturnToRamp = task.ReturnToRamp,
+            EmployeeIds = task.Employees.Select(x => x.StaffMemberId).ToHashSet(),
+            Tools = task.Tools.Select(ToResourceRow).ToList(),
+            Materials = task.Materials.Select(ToResourceRow).ToList(),
+            GeneralSupports = task.GeneralSupports.Select(ToResourceRow).ToList()
+        }).ToList()
+    };
+
+    private static ResourceEditRow ToResourceRow(WorkOrderResourceModel resource) => new()
+    {
+        Id = resource.Id,
+        Quantity = resource.Quantity
+    };
+
+    private static ServiceLineRequestModel ToRequest(ServiceLineEditRow row) => new(
+        row.ServiceId,
+        row.Origin,
+        ToUtc(row.FromUtc!.Value),
+        ToUtc(row.ToUtc!.Value),
+        TrimToNull(row.Description),
+        row.ReturnToRamp,
+        row.EmployeeIds.ToList());
+
+    private static TaskRequestModel ToRequest(TaskEditRow row) => new(
+        row.TaskType,
+        TrimToNull(row.Description),
+        ToUtc(row.FromUtc!.Value),
+        ToUtc(row.ToUtc!.Value),
+        row.ReturnToRamp,
+        row.EmployeeIds.ToList(),
+        row.Tools.Select(ToRequest).ToList(),
+        row.Materials.Select(ToRequest).ToList(),
+        row.GeneralSupports.Select(ToRequest).ToList(),
+        []);
+
+    private static ResourceUsageRequestModel ToRequest(ResourceEditRow row) => new(row.Id, row.Quantity);
+
+    private static DateTimeOffset ToUtc(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        return new DateTimeOffset(utc);
+    }
+
+    private static string? TrimToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private sealed class WorkOrderEditModel
+    {
+        public DateTime? ActualArrivalUtc { get; set; }
+        public DateTime? ActualDepartureUtc { get; set; }
+        public string? AircraftTailNumber { get; set; }
+        public string? Remarks { get; set; }
+        public string? CustomerSignatureReference { get; set; }
+        public List<ServiceLineEditRow> ServiceLines { get; set; } = [];
+        public List<TaskEditRow> Tasks { get; set; } = [];
+    }
+
+    private sealed class ServiceLineEditRow
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public Guid ServiceId { get; set; }
+        public WorkOrderServiceLineOriginModel Origin { get; set; } = WorkOrderServiceLineOriginModel.Planned;
+        public DateTime? FromUtc { get; set; }
+        public DateTime? ToUtc { get; set; }
+        public string? Description { get; set; }
+        public bool ReturnToRamp { get; set; }
+        public HashSet<Guid> EmployeeIds { get; set; } = [];
+    }
+
+    private sealed class TaskEditRow
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public WorkOrderTaskTypeModel TaskType { get; set; } = WorkOrderTaskTypeModel.Minor;
+        public string? Description { get; set; }
+        public DateTime? FromUtc { get; set; }
+        public DateTime? ToUtc { get; set; }
+        public bool ReturnToRamp { get; set; }
+        public HashSet<Guid> EmployeeIds { get; set; } = [];
+        public List<ResourceEditRow> Tools { get; set; } = [];
+        public List<ResourceEditRow> Materials { get; set; } = [];
+        public List<ResourceEditRow> GeneralSupports { get; set; } = [];
+    }
+
+    private sealed class ResourceEditRow
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public Guid Id { get; set; }
+        public decimal Quantity { get; set; } = 1;
+    }
+}

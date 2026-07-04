@@ -1,0 +1,64 @@
+.ofd-alert {
+    margin-top: var(--os-space-4);
+}
+
+.ofd-card {
+    margin-top: var(--os-space-4);
+}
+
+.ofd-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--os-space-4);
+}
+
+.ofd-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--os-space-3);
+}
+
+.ofd-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+}
+
+.ofd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-height: 2rem;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.ofd-chip small {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+}
+
+.ofd-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-3);
+    margin-bottom: var(--os-space-3);
+}
+
+.ofd-card-head .os-section-title {
+    margin: 0;
+}
+
+@media (max-width: 900px) {
+    .ofd-grid-2,
+    .ofd-fields {
+        grid-template-columns: 1fr;
+    }
+}

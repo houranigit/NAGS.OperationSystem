@@ -1,0 +1,83 @@
+.ofm-dialog {
+    display: grid;
+    gap: var(--os-space-4);
+}
+
+.ofm-grid-2,
+.ofm-compare {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--os-space-4);
+}
+
+.ofm-field-block {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.ofm-label {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.ofm-control {
+    width: 100%;
+}
+
+.ofm-card {
+    display: grid;
+    gap: var(--os-space-3);
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.ofm-card-success {
+    border-color: var(--os-color-success);
+}
+
+.ofm-card-danger {
+    border-color: var(--os-color-danger);
+}
+
+.ofm-card h3,
+.ofm-card p {
+    margin: 0;
+}
+
+.ofm-card dl {
+    display: grid;
+    gap: var(--os-space-2);
+    margin: 0;
+}
+
+.ofm-card dl div {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: var(--os-space-2);
+}
+
+.ofm-card dt {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.ofm-card dd {
+    margin: 0;
+    min-width: 0;
+}
+
+.ofm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--os-space-2);
+}
+
+@media (max-width: 780px) {
+    .ofm-grid-2,
+    .ofm-compare {
+        grid-template-columns: 1fr;
+    }
+}

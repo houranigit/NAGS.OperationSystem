@@ -1,0 +1,128 @@
+.opf-form {
+    display: grid;
+    gap: var(--os-space-4);
+}
+
+.opf-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--os-space-4);
+}
+
+.opf-field-block {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.opf-label {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.opf-label span {
+    color: var(--os-color-danger);
+}
+
+.opf-control {
+    width: 100%;
+}
+
+.opf-section-line {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding-top: var(--os-space-1);
+    color: var(--os-color-text);
+    font-weight: 700;
+}
+
+.opf-section-line .rz-icon {
+    color: var(--os-color-primary);
+}
+
+.opf-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+}
+
+.opf-chip-list-staff {
+    max-height: 10.5rem;
+    overflow: auto;
+    padding: 1px;
+}
+
+.opf-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-height: 2.35rem;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface);
+    color: var(--os-color-text-muted);
+    font: inherit;
+    font-size: var(--os-text-sm);
+    cursor: pointer;
+    transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
+}
+
+.opf-chip small {
+    color: var(--os-color-text-subtle);
+    font-size: var(--os-text-xs);
+}
+
+.opf-chip:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-text);
+}
+
+.opf-chip-selected {
+    background: var(--os-color-primary-soft);
+    border-color: var(--os-color-primary-soft-border);
+    color: var(--os-color-primary-strong);
+    font-weight: 700;
+}
+
+.opf-duplicates {
+    display: grid;
+    gap: var(--os-space-1);
+    margin-top: var(--os-space-2);
+    font-size: var(--os-text-sm);
+}
+
+.opf-empty-line {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.opf-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-3);
+}
+
+.opf-actions-end {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+@media (max-width: 720px) {
+    .opf-grid-2 {
+        grid-template-columns: 1fr;
+    }
+
+    .opf-actions {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .opf-actions-end {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

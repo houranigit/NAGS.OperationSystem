@@ -1,0 +1,75 @@
+@inject OperationsApiClient Operations
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="CancelFlightModel" Data="@model" Submit="@SubmitAsync">
+    <div class="ocf-form">
+        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+            Canceling a flight creates a submitted cancellation work order for review.
+        </RadzenAlert>
+
+        <div class="ocf-field-block">
+            <label class="ocf-label">Canceled at (UTC)</label>
+            <RadzenDatePicker @bind-Value="model.CanceledAtUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="ocf-control" />
+        </div>
+
+        <div class="ocf-field-block">
+            <label class="ocf-label">Reason</label>
+            <RadzenTextArea @bind-Value="model.Reason" Rows="4" MaxLength="1000" class="ocf-control" />
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@errorMessage</RadzenAlert>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Create cancellation" Icon="cancel" ButtonStyle="ButtonStyle.Danger" Disabled="@isSubmitting" />
+        </RadzenStack>
+    </div>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid FlightId { get; set; }
+
+    private CancelFlightModel model = new() { CanceledAtUtc = DateTime.UtcNow };
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = null;
+        if (model.CanceledAtUtc is null)
+        {
+            errorMessage = "Cancellation time is required.";
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            await Operations.CancelFlightAsync(FlightId, new CancelFlightRequestModel(ToUtc(model.CanceledAtUtc.Value), model.Reason?.Trim()));
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not cancel the flight.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private static DateTimeOffset ToUtc(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        return new DateTimeOffset(utc);
+    }
+
+    private sealed class CancelFlightModel
+    {
+        public DateTime? CanceledAtUtc { get; set; }
+        public string? Reason { get; set; }
+    }
+}

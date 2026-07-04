@@ -1,11 +1,17 @@
 @page "/operations/dashboard"
 @inject OperationsApiClient Operations
+@inject NavigationManager Navigation
 
 <PageTitle>Operations dashboard</PageTitle>
 
 <RequirePermission Permission="@OperationsPermissions.DashboardView">
     <div class="os-list-page">
-        <PageHeader Title="Operations" Description="Flight and work-order activity across your scope." />
+        <PageHeader Title="Operations" Description="Flight and work-order activity across your scope.">
+            <Actions>
+                <RadzenButton Text="Flights" Icon="flight" ButtonStyle="ButtonStyle.Light" Click="@OpenFlights" />
+                <RadzenButton Text="Review queue" Icon="fact_check" ButtonStyle="ButtonStyle.Primary" Click="@OpenReviewQueue" />
+            </Actions>
+        </PageHeader>
 
         @if (isLoading)
         {
@@ -13,42 +19,38 @@
         }
         else if (loadError)
         {
-            <ErrorState Message="Could not load the dashboard." />
+            <ErrorState Message="Could not load the dashboard." OnRetry="@LoadAsync" />
         }
         else if (data is not null)
         {
-            <RadzenRow Gap="1rem" class="rz-mt-4">
-                <RadzenColumn Size="12" SizeMd="4">
-                    <RadzenCard>
-                        <RadzenText TextStyle="TextStyle.Overline">Scheduled flights</RadzenText>
-                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.ScheduledFlights</RadzenText>
-                    </RadzenCard>
-                </RadzenColumn>
-                <RadzenColumn Size="12" SizeMd="4">
-                    <RadzenCard>
-                        <RadzenText TextStyle="TextStyle.Overline">In progress</RadzenText>
-                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.InProgressFlights</RadzenText>
-                    </RadzenCard>
-                </RadzenColumn>
-                <RadzenColumn Size="12" SizeMd="4">
-                    <RadzenCard>
-                        <RadzenText TextStyle="TextStyle.Overline">Pending review</RadzenText>
-                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.PendingReviewWorkOrders</RadzenText>
-                    </RadzenCard>
-                </RadzenColumn>
-                <RadzenColumn Size="12" SizeMd="4">
-                    <RadzenCard>
-                        <RadzenText TextStyle="TextStyle.Overline">Completed flights</RadzenText>
-                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.CompletedFlights</RadzenText>
-                    </RadzenCard>
-                </RadzenColumn>
-                <RadzenColumn Size="12" SizeMd="4">
-                    <RadzenCard>
-                        <RadzenText TextStyle="TextStyle.Overline">Canceled flights</RadzenText>
-                        <RadzenText TextStyle="TextStyle.DisplayH4">@data.CanceledFlights</RadzenText>
-                    </RadzenCard>
-                </RadzenColumn>
-            </RadzenRow>
+            <div class="opd-kpis">
+                @Kpi("Scheduled flights", data.ScheduledFlights, "flight_takeoff", "neutral")
+                @Kpi("In progress", data.InProgressFlights, "engineering", "warning")
+                @Kpi("Pending review", data.PendingReviewWorkOrders, "fact_check", "warning")
+                @Kpi("Completed flights", data.CompletedFlights, "verified", "success")
+                @Kpi("Canceled flights", data.CanceledFlights, "cancel", "danger")
+            </div>
+
+            <div class="opd-panels">
+                <section class="opd-panel">
+                    <div>
+                        <p class="os-eyebrow">Review control</p>
+                        <h2>Pending work orders</h2>
+                        <p class="os-muted">Submitted completion and cancellation work orders waiting for approval.</p>
+                    </div>
+                    <RadzenButton Text="Open review queue" Icon="fact_check" ButtonStyle="ButtonStyle.Primary"
+                                  Click="@OpenReviewQueue" />
+                </section>
+                <section class="opd-panel">
+                    <div>
+                        <p class="os-eyebrow">Flight control</p>
+                        <h2>Operations flight list</h2>
+                        <p class="os-muted">Search flights, open work orders, cancel flights, and resolve duplicate candidates.</p>
+                    </div>
+                    <RadzenButton Text="Open flights" Icon="flight" ButtonStyle="ButtonStyle.Secondary"
+                                  Click="@OpenFlights" />
+                </section>
+            </div>
         }
     </div>
 </RequirePermission>
@@ -58,8 +60,16 @@
     private bool isLoading = true;
     private bool loadError;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private void OpenFlights() => Navigation.NavigateTo("/operations/flights");
+
+    private void OpenReviewQueue() => Navigation.NavigateTo("/operations/review-queue");
+
+    private async Task LoadAsync()
     {
+        isLoading = true;
+        loadError = false;
         try
         {
             data = await Operations.GetDashboardAsync();
@@ -73,4 +83,12 @@
             isLoading = false;
         }
     }
+
+    private static RenderFragment Kpi(string label, int value, string icon, string tone) => @<section class="@($"opd-kpi opd-kpi-{tone}")">
+        <span class="opd-kpi-icon"><RadzenIcon Icon="@icon" /></span>
+        <div>
+            <span>@label</span>
+            <strong>@value.ToString("N0")</strong>
+        </div>
+    </section>;
 }

@@ -1,0 +1,330 @@
+@inject OperationsApiClient Operations
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+<RadzenTemplateForm TItem="FlightFormModel" Data="@model" Submit="@SubmitAsync">
+    <div class="opf-form">
+        @if (isLoading)
+        {
+            <LoadingCard />
+        }
+        else
+        {
+            <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
+
+            <div class="opf-grid-2">
+                <div class="opf-field-block">
+                    <label class="opf-label">Flight number <span>*</span></label>
+                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="flightNumber" MaxLength="12" class="opf-control" Placeholder="e.g. NGS104" />
+                </div>
+                <div class="opf-field-block">
+                    <label class="opf-label">Customer <span>*</span></label>
+                    <RadzenDropDown @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" class="opf-control" Placeholder="Select customer" />
+                </div>
+            </div>
+
+            <div class="opf-grid-2">
+                <div class="opf-field-block">
+                    <label class="opf-label">Station <span>*</span></label>
+                    <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
+                                    AllowFiltering="true" class="opf-control" Placeholder="Select station" />
+                </div>
+                <div class="opf-field-block">
+                    <label class="opf-label">Operation type <span>*</span></label>
+                    <RadzenDropDown @bind-Value="model.OperationTypeId" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" class="opf-control" Placeholder="Select operation" />
+                </div>
+            </div>
+
+            <div class="opf-grid-2">
+                <div class="opf-field-block">
+                    <label class="opf-label">Scheduled arrival (UTC) <span>*</span></label>
+                    <RadzenDatePicker @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="opf-control" />
+                </div>
+                <div class="opf-field-block">
+                    <label class="opf-label">Scheduled departure (UTC) <span>*</span></label>
+                    <RadzenDatePicker @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="opf-control" />
+                </div>
+            </div>
+
+            <div class="opf-field-block">
+                <label class="opf-label">Aircraft type</label>
+                <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                                AllowClear="true" AllowFiltering="true" class="opf-control" Placeholder="Optional aircraft type" />
+            </div>
+
+            <div class="opf-section-line"><RadzenIcon Icon="settings" /><span>Planned services</span></div>
+            <div class="opf-chip-list">
+                @foreach (var service in services)
+                {
+                    <button type="button" @key="service.Id" class="@ChipClass(model.PlannedServiceIds.Contains(service.Id))"
+                            @onclick="@(() => Toggle(model.PlannedServiceIds, service.Id))">
+                        <RadzenIcon Icon="task_alt" />
+                        <span>@service.Name</span>
+                    </button>
+                }
+            </div>
+
+            <div class="opf-section-line"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
+            @if (staff.Count == 0)
+            {
+                <div class="opf-empty-line">No active staff members are available.</div>
+            }
+            else
+            {
+                <div class="opf-chip-list opf-chip-list-staff">
+                    @foreach (var member in staff)
+                    {
+                        <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
+                                @onclick="@(() => Toggle(model.AssignedStaffMemberIds, member.Id))">
+                            <RadzenIcon Icon="person" />
+                            <span>@member.FullName</span>
+                            <small>@member.StationCode</small>
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (duplicates.Count > 0)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+                    <strong>Potential duplicates found.</strong>
+                    <div class="opf-duplicates">
+                        @foreach (var duplicate in duplicates)
+                        {
+                            <span @key="duplicate.FlightId">
+                                @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata · score @duplicate.Score
+                            </span>
+                        }
+                    </div>
+                </RadzenAlert>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@errorMessage</RadzenAlert>
+            }
+
+            <div class="opf-actions">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                <div class="opf-actions-end">
+                    <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary"
+                                  ButtonType="ButtonType.Button" Click="@CheckDuplicatesAsync" Disabled="@isSubmitting" />
+                    <RadzenButton ButtonType="ButtonType.Submit" Icon="check" Text="@(FlightId is null ? "Schedule flight" : "Save changes")"
+                                  ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+                </div>
+            </div>
+        }
+    </div>
+</RadzenTemplateForm>
+
+@code {
+    [Parameter] public Guid? FlightId { get; set; }
+
+    private FlightFormModel model = new();
+    private IReadOnlyList<CustomerOption> customers = [];
+    private IReadOnlyList<StationOption> stations = [];
+    private IReadOnlyList<OperationTypeOption> operationTypes = [];
+    private IReadOnlyList<AircraftTypeOption> aircraftTypes = [];
+    private IReadOnlyList<ServiceOption> services = [];
+    private IReadOnlyList<StaffMemberListItem> staff = [];
+    private IReadOnlyList<DuplicateCandidate> duplicates = [];
+    private FlightDetail? original;
+    private string? rowVersion;
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var customersTask = MasterData.GetCustomerOptionsAsync();
+            var stationsTask = MasterData.GetStationOptionsAsync();
+            var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
+            var aircraftTypesTask = MasterData.GetAircraftTypeOptionsAsync();
+            var servicesTask = MasterData.GetServiceOptionsAsync();
+            var staffTask = MasterData.GetStaffMembersAsync(1, 250, null, true);
+            Task<FlightDetail?> detailTask = FlightId is { } id ? LoadFlightOrNullAsync(id) : Task.FromResult<FlightDetail?>(null);
+
+            await Task.WhenAll(customersTask, stationsTask, operationTypesTask, aircraftTypesTask, servicesTask, staffTask, detailTask);
+
+            customers = await customersTask;
+            stations = await stationsTask;
+            operationTypes = await operationTypesTask;
+            aircraftTypes = await aircraftTypesTask;
+            services = await servicesTask;
+            staff = (await staffTask).Items;
+
+            if (await detailTask is { } detail)
+            {
+                original = detail;
+                rowVersion = detail.RowVersion;
+                model = new FlightFormModel
+                {
+                    FlightNumber = detail.FlightNumber,
+                    CustomerId = detail.CustomerId,
+                    StationId = detail.StationId,
+                    OperationTypeId = detail.OperationTypeId,
+                    AircraftTypeId = detail.AircraftTypeId,
+                    ScheduledArrivalUtc = detail.ScheduledArrivalUtc.UtcDateTime,
+                    ScheduledDepartureUtc = detail.ScheduledDepartureUtc.UtcDateTime,
+                    PlannedServiceIds = detail.PlannedServices.Select(x => x.ServiceId).ToHashSet(),
+                    AssignedStaffMemberIds = detail.AssignedEmployees.Select(x => x.StaffMemberId).ToHashSet()
+                };
+            }
+            else
+            {
+                var now = DateTime.UtcNow;
+                model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
+                model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
+            }
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load the flight form.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<FlightDetail?> LoadFlightOrNullAsync(Guid id) => await Operations.GetFlightAsync(id);
+
+    private static string ChipClass(bool selected) => selected ? "opf-chip opf-chip-selected" : "opf-chip";
+
+    private static void Toggle(HashSet<Guid> set, Guid id)
+    {
+        if (!set.Add(id))
+            set.Remove(id);
+    }
+
+    private async Task CheckDuplicatesAsync()
+    {
+        errorMessage = null;
+        duplicates = [];
+
+        if (model.CustomerId == Guid.Empty || string.IsNullOrWhiteSpace(model.FlightNumber) || model.ScheduledArrivalUtc is null)
+        {
+            errorMessage = "Select customer, flight number, and scheduled arrival before checking duplicates.";
+            return;
+        }
+
+        try
+        {
+            duplicates = await Operations.GetDuplicateCandidatesAsync(
+                model.CustomerId,
+                model.FlightNumber.Trim().ToUpperInvariant(),
+                ToUtc(model.ScheduledArrivalUtc.Value));
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not check duplicate candidates.");
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        errorMessage = Validate();
+        if (errorMessage is not null)
+            return;
+
+        isSubmitting = true;
+        try
+        {
+            if (FlightId is { } id)
+                await UpdateAsync(id);
+            else
+                await CreateAsync();
+
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not save the flight.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        await Operations.ScheduleFlightAsync(new ScheduleFlightRequestModel(
+            model.CustomerId,
+            model.StationId,
+            model.OperationTypeId,
+            model.FlightNumber.Trim().ToUpperInvariant(),
+            ToUtc(model.ScheduledArrivalUtc!.Value),
+            ToUtc(model.ScheduledDepartureUtc!.Value),
+            model.AircraftTypeId,
+            model.PlannedServiceIds.ToList(),
+            model.AssignedStaffMemberIds.ToList()));
+    }
+
+    private async Task UpdateAsync(Guid id)
+    {
+        var version = rowVersion ?? string.Empty;
+
+        if (original is not null && !string.Equals(original.FlightNumber, model.FlightNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            await Operations.ChangeFlightNumberAsync(id, new ChangeFlightNumberRequestModel(model.FlightNumber.Trim().ToUpperInvariant()), version);
+            var refreshed = await Operations.GetFlightAsync(id);
+            version = refreshed.RowVersion;
+        }
+
+        await Operations.UpdateFlightAsync(id, new UpdateScheduledFlightRequestModel(
+            model.CustomerId,
+            model.StationId,
+            model.OperationTypeId,
+            ToUtc(model.ScheduledArrivalUtc!.Value),
+            ToUtc(model.ScheduledDepartureUtc!.Value),
+            model.AircraftTypeId,
+            model.PlannedServiceIds.ToList()), version);
+
+        if (model.AssignedStaffMemberIds.Count > 0)
+        {
+            var refreshed = await Operations.GetFlightAsync(id);
+            await Operations.AssignEmployeesAsync(id, new AssignEmployeesRequestModel(model.AssignedStaffMemberIds.ToList()), refreshed.RowVersion);
+        }
+    }
+
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(model.FlightNumber))
+            return "Flight number is required.";
+        if (model.CustomerId == Guid.Empty)
+            return "Customer is required.";
+        if (model.StationId == Guid.Empty)
+            return "Station is required.";
+        if (model.OperationTypeId == Guid.Empty)
+            return "Operation type is required.";
+        if (model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
+            return "Scheduled arrival and departure are required.";
+        if (model.ScheduledDepartureUtc <= model.ScheduledArrivalUtc)
+            return "Scheduled departure must be after scheduled arrival.";
+        return null;
+    }
+
+    private static DateTimeOffset ToUtc(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        return new DateTimeOffset(utc);
+    }
+
+    private sealed class FlightFormModel
+    {
+        public string FlightNumber { get; set; } = string.Empty;
+        public Guid CustomerId { get; set; }
+        public Guid StationId { get; set; }
+        public Guid OperationTypeId { get; set; }
+        public Guid? AircraftTypeId { get; set; }
+        public DateTime? ScheduledArrivalUtc { get; set; }
+        public DateTime? ScheduledDepartureUtc { get; set; }
+        public HashSet<Guid> PlannedServiceIds { get; set; } = [];
+        public HashSet<Guid> AssignedStaffMemberIds { get; set; } = [];
+    }
+}

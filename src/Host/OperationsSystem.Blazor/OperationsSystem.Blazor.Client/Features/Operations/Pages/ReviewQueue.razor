@@ -1,6 +1,9 @@
 @page "/operations/review-queue"
 @inject OperationsApiClient Operations
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
 @inject NotificationService Notifications
+@inject GridPreferences GridPrefs
 
 <PageTitle>Work order review</PageTitle>
 
@@ -8,62 +11,88 @@
     <div class="os-list-page">
         <PageHeader Title="Work order review" Description="Submitted work orders awaiting approval. Approving locks the work order and hands it to billing." />
 
-        <RadzenCard class="rz-mt-4">
-            @if (loadError)
-            {
-                <ErrorState Message="Could not load the review queue." />
-            }
-            else
-            {
-                <RadzenDataGrid @ref="grid" Data="@items" Count="@totalCount" LoadData="@LoadDataAsync"
-                                AllowPaging="true" PageSize="20" IsLoading="@isLoading" TItem="ReviewQueueItem"
-                                AllowSorting="false" EmptyText="Nothing awaiting review.">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="ReviewQueueItem" Property="FlightNumber" Title="Flight #" />
-                        <RadzenDataGridColumn TItem="ReviewQueueItem" Property="CustomerName" Title="Customer" />
-                        <RadzenDataGridColumn TItem="ReviewQueueItem" Property="StationIata" Title="Station" />
-                        <RadzenDataGridColumn TItem="ReviewQueueItem" Property="Type" Title="Type" />
-                        <RadzenDataGridColumn TItem="ReviewQueueItem" Title="Submitted (UTC)">
-                            <Template Context="item">@item.CreatedAtUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="ReviewQueueItem" Title="Actions" Sortable="false">
-                            <Template Context="item">
-                                <AuthorizeView Context="approve">
-                                    @if (approve.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersApprove))
-                                    {
-                                        <RadzenButton Text="Approve" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
-                                                      Click="@(() => ApproveAsync(item))" class="rz-mr-2" />
-                                    }
-                                </AuthorizeView>
-                                <AuthorizeView Context="reject">
-                                    @if (reject.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersReject))
-                                    {
-                                        <RadzenButton Text="Reject" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
-                                                      Click="@(() => RejectAsync(item))" />
-                                    }
-                                </AuthorizeView>
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-            }
-        </RadzenCard>
+        <DataListCard @ref="list" TItem="ReviewQueueItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ShowSearch="false" CountLabel="work orders" EmptyText="Nothing awaiting review.">
+            <Filters>
+                <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="ReviewQueueItem" Property="FlightNumber" Title="Flight #">
+                    <Template Context="item">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="fact_check" /></span>
+                            <div class="os-role-cell-text">
+                                <strong>@item.FlightNumber</strong>
+                                <span>@item.CustomerName</span>
+                            </div>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ReviewQueueItem" Property="StationIata" Title="Station" Width="110px" />
+                <RadzenDataGridColumn TItem="ReviewQueueItem" Title="Type" Width="150px">
+                    <Template Context="item"><StatusBadge Label="@item.Type" Tone="neutral" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ReviewQueueItem" Title="Submitted (UTC)" Width="180px">
+                    <Template Context="item">@DateTimeDisplay(item.CreatedAtUtc)</Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="item">
+                <RowActionMenu>
+                    <RowAction Text="Review" Icon="visibility" OnClick="@(() => OpenReviewAsync(item.WorkOrderId))" />
+                    <RowAction Text="Approve" Icon="verified" Permission="@OperationsPermissions.WorkOrdersApprove"
+                               OnClick="@(() => ApproveAsync(item))" />
+                    <RowAction Text="Reject" Icon="block" Danger="true" Permission="@OperationsPermissions.WorkOrdersReject"
+                               OnClick="@(() => RejectAsync(item))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="Merge work orders" Icon="merge_type" Permission="@OperationsPermissions.WorkOrdersMerge"
+                               OnClick="@(() => OpenMergeAsync(item))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
     </div>
 </RequirePermission>
 
 @code {
-    private RadzenDataGrid<ReviewQueueItem>? grid;
+    private const string GridKey = "operations-review-queue";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<ReviewQueueItem>? list;
     private IReadOnlyList<ReviewQueueItem> items = [];
     private int totalCount;
     private bool isLoading;
     private bool loadError;
     private int currentPage = 1;
-    private int currentPageSize = 20;
+    private int currentPageSize = 10;
+    private Guid? stationFilter;
+    private IReadOnlyList<StationFilterOption> stationOptions = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        stationOptions = (await MasterData.GetStationOptionsAsync())
+            .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
+            .ToList();
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStationFilterChangedAsync(Guid? value)
+    {
+        stationFilter = value;
+        await ReloadAsync();
+    }
 
     private async Task LoadDataAsync(LoadDataArgs args)
     {
-        currentPageSize = args.Top ?? 20;
-        currentPage = ((args.Skip ?? 0) / currentPageSize) + 1;
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
         await FetchAsync();
     }
 
@@ -74,7 +103,7 @@
         StateHasChanged();
         try
         {
-            var result = await Operations.GetReviewQueueAsync(currentPage, currentPageSize);
+            var result = await Operations.GetReviewQueueAsync(currentPage, currentPageSize, stationFilter);
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -89,8 +118,32 @@
         }
     }
 
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task OpenReviewAsync(Guid workOrderId)
+    {
+        var result = await DialogService.OpenAsync<WorkOrderDetailDialog>("Review work order",
+            new Dictionary<string, object?> { [nameof(WorkOrderDetailDialog.WorkOrderId)] = workOrderId },
+            new DialogOptions { Width = "1040px" });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
     private async Task ApproveAsync(ReviewQueueItem item)
     {
+        var confirmed = await DialogService.Confirm($"Approve the work order for {item.FlightNumber}?", "Approve work order",
+            new ConfirmOptions { OkButtonText = "Approve", CancelButtonText = "Cancel" }) ?? false;
+        if (!confirmed)
+            return;
+
         try
         {
             await Operations.ApproveWorkOrderAsync(item.WorkOrderId, item.RowVersion);
@@ -105,6 +158,11 @@
 
     private async Task RejectAsync(ReviewQueueItem item)
     {
+        var confirmed = await DialogService.Confirm($"Reject the work order for {item.FlightNumber}?", "Reject work order",
+            new ConfirmOptions { OkButtonText = "Reject", CancelButtonText = "Cancel" }) ?? false;
+        if (!confirmed)
+            return;
+
         try
         {
             await Operations.RejectWorkOrderAsync(item.WorkOrderId, item.RowVersion);
@@ -117,11 +175,24 @@
         }
     }
 
-    private async Task ReloadAsync()
+    private async Task OpenMergeAsync(ReviewQueueItem item)
     {
-        if (grid is not null)
-            await grid.Reload();
-        else
-            await FetchAsync();
+        var result = await DialogService.OpenAsync<WorkOrderMergeDialog>("Resolve duplicate work orders",
+            new Dictionary<string, object?>
+            {
+                [nameof(WorkOrderMergeDialog.FlightId)] = item.FlightId,
+                [nameof(WorkOrderMergeDialog.PrimaryWorkOrderId)] = item.WorkOrderId
+            },
+            new DialogOptions { Width = "980px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Work orders merged");
+            await ReloadAsync();
+        }
     }
+
+    private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+
+    private sealed record StationFilterOption(string Label, Guid? Value);
 }

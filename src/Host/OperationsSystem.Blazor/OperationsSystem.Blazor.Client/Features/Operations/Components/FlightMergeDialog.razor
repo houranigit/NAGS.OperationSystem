@@ -1,0 +1,158 @@
+@inject OperationsApiClient Operations
+@inject DialogService DialogService
+
+<div class="ofm-dialog">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (choices.Count < 2)
+    {
+        <EmptyState Title="No duplicate candidates" Description="No comparable flight candidates were found for this flight." Icon="merge_type" />
+    }
+    else
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+            Choose the surviving flight. Non-terminal work orders from the losing flight are reassigned to the survivor.
+        </RadzenAlert>
+
+        <div class="ofm-grid-2">
+            <div class="ofm-field-block">
+                <label class="ofm-label">Survivor</label>
+                <RadzenDropDown @bind-Value="survivorId" Data="@choices" TextProperty="Label" ValueProperty="Id" class="ofm-control" />
+            </div>
+            <div class="ofm-field-block">
+                <label class="ofm-label">Loser</label>
+                <RadzenDropDown @bind-Value="loserId" Data="@choices" TextProperty="Label" ValueProperty="Id" class="ofm-control" />
+            </div>
+        </div>
+
+        <div class="ofm-compare">
+            @CompareCard("Survivor", Survivor, "success")
+            @CompareCard("Loser", Loser, "danger")
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(actionError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@actionError</RadzenAlert>
+        }
+
+        <div class="ofm-actions">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton Text="Merge flights" Icon="merge_type" ButtonStyle="ButtonStyle.Primary" Click="@MergeAsync" Disabled="@isSubmitting" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid PrimaryFlightId { get; set; }
+    [Parameter] public Guid? CandidateFlightId { get; set; }
+
+    private IReadOnlyList<FlightDetail> flights = [];
+    private List<FlightChoice> choices = [];
+    private Guid? survivorId;
+    private Guid? loserId;
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+    private string? actionError;
+
+    private FlightDetail? Survivor => flights.FirstOrDefault(x => x.Id == survivorId);
+    private FlightDetail? Loser => flights.FirstOrDefault(x => x.Id == loserId);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            var primary = await Operations.GetFlightAsync(PrimaryFlightId);
+            var map = new Dictionary<Guid, FlightDetail> { [primary.Id] = primary };
+
+            if (CandidateFlightId is { } candidateId)
+            {
+                map[candidateId] = await Operations.GetFlightAsync(candidateId);
+            }
+            else
+            {
+                var candidates = await Operations.GetDuplicateCandidatesAsync(primary.CustomerId, primary.FlightNumber, primary.ScheduledArrivalUtc);
+                foreach (var candidate in candidates.Where(x => x.FlightId != primary.Id).Take(6))
+                    map[candidate.FlightId] = await Operations.GetFlightAsync(candidate.FlightId);
+            }
+
+            flights = map.Values.ToList();
+            choices = flights
+                .Select(x => new FlightChoice(x.Id, $"{x.FlightNumber} · {x.CustomerName} · {x.StationIata} · {x.Status}"))
+                .ToList();
+
+            survivorId = primary.Id;
+            loserId = CandidateFlightId ?? choices.FirstOrDefault(x => x.Id != survivorId)?.Id;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load merge candidates.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private RenderFragment CompareCard(string title, FlightDetail? value, string tone) => @<section class="@($"ofm-card ofm-card-{tone}")">
+        <p class="os-eyebrow">@title</p>
+        @if (value is null)
+        {
+            <strong>None selected</strong>
+        }
+        else
+        {
+            <h3>@value.FlightNumber</h3>
+            <dl>
+                <div><dt>Customer</dt><dd>@value.CustomerName</dd></div>
+                <div><dt>Station</dt><dd>@value.StationIata</dd></div>
+                <div><dt>Operation</dt><dd>@value.OperationTypeName</dd></div>
+                <div><dt>STA</dt><dd>@DateTimeDisplay(value.ScheduledArrivalUtc)</dd></div>
+                <div><dt>STD</dt><dd>@DateTimeDisplay(value.ScheduledDepartureUtc)</dd></div>
+                <div><dt>Status</dt><dd>@value.Status</dd></div>
+                <div><dt>Services</dt><dd>@(value.PlannedServices.Count == 0 ? "None" : string.Join(", ", value.PlannedServices.Select(x => x.Name)))</dd></div>
+                <div><dt>Work orders</dt><dd>@value.WorkOrders.Count</dd></div>
+            </dl>
+        }
+    </section>;
+
+    private async Task MergeAsync()
+    {
+        actionError = null;
+        if (survivorId is null || loserId is null || survivorId == loserId)
+        {
+            actionError = "Choose two different flights.";
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            await Operations.MergeFlightsAsync(survivorId.Value, loserId.Value);
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            actionError = ex.ToDisplayMessage("Could not merge these flights.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private static string DateTimeDisplay(DateTimeOffset value) =>
+        value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+
+    private sealed record FlightChoice(Guid Id, string Label);
+}

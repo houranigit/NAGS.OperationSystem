@@ -1,0 +1,237 @@
+@inject OperationsApiClient Operations
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject AuthSession Auth
+
+<div class="owd-dialog">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <ErrorState Message="@errorMessage" OnRetry="@LoadAsync" />
+    }
+    else if (workOrder is not null)
+    {
+        <div class="owd-head">
+            <div>
+                <p class="os-eyebrow">@workOrder.Type work order</p>
+                <h2>@(workOrder.Number ?? workOrder.FlightNumber)</h2>
+                <p class="os-muted">@workOrder.CustomerName · @workOrder.StationIata · @DateTimeDisplay(workOrder.ScheduledArrivalUtc)</p>
+            </div>
+            <StatusBadge Label="@workOrder.Status" Tone="@StatusTone(workOrder.Status)" />
+        </div>
+
+        <div class="owd-fields">
+            <DetailField Label="Flight" Value="@workOrder.FlightNumber" Icon="flight" />
+            <DetailField Label="Tail" Value="@None(workOrder.AircraftTailNumber)" Icon="airplanemode_active" />
+            <DetailField Label="Actual arrival" Value="@DateTimeDisplay(workOrder.ActualArrivalUtc)" Icon="schedule" />
+            <DetailField Label="Actual departure" Value="@DateTimeDisplay(workOrder.ActualDepartureUtc)" Icon="schedule" />
+        </div>
+
+        @if (workOrder.Type == "Cancellation")
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+                <strong>Cancellation work order</strong>
+                <div>@DateTimeDisplay(workOrder.CanceledAtUtc) · @None(workOrder.CancellationReason)</div>
+            </RadzenAlert>
+        }
+
+        <RadzenTabs>
+            <Tabs>
+                <RadzenTabsItem Text="Services">
+                    @if (workOrder.ServiceLines.Count == 0)
+                    {
+                        <EmptyState Title="No service lines" Description="No completed services have been recorded." Icon="settings" />
+                    }
+                    else
+                    {
+                        <RadzenDataGrid TItem="WorkOrderServiceLineModel" Data="@workOrder.ServiceLines" AllowPaging="false" AllowSorting="false" GridLines="DataGridGridLines.Horizontal">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="WorkOrderServiceLineModel" Property="ServiceName" Title="Service" />
+                                <RadzenDataGridColumn TItem="WorkOrderServiceLineModel" Property="Origin" Title="Origin" Width="120px" />
+                                <RadzenDataGridColumn TItem="WorkOrderServiceLineModel" Title="Window">
+                                    <Template Context="line">@DateTimeDisplay(line.FromUtc) - @DateTimeDisplay(line.ToUtc)</Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="WorkOrderServiceLineModel" Title="Employees" Sortable="false">
+                                    <Template Context="line">@EmployeeList(line.Employees)</Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Tasks">
+                    @if (workOrder.Tasks.Count == 0)
+                    {
+                        <EmptyState Title="No tasks" Description="No task rows have been recorded." Icon="checklist" />
+                    }
+                    else
+                    {
+                        <div class="owd-task-list">
+                            @foreach (var task in workOrder.Tasks)
+                            {
+                                <section @key="task.Id" class="owd-task">
+                                    <div class="owd-task-title">
+                                        <strong>@task.TaskType</strong>
+                                        @if (task.ReturnToRamp)
+                                        {
+                                            <StatusBadge Label="Return to ramp" Tone="warning" />
+                                        }
+                                    </div>
+                                    <p>@None(task.Description)</p>
+                                    <span class="os-muted">@DateTimeDisplay(task.FromUtc) - @DateTimeDisplay(task.ToUtc)</span>
+                                    <div class="owd-resource-line">
+                                        <span>Employees: @EmployeeList(task.Employees)</span>
+                                        <span>Tools: @ResourceList(task.Tools)</span>
+                                        <span>Materials: @ResourceList(task.Materials)</span>
+                                        <span>General support: @ResourceList(task.GeneralSupports)</span>
+                                    </div>
+                                </section>
+                            }
+                        </div>
+                    }
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Notes">
+                    <div class="owd-note-block">
+                        <DetailField Label="Remarks" Value="@None(workOrder.Remarks)" Icon="notes" />
+                        <DetailField Label="Signature reference" Value="@None(workOrder.CustomerSignatureReference)" Icon="draw" />
+                    </div>
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+
+        <div class="owd-actions">
+            <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <div class="owd-actions-end">
+                @if (CanEdit)
+                {
+                    <RadzenButton Text="Edit" Icon="edit" ButtonStyle="ButtonStyle.Secondary" Click="@OpenEditorAsync" />
+                }
+                @if (CanSubmit)
+                {
+                    <RadzenButton Text="Submit" Icon="send" ButtonStyle="ButtonStyle.Primary" Click="@SubmitWorkOrderAsync" Disabled="@isActing" />
+                }
+                @if (CanReturn)
+                {
+                    <RadzenButton Text="Return" Icon="undo" ButtonStyle="ButtonStyle.Warning" Click="@ReturnAsync" Disabled="@isActing" />
+                }
+                @if (CanReject)
+                {
+                    <RadzenButton Text="Reject" Icon="block" ButtonStyle="ButtonStyle.Danger" Click="@RejectAsync" Disabled="@isActing" />
+                }
+                @if (CanApprove)
+                {
+                    <RadzenButton Text="Approve" Icon="verified" ButtonStyle="ButtonStyle.Success" Click="@ApproveAsync" Disabled="@isActing" />
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid WorkOrderId { get; set; }
+
+    private WorkOrderDetail? workOrder;
+    private bool isLoading = true;
+    private bool isActing;
+    private string? errorMessage;
+
+    private bool IsSubmitted => workOrder?.Status == "Submitted";
+    private bool IsEditable => workOrder?.Status is "Draft" or "Returned";
+    private bool CanEdit => IsEditable && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor);
+    private bool CanSubmit => IsEditable && Auth.HasPermission(OperationsPermissions.WorkOrdersSubmit);
+    private bool CanApprove => IsSubmitted && Auth.HasPermission(OperationsPermissions.WorkOrdersApprove);
+    private bool CanReject => IsSubmitted && Auth.HasPermission(OperationsPermissions.WorkOrdersReject);
+    private bool CanReturn => workOrder?.Status == "Approved" && Auth.HasPermission(OperationsPermissions.WorkOrdersReturn);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            workOrder = await Operations.GetWorkOrderAsync(WorkOrderId);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load the work order.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OpenEditorAsync()
+    {
+        var result = await DialogService.OpenAsync<WorkOrderEditorDialog>("Edit work order",
+            new Dictionary<string, object?> { [nameof(WorkOrderEditorDialog.WorkOrderId)] = WorkOrderId },
+            new DialogOptions { Width = "1040px" });
+
+        if (result is true)
+            await LoadAsync();
+    }
+
+    private Task SubmitWorkOrderAsync() => RunActionAsync(
+        () => Operations.SubmitWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
+        "Submitted",
+        "Work order submitted for review.");
+
+    private Task ApproveAsync() => RunActionAsync(
+        () => Operations.ApproveWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
+        "Approved",
+        "Work order approved and sent to billing.");
+
+    private Task RejectAsync() => RunActionAsync(
+        () => Operations.RejectWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
+        "Rejected",
+        "Work order rejected.");
+
+    private Task ReturnAsync() => RunActionAsync(
+        () => Operations.ReturnWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
+        "Returned",
+        "Work order returned to review.");
+
+    private async Task RunActionAsync(Func<Task> action, string title, string message)
+    {
+        isActing = true;
+        try
+        {
+            await action();
+            Notifications.Notify(NotificationSeverity.Success, title, message);
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, title, ex.ToDisplayMessage("Could not update the work order."));
+            await LoadAsync();
+        }
+        finally
+        {
+            isActing = false;
+        }
+    }
+
+    private static string DateTimeDisplay(DateTimeOffset? value) =>
+        value?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "None";
+
+    private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
+
+    private static string EmployeeList(IReadOnlyList<AssignedEmployeeModel> employees) =>
+        employees.Count == 0 ? "None" : string.Join(", ", employees.Select(x => x.FullName));
+
+    private static string ResourceList(IReadOnlyList<WorkOrderResourceModel> resources) =>
+        resources.Count == 0 ? "None" : string.Join(", ", resources.Select(x => $"{x.Name} ({x.Quantity:N2})"));
+
+    private static string StatusTone(string status) => status switch
+    {
+        "Approved" => "success",
+        "Submitted" => "warning",
+        "Rejected" or "Superseded" => "danger",
+        "Returned" => "warning",
+        _ => "neutral"
+    };
+}
