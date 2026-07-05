@@ -21,7 +21,7 @@
                 })
             </div>
 
-            @if (duplicates.Count > 0)
+            @if (HasCurrentDuplicateCheck && duplicates.Count > 0)
             {
                 <div class="opf-warning-panel" role="status">
                     <RadzenIcon Icon="warning_amber" />
@@ -35,6 +35,16 @@
                                 </a>
                             }
                         </div>
+                    </div>
+                </div>
+            }
+            else if (HasCurrentDuplicateCheck)
+            {
+                <div class="opf-success-panel" role="status">
+                    <RadzenIcon Icon="task_alt" />
+                    <div>
+                        <strong>No duplicates found.</strong>
+                        <p>No other flight matches this customer, station, scheduled arrival, and scheduled departure.</p>
                     </div>
                 </div>
             }
@@ -102,6 +112,7 @@
     private int step;
     private string serviceSearchTerm = string.Empty;
     private string staffSearchTerm = string.Empty;
+    private string? duplicateCheckSignature;
 
     private const int LastStep = 2;
 
@@ -132,19 +143,25 @@
 
         <div class="opf-grid-2">
             <div class="opf-field-block">
-                <label class="opf-label">Flight number <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="confirmation_number" class="opf-field-icon" />
-                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="flightNumber" MaxLength="12"
-                                   class="opf-control opf-control-icon" Placeholder="e.g. NGS104" />
-                </div>
-            </div>
-            <div class="opf-field-block">
                 <label class="opf-label">Customer <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="business" class="opf-field-icon" />
                     <RadzenDropDown @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
                                     AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select customer" />
+                </div>
+            </div>
+            <div class="opf-field-block">
+                <label class="opf-label">Flight number <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <span class="opf-flight-prefix">
+                        <span>@CustomerIataPrefix</span>
+                        @if (HasCustomerIataPrefix)
+                        {
+                            <span class="opf-flight-prefix-divider">-</span>
+                        }
+                    </span>
+                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="flightNumber" MaxLength="12"
+                                   class="opf-control opf-control-icon opf-flight-number-control" Placeholder="e.g. NGS104" />
                 </div>
             </div>
         </div>
@@ -405,6 +422,15 @@
     private bool IsPerLandingSelected =>
         services.Any(service => service.IsAircraftPerLanding && model.PlannedServiceIds.Contains(service.Id));
 
+    private CustomerOption? SelectedCustomer =>
+        customers.FirstOrDefault(customer => customer.Id == model.CustomerId);
+
+    private bool HasCustomerIataPrefix =>
+        !string.IsNullOrWhiteSpace(SelectedCustomer?.IataCode);
+
+    private string CustomerIataPrefix =>
+        HasCustomerIataPrefix ? SelectedCustomer!.IataCode!.Trim().ToUpperInvariant() : "-";
+
     private void TogglePlannedService(ServiceOption service)
     {
         Toggle(model.PlannedServiceIds, service.Id);
@@ -452,10 +478,17 @@
 
     private void ClearStaffSearch() => staffSearchTerm = string.Empty;
 
+    private bool HasCurrentDuplicateCheck =>
+        duplicateCheckSignature is not null && duplicateCheckSignature == DuplicateSignature();
+
+    private string DuplicateSignature() =>
+        $"{model.CustomerId:N}|{model.StationId:N}|{model.ScheduledArrivalUtc?.Ticks}|{model.ScheduledDepartureUtc?.Ticks}";
+
     private async Task CheckDuplicatesAsync()
     {
         errorMessage = null;
         duplicates = [];
+        duplicateCheckSignature = null;
 
         if (model.CustomerId == Guid.Empty || model.StationId == Guid.Empty || model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
         {
@@ -471,6 +504,7 @@
                 ToUtc(model.ScheduledDepartureUtc.Value),
                 model.StationId,
                 FlightId);
+            duplicateCheckSignature = DuplicateSignature();
         }
         catch (ApiException ex)
         {

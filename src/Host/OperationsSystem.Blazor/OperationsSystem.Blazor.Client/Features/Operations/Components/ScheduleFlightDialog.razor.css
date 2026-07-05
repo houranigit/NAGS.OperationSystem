@@ -167,10 +167,35 @@
     pointer-events: none;
 }
 
+.opf-flight-prefix {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 50%;
+    inset-inline-start: var(--os-space-4);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-width: 3.6rem;
+    transform: translateY(-50%);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+    letter-spacing: 0;
+    pointer-events: none;
+}
+
+.opf-flight-prefix-divider {
+    color: var(--os-color-text-subtle);
+}
+
 .opf-form ::deep .opf-control-icon input,
 .opf-form ::deep input.opf-control-icon,
 .opf-form ::deep .opf-control-icon .rz-dropdown-label {
     padding-inline-start: 52px;
+}
+
+.opf-form ::deep input.opf-flight-number-control {
+    padding-inline-start: 5.75rem;
 }
 
 .opf-form ::deep .opf-control-icon .rz-dropdown-trigger,
@@ -394,6 +419,7 @@
 }
 
 .opf-warning-panel,
+.opf-success-panel,
 .opf-error-panel {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -409,6 +435,11 @@
     background: color-mix(in srgb, var(--os-color-warning-bg) 70%, white);
 }
 
+.opf-success-panel {
+    border: 1px solid color-mix(in srgb, var(--os-color-success) 40%, white);
+    background: color-mix(in srgb, var(--os-color-success-bg) 72%, white);
+}
+
 .opf-error-panel {
     border: 2px solid color-mix(in srgb, var(--os-color-danger) 62%, white);
     background: color-mix(in srgb, var(--os-color-danger-bg) 72%, white);
@@ -421,6 +452,12 @@
     margin-block-start: 2px;
 }
 
+.opf-success-panel ::deep .rz-icon {
+    color: var(--os-color-success);
+    font-size: 1.35rem;
+    margin-block-start: 2px;
+}
+
 .opf-error-panel ::deep .rz-icon {
     color: var(--os-color-danger);
     font-size: 1.35rem;
@@ -428,11 +465,19 @@
 }
 
 .opf-warning-panel strong,
+.opf-success-panel strong,
 .opf-error-panel strong {
     display: block;
     margin-block-end: var(--os-space-2);
     font-size: var(--os-text-base);
     font-weight: 800;
+}
+
+.opf-success-panel p {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    line-height: 1.45;
 }
 
 .opf-error-panel ul {
