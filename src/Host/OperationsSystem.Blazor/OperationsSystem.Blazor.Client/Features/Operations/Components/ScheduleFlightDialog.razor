@@ -217,7 +217,7 @@
                     @foreach (var service in FilteredServices())
                     {
                         <button type="button" @key="service.Id" class="@ChipClass(model.PlannedServiceIds.Contains(service.Id))"
-                                @onclick="@(() => Toggle(model.PlannedServiceIds, service.Id))">
+                                @onclick="@(() => TogglePlannedService(service))">
                             <RadzenIcon Icon="task_alt" />
                             <span>@service.Name</span>
                         </button>
@@ -229,47 +229,60 @@
 
     private RenderFragment StaffStep() => @<section class="opf-step-content">
         <div class="opf-section-line"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
-        <div class="opf-step-toolbar">
-            @SearchBox(staffSearchTerm, "Search staff", OnStaffSearchInput, ClearStaffSearch)
-            <span class="opf-selection-count">@model.AssignedStaffMemberIds.Count selected</span>
-        </div>
-        @if (staff.Count == 0)
+        @if (IsPerLandingSelected)
         {
-            <div class="opf-empty-row">
-                <RadzenIcon Icon="group_add" />
-                <span>No active staff members are available.</span>
+            <div class="opf-info-panel">
+                <RadzenIcon Icon="info" />
+                <div>
+                    <strong>Per landing flight</strong>
+                    <p>This flight is per landing and does not need staff assignment because all station staff can reach the flight.</p>
+                </div>
             </div>
         }
         else
         {
-            <div class="opf-selection-panel opf-selection-panel-scroll">
-                @if (!FilteredStaff().Any())
-                {
-                    <div class="opf-empty-row">
-                        <RadzenIcon Icon="search_off" />
-                        <span>No staff members match your search.</span>
-                    </div>
-                }
-                else
-                {
-                    <div class="opf-chip-list opf-chip-list-staff">
-                        @foreach (var member in FilteredStaff())
-                        {
-                            <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
-                                    @onclick="@(() => Toggle(model.AssignedStaffMemberIds, member.Id))">
-                                <RadzenIcon Icon="person" />
-                                <span>@member.FullName</span>
-                                <small>@member.StationCode</small>
-                            </button>
-                        }
-                    </div>
-                }
+            <div class="opf-step-toolbar">
+                @SearchBox(staffSearchTerm, "Search staff", OnStaffSearchInput, ClearStaffSearch)
+                <span class="opf-selection-count">@model.AssignedStaffMemberIds.Count selected</span>
             </div>
+            @if (staff.Count == 0)
+            {
+                <div class="opf-empty-row">
+                    <RadzenIcon Icon="group_add" />
+                    <span>No active staff members are available.</span>
+                </div>
+            }
+            else
+            {
+                <div class="opf-selection-panel opf-selection-panel-scroll">
+                    @if (!FilteredStaff().Any())
+                    {
+                        <div class="opf-empty-row">
+                            <RadzenIcon Icon="search_off" />
+                            <span>No staff members match your search.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="opf-chip-list opf-chip-list-staff">
+                            @foreach (var member in FilteredStaff())
+                            {
+                                <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
+                                        @onclick="@(() => Toggle(model.AssignedStaffMemberIds, member.Id))">
+                                    <RadzenIcon Icon="person" />
+                                    <span>@member.FullName</span>
+                                    <small>@member.StationCode</small>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         }
     </section>;
 
     private RenderFragment SearchBox(string value, string placeholder, Action<ChangeEventArgs> onInput, Action onClear) => @<div class="opf-search-box">
-        <RadzenIcon Icon="search" />
+        <span class="opf-search-icon"><RadzenIcon Icon="search" /></span>
         <input type="search" value="@value" @oninput="@onInput" placeholder="@placeholder" aria-label="@placeholder" />
         @if (!string.IsNullOrWhiteSpace(value))
         {
@@ -366,6 +379,8 @@
                 model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
                 model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
             }
+
+            SyncPerLandingAssignmentState();
         }
         catch (ApiException ex)
         {
@@ -385,6 +400,24 @@
     {
         if (!set.Add(id))
             set.Remove(id);
+    }
+
+    private bool IsPerLandingSelected =>
+        services.Any(service => service.IsAircraftPerLanding && model.PlannedServiceIds.Contains(service.Id));
+
+    private void TogglePlannedService(ServiceOption service)
+    {
+        Toggle(model.PlannedServiceIds, service.Id);
+        SyncPerLandingAssignmentState();
+    }
+
+    private void SyncPerLandingAssignmentState()
+    {
+        if (!IsPerLandingSelected)
+            return;
+
+        model.AssignedStaffMemberIds.Clear();
+        staffSearchTerm = string.Empty;
     }
 
     private IEnumerable<ServiceOption> FilteredServices()
@@ -480,7 +513,7 @@
             ToUtc(model.ScheduledDepartureUtc!.Value),
             model.AircraftTypeId,
             model.PlannedServiceIds.ToList(),
-            model.AssignedStaffMemberIds.ToList()));
+            AssignmentIdsForSave()));
     }
 
     private async Task UpdateAsync(Guid id)
@@ -503,11 +536,24 @@
             model.AircraftTypeId,
             model.PlannedServiceIds.ToList()), version);
 
-        if (model.AssignedStaffMemberIds.Count > 0)
+        var assignmentIds = AssignmentIdsForSave();
+        if (AssignmentsChanged(assignmentIds))
         {
             var refreshed = await Operations.GetFlightAsync(id);
-            await Operations.AssignEmployeesAsync(id, new AssignEmployeesRequestModel(model.AssignedStaffMemberIds.ToList()), refreshed.RowVersion);
+            await Operations.AssignEmployeesAsync(id, new AssignEmployeesRequestModel(assignmentIds), refreshed.RowVersion);
         }
+    }
+
+    private IReadOnlyList<Guid> AssignmentIdsForSave() =>
+        IsPerLandingSelected ? [] : model.AssignedStaffMemberIds.ToList();
+
+    private bool AssignmentsChanged(IReadOnlyList<Guid> next)
+    {
+        if (original is null)
+            return next.Count > 0;
+
+        var current = original.AssignedEmployees.Select(employee => employee.StaffMemberId).ToHashSet();
+        return current.Count != next.Count || next.Any(id => !current.Contains(id));
     }
 
     private string? Validate()

@@ -95,7 +95,7 @@ public sealed class GetActiveServiceOptionsQueryHandler(IMasterDataDbContext db)
             .Where(s => s.IsActive)
             .OrderBy(s => s.Name)
             .ThenBy(s => s.Id)
-            .Select(s => new ServiceOptionDto(s.Id, s.Name))
+            .Select(s => new ServiceOptionDto(s.Id, s.Name, s.Id == WellKnownMasterDataIds.AircraftPerLandingService))
             .ToListAsync(cancellationToken);
 
         return Result.Success(options);

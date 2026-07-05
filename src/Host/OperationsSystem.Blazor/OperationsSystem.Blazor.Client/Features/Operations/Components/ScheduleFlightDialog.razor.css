@@ -206,13 +206,19 @@
     min-width: min(16rem, 100%);
 }
 
-.opf-search-box ::deep .rz-icon {
+.opf-search-icon {
     position: absolute;
     z-index: 1;
-    inset-block-start: 50%;
+    inset-block: 0;
     inset-inline-start: var(--os-space-3);
-    transform: translateY(-50%);
+    display: inline-grid;
+    place-items: center;
+    width: 1.25rem;
     color: var(--os-color-text-subtle);
+    pointer-events: none;
+}
+
+.opf-search-icon ::deep .rz-icon {
     font-size: 1.15rem;
     pointer-events: none;
 }
@@ -267,6 +273,38 @@
     transform: none;
     font-size: 1rem;
     pointer-events: auto;
+}
+
+.opf-info-panel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--os-space-3);
+    align-items: start;
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-primary-soft-border);
+    border-radius: 8px;
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-text);
+}
+
+.opf-info-panel ::deep .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 1.35rem;
+    margin-block-start: 1px;
+}
+
+.opf-info-panel strong {
+    display: block;
+    margin-block-end: var(--os-space-1);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+}
+
+.opf-info-panel p {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    line-height: 1.45;
 }
 
 .opf-selection-panel {

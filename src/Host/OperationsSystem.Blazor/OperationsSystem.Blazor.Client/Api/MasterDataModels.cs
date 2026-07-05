@@ -72,7 +72,7 @@ public sealed record UpdateLicenseRequest(string Name, string? Description);
 
 public sealed record ServiceListItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
 public sealed record ServiceDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
-public sealed record ServiceOption(Guid Id, string Name);
+public sealed record ServiceOption(Guid Id, string Name, bool IsAircraftPerLanding);
 public sealed record CreateServiceRequest(string Name, string? Description);
 public sealed record UpdateServiceRequest(string Name, string? Description);
 

@@ -81,7 +81,7 @@ public sealed record ServiceDto(
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion);
 
-public sealed record ServiceOptionDto(Guid Id, string Name);
+public sealed record ServiceOptionDto(Guid Id, string Name, bool IsAircraftPerLanding);
 
 // --- OperationTypes --------------------------------------------------------
 
