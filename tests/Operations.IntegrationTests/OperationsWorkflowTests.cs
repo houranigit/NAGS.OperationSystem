@@ -75,6 +75,52 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     }
 
     [Fact]
+    public async Task Bulk_schedule_creates_one_flight_per_selected_date_with_shared_details()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var selectedDates = new[]
+        {
+            new DateOnly(2026, 8, 3),
+            new DateOnly(2026, 8, 5),
+            new DateOnly(2026, 8, 8)
+        };
+
+        var response = await admin.PostAsJsonAsync($"{Base}/flights/bulk", new
+        {
+            customerId = refs.CustomerId,
+            stationId = refs.StationId,
+            operationTypeId = refs.OperationTypeId,
+            flightNumber = "NGS150",
+            scheduledArrivalTimeUtc = new TimeOnly(23, 30),
+            scheduledDepartureTimeUtc = new TimeOnly(1, 15),
+            selectedDates,
+            aircraftTypeId = refs.AircraftTypeId,
+            plannedServiceIds = new[] { refs.ServiceId },
+            assignedStaffMemberIds = new[] { refs.StaffMemberId }
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var ids = await response.Content.ReadFromJsonAsync<List<Guid>>();
+        ids.ShouldNotBeNull();
+        ids!.Count.ShouldBe(selectedDates.Length);
+
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var flight = await GetFlightAsync(admin, ids[i]);
+            var expectedArrival = new DateTimeOffset(selectedDates[i].ToDateTime(new TimeOnly(23, 30), DateTimeKind.Utc));
+            var expectedDeparture = new DateTimeOffset(selectedDates[i].AddDays(1).ToDateTime(new TimeOnly(1, 15), DateTimeKind.Utc));
+
+            flight.FlightNumber.ShouldBe("NGS150");
+            flight.Status.ShouldBe("Scheduled");
+            flight.ScheduledArrivalUtc.ShouldBe(expectedArrival);
+            flight.ScheduledDepartureUtc.ShouldBe(expectedDeparture);
+            flight.PlannedServices.ShouldContain(service => service.ServiceId == refs.ServiceId);
+            flight.AssignedEmployees.ShouldContain(employee => employee.StaffMemberId == refs.StaffMemberId);
+        }
+    }
+
+    [Fact]
     public async Task Per_landing_cannot_be_recorded_as_actual_service()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -624,8 +670,14 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
     private sealed record WorkOrderSummary(Guid Id, string Type, string Status, string? Number, Guid? OwnerStaffMemberId);
 
+    private sealed record PlannedService(Guid ServiceId, string Name, bool IsAircraftPerLanding);
+
+    private sealed record AssignedEmployee(Guid StaffMemberId, string FullName, string EmployeeId);
+
     private sealed record FlightDetail(
         Guid Id, string FlightNumber, string Status, bool IsPerLanding,
+        DateTimeOffset ScheduledArrivalUtc, DateTimeOffset ScheduledDepartureUtc,
+        List<PlannedService> PlannedServices, List<AssignedEmployee> AssignedEmployees,
         ApprovedWorkOrderBody? ApprovedWorkOrder, List<WorkOrderSummary> WorkOrders, string RowVersion);
 
     private sealed record WorkOrderDetail(

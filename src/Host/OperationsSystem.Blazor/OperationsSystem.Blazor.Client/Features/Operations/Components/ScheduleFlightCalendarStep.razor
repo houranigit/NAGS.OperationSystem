@@ -1,0 +1,139 @@
+@using System.Globalization
+
+<div class="sfc-calendar">
+    @if (periodStart is null || periodEnd is null)
+    {
+        <div class="sfc-empty">
+            <RadzenIcon Icon="event_busy" />
+            <span>Select a period before choosing flight dates.</span>
+        </div>
+    }
+    else if (periodEnd < periodStart)
+    {
+        <div class="sfc-empty">
+            <RadzenIcon Icon="event_busy" />
+            <span>Period end must be on or after period start.</span>
+        </div>
+    }
+    else
+    {
+        <div class="sfc-months">
+            @foreach (var monthStart in months)
+            {
+                <section @key="monthStart" class="sfc-month">
+                    <h3>@monthStart.ToString("MMMM yyyy", CultureInfo.CurrentCulture)</h3>
+                    <div class="sfc-weekdays" aria-hidden="true">
+                        @foreach (var weekday in WeekdayLabels)
+                        {
+                            <span @key="weekday">@weekday</span>
+                        }
+                    </div>
+                    <div class="sfc-grid">
+                        @foreach (var cell in MonthCells(monthStart))
+                        {
+                            if (cell.Date is not { } date)
+                            {
+                                <span @key="cell.Key" class="sfc-cell sfc-cell-pad"></span>
+                            }
+                            else
+                            {
+                                <button @key="cell.Key" type="button" class="@CellClass(date)" disabled="@(!IsInPeriod(date))"
+                                        aria-pressed="@IsSelected(date)" @onclick="@(() => ToggleAsync(date))">
+                                    <span>@date.Day</span>
+                                </button>
+                            }
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly string[] WeekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    [Parameter] public DateOnly? PeriodStartDate { get; set; }
+    [Parameter] public DateOnly? PeriodEndDate { get; set; }
+    [Parameter] public IReadOnlyList<DateOnly> SelectedDates { get; set; } = [];
+    [Parameter] public EventCallback<DateOnly> DateToggled { get; set; }
+
+    private DateOnly? periodStart;
+    private DateOnly? periodEnd;
+    private HashSet<DateOnly> selectedDates = [];
+    private IReadOnlyList<DateOnly> months = [];
+
+    protected override void OnParametersSet()
+    {
+        periodStart = PeriodStartDate;
+        periodEnd = PeriodEndDate;
+        selectedDates = SelectedDates.ToHashSet();
+        months = periodStart is { } start && periodEnd is { } end && end >= start
+            ? EnumerateMonths(start, end)
+            : [];
+    }
+
+    private async Task ToggleAsync(DateOnly date)
+    {
+        if (!IsInPeriod(date))
+            return;
+
+        await DateToggled.InvokeAsync(date);
+    }
+
+    private bool IsInPeriod(DateOnly date) =>
+        periodStart is { } start && periodEnd is { } end && date >= start && date <= end;
+
+    private bool IsSelected(DateOnly date) => selectedDates.Contains(date);
+
+    private string CellClass(DateOnly date)
+    {
+        var css = "sfc-cell";
+        if (!IsInPeriod(date))
+            return $"{css} sfc-cell-out";
+
+        return IsSelected(date)
+            ? $"{css} sfc-cell-selected"
+            : $"{css} sfc-cell-in-range";
+    }
+
+    private static IReadOnlyList<DateOnly> EnumerateMonths(DateOnly startDate, DateOnly endDate)
+    {
+        var monthsInRange = new List<DateOnly>();
+        var start = new DateOnly(startDate.Year, startDate.Month, 1);
+        var end = new DateOnly(endDate.Year, endDate.Month, 1);
+        for (var month = start; month <= end; month = month.AddMonths(1))
+            monthsInRange.Add(month);
+
+        return monthsInRange;
+    }
+
+    private static IEnumerable<CalendarCell> MonthCells(DateOnly monthStart)
+    {
+        var first = new DateOnly(monthStart.Year, monthStart.Month, 1);
+        var daysInMonth = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
+        var pad = WeekdayOffset(first.DayOfWeek);
+
+        for (var i = 0; i < pad; i++)
+            yield return new CalendarCell($"{monthStart:yyyy-MM}-pad-{i}", null);
+
+        for (var day = 1; day <= daysInMonth; day++)
+        {
+            var date = new DateOnly(monthStart.Year, monthStart.Month, day);
+            yield return new CalendarCell(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), date);
+        }
+    }
+
+    private static int WeekdayOffset(DayOfWeek day) => day switch
+    {
+        DayOfWeek.Monday => 0,
+        DayOfWeek.Tuesday => 1,
+        DayOfWeek.Wednesday => 2,
+        DayOfWeek.Thursday => 3,
+        DayOfWeek.Friday => 4,
+        DayOfWeek.Saturday => 5,
+        _ => 6
+    };
+
+    private readonly record struct CalendarCell(string Key, DateOnly? Date);
+}

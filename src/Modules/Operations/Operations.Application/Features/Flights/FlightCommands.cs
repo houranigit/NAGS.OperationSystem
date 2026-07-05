@@ -89,6 +89,115 @@ public sealed class ScheduleFlightCommandHandler(
     }
 }
 
+// --- Schedule flights --------------------------------------------------------
+
+public sealed record ScheduleFlightsCommand(
+    Guid CustomerId,
+    Guid StationId,
+    Guid OperationTypeId,
+    string FlightNumber,
+    TimeOnly ScheduledArrivalTimeUtc,
+    TimeOnly ScheduledDepartureTimeUtc,
+    IReadOnlyList<DateOnly> SelectedDates,
+    Guid? AircraftTypeId,
+    IReadOnlyList<Guid> PlannedServiceIds,
+    IReadOnlyList<Guid> AssignedStaffMemberIds) : ICommand<IReadOnlyList<Guid>>;
+
+public sealed class ScheduleFlightsCommandValidator : AbstractValidator<ScheduleFlightsCommand>
+{
+    public ScheduleFlightsCommandValidator()
+    {
+        RuleFor(x => x.CustomerId).NotEmpty();
+        RuleFor(x => x.StationId).NotEmpty();
+        RuleFor(x => x.OperationTypeId).NotEmpty();
+        RuleFor(x => x.FlightNumber).NotEmpty().MaximumLength(12);
+        RuleFor(x => x.PlannedServiceIds).NotEmpty();
+        RuleFor(x => x.SelectedDates).NotEmpty();
+    }
+}
+
+public sealed class ScheduleFlightsCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    MasterDataResolver resolver,
+    IFlightTimelineWriter timeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<ScheduleFlightsCommand, IReadOnlyList<Guid>>
+{
+    public async Task<Result<IReadOnlyList<Guid>>> Handle(ScheduleFlightsCommand request, CancellationToken cancellationToken)
+    {
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+
+        var stationCheck = scopeResult.Value.EnsureStation(request.StationId);
+        if (stationCheck.IsFailure)
+            return stationCheck.Error;
+
+        if (request.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
+            return Error.Validation("Scheduled flights cannot use the Ad Hoc operation type.", "Operations.Flight.AdHocNotSchedulable");
+
+        var selectedDates = request.SelectedDates
+            .Distinct()
+            .OrderBy(date => date)
+            .ToList();
+        if (selectedDates.Count == 0)
+            return Error.Validation("At least one selected date is required.", "Operations.Flight.BatchDatesRequired");
+
+        var references = await FlightBuildHelpers.BuildReferencesAsync(resolver, request.CustomerId, request.StationId,
+            request.OperationTypeId, request.AircraftTypeId, request.FlightNumber, request.PlannedServiceIds, cancellationToken);
+        if (references.IsFailure)
+            return references.Error;
+
+        var employees = await resolver.StaffMembersForStationAsync(request.AssignedStaffMemberIds, request.StationId, cancellationToken);
+        if (employees.IsFailure)
+            return employees.Error;
+
+        var now = timeProvider.GetUtcNow();
+        var ids = new List<Guid>(selectedDates.Count);
+        var flights = new List<Flight>(selectedDates.Count);
+
+        foreach (var selectedDate in selectedDates)
+        {
+            var sta = CombineUtc(selectedDate, request.ScheduledArrivalTimeUtc);
+            var std = CombineUtc(selectedDate, request.ScheduledDepartureTimeUtc);
+            if (std <= sta)
+                std = std.AddDays(1);
+
+            var built = FlightBuildHelpers.BuildWithSchedule(references.Value, sta, std);
+            if (built.IsFailure)
+                return Error.Validation($"Flight on {selectedDate:yyyy-MM-dd}: {built.Error.Description}", "Operations.Flight.BatchItemInvalid");
+
+            var b = built.Value;
+            var flight = Flight.ScheduleNew(b.Customer, b.Station, b.OperationType, b.FlightNumber, b.Schedule, b.AircraftType,
+                b.PlannedServices, FlightBuildHelpers.CopyStaffMembers(employees.Value), contractId: null, contractNumber: null,
+                createdByUserId: user.UserId ?? Guid.Empty, now: now);
+            if (flight.IsFailure)
+                return Error.Validation($"Flight on {selectedDate:yyyy-MM-dd}: {flight.Error.Description}", "Operations.Flight.BatchItemInvalid");
+
+            db.Flights.Add(flight.Value);
+            flights.Add(flight.Value);
+            ids.Add(flight.Value.Id);
+        }
+
+        foreach (var flight in flights)
+        {
+            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.FlightScheduled, now, cancellationToken: cancellationToken);
+            foreach (var employee in flight.AssignedEmployees)
+                await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.Employee.FullName, cancellationToken: cancellationToken);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return ids;
+    }
+
+    private static DateTimeOffset CombineUtc(DateOnly date, TimeOnly time)
+    {
+        var dateTime = date.ToDateTime(time, DateTimeKind.Utc);
+        return new DateTimeOffset(dateTime);
+    }
+}
+
 // --- Update scheduled flight -----------------------------------------------
 
 public sealed record UpdateScheduledFlightCommand(

@@ -13,6 +13,18 @@ public sealed record ScheduleFlightRequest(
     IReadOnlyList<Guid>? PlannedServiceIds,
     IReadOnlyList<Guid>? AssignedStaffMemberIds);
 
+public sealed record ScheduleFlightsRequest(
+    Guid CustomerId,
+    Guid StationId,
+    Guid OperationTypeId,
+    string FlightNumber,
+    TimeOnly ScheduledArrivalTimeUtc,
+    TimeOnly ScheduledDepartureTimeUtc,
+    IReadOnlyList<DateOnly>? SelectedDates,
+    Guid? AircraftTypeId,
+    IReadOnlyList<Guid>? PlannedServiceIds,
+    IReadOnlyList<Guid>? AssignedStaffMemberIds);
+
 public sealed record UpdateScheduledFlightRequest(
     Guid CustomerId,
     Guid StationId,

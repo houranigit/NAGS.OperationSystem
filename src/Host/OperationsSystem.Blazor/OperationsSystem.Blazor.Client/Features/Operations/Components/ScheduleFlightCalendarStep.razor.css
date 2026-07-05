@@ -1,0 +1,107 @@
+.sfc-calendar {
+    min-width: 0;
+}
+
+.sfc-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: var(--os-space-4);
+    border: 1px dashed var(--os-color-border);
+    border-radius: 8px;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.sfc-empty ::deep .rz-icon {
+    color: var(--os-color-primary);
+}
+
+.sfc-months {
+    display: grid;
+    gap: var(--os-space-4);
+    max-height: min(24rem, 54vh);
+    overflow: auto;
+    padding-inline-end: var(--os-space-1);
+}
+
+.sfc-month {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.sfc-month h3 {
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+}
+
+.sfc-weekdays,
+.sfc-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--os-space-1);
+}
+
+.sfc-weekdays span {
+    min-width: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 800;
+    text-align: center;
+}
+
+.sfc-cell {
+    display: inline-grid;
+    place-items: center;
+    aspect-ratio: 1;
+    min-height: 2.35rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: 7px;
+    background: white;
+    color: var(--os-color-text);
+    font: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+    cursor: pointer;
+    transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition), transform var(--os-transition);
+}
+
+.sfc-cell:hover:not(:disabled) {
+    border-color: var(--os-color-primary);
+    transform: translateY(-1px);
+}
+
+.sfc-cell-pad {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.sfc-cell-out {
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-subtle);
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.sfc-cell-in-range {
+    background: white;
+}
+
+.sfc-cell-selected {
+    border-color: var(--os-color-primary);
+    background: var(--os-color-primary);
+    color: white;
+}
+
+.sfc-cell span {
+    min-width: 0;
+}
+
+@media (max-width: 560px) {
+    .sfc-cell {
+        min-height: 2rem;
+        font-size: var(--os-text-xs);
+    }
+}

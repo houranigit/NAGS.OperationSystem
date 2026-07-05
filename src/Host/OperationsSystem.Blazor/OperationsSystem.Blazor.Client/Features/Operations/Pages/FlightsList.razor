@@ -22,6 +22,7 @@
                 <AuthorizeView Context="schedule">
                     @if (schedule.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsSchedule))
                     {
+                        <RadzenButton Text="Schedule flights" Icon="event_repeat" ButtonStyle="ButtonStyle.Secondary" Click="@OpenBulkScheduleAsync" />
                         <RadzenButton Text="Schedule flight" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenScheduleAsync" />
                     }
                 </AuthorizeView>
@@ -230,6 +231,19 @@
         if (result is true)
         {
             Notifications.Notify(NotificationSeverity.Success, "Flight scheduled");
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OpenBulkScheduleAsync()
+    {
+        var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Schedule flights",
+            new Dictionary<string, object?> { [nameof(ScheduleFlightDialog.BulkMode)] = true },
+            new DialogOptions { Width = "900px" });
+
+        if (result is int count)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Flights scheduled", $"Created {count} flight(s).");
             await ReloadAsync();
         }
     }

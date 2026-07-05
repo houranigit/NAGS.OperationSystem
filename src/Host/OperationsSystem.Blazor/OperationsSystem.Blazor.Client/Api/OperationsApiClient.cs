@@ -37,6 +37,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<Guid> ScheduleFlightAsync(ScheduleFlightRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<ScheduleFlightRequestModel, Guid>("/operations/flights", request, ct);
 
+    public Task<IReadOnlyList<Guid>> ScheduleFlightsAsync(ScheduleFlightsRequestModel request, CancellationToken ct = default) =>
+        api.PostAsync<ScheduleFlightsRequestModel, IReadOnlyList<Guid>>("/operations/flights/bulk", request, ct);
+
     public Task<AdHocFlightResultModel> CreateAdHocFlightAsync(CreateAdHocFlightRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<CreateAdHocFlightRequestModel, AdHocFlightResultModel>("/operations/flights/ad-hoc", request, ct);
 

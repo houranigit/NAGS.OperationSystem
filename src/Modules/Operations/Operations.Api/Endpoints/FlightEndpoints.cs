@@ -56,6 +56,15 @@ internal static class FlightEndpoints
             return result.ToCreated(id => $"/api/v1/operations/flights/{id}");
         }).RequirePermission(OperationsPermissions.Flights.Schedule);
 
+        flights.MapPost("/bulk", async (ScheduleFlightsRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new ScheduleFlightsCommand(
+                request.CustomerId, request.StationId, request.OperationTypeId, request.FlightNumber,
+                request.ScheduledArrivalTimeUtc, request.ScheduledDepartureTimeUtc, request.SelectedDates ?? [],
+                request.AircraftTypeId, request.PlannedServiceIds ?? [], request.AssignedStaffMemberIds ?? []), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Schedule);
+
         flights.MapPost("/ad-hoc", async (CreateAdHocFlightRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new CreateAdHocFlightWithWorkOrderCommand(

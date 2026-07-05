@@ -20,6 +20,10 @@
     border-block-end: 1px solid #80808036;
 }
 
+.opf-stepper-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .opf-step {
     position: relative;
     display: flex;
@@ -416,6 +420,52 @@
     color: var(--os-color-primary-strong);
 }
 
+.opf-weekday-list {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--os-space-2);
+}
+
+.opf-weekday {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--os-space-2);
+    min-width: 0;
+    min-height: 2.5rem;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: 7px;
+    background: white;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+    cursor: pointer;
+    transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
+}
+
+.opf-weekday:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-text);
+}
+
+.opf-weekday-selected {
+    border-color: var(--os-color-primary);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.opf-weekday span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.opf-weekday ::deep .rz-chkbox {
+    flex: 0 0 auto;
+}
+
 .opf-empty-row {
     display: flex;
     align-items: center;
@@ -580,6 +630,10 @@
 
     .opf-grid-2 {
         grid-template-columns: 1fr;
+    }
+
+    .opf-weekday-list {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .opf-actions {

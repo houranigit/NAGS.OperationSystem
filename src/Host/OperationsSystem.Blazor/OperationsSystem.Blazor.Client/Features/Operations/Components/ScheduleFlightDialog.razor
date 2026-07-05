@@ -15,8 +15,9 @@
             <div class="opf-wizard-body">
                 @(step switch
                 {
-                    0 => FlightDetailsStep(),
-                    1 => ServicesStep(),
+                    0 => IsBulkCreate ? BulkFlightDetailsStep() : FlightDetailsStep(),
+                    1 => IsBulkCreate ? CalendarStep() : ServicesStep(),
+                    2 => IsBulkCreate ? ServicesStep() : StaffStep(),
                     _ => StaffStep()
                 })
             </div>
@@ -91,7 +92,7 @@
                     }
                     else
                     {
-                        <RadzenButton ButtonType="ButtonType.Submit" Icon="check" Text="@(FlightId is null ? "Schedule flight" : "Save changes")"
+                        <RadzenButton ButtonType="ButtonType.Submit" Icon="check" Text="@SubmitButtonText"
                                       ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
                     }
                 </div>
@@ -102,6 +103,7 @@
 
 @code {
     [Parameter] public Guid? FlightId { get; set; }
+    [Parameter] public bool BulkMode { get; set; }
 
     private FlightFormModel model = new();
     private IReadOnlyList<CustomerOption> customers = [];
@@ -122,9 +124,24 @@
     private string? duplicateCheckSignature;
     private Guid? staffLoadedForStationId;
 
-    private const int LastStep = 2;
+    private static readonly IReadOnlyList<WeekdayOption> WeekdayOptions =
+    [
+        new(DayOfWeek.Monday, "Mon"),
+        new(DayOfWeek.Tuesday, "Tue"),
+        new(DayOfWeek.Wednesday, "Wed"),
+        new(DayOfWeek.Thursday, "Thu"),
+        new(DayOfWeek.Friday, "Fri"),
+        new(DayOfWeek.Saturday, "Sat"),
+        new(DayOfWeek.Sunday, "Sun")
+    ];
 
-    private RenderFragment WizardStepper() => @<div class="opf-stepper" aria-label="Schedule flight steps">
+    private bool IsBulkCreate => BulkMode && FlightId is null;
+    private int LastStep => IsBulkCreate ? 3 : 2;
+    private string SubmitButtonText => FlightId is null
+        ? (IsBulkCreate ? "Schedule flights" : "Schedule flight")
+        : "Save changes";
+
+    private RenderFragment WizardStepper() => @<div class="@($"opf-stepper opf-stepper-{LastStep + 1}")" aria-label="Schedule flight steps">
         @for (var i = 0; i <= LastStep; i++)
         {
             var index = i;
@@ -146,9 +163,7 @@
         }
     </div>;
 
-    private RenderFragment FlightDetailsStep() => @<section class="opf-step-content">
-        <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
-
+    private RenderFragment CustomerFlightNumberFields(string flightNumberName) => @<text>
         <div class="opf-grid-2">
             <div class="opf-field-block">
                 <label class="opf-label">Customer <span class="opf-required">*</span></label>
@@ -168,12 +183,14 @@
                             <span class="opf-flight-prefix-divider">-</span>
                         }
                     </span>
-                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="flightNumber" MaxLength="12"
+                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="@flightNumberName" MaxLength="12"
                                    class="opf-control opf-control-icon opf-flight-number-control" Placeholder="e.g. NGS104" />
                 </div>
             </div>
         </div>
+    </text>;
 
+    private RenderFragment StationOperationFields() => @<text>
         <div class="opf-grid-2">
             <div class="opf-field-block">
                 <label class="opf-label">Station <span class="opf-required">*</span></label>
@@ -192,7 +209,22 @@
                 </div>
             </div>
         </div>
+    </text>;
 
+    private RenderFragment AircraftTypeField() => @<div class="opf-field-block">
+        <label class="opf-label">Aircraft type</label>
+        <div class="opf-input-wrap">
+            <RadzenIcon Icon="flight" class="opf-field-icon" />
+            <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                            AllowClear="true" AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
+        </div>
+    </div>;
+
+    private RenderFragment FlightDetailsStep() => @<section class="opf-step-content">
+        <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
+
+        @CustomerFlightNumberFields("flightNumber")
+        @StationOperationFields()
         <div class="opf-grid-2">
             <div class="opf-field-block">
                 <label class="opf-label">Scheduled arrival (UTC) <span class="opf-required">*</span></label>
@@ -212,18 +244,85 @@
             </div>
         </div>
 
-        <div class="opf-field-block">
-            <label class="opf-label">Aircraft type</label>
-            <div class="opf-input-wrap">
-                <RadzenIcon Icon="flight" class="opf-field-icon" />
-                <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                AllowClear="true" AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
-            </div>
-        </div>
-
+        @AircraftTypeField()
         <div class="opf-details-actions">
             <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary"
                           ButtonType="ButtonType.Button" Click="@CheckDuplicatesAsync" Disabled="@isSubmitting" />
+        </div>
+    </section>;
+
+    private RenderFragment BulkFlightDetailsStep() => @<section class="opf-step-content">
+        <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
+
+        @CustomerFlightNumberFields("bulkFlightNumber")
+        @StationOperationFields()
+        <div class="opf-grid-2">
+            <div class="opf-field-block">
+                <label class="opf-label">Period start date <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="event" class="opf-field-icon" />
+                    <RadzenDatePicker @bind-Value="model.PeriodStartDate" DateFormat="yyyy-MM-dd" ShowTime="false"
+                                      class="opf-control opf-control-icon" />
+                </div>
+            </div>
+            <div class="opf-field-block">
+                <label class="opf-label">Period end date <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="event_available" class="opf-field-icon" />
+                    <RadzenDatePicker @bind-Value="model.PeriodEndDate" DateFormat="yyyy-MM-dd" ShowTime="false"
+                                      class="opf-control opf-control-icon" />
+                </div>
+            </div>
+        </div>
+
+        <div class="opf-grid-2">
+            <div class="opf-field-block">
+                <label class="opf-label">STA time (UTC) <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="schedule" class="opf-field-icon" />
+                    <RadzenDatePicker @bind-Value="model.ScheduledArrivalTimeUtc" DateFormat="HH:mm" ShowTime="true"
+                                      ShowSeconds="false" class="opf-control opf-control-icon" />
+                </div>
+            </div>
+            <div class="opf-field-block">
+                <label class="opf-label">STD time (UTC) <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="schedule" class="opf-field-icon" />
+                    <RadzenDatePicker @bind-Value="model.ScheduledDepartureTimeUtc" DateFormat="HH:mm" ShowTime="true"
+                                      ShowSeconds="false" class="opf-control opf-control-icon" />
+                </div>
+            </div>
+        </div>
+
+        @AircraftTypeField()
+        <div class="opf-field-block">
+            <label class="opf-label">Weekdays <span class="opf-required">*</span></label>
+            <div class="opf-weekday-list">
+                @foreach (var option in WeekdayOptions)
+                {
+                    <label @key="option.Day" class="@WeekdayClass(option.Day)">
+                        <RadzenCheckBox TValue="bool" Value="@model.Weekdays.Contains(option.Day)"
+                                        Change="@(value => SetWeekday(option.Day, value))" />
+                        <span>@option.Label</span>
+                    </label>
+                }
+            </div>
+        </div>
+    </section>;
+
+    private RenderFragment CalendarStep() => @<section class="opf-step-content">
+        <div class="opf-section-line"><RadzenIcon Icon="calendar_month" /><span>Calendar</span></div>
+        <div class="opf-step-toolbar">
+            <span class="opf-selection-count">@model.SelectedScheduleDates.Count selected</span>
+            <RadzenButton Text="Reset weekdays" Icon="restart_alt" ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                          Click="@ResetSelectedDatesFromWeekdays" Disabled="@(!CanSeedSelectedDates)" />
+        </div>
+        <div class="opf-selection-panel">
+            <ScheduleFlightCalendarStep PeriodStartDate="@BulkPeriodStartDate"
+                                        PeriodEndDate="@BulkPeriodEndDate"
+                                        SelectedDates="@SelectedScheduleDates"
+                                        DateToggled="@ToggleScheduleDate" />
         </div>
     </section>;
 
@@ -326,7 +425,8 @@
     private string StepLabel(int index) => index switch
     {
         0 => "Details",
-        1 => "Services",
+        1 => IsBulkCreate ? "Calendar" : "Services",
+        2 => IsBulkCreate ? "Services" : "Staff",
         _ => "Staff"
     };
 
@@ -356,7 +456,9 @@
         errorMessage = step switch
         {
             0 => ValidateDetails(),
+            1 when IsBulkCreate => ValidateCalendar(),
             1 => ValidateServices(),
+            2 when IsBulkCreate => ValidateServices(),
             _ => null
         };
 
@@ -369,6 +471,9 @@
             if (errorMessage is not null)
                 return;
         }
+
+        if (IsBulkCreate && step == 0)
+            SeedSelectedDatesFromWeekdaysIfNeeded();
 
         step = Math.Min(LastStep, step + 1);
     }
@@ -412,8 +517,19 @@
             else
             {
                 var now = DateTime.UtcNow;
-                model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
-                model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
+                if (IsBulkCreate)
+                {
+                    var today = now.Date;
+                    model.PeriodStartDate = today;
+                    model.PeriodEndDate = today;
+                    model.ScheduledArrivalTimeUtc = today.AddHours(10);
+                    model.ScheduledDepartureTimeUtc = today.AddHours(12);
+                }
+                else
+                {
+                    model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
+                    model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
+                }
             }
 
             if (model.StationId != Guid.Empty)
@@ -439,6 +555,81 @@
     {
         if (!set.Add(id))
             set.Remove(id);
+    }
+
+    private static string WeekdayClass(bool selected) =>
+        selected ? "opf-weekday opf-weekday-selected" : "opf-weekday";
+
+    private string WeekdayClass(DayOfWeek day) => WeekdayClass(model.Weekdays.Contains(day));
+
+    private void SetWeekday(DayOfWeek day, bool selected)
+    {
+        if (selected)
+            model.Weekdays.Add(day);
+        else
+            model.Weekdays.Remove(day);
+    }
+
+    private DateOnly? BulkPeriodStartDate =>
+        model.PeriodStartDate is { } date ? DateOnly.FromDateTime(date.Date) : null;
+
+    private DateOnly? BulkPeriodEndDate =>
+        model.PeriodEndDate is { } date ? DateOnly.FromDateTime(date.Date) : null;
+
+    private IReadOnlyList<DateOnly> SelectedScheduleDates =>
+        model.SelectedScheduleDates.OrderBy(date => date).ToList();
+
+    private bool CanSeedSelectedDates =>
+        BulkPeriodStartDate is { } start &&
+        BulkPeriodEndDate is { } end &&
+        end >= start &&
+        model.Weekdays.Count > 0;
+
+    private string? BulkDatePatternSignature =>
+        BulkPeriodStartDate is { } start && BulkPeriodEndDate is { } end
+            ? $"{start:yyyy-MM-dd}|{end:yyyy-MM-dd}|{string.Join(',', model.Weekdays.OrderBy(day => (int)day).Select(day => (int)day))}"
+            : null;
+
+    private void SeedSelectedDatesFromWeekdaysIfNeeded()
+    {
+        var signature = BulkDatePatternSignature;
+        if (signature is null || string.Equals(signature, model.SelectedScheduleDatesPattern, StringComparison.Ordinal))
+            return;
+
+        ResetSelectedDatesFromWeekdays();
+    }
+
+    private void ResetSelectedDatesFromWeekdays()
+    {
+        if (BulkPeriodStartDate is not { } start || BulkPeriodEndDate is not { } end || end < start)
+            return;
+
+        model.SelectedScheduleDates = ExpandWeekdaysToDates(start, end, model.Weekdays);
+        model.SelectedScheduleDatesPattern = BulkDatePatternSignature;
+    }
+
+    private void ToggleScheduleDate(DateOnly date)
+    {
+        if (BulkPeriodStartDate is not { } start || BulkPeriodEndDate is not { } end || date < start || date > end)
+            return;
+
+        if (!model.SelectedScheduleDates.Add(date))
+            model.SelectedScheduleDates.Remove(date);
+    }
+
+    private static HashSet<DateOnly> ExpandWeekdaysToDates(DateOnly start, DateOnly end, IReadOnlySet<DayOfWeek> weekdays)
+    {
+        var dates = new HashSet<DateOnly>();
+        if (weekdays.Count == 0)
+            return dates;
+
+        for (var date = start; date <= end; date = date.AddDays(1))
+        {
+            if (weekdays.Contains(date.DayOfWeek))
+                dates.Add(date);
+        }
+
+        return dates;
     }
 
     private bool IsPerLandingSelected =>
@@ -635,12 +826,21 @@
         isSubmitting = true;
         try
         {
+            object closeResult = true;
             if (FlightId is { } id)
+            {
                 await UpdateAsync(id);
+            }
+            else if (IsBulkCreate)
+            {
+                closeResult = await CreateBulkAsync();
+            }
             else
+            {
                 await CreateAsync();
+            }
 
-            DialogService.Close(true);
+            DialogService.Close(closeResult);
         }
         catch (ApiException ex)
         {
@@ -664,6 +864,23 @@
             model.AircraftTypeId,
             model.PlannedServiceIds.ToList(),
             AssignmentIdsForSave()));
+    }
+
+    private async Task<int> CreateBulkAsync()
+    {
+        var ids = await Operations.ScheduleFlightsAsync(new ScheduleFlightsRequestModel(
+            model.CustomerId,
+            model.StationId,
+            model.OperationTypeId,
+            model.FlightNumber.Trim().ToUpperInvariant(),
+            TimeOnly.FromDateTime(model.ScheduledArrivalTimeUtc!.Value),
+            TimeOnly.FromDateTime(model.ScheduledDepartureTimeUtc!.Value),
+            SelectedScheduleDates,
+            model.AircraftTypeId,
+            model.PlannedServiceIds.ToList(),
+            AssignmentIdsForSave()));
+
+        return ids.Count;
     }
 
     private async Task UpdateAsync(Guid id)
@@ -708,7 +925,9 @@
 
     private string? Validate()
     {
-        return ValidateDetails() ?? ValidateServices() ?? ValidateAssignments();
+        return IsBulkCreate
+            ? ValidateDetails() ?? ValidateCalendar() ?? ValidateServices() ?? ValidateAssignments()
+            : ValidateDetails() ?? ValidateServices() ?? ValidateAssignments();
     }
 
     private string? ValidateDetails()
@@ -721,11 +940,39 @@
             return "Station is required.";
         if (model.OperationTypeId == Guid.Empty)
             return "Operation type is required.";
+        if (IsBulkCreate)
+        {
+            if (model.PeriodStartDate is null || model.PeriodEndDate is null)
+                return "Period start and end dates are required.";
+            if (model.PeriodEndDate.Value.Date < model.PeriodStartDate.Value.Date)
+                return "Period end date must be on or after period start date.";
+            if (model.ScheduledArrivalTimeUtc is null || model.ScheduledDepartureTimeUtc is null)
+                return "STA and STD times are required.";
+            if (model.Weekdays.Count == 0)
+                return "Select at least one weekday.";
+            return null;
+        }
         if (model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
             return "Scheduled arrival and departure are required.";
         if (model.ScheduledDepartureUtc <= model.ScheduledArrivalUtc)
             return "Scheduled departure must be after scheduled arrival.";
         return null;
+    }
+
+    private string? ValidateCalendar()
+    {
+        if (!IsBulkCreate)
+            return null;
+
+        if (model.SelectedScheduleDates.Count == 0)
+            return "Select at least one calendar date.";
+
+        if (BulkPeriodStartDate is not { } start || BulkPeriodEndDate is not { } end)
+            return "Period start and end dates are required.";
+
+        return model.SelectedScheduleDates.Any(date => date < start || date > end)
+            ? "Selected calendar dates must be inside the selected period."
+            : null;
     }
 
     private string? ValidateServices()
@@ -764,7 +1011,23 @@
         public Guid? AircraftTypeId { get; set; }
         public DateTime? ScheduledArrivalUtc { get; set; }
         public DateTime? ScheduledDepartureUtc { get; set; }
+        public DateTime? PeriodStartDate { get; set; }
+        public DateTime? PeriodEndDate { get; set; }
+        public DateTime? ScheduledArrivalTimeUtc { get; set; }
+        public DateTime? ScheduledDepartureTimeUtc { get; set; }
+        public HashSet<DayOfWeek> Weekdays { get; set; } =
+        [
+            DayOfWeek.Monday,
+            DayOfWeek.Tuesday,
+            DayOfWeek.Wednesday,
+            DayOfWeek.Thursday,
+            DayOfWeek.Friday
+        ];
+        public HashSet<DateOnly> SelectedScheduleDates { get; set; } = [];
+        public string? SelectedScheduleDatesPattern { get; set; }
         public HashSet<Guid> PlannedServiceIds { get; set; } = [];
         public HashSet<Guid> AssignedStaffMemberIds { get; set; } = [];
     }
+
+    private sealed record WeekdayOption(DayOfWeek Day, string Label);
 }
