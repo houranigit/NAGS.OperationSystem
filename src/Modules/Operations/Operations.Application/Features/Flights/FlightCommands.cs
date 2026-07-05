@@ -66,7 +66,7 @@ public sealed class ScheduleFlightCommandHandler(
         if (build.IsFailure)
             return build.Error;
 
-        var employees = await resolver.StaffMembersAsync(request.AssignedStaffMemberIds, cancellationToken);
+        var employees = await resolver.StaffMembersForStationAsync(request.AssignedStaffMemberIds, request.StationId, cancellationToken);
         if (employees.IsFailure)
             return employees.Error;
 
@@ -264,7 +264,7 @@ public sealed class AssignEmployeesCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
-        var employees = await resolver.StaffMembersAsync(request.StaffMemberIds, cancellationToken);
+        var employees = await resolver.StaffMembersForStationAsync(request.StaffMemberIds, flight.Station.StationId, cancellationToken);
         if (employees.IsFailure)
             return employees.Error;
 

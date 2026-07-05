@@ -24,7 +24,7 @@
             @if (HasCurrentDuplicateCheck && duplicates.Count > 0)
             {
                 <div class="opf-warning-panel" role="status">
-                    <RadzenIcon Icon="warning_amber" />
+                    <RadzenIcon Icon="warning_amber" class="opf-message-icon" />
                     <div>
                         <strong>Potential duplicates found.</strong>
                         <div class="opf-duplicates">
@@ -36,29 +36,38 @@
                             }
                         </div>
                     </div>
+                    <button type="button" class="opf-message-close" aria-label="Dismiss duplicate message" @onclick="DismissDuplicateMessage">
+                        <RadzenIcon Icon="close" />
+                    </button>
                 </div>
             }
             else if (HasCurrentDuplicateCheck)
             {
                 <div class="opf-success-panel" role="status">
-                    <RadzenIcon Icon="task_alt" />
+                    <RadzenIcon Icon="task_alt" class="opf-message-icon" />
                     <div>
                         <strong>No duplicates found.</strong>
                         <p>No other flight matches this customer, station, scheduled arrival, and scheduled departure.</p>
                     </div>
+                    <button type="button" class="opf-message-close" aria-label="Dismiss duplicate message" @onclick="DismissDuplicateMessage">
+                        <RadzenIcon Icon="close" />
+                    </button>
                 </div>
             }
 
             @if (!string.IsNullOrWhiteSpace(errorMessage))
             {
                 <div class="opf-error-panel" role="alert">
-                    <RadzenIcon Icon="error_outline" />
+                    <RadzenIcon Icon="error_outline" class="opf-message-icon" />
                     <div>
                         <strong>Please fix the following errors before continuing</strong>
                         <ul>
                             <li>@errorMessage</li>
                         </ul>
                     </div>
+                    <button type="button" class="opf-message-close" aria-label="Dismiss validation message" @onclick="DismissErrorMessage">
+                        <RadzenIcon Icon="close" />
+                    </button>
                 </div>
             }
 
@@ -113,6 +122,7 @@
     private string serviceSearchTerm = string.Empty;
     private string staffSearchTerm = string.Empty;
     private string? duplicateCheckSignature;
+    private Guid? staffLoadedForStationId;
 
     private const int LastStep = 2;
 
@@ -266,7 +276,7 @@
             {
                 <div class="opf-empty-row">
                     <RadzenIcon Icon="group_add" />
-                    <span>No active staff members are available.</span>
+                    <span>No active staff members are available for this station.</span>
                 </div>
             }
             else
@@ -285,7 +295,7 @@
                             @foreach (var member in FilteredStaff())
                             {
                                 <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
-                                        @onclick="@(() => Toggle(model.AssignedStaffMemberIds, member.Id))">
+                                        @onclick="@(() => ToggleStaff(member))">
                                     <RadzenIcon Icon="person" />
                                     <span>@member.FullName</span>
                                     <small>@member.StationCode</small>
@@ -346,10 +356,17 @@
             _ => null
         };
 
-        if (errorMessage is null)
-            step = Math.Min(LastStep, step + 1);
+        if (errorMessage is not null)
+            return;
 
-        await Task.CompletedTask;
+        if (step == 0)
+        {
+            await LoadStaffForSelectedStationAsync();
+            if (errorMessage is not null)
+                return;
+        }
+
+        step = Math.Min(LastStep, step + 1);
     }
 
     protected override async Task OnInitializedAsync()
@@ -361,17 +378,15 @@
             var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
             var aircraftTypesTask = MasterData.GetAircraftTypeOptionsAsync();
             var servicesTask = MasterData.GetServiceOptionsAsync();
-            var staffTask = MasterData.GetStaffMembersAsync(1, 250, null, true);
             Task<FlightDetail?> detailTask = FlightId is { } id ? LoadFlightOrNullAsync(id) : Task.FromResult<FlightDetail?>(null);
 
-            await Task.WhenAll(customersTask, stationsTask, operationTypesTask, aircraftTypesTask, servicesTask, staffTask, detailTask);
+            await Task.WhenAll(customersTask, stationsTask, operationTypesTask, aircraftTypesTask, servicesTask, detailTask);
 
             customers = await customersTask;
             stations = await stationsTask;
             operationTypes = await operationTypesTask;
             aircraftTypes = await aircraftTypesTask;
             services = await servicesTask;
-            staff = (await staffTask).Items;
 
             if (await detailTask is { } detail)
             {
@@ -396,6 +411,9 @@
                 model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
                 model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
             }
+
+            if (model.StationId != Guid.Empty)
+                await LoadStaffForSelectedStationAsync();
 
             SyncPerLandingAssignmentState();
         }
@@ -444,6 +462,14 @@
         SyncPerLandingAssignmentState();
     }
 
+    private void ToggleStaff(StaffMemberListItem member)
+    {
+        if (member.StationId != model.StationId)
+            return;
+
+        Toggle(model.AssignedStaffMemberIds, member.Id);
+    }
+
     private void SyncPerLandingAssignmentState()
     {
         if (!IsPerLandingSelected)
@@ -464,15 +490,48 @@
 
     private IEnumerable<StaffMemberListItem> FilteredStaff()
     {
+        var stationStaff = staffLoadedForStationId == model.StationId
+            ? staff.Where(member => member.StationId == model.StationId)
+            : [];
+
         if (string.IsNullOrWhiteSpace(staffSearchTerm))
-            return staff;
+            return stationStaff;
 
         var term = staffSearchTerm.Trim();
-        return staff.Where(member =>
+        return stationStaff.Where(member =>
             member.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             member.EmployeeId.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             member.StationCode.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             member.ManpowerTypeName.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task LoadStaffForSelectedStationAsync()
+    {
+        if (model.StationId == Guid.Empty)
+        {
+            staff = [];
+            staffLoadedForStationId = null;
+            model.AssignedStaffMemberIds.Clear();
+            return;
+        }
+
+        if (staffLoadedForStationId == model.StationId)
+            return;
+
+        try
+        {
+            var result = await MasterData.GetStaffMembersAsync(1, 250, null, true, model.StationId);
+            staff = result.Items;
+            staffLoadedForStationId = model.StationId;
+            staffSearchTerm = string.Empty;
+
+            var stationStaffIds = staff.Select(member => member.Id).ToHashSet();
+            model.AssignedStaffMemberIds.RemoveWhere(id => !stationStaffIds.Contains(id));
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load staff for the selected station.");
+        }
     }
 
     private void OnServiceSearchInput(ChangeEventArgs args) =>
@@ -490,6 +549,14 @@
 
     private string DuplicateSignature() =>
         $"{model.CustomerId:N}|{model.StationId:N}|{model.ScheduledArrivalUtc?.Ticks}|{model.ScheduledDepartureUtc?.Ticks}";
+
+    private void DismissDuplicateMessage()
+    {
+        duplicates = [];
+        duplicateCheckSignature = null;
+    }
+
+    private void DismissErrorMessage() => errorMessage = null;
 
     private async Task CheckDuplicatesAsync()
     {
@@ -603,7 +670,7 @@
 
     private string? Validate()
     {
-        return ValidateDetails() ?? ValidateServices();
+        return ValidateDetails() ?? ValidateServices() ?? ValidateAssignments();
     }
 
     private string? ValidateDetails()
@@ -628,6 +695,20 @@
         if (model.PlannedServiceIds.Count == 0)
             return "At least one planned service is required.";
         return null;
+    }
+
+    private string? ValidateAssignments()
+    {
+        if (IsPerLandingSelected || model.AssignedStaffMemberIds.Count == 0)
+            return null;
+
+        if (staffLoadedForStationId != model.StationId)
+            return "Load the selected station staff before assigning employees.";
+
+        var stationStaffIds = staff.Where(member => member.StationId == model.StationId).Select(member => member.Id).ToHashSet();
+        return model.AssignedStaffMemberIds.Any(id => !stationStaffIds.Contains(id))
+            ? "Assigned staff must belong to the selected station."
+            : null;
     }
 
     private static DateTimeOffset ToUtc(DateTime value)

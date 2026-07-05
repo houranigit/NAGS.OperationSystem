@@ -115,6 +115,33 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         return snapshots;
     }
 
+    public async Task<Result<IReadOnlyList<StaffMemberSnapshot>>> StaffMembersForStationAsync(
+        IReadOnlyCollection<Guid> ids,
+        Guid stationId,
+        CancellationToken ct)
+    {
+        if (ids.Count == 0)
+            return Result.Success<IReadOnlyList<StaffMemberSnapshot>>([]);
+
+        var found = await reader.GetStaffMembersAsync(ids, ct);
+        var byId = found.ToDictionary(s => s.Id);
+
+        var snapshots = new List<StaffMemberSnapshot>();
+        foreach (var id in ids.Distinct())
+        {
+            if (!byId.TryGetValue(id, out var s))
+                return Error.Validation($"Staff member '{id}' was not found.", "Operations.Ref.StaffNotFound");
+            if (!s.IsActive)
+                return Error.Validation($"Staff member '{s.FullName}' is inactive.", "Operations.Ref.StaffInactive");
+            if (s.StationId != stationId)
+                return Error.Validation($"Staff member '{s.FullName}' does not belong to the selected station.", "Operations.Ref.StaffStationMismatch");
+
+            snapshots.Add(new StaffMemberSnapshot(s.Id, s.FullName, s.EmployeeId));
+        }
+
+        return snapshots;
+    }
+
     public async Task<Result<ToolSnapshot>> ToolAsync(Guid id, CancellationToken ct)
     {
         var t = await reader.GetToolAsync(id, ct);
