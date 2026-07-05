@@ -8,11 +8,16 @@
         <div class="mtf-section-line"><RadzenIcon Icon="engineering" /><span>@UiStrings.Common.Details</span></div>
         <div class="mtf-field-block"><label class="mtf-label">@UiStrings.ManpowerTypes.Name <span>*</span></label><div class="mtf-input-wrap"><RadzenIcon Icon="engineering" class="mtf-field-icon" /><RadzenTextBox @bind-Value="model.Name" Name="name" class="mtf-control mtf-control-icon" MaxLength="100" Placeholder="e.g. Operations Officer" /></div></div>
         <div class="mtf-field-block"><label class="mtf-label">@UiStrings.ManpowerTypes.ManpowerDescription</label><RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="mtf-control" MaxLength="500" Placeholder="Describe the responsibilities for this manpower type" /></div>
-        <div class="mtf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.ManpowerTypes.Name</strong><p>Use a clear role name that can be recognized in assignments and schedules.</p></div></div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="@UiStrings.ManpowerTypes.Name">
+            <p>Use a clear role name that can be recognized in assignments and schedules.</p>
+        </DismissibleDialogMessage>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <div class="mtf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Please fix the following errors before continuing"
+                                      StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                <ul><li>@errorMessage</li></ul>
+            </DismissibleDialogMessage>
         }
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="mtf-actions">

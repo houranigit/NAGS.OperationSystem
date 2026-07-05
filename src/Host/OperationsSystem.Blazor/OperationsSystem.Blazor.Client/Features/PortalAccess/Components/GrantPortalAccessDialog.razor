@@ -14,15 +14,15 @@
     {
         @if (loadErrorMessage is not null)
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger">
                 @loadErrorMessage
-            </RadzenAlert>
+            </DismissibleDialogMessage>
         }
         else
         {
-            <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
                 @UiStrings.PortalAccess.NoCompatibleRoles
-            </RadzenAlert>
+            </DismissibleDialogMessage>
         }
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End">
             <RadzenButton Text="@UiStrings.Common.Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
@@ -40,7 +40,10 @@
 
         @if (errorMessage is not null)
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@errorMessage</RadzenAlert>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage"
+                                      OnDismiss="@(() => errorMessage = null)">
+                @errorMessage
+            </DismissibleDialogMessage>
         }
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">

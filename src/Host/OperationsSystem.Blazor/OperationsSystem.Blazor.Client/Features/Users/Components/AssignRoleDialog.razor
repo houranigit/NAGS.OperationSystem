@@ -13,12 +13,17 @@
 
         @if (roles.Count == 0)
         {
-            <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@UiStrings.Users.NoCompatibleRoles</RadzenAlert>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
+                @UiStrings.Users.NoCompatibleRoles
+            </DismissibleDialogMessage>
         }
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage"
+                                      OnDismiss="@(() => errorMessage = null)">
+                @errorMessage
+            </DismissibleDialogMessage>
         }
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">

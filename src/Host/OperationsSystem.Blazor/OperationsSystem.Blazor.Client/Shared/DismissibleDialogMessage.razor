@@ -1,0 +1,67 @@
+@if (isVisible)
+{
+    <div class="@CssClass" role="@ComputedRole">
+        <RadzenIcon Icon="@IconName" class="os-dialog-message-icon" />
+        <div class="os-dialog-message-content">
+            @if (!string.IsNullOrWhiteSpace(Title))
+            {
+                <strong>@Title</strong>
+            }
+            @ChildContent
+        </div>
+        <button type="button" class="os-dialog-message-close" aria-label="@CloseLabel" @onclick="DismissAsync">
+            <RadzenIcon Icon="close" />
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public AlertStyle AlertStyle { get; set; } = AlertStyle.Info;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Role { get; set; }
+    [Parameter] public string CloseLabel { get; set; } = "Dismiss message";
+    [Parameter] public object? StateKey { get; set; }
+    [Parameter] public EventCallback OnDismiss { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool isVisible = true;
+    private object? previousStateKey;
+
+    protected override void OnParametersSet()
+    {
+        if (!Equals(previousStateKey, StateKey))
+        {
+            isVisible = true;
+            previousStateKey = StateKey;
+        }
+    }
+
+    private string ComputedRole => Role ?? (AlertStyle == AlertStyle.Danger ? "alert" : "status");
+
+    private string IconName => !string.IsNullOrWhiteSpace(Icon)
+        ? Icon
+        : AlertStyle switch
+        {
+            AlertStyle.Danger => "error_outline",
+            AlertStyle.Warning => "warning_amber",
+            AlertStyle.Success => "task_alt",
+            _ => "info"
+        };
+
+    private string CssClass => AlertStyle switch
+    {
+        AlertStyle.Danger => "os-dialog-message os-dialog-message--danger",
+        AlertStyle.Warning => "os-dialog-message os-dialog-message--warning",
+        AlertStyle.Success => "os-dialog-message os-dialog-message--success",
+        _ => "os-dialog-message os-dialog-message--info"
+    };
+
+    private async Task DismissAsync()
+    {
+        isVisible = false;
+
+        if (OnDismiss.HasDelegate)
+            await OnDismiss.InvokeAsync();
+    }
+}

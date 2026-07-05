@@ -24,7 +24,10 @@
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <div class="mtf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Please fix the following errors before continuing"
+                                      StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                <ul><li>@errorMessage</li></ul>
+            </DismissibleDialogMessage>
         }
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="mtf-actions">

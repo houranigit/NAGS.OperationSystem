@@ -247,14 +247,12 @@
 
         @if (StationId is null)
         {
-            <div class="stf-callout">
-                <RadzenIcon Icon="info" />
-                <div>
-                    <strong>Need help with airport codes?</strong>
-                    <p>@UiStrings.Stations.CodesHelpText</p>
-                </div>
-                <a href="https://www.iata.org/en/publications/directories/code-search/" target="_blank" rel="noopener">Learn more <RadzenIcon Icon="open_in_new" /></a>
-            </div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="Need help with airport codes?">
+                <p>
+                    @UiStrings.Stations.CodesHelpText
+                    <a class="stf-inline-link" href="https://www.iata.org/en/publications/directories/code-search/" target="_blank" rel="noopener">Learn more <RadzenIcon Icon="open_in_new" /></a>
+                </p>
+            </DismissibleDialogMessage>
         }
     </section>;
 
@@ -320,10 +318,9 @@
         <RadzenButton Text="@UiStrings.Stations.AddAnotherStaff" Icon="add_circle" ButtonStyle="ButtonStyle.Light"
                       class="stf-add-staff" Click="@AddStaff" />
 
-        <div class="stf-callout stf-callout-muted">
-            <RadzenIcon Icon="info" />
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info">
             <p>@UiStrings.Stations.StaffLaterHint</p>
-        </div>
+        </DismissibleDialogMessage>
     </section>;
 
     private RenderFragment ReviewStep() =>@<section class="stf-step-content">
@@ -405,24 +402,18 @@
             }
         </div>
 
-        <div class="stf-review-note">
-            <RadzenIcon Icon="lock" />
-            <span>@UiStrings.Stations.ReviewNote</span>
-        </div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock">
+            @UiStrings.Stations.ReviewNote
+        </DismissibleDialogMessage>
     </section>;
 
     private RenderFragment ErrorBanner() =>@<text>
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <div class="stf-error-panel" role="alert">
-                <RadzenIcon Icon="error_outline" />
-                <div>
-                    <strong>Please fix the following errors before continuing</strong>
-                    <ul>
-                        <li>@errorMessage</li>
-                    </ul>
-                </div>
-            </div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Please fix the following errors before continuing"
+                                      StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                <ul><li>@errorMessage</li></ul>
+            </DismissibleDialogMessage>
         }
     </text>;
 

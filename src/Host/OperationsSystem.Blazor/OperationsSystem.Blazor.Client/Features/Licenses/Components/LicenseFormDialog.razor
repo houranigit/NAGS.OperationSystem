@@ -11,11 +11,16 @@
             <div class="lcf-field-block"><label class="lcf-label">@UiStrings.Licenses.Name <span>*</span></label><div class="lcf-input-wrap"><RadzenIcon Icon="badge" class="lcf-field-icon" /><RadzenTextBox @bind-Value="model.Name" Name="name" class="lcf-control lcf-control-icon" MaxLength="100" Placeholder="e.g. Ground Support Equipment" /></div></div>
         </div>
         <div class="lcf-field-block"><label class="lcf-label">@UiStrings.Licenses.LicenseDescription</label><RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="lcf-control" MaxLength="500" Placeholder="Describe what this license authorizes" /></div>
-        <div class="lcf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.Licenses.Code</strong><p>@(LicenseId is null ? "Choose the short code carefully; it cannot be changed after creation." : UiStrings.Licenses.CodeImmutable)</p></div></div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="@UiStrings.Licenses.Code">
+            <p>@(LicenseId is null ? "Choose the short code carefully; it cannot be changed after creation." : UiStrings.Licenses.CodeImmutable)</p>
+        </DismissibleDialogMessage>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <div class="lcf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Please fix the following errors before continuing"
+                                      StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                <ul><li>@errorMessage</li></ul>
+            </DismissibleDialogMessage>
         }
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="lcf-actions">

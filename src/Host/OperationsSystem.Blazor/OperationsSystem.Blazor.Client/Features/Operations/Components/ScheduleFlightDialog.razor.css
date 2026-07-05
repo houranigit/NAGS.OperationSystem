@@ -210,6 +210,20 @@
     gap: var(--os-space-2);
 }
 
+.opf-details-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-block-start: var(--os-space-1);
+}
+
+.opf-toolbar-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--os-space-2);
+}
+
 .opf-selection-count {
     display: inline-flex;
     align-items: center;
@@ -576,5 +590,10 @@
     .opf-actions-end {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .opf-details-actions,
+    .opf-toolbar-actions {
+        justify-content: stretch;
     }
 }

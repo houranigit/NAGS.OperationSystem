@@ -1,0 +1,101 @@
+.os-dialog-message {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--os-space-3);
+    align-items: start;
+    padding: var(--os-space-4);
+    border-radius: 8px;
+    color: var(--os-color-text);
+}
+
+.os-dialog-message--danger {
+    border: 2px solid color-mix(in srgb, var(--os-color-danger) 62%, white);
+    background: color-mix(in srgb, var(--os-color-danger-bg) 72%, white);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--os-color-danger) 12%, transparent);
+}
+
+.os-dialog-message--warning {
+    border: 1px solid color-mix(in srgb, var(--os-color-warning) 48%, white);
+    background: color-mix(in srgb, var(--os-color-warning-bg) 70%, white);
+}
+
+.os-dialog-message--success {
+    border: 1px solid color-mix(in srgb, var(--os-color-success) 40%, white);
+    background: color-mix(in srgb, var(--os-color-success-bg) 72%, white);
+}
+
+.os-dialog-message--info {
+    border: 1px solid var(--os-color-primary-soft-border);
+    background: var(--os-color-primary-soft);
+}
+
+.os-dialog-message ::deep .os-dialog-message-icon {
+    font-size: 1.35rem;
+    margin-block-start: 2px;
+}
+
+.os-dialog-message--danger ::deep .os-dialog-message-icon {
+    color: var(--os-color-danger);
+}
+
+.os-dialog-message--warning ::deep .os-dialog-message-icon {
+    color: var(--os-color-warning);
+}
+
+.os-dialog-message--success ::deep .os-dialog-message-icon {
+    color: var(--os-color-success);
+}
+
+.os-dialog-message--info ::deep .os-dialog-message-icon {
+    color: var(--os-color-primary);
+}
+
+.os-dialog-message-content {
+    min-width: 0;
+}
+
+.os-dialog-message-content strong {
+    display: block;
+    margin-block-end: var(--os-space-2);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+}
+
+.os-dialog-message-content ::deep p,
+.os-dialog-message-content ::deep ul {
+    margin-block: 0;
+    color: var(--os-color-text-muted);
+}
+
+.os-dialog-message-content ::deep ul {
+    padding-inline-start: 1.25rem;
+}
+
+.os-dialog-message-content ::deep li {
+    padding-inline-start: var(--os-space-1);
+}
+
+.os-dialog-message-close {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    margin-block-start: -0.25rem;
+    margin-inline-end: -0.25rem;
+    border: 0;
+    border-radius: var(--os-radius-pill);
+    background: transparent;
+    color: var(--os-color-text-subtle);
+    cursor: pointer;
+}
+
+.os-dialog-message-close:hover {
+    background: color-mix(in srgb, var(--os-color-text) 8%, transparent);
+    color: var(--os-color-text);
+}
+
+.os-dialog-message-close ::deep .rz-icon {
+    color: currentColor;
+    font-size: 1rem;
+    pointer-events: auto;
+}

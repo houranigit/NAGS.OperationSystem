@@ -16,9 +16,9 @@
     }
     else
     {
-        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
             Choose the work order that should survive. The losing work order is marked superseded.
-        </RadzenAlert>
+        </DismissibleDialogMessage>
 
         <div class="omg-grid-2">
             <div class="omg-field-block">
@@ -38,7 +38,10 @@
 
         @if (!string.IsNullOrWhiteSpace(actionError))
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@actionError</RadzenAlert>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@actionError"
+                                      OnDismiss="@(() => actionError = null)">
+                @actionError
+            </DismissibleDialogMessage>
         }
 
         <div class="omg-actions">

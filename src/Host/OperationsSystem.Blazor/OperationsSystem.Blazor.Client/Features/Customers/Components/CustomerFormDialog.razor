@@ -164,7 +164,9 @@
                 }
             </div>
         }
-        <div class="cuf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.Customers.Contacts</strong><p>@UiStrings.Customers.ContactsEmpty</p></div></div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="@UiStrings.Customers.Contacts">
+            <p>@UiStrings.Customers.ContactsEmpty</p>
+        </DismissibleDialogMessage>
     </section>;
 
     private RenderFragment ReviewSection() =>@<section class="cuf-step-content">
@@ -175,13 +177,18 @@
         <div class="cuf-review-card"><div class="cuf-review-head"><h4>@UiStrings.Customers.Address</h4><button type="button" @onclick="@(() => step = 1)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
             <dl class="cuf-review-grid"><div><dt>@UiStrings.Customers.AddressLine1</dt><dd>@Display(model.AddressLine1)</dd></div><div><dt>@UiStrings.Customers.City</dt><dd>@Display(model.AddressCity)</dd></div><div><dt>@UiStrings.Customers.Region</dt><dd>@Display(model.AddressRegion)</dd></div><div><dt>@UiStrings.Customers.PostalCode</dt><dd>@Display(model.AddressPostalCode)</dd></div></dl>
         </div>
-        <div class="cuf-review-note"><RadzenIcon Icon="lock" /><span>@UiStrings.Customers.StepReview</span></div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock">
+            @UiStrings.Customers.StepReview
+        </DismissibleDialogMessage>
     </section>;
 
     private RenderFragment ErrorBanner() =>@<text>
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <div class="cuf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Please fix the following errors before continuing"
+                                      StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                <ul><li>@errorMessage</li></ul>
+            </DismissibleDialogMessage>
         }
     </text>;
 

@@ -117,7 +117,9 @@
                 <div class="sf-input-wrap"><RadzenIcon Icon="engineering" class="sf-field-icon" /><RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectManpowerType" /></div>
             </div>
         </div>
-        <div class="sf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.StaffMembers.EmployeeIdHintTitle</strong><p>@UiStrings.StaffMembers.EmployeeIdHint</p></div></div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="@UiStrings.StaffMembers.EmployeeIdHintTitle">
+            <p>@UiStrings.StaffMembers.EmployeeIdHint</p>
+        </DismissibleDialogMessage>
     </section>;
 
     private RenderFragment EmploymentStep() => @<section class="sf-step-content">
@@ -165,7 +167,9 @@
             {
                 @if (portalRoles.Count == 0)
                 {
-                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@UiStrings.PortalAccess.NoCompatibleRoles</RadzenAlert>
+                    <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
+                        @UiStrings.PortalAccess.NoCompatibleRoles
+                    </DismissibleDialogMessage>
                 }
                 else
                 {
@@ -183,10 +187,20 @@
         <div class="sf-review-card"><div class="sf-review-head"><h4>@UiStrings.StaffMembers.EmploymentDetails</h4><button type="button" @onclick="@(() => step = 1)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
             <dl class="sf-review-grid"><div><dt>@UiStrings.StaffMembers.StartDate</dt><dd>@DateDisplay(model.StartDate)</dd></div><div><dt>@UiStrings.StaffMembers.EndDate</dt><dd>@DateDisplay(model.EndDate)</dd></div><div><dt>@UiStrings.StaffMembers.WorkingSchedule</dt><dd>@WorkingDaysDisplay</dd></div><div><dt>@UiStrings.StaffMembers.Licenses</dt><dd>@licenseRows.Count</dd></div><div><dt>@UiStrings.PortalAccess.GrantTitle</dt><dd>@(grantPortal ? UiStrings.Common.Yes : UiStrings.Common.No)</dd></div></dl>
         </div>
-        <div class="sf-review-note"><RadzenIcon Icon="lock" /><span>@UiStrings.StaffMembers.ReviewNote</span></div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock">
+            @UiStrings.StaffMembers.ReviewNote
+        </DismissibleDialogMessage>
     </section>;
 
-    private RenderFragment ErrorBanner() => @<text>@if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="sf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>@UiStrings.StaffMembers.FixErrors</strong><ul><li>@errorMessage</li></ul></div></div> }</text>;
+    private RenderFragment ErrorBanner() => @<text>
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="@UiStrings.StaffMembers.FixErrors"
+                                      StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                <ul><li>@errorMessage</li></ul>
+            </DismissibleDialogMessage>
+        }
+    </text>;
 
     private string StepLabel(int index) => index switch { 0 => UiStrings.StaffMembers.StepProfile, 1 => UiStrings.StaffMembers.StepEmployment, _ => UiStrings.StaffMembers.StepReview };
     private string StepClass(int index) => $"sf-step sf-step-{(index < step ? "complete" : index == step ? "active" : "pending")}";

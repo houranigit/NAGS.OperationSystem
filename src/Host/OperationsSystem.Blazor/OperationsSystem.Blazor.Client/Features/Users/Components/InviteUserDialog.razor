@@ -4,9 +4,9 @@
 @if (invited is not null)
 {
     <RadzenStack Gap="1rem">
-        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Success">
             @UiStrings.Users.InviteSuccess
-        </RadzenAlert>
+        </DismissibleDialogMessage>
         <RadzenFormField Text="@UiStrings.Users.InvitationDeliveryLabel" Variant="Variant.Outlined">
             <RadzenTextBox Value="@invited.DeliveryStatus" ReadOnly="true" Style="width: 100%;" />
         </RadzenFormField>
@@ -21,9 +21,9 @@ else
         <div class="iud-form">
             <p class="iud-intro os-muted">@UiStrings.Users.InviteIntro</p>
 
-            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info">
                 @UiStrings.Users.InviteAdminNote
-            </RadzenAlert>
+            </DismissibleDialogMessage>
 
             <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined" Style="width: 100%;">
                 <Start><RadzenIcon Icon="mail" /></Start>
@@ -41,9 +41,9 @@ else
 
             @if (roles.Count == 0)
             {
-                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
                     @UiStrings.Users.NoAdminRoles
-                </RadzenAlert>
+                </DismissibleDialogMessage>
             }
             else
             {
@@ -58,7 +58,10 @@ else
 
             @if (!string.IsNullOrWhiteSpace(errorMessage))
             {
-                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">@errorMessage</RadzenAlert>
+                <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage"
+                                          OnDismiss="@(() => errorMessage = null)">
+                    @errorMessage
+                </DismissibleDialogMessage>
             }
 
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">

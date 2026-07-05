@@ -9,11 +9,16 @@
             <div class="cnf-field-block"><label class="cnf-label">@UiStrings.Countries.Name <span>*</span></label><div class="cnf-input-wrap"><RadzenIcon Icon="public" class="cnf-field-icon" /><RadzenTextBox @bind-Value="model.Name" Name="name" class="cnf-control cnf-control-icon" MaxLength="100" Placeholder="e.g. Saudi Arabia" /></div></div>
             <div class="cnf-field-block"><label class="cnf-label">@UiStrings.Countries.IsoCode <span>*</span></label><div class="cnf-input-wrap"><RadzenIcon Icon="tag" class="cnf-field-icon" /><RadzenTextBox @bind-Value="model.IsoCode" Name="isoCode" class="cnf-control cnf-control-icon" MaxLength="2" Placeholder="e.g. SA" /></div><span class="cnf-help">2-letter ISO code</span></div>
         </div>
-        <div class="cnf-callout"><RadzenIcon Icon="info" /><div><strong>@UiStrings.Countries.IsoCode</strong><p>Use the official ISO 3166-1 alpha-2 country code.</p></div></div>
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="@UiStrings.Countries.IsoCode">
+            <p>Use the official ISO 3166-1 alpha-2 country code.</p>
+        </DismissibleDialogMessage>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <div class="cnf-error-panel" role="alert"><RadzenIcon Icon="error_outline" /><div><strong>Please fix the following errors before continuing</strong><ul><li>@errorMessage</li></ul></div></div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Please fix the following errors before continuing"
+                                      StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                <ul><li>@errorMessage</li></ul>
+            </DismissibleDialogMessage>
         }
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" class="cnf-actions">

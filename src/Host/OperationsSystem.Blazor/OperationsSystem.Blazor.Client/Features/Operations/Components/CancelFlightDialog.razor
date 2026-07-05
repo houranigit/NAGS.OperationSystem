@@ -3,9 +3,9 @@
 
 <RadzenTemplateForm TItem="CancelFlightModel" Data="@model" Submit="@SubmitAsync">
     <div class="ocf-form">
-        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
             Canceling a flight creates a submitted cancellation work order for review.
-        </RadzenAlert>
+        </DismissibleDialogMessage>
 
         <div class="ocf-field-block">
             <label class="ocf-label">Canceled at (UTC)</label>
@@ -19,7 +19,10 @@
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">@errorMessage</RadzenAlert>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage"
+                                      OnDismiss="@(() => errorMessage = null)">
+                @errorMessage
+            </DismissibleDialogMessage>
         }
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">

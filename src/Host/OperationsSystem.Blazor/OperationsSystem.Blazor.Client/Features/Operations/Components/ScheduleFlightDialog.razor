@@ -85,8 +85,6 @@
                     {
                         <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
                     }
-                    <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary"
-                                  ButtonType="ButtonType.Button" Click="@CheckDuplicatesAsync" Disabled="@isSubmitting" />
                     @if (step < LastStep)
                     {
                         <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Button" Click="@NextAsync" />
@@ -222,6 +220,11 @@
                                 AllowClear="true" AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
             </div>
         </div>
+
+        <div class="opf-details-actions">
+            <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary"
+                          ButtonType="ButtonType.Button" Click="@CheckDuplicatesAsync" Disabled="@isSubmitting" />
+        </div>
     </section>;
 
     private RenderFragment ServicesStep() => @<section class="opf-step-content">
@@ -258,19 +261,20 @@
         <div class="opf-section-line"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
         @if (IsPerLandingSelected)
         {
-            <div class="opf-info-panel">
-                <RadzenIcon Icon="info" />
-                <div>
-                    <strong>Per landing flight</strong>
-                    <p>This flight is per landing and does not need staff assignment because all station staff can reach the flight.</p>
-                </div>
-            </div>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="Per landing flight">
+                <p>This flight is per landing and does not need staff assignment because all station staff can reach the flight.</p>
+            </DismissibleDialogMessage>
         }
         else
         {
             <div class="opf-step-toolbar">
                 @SearchBox(staffSearchTerm, "Search staff", OnStaffSearchInput, ClearStaffSearch)
-                <span class="opf-selection-count">@model.AssignedStaffMemberIds.Count selected</span>
+                <div class="opf-toolbar-actions">
+                    <RadzenButton Text="@SelectAllStaffText" Icon="@SelectAllStaffIcon" ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@ToggleAllStaff"
+                                  Disabled="@(!HasAvailableStaff)" />
+                    <span class="opf-selection-count">@model.AssignedStaffMemberIds.Count selected</span>
+                </div>
             </div>
             @if (staff.Count == 0)
             {
@@ -470,6 +474,42 @@
         Toggle(model.AssignedStaffMemberIds, member.Id);
     }
 
+    private IEnumerable<StaffMemberListItem> AvailableStaff() =>
+        staffLoadedForStationId == model.StationId
+            ? staff.Where(member => member.StationId == model.StationId)
+            : [];
+
+    private bool HasAvailableStaff => AvailableStaff().Any();
+
+    private bool AllAvailableStaffSelected
+    {
+        get
+        {
+            var ids = AvailableStaff().Select(member => member.Id).ToList();
+            return ids.Count > 0 && ids.All(model.AssignedStaffMemberIds.Contains);
+        }
+    }
+
+    private string SelectAllStaffText => AllAvailableStaffSelected ? "Clear all" : "Select all";
+
+    private string SelectAllStaffIcon => AllAvailableStaffSelected ? "clear_all" : "select_all";
+
+    private void ToggleAllStaff()
+    {
+        var ids = AvailableStaff().Select(member => member.Id).ToList();
+        if (ids.Count == 0)
+            return;
+
+        if (ids.All(model.AssignedStaffMemberIds.Contains))
+        {
+            model.AssignedStaffMemberIds.ExceptWith(ids);
+            return;
+        }
+
+        foreach (var id in ids)
+            model.AssignedStaffMemberIds.Add(id);
+    }
+
     private void SyncPerLandingAssignmentState()
     {
         if (!IsPerLandingSelected)
@@ -490,9 +530,7 @@
 
     private IEnumerable<StaffMemberListItem> FilteredStaff()
     {
-        var stationStaff = staffLoadedForStationId == model.StationId
-            ? staff.Where(member => member.StationId == model.StationId)
-            : [];
+        var stationStaff = AvailableStaff();
 
         if (string.IsNullOrWhiteSpace(staffSearchTerm))
             return stationStaff;

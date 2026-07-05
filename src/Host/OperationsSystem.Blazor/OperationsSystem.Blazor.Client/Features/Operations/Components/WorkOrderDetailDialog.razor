@@ -34,10 +34,9 @@
 
         @if (workOrder.Type == "Cancellation")
         {
-            <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false">
-                <strong>Cancellation work order</strong>
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Warning" Title="Cancellation work order">
                 <div>@DateTimeDisplay(workOrder.CanceledAtUtc) · @None(workOrder.CancellationReason)</div>
-            </RadzenAlert>
+            </DismissibleDialogMessage>
         }
 
         <RadzenTabs>
