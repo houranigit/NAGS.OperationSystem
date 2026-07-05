@@ -1,0 +1,28 @@
+.ofl-date-range {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.ofl-date-filter {
+    width: 10.5rem;
+}
+
+.ofl-date-range ::deep .rz-datepicker {
+    width: 100%;
+}
+
+.ofl-date-range ::deep input {
+    min-height: 2.5rem;
+}
+
+@media (max-width: 720px) {
+    .ofl-date-range {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .ofl-date-filter {
+        flex: 1 1 10rem;
+    }
+}

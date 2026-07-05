@@ -19,6 +19,7 @@ public sealed record GetFlightsQuery(
     string? Search = null,
     Guid? StationId = null,
     Guid? CustomerId = null,
+    Guid? OperationTypeId = null,
     FlightStatus? Status = null,
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
@@ -53,6 +54,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
 
         if (request.CustomerId is { } customer)
             query = query.Where(f => f.Customer.CustomerId == customer);
+        if (request.OperationTypeId is { } operationType)
+            query = query.Where(f => f.OperationType.OperationTypeId == operationType);
         if (request.Status is { } status)
             query = query.Where(f => f.Status == status);
         if (request.FromUtc is { } from)
@@ -76,6 +79,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 f.Id,
                 f.FlightNumber.Value,
                 f.OriginalFlightNumber,
+                f.Customer.IataCode,
                 f.Customer.Name,
                 f.Station.IataCode,
                 f.OperationType.Name,
@@ -190,6 +194,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.FlightNumber.Value,
             flight.OriginalFlightNumber,
             flight.Customer.CustomerId,
+            flight.Customer.IataCode,
             flight.Customer.Name,
             flight.Station.StationId,
             flight.Station.IataCode,

@@ -13,11 +13,11 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task<PagedResult<FlightListItem>> GetFlightsAsync(
         int page, int pageSize, string? search = null, Guid? stationId = null, Guid? customerId = null,
-        string? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null, CancellationToken ct = default)
+        Guid? operationTypeId = null, string? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null, CancellationToken ct = default)
     {
         var query = new QueryBuilder()
             .Add("page", page).Add("pageSize", pageSize).Add("search", search)
-            .Add("stationId", stationId).Add("customerId", customerId).Add("status", status)
+            .Add("stationId", stationId).Add("customerId", customerId).Add("operationTypeId", operationTypeId).Add("status", status)
             .Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("sort", sort).Build();
         return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
     }

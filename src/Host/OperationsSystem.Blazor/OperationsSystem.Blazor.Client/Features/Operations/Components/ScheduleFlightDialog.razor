@@ -10,118 +10,16 @@
         }
         else
         {
-            <section class="opf-step-content">
-                <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
+            @WizardStepper()
 
-                <div class="opf-grid-2">
-                    <div class="opf-field-block">
-                        <label class="opf-label">Flight number <span class="opf-required">*</span></label>
-                        <div class="opf-input-wrap">
-                            <RadzenIcon Icon="confirmation_number" class="opf-field-icon" />
-                            <RadzenTextBox @bind-Value="model.FlightNumber" Name="flightNumber" MaxLength="12"
-                                           class="opf-control opf-control-icon" Placeholder="e.g. NGS104" />
-                        </div>
-                    </div>
-                    <div class="opf-field-block">
-                        <label class="opf-label">Customer <span class="opf-required">*</span></label>
-                        <div class="opf-input-wrap">
-                            <RadzenIcon Icon="business" class="opf-field-icon" />
-                            <RadzenDropDown @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
-                                            AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select customer" />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="opf-grid-2">
-                    <div class="opf-field-block">
-                        <label class="opf-label">Station <span class="opf-required">*</span></label>
-                        <div class="opf-input-wrap">
-                            <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
-                            <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
-                                            AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select station" />
-                        </div>
-                    </div>
-                    <div class="opf-field-block">
-                        <label class="opf-label">Operation type <span class="opf-required">*</span></label>
-                        <div class="opf-input-wrap">
-                            <RadzenIcon Icon="settings" class="opf-field-icon" />
-                            <RadzenDropDown @bind-Value="model.OperationTypeId" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
-                                            AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select operation" />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="opf-grid-2">
-                    <div class="opf-field-block">
-                        <label class="opf-label">Scheduled arrival (UTC) <span class="opf-required">*</span></label>
-                        <div class="opf-input-wrap">
-                            <RadzenIcon Icon="flight_land" class="opf-field-icon" />
-                            <RadzenDatePicker @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
-                                              ShowTime="true" class="opf-control opf-control-icon" />
-                        </div>
-                    </div>
-                    <div class="opf-field-block">
-                        <label class="opf-label">Scheduled departure (UTC) <span class="opf-required">*</span></label>
-                        <div class="opf-input-wrap">
-                            <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
-                            <RadzenDatePicker @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
-                                              ShowTime="true" class="opf-control opf-control-icon" />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="opf-field-block">
-                    <label class="opf-label">Aircraft type</label>
-                    <div class="opf-input-wrap">
-                        <RadzenIcon Icon="flight" class="opf-field-icon" />
-                        <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                        AllowClear="true" AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
-                    </div>
-                </div>
-            </section>
-
-            <section class="opf-step-content">
-                <div class="opf-section-line"><RadzenIcon Icon="settings" /><span>Planned services</span></div>
-                <div class="opf-selection-panel">
-                    <div class="opf-chip-list">
-                        @foreach (var service in services)
-                        {
-                            <button type="button" @key="service.Id" class="@ChipClass(model.PlannedServiceIds.Contains(service.Id))"
-                                    @onclick="@(() => Toggle(model.PlannedServiceIds, service.Id))">
-                                <RadzenIcon Icon="task_alt" />
-                                <span>@service.Name</span>
-                            </button>
-                        }
-                    </div>
-                </div>
-            </section>
-
-            <section class="opf-step-content">
-                <div class="opf-section-line"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
-                @if (staff.Count == 0)
+            <div class="opf-wizard-body">
+                @(step switch
                 {
-                    <div class="opf-empty-row">
-                        <RadzenIcon Icon="group_add" />
-                        <span>No active staff members are available.</span>
-                    </div>
-                }
-                else
-                {
-                    <div class="opf-selection-panel opf-selection-panel-scroll">
-                        <div class="opf-chip-list opf-chip-list-staff">
-                            @foreach (var member in staff)
-                            {
-                                <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
-                                        @onclick="@(() => Toggle(model.AssignedStaffMemberIds, member.Id))">
-                                    <RadzenIcon Icon="person" />
-                                    <span>@member.FullName</span>
-                                    <small>@member.StationCode</small>
-                                </button>
-                            }
-                        </div>
-                    </div>
-                }
-            </section>
+                    0 => FlightDetailsStep(),
+                    1 => ServicesStep(),
+                    _ => StaffStep()
+                })
+            </div>
 
             @if (duplicates.Count > 0)
             {
@@ -155,12 +53,30 @@
             }
 
             <div class="opf-actions">
-                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                @if (step == 0)
+                {
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                }
+                else
+                {
+                    <RadzenButton Text="Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@Previous" />
+                }
                 <div class="opf-actions-end">
+                    @if (step > 0)
+                    {
+                        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
+                    }
                     <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary"
                                   ButtonType="ButtonType.Button" Click="@CheckDuplicatesAsync" Disabled="@isSubmitting" />
-                    <RadzenButton ButtonType="ButtonType.Submit" Icon="check" Text="@(FlightId is null ? "Schedule flight" : "Save changes")"
-                                  ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+                    @if (step < LastStep)
+                    {
+                        <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Button" Click="@NextAsync" />
+                    }
+                    else
+                    {
+                        <RadzenButton ButtonType="ButtonType.Submit" Icon="check" Text="@(FlightId is null ? "Schedule flight" : "Save changes")"
+                                      ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+                    }
                 </div>
             </div>
         }
@@ -183,6 +99,228 @@
     private bool isLoading = true;
     private bool isSubmitting;
     private string? errorMessage;
+    private int step;
+    private string serviceSearchTerm = string.Empty;
+    private string staffSearchTerm = string.Empty;
+
+    private const int LastStep = 2;
+
+    private RenderFragment WizardStepper() => @<div class="opf-stepper" aria-label="Schedule flight steps">
+        @for (var i = 0; i <= LastStep; i++)
+        {
+            var index = i;
+            <div class="@StepClass(index)">
+                <button type="button" class="opf-step-button" disabled="@(index > step)" @onclick="@(() => MoveToStep(index))">
+                    <span class="opf-step-node">
+                        @if (index < step)
+                        {
+                            <RadzenIcon Icon="check" />
+                        }
+                        else
+                        {
+                            @((index + 1).ToString())
+                        }
+                    </span>
+                    <span class="opf-step-label">@StepLabel(index)</span>
+                </button>
+            </div>
+        }
+    </div>;
+
+    private RenderFragment FlightDetailsStep() => @<section class="opf-step-content">
+        <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
+
+        <div class="opf-grid-2">
+            <div class="opf-field-block">
+                <label class="opf-label">Flight number <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="confirmation_number" class="opf-field-icon" />
+                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="flightNumber" MaxLength="12"
+                                   class="opf-control opf-control-icon" Placeholder="e.g. NGS104" />
+                </div>
+            </div>
+            <div class="opf-field-block">
+                <label class="opf-label">Customer <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="business" class="opf-field-icon" />
+                    <RadzenDropDown @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select customer" />
+                </div>
+            </div>
+        </div>
+
+        <div class="opf-grid-2">
+            <div class="opf-field-block">
+                <label class="opf-label">Station <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
+                    <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
+                                    AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select station" />
+                </div>
+            </div>
+            <div class="opf-field-block">
+                <label class="opf-label">Operation type <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="settings" class="opf-field-icon" />
+                    <RadzenDropDown @bind-Value="model.OperationTypeId" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select operation" />
+                </div>
+            </div>
+        </div>
+
+        <div class="opf-grid-2">
+            <div class="opf-field-block">
+                <label class="opf-label">Scheduled arrival (UTC) <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="flight_land" class="opf-field-icon" />
+                    <RadzenDatePicker @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
+                                      ShowTime="true" class="opf-control opf-control-icon" />
+                </div>
+            </div>
+            <div class="opf-field-block">
+                <label class="opf-label">Scheduled departure (UTC) <span class="opf-required">*</span></label>
+                <div class="opf-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
+                    <RadzenDatePicker @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
+                                      ShowTime="true" class="opf-control opf-control-icon" />
+                </div>
+            </div>
+        </div>
+
+        <div class="opf-field-block">
+            <label class="opf-label">Aircraft type</label>
+            <div class="opf-input-wrap">
+                <RadzenIcon Icon="flight" class="opf-field-icon" />
+                <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                                AllowClear="true" AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
+            </div>
+        </div>
+    </section>;
+
+    private RenderFragment ServicesStep() => @<section class="opf-step-content">
+        <div class="opf-section-line"><RadzenIcon Icon="settings" /><span>Planned services</span></div>
+        <div class="opf-step-toolbar">
+            @SearchBox(serviceSearchTerm, "Search services", OnServiceSearchInput, ClearServiceSearch)
+            <span class="opf-selection-count">@model.PlannedServiceIds.Count selected</span>
+        </div>
+        <div class="opf-selection-panel">
+            @if (!FilteredServices().Any())
+            {
+                <div class="opf-empty-row">
+                    <RadzenIcon Icon="search_off" />
+                    <span>No services match your search.</span>
+                </div>
+            }
+            else
+            {
+                <div class="opf-chip-list">
+                    @foreach (var service in FilteredServices())
+                    {
+                        <button type="button" @key="service.Id" class="@ChipClass(model.PlannedServiceIds.Contains(service.Id))"
+                                @onclick="@(() => Toggle(model.PlannedServiceIds, service.Id))">
+                            <RadzenIcon Icon="task_alt" />
+                            <span>@service.Name</span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </section>;
+
+    private RenderFragment StaffStep() => @<section class="opf-step-content">
+        <div class="opf-section-line"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
+        <div class="opf-step-toolbar">
+            @SearchBox(staffSearchTerm, "Search staff", OnStaffSearchInput, ClearStaffSearch)
+            <span class="opf-selection-count">@model.AssignedStaffMemberIds.Count selected</span>
+        </div>
+        @if (staff.Count == 0)
+        {
+            <div class="opf-empty-row">
+                <RadzenIcon Icon="group_add" />
+                <span>No active staff members are available.</span>
+            </div>
+        }
+        else
+        {
+            <div class="opf-selection-panel opf-selection-panel-scroll">
+                @if (!FilteredStaff().Any())
+                {
+                    <div class="opf-empty-row">
+                        <RadzenIcon Icon="search_off" />
+                        <span>No staff members match your search.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="opf-chip-list opf-chip-list-staff">
+                        @foreach (var member in FilteredStaff())
+                        {
+                            <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
+                                    @onclick="@(() => Toggle(model.AssignedStaffMemberIds, member.Id))">
+                                <RadzenIcon Icon="person" />
+                                <span>@member.FullName</span>
+                                <small>@member.StationCode</small>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>;
+
+    private RenderFragment SearchBox(string value, string placeholder, Action<ChangeEventArgs> onInput, Action onClear) => @<div class="opf-search-box">
+        <RadzenIcon Icon="search" />
+        <input type="search" value="@value" @oninput="@onInput" placeholder="@placeholder" aria-label="@placeholder" />
+        @if (!string.IsNullOrWhiteSpace(value))
+        {
+            <button type="button" class="opf-search-clear" aria-label="Clear search" @onclick="@onClear">
+                <RadzenIcon Icon="close" />
+            </button>
+        }
+    </div>;
+
+    private string StepLabel(int index) => index switch
+    {
+        0 => "Details",
+        1 => "Services",
+        _ => "Staff"
+    };
+
+    private string StepClass(int index)
+    {
+        var state = index < step ? "complete" : index == step ? "active" : "pending";
+        return $"opf-step opf-step-{state}";
+    }
+
+    private void MoveToStep(int index)
+    {
+        if (index > step)
+            return;
+
+        errorMessage = null;
+        step = index;
+    }
+
+    private void Previous()
+    {
+        errorMessage = null;
+        step = Math.Max(0, step - 1);
+    }
+
+    private async Task NextAsync()
+    {
+        errorMessage = step switch
+        {
+            0 => ValidateDetails(),
+            1 => ValidateServices(),
+            _ => null
+        };
+
+        if (errorMessage is null)
+            step = Math.Min(LastStep, step + 1);
+
+        await Task.CompletedTask;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -248,6 +386,38 @@
         if (!set.Add(id))
             set.Remove(id);
     }
+
+    private IEnumerable<ServiceOption> FilteredServices()
+    {
+        if (string.IsNullOrWhiteSpace(serviceSearchTerm))
+            return services;
+
+        var term = serviceSearchTerm.Trim();
+        return services.Where(service => service.Name.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private IEnumerable<StaffMemberListItem> FilteredStaff()
+    {
+        if (string.IsNullOrWhiteSpace(staffSearchTerm))
+            return staff;
+
+        var term = staffSearchTerm.Trim();
+        return staff.Where(member =>
+            member.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            member.EmployeeId.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            member.StationCode.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            member.ManpowerTypeName.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void OnServiceSearchInput(ChangeEventArgs args) =>
+        serviceSearchTerm = args.Value?.ToString() ?? string.Empty;
+
+    private void OnStaffSearchInput(ChangeEventArgs args) =>
+        staffSearchTerm = args.Value?.ToString() ?? string.Empty;
+
+    private void ClearServiceSearch() => serviceSearchTerm = string.Empty;
+
+    private void ClearStaffSearch() => staffSearchTerm = string.Empty;
 
     private async Task CheckDuplicatesAsync()
     {
@@ -342,6 +512,11 @@
 
     private string? Validate()
     {
+        return ValidateDetails() ?? ValidateServices();
+    }
+
+    private string? ValidateDetails()
+    {
         if (string.IsNullOrWhiteSpace(model.FlightNumber))
             return "Flight number is required.";
         if (model.CustomerId == Guid.Empty)
@@ -354,6 +529,11 @@
             return "Scheduled arrival and departure are required.";
         if (model.ScheduledDepartureUtc <= model.ScheduledArrivalUtc)
             return "Scheduled departure must be after scheduled arrival.";
+        return null;
+    }
+
+    private string? ValidateServices()
+    {
         if (model.PlannedServiceIds.Count == 0)
             return "At least one planned service is required.";
         return null;

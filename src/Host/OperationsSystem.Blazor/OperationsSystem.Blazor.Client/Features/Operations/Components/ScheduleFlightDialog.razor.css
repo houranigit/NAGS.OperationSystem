@@ -8,6 +8,92 @@
     color: var(--os-color-text);
 }
 
+.opf-wizard-body {
+    min-height: 0;
+}
+
+.opf-stepper {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding-inline: var(--os-space-5);
+    padding-block-end: 0.75rem;
+    border-block-end: 1px solid #80808036;
+}
+
+.opf-step {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+}
+
+.opf-step:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset-block-start: 16px;
+    inset-inline-start: calc(50% + 28px);
+    width: calc(100% - 56px);
+    height: 2px;
+    background: var(--os-color-border);
+}
+
+.opf-step-complete:not(:last-child)::after {
+    background: var(--os-color-primary);
+}
+
+.opf-step-button {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--os-space-3);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--os-color-text-muted);
+    font: inherit;
+    text-align: center;
+}
+
+.opf-step-button:not(:disabled) {
+    cursor: pointer;
+}
+
+.opf-step-node {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+    font-weight: 700;
+    box-shadow: 0 0 0 4px white;
+}
+
+.opf-step-active .opf-step-node,
+.opf-step-complete .opf-step-node {
+    background: var(--os-color-primary);
+    color: white;
+}
+
+.opf-step-label {
+    overflow-wrap: anywhere;
+    color: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.opf-step-active .opf-step-label,
+.opf-step-complete .opf-step-label {
+    color: var(--os-color-primary);
+}
+
 .opf-step-content {
     display: flex;
     flex-direction: column;
@@ -90,6 +176,97 @@
 .opf-form ::deep .opf-control-icon .rz-dropdown-trigger,
 .opf-form ::deep .opf-control-icon .rz-datepicker-trigger {
     z-index: 3;
+}
+
+.opf-step-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-2);
+}
+
+.opf-selection-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.opf-search-box {
+    position: relative;
+    flex: 1 1 16rem;
+    min-width: min(16rem, 100%);
+}
+
+.opf-search-box ::deep .rz-icon {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 50%;
+    inset-inline-start: var(--os-space-3);
+    transform: translateY(-50%);
+    color: var(--os-color-text-subtle);
+    font-size: 1.15rem;
+    pointer-events: none;
+}
+
+.opf-search-box input {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.45rem 2.5rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+    color: var(--os-color-text);
+    font: inherit;
+    font-size: var(--os-text-sm);
+    transition: border-color var(--os-transition), box-shadow var(--os-transition);
+}
+
+.opf-search-box input:hover {
+    border-color: var(--os-color-border-strong);
+}
+
+.opf-search-box input:focus {
+    border-color: var(--os-color-primary);
+    box-shadow: var(--os-ring);
+    outline: none;
+}
+
+.opf-search-clear {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 50%;
+    inset-inline-end: var(--os-space-2);
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    transform: translateY(-50%);
+    border: 0;
+    border-radius: var(--os-radius-pill);
+    background: transparent;
+    color: var(--os-color-text-subtle);
+    cursor: pointer;
+}
+
+.opf-search-clear:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-text);
+}
+
+.opf-search-clear ::deep .rz-icon {
+    position: static;
+    transform: none;
+    font-size: 1rem;
+    pointer-events: auto;
 }
 
 .opf-selection-panel {
@@ -255,6 +432,14 @@
 @media (max-width: 720px) {
     .opf-form {
         min-width: 0;
+    }
+
+    .opf-stepper {
+        padding-inline: 0;
+    }
+
+    .opf-step-label {
+        font-size: var(--os-text-xs);
     }
 
     .opf-grid-2 {

@@ -35,7 +35,17 @@
                       SearchPlaceholder="Search flight number or customer" CountLabel="flights" EmptyText="No flights match your filters.">
             <Filters>
                 <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
+                <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" />
                 <DataListFilter TValue="string" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+                <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
+                <div class="ofl-date-range">
+                    <RadzenDatePicker TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
+                                      DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
+                                      Placeholder="From date" class="ofl-date-filter" />
+                    <RadzenDatePicker TValue="DateTime?" Value="@toFilter" Change="@OnToFilterChangedAsync"
+                                      DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
+                                      Placeholder="To date" class="ofl-date-filter" />
+                </div>
             </Filters>
             <Columns>
                 <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" Title="Flight #">
@@ -43,7 +53,7 @@
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
                             <div class="os-role-cell-text">
-                                <strong>@flight.FlightNumber</strong>
+                                <strong>@DisplayFlightNumber(flight)</strong>
                                 <span>@flight.CustomerName</span>
                             </div>
                         </div>
@@ -91,10 +101,16 @@
     private string searchTerm = string.Empty;
     private string? statusFilter;
     private Guid? stationFilter;
+    private Guid? customerFilter;
+    private Guid? operationTypeFilter;
+    private DateTime? fromFilter;
+    private DateTime? toFilter;
     private int currentPage = 1;
     private int currentPageSize = 10;
     private string? currentSort;
     private IReadOnlyList<StationFilterOption> stationOptions = [];
+    private IReadOnlyList<CustomerFilterOption> customerOptions = [];
+    private IReadOnlyList<OperationTypeFilterOption> operationTypeOptions = [];
     private readonly IReadOnlyList<StatusFilterOption> statusOptions =
     [
         new("Scheduled", "Scheduled"),
@@ -106,8 +122,20 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
-        stationOptions = (await MasterData.GetStationOptionsAsync())
+        var stationsTask = MasterData.GetStationOptionsAsync();
+        var customersTask = MasterData.GetCustomerOptionsAsync();
+        var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
+
+        await Task.WhenAll(stationsTask, customersTask, operationTypesTask);
+
+        stationOptions = (await stationsTask)
             .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
+            .ToList();
+        customerOptions = (await customersTask)
+            .Select(x => new CustomerFilterOption(CustomerFilterLabel(x), x.Id))
+            .ToList();
+        operationTypeOptions = (await operationTypesTask)
+            .Select(x => new OperationTypeFilterOption(x.Name, x.Id))
             .ToList();
         await FetchAsync();
     }
@@ -124,9 +152,33 @@
         await ReloadAsync();
     }
 
+    private async Task OnCustomerFilterChangedAsync(Guid? value)
+    {
+        customerFilter = value;
+        await ReloadAsync();
+    }
+
     private async Task OnStatusFilterChangedAsync(string? value)
     {
         statusFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnOperationTypeFilterChangedAsync(Guid? value)
+    {
+        operationTypeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnFromFilterChangedAsync(DateTime? value)
+    {
+        fromFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnToFilterChangedAsync(DateTime? value)
+    {
+        toFilter = value;
         await ReloadAsync();
     }
 
@@ -156,7 +208,8 @@
         try
         {
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, stationFilter, null, statusFilter, null, null, currentSort);
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, stationFilter, customerFilter, operationTypeFilter,
+                statusFilter, DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort);
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -259,6 +312,25 @@
 
     private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
 
+    private static DateTimeOffset? DateBoundaryUtc(DateTime? value, bool endOfDay)
+    {
+        if (value is not { } date)
+            return null;
+
+        var boundary = endOfDay ? date.Date.AddDays(1).AddTicks(-1) : date.Date;
+        return new DateTimeOffset(DateTime.SpecifyKind(boundary, DateTimeKind.Utc));
+    }
+
+    private static string DisplayFlightNumber(FlightListItem flight) =>
+        string.IsNullOrWhiteSpace(flight.CustomerIataCode)
+            ? flight.FlightNumber
+            : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
+
+    private static string CustomerFilterLabel(CustomerOption customer) =>
+        string.IsNullOrWhiteSpace(customer.IataCode)
+            ? customer.Name
+            : $"{customer.IataCode.Trim().ToUpperInvariant()} · {customer.Name}";
+
     private static string FlightStatusTone(string status) => status switch
     {
         "Completed" => "success",
@@ -269,4 +341,6 @@
 
     private sealed record StatusFilterOption(string Label, string Value);
     private sealed record StationFilterOption(string Label, Guid? Value);
+    private sealed record CustomerFilterOption(string Label, Guid? Value);
+    private sealed record OperationTypeFilterOption(string Label, Guid? Value);
 }

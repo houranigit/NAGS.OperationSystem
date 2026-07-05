@@ -22,9 +22,9 @@ internal static class FlightEndpoints
 
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
-            FlightStatus? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>
+            Guid? operationTypeId = null, FlightStatus? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>
         {
-            var result = await sender.Send(new GetFlightsQuery(page, pageSize, search, stationId, customerId, status, fromUtc, toUtc, sort), ct);
+            var result = await sender.Send(new GetFlightsQuery(page, pageSize, search, stationId, customerId, operationTypeId, status, fromUtc, toUtc, sort), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 

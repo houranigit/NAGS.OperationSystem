@@ -4,7 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 
-<PageTitle>@(flight?.FlightNumber ?? "Flight")</PageTitle>
+<PageTitle>@(flight is null ? "Flight" : DisplayFlightNumber(flight))</PageTitle>
 
 <RequirePermission Permission="@OperationsPermissions.FlightsView">
     <div class="os-detail-page">
@@ -18,195 +18,92 @@
         }
         else if (flight is not null)
         {
-            <DetailHero Title="@flight.FlightNumber"
-                        Subtitle="@($"{flight.CustomerName} · {flight.StationIata} · {flight.OperationTypeName}")"
-                        Eyebrow="Operations flight"
-                        Icon="flight"
-                        Tone="@HeroTone(flight.Status)"
-                        OnBack="@Back">
-                <Metadata>
-                    <StatusBadge Label="@flight.Status" Tone="@FlightStatusTone(flight.Status)" />
-                    @if (flight.IsPerLanding)
-                    {
-                        <StatusBadge Label="Per landing" Tone="warning" />
-                    }
-                    @if (flight.PotentialDuplicateOfFlightId is not null)
-                    {
-                        <StatusBadge Label="Potential duplicate" Tone="warning" />
-                    }
-                </Metadata>
-                <Actions>
-                    <RowActionMenu ShowLabel="true" Label="Actions">
-                        <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                                   Visible="@CanEditFlight" OnClick="@OpenEditAsync" />
-                        <RowAction Text="Open work order" Icon="assignment_add" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                                   Visible="@CanOpenWorkOrder" OnClick="@OpenWorkOrderAsync" />
-                        <RowAction Text="Resolve duplicate" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
-                                   Visible="@CanMergeFlight" OnClick="@OpenMergeAsync" />
-                        <RowAction Separator="true" />
-                        <RowAction Text="Cancel flight" Icon="cancel" Danger="true" Permission="@OperationsPermissions.FlightsCancel"
-                                   Visible="@CanCancelFlight" OnClick="@OpenCancelAsync" />
-                    </RowActionMenu>
-                </Actions>
-            </DetailHero>
+            <div class="ofd-workspace">
+                <section class="ofd-profile @ProfileClass(flight)">
+                    <div class="ofd-hero">
+                        <button type="button" class="ofd-back" @onclick="@Back">
+                            <RadzenIcon Icon="arrow_back" />
+                            <span>Back</span>
+                        </button>
 
-            @if (flight.PotentialDuplicateOfFlightId is { } duplicateId)
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false" class="ofd-alert">
-                    This flight was flagged as a likely duplicate. Resolve the merge before release close-out.
-                    <RadzenButton Text="Resolve now" Icon="merge_type" ButtonStyle="ButtonStyle.Warning" Size="ButtonSize.Small"
-                                  Click="@(() => OpenMergeAsync(duplicateId))" />
-                </RadzenAlert>
-            }
+                        <div class="ofd-avatar">
+                            <RadzenIcon Icon="flight" />
+                            <span class="ofd-avatar-dot @DotClass(flight.Status)"></span>
+                        </div>
 
-            <RadzenCard class="ofd-card">
-                <h2 class="os-section-title">Schedule</h2>
-                <div class="ofd-fields">
-                    <DetailField Label="Original flight #" Value="@flight.OriginalFlightNumber" Icon="tag" />
-                    <DetailField Label="STA (UTC)" Value="@DateTimeDisplay(flight.ScheduledArrivalUtc)" Icon="schedule" />
-                    <DetailField Label="STD (UTC)" Value="@DateTimeDisplay(flight.ScheduledDepartureUtc)" Icon="schedule" />
-                    <DetailField Label="Aircraft type" Value="@None(flight.AircraftTypeModel)" Icon="airplanemode_active" />
-                    <DetailField Label="Contract" Value="@None(flight.ContractNumber)" Icon="description" />
-                    <DetailField Label="Updated" Value="@DateTimeDisplay(flight.UpdatedAtUtc)" Icon="update" />
-                </div>
-            </RadzenCard>
+                        <div class="ofd-identity">
+                            <div class="ofd-identity-headline">
+                                <h1 class="ofd-name">@DisplayFlightNumber(flight)</h1>
+                                <StatusBadge Label="@flight.Status" Tone="@FlightStatusTone(flight.Status)" />
+                                @if (flight.IsPerLanding)
+                                {
+                                    <StatusBadge Label="Per landing" Tone="warning" />
+                                }
+                                @if (flight.PotentialDuplicateOfFlightId is not null)
+                                {
+                                    <StatusBadge Label="Potential duplicate" Tone="warning" />
+                                }
+                            </div>
 
-            @if (flight.ApprovedWorkOrder is { } approved)
-            {
-                <RadzenCard class="ofd-card">
-                    <h2 class="os-section-title">Approved work order (captured values)</h2>
-                    <div class="ofd-fields">
-                        <DetailField Label="Work order #" Value="@approved.WorkOrderNumber" Icon="verified" />
-                        <DetailField Label="Outcome" Value="@approved.WorkOrderType" Icon="flag" />
-                        <DetailField Label="Actual flight #" Value="@approved.ActualFlightNumber" Icon="tag" />
-                        <DetailField Label="Actual aircraft type" Value="@None(approved.ActualAircraftTypeModel)" Icon="airplanemode_active" />
-                        <DetailField Label="Tail number" Value="@None(approved.AircraftTailNumber)" Icon="airplane_ticket" />
-                        <DetailField Label="ATA (UTC)" Value="@DateTimeDisplay(approved.ActualArrivalUtc)" Icon="flight_land" />
-                        <DetailField Label="ATD (UTC)" Value="@DateTimeDisplay(approved.ActualDepartureUtc)" Icon="flight_takeoff" />
-                        <DetailField Label="Approved at (UTC)" Value="@DateTimeDisplay(approved.ApprovedAtUtc)" Icon="schedule" />
-                        @if (approved.CanceledAtUtc is not null)
-                        {
-                            <DetailField Label="Canceled at (UTC)" Value="@DateTimeDisplay(approved.CanceledAtUtc)" Icon="cancel" />
-                            <DetailField Label="Cancellation reason" Value="@None(approved.CancellationReason)" Icon="notes" />
-                        }
-                        <DetailField Label="Signature" Value="@None(approved.CustomerSignatureReference)" Icon="draw" />
-                        <DetailField Label="Remarks" Value="@None(approved.Remarks)" Icon="notes" />
+                            <div class="ofd-meta-row">
+                                <RadzenIcon Icon="business" />
+                                <span>@flight.CustomerName</span>
+                                <RadzenIcon Icon="flight_takeoff" />
+                                <span>@flight.StationIata</span>
+                                <RadzenIcon Icon="settings" />
+                                <span>@flight.OperationTypeName</span>
+                                <RadzenIcon Icon="id_card" />
+                                <span>@ShortId(flight.Id)</span>
+                            </div>
+                        </div>
+
+                        <div class="ofd-hero-actions">
+                            <RowActionMenu ShowLabel="true" Label="Actions">
+                                <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
+                                           Visible="@CanEditFlight" OnClick="@OpenEditAsync" />
+                                <RowAction Text="Open work order" Icon="assignment_add" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                                           Visible="@CanOpenWorkOrder" OnClick="@OpenWorkOrderAsync" />
+                                <RowAction Text="Resolve duplicate" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
+                                           Visible="@CanMergeFlight" OnClick="@OpenMergeAsync" />
+                                <RowAction Separator="true" />
+                                <RowAction Text="Cancel flight" Icon="cancel" Danger="true" Permission="@OperationsPermissions.FlightsCancel"
+                                           Visible="@CanCancelFlight" OnClick="@OpenCancelAsync" />
+                            </RowActionMenu>
+                        </div>
                     </div>
-                    <RadzenButton Text="View approved work order" Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
-                                  Click="@(() => OpenWorkOrderDetailAsync(approved.WorkOrderId))" />
-                </RadzenCard>
-            }
 
-            <div class="ofd-grid-2">
-                <RadzenCard class="ofd-card">
-                    <h2 class="os-section-title">Planned services</h2>
-                    @if (flight.PlannedServices.Count == 0)
-                    {
-                        <EmptyState Title="No planned services" Icon="settings" />
-                    }
-                    else
-                    {
-                        <div class="ofd-chip-list">
-                            @foreach (var service in flight.PlannedServices)
-                            {
-                                <span @key="service.ServiceId" class="ofd-chip">
-                                    @service.Name
-                                    @if (service.IsAircraftPerLanding)
-                                    {
-                                        <small>Per landing</small>
-                                    }
-                                </span>
-                            }
-                        </div>
-                    }
-                </RadzenCard>
-
-                <RadzenCard class="ofd-card">
-                    <h2 class="os-section-title">Assigned staff</h2>
-                    @if (flight.AssignedEmployees.Count == 0)
-                    {
-                        <EmptyState Title="No assigned staff" Icon="groups" />
-                    }
-                    else
-                    {
-                        <div class="ofd-chip-list">
-                            @foreach (var employee in flight.AssignedEmployees)
-                            {
-                                <span @key="employee.StaffMemberId" class="ofd-chip">
-                                    @employee.FullName
-                                    <small>@employee.EmployeeId</small>
-                                </span>
-                            }
-                        </div>
-                    }
-                </RadzenCard>
-            </div>
-
-            <RadzenCard class="ofd-card">
-                <div class="ofd-card-head">
-                    <h2 class="os-section-title">Work orders</h2>
-                    @if (CanMergeWorkOrders)
-                    {
-                        <RadzenButton Text="Merge work orders" Icon="merge_type" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OpenWorkOrderMergeAsync" />
-                    }
-                </div>
-
-                @if (flight.WorkOrders.Count == 0)
-                {
-                    <EmptyState Title="No work orders" Description="Open a work order to start completion." Icon="assignment" />
-                }
-                else
-                {
-                    <RadzenDataGrid TItem="WorkOrderSummaryModel" Data="@flight.WorkOrders" AllowPaging="false" AllowSorting="false" GridLines="DataGridGridLines.Horizontal">
-                        <Columns>
-                            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Number">
-                                <Template Context="item">@(item.Number ?? item.Id.ToString()[..8])</Template>
-                            </RadzenDataGridColumn>
-                            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Property="Type" Title="Type" />
-                            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Owner">
-                                <Template Context="item">@(item.OwnerName ?? "System")</Template>
-                            </RadzenDataGridColumn>
-                            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Status" Width="150px">
-                                <Template Context="item"><StatusBadge Label="@item.Status" Tone="@WorkOrderStatusTone(item.Status)" /></Template>
-                            </RadzenDataGridColumn>
-                            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Actions" Width="90px" Sortable="false" TextAlign="TextAlign.Center">
-                                <Template Context="item">
-                                    <RowActionMenu>
-                                        <RowAction Text="Open" Icon="visibility" OnClick="@(() => OpenWorkOrderDetailAsync(item.Id))" />
-                                        <RowAction Text="Edit" Icon="edit" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                                                   Visible="@(item.Status is "Draft" or "Returned")" OnClick="@(() => OpenWorkOrderEditorAsync(item.Id))" />
-                                        <RowAction Text="Merge" Icon="merge_type" Permission="@OperationsPermissions.WorkOrdersMerge"
-                                                   Visible="@CanMergeWorkOrders" OnClick="@(() => OpenWorkOrderMergeAsync(item.Id))" />
-                                    </RowActionMenu>
-                                </Template>
-                            </RadzenDataGridColumn>
-                        </Columns>
-                    </RadzenDataGrid>
-                }
-            </RadzenCard>
-
-            <RadzenCard class="ofd-card">
-                <h2 class="os-section-title">Timeline</h2>
-                @if (timeline.Count == 0)
-                {
-                    <EmptyState Title="No timeline events" Icon="history" />
-                }
-                else
-                {
-                    <ul class="ofd-timeline">
-                        @foreach (var entry in timeline)
+                    <nav class="ofd-tabs" role="tablist">
+                        @foreach (var tab in Tabs())
                         {
-                            <li @key="entry.Id" class="ofd-timeline-item">
-                                <span class="ofd-timeline-icon"><RadzenIcon Icon="@TimelineIcon(entry.EventType)" /></span>
-                                <div class="ofd-timeline-text">
-                                    <strong>@TimelineLabel(entry)</strong>
-                                    <span>@DateTimeDisplay(entry.OccurredAtUtc) UTC · @(entry.ActorName ?? "Administrator/System")</span>
-                                </div>
-                            </li>
+                            <button type="button" role="tab" class="ofd-tab @(activeTab == tab.Key ? "ofd-tab--active" : "")"
+                                    aria-selected="@(activeTab == tab.Key)" @onclick="@(() => activeTab = tab.Key)">
+                                <RadzenIcon Icon="@tab.Icon" />
+                                <span>@tab.Label</span>
+                            </button>
                         }
-                    </ul>
+                    </nav>
+                </section>
+
+                @if (flight.PotentialDuplicateOfFlightId is { } duplicateId)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false" class="ofd-alert">
+                        This flight was flagged as a likely duplicate. Resolve the merge before release close-out.
+                        <RadzenButton Text="Resolve now" Icon="merge_type" ButtonStyle="ButtonStyle.Warning" Size="ButtonSize.Small"
+                                      Click="@(() => OpenMergeAsync(duplicateId))" />
+                    </RadzenAlert>
                 }
-            </RadzenCard>
+
+                <div class="ofd-tab-body" role="tabpanel">
+                    @(activeTab switch
+                    {
+                        FlightTab.Overview => OverviewTab(flight),
+                        FlightTab.Services => ServicesTab(flight),
+                        FlightTab.WorkOrders => WorkOrdersTab(flight),
+                        FlightTab.Timeline => TimelineTab(),
+                        _ => OverviewTab(flight)
+                    })
+                </div>
+            </div>
         }
     </div>
 </RequirePermission>
@@ -218,12 +115,243 @@
     private IReadOnlyList<FlightTimelineEntryModel> timeline = [];
     private bool isLoading = true;
     private bool loadError;
+    private FlightTab activeTab = FlightTab.Overview;
 
     private bool CanEditFlight => flight?.Status is "Scheduled" or "InProgress";
     private bool CanOpenWorkOrder => flight?.Status is "Scheduled" or "InProgress";
     private bool CanCancelFlight => flight?.Status is "Scheduled" or "InProgress";
     private bool CanMergeFlight => flight?.Status is not "Completed" and not "Canceled" and not "Merged";
     private bool CanMergeWorkOrders => flight?.WorkOrders.Count > 1;
+
+    private enum FlightTab { Overview, Services, WorkOrders, Timeline }
+
+    private sealed record TabDef(FlightTab Key, string Label, string Icon);
+
+    private IEnumerable<TabDef> Tabs()
+    {
+        yield return new TabDef(FlightTab.Overview, "Overview", "dashboard");
+        yield return new TabDef(FlightTab.Services, "Services & staff", "groups");
+        yield return new TabDef(FlightTab.WorkOrders, "Work orders", "assignment");
+        yield return new TabDef(FlightTab.Timeline, "Timeline", "history");
+    }
+
+    private RenderFragment OverviewTab(FlightDetail f) => @<text>
+        <div class="ofd-stack">
+            <div class="ofd-overview-grid">
+                <RadzenCard class="ofd-card">
+                    <div class="ofd-card-head"><RadzenIcon Icon="schedule" /><h3>Schedule</h3></div>
+                    <div class="ofd-lead">
+                        <span class="ofd-lead-icon"><RadzenIcon Icon="flight_land" /></span>
+                        <div>
+                            <p class="ofd-lead-title">@DateTimeDisplay(f.ScheduledArrivalUtc) UTC</p>
+                            <p class="os-muted ofd-lead-desc">STA to STD @DateTimeDisplay(f.ScheduledDepartureUtc) UTC</p>
+                        </div>
+                    </div>
+                    <dl class="ofd-metrics">
+                        <div class="ofd-metric"><dt>Original flight #</dt><dd>@f.OriginalFlightNumber</dd></div>
+                        <div class="ofd-metric"><dt>STA (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledArrivalUtc)</dd></div>
+                        <div class="ofd-metric"><dt>STD (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledDepartureUtc)</dd></div>
+                        <div class="ofd-metric"><dt>Aircraft type</dt><dd>@None(f.AircraftTypeModel)</dd></div>
+                        <div class="ofd-metric"><dt>Contract</dt><dd>@None(f.ContractNumber)</dd></div>
+                        <div class="ofd-metric"><dt>Updated</dt><dd>@DateTimeDisplay(f.UpdatedAtUtc)</dd></div>
+                    </dl>
+                </RadzenCard>
+
+                <RadzenCard class="ofd-card">
+                    <div class="ofd-card-head"><RadzenIcon Icon="settings" /><h3>Work scope</h3></div>
+                    <div class="ofd-lead">
+                        <span class="ofd-lead-icon"><RadzenIcon Icon="task_alt" /></span>
+                        <div>
+                            <p class="ofd-lead-title">@f.PlannedServices.Count planned service(s)</p>
+                            <p class="os-muted ofd-lead-desc">@f.AssignedEmployees.Count assigned staff member(s)</p>
+                        </div>
+                    </div>
+                    <dl class="ofd-metrics">
+                        <div class="ofd-metric"><dt>Customer</dt><dd>@f.CustomerName</dd></div>
+                        <div class="ofd-metric"><dt>Station</dt><dd>@f.StationIata</dd></div>
+                        <div class="ofd-metric"><dt>Operation</dt><dd>@f.OperationTypeName</dd></div>
+                        <div class="ofd-metric"><dt>Per landing</dt><dd>@(f.IsPerLanding ? "Yes" : "No")</dd></div>
+                    </dl>
+                    <button type="button" class="ofd-card-link" @onclick="@(() => activeTab = FlightTab.Services)">
+                        Open<RadzenIcon Icon="chevron_right" />
+                    </button>
+                </RadzenCard>
+
+                <RadzenCard class="ofd-card">
+                    <div class="ofd-card-head"><RadzenIcon Icon="assignment" /><h3>Work orders</h3></div>
+                    <div class="ofd-lead">
+                        <span class="ofd-lead-dot ofd-lead-dot--@FlightStatusTone(f.Status)"></span>
+                        <div>
+                            <p class="ofd-lead-title">@f.Status</p>
+                            <p class="os-muted ofd-lead-desc">@f.WorkOrders.Count work order(s) attached</p>
+                        </div>
+                    </div>
+                    <dl class="ofd-metrics">
+                        <div class="ofd-metric"><dt>Approved work order</dt><dd>@(f.ApprovedWorkOrder?.WorkOrderNumber ?? "None")</dd></div>
+                        <div class="ofd-metric"><dt>Created</dt><dd>@DateTimeDisplay(f.CreatedAtUtc)</dd></div>
+                        <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@(f.PotentialDuplicateOfFlightId is null ? "No" : "Yes")</dd></div>
+                    </dl>
+                    <button type="button" class="ofd-card-link" @onclick="@(() => activeTab = FlightTab.WorkOrders)">
+                        Open<RadzenIcon Icon="chevron_right" />
+                    </button>
+                </RadzenCard>
+            </div>
+
+            @if (f.ApprovedWorkOrder is { } approved)
+            {
+                @ApprovedWorkOrderCard(approved)
+            }
+        </div>
+    </text>;
+
+    private RenderFragment ServicesTab(FlightDetail f) => @<text>
+        <div class="ofd-grid-2">
+            <RadzenCard class="ofd-card">
+                <div class="ofd-card-head"><RadzenIcon Icon="settings" /><h3>Planned services</h3></div>
+                @if (f.PlannedServices.Count == 0)
+                {
+                    <EmptyState Title="No planned services" Icon="settings" />
+                }
+                else
+                {
+                    <div class="ofd-chip-list">
+                        @foreach (var service in f.PlannedServices)
+                        {
+                            <span @key="service.ServiceId" class="ofd-chip">
+                                @service.Name
+                                @if (service.IsAircraftPerLanding)
+                                {
+                                    <small>Per landing</small>
+                                }
+                            </span>
+                        }
+                    </div>
+                }
+            </RadzenCard>
+
+            <RadzenCard class="ofd-card">
+                <div class="ofd-card-head"><RadzenIcon Icon="groups" /><h3>Assigned staff</h3></div>
+                @if (f.AssignedEmployees.Count == 0)
+                {
+                    <EmptyState Title="No assigned staff" Icon="groups" />
+                }
+                else
+                {
+                    <div class="ofd-chip-list">
+                        @foreach (var employee in f.AssignedEmployees)
+                        {
+                            <span @key="employee.StaffMemberId" class="ofd-chip">
+                                @employee.FullName
+                                <small>@employee.EmployeeId</small>
+                            </span>
+                        }
+                    </div>
+                }
+            </RadzenCard>
+        </div>
+    </text>;
+
+    private RenderFragment WorkOrdersTab(FlightDetail f) => @<text>
+        <div class="ofd-stack">
+            @if (f.ApprovedWorkOrder is { } approved)
+            {
+                @ApprovedWorkOrderCard(approved)
+            }
+
+            <RadzenCard class="ofd-card">
+                <div class="ofd-card-head">
+                    <RadzenIcon Icon="assignment" /><h3>Work orders</h3>
+                    @if (CanMergeWorkOrders)
+                    {
+                        <RadzenButton Text="Merge work orders" Icon="merge_type" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@OpenWorkOrderMergeAsync" />
+                    }
+                </div>
+
+                @if (f.WorkOrders.Count == 0)
+                {
+                    <EmptyState Title="No work orders" Description="Open a work order to start completion." Icon="assignment" />
+                }
+                else
+                {
+                    @WorkOrdersGrid(f.WorkOrders)
+                }
+            </RadzenCard>
+        </div>
+    </text>;
+
+    private RenderFragment TimelineTab() => @<text>
+        <RadzenCard class="ofd-card">
+            <div class="ofd-card-head"><RadzenIcon Icon="history" /><h3>Timeline</h3></div>
+            @if (timeline.Count == 0)
+            {
+                <EmptyState Title="No timeline events" Icon="history" />
+            }
+            else
+            {
+                <ol class="ofd-timeline">
+                    @foreach (var entry in timeline)
+                    {
+                        <li @key="entry.Id" class="ofd-timeline-item">
+                            <span class="ofd-timeline-icon"><RadzenIcon Icon="@TimelineIcon(entry.EventType)" /></span>
+                            <div class="ofd-timeline-text">
+                                <strong>@TimelineLabel(entry)</strong>
+                                <span>@DateTimeDisplay(entry.OccurredAtUtc) UTC · @(entry.ActorName ?? "Administrator/System")</span>
+                            </div>
+                        </li>
+                    }
+                </ol>
+            }
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment ApprovedWorkOrderCard(ApprovedWorkOrderModel approved) => @<RadzenCard class="ofd-card">
+        <div class="ofd-card-head"><RadzenIcon Icon="verified" /><h3>Approved work order</h3></div>
+        <div class="ofd-fields">
+            <DetailField Label="Work order #" Value="@approved.WorkOrderNumber" Icon="verified" />
+            <DetailField Label="Outcome" Value="@approved.WorkOrderType" Icon="flag" />
+            <DetailField Label="Actual flight #" Value="@approved.ActualFlightNumber" Icon="tag" />
+            <DetailField Label="Actual aircraft type" Value="@None(approved.ActualAircraftTypeModel)" Icon="airplanemode_active" />
+            <DetailField Label="Tail number" Value="@None(approved.AircraftTailNumber)" Icon="airplane_ticket" />
+            <DetailField Label="ATA (UTC)" Value="@DateTimeDisplay(approved.ActualArrivalUtc)" Icon="flight_land" />
+            <DetailField Label="ATD (UTC)" Value="@DateTimeDisplay(approved.ActualDepartureUtc)" Icon="flight_takeoff" />
+            <DetailField Label="Approved at (UTC)" Value="@DateTimeDisplay(approved.ApprovedAtUtc)" Icon="schedule" />
+            @if (approved.CanceledAtUtc is not null)
+            {
+                <DetailField Label="Canceled at (UTC)" Value="@DateTimeDisplay(approved.CanceledAtUtc)" Icon="cancel" />
+                <DetailField Label="Cancellation reason" Value="@None(approved.CancellationReason)" Icon="notes" />
+            }
+            <DetailField Label="Signature" Value="@None(approved.CustomerSignatureReference)" Icon="draw" />
+            <DetailField Label="Remarks" Value="@None(approved.Remarks)" Icon="notes" />
+        </div>
+        <RadzenButton Text="View approved work order" Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                      class="ofd-card-action" Click="@(() => OpenWorkOrderDetailAsync(approved.WorkOrderId))" />
+    </RadzenCard>;
+
+    private RenderFragment WorkOrdersGrid(IReadOnlyList<WorkOrderSummaryModel> workOrders) => @<RadzenDataGrid TItem="WorkOrderSummaryModel" Data="@workOrders" AllowPaging="false" AllowSorting="false" GridLines="DataGridGridLines.Horizontal">
+        <Columns>
+            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Number">
+                <Template Context="item">@(item.Number ?? item.Id.ToString()[..8])</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Property="Type" Title="Type" />
+            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Owner">
+                <Template Context="item">@(item.OwnerName ?? "System")</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Status" Width="150px">
+                <Template Context="item"><StatusBadge Label="@item.Status" Tone="@WorkOrderStatusTone(item.Status)" /></Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="WorkOrderSummaryModel" Title="Actions" Width="90px" Sortable="false" TextAlign="TextAlign.Center">
+                <Template Context="item">
+                    <RowActionMenu>
+                        <RowAction Text="Open" Icon="visibility" OnClick="@(() => OpenWorkOrderDetailAsync(item.Id))" />
+                        <RowAction Text="Edit" Icon="edit" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                                   Visible="@(item.Status is "Draft" or "Returned")" OnClick="@(() => OpenWorkOrderEditorAsync(item.Id))" />
+                        <RowAction Text="Merge" Icon="merge_type" Permission="@OperationsPermissions.WorkOrdersMerge"
+                                   Visible="@CanMergeWorkOrders" OnClick="@(() => OpenWorkOrderMergeAsync(item.Id))" />
+                    </RowActionMenu>
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>;
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -384,6 +512,29 @@
 
     private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
 
+    private static string DisplayFlightNumber(FlightDetail flight) =>
+        string.IsNullOrWhiteSpace(flight.CustomerIataCode)
+            ? flight.FlightNumber
+            : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
+
+    private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string ProfileClass(FlightDetail flight) => flight.Status switch
+    {
+        "Completed" => "ofd-profile--completed",
+        "Canceled" or "Merged" => "ofd-profile--danger",
+        "InProgress" => "ofd-profile--warning",
+        _ => "ofd-profile--active"
+    };
+
+    private static string DotClass(string status) => status switch
+    {
+        "Completed" => "ofd-avatar-dot--success",
+        "Canceled" or "Merged" => "ofd-avatar-dot--danger",
+        "InProgress" => "ofd-avatar-dot--warning",
+        _ => "ofd-avatar-dot--active"
+    };
+
     private static string FlightStatusTone(string status) => status switch
     {
         "Completed" => "success",
@@ -400,11 +551,4 @@
         _ => "neutral"
     };
 
-    private static string HeroTone(string status) => status switch
-    {
-        "Completed" => "success",
-        "Canceled" or "Merged" => "danger",
-        "InProgress" => "warning",
-        _ => "primary"
-    };
 }
