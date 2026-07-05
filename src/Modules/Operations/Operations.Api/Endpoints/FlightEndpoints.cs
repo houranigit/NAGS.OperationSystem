@@ -34,9 +34,10 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
-        flights.MapGet("/duplicate-candidates", async (ISender sender, CancellationToken ct, Guid customerId, string flightNumber, DateTimeOffset scheduledArrivalUtc) =>
+        flights.MapGet("/duplicate-candidates", async (ISender sender, CancellationToken ct,
+            Guid customerId, DateTimeOffset scheduledArrivalUtc, DateTimeOffset scheduledDepartureUtc, Guid? stationId = null, Guid? excludeFlightId = null) =>
         {
-            var result = await sender.Send(new FindDuplicateCandidatesQuery(customerId, flightNumber, scheduledArrivalUtc), ct);
+            var result = await sender.Send(new FindDuplicateCandidatesQuery(customerId, stationId, scheduledArrivalUtc, scheduledDepartureUtc, excludeFlightId), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 

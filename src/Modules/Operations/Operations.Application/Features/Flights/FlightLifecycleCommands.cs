@@ -197,7 +197,13 @@ public sealed class CreateAdHocFlightWithWorkOrderCommandHandler(
         if (build.IsFailure)
             return build.Error;
 
-        var candidates = await duplicateDetector.FindAsync(request.CustomerId, stationId, request.FlightNumber, request.ScheduledArrivalUtc, cancellationToken);
+        var candidates = await duplicateDetector.FindAsync(
+            request.CustomerId,
+            stationId,
+            request.ScheduledArrivalUtc,
+            request.ScheduledDepartureUtc,
+            excludeFlightId: null,
+            cancellationToken);
         var strong = candidates.FirstOrDefault(c => c.Score >= FlightDuplicateDetector.StrongMatchThreshold);
         if (strong is not null && !request.AcknowledgeDuplicates)
         {

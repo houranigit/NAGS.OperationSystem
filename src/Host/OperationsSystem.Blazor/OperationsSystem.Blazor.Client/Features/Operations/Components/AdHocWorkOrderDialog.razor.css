@@ -93,6 +93,18 @@
     color: var(--os-color-text-muted);
 }
 
+.oah-duplicate-link {
+    width: fit-content;
+    color: var(--os-color-primary);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.oah-duplicate-link:hover {
+    color: var(--os-color-primary-hover);
+    text-decoration: underline;
+}
+
 .oah-actions {
     display: flex;
     justify-content: space-between;

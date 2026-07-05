@@ -30,9 +30,9 @@
                         <div class="opf-duplicates">
                             @foreach (var duplicate in duplicates)
                             {
-                                <span @key="duplicate.FlightId">
-                                    @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata · score @duplicate.Score
-                                </span>
+                                <a @key="duplicate.FlightId" class="opf-duplicate-link" href="@FlightUrl(duplicate.FlightId)" target="_blank" rel="noopener noreferrer">
+                                    @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata
+                                </a>
                             }
                         </div>
                     </div>
@@ -457,9 +457,9 @@
         errorMessage = null;
         duplicates = [];
 
-        if (model.CustomerId == Guid.Empty || string.IsNullOrWhiteSpace(model.FlightNumber) || model.ScheduledArrivalUtc is null)
+        if (model.CustomerId == Guid.Empty || model.StationId == Guid.Empty || model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
         {
-            errorMessage = "Select customer, flight number, and scheduled arrival before checking duplicates.";
+            errorMessage = "Select customer, station, scheduled arrival, and scheduled departure before checking duplicates.";
             return;
         }
 
@@ -467,14 +467,18 @@
         {
             duplicates = await Operations.GetDuplicateCandidatesAsync(
                 model.CustomerId,
-                model.FlightNumber.Trim().ToUpperInvariant(),
-                ToUtc(model.ScheduledArrivalUtc.Value));
+                ToUtc(model.ScheduledArrivalUtc.Value),
+                ToUtc(model.ScheduledDepartureUtc.Value),
+                model.StationId,
+                FlightId);
         }
         catch (ApiException ex)
         {
             errorMessage = ex.ToDisplayMessage("Could not check duplicate candidates.");
         }
     }
+
+    private static string FlightUrl(Guid flightId) => $"/operations/flights/{flightId}";
 
     private async Task SubmitAsync()
     {

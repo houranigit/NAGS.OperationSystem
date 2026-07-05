@@ -6,67 +6,37 @@ using Operations.Domain.Enumerations;
 namespace Operations.Application.Features.Flights;
 
 /// <summary>
-/// Probabilistic same-flight detection for ad-hoc creation. Scores candidates primarily on
-/// customer + station + scheduled-time proximity, with flight number as a supporting signal.
-/// Deterministic duplicate work orders (a flight with multiple active work orders) are handled elsewhere.
+/// Exact same-flight detection. A duplicate flight is another non-terminal flight with the same
+/// customer, station, STA, and STD. Deterministic duplicate work orders are handled elsewhere.
 /// </summary>
 public sealed class FlightDuplicateDetector(IOperationsDbContext db)
 {
-    public const int StrongMatchThreshold = 70;
-    private static readonly TimeSpan Window = TimeSpan.FromHours(6);
+    public const int StrongMatchThreshold = 100;
 
     public async Task<IReadOnlyList<DuplicateCandidateDto>> FindAsync(
         Guid customerId,
         Guid stationId,
-        string flightNumber,
         DateTimeOffset scheduledArrivalUtc,
+        DateTimeOffset scheduledDepartureUtc,
+        Guid? excludeFlightId,
         CancellationToken cancellationToken)
     {
-        var from = scheduledArrivalUtc - Window;
-        var to = scheduledArrivalUtc + Window;
-        var normalizedNumber = flightNumber.Trim().ToUpperInvariant();
-
-        var nearby = await db.Flights.AsNoTracking()
+        return await db.Flights.AsNoTracking()
             .Where(f => f.Status != FlightStatus.Merged && f.Status != FlightStatus.Canceled)
+            .Where(f => excludeFlightId == null || f.Id != excludeFlightId)
+            .Where(f => f.Customer.CustomerId == customerId)
             .Where(f => f.Station.StationId == stationId)
-            .Where(f => f.Schedule.Sta >= from && f.Schedule.Sta <= to)
-            .Select(f => new
-            {
+            .Where(f => f.Schedule.Sta == scheduledArrivalUtc)
+            .Where(f => f.Schedule.Std == scheduledDepartureUtc)
+            .OrderBy(f => f.FlightNumber.Value)
+            .ThenBy(f => f.Id)
+            .Select(f => new DuplicateCandidateDto(
                 f.Id,
-                Number = f.FlightNumber.Value,
-                CustomerId = f.Customer.CustomerId,
-                CustomerName = f.Customer.Name,
-                StationIata = f.Station.IataCode,
-                Sta = f.Schedule.Sta
-            })
+                f.FlightNumber.Value,
+                f.Customer.Name,
+                f.Station.IataCode,
+                f.Schedule.Sta,
+                StrongMatchThreshold))
             .ToListAsync(cancellationToken);
-
-        var candidates = new List<DuplicateCandidateDto>();
-        foreach (var f in nearby)
-        {
-            var score = 0;
-
-            // Station already matches (all rows share the station): base weight.
-            score += 25;
-
-            if (f.CustomerId == customerId)
-                score += 30;
-
-            var minutesApart = Math.Abs((f.Sta - scheduledArrivalUtc).TotalMinutes);
-            if (minutesApart <= 30)
-                score += 30;
-            else if (minutesApart <= 120)
-                score += 20;
-            else if (minutesApart <= 360)
-                score += 10;
-
-            if (string.Equals(f.Number, normalizedNumber, StringComparison.OrdinalIgnoreCase))
-                score += 15;
-
-            if (score >= 40)
-                candidates.Add(new DuplicateCandidateDto(f.Id, f.Number, f.CustomerName, f.StationIata, f.Sta, score));
-        }
-
-        return candidates.OrderByDescending(c => c.Score).ToList();
     }
 }

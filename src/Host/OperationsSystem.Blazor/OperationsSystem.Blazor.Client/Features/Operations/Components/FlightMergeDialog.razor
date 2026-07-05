@@ -81,7 +81,12 @@
             }
             else
             {
-                var candidates = await Operations.GetDuplicateCandidatesAsync(primary.CustomerId, primary.FlightNumber, primary.ScheduledArrivalUtc);
+                var candidates = await Operations.GetDuplicateCandidatesAsync(
+                    primary.CustomerId,
+                    primary.ScheduledArrivalUtc,
+                    primary.ScheduledDepartureUtc,
+                    primary.StationId,
+                    primary.Id);
                 foreach (var candidate in candidates.Where(x => x.FlightId != primary.Id).Take(6))
                     map[candidate.FlightId] = await Operations.GetFlightAsync(candidate.FlightId);
             }

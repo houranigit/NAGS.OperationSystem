@@ -56,12 +56,19 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         api.PostAsync<CancelFlightRequestModel, Guid>($"/operations/flights/{flightId}/cancel", request, ct);
 
     public Task<IReadOnlyList<DuplicateCandidate>> GetDuplicateCandidatesAsync(
-        Guid customerId, string flightNumber, DateTimeOffset scheduledArrivalUtc, CancellationToken ct = default)
+        Guid customerId,
+        DateTimeOffset scheduledArrivalUtc,
+        DateTimeOffset scheduledDepartureUtc,
+        Guid? stationId = null,
+        Guid? excludeFlightId = null,
+        CancellationToken ct = default)
     {
         var query = new QueryBuilder()
             .Add("customerId", customerId)
-            .Add("flightNumber", flightNumber)
+            .Add("stationId", stationId)
             .Add("scheduledArrivalUtc", scheduledArrivalUtc)
+            .Add("scheduledDepartureUtc", scheduledDepartureUtc)
+            .Add("excludeFlightId", excludeFlightId)
             .Build();
         return api.GetAsync<IReadOnlyList<DuplicateCandidate>>($"/operations/flights/duplicate-candidates{query}", ct);
     }

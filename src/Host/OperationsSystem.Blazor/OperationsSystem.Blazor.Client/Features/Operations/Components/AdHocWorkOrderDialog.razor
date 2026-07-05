@@ -130,9 +130,9 @@
                         <div class="oah-duplicates">
                             @foreach (var duplicate in duplicates)
                             {
-                                <span @key="duplicate.FlightId">
-                                    @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata · score @duplicate.Score
-                                </span>
+                                <a @key="duplicate.FlightId" class="oah-duplicate-link" href="@FlightUrl(duplicate.FlightId)" target="_blank" rel="noopener noreferrer">
+                                    @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata
+                                </a>
                             }
                         </div>
                     </div>
@@ -253,7 +253,9 @@
                 try
                 {
                     duplicates = await Operations.GetDuplicateCandidatesAsync(
-                        model.CustomerId, model.FlightNumber.Trim().ToUpperInvariant(), ToUtc(model.ScheduledArrivalUtc!.Value));
+                        model.CustomerId,
+                        ToUtc(model.ScheduledArrivalUtc!.Value),
+                        ToUtc(model.ScheduledDepartureUtc!.Value));
                 }
                 catch (ApiException)
                 {
@@ -296,6 +298,8 @@
     }
 
     private static string? TrimToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string FlightUrl(Guid flightId) => $"/operations/flights/{flightId}";
 
     private sealed class AdHocFormModel
     {

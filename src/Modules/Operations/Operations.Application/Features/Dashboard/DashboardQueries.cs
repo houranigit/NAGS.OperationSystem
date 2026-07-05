@@ -42,8 +42,10 @@ public sealed class GetOperationsDashboardQueryHandler(IOperationsDbContext db, 
 
 public sealed record FindDuplicateCandidatesQuery(
     Guid CustomerId,
-    string FlightNumber,
-    DateTimeOffset ScheduledArrivalUtc) : IQuery<IReadOnlyList<DuplicateCandidateDto>>;
+    Guid? StationId,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    Guid? ExcludeFlightId = null) : IQuery<IReadOnlyList<DuplicateCandidateDto>>;
 
 public sealed class FindDuplicateCandidatesQueryHandler(IOperationsScope scope, FlightDuplicateDetector detector)
     : IQueryHandler<FindDuplicateCandidatesQuery, IReadOnlyList<DuplicateCandidateDto>>
@@ -53,10 +55,35 @@ public sealed class FindDuplicateCandidatesQueryHandler(IOperationsScope scope, 
         var scopeResult = await scope.ResolveAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
-        if (scopeResult.Value.StationId is not { } stationId)
-            return Error.Forbidden("Only station staff can check for duplicates.", "Operations.Flight.DuplicateCheckNotAllowed");
 
-        var candidates = await detector.FindAsync(request.CustomerId, stationId, request.FlightNumber, request.ScheduledArrivalUtc, cancellationToken);
+        var context = scopeResult.Value;
+        Guid stationId;
+        if (context.IsAdministrator)
+        {
+            if (request.StationId is not { } requestedStationId || requestedStationId == Guid.Empty)
+                return Error.Validation("Station is required to check for duplicates.", "Operations.Flight.DuplicateCheckStationRequired");
+
+            stationId = requestedStationId;
+        }
+        else if (context.StationId is { } scopedStationId)
+        {
+            if (request.StationId is { } requestedStationId && requestedStationId != Guid.Empty && requestedStationId != scopedStationId)
+                return Error.Forbidden("This duplicate check is outside your station scope.", "Operations.Scope.Forbidden");
+
+            stationId = scopedStationId;
+        }
+        else
+        {
+            return Error.Forbidden("You do not have access to duplicate checks.", "Operations.Flight.DuplicateCheckNotAllowed");
+        }
+
+        var candidates = await detector.FindAsync(
+            request.CustomerId,
+            stationId,
+            request.ScheduledArrivalUtc,
+            request.ScheduledDepartureUtc,
+            request.ExcludeFlightId,
+            cancellationToken);
         return Result.Success(candidates);
     }
 }

@@ -453,6 +453,18 @@
     font-size: var(--os-text-sm);
 }
 
+.opf-duplicate-link {
+    width: fit-content;
+    color: var(--os-color-primary);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.opf-duplicate-link:hover {
+    color: var(--os-color-primary-hover);
+    text-decoration: underline;
+}
+
 .opf-actions {
     display: flex;
     align-items: center;
