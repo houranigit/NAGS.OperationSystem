@@ -155,7 +155,7 @@
                 <div class="opf-input-wrap">
                     <span class="opf-flight-prefix">
                         <span>@CustomerIataPrefix</span>
-                        @if (HasCustomerIataPrefix)
+                        @if (ShowCustomerFlightPrefixDivider)
                         {
                             <span class="opf-flight-prefix-divider">-</span>
                         }
@@ -428,8 +428,15 @@
     private bool HasCustomerIataPrefix =>
         !string.IsNullOrWhiteSpace(SelectedCustomer?.IataCode);
 
+    private bool ShowCustomerFlightPrefixDivider =>
+        SelectedCustomer is not null;
+
     private string CustomerIataPrefix =>
-        HasCustomerIataPrefix ? SelectedCustomer!.IataCode!.Trim().ToUpperInvariant() : "-";
+        SelectedCustomer is null
+            ? "-"
+            : HasCustomerIataPrefix
+                ? SelectedCustomer.IataCode!.Trim().ToUpperInvariant()
+                : "N/A";
 
     private void TogglePlannedService(ServiceOption service)
     {
