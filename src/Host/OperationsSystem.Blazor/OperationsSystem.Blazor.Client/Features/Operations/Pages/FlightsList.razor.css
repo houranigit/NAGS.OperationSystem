@@ -3,7 +3,7 @@
     align-items: center;
     gap: var(--os-space-2);
     flex: 0 1 19rem;
-    min-width: min(100%, 18.5rem);
+    min-width: min(100%, 23.5rem);
 }
 
 .ofl-date-filter {
