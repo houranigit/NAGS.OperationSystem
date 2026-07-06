@@ -2,10 +2,14 @@
     display: inline-flex;
     align-items: center;
     gap: var(--os-space-2);
+    flex: 0 1 19rem;
+    min-width: min(100%, 18.5rem);
 }
 
 .ofl-date-filter {
-    width: 10.5rem;
+    flex: 1 1 9rem;
+    width: 9.25rem;
+    min-width: 0;
 }
 
 .ofl-date-range ::deep .rz-datepicker {

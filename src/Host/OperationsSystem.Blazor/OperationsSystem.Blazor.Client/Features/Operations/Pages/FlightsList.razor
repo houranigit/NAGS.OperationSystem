@@ -33,7 +33,8 @@
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
-                      SearchPlaceholder="Search flight number or customer" CountLabel="flights" EmptyText="No flights match your filters.">
+                      SearchPlaceholder="Search flight number or customer" CountLabel="flights" EmptyText="No flights match your filters."
+                      UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
             <Filters>
                 <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
                 <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" />
@@ -119,6 +120,14 @@
         new("Completed", "Completed"),
         new("Canceled", "Canceled")
     ];
+
+    private int ActiveFilterCount =>
+        (stationFilter.HasValue ? 1 : 0)
+        + (customerFilter.HasValue ? 1 : 0)
+        + (!string.IsNullOrWhiteSpace(statusFilter) ? 1 : 0)
+        + (operationTypeFilter.HasValue ? 1 : 0)
+        + (fromFilter.HasValue ? 1 : 0)
+        + (toFilter.HasValue ? 1 : 0);
 
     protected override async Task OnInitializedAsync()
     {
@@ -224,6 +233,21 @@
     private async Task OnToFilterChangedAsync(DateTime? value)
     {
         toFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        if (ActiveFilterCount == 0)
+            return;
+
+        stationFilter = null;
+        customerFilter = null;
+        statusFilter = null;
+        operationTypeFilter = null;
+        fromFilter = null;
+        toFilter = null;
+
         await ReloadAsync();
     }
 

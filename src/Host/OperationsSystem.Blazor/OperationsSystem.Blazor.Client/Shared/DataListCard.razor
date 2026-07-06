@@ -10,43 +10,80 @@
 *@
 
 <RadzenCard class="os-list-card">
-    <div class="os-list-toolbar">
-        <div class="os-list-toolbar-filters">
-            <span class="os-count-badge" aria-live="polite">
-                <strong>@Count.ToString("N0")</strong>
-                <span>@CountLabel</span>
-            </span>
+    <div class="@ToolbarCssClass">
+        <div class="os-list-toolbar-main">
+            <div class="os-list-toolbar-filters">
+                <span class="os-count-badge" aria-live="polite">
+                    <strong>@Count.ToString("N0")</strong>
+                    <span>@CountLabel</span>
+                </span>
 
-            @if (ShowSearch)
-            {
-                <div class="os-search">
-                    <RadzenFormField Variant="Variant.Outlined">
-                        <Start>
-                            <RadzenIcon Icon="search" />
-                        </Start>
-                        <ChildContent>
-                            <RadzenTextBox Value="@SearchValue"
-                                           Change="@OnSearchChangedAsync"
-                                           Placeholder="@(SearchPlaceholder ?? UiStrings.Common.Search)"
-                                           aria-label="@(SearchPlaceholder ?? UiStrings.Common.Search)" />
-                        </ChildContent>
-                        <End>
-                            @if (!string.IsNullOrEmpty(SearchValue))
-                            {
-                                <button type="button" class="os-search-clear" aria-label="@UiStrings.Common.Cancel" @onclick="ClearSearchAsync">
-                                    <RadzenIcon Icon="close" />
-                                </button>
-                            }
-                        </End>
-                    </RadzenFormField>
+                @if (ShowSearch)
+                {
+                    <div class="os-search">
+                        <RadzenFormField Variant="Variant.Outlined">
+                            <Start>
+                                <RadzenIcon Icon="search" />
+                            </Start>
+                            <ChildContent>
+                                <RadzenTextBox Value="@SearchValue"
+                                               Change="@OnSearchChangedAsync"
+                                               Placeholder="@(SearchPlaceholder ?? UiStrings.Common.Search)"
+                                               aria-label="@(SearchPlaceholder ?? UiStrings.Common.Search)" />
+                            </ChildContent>
+                            <End>
+                                @if (!string.IsNullOrEmpty(SearchValue))
+                                {
+                                    <button type="button" class="os-search-clear" aria-label="@UiStrings.Common.Cancel" @onclick="ClearSearchAsync">
+                                        <RadzenIcon Icon="close" />
+                                    </button>
+                                }
+                            </End>
+                        </RadzenFormField>
+                    </div>
+                }
+
+                @if (UseCollapsibleFilters && Filters is not null)
+                {
+                    <button type="button" class="@FilterToggleCssClass" aria-expanded="@(filtersExpanded ? "true" : "false")" @onclick="ToggleFilters">
+                        <RadzenIcon Icon="tune" />
+                        <span>@FilterToggleText</span>
+                        @if (ActiveFilterCount > 0)
+                        {
+                            <span class="os-filter-count">@ActiveFilterCount</span>
+                        }
+                        <span class="os-filter-toggle-chevron">
+                            <RadzenIcon Icon="expand_more" />
+                        </span>
+                    </button>
+
+                    @if (OnClearFilters.HasDelegate && ActiveFilterCount > 0)
+                    {
+                        <button type="button" class="os-clear-filters" @onclick="ClearFiltersAsync">
+                            <RadzenIcon Icon="filter_alt_off" />
+                            <span>@ClearFiltersText</span>
+                        </button>
+                    }
+                }
+                else
+                {
+                    @Filters
+                }
+            </div>
+
+            <div class="os-list-toolbar-meta">
+                @Toolbar
+            </div>
+        </div>
+
+        @if (UseCollapsibleFilters && Filters is not null)
+        {
+            <div class="@FilterPanelCssClass">
+                <div class="os-list-filter-panel-inner">
+                    @Filters
                 </div>
-            }
-            @Filters
-        </div>
-
-        <div class="os-list-toolbar-meta">
-            @Toolbar
-        </div>
+            </div>
+        }
     </div>
 
     @if (HasError)
@@ -103,6 +140,19 @@
     /// <summary>Filter controls (dropdowns) rendered beside the search box.</summary>
     [Parameter] public RenderFragment? Filters { get; set; }
 
+    /// <summary>When true, filters move into an animated tray opened from the toolbar.</summary>
+    [Parameter] public bool UseCollapsibleFilters { get; set; }
+
+    /// <summary>Initial state for the optional filter tray.</summary>
+    [Parameter] public bool FiltersInitiallyExpanded { get; set; }
+
+    /// <summary>Number shown on the filter toggle when filters are active.</summary>
+    [Parameter] public int ActiveFilterCount { get; set; }
+
+    [Parameter] public string FilterToggleText { get; set; } = "Filters";
+    [Parameter] public string ClearFiltersText { get; set; } = "Clear filters";
+    [Parameter] public EventCallback OnClearFilters { get; set; }
+
     [Parameter] public IEnumerable<TItem>? Data { get; set; }
     [Parameter] public int Count { get; set; }
     [Parameter] public bool IsLoading { get; set; }
@@ -141,6 +191,18 @@
     [Parameter] public string? ActionsTitle { get; set; }
     [Parameter] public string ActionsWidth { get; set; } = "84px";
 
+    private bool filterStateInitialized;
+    private bool filtersExpanded;
+
+    protected override void OnParametersSet()
+    {
+        if (filterStateInitialized)
+            return;
+
+        filtersExpanded = FiltersInitiallyExpanded;
+        filterStateInitialized = true;
+    }
+
     /// <summary>
     /// Reloads the grid from the first page (use after search/filter changes or create/edit/delete).
     /// Falls back to invoking <see cref="LoadData"/> directly when the grid is hidden (e.g. error state).
@@ -172,4 +234,17 @@
         await SearchValueChanged.InvokeAsync(string.Empty);
         await OnSearch.InvokeAsync();
     }
+
+    private void ToggleFilters() => filtersExpanded = !filtersExpanded;
+
+    private async Task ClearFiltersAsync() => await OnClearFilters.InvokeAsync();
+
+    private string ToolbarCssClass =>
+        UseCollapsibleFilters ? "os-list-toolbar os-list-toolbar--collapsible" : "os-list-toolbar";
+
+    private string FilterPanelCssClass =>
+        filtersExpanded ? "os-list-filter-panel is-expanded" : "os-list-filter-panel";
+
+    private string FilterToggleCssClass =>
+        filtersExpanded ? "os-filter-toggle is-expanded" : "os-filter-toggle";
 }
