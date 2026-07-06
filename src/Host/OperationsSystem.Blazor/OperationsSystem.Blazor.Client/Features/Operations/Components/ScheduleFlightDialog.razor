@@ -225,6 +225,8 @@
 
         @CustomerFlightNumberFields("flightNumber")
         @StationOperationFields()
+        @AircraftTypeField()
+
         <div class="opf-grid-2">
             <div class="opf-field-block">
                 <label class="opf-label">Scheduled arrival (UTC) <span class="opf-required">*</span></label>
@@ -244,7 +246,6 @@
             </div>
         </div>
 
-        @AircraftTypeField()
         <div class="opf-details-actions">
             <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary"
                           ButtonType="ButtonType.Button" Click="@CheckDuplicatesAsync" Disabled="@isSubmitting" />
@@ -256,6 +257,8 @@
 
         @CustomerFlightNumberFields("bulkFlightNumber")
         @StationOperationFields()
+        @AircraftTypeField()
+
         <div class="opf-grid-2">
             <div class="opf-field-block">
                 <label class="opf-label">Period start date <span class="opf-required">*</span></label>
@@ -294,7 +297,6 @@
             </div>
         </div>
 
-        @AircraftTypeField()
         <div class="opf-field-block">
             <label class="opf-label">Weekdays <span class="opf-required">*</span></label>
             <div class="opf-weekday-list">
@@ -308,6 +310,7 @@
                 }
             </div>
         </div>
+
     </section>;
 
     private RenderFragment CalendarStep() => @<section class="opf-step-content">

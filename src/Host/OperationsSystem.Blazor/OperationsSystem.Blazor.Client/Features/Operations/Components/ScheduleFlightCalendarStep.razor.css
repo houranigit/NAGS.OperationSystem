@@ -55,8 +55,8 @@
 .sfc-cell {
     display: inline-grid;
     place-items: center;
-    aspect-ratio: 1;
-    min-height: 2.35rem;
+    /*aspect-ratio: 1;*/
+    min-height: 1.5rem;
     border: 1px solid var(--os-color-border);
     border-radius: 7px;
     background: white;

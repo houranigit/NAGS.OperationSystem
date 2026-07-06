@@ -239,7 +239,7 @@
     {
         var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Schedule flights",
             new Dictionary<string, object?> { [nameof(ScheduleFlightDialog.BulkMode)] = true },
-            new DialogOptions { Width = "900px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is int count)
         {
