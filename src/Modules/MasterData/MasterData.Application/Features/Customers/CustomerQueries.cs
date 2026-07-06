@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
@@ -177,7 +178,7 @@ public sealed class GetActiveCustomerOptionsQueryHandler(IMasterDataDbContext db
 
         var query = db.Customers.AsNoTracking().Where(c => c.IsActive);
 
-        if (!resolved.Value.IsAdministrator)
+        if (resolved.Value.UserType == UserType.CustomerContact)
         {
             if (resolved.Value.CustomerId is not { } scopedCustomer)
                 return Result.Success<IReadOnlyList<CustomerOptionDto>>([]);

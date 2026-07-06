@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using BuildingBlocks.Contracts.Authorization;
 using Identity.Domain.Roles;
 using Identity.Infrastructure.Persistence;
+using MasterData.Domain.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -163,6 +164,9 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
         var customers = await scoped.GetFromJsonAsync<PagedList<CustomerItem>>($"{Base}/customers?pageSize=100");
         customers!.Items.Select(c => c.Id).ShouldBe([customerA.CustomerId]);
 
+        var customerOptions = await scoped.GetFromJsonAsync<List<CustomerItem>>($"{Base}/customers/options");
+        customerOptions!.Select(c => c.Id).ShouldBe([customerA.CustomerId]);
+
         (await scoped.GetAsync($"{Base}/customers/{customerB.CustomerId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await scoped.GetAsync($"{Base}/customers/{customerA.CustomerId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -226,6 +230,33 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
 
         options.ShouldNotBeNull();
         options!.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Station_staff_with_reference_permission_can_load_flight_form_options_without_customer_or_station_view()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var stationA = await Helpers.CreateStationAsync(admin);
+        var stationB = await Helpers.CreateStationAsync(admin);
+        var manpower = await Helpers.CreateManpowerTypeAsync(admin);
+        var staff = await Helpers.CreateStaffAsync(admin, stationA, manpower);
+        var customer = await Helpers.CreateCustomerAsync(admin);
+
+        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+            admin,
+            staff.Id,
+            staff.Email,
+            MasterDataPermissions.Reference.ViewOptions);
+
+        var stationOptions = await scoped.GetFromJsonAsync<List<StationItem>>($"{Base}/stations/options");
+        stationOptions!.Select(s => s.Id).ShouldBe([stationA]);
+        stationOptions!.ShouldNotContain(s => s.Id == stationB);
+
+        var customerOptions = await scoped.GetFromJsonAsync<List<CustomerItem>>($"{Base}/customers/options");
+        customerOptions!.ShouldContain(c => c.Id == customer);
+
+        (await scoped.GetAsync($"{Base}/customers?pageSize=100")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await scoped.GetAsync($"{Base}/stations?pageSize=100")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
     [Fact]

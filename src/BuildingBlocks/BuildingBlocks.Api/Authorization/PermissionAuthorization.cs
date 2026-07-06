@@ -24,6 +24,11 @@ public sealed class PermissionRequirement(string permission) : IAuthorizationReq
     public string Permission { get; } = permission;
 }
 
+public sealed class AnyPermissionRequirement(IReadOnlyList<string> permissions) : IAuthorizationRequirement
+{
+    public IReadOnlyList<string> Permissions { get; } = permissions;
+}
+
 /// <summary>
 /// Grants access only when the caller both holds the permission claim AND has a
 /// <see cref="UserType"/> that the permission is compatible with (per the composed
@@ -49,6 +54,30 @@ public sealed class PermissionAuthorizationHandler(IPermissionRegistry permissio
 
         if (permissionRegistry.IsCompatibleWith(requirement.Permission, userType))
             context.Succeed(requirement);
+
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class AnyPermissionAuthorizationHandler(IPermissionRegistry permissionRegistry)
+    : AuthorizationHandler<AnyPermissionRequirement>
+{
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, AnyPermissionRequirement requirement)
+    {
+        if (!Enum.TryParse<UserType>(context.User.FindFirst(AuthorizationClaimTypes.UserType)?.Value, out var userType))
+            return Task.CompletedTask;
+
+        foreach (var permission in requirement.Permissions)
+        {
+            var hasPermission = context.User.Claims.Any(c =>
+                c.Type == PermissionPolicy.ClaimType && c.Value == permission);
+
+            if (hasPermission && permissionRegistry.IsCompatibleWith(permission, userType))
+            {
+                context.Succeed(requirement);
+                break;
+            }
+        }
 
         return Task.CompletedTask;
     }
@@ -90,6 +119,7 @@ public static class PermissionAuthorizationExtensions
         services.AddAuthorization();
         services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
         services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
+        services.AddSingleton<IAuthorizationHandler, AnyPermissionAuthorizationHandler>();
         return services;
     }
 
@@ -108,6 +138,16 @@ public static class PermissionAuthorizationExtensions
         where TBuilder : IEndpointConventionBuilder
     {
         builder.RequireAuthorization($"{PermissionPolicy.Prefix}{permission}");
+        return builder;
+    }
+
+    public static TBuilder RequireAnyPermission<TBuilder>(this TBuilder builder, params string[] permissions)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        builder.RequireAuthorization(new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .AddRequirements(new AnyPermissionRequirement(permissions))
+            .Build());
         return builder;
     }
 }

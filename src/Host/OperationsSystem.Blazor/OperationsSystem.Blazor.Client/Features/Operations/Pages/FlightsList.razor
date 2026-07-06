@@ -123,22 +123,54 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
-        var stationsTask = MasterData.GetStationOptionsAsync();
-        var customersTask = MasterData.GetCustomerOptionsAsync();
-        var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
+        await Task.WhenAll(
+            LoadStationOptionsAsync(),
+            LoadCustomerOptionsAsync(),
+            LoadOperationTypeOptionsAsync());
 
-        await Task.WhenAll(stationsTask, customersTask, operationTypesTask);
-
-        stationOptions = (await stationsTask)
-            .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
-            .ToList();
-        customerOptions = (await customersTask)
-            .Select(x => new CustomerFilterOption(CustomerFilterLabel(x), x.Id))
-            .ToList();
-        operationTypeOptions = (await operationTypesTask)
-            .Select(x => new OperationTypeFilterOption(x.Name, x.Id))
-            .ToList();
         await FetchAsync();
+    }
+
+    private async Task LoadStationOptionsAsync()
+    {
+        try
+        {
+            stationOptions = (await MasterData.GetStationOptionsAsync())
+                .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
+                .ToList();
+        }
+        catch (ApiException)
+        {
+            stationOptions = [];
+        }
+    }
+
+    private async Task LoadCustomerOptionsAsync()
+    {
+        try
+        {
+            customerOptions = (await MasterData.GetCustomerOptionsAsync())
+                .Select(x => new CustomerFilterOption(CustomerFilterLabel(x), x.Id))
+                .ToList();
+        }
+        catch (ApiException)
+        {
+            customerOptions = [];
+        }
+    }
+
+    private async Task LoadOperationTypeOptionsAsync()
+    {
+        try
+        {
+            operationTypeOptions = (await MasterData.GetOperationTypeOptionsAsync())
+                .Select(x => new OperationTypeFilterOption(x.Name, x.Id))
+                .ToList();
+        }
+        catch (ApiException)
+        {
+            operationTypeOptions = [];
+        }
     }
 
     private async Task OnPageSizeChangedAsync(int pageSize)

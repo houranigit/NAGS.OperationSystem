@@ -31,7 +31,7 @@ internal static class CustomerEndpoints
         {
             var result = await sender.Send(new GetActiveCustomerOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Customers.View);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Customers.View);
 
         customers.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

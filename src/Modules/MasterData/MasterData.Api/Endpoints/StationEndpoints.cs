@@ -29,7 +29,7 @@ internal static class StationEndpoints
         {
             var result = await sender.Send(new GetActiveStationOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Stations.View);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Stations.View);
 
         stations.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
