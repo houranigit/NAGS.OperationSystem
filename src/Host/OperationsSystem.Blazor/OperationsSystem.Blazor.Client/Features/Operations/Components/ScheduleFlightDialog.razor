@@ -123,6 +123,7 @@
     private string staffSearchTerm = string.Empty;
     private string? duplicateCheckSignature;
     private Guid? staffLoadedForStationId;
+    private static readonly Guid AdHocOperationTypeId = new("30000000-0000-0000-0000-000000000001");
 
     private static readonly IReadOnlyList<WeekdayOption> WeekdayOptions =
     [
@@ -496,7 +497,9 @@
 
             customers = await customersTask;
             stations = await stationsTask;
-            operationTypes = await operationTypesTask;
+            operationTypes = (await operationTypesTask)
+                .Where(operationType => operationType.Id != AdHocOperationTypeId)
+                .ToList();
             aircraftTypes = await aircraftTypesTask;
             services = await servicesTask;
 
@@ -637,6 +640,9 @@
 
     private bool IsPerLandingSelected =>
         services.Any(service => service.IsAircraftPerLanding && model.PlannedServiceIds.Contains(service.Id));
+
+    private bool IsPerLandingMixedWithOtherServices =>
+        IsPerLandingSelected && model.PlannedServiceIds.Count > 1;
 
     private CustomerOption? SelectedCustomer =>
         customers.FirstOrDefault(customer => customer.Id == model.CustomerId);
@@ -982,6 +988,8 @@
     {
         if (model.PlannedServiceIds.Count == 0)
             return "At least one planned service is required.";
+        if (IsPerLandingMixedWithOtherServices)
+            return "A Per Landing flight cannot have any other service. Aircraft Per Landing must be the only planned service.";
         return null;
     }
 

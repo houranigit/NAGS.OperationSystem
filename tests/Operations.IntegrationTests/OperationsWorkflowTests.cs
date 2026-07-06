@@ -75,6 +75,51 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     }
 
     [Fact]
+    public async Task Schedule_with_per_landing_assigned_staff_is_rejected()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+
+        var response = await admin.PostAsJsonAsync($"{Base}/flights", new
+        {
+            customerId = refs.CustomerId,
+            stationId = refs.StationId,
+            operationTypeId = refs.OperationTypeId,
+            flightNumber = "NGS102",
+            scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
+            scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4),
+            aircraftTypeId = (Guid?)null,
+            plannedServiceIds = new[] { WellKnownMasterDataIds.AircraftPerLandingService },
+            assignedStaffMemberIds = new[] { refs.StaffMemberId }
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Bulk_schedule_with_per_landing_assigned_staff_is_rejected()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+
+        var response = await admin.PostAsJsonAsync($"{Base}/flights/bulk", new
+        {
+            customerId = refs.CustomerId,
+            stationId = refs.StationId,
+            operationTypeId = refs.OperationTypeId,
+            flightNumber = "NGS103",
+            scheduledArrivalTimeUtc = new TimeOnly(10, 0),
+            scheduledDepartureTimeUtc = new TimeOnly(12, 0),
+            selectedDates = new[] { new DateOnly(2026, 8, 3) },
+            aircraftTypeId = (Guid?)null,
+            plannedServiceIds = new[] { WellKnownMasterDataIds.AircraftPerLandingService },
+            assignedStaffMemberIds = new[] { refs.StaffMemberId }
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Bulk_schedule_creates_one_flight_per_selected_date_with_shared_details()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -301,6 +346,26 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
         (await staffClient.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", new { }))
             .StatusCode.ShouldBe(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Assigning_staff_to_per_landing_flight_is_rejected()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var flightId = await ScheduleFlightAsync(admin, refs, "NGS402",
+            plannedServiceIds: [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var flight = await GetFlightAsync(admin, flightId);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
+        {
+            Content = JsonContent.Create(new { staffMemberIds = new[] { refs.StaffMemberId } })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
+
+        var response = await admin.SendAsync(request);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     // --- Ownership -----------------------------------------------------------

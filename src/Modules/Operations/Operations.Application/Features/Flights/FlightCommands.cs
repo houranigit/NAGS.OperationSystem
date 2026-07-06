@@ -66,6 +66,9 @@ public sealed class ScheduleFlightCommandHandler(
         if (build.IsFailure)
             return build.Error;
 
+        if (PerLandingAssignmentGuard.HasPerLandingAssignedStaff(build.Value.PlannedServices, request.AssignedStaffMemberIds))
+            return PerLandingAssignmentGuard.Error();
+
         var employees = await resolver.StaffMembersForStationAsync(request.AssignedStaffMemberIds, request.StationId, cancellationToken);
         if (employees.IsFailure)
             return employees.Error;
@@ -148,6 +151,9 @@ public sealed class ScheduleFlightsCommandHandler(
             request.OperationTypeId, request.AircraftTypeId, request.FlightNumber, request.PlannedServiceIds, cancellationToken);
         if (references.IsFailure)
             return references.Error;
+
+        if (PerLandingAssignmentGuard.HasPerLandingAssignedStaff(references.Value.PlannedServices, request.AssignedStaffMemberIds))
+            return PerLandingAssignmentGuard.Error();
 
         var employees = await resolver.StaffMembersForStationAsync(request.AssignedStaffMemberIds, request.StationId, cancellationToken);
         if (employees.IsFailure)
@@ -373,6 +379,9 @@ public sealed class AssignEmployeesCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
+        if (flight.IsPerLanding)
+            return PerLandingAssignmentGuard.Error();
+
         var employees = await resolver.StaffMembersForStationAsync(request.StaffMemberIds, flight.Station.StationId, cancellationToken);
         if (employees.IsFailure)
             return employees.Error;
@@ -399,4 +408,18 @@ public sealed class AssignEmployeesCommandHandler(
 
         return Result.Success();
     }
+}
+
+internal static class PerLandingAssignmentGuard
+{
+    public static bool HasPerLandingAssignedStaff(
+        IReadOnlyList<ServiceSnapshot> plannedServices,
+        IReadOnlyCollection<Guid> assignedStaffMemberIds) =>
+        assignedStaffMemberIds.Count > 0 &&
+        plannedServices.Any(service => PerLandingPolicy.IsAircraftPerLanding(service.ServiceId));
+
+    public static Error Error() =>
+        BuildingBlocks.Domain.Results.Error.Validation(
+            "Per Landing flights cannot have assigned staff because they are available station-wide.",
+            "Operations.PerLanding.AssignmentNotAllowed");
 }
