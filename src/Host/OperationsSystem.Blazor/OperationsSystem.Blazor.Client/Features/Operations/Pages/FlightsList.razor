@@ -387,7 +387,7 @@
         }
     }
 
-    private static bool CanEditFlight(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
+    private static bool CanEditFlight(FlightListItem flight) => flight.Status is "Scheduled";
     private static bool CanOpenWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
     private static bool CanCancelFlight(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";

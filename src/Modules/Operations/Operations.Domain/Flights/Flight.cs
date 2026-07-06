@@ -58,6 +58,7 @@ public sealed class Flight : AggregateRoot<Guid>
 
     public bool IsPerLanding => _plannedServices.Any(s => s.IsAircraftPerLanding);
     public bool IsUpdateLocked => Status is FlightStatus.Completed or FlightStatus.Canceled or FlightStatus.Merged;
+    public bool CanEditScheduledDetails => Status == FlightStatus.Scheduled;
 
     public static Result<Flight> ScheduleNew(
         CustomerSnapshot customer,
@@ -146,8 +147,9 @@ public sealed class Flight : AggregateRoot<Guid>
 
     public Result ChangeFlightNumber(FlightNumber newNumber, DateTimeOffset now)
     {
-        if (IsUpdateLocked)
-            return LockedError();
+        var editCheck = EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
 
         if (FlightNumber == newNumber)
             return Result.Success();
@@ -162,8 +164,9 @@ public sealed class Flight : AggregateRoot<Guid>
 
     public Result UpdateSchedule(ScheduledTime schedule, AircraftTypeSnapshot? aircraftType, DateTimeOffset now)
     {
-        if (IsUpdateLocked)
-            return LockedError();
+        var editCheck = EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
 
         Schedule = schedule;
         AircraftType = aircraftType;
@@ -173,8 +176,9 @@ public sealed class Flight : AggregateRoot<Guid>
 
     public Result ReplacePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices, DateTimeOffset now)
     {
-        if (IsUpdateLocked)
-            return LockedError();
+        var editCheck = EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
 
         var perLanding = PerLandingPolicy.ValidatePlannedServices(plannedServices);
         if (perLanding.IsFailure)
@@ -360,6 +364,16 @@ public sealed class Flight : AggregateRoot<Guid>
         _assignedEmployees.Clear();
         foreach (var employee in employees.GroupBy(e => e.StaffMemberId).Select(g => g.First()))
             _assignedEmployees.Add(new FlightAssignedEmployee(Guid.NewGuid(), Id, employee));
+    }
+
+    public Result EnsureScheduledDetailsEditable()
+    {
+        if (IsUpdateLocked)
+            return LockedError();
+
+        return CanEditScheduledDetails
+            ? Result.Success()
+            : Error.Conflict("Only scheduled flights can be edited.", "Operations.Flight.NotEditable");
     }
 
     private static Error LockedError() =>

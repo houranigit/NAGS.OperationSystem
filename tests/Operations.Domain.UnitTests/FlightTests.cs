@@ -116,6 +116,19 @@ public sealed class FlightTests
     }
 
     [Fact]
+    public void InProgressFlight_DisallowsScheduledDetailEdits()
+    {
+        var flight = ScheduleFlight(TestData.Service());
+        flight.OnWorkOrderSubmitted(TestData.Now);
+        var nextSchedule = ScheduledTime.Create(TestData.Now.AddHours(2), TestData.Now.AddHours(3)).Value;
+
+        flight.CanEditScheduledDetails.ShouldBeFalse();
+        flight.ChangeFlightNumber(TestData.FlightNo("SV999"), TestData.Now).Error.Code.ShouldBe("Operations.Flight.NotEditable");
+        flight.UpdateSchedule(nextSchedule, null, TestData.Now).Error.Code.ShouldBe("Operations.Flight.NotEditable");
+        flight.ReplacePlannedServices([TestData.Service()], TestData.Now).Error.Code.ShouldBe("Operations.Flight.NotEditable");
+    }
+
+    [Fact]
     public void SettleCompleted_CapturesApprovedValues_AndLocksFlight()
     {
         var flight = ScheduleFlight(TestData.Service());

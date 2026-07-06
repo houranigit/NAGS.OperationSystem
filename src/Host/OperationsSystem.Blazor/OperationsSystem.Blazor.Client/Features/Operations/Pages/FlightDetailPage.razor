@@ -117,7 +117,7 @@
     private bool loadError;
     private FlightTab activeTab = FlightTab.Overview;
 
-    private bool CanEditFlight => flight?.Status is "Scheduled" or "InProgress";
+    private bool CanEditFlight => flight?.Status is "Scheduled";
     private bool CanOpenWorkOrder => flight?.Status is "Scheduled" or "InProgress";
     private bool CanCancelFlight => flight?.Status is "Scheduled" or "InProgress";
     private bool CanMergeFlight => flight?.Status is not "Completed" and not "Canceled" and not "Merged";
@@ -411,6 +411,9 @@
 
     private async Task OpenEditAsync()
     {
+        if (!CanEditFlight)
+            return;
+
         var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Edit flight",
             new Dictionary<string, object?> { [nameof(ScheduleFlightDialog.FlightId)] = Id },
             new DialogOptions { Width = "760px" });

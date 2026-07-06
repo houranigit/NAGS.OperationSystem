@@ -248,6 +248,10 @@ public sealed class UpdateScheduledFlightCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
+        var editCheck = flight.EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
+
         var aircraft = await resolver.AircraftTypeAsync(request.AircraftTypeId, cancellationToken);
         if (aircraft.IsFailure)
             return aircraft.Error;
@@ -318,6 +322,10 @@ public sealed class ChangeFlightNumberCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
+        var editCheck = flight.EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
+
         var number = FlightNumber.Create(request.FlightNumber);
         if (number.IsFailure)
             return number.Error;
@@ -378,6 +386,10 @@ public sealed class AssignEmployeesCommandHandler(
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
         if (accessCheck.IsFailure)
             return accessCheck.Error;
+
+        var editCheck = flight.EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
 
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();

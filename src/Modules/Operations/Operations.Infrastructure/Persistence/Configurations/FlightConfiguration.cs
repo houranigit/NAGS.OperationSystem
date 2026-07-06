@@ -82,6 +82,7 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
 
         builder.Ignore(f => f.IsPerLanding);
         builder.Ignore(f => f.IsUpdateLocked);
+        builder.Ignore(f => f.CanEditScheduledDetails);
         builder.Ignore(f => f.DomainEvents);
     }
 }
