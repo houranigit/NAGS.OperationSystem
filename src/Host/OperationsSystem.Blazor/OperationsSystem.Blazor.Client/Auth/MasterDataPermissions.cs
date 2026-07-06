@@ -6,6 +6,9 @@ namespace OperationsSystem.Blazor.Client.Auth;
 /// </summary>
 public static class MasterDataPermissions
 {
+    /// <summary>Read-only reference lookups for forms and filters, without catalog page access.</summary>
+    public const string ReferenceViewOptions = "masterdata.reference.view-options";
+
     public const string CountriesView = "masterdata.countries.view";
     public const string CountriesCreate = "masterdata.countries.create";
     public const string CountriesUpdate = "masterdata.countries.update";

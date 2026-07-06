@@ -107,15 +107,19 @@ public sealed class GetReviewQueueQueryHandler(IOperationsDbContext db, IOperati
         var query = db.WorkOrders.AsNoTracking().Where(w => w.Status == WorkOrderStatus.Submitted);
 
         // Station staff only see submitted work orders for flights they can access (their station's
-        // Per-Landing flights plus flights they are assigned to); admins/reviewers see everything.
+        // Per-Landing flights plus flights they are assigned to); holders of view-station (station
+        // dispatchers) see all of their station's submitted work orders; admins/reviewers see everything.
         if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
         {
-            var staffId = scopeResult.Value.StaffMemberId;
-            query = query
-                .Where(w => w.Station.StationId == stationId)
-                .Where(w => db.Flights.Any(f => f.Id == w.FlightId &&
+            query = query.Where(w => w.Station.StationId == stationId);
+
+            if (!scopeResult.Value.CanViewStationWide)
+            {
+                var staffId = scopeResult.Value.StaffMemberId;
+                query = query.Where(w => db.Flights.Any(f => f.Id == w.FlightId &&
                     (f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
                      || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))));
+            }
         }
         else if (request.StationId is { } filterStation)
         {

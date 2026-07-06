@@ -28,7 +28,7 @@ internal static class LicenseEndpoints
         {
             var result = await sender.Send(new GetActiveLicenseOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Licenses.View);
 
         licenses.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

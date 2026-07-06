@@ -28,7 +28,7 @@ internal static class MaterialEndpoints
         {
             var result = await sender.Send(new GetActiveMaterialOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Materials.View);
 
         materials.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

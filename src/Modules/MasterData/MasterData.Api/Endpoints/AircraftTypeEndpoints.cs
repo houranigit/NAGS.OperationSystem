@@ -28,7 +28,7 @@ internal static class AircraftTypeEndpoints
         {
             var result = await sender.Send(new GetActiveAircraftTypeOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.AircraftTypes.View);
 
         aircraftTypes.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

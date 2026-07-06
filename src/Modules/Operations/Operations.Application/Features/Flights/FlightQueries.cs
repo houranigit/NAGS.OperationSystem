@@ -38,14 +38,18 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
         var query = db.Flights.AsNoTracking().Where(f => f.Status != FlightStatus.Merged);
 
         // Station staff see their station's Per-Landing flights (station-wide) plus the flights they
-        // are assigned to; admins see everything (optionally filtered).
+        // are assigned to; holders of view-station (station dispatchers) see every flight at their
+        // station; admins see everything (optionally filtered).
         if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
         {
-            var staffId = scopeResult.Value.StaffMemberId;
-            query = query
-                .Where(f => f.Station.StationId == stationId)
-                .Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
-                            || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
+            query = query.Where(f => f.Station.StationId == stationId);
+
+            if (!scopeResult.Value.CanViewStationWide)
+            {
+                var staffId = scopeResult.Value.StaffMemberId;
+                query = query.Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+                                         || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
+            }
         }
         else if (request.StationId is { } filterStation)
         {
@@ -113,11 +117,14 @@ public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IO
 
         if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
         {
-            var staffId = scopeResult.Value.StaffMemberId;
-            query = query
-                .Where(f => f.Station.StationId == stationId)
-                .Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
-                            || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
+            query = query.Where(f => f.Station.StationId == stationId);
+
+            if (!scopeResult.Value.CanViewStationWide)
+            {
+                var staffId = scopeResult.Value.StaffMemberId;
+                query = query.Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+                                         || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
+            }
         }
         else if (request.StationId is { } filterStation)
         {

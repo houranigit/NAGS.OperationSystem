@@ -28,7 +28,7 @@ internal static class ServiceEndpoints
         {
             var result = await sender.Send(new GetActiveServiceOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Services.View);
 
         services.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

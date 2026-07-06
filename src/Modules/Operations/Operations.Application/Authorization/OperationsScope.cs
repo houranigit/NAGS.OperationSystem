@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Readers;
+using Operations.Domain.Authorization;
 using Operations.Domain.Flights;
 
 namespace Operations.Application.Authorization;
@@ -9,10 +10,12 @@ namespace Operations.Application.Authorization;
 /// <summary>
 /// The data boundary the current caller may act within. A <see cref="UserType.SystemAdministrator"/>
 /// is unrestricted; a <see cref="UserType.StationStaff"/> is confined to <see cref="StationId"/> and,
-/// for non-Per-Landing flights, to flights they are assigned to. CustomerContacts have no Operations
-/// access in this release.
+/// for non-Per-Landing flights, to flights they are assigned to — unless they hold the
+/// <c>operations.flights.view-station</c> permission (<see cref="CanViewStationWide"/>), which widens
+/// visibility to every flight at their station (station dispatchers). CustomerContacts have no
+/// Operations access in this release.
 /// </summary>
-public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, Guid? StaffMemberId)
+public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, Guid? StaffMemberId, bool CanViewStationWide = false)
 {
     public bool IsAdministrator => UserType == UserType.SystemAdministrator;
 
@@ -23,9 +26,9 @@ public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, 
 
     /// <summary>
     /// True when the caller may see/act on <paramref name="flight"/>: administrators always; station
-    /// staff when the flight is at their station AND is Per-Landing (station-wide visibility) or has
-    /// them on its assigned-employee roster. Requires <c>PlannedServices</c> and
-    /// <c>AssignedEmployees</c> to be loaded on the flight.
+    /// staff when the flight is at their station AND they hold station-wide visibility, or the flight
+    /// is Per-Landing (station-wide by nature), or they are on its assigned-employee roster. Requires
+    /// <c>PlannedServices</c> and <c>AssignedEmployees</c> to be loaded on the flight.
     /// </summary>
     public bool CanAccessFlight(Flight flight)
     {
@@ -34,6 +37,9 @@ public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, 
 
         if (StationId != flight.Station.StationId)
             return false;
+
+        if (CanViewStationWide)
+            return true;
 
         if (flight.IsPerLanding)
             return true;
@@ -85,7 +91,11 @@ public sealed class OperationsScope(IUserContext user, IMasterDataReader masterD
                 if (station is null || !station.IsActive)
                     return Denied();
 
-                return new OperationsScopeContext(userType, staff.StationId, staffId);
+                // Station dispatchers hold view-station and see every flight at their station
+                // without being on the assigned-employee roster.
+                var canViewStationWide = user.HasPermission(OperationsPermissions.Flights.ViewStation);
+
+                return new OperationsScopeContext(userType, staff.StationId, staffId, canViewStationWide);
             }
 
             default:

@@ -365,6 +365,12 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
         return api.GetAsync<PagedResult<StaffMemberListItem>>($"/masterdata/staff-members{query}", ct);
     }
 
+    public Task<IReadOnlyList<StaffMemberOption>> GetStaffMemberOptionsAsync(Guid? stationId = null, CancellationToken ct = default)
+    {
+        var query = stationId is { } id ? $"?stationId={id}" : string.Empty;
+        return api.GetAsync<IReadOnlyList<StaffMemberOption>>($"/masterdata/staff-members/options{query}", ct);
+    }
+
     public Task<StaffMemberDetail> GetStaffMemberAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<StaffMemberDetail>($"/masterdata/staff-members/{id}", ct);
 

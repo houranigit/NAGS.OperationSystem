@@ -303,6 +303,7 @@ public static class UiStrings
         public static string Permissions => UiText.Get("Roles.Permissions", "Permissions");
         public static string PermissionsDescription => UiText.Get("Roles.PermissionsDescription", "Select the permissions this role grants.");
         public static string PermissionsSaved => UiText.Get("Roles.PermissionsSaved", "Permissions updated.");
+        public static string ReferenceOptionsHint => UiText.Get("Roles.ReferenceOptionsHint", "Flight and work-order forms need reference lookups (dropdown options). Add the \"view-options\" permission under Reference so users of this role can load those forms.");
         public static string SystemRoleLocked => UiText.Get("Roles.SystemRoleLocked", "System roles cannot be edited or deleted.");
         public static string ConfirmDelete => UiText.Get("Roles.ConfirmDelete", "Delete this role? Users must not be assigned to it.");
         public static string Created => UiText.Get("Roles.Created", "Role created.");
@@ -710,5 +711,6 @@ public static class UiStrings
         public static string Forbidden => UiText.Get("Errors.Forbidden", "You do not have permission to view this.");
         public static string NotFound => UiText.Get("Errors.NotFound", "The requested item was not found.");
         public static string LoadFailed => UiText.Get("Errors.LoadFailed", "We couldn't load this. Please try again.");
+        public static string ReferenceLookupsForbidden => UiText.Get("Errors.ReferenceLookupsForbidden", "Your role does not include permission to load form lookups. Ask an administrator to add the \"View options\" reference permission to your role.");
     }
 }

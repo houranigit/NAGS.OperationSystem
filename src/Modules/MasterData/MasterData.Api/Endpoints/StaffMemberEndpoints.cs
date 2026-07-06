@@ -26,6 +26,12 @@ internal static class StaffMemberEndpoints
             return result.ToOk();
         }).RequirePermission(MasterDataPermissions.StaffMembers.View);
 
+        staff.MapGet("/options", async (ISender sender, CancellationToken ct, Guid? stationId = null) =>
+        {
+            var result = await sender.Send(new GetActiveStaffMemberOptionsQuery(stationId), ct);
+            return result.ToOk();
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.StaffMembers.View);
+
         staff.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetStaffMemberByIdQuery(id), ct);

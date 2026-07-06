@@ -269,6 +269,7 @@
   <data name="Roles.Permissions" xml:space="preserve"><value>الأذونات</value></data>
   <data name="Roles.PermissionsDescription" xml:space="preserve"><value>حدد الأذونات التي يمنحها هذا الدور.</value></data>
   <data name="Roles.PermissionsSaved" xml:space="preserve"><value>تم تحديث الأذونات.</value></data>
+  <data name="Roles.ReferenceOptionsHint" xml:space="preserve"><value>تحتاج نماذج الرحلات وأوامر العمل إلى القوائم المرجعية (خيارات القوائم المنسدلة). أضف صلاحية «view-options» ضمن قسم المرجع حتى يتمكن مستخدمو هذا الدور من تحميل تلك النماذج.</value></data>
   <data name="Roles.SystemRoleLocked" xml:space="preserve"><value>لا يمكن تعديل أدوار النظام أو حذفها.</value></data>
   <data name="Roles.ConfirmDelete" xml:space="preserve"><value>هل تريد حذف هذا الدور؟ لا يجب تعيين المستخدمين لذلك.</value></data>
   <data name="Roles.Created" xml:space="preserve"><value>تم إنشاء الدور.</value></data>
@@ -633,4 +634,5 @@
   <data name="Errors.Forbidden" xml:space="preserve"><value>ليس لديك الإذن بمشاهدة هذا.</value></data>
   <data name="Errors.NotFound" xml:space="preserve"><value>لم يتم العثور على العنصر المطلوب.</value></data>
   <data name="Errors.LoadFailed" xml:space="preserve"><value>لم نتمكن من تحميل هذا. يرجى المحاولة مرة أخرى.</value></data>
+  <data name="Errors.ReferenceLookupsForbidden" xml:space="preserve"><value>لا يتضمن دورك صلاحية تحميل قوائم الاختيار في النماذج. اطلب من المسؤول إضافة صلاحية «عرض الخيارات» المرجعية إلى دورك.</value></data>
 </root>

@@ -4,6 +4,7 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject GridPreferences GridPrefs
+@inject AuthSession Auth
 
 <PageTitle>Work order review</PageTitle>
 
@@ -71,9 +72,20 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
-        stationOptions = (await MasterData.GetStationOptionsAsync())
-            .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
-            .ToList();
+        if (Auth.HasPermission(MasterDataPermissions.ReferenceViewOptions) || Auth.HasPermission(MasterDataPermissions.StationsView))
+        {
+            try
+            {
+                stationOptions = (await MasterData.GetStationOptionsAsync())
+                    .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
+                    .ToList();
+            }
+            catch (ApiException)
+            {
+                // Station filter stays empty; the queue still loads scope-filtered data.
+                stationOptions = [];
+            }
+        }
         await FetchAsync();
     }
 

@@ -28,7 +28,7 @@ internal static class GeneralSupportEndpoints
         {
             var result = await sender.Send(new GetActiveGeneralSupportOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.GeneralSupports.View);
 
         supports.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

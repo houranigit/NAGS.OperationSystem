@@ -86,6 +86,50 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
     }
 }
 
+// --- Active options (lightweight picker) -----------------------------------
+
+/// <summary>
+/// Active staff members as lightweight picker options for flight/work-order assignment forms.
+/// Exposed under the reference view-options permission; station staff are always confined to
+/// their own station regardless of <paramref name="StationId"/>.
+/// </summary>
+public sealed record GetActiveStaffMemberOptionsQuery(Guid? StationId = null)
+    : IQuery<IReadOnlyList<StaffMemberOptionDto>>;
+
+public sealed class GetActiveStaffMemberOptionsQueryHandler(IMasterDataDbContext db, IMasterDataScope scope)
+    : IQueryHandler<GetActiveStaffMemberOptionsQuery, IReadOnlyList<StaffMemberOptionDto>>
+{
+    public async Task<Result<IReadOnlyList<StaffMemberOptionDto>>> Handle(GetActiveStaffMemberOptionsQuery request, CancellationToken cancellationToken)
+    {
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        var query = db.StaffMembers.AsNoTracking().Where(s => s.IsActive);
+
+        // Station staff only ever see their own station's members; customer contacts see none.
+        if (!resolved.Value.IsAdministrator)
+        {
+            if (resolved.Value.StationId is not { } scopedStation)
+                return Result.Success<IReadOnlyList<StaffMemberOptionDto>>([]);
+            query = query.Where(s => s.StationId == scopedStation);
+        }
+
+        if (request.StationId is { } stationId)
+            query = query.Where(s => s.StationId == stationId);
+
+        IReadOnlyList<StaffMemberOptionDto> options = await query
+            .OrderBy(s => s.FullName).ThenBy(s => s.Id)
+            .Select(s => new StaffMemberOptionDto(
+                s.Id, s.FullName, s.EmployeeId, s.StationId,
+                db.Stations.Where(st => st.Id == s.StationId).Select(st => st.IataCode).FirstOrDefault() ?? string.Empty,
+                db.ManpowerTypes.Where(m => m.Id == s.ManpowerTypeId).Select(m => m.Name).FirstOrDefault() ?? string.Empty))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success(options);
+    }
+}
+
 // --- By id ----------------------------------------------------------------
 
 public sealed record GetStaffMemberByIdQuery(Guid Id) : IQuery<StaffMemberDto>;

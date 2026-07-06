@@ -3,6 +3,7 @@
 @inject MasterDataApiClient MasterData
 @inject NavigationManager Navigation
 @inject NotificationService Notifications
+@inject AuthSession Auth
 
 <PageTitle>Flight calendar</PageTitle>
 
@@ -53,15 +54,18 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try
+        if (Auth.HasPermission(MasterDataPermissions.ReferenceViewOptions) || Auth.HasPermission(MasterDataPermissions.StationsView))
         {
-            stationOptions = (await MasterData.GetStationOptionsAsync())
-                .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
-                .ToList();
-        }
-        catch (ApiException)
-        {
-            // Station filter stays empty; the calendar still loads scope-filtered data.
+            try
+            {
+                stationOptions = (await MasterData.GetStationOptionsAsync())
+                    .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
+                    .ToList();
+            }
+            catch (ApiException)
+            {
+                // Station filter stays empty; the calendar still loads scope-filtered data.
+            }
         }
 
         await FetchAsync();

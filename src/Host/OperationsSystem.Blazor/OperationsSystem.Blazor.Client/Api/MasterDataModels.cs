@@ -261,6 +261,14 @@ public sealed record StaffMemberListItem(
     string ManpowerTypeName,
     bool IsActive);
 
+public sealed record StaffMemberOption(
+    Guid Id,
+    string FullName,
+    string EmployeeId,
+    Guid StationId,
+    string StationCode,
+    string ManpowerTypeName);
+
 public sealed record EmploymentContractModel(DateOnly StartDate, DateOnly? EndDate);
 
 public sealed record StaffMemberLicenseModel(Guid Id, Guid LicenseId, string LicenseCode, string LicenseName, string LicenseNumber);

@@ -131,8 +131,14 @@
         await FetchAsync();
     }
 
+    private bool CanLoadLookup(string resourceViewPermission) =>
+        Auth.HasPermission(MasterDataPermissions.ReferenceViewOptions) || Auth.HasPermission(resourceViewPermission);
+
     private async Task LoadStationOptionsAsync()
     {
+        if (!CanLoadLookup(MasterDataPermissions.StationsView))
+            return;
+
         try
         {
             stationOptions = (await MasterData.GetStationOptionsAsync())
@@ -147,6 +153,9 @@
 
     private async Task LoadCustomerOptionsAsync()
     {
+        if (!CanLoadLookup(MasterDataPermissions.CustomersView))
+            return;
+
         try
         {
             customerOptions = (await MasterData.GetCustomerOptionsAsync())
@@ -161,6 +170,9 @@
 
     private async Task LoadOperationTypeOptionsAsync()
     {
+        if (!CanLoadLookup(MasterDataPermissions.OperationTypesView))
+            return;
+
         try
         {
             operationTypeOptions = (await MasterData.GetOperationTypeOptionsAsync())

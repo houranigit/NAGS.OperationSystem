@@ -7,6 +7,10 @@ namespace OperationsSystem.Blazor.Client.Auth;
 public static class OperationsPermissions
 {
     public const string FlightsView = "operations.flights.view";
+
+    /// <summary>Station-wide flight visibility for station staff without assignment (station dispatchers).</summary>
+    public const string FlightsViewStation = "operations.flights.view-station";
+
     public const string FlightsSchedule = "operations.flights.schedule";
     public const string FlightsUpdate = "operations.flights.update";
     public const string FlightsAssign = "operations.flights.assign";

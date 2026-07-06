@@ -28,7 +28,7 @@ internal static class OperationTypeEndpoints
         {
             var result = await sender.Send(new GetActiveOperationTypeOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.OperationTypes.View);
 
         operationTypes.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

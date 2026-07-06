@@ -280,6 +280,19 @@ public sealed record StaffMemberListItemDto(
     string ManpowerTypeName,
     bool IsActive);
 
+/// <summary>
+/// Lightweight staff picker option for scheduling/assignment forms. Deliberately excludes
+/// email, portal state, licenses, and row version so it can be exposed under the
+/// reference view-options permission without leaking staff management data.
+/// </summary>
+public sealed record StaffMemberOptionDto(
+    Guid Id,
+    string FullName,
+    string EmployeeId,
+    Guid StationId,
+    string StationCode,
+    string ManpowerTypeName);
+
 public sealed record EmploymentContractDto(DateOnly StartDate, DateOnly? EndDate);
 
 public sealed record StaffMemberLicenseDto(Guid Id, Guid LicenseId, string LicenseCode, string LicenseName, string LicenseNumber);

@@ -28,7 +28,7 @@ internal static class ToolEndpoints
         {
             var result = await sender.Send(new GetActiveToolOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Reference.ViewOptions);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Tools.View);
 
         tools.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

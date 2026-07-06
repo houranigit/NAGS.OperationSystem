@@ -111,7 +111,7 @@
     private IReadOnlyList<OperationTypeOption> operationTypes = [];
     private IReadOnlyList<AircraftTypeOption> aircraftTypes = [];
     private IReadOnlyList<ServiceOption> services = [];
-    private IReadOnlyList<StaffMemberListItem> staff = [];
+    private IReadOnlyList<StaffMemberOption> staff = [];
     private IReadOnlyList<DuplicateCandidate> duplicates = [];
     private FlightDetail? original;
     private string? rowVersion;
@@ -545,7 +545,9 @@
         }
         catch (ApiException ex)
         {
-            errorMessage = ex.ToDisplayMessage("Could not load the flight form.");
+            errorMessage = ex.IsForbidden
+                ? UiStrings.Errors.ReferenceLookupsForbidden
+                : ex.ToDisplayMessage("Could not load the flight form.");
         }
         finally
         {
@@ -666,7 +668,7 @@
         SyncPerLandingAssignmentState();
     }
 
-    private void ToggleStaff(StaffMemberListItem member)
+    private void ToggleStaff(StaffMemberOption member)
     {
         if (member.StationId != model.StationId)
             return;
@@ -674,7 +676,7 @@
         Toggle(model.AssignedStaffMemberIds, member.Id);
     }
 
-    private IEnumerable<StaffMemberListItem> AvailableStaff() =>
+    private IEnumerable<StaffMemberOption> AvailableStaff() =>
         staffLoadedForStationId == model.StationId
             ? staff.Where(member => member.StationId == model.StationId)
             : [];
@@ -728,7 +730,7 @@
         return services.Where(service => service.Name.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
-    private IEnumerable<StaffMemberListItem> FilteredStaff()
+    private IEnumerable<StaffMemberOption> FilteredStaff()
     {
         var stationStaff = AvailableStaff();
 
@@ -758,8 +760,7 @@
 
         try
         {
-            var result = await MasterData.GetStaffMembersAsync(1, 250, null, true, model.StationId);
-            staff = result.Items;
+            staff = await MasterData.GetStaffMemberOptionsAsync(model.StationId);
             staffLoadedForStationId = model.StationId;
             staffSearchTerm = string.Empty;
 
@@ -768,7 +769,9 @@
         }
         catch (ApiException ex)
         {
-            errorMessage = ex.ToDisplayMessage("Could not load staff for the selected station.");
+            errorMessage = ex.IsForbidden
+                ? UiStrings.Errors.ReferenceLookupsForbidden
+                : ex.ToDisplayMessage("Could not load staff for the selected station.");
         }
     }
 

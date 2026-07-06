@@ -166,7 +166,7 @@
     private WorkOrderEditModel model = new();
     private IReadOnlyList<ServiceOption> services = [];
     private IReadOnlyList<AircraftTypeOption> aircraftTypes = [];
-    private IReadOnlyList<StaffMemberListItem> staff = [];
+    private IReadOnlyList<StaffMemberOption> staff = [];
     private IReadOnlyList<ToolOption> tools = [];
     private IReadOnlyList<MaterialOption> materials = [];
     private IReadOnlyList<GeneralSupportOption> generalSupports = [];
@@ -187,7 +187,7 @@
             workOrder = await Operations.GetWorkOrderAsync(WorkOrderId);
             var servicesTask = MasterData.GetServiceOptionsAsync();
             var aircraftTypesTask = MasterData.GetAircraftTypeOptionsAsync();
-            var staffTask = MasterData.GetStaffMembersAsync(1, 250, null, true);
+            var staffTask = MasterData.GetStaffMemberOptionsAsync();
             var toolsTask = MasterData.GetToolOptionsAsync();
             var materialsTask = MasterData.GetMaterialOptionsAsync();
             var generalSupportsTask = MasterData.GetGeneralSupportOptionsAsync();
@@ -196,7 +196,7 @@
 
             services = await servicesTask;
             aircraftTypes = await aircraftTypesTask;
-            staff = (await staffTask).Items;
+            staff = await staffTask;
             tools = await toolsTask;
             materials = await materialsTask;
             generalSupports = await generalSupportsTask;
@@ -204,7 +204,10 @@
         }
         catch (ApiException ex)
         {
-            errorMessage = ex.ToDisplayMessage("Could not load the work order.");
+            // A 403 after the work order itself loaded means the reference lookups were denied.
+            errorMessage = ex.IsForbidden && workOrder is not null
+                ? UiStrings.Errors.ReferenceLookupsForbidden
+                : ex.ToDisplayMessage("Could not load the work order.");
         }
         finally
         {

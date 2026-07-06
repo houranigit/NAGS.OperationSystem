@@ -260,6 +260,98 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task Station_staff_with_reference_permission_can_load_staff_options_scoped_to_their_station()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var (stationA, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
+        var stationB = await Helpers.CreateStationAsync(admin);
+        var staffInA = await Helpers.CreateStaffAsync(admin, stationA, manpower);
+        var staffInB = await Helpers.CreateStaffAsync(admin, stationB, manpower);
+
+        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+            admin,
+            staffInA.Id,
+            staffInA.Email,
+            MasterDataPermissions.Reference.ViewOptions);
+
+        // Options are available under the reference permission and scoped to the linked station.
+        var options = await scoped.GetFromJsonAsync<List<StaffItem>>($"{Base}/staff-members/options");
+        options.ShouldNotBeNull();
+        options.Select(s => s.Id).ShouldContain(staffInA.Id);
+        options.ShouldNotContain(s => s.Id == staffInB.Id);
+        options.ShouldAllBe(s => s.StationId == stationA);
+
+        // The stationId parameter cannot widen the scope to another station's staff.
+        var crossScope = await scoped.GetFromJsonAsync<List<StaffItem>>($"{Base}/staff-members/options?stationId={stationB}");
+        crossScope!.ShouldBeEmpty();
+
+        // The full staff grid stays off limits without staff-members.view.
+        (await scoped.GetAsync($"{Base}/staff-members?pageSize=100")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Staff_options_expose_only_lightweight_picker_fields()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var (station, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
+        await Helpers.CreateStaffAsync(admin, station, manpower);
+
+        var response = await admin.GetAsync($"{Base}/staff-members/options?stationId={station}");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        document.RootElement.GetArrayLength().ShouldBeGreaterThan(0);
+        foreach (var option in document.RootElement.EnumerateArray())
+        {
+            var properties = option.EnumerateObject().Select(p => p.Name).ToList();
+            properties.ShouldBe(
+                ["id", "fullName", "employeeId", "stationId", "stationCode", "manpowerTypeName"],
+                ignoreOrder: true);
+        }
+    }
+
+    [Fact]
+    public async Task Station_staff_with_reference_permission_can_load_country_options_without_country_view()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var (station, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
+        var staff = await Helpers.CreateStaffAsync(admin, station, manpower);
+
+        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+            admin,
+            staff.Id,
+            staff.Email,
+            MasterDataPermissions.Reference.ViewOptions);
+
+        var options = await scoped.GetFromJsonAsync<List<CountryOption>>($"{Base}/countries/options");
+        options.ShouldNotBeNull();
+        options!.ShouldNotBeEmpty();
+
+        (await scoped.GetAsync($"{Base}/countries?pageSize=100")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Catalog_view_permission_alone_grants_that_catalogs_options()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var (station, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
+        var staff = await Helpers.CreateStaffAsync(admin, station, manpower);
+
+        // Only the operation-types catalog view; no reference view-options.
+        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+            admin,
+            staff.Id,
+            staff.Email,
+            MasterDataPermissions.OperationTypes.View);
+
+        (await scoped.GetAsync($"{Base}/operation-types/options")).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        // Other catalogs' options stay forbidden without their view or the reference permission.
+        (await scoped.GetAsync($"{Base}/services/options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await scoped.GetAsync($"{Base}/staff-members/options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task Customer_contact_cannot_release_portal_email_when_removing_contact()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();

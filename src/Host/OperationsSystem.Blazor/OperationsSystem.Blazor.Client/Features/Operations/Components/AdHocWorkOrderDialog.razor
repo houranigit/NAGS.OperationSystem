@@ -187,7 +187,9 @@
         }
         catch (ApiException ex)
         {
-            errorMessage = ex.ToDisplayMessage("Could not load the form.");
+            errorMessage = ex.IsForbidden
+                ? UiStrings.Errors.ReferenceLookupsForbidden
+                : ex.ToDisplayMessage("Could not load the form.");
         }
         finally
         {

@@ -28,7 +28,7 @@ internal static class CountryEndpoints
         {
             var result = await sender.Send(new GetActiveCountryOptionsQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.Countries.View);
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Countries.View);
 
         countries.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

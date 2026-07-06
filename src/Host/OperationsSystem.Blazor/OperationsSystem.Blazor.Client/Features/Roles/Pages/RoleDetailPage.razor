@@ -208,6 +208,13 @@
                 </RadzenAlert>
             }
 
+            @if (NeedsReferenceOptionsHint)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                    @UiStrings.Roles.ReferenceOptionsHint
+                </RadzenAlert>
+            }
+
             <RadzenCard class="rl-card">
                 <div class="rl-card-head">
                     <RadzenIcon Icon="key" /><h3>@UiStrings.Roles.Permissions</h3>
@@ -312,6 +319,16 @@
     private sealed record TabDef(RoleTab Key, string Label, string Icon);
 
     private int CatalogPermissionCount => catalog.Sum(g => g.Permissions.Count);
+
+    /// <summary>
+    /// True when the role grants flight/work-order permissions without the reference view-options
+    /// permission its forms depend on. UX hint only; the server never grants permissions implicitly.
+    /// </summary>
+    private bool NeedsReferenceOptionsHint =>
+        !selected.Contains(MasterDataPermissions.ReferenceViewOptions) &&
+        catalog.Any(g => g.Permissions.Contains(MasterDataPermissions.ReferenceViewOptions)) &&
+        selected.Any(p => p.StartsWith("operations.flights.", StringComparison.Ordinal) ||
+                          p.StartsWith("operations.work-orders.", StringComparison.Ordinal));
 
     private IEnumerable<TabDef> Tabs()
     {
