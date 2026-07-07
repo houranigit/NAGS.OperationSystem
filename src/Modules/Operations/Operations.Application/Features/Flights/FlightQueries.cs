@@ -69,10 +69,14 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             query = query.Where(f => f.Schedule.Sta <= to);
         if (SearchFilter.Term(request.Search) is { } term)
         {
+            var compactFlightTerm = CompactFlightSearchTerm(term);
             query = query.Where(f =>
                 f.FlightNumber.Value.ToLower().Contains(term) ||
                 f.OriginalFlightNumber.ToLower().Contains(term) ||
-                f.Customer.Name.ToLower().Contains(term));
+                f.Customer.Name.ToLower().Contains(term) ||
+                (f.Customer.IataCode != null &&
+                 ((f.Customer.IataCode.ToLower() + "-" + f.FlightNumber.Value.ToLower()).Contains(term) ||
+                  (f.Customer.IataCode.ToLower() + f.FlightNumber.Value.ToLower()).Contains(compactFlightTerm))));
         }
 
         var total = await query.LongCountAsync(cancellationToken);
@@ -98,6 +102,9 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
 
         return paging.ToResult(items, total);
     }
+
+    private static string CompactFlightSearchTerm(string term) =>
+        term.Replace("-", string.Empty).Replace(" ", string.Empty);
 }
 
 // --- Scheduler calendar -----------------------------------------------------
