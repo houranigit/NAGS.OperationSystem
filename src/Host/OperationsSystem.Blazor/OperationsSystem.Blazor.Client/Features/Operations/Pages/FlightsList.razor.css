@@ -20,6 +20,29 @@
     min-height: 2.5rem;
 }
 
+.ofl-per-landing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    padding: 0.125rem 0.4rem;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-info-bg);
+    color: var(--rz-secondary);
+    font-size: 0.5rem;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.ofl-per-landing-badge::before {
+    content: "";
+    width: 0.3rem;
+    height: 0.3rem;
+    border-radius: 50%;
+    background: currentColor;
+    flex: 0 0 auto;
+}
+
 @media (max-width: 720px) {
     .ofl-date-range {
         flex-wrap: wrap;

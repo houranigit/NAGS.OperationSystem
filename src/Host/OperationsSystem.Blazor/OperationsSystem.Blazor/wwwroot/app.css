@@ -202,7 +202,7 @@ a {
     text-overflow: ellipsis;
 }
 
-.os-role-cell-text span {
+.os-role-cell-text > span {
     font-size: var(--os-text-sm);
     white-space: nowrap;
     overflow: hidden;

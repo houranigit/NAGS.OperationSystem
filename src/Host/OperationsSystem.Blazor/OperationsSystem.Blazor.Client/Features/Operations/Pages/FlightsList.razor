@@ -55,22 +55,25 @@
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
                             <div class="os-role-cell-text">
-                                <strong>@DisplayFlightNumber(flight)</strong>
-                                <span>@flight.CustomerName</span>
+                                <div class="os-role-cell-title">
+                                    <strong>@DisplayFlightNumber(flight)</strong>
+                                    @if (flight.IsPerLanding)
+                                    {
+                                        <span class="ofl-per-landing-badge">Per landing</span>
+                                    }
+                                </div>
+                                <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span>
                             </div>
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIata" Title="Station" Width="110px" />
-                <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" Title="Operation" />
-                <RadzenDataGridColumn TItem="FlightListItem" Title="STA (UTC)" Width="170px">
-                    <Template Context="flight">@DateTimeDisplay(flight.ScheduledArrivalUtc)</Template>
+                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIata" Title="Station" Width="120px" />
+                <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" Title="Operation" Width="120px" />
+                <RadzenDataGridColumn TItem="FlightListItem" Title="Duration" Sortable="false" Width="120px">
+                    <Template Context="flight">@DurationDisplay(flight)</Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="FlightListItem" Title="Status" Sortable="false" Width="150px">
                     <Template Context="flight"><StatusBadge Label="@flight.Status" Tone="@FlightStatusTone(flight.Status)" /></Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Title="Per landing" Sortable="false" Width="120px">
-                    <Template Context="flight">@(flight.IsPerLanding ? "Yes" : "No")</Template>
                 </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
@@ -409,6 +412,34 @@
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
 
     private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+
+    private static string DurationDisplay(FlightListItem flight)
+    {
+        var duration = flight.ScheduledDepartureUtc - flight.ScheduledArrivalUtc;
+        if (duration < TimeSpan.Zero)
+            return "-";
+
+        var totalMinutes = (int)Math.Round(duration.TotalMinutes);
+        var days = totalMinutes / 1_440;
+        var hours = totalMinutes % 1_440 / 60;
+        var minutes = totalMinutes % 60;
+
+        if (days > 0)
+        {
+            if (hours > 0 && minutes > 0)
+                return $"{days}d {hours}h {minutes}m";
+            if (hours > 0)
+                return $"{days}d {hours}h";
+            if (minutes > 0)
+                return $"{days}d {minutes}m";
+            return $"{days}d";
+        }
+
+        if (hours > 0)
+            return minutes > 0 ? $"{hours}h {minutes}m" : $"{hours}h";
+
+        return $"{minutes}m";
+    }
 
     private static DateTimeOffset? DateBoundaryUtc(DateTime? value, bool endOfDay)
     {
