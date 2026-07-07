@@ -140,7 +140,8 @@
     font-weight: 800;
 }
 
-.owe-control {
+.owe-form ::deep .owe-control,
+.owe-form ::deep .owe-qty {
     width: 100%;
 }
 
@@ -193,9 +194,10 @@
     background: var(--os-color-border);
 }
 
-.owe-section-line .rz-icon,
-.owe-resource-title .rz-icon {
+.owe-section-line ::deep .rz-icon,
+.owe-resource-title ::deep .rz-icon {
     color: var(--os-color-text-muted);
+    font-size: 1.25rem;
 }
 
 .owe-row-list {
@@ -270,10 +272,6 @@
     grid-template-columns: minmax(0, 1fr) 8rem auto;
     gap: var(--os-space-2);
     align-items: center;
-}
-
-.owe-qty {
-    width: 100%;
 }
 
 .owe-empty {
