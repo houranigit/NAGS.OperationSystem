@@ -17,16 +17,17 @@ public sealed class WorkOrderTests
     private static AircraftTypeSnapshot Aircraft() => new(Guid.NewGuid(), "Airbus", "A320");
 
     [Fact]
-    public void OpenCompletion_StartsSubmitted_WithOwner()
+    public void OpenCompletion_StartsDraft_WithOwner()
     {
         var owner = TestData.Staff();
         var workOrder = WorkOrder.OpenCompletion(Context(), Guid.NewGuid(), owner, TestData.Now);
 
-        workOrder.Status.ShouldBe(WorkOrderStatus.Submitted);
+        workOrder.Status.ShouldBe(WorkOrderStatus.Draft);
         workOrder.Type.ShouldBe(WorkOrderType.Completion);
         workOrder.OwnerStaffMemberId.ShouldBe(owner.StaffMemberId);
         workOrder.IsOwnedBy(owner.StaffMemberId).ShouldBeTrue();
         workOrder.IsOwnedBy(Guid.NewGuid()).ShouldBeFalse();
+        workOrder.IsEditable.ShouldBeTrue();
     }
 
     [Fact]
@@ -34,6 +35,8 @@ public sealed class WorkOrderTests
     {
         // Actual services are optional; billing later compares planned vs actual.
         var workOrder = WorkOrder.OpenCompletion(Context(), Guid.NewGuid(), TestData.Staff(), TestData.Now);
+
+        workOrder.Status.ShouldBe(WorkOrderStatus.Draft);
 
         var submit = workOrder.Submit(TestData.Now);
 
@@ -47,6 +50,7 @@ public sealed class WorkOrderTests
         var workOrder = WorkOrder.OpenCompletion(Context(), Guid.NewGuid(), TestData.Staff(), TestData.Now);
         workOrder.SetActualAircraftType(Aircraft(), TestData.Now);
         workOrder.SetActualTimes(ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value, TestData.Now);
+        workOrder.Submit(TestData.Now);
         workOrder.Approve(WorkOrderNumber.FromStationSequence("RUH", 1), Guid.NewGuid(), TestData.Now);
 
         var second = workOrder.Submit(TestData.Now);
@@ -105,6 +109,7 @@ public sealed class WorkOrderTests
         var workOrder = WorkOrder.OpenCompletion(Context(), Guid.NewGuid(), TestData.Staff(), TestData.Now);
         workOrder.SetActualAircraftType(Aircraft(), TestData.Now);
         workOrder.SetActualTimes(ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value, TestData.Now);
+        workOrder.Submit(TestData.Now);
         workOrder.Approve(WorkOrderNumber.FromStationSequence("RUH", 1), Guid.NewGuid(), TestData.Now);
 
         workOrder.SetActualFlightNumber(TestData.FlightNo("SV1"), TestData.Now).IsFailure.ShouldBeTrue();

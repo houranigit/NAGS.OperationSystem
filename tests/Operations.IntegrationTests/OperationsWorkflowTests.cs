@@ -215,12 +215,17 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var refs = await SetupMasterDataAsync(admin);
         var flightId = await ScheduleFlightAsync(admin, refs, "NGS200");
 
-        // Opening a work order submits it and moves the flight into progress.
+        // Opening creates a reusable draft only; saving submits it and moves the flight into progress.
         var workOrderId = await OpenWorkOrderAsync(admin, flightId);
-        (await GetFlightAsync(admin, flightId)).Status.ShouldBe("InProgress");
+        (await GetFlightAsync(admin, flightId)).Status.ShouldBe("Scheduled");
+        var draft = await GetWorkOrderAsync(admin, workOrderId);
+        draft.Status.ShouldBe("Draft");
+        (await OpenWorkOrderAsync(admin, flightId)).ShouldBe(workOrderId);
 
         // Author the completion: actual aircraft type + flight number + ATA/ATD (actual services optional).
         await UpdateWorkOrderAsync(admin, workOrderId, refs, actualFlightNumber: "NGS200A");
+        (await GetFlightAsync(admin, flightId)).Status.ShouldBe("InProgress");
+        (await GetWorkOrderAsync(admin, workOrderId)).Status.ShouldBe("Submitted");
 
         // Approve → flight Completed with the approved values + reference captured.
         await ApproveWorkOrderAsync(admin, workOrderId);
@@ -436,12 +441,14 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         openA.StatusCode.ShouldBe(HttpStatusCode.Created);
         var workOrderA = await openA.Content.ReadFromJsonAsync<Guid>();
 
-        // Staff A cannot open a second active work order for the same flight.
-        (await staffAClient.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", new { }))
-            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        // Staff A can click open again and get the same editable draft.
+        var reopenA = await staffAClient.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", new { });
+        reopenA.StatusCode.ShouldBe(HttpStatusCode.Created);
+        (await reopenA.Content.ReadFromJsonAsync<Guid>()).ShouldBe(workOrderA);
 
         // Staff B cannot view, update, or submit Staff A's work order.
         var detailA = await GetWorkOrderAsync(staffAClient, workOrderA);
+        detailA.Status.ShouldBe("Draft");
         detailA.OwnerStaffMemberId.ShouldBe(staffAId);
         (await staffBClient.GetAsync($"{Base}/work-orders/{workOrderA}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
@@ -456,10 +463,27 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         foreignSubmit.Headers.TryAddWithoutValidation("If-Match", detailA.RowVersion);
         (await staffBClient.SendAsync(foreignSubmit)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
+        var saveA = new HttpRequestMessage(HttpMethod.Put, $"{Base}/work-orders/{workOrderA}")
+        {
+            Content = JsonContent.Create(EmptyWorkOrderUpdateBody())
+        };
+        saveA.Headers.TryAddWithoutValidation("If-Match", detailA.RowVersion);
+        (await staffAClient.SendAsync(saveA)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
         // Staff B opens their OWN work order on the same flight (multiple per flight allowed).
         var openB = await staffBClient.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", new { });
         openB.StatusCode.ShouldBe(HttpStatusCode.Created);
         var workOrderB = await openB.Content.ReadFromJsonAsync<Guid>();
+        workOrderB.ShouldNotBe(workOrderA);
+
+        var detailB = await GetWorkOrderAsync(staffBClient, workOrderB);
+        detailB.Status.ShouldBe("Draft");
+        var saveB = new HttpRequestMessage(HttpMethod.Put, $"{Base}/work-orders/{workOrderB}")
+        {
+            Content = JsonContent.Create(EmptyWorkOrderUpdateBody())
+        };
+        saveB.Headers.TryAddWithoutValidation("If-Match", detailB.RowVersion);
+        (await staffBClient.SendAsync(saveB)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         var flight = await GetFlightAsync(admin, flightId);
         flight.Status.ShouldBe("InProgress");

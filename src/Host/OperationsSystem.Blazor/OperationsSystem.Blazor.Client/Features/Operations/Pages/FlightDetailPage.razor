@@ -347,7 +347,7 @@
                     <RowActionMenu>
                         <RowAction Text="Open" Icon="visibility" OnClick="@(() => OpenWorkOrderDetailAsync(item.Id))" />
                         <RowAction Text="Edit" Icon="edit" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                                   Visible="@(item.Status == "Submitted")" OnClick="@(() => OpenWorkOrderEditorAsync(item.Id))" />
+                                   Visible="@(item.Status is "Draft" or "Submitted")" OnClick="@(() => OpenWorkOrderEditorAsync(item.Id))" />
                         <RowAction Text="Merge" Icon="merge_type" Permission="@OperationsPermissions.WorkOrdersMerge"
                                    Visible="@CanMergeWorkOrders" OnClick="@(() => OpenWorkOrderMergeAsync(item.Id))" />
                     </RowActionMenu>
@@ -503,7 +503,7 @@
     {
         var result = await DialogService.OpenAsync<WorkOrderEditorDialog>("Edit work order",
             new Dictionary<string, object?> { [nameof(WorkOrderEditorDialog.WorkOrderId)] = workOrderId },
-            new DialogOptions { Width = "1040px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             Notifications.Notify(NotificationSeverity.Success, "Work order saved");
@@ -568,6 +568,7 @@
     {
         "Approved" => "success",
         "Submitted" => "warning",
+        "Draft" => "neutral",
         _ => "neutral"
     };
 

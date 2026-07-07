@@ -8,8 +8,9 @@ namespace Operations.Domain.WorkOrders;
 
 /// <summary>
 /// The operational completion document for a flight. Its outcome is a normal completion or a
-/// cancellation. A work order is either Submitted (editable/reviewable) or Approved (locked,
-/// numbered, sent to billing). Returned/rejected/merged decisions are recorded in the timeline.
+/// cancellation. A work order starts as Draft while the author fills it in, becomes Submitted when
+/// saved for review, and is locked once Approved. Returned/rejected/merged decisions are recorded
+/// in the timeline.
 /// </summary>
 public sealed class WorkOrder : AggregateRoot<Guid>
 {
@@ -61,12 +62,12 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     public IReadOnlyList<WorkOrderTask> Tasks => _tasks.AsReadOnly();
 
     public bool IsCancellation => Type == WorkOrderType.Cancellation;
-    public bool IsEditable => Status == WorkOrderStatus.Submitted && SupersededByWorkOrderId is null;
+    public bool IsEditable => (Status is WorkOrderStatus.Draft or WorkOrderStatus.Submitted) && SupersededByWorkOrderId is null;
 
     public static WorkOrder OpenCompletion(FlightContext flight, Guid createdByUserId, StaffMemberSnapshot? owner, DateTimeOffset now, Guid? id = null)
     {
         var workOrder = NewFrom(flight, WorkOrderType.Completion, createdByUserId, owner, now, id);
-        workOrder.RaiseDomainEvent(new WorkOrderSubmitted(workOrder.Id, flight.FlightId));
+        workOrder.RaiseDomainEvent(new WorkOrderOpened(workOrder.Id, flight.FlightId));
         return workOrder;
     }
 
@@ -74,7 +75,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     {
         var workOrder = NewFrom(flight, WorkOrderType.Cancellation, createdByUserId, owner, now, id);
         workOrder.Cancellation = cancellation;
-        workOrder.RaiseDomainEvent(new WorkOrderSubmitted(workOrder.Id, flight.FlightId));
+        workOrder.RaiseDomainEvent(new WorkOrderOpened(workOrder.Id, flight.FlightId));
         return workOrder;
     }
 
@@ -85,7 +86,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>
             Id = id ?? Guid.NewGuid(),
             FlightId = flight.FlightId,
             Type = type,
-            Status = WorkOrderStatus.Submitted,
+            Status = WorkOrderStatus.Draft,
             OwnerStaffMemberId = owner?.StaffMemberId,
             Owner = owner,
             Customer = flight.Customer,
@@ -233,10 +234,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>
         return Result.Success();
     }
 
-    /// <summary>
-    /// Submits the work order for review. New work orders are created submitted, so this is retained
-    /// as an idempotent compatibility operation.
-    /// </summary>
+    /// <summary>Submits the work order for review. Re-submitting an already-submitted work order is idempotent.</summary>
     public Result Submit(DateTimeOffset now)
     {
         if (Status == WorkOrderStatus.Submitted)

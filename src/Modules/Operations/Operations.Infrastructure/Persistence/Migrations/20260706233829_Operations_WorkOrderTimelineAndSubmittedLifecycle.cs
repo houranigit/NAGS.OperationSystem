@@ -42,6 +42,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     (Id, WorkOrderId, FlightId, EventType, OccurredAtUtc, ActorUserId, ActorName, WorkOrderNumber, Details)
                 SELECT NEWID(), Id, FlightId, 0, CreatedAtUtc, CreatedByUserId, NULL, WorkOrderNumber, NULL
                 FROM operations.work_orders
+                WHERE Status <> 0
                 """);
 
             migrationBuilder.Sql("""
@@ -71,7 +72,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
             migrationBuilder.Sql("""
                 UPDATE operations.work_orders
                 SET Status = 1
-                WHERE Status IN (0, 3, 4, 5)
+                WHERE Status IN (3, 4, 5)
                 """);
         }
 

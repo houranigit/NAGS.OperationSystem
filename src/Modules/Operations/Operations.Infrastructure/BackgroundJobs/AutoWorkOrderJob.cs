@@ -54,6 +54,10 @@ public sealed class AutoWorkOrderJob(
             if (actuals.IsSuccess)
                 workOrder.SetActualTimes(actuals.Value, now);
 
+            var submit = workOrder.Submit(now);
+            if (submit.IsFailure)
+                continue;
+
             flight.OnWorkOrderSubmitted(now);
             db.WorkOrders.Add(workOrder);
             db.FlightTimelineEntries.Add(new Operations.Domain.Flights.FlightTimelineEntry(

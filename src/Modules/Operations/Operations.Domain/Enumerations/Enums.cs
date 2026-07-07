@@ -15,6 +15,7 @@ public enum FlightStatus
 /// <summary>Lifecycle of a <see cref="WorkOrders.WorkOrder"/> (the operational completion document).</summary>
 public enum WorkOrderStatus
 {
+    Draft = 0,
     Submitted = 1,
     Approved = 2
 }

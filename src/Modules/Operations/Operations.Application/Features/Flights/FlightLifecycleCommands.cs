@@ -74,6 +74,9 @@ public sealed class CancelFlightCommandHandler(
         var now = timeProvider.GetUtcNow();
         var cancellation = new CancellationDetails(user.UserId ?? Guid.Empty, request.CanceledAtUtc.ToUniversalTime(), request.Reason?.Trim());
         var workOrder = WorkOrder.OpenCancellation(WorkOrderContextFactory.From(flight), cancellation, user.UserId ?? Guid.Empty, owner, now);
+        var submit = workOrder.Submit(now);
+        if (submit.IsFailure)
+            return submit.Error;
 
         flight.OnWorkOrderSubmitted(now);
 
@@ -244,6 +247,12 @@ public sealed class CreateAdHocFlightWithWorkOrderCommandHandler(
         var applyActuals = await ApplyWorkOrderFieldsAsync(workOrder, request, now, cancellationToken);
         if (applyActuals.IsFailure)
             return applyActuals.Error;
+
+        var submit = workOrder.Submit(now);
+        if (submit.IsFailure)
+            return submit.Error;
+
+        flight.Value.OnWorkOrderSubmitted(now);
 
         db.Flights.Add(flight.Value);
         db.WorkOrders.Add(workOrder);

@@ -249,7 +249,7 @@
             {
                 await DialogService.OpenAsync<WorkOrderEditorDialog>("Work order",
                     new Dictionary<string, object?> { [nameof(WorkOrderEditorDialog.WorkOrderId)] = result.WorkOrderId },
-                    new DialogOptions { Width = "1040px" });
+                    new DialogOptions { Width = "760px" });
             }
         }
         catch (ApiException ex)

@@ -72,8 +72,6 @@ public sealed class OpenWorkOrderCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
-    IFlightTimelineWriter timeline,
-    IWorkOrderTimelineWriter workOrderTimeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<OpenWorkOrderCommand, Guid>
 {
@@ -93,11 +91,6 @@ public sealed class OpenWorkOrderCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
-        if (flight.IsUpdateLocked)
-            return Error.Conflict(
-                "This flight is settled. Return the approved work order to review before adding another work order.",
-                "Operations.Flight.Locked");
-
         // Multiple employees may each author their own work order for the same flight, but a single
         // staff member holds at most one work order per flight.
         StaffMemberSnapshot? owner = null;
@@ -108,26 +101,36 @@ public sealed class OpenWorkOrderCommandHandler(
                 return staff.Error;
             owner = staff.Value;
 
-            var hasOwnWorkOrder = await db.WorkOrders.AnyAsync(w => w.FlightId == flight.Id &&
-                w.OwnerStaffMemberId == staffId, cancellationToken);
-            if (hasOwnWorkOrder)
-                return Error.Conflict("You already have a work order for this flight.", "Operations.WorkOrder.AlreadyOpen");
+            var existing = await db.WorkOrders.AsNoTracking()
+                .Where(w => w.FlightId == flight.Id && w.OwnerStaffMemberId == staffId &&
+                    w.Status != WorkOrderStatus.Approved && w.SupersededByWorkOrderId == null)
+                .OrderByDescending(w => w.CreatedAtUtc)
+                .Select(w => (Guid?)w.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (existing is { } existingId)
+                return existingId;
         }
         else
         {
-            var hasOwnWorkOrder = await db.WorkOrders.AnyAsync(w => w.FlightId == flight.Id &&
-                w.OwnerStaffMemberId == null && w.CreatedByUserId == user.UserId, cancellationToken);
-            if (hasOwnWorkOrder)
-                return Error.Conflict("You already have a work order for this flight.", "Operations.WorkOrder.AlreadyOpen");
+            var existing = await db.WorkOrders.AsNoTracking()
+                .Where(w => w.FlightId == flight.Id && w.OwnerStaffMemberId == null && w.CreatedByUserId == user.UserId &&
+                    w.Status != WorkOrderStatus.Approved && w.SupersededByWorkOrderId == null)
+                .OrderByDescending(w => w.CreatedAtUtc)
+                .Select(w => (Guid?)w.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (existing is { } existingId)
+                return existingId;
         }
+
+        if (flight.IsUpdateLocked)
+            return Error.Conflict(
+                "This flight is settled. Return the approved work order to review before adding another work order.",
+                "Operations.Flight.Locked");
 
         var now = timeProvider.GetUtcNow();
         var workOrder = WorkOrder.OpenCompletion(WorkOrderContextFactory.From(flight), user.UserId ?? Guid.Empty, owner, now);
-        flight.OnWorkOrderSubmitted(now);
 
         db.WorkOrders.Add(workOrder);
-        await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now, workOrder.Id, cancellationToken: cancellationToken);
-        await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return workOrder.Id;
     }
@@ -163,6 +166,7 @@ public sealed class UpdateWorkOrderCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     WorkOrderInputBuilder builder,
+    IFlightTimelineWriter timeline,
     IWorkOrderTimelineWriter workOrderTimeline,
     TimeProvider timeProvider) : ICommandHandler<UpdateWorkOrderCommand>
 {
@@ -183,6 +187,7 @@ public sealed class UpdateWorkOrderCommandHandler(
             return ownership.Error;
 
         var now = timeProvider.GetUtcNow();
+        var wasDraft = workOrder.Status == WorkOrderStatus.Draft;
 
         if (!string.IsNullOrWhiteSpace(request.ActualFlightNumber))
         {
@@ -231,7 +236,25 @@ public sealed class UpdateWorkOrderCommandHandler(
         workOrder.SetAircraftTailNumber(request.AircraftTailNumber, now);
         workOrder.SetRemarks(request.Remarks, now);
         workOrder.SetCustomerSignature(request.CustomerSignatureReference, now);
-        await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Updated, now, cancellationToken: cancellationToken);
+
+        if (wasDraft)
+        {
+            var flight = await db.Flights.FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+            if (flight is null)
+                return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+            var submit = workOrder.Submit(now);
+            if (submit.IsFailure)
+                return submit.Error;
+
+            flight.OnWorkOrderSubmitted(now);
+            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now, workOrder.Id, cancellationToken: cancellationToken);
+            await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
+        }
+        else
+        {
+            await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Updated, now, cancellationToken: cancellationToken);
+        }
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         try

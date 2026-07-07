@@ -152,8 +152,9 @@
     private bool isActing;
     private string? errorMessage;
 
+    private bool IsDraft => workOrder?.Status == "Draft";
     private bool IsSubmitted => workOrder?.Status == "Submitted";
-    private bool IsEditable => workOrder?.Status == "Submitted";
+    private bool IsEditable => IsDraft || IsSubmitted;
 
     // Only the owner staff member (or an administrator) may author; the backend enforces this too.
     private bool IsOwner => Auth.IsSystemAdministrator ||
@@ -188,7 +189,7 @@
     {
         var result = await DialogService.OpenAsync<WorkOrderEditorDialog>("Edit work order",
             new Dictionary<string, object?> { [nameof(WorkOrderEditorDialog.WorkOrderId)] = WorkOrderId },
-            new DialogOptions { Width = "1040px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
             await LoadAsync();
@@ -239,6 +240,7 @@
     {
         "Approved" => "success",
         "Submitted" => "warning",
+        "Draft" => "neutral",
         _ => "neutral"
     };
 
