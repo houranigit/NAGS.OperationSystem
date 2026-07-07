@@ -83,6 +83,12 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
+        flights.MapGet("/{id:guid}/invite-options", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetFlightInviteOptionsQuery(id), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Invite);
+
         flights.MapPut("/{id:guid}", async (Guid id, UpdateScheduledFlightRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
             if (http.GetIfMatch() is not { } rowVersion)
@@ -111,6 +117,15 @@ internal static class FlightEndpoints
             var result = await sender.Send(new AssignEmployeesCommand(id, request.StaffMemberIds, rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Assign);
+
+        flights.MapPost("/{id:guid}/invite", async (Guid id, AssignEmployeesRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds, rowVersion), ct);
+            return result.ToNoContent();
+        }).RequirePermission(OperationsPermissions.Flights.Invite);
 
         flights.MapPost("/{id:guid}/claim", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {

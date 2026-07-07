@@ -10,6 +10,7 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
     {
         builder.ToTable("flights");
         builder.HasKey(f => f.Id);
+        builder.Property(f => f.Id).ValueGeneratedNever();
 
         builder.Property(f => f.OriginalFlightNumber).HasMaxLength(12).IsRequired();
         builder.Property(f => f.Status).HasConversion<int>();
@@ -93,6 +94,7 @@ public sealed class PlannedServiceConfiguration : IEntityTypeConfiguration<Plann
     {
         builder.ToTable("flight_planned_services");
         builder.HasKey(p => p.Id);
+        builder.Property(p => p.Id).ValueGeneratedNever();
         builder.Property(p => p.FlightId).IsRequired();
 
         builder.OwnsOne(p => p.Service, s =>
@@ -112,6 +114,7 @@ public sealed class FlightAssignedEmployeeConfiguration : IEntityTypeConfigurati
     {
         builder.ToTable("flight_assigned_employees");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.FlightId).IsRequired();
 
         builder.OwnsOne(e => e.Employee, s =>
@@ -131,6 +134,7 @@ public sealed class FlightTimelineEntryConfiguration : IEntityTypeConfiguration<
     {
         builder.ToTable("flight_timeline_entries");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.FlightId).IsRequired();
         builder.Property(e => e.EventType).HasConversion<int>();
         builder.Property(e => e.OccurredAtUtc).IsRequired();

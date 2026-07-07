@@ -17,12 +17,12 @@ public sealed class WorkOrderTests
     private static AircraftTypeSnapshot Aircraft() => new(Guid.NewGuid(), "Airbus", "A320");
 
     [Fact]
-    public void OpenCompletion_StartsDraft_WithOwner()
+    public void OpenCompletion_StartsSubmitted_WithOwner()
     {
         var owner = TestData.Staff();
         var workOrder = WorkOrder.OpenCompletion(Context(), Guid.NewGuid(), owner, TestData.Now);
 
-        workOrder.Status.ShouldBe(WorkOrderStatus.Draft);
+        workOrder.Status.ShouldBe(WorkOrderStatus.Submitted);
         workOrder.Type.ShouldBe(WorkOrderType.Completion);
         workOrder.OwnerStaffMemberId.ShouldBe(owner.StaffMemberId);
         workOrder.IsOwnedBy(owner.StaffMemberId).ShouldBeTrue();
@@ -42,10 +42,12 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
-    public void Submit_NotEditable_Fails()
+    public void Submit_Approved_Fails()
     {
         var workOrder = WorkOrder.OpenCompletion(Context(), Guid.NewGuid(), TestData.Staff(), TestData.Now);
-        workOrder.Submit(TestData.Now);
+        workOrder.SetActualAircraftType(Aircraft(), TestData.Now);
+        workOrder.SetActualTimes(ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value, TestData.Now);
+        workOrder.Approve(WorkOrderNumber.FromStationSequence("RUH", 1), Guid.NewGuid(), TestData.Now);
 
         var second = workOrder.Submit(TestData.Now);
 
@@ -98,10 +100,12 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
-    public void SetActualFields_AfterSubmit_Fails()
+    public void SetActualFields_AfterApprove_Fails()
     {
         var workOrder = WorkOrder.OpenCompletion(Context(), Guid.NewGuid(), TestData.Staff(), TestData.Now);
-        workOrder.Submit(TestData.Now);
+        workOrder.SetActualAircraftType(Aircraft(), TestData.Now);
+        workOrder.SetActualTimes(ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value, TestData.Now);
+        workOrder.Approve(WorkOrderNumber.FromStationSequence("RUH", 1), Guid.NewGuid(), TestData.Now);
 
         workOrder.SetActualFlightNumber(TestData.FlightNo("SV1"), TestData.Now).IsFailure.ShouldBeTrue();
         workOrder.SetActualAircraftType(Aircraft(), TestData.Now).IsFailure.ShouldBeTrue();
@@ -132,7 +136,7 @@ public sealed class WorkOrderTests
         var ret = workOrder.ReturnToReview(TestData.Now);
 
         ret.IsSuccess.ShouldBeTrue();
-        workOrder.Status.ShouldBe(WorkOrderStatus.Returned);
+        workOrder.Status.ShouldBe(WorkOrderStatus.Submitted);
         workOrder.Number.ShouldBeNull();
         workOrder.ApprovedByUserId.ShouldBeNull();
         workOrder.ApprovedAtUtc.ShouldBeNull();
@@ -147,7 +151,6 @@ public sealed class WorkOrderTests
         workOrder.Submit(TestData.Now);
         workOrder.Approve(WorkOrderNumber.FromStationSequence("RUH", 4), Guid.NewGuid(), TestData.Now);
         workOrder.ReturnToReview(TestData.Now);
-        workOrder.Submit(TestData.Now);
 
         var reapprove = workOrder.Approve(WorkOrderNumber.FromStationSequence("RUH", 5), Guid.NewGuid(), TestData.Now);
 

@@ -29,6 +29,7 @@ public sealed class ApproveWorkOrderCommandHandler(
     IOperationsDbContext db,
     IWorkOrderNumberAllocator allocator,
     IFlightTimelineWriter timeline,
+    IWorkOrderTimelineWriter workOrderTimeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<ApproveWorkOrderCommand>
 {
@@ -85,6 +86,7 @@ public sealed class ApproveWorkOrderCommandHandler(
         await timeline.AppendAsync(flight.Id,
             workOrder.IsCancellation ? FlightTimelineEventType.FlightCanceled : FlightTimelineEventType.FlightCompleted,
             now, workOrder.Id, number.Value, cancellationToken: cancellationToken);
+        await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Approved, now, number.Value, cancellationToken: cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         try
@@ -107,6 +109,7 @@ public sealed record RejectWorkOrderCommand(Guid Id, byte[] RowVersion) : IComma
 public sealed class RejectWorkOrderCommandHandler(
     IOperationsDbContext db,
     IFlightTimelineWriter timeline,
+    IWorkOrderTimelineWriter workOrderTimeline,
     TimeProvider timeProvider) : ICommandHandler<RejectWorkOrderCommand>
 {
     public async Task<Result> Handle(RejectWorkOrderCommand request, CancellationToken cancellationToken)
@@ -120,12 +123,27 @@ public sealed class RejectWorkOrderCommandHandler(
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
         var now = timeProvider.GetUtcNow();
-        var reject = workOrder.Reject(now);
-        if (reject.IsFailure)
-            return reject.Error;
+        var wasApproved = workOrder.Status == WorkOrderStatus.Approved;
+        var previousNumber = workOrder.Number?.Value;
+        var ret = workOrder.ReturnToReview(now);
+        if (ret.IsFailure)
+            return ret.Error;
 
-        flight.OnWorkOrderReturnedToReview(now);
-        await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderRejected, now, workOrder.Id, cancellationToken: cancellationToken);
+        if (wasApproved)
+        {
+            var clear = flight.ClearApprovedSnapshot(now);
+            if (clear.IsFailure)
+                return clear.Error;
+
+            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.ApprovedSnapshotCleared, now, workOrder.Id, previousNumber, cancellationToken: cancellationToken);
+        }
+        else
+        {
+            flight.OnWorkOrderReturnedToReview(now);
+        }
+
+        await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderReturned, now, workOrder.Id, previousNumber, cancellationToken: cancellationToken);
+        await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Returned, now, previousNumber, cancellationToken: cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         try
@@ -148,6 +166,7 @@ public sealed record ReturnWorkOrderToReviewCommand(Guid Id, byte[] RowVersion) 
 public sealed class ReturnWorkOrderToReviewCommandHandler(
     IOperationsDbContext db,
     IFlightTimelineWriter timeline,
+    IWorkOrderTimelineWriter workOrderTimeline,
     TimeProvider timeProvider) : ICommandHandler<ReturnWorkOrderToReviewCommand>
 {
     public async Task<Result> Handle(ReturnWorkOrderToReviewCommand request, CancellationToken cancellationToken)
@@ -185,6 +204,7 @@ public sealed class ReturnWorkOrderToReviewCommandHandler(
         }
 
         await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderReturned, now, workOrder.Id, previousNumber, cancellationToken: cancellationToken);
+        await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Returned, now, previousNumber, cancellationToken: cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         try

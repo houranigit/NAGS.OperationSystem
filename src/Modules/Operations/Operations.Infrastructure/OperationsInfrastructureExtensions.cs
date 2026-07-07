@@ -37,6 +37,7 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IOperationsScope, OperationsScope>();
         services.AddScoped<MasterDataResolver>();
         services.AddScoped<IFlightTimelineWriter, FlightTimelineWriter>();
+        services.AddScoped<IWorkOrderTimelineWriter, WorkOrderTimelineWriter>();
         services.AddScoped<WorkOrderInputBuilder>();
         services.AddScoped<FlightDuplicateDetector>();
         services.AddScoped<IWorkOrderNumberAllocator, WorkOrderNumberAllocator>();

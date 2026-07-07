@@ -10,6 +10,7 @@ public sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
     {
         builder.ToTable("work_orders");
         builder.HasKey(w => w.Id);
+        builder.Property(w => w.Id).ValueGeneratedNever();
 
         builder.Property(w => w.FlightId).IsRequired();
         builder.Property(w => w.Type).HasConversion<int>();
@@ -94,12 +95,33 @@ public sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
     }
 }
 
+public sealed class WorkOrderTimelineEntryConfiguration : IEntityTypeConfiguration<WorkOrderTimelineEntry>
+{
+    public void Configure(EntityTypeBuilder<WorkOrderTimelineEntry> builder)
+    {
+        builder.ToTable("work_order_timeline_entries");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
+        builder.Property(e => e.WorkOrderId).IsRequired();
+        builder.Property(e => e.FlightId).IsRequired();
+        builder.Property(e => e.EventType).HasConversion<int>();
+        builder.Property(e => e.OccurredAtUtc).IsRequired();
+        builder.Property(e => e.ActorUserId).IsRequired();
+        builder.Property(e => e.ActorName).HasMaxLength(200);
+        builder.Property(e => e.WorkOrderNumber).HasMaxLength(30);
+        builder.Property(e => e.Details).HasMaxLength(1000);
+
+        builder.HasIndex(e => new { e.WorkOrderId, e.OccurredAtUtc });
+    }
+}
+
 public sealed class WorkOrderServiceLineConfiguration : IEntityTypeConfiguration<WorkOrderServiceLine>
 {
     public void Configure(EntityTypeBuilder<WorkOrderServiceLine> builder)
     {
         builder.ToTable("work_order_service_lines");
         builder.HasKey(l => l.Id);
+        builder.Property(l => l.Id).ValueGeneratedNever();
         builder.Property(l => l.WorkOrderId).IsRequired();
         builder.Property(l => l.Origin).HasConversion<int>();
         builder.Property(l => l.Description).HasMaxLength(1000);
@@ -128,6 +150,7 @@ public sealed class WorkOrderServiceLineEmployeeConfiguration : IEntityTypeConfi
     {
         builder.ToTable("work_order_service_line_employees");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.ServiceLineId).IsRequired();
 
         builder.OwnsOne(e => e.Employee, s =>
@@ -147,6 +170,7 @@ public sealed class WorkOrderTaskConfiguration : IEntityTypeConfiguration<WorkOr
     {
         builder.ToTable("work_order_tasks");
         builder.HasKey(t => t.Id);
+        builder.Property(t => t.Id).ValueGeneratedNever();
         builder.Property(t => t.WorkOrderId).IsRequired();
         builder.Property(t => t.TaskType).HasConversion<int>();
         builder.Property(t => t.Description).HasMaxLength(1000);
@@ -174,6 +198,7 @@ public sealed class WorkOrderTaskEmployeeConfiguration : IEntityTypeConfiguratio
     {
         builder.ToTable("work_order_task_employees");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.TaskId).IsRequired();
 
         builder.OwnsOne(e => e.Employee, s =>
@@ -193,6 +218,7 @@ public sealed class WorkOrderTaskToolConfiguration : IEntityTypeConfiguration<Wo
     {
         builder.ToTable("work_order_task_tools");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.TaskId).IsRequired();
 
         builder.OwnsOne(e => e.Tool, s =>
@@ -213,6 +239,7 @@ public sealed class WorkOrderTaskMaterialConfiguration : IEntityTypeConfiguratio
     {
         builder.ToTable("work_order_task_materials");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.TaskId).IsRequired();
 
         builder.OwnsOne(e => e.Material, s =>
@@ -233,6 +260,7 @@ public sealed class WorkOrderTaskGeneralSupportConfiguration : IEntityTypeConfig
     {
         builder.ToTable("work_order_task_general_supports");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.TaskId).IsRequired();
 
         builder.OwnsOne(e => e.GeneralSupport, s =>
@@ -253,6 +281,7 @@ public sealed class WorkOrderTaskAttachmentConfiguration : IEntityTypeConfigurat
     {
         builder.ToTable("work_order_task_attachments");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.TaskId).IsRequired();
         builder.Property(e => e.Kind).HasConversion<int>();
         builder.Property(e => e.ContentType).HasMaxLength(120).IsRequired();

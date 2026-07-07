@@ -99,6 +99,27 @@
                         <DetailField Label="Signature reference" Value="@None(workOrder.CustomerSignatureReference)" Icon="draw" />
                     </div>
                 </RadzenTabsItem>
+                <RadzenTabsItem Text="Timeline">
+                    @if (timeline.Count == 0)
+                    {
+                        <EmptyState Title="No timeline events" Icon="history" />
+                    }
+                    else
+                    {
+                        <ol class="owd-timeline">
+                            @foreach (var entry in timeline)
+                            {
+                                <li @key="entry.Id" class="owd-timeline-item">
+                                    <span class="owd-timeline-icon"><RadzenIcon Icon="@TimelineIcon(entry.EventType)" /></span>
+                                    <div class="owd-timeline-text">
+                                        <strong>@TimelineLabel(entry)</strong>
+                                        <span>@DateTimeDisplay(entry.OccurredAtUtc) UTC · @(entry.ActorName ?? "Administrator/System")</span>
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+                    }
+                </RadzenTabsItem>
             </Tabs>
         </RadzenTabs>
 
@@ -109,17 +130,9 @@
                 {
                     <RadzenButton Text="Edit" Icon="edit" ButtonStyle="ButtonStyle.Secondary" Click="@OpenEditorAsync" />
                 }
-                @if (CanSubmit)
-                {
-                    <RadzenButton Text="Submit" Icon="send" ButtonStyle="ButtonStyle.Primary" Click="@SubmitWorkOrderAsync" Disabled="@isActing" />
-                }
                 @if (CanReturn)
                 {
                     <RadzenButton Text="Return" Icon="undo" ButtonStyle="ButtonStyle.Warning" Click="@ReturnAsync" Disabled="@isActing" />
-                }
-                @if (CanReject)
-                {
-                    <RadzenButton Text="Reject" Icon="block" ButtonStyle="ButtonStyle.Danger" Click="@RejectAsync" Disabled="@isActing" />
                 }
                 @if (CanApprove)
                 {
@@ -134,22 +147,21 @@
     [Parameter] public Guid WorkOrderId { get; set; }
 
     private WorkOrderDetail? workOrder;
+    private IReadOnlyList<WorkOrderTimelineEntryModel> timeline = [];
     private bool isLoading = true;
     private bool isActing;
     private string? errorMessage;
 
     private bool IsSubmitted => workOrder?.Status == "Submitted";
-    private bool IsEditable => workOrder?.Status is "Draft" or "Returned";
+    private bool IsEditable => workOrder?.Status == "Submitted";
 
     // Only the owner staff member (or an administrator) may author; the backend enforces this too.
     private bool IsOwner => Auth.IsSystemAdministrator ||
         (workOrder?.OwnerStaffMemberId is { } owner && Auth.User?.ExternalReferenceId == owner);
 
     private bool CanEdit => IsEditable && IsOwner && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor);
-    private bool CanSubmit => IsEditable && IsOwner && Auth.HasPermission(OperationsPermissions.WorkOrdersSubmit);
     private bool CanApprove => IsSubmitted && Auth.HasPermission(OperationsPermissions.WorkOrdersApprove);
-    private bool CanReject => IsSubmitted && Auth.HasPermission(OperationsPermissions.WorkOrdersReject);
-    private bool CanReturn => workOrder?.Status == "Approved" && Auth.HasPermission(OperationsPermissions.WorkOrdersReturn);
+    private bool CanReturn => (workOrder?.Status is "Submitted" or "Approved") && Auth.HasPermission(OperationsPermissions.WorkOrdersReturn);
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -160,6 +172,7 @@
         try
         {
             workOrder = await Operations.GetWorkOrderAsync(WorkOrderId);
+            timeline = await Operations.GetWorkOrderTimelineAsync(WorkOrderId);
         }
         catch (ApiException ex)
         {
@@ -181,25 +194,15 @@
             await LoadAsync();
     }
 
-    private Task SubmitWorkOrderAsync() => RunActionAsync(
-        () => Operations.SubmitWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
-        "Submitted",
-        "Work order submitted for review.");
-
     private Task ApproveAsync() => RunActionAsync(
         () => Operations.ApproveWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
         "Approved",
         "Work order approved and sent to billing.");
 
-    private Task RejectAsync() => RunActionAsync(
-        () => Operations.RejectWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
-        "Rejected",
-        "Work order rejected.");
-
     private Task ReturnAsync() => RunActionAsync(
         () => Operations.ReturnWorkOrderAsync(WorkOrderId, workOrder?.RowVersion ?? string.Empty),
         "Returned",
-        "Work order returned to review.");
+        "Work order returned.");
 
     private async Task RunActionAsync(Func<Task> action, string title, string message)
     {
@@ -236,8 +239,30 @@
     {
         "Approved" => "success",
         "Submitted" => "warning",
-        "Rejected" or "Superseded" => "danger",
-        "Returned" => "warning",
         _ => "neutral"
+    };
+
+    private static string TimelineLabel(WorkOrderTimelineEntryModel entry)
+    {
+        var number = string.IsNullOrWhiteSpace(entry.WorkOrderNumber) ? null : $" {entry.WorkOrderNumber}";
+        return entry.EventType switch
+        {
+            "Submitted" => $"Work order{number} submitted",
+            "Updated" => $"Work order{number} updated",
+            "Approved" => $"Work order{number} approved",
+            "Returned" => $"Work order{number} returned",
+            "Superseded" => $"Work order{number} merged",
+            _ => entry.EventType
+        };
+    }
+
+    private static string TimelineIcon(string eventType) => eventType switch
+    {
+        "Submitted" => "send",
+        "Updated" => "edit",
+        "Approved" => "verified",
+        "Returned" => "undo",
+        "Superseded" => "merge_type",
+        _ => "history"
     };
 }

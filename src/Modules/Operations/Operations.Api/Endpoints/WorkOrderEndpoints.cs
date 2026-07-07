@@ -30,6 +30,12 @@ internal static class WorkOrderEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.WorkOrders.View);
 
+        workOrders.MapGet("/{id:guid}/timeline", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetWorkOrderTimelineQuery(id), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.WorkOrders.View);
+
         // Open a completion work order for a scheduled flight.
         group.MapPost("/flights/{flightId:guid}/work-orders", async (Guid flightId, ISender sender, CancellationToken ct) =>
         {

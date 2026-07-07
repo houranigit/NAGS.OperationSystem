@@ -8,8 +8,8 @@ namespace Operations.Domain.WorkOrders;
 
 /// <summary>
 /// The operational completion document for a flight. Its outcome is a normal completion or a
-/// cancellation. Flows Draft -> Submitted -> Approved (locked, numbered, sent to billing); an admin
-/// may Return an approved work order to review to unlock it. Losers of a duplicate merge become Superseded.
+/// cancellation. A work order is either Submitted (editable/reviewable) or Approved (locked,
+/// numbered, sent to billing). Returned/rejected/merged decisions are recorded in the timeline.
 /// </summary>
 public sealed class WorkOrder : AggregateRoot<Guid>
 {
@@ -61,12 +61,12 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     public IReadOnlyList<WorkOrderTask> Tasks => _tasks.AsReadOnly();
 
     public bool IsCancellation => Type == WorkOrderType.Cancellation;
-    public bool IsEditable => Status is WorkOrderStatus.Draft or WorkOrderStatus.Returned;
+    public bool IsEditable => Status == WorkOrderStatus.Submitted && SupersededByWorkOrderId is null;
 
     public static WorkOrder OpenCompletion(FlightContext flight, Guid createdByUserId, StaffMemberSnapshot? owner, DateTimeOffset now, Guid? id = null)
     {
         var workOrder = NewFrom(flight, WorkOrderType.Completion, createdByUserId, owner, now, id);
-        workOrder.RaiseDomainEvent(new WorkOrderOpened(workOrder.Id, flight.FlightId));
+        workOrder.RaiseDomainEvent(new WorkOrderSubmitted(workOrder.Id, flight.FlightId));
         return workOrder;
     }
 
@@ -74,7 +74,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     {
         var workOrder = NewFrom(flight, WorkOrderType.Cancellation, createdByUserId, owner, now, id);
         workOrder.Cancellation = cancellation;
-        workOrder.RaiseDomainEvent(new WorkOrderOpened(workOrder.Id, flight.FlightId));
+        workOrder.RaiseDomainEvent(new WorkOrderSubmitted(workOrder.Id, flight.FlightId));
         return workOrder;
     }
 
@@ -85,7 +85,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>
             Id = id ?? Guid.NewGuid(),
             FlightId = flight.FlightId,
             Type = type,
-            Status = WorkOrderStatus.Draft,
+            Status = WorkOrderStatus.Submitted,
             OwnerStaffMemberId = owner?.StaffMemberId,
             Owner = owner,
             Customer = flight.Customer,
@@ -234,13 +234,16 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     }
 
     /// <summary>
-    /// Submits the work order for review. Actual services are optional at submission (billing later
-    /// compares planned vs actual); completion-specific required fields are enforced at approval.
+    /// Submits the work order for review. New work orders are created submitted, so this is retained
+    /// as an idempotent compatibility operation.
     /// </summary>
     public Result Submit(DateTimeOffset now)
     {
-        if (!IsEditable)
-            return Error.Conflict("Only a draft or returned work order can be submitted.", "Operations.WorkOrder.NotSubmittable");
+        if (Status == WorkOrderStatus.Submitted)
+            return Result.Success();
+
+        if (Status == WorkOrderStatus.Approved)
+            return Error.Conflict("An approved work order cannot be submitted again.", "Operations.WorkOrder.NotSubmittable");
 
         Status = WorkOrderStatus.Submitted;
         UpdatedAtUtc = now;
@@ -252,6 +255,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     {
         if (Status != WorkOrderStatus.Submitted)
             return Error.Conflict("Only a submitted work order can be approved.", "Operations.WorkOrder.NotApprovable");
+
+        if (SupersededByWorkOrderId is not null)
+            return Error.Conflict("A merged work order cannot be approved.", "Operations.WorkOrder.Superseded");
 
         if (Type == WorkOrderType.Completion && Actuals is null)
             return Error.Validation("Actual arrival and departure times are required to approve a completion.", "Operations.WorkOrder.ActualsRequired");
@@ -271,24 +277,13 @@ public sealed class WorkOrder : AggregateRoot<Guid>
         return Result.Success();
     }
 
-    public Result Reject(DateTimeOffset now)
-    {
-        if (Status != WorkOrderStatus.Submitted)
-            return Error.Conflict("Only a submitted work order can be rejected.", "Operations.WorkOrder.NotRejectable");
-
-        Status = WorkOrderStatus.Rejected;
-        UpdatedAtUtc = now;
-        RaiseDomainEvent(new WorkOrderRejected(Id, FlightId));
-        return Result.Success();
-    }
-
-    /// <summary>Admin returns a submitted or approved work order to editable review, unlocking it.</summary>
+    /// <summary>Admin returns a submitted or approved work order; approved work orders become submitted again.</summary>
     public Result ReturnToReview(DateTimeOffset now)
     {
         if (Status is not (WorkOrderStatus.Submitted or WorkOrderStatus.Approved))
             return Error.Conflict("Only a submitted or approved work order can be returned to review.", "Operations.WorkOrder.NotReturnable");
 
-        Status = WorkOrderStatus.Returned;
+        Status = WorkOrderStatus.Submitted;
         Number = null;
         ApprovedByUserId = null;
         ApprovedAtUtc = null;
@@ -308,10 +303,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>
     {
         if (Status == WorkOrderStatus.Approved)
             return Error.Conflict("An approved work order cannot be superseded; return it to review first.", "Operations.WorkOrder.ApprovedNotSupersedable");
-        if (Status == WorkOrderStatus.Superseded)
+        if (SupersededByWorkOrderId is not null)
             return Result.Success();
 
-        Status = WorkOrderStatus.Superseded;
         SupersededByWorkOrderId = survivorWorkOrderId;
         UpdatedAtUtc = now;
         RaiseDomainEvent(new WorkOrderSuperseded(Id, survivorWorkOrderId));

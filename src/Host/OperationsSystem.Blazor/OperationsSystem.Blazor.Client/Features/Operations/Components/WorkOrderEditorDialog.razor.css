@@ -1,6 +1,11 @@
 .owe-form {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: var(--os-space-4);
+    width: min(960px, calc(100vw - 3rem));
+    max-width: 960px;
+    margin-inline: auto;
+    color: var(--os-color-text);
 }
 
 .owe-summary {
@@ -8,6 +13,8 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--os-space-4);
+    padding-block-end: var(--os-space-1);
+    border-block-end: 1px solid #80808036;
 }
 
 .owe-summary h2,
@@ -15,26 +22,61 @@
     margin: 0;
 }
 
+.owe-summary h2 {
+    color: var(--os-color-text);
+    font-size: var(--os-text-2xl);
+    line-height: 1.1;
+}
+
 .owe-grid-2 {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--os-space-3);
+    gap: var(--os-space-4);
 }
 
 .owe-field-block {
-    display: grid;
-    gap: var(--os-space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-1);
+    min-width: 0;
 }
 
 .owe-label,
 .owe-sub-label {
-    color: var(--os-color-text-muted);
+    color: var(--os-color-text);
     font-size: var(--os-text-sm);
-    font-weight: 700;
+    font-weight: 800;
 }
 
 .owe-control {
     width: 100%;
+}
+
+.owe-input-wrap {
+    position: relative;
+    min-width: 0;
+}
+
+.owe-input-wrap ::deep .owe-field-icon {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 50%;
+    inset-inline-start: var(--os-space-4);
+    transform: translateY(-50%);
+    color: var(--os-color-text-muted);
+    font-size: 1.25rem;
+    pointer-events: none;
+}
+
+.owe-form ::deep .owe-control-icon input,
+.owe-form ::deep input.owe-control-icon,
+.owe-form ::deep .owe-control-icon .rz-dropdown-label {
+    padding-inline-start: 52px;
+}
+
+.owe-form ::deep .owe-control-icon .rz-dropdown-trigger,
+.owe-form ::deep .owe-control-icon .rz-datepicker-trigger {
+    z-index: 3;
 }
 
 .owe-section-head {
@@ -45,15 +87,23 @@
 }
 
 .owe-section-line {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto auto minmax(24px, 1fr);
     align-items: center;
     gap: var(--os-space-2);
-    font-weight: 700;
+    color: var(--os-color-text);
+    font-weight: 800;
+}
+
+.owe-section-line::after {
+    content: "";
+    height: 1px;
+    background: var(--os-color-border);
 }
 
 .owe-section-line .rz-icon,
 .owe-resource-title .rz-icon {
-    color: var(--os-color-primary);
+    color: var(--os-color-text-muted);
 }
 
 .owe-row-list {
@@ -66,8 +116,8 @@
     gap: var(--os-space-3);
     padding: var(--os-space-4);
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-md);
-    background: var(--os-color-surface-muted);
+    border-radius: 8px;
+    background: var(--os-color-surface);
 }
 
 .owe-row-head,
@@ -108,7 +158,7 @@
     min-height: 2.2rem;
     padding: 0.35rem 0.65rem;
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-pill);
+    border-radius: var(--os-radius-sm);
     background: var(--os-color-surface);
     color: var(--os-color-text-muted);
     font: inherit;
@@ -137,7 +187,7 @@
 .owe-empty {
     padding: var(--os-space-3);
     border: 1px dashed var(--os-color-border-strong);
-    border-radius: var(--os-radius-md);
+    border-radius: 8px;
     color: var(--os-color-text-muted);
     background: var(--os-color-surface-muted);
 }

@@ -27,33 +27,51 @@
             <div class="owe-grid-2">
                 <div class="owe-field-block">
                     <label class="owe-label">Actual flight #</label>
-                    <RadzenTextBox @bind-Value="model.ActualFlightNumber" MaxLength="12" class="owe-control" />
+                    <div class="owe-input-wrap">
+                        <RadzenIcon Icon="tag" class="owe-field-icon" />
+                        <RadzenTextBox @bind-Value="model.ActualFlightNumber" MaxLength="12" class="owe-control owe-control-icon" />
+                    </div>
                 </div>
                 <div class="owe-field-block">
                     <label class="owe-label">Actual aircraft type</label>
-                    <RadzenDropDown @bind-Value="model.ActualAircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                    AllowClear="true" AllowFiltering="true" class="owe-control" Placeholder="Aircraft type" />
+                    <div class="owe-input-wrap">
+                        <RadzenIcon Icon="airplanemode_active" class="owe-field-icon" />
+                        <RadzenDropDown @bind-Value="model.ActualAircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                                        AllowClear="true" AllowFiltering="true" class="owe-control owe-control-icon" Placeholder="Aircraft type" />
+                    </div>
                 </div>
             </div>
             <div class="owe-grid-2">
                 <div class="owe-field-block">
                     <label class="owe-label">Actual arrival (UTC)</label>
-                    <RadzenDatePicker @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                    <div class="owe-input-wrap">
+                        <RadzenIcon Icon="flight_land" class="owe-field-icon" />
+                        <RadzenDatePicker @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control owe-control-icon" />
+                    </div>
                 </div>
                 <div class="owe-field-block">
                     <label class="owe-label">Actual departure (UTC)</label>
-                    <RadzenDatePicker @bind-Value="model.ActualDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control" />
+                    <div class="owe-input-wrap">
+                        <RadzenIcon Icon="flight_takeoff" class="owe-field-icon" />
+                        <RadzenDatePicker @bind-Value="model.ActualDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owe-control owe-control-icon" />
+                    </div>
                 </div>
             </div>
 
             <div class="owe-grid-2">
                 <div class="owe-field-block">
                     <label class="owe-label">Aircraft tail</label>
-                    <RadzenTextBox @bind-Value="model.AircraftTailNumber" MaxLength="30" class="owe-control" />
+                    <div class="owe-input-wrap">
+                        <RadzenIcon Icon="airplane_ticket" class="owe-field-icon" />
+                        <RadzenTextBox @bind-Value="model.AircraftTailNumber" MaxLength="30" class="owe-control owe-control-icon" />
+                    </div>
                 </div>
                 <div class="owe-field-block">
                     <label class="owe-label">Signature reference</label>
-                    <RadzenTextBox @bind-Value="model.CustomerSignatureReference" MaxLength="500" class="owe-control" />
+                    <div class="owe-input-wrap">
+                        <RadzenIcon Icon="draw" class="owe-field-icon" />
+                        <RadzenTextBox @bind-Value="model.CustomerSignatureReference" MaxLength="500" class="owe-control owe-control-icon" />
+                    </div>
                 </div>
             </div>
 

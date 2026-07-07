@@ -15,12 +15,8 @@ public enum FlightStatus
 /// <summary>Lifecycle of a <see cref="WorkOrders.WorkOrder"/> (the operational completion document).</summary>
 public enum WorkOrderStatus
 {
-    Draft = 0,
     Submitted = 1,
-    Approved = 2,
-    Returned = 3,
-    Rejected = 4,
-    Superseded = 5
+    Approved = 2
 }
 
 /// <summary>Outcome kind of a work order: a normal completion or a customer cancellation.</summary>
@@ -66,4 +62,14 @@ public enum FlightTimelineEventType
     FlightCanceled = 8,
     EmployeeAssigned = 9,
     ApprovedSnapshotCleared = 10
+}
+
+/// <summary>Kind of event recorded on a work order's timeline/history.</summary>
+public enum WorkOrderTimelineEventType
+{
+    Submitted = 0,
+    Updated = 1,
+    Approved = 2,
+    Returned = 3,
+    Superseded = 4
 }

@@ -44,6 +44,8 @@ public interface IMasterDataReader
 
     public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetStaffMembersAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
 
+    public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken cancellationToken);
+
     public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken);
 
     public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken cancellationToken);

@@ -140,6 +140,14 @@ public sealed record FlightTimelineEntryModel(
     string? WorkOrderNumber,
     string? Details);
 
+public sealed record WorkOrderTimelineEntryModel(
+    Guid Id,
+    string EventType,
+    DateTimeOffset OccurredAtUtc,
+    string? ActorName,
+    string? WorkOrderNumber,
+    string? Details);
+
 public sealed record FlightDetail(
     Guid Id,
     string FlightNumber,

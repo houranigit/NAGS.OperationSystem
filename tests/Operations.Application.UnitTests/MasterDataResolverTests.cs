@@ -78,6 +78,12 @@ public sealed class MasterDataResolverTests
             return Task.FromResult<IReadOnlyList<StaffMemberReadSnapshot>>(members);
         }
 
+        public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken cancellationToken)
+        {
+            var members = StaffMembers.Values.Where(member => member.StationId == stationId && member.IsActive).ToList();
+            return Task.FromResult<IReadOnlyList<StaffMemberReadSnapshot>>(members);
+        }
+
         public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
 

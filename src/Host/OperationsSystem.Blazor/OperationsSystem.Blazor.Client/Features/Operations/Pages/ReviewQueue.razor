@@ -44,8 +44,8 @@
                     <RowAction Text="Review" Icon="visibility" OnClick="@(() => OpenReviewAsync(item.WorkOrderId))" />
                     <RowAction Text="Approve" Icon="verified" Permission="@OperationsPermissions.WorkOrdersApprove"
                                OnClick="@(() => ApproveAsync(item))" />
-                    <RowAction Text="Reject" Icon="block" Danger="true" Permission="@OperationsPermissions.WorkOrdersReject"
-                               OnClick="@(() => RejectAsync(item))" />
+                    <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersReturn"
+                               OnClick="@(() => ReturnAsync(item))" />
                     <RowAction Separator="true" />
                     <RowAction Text="Merge work orders" Icon="merge_type" Permission="@OperationsPermissions.WorkOrdersMerge"
                                OnClick="@(() => OpenMergeAsync(item))" />
@@ -168,22 +168,22 @@
         }
     }
 
-    private async Task RejectAsync(ReviewQueueItem item)
+    private async Task ReturnAsync(ReviewQueueItem item)
     {
-        var confirmed = await DialogService.Confirm($"Reject the work order for {item.FlightNumber}?", "Reject work order",
-            new ConfirmOptions { OkButtonText = "Reject", CancelButtonText = "Cancel" }) ?? false;
+        var confirmed = await DialogService.Confirm($"Return the work order for {item.FlightNumber}?", "Return work order",
+            new ConfirmOptions { OkButtonText = "Return", CancelButtonText = "Cancel" }) ?? false;
         if (!confirmed)
             return;
 
         try
         {
-            await Operations.RejectWorkOrderAsync(item.WorkOrderId, item.RowVersion);
-            Notifications.Notify(NotificationSeverity.Success, "Rejected", $"Work order for {item.FlightNumber} returned to the field.");
+            await Operations.ReturnWorkOrderAsync(item.WorkOrderId, item.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Returned", $"Work order for {item.FlightNumber} returned.");
             await ReloadAsync();
         }
         catch (ApiException ex)
         {
-            Notifications.Notify(NotificationSeverity.Error, "Reject failed", ex.ToDisplayMessage("Could not reject the work order."));
+            Notifications.Notify(NotificationSeverity.Error, "Return failed", ex.ToDisplayMessage("Could not return the work order."));
         }
     }
 

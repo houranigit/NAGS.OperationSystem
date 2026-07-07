@@ -62,6 +62,14 @@ public sealed record FlightTimelineEntryDto(
     string? WorkOrderNumber,
     string? Details);
 
+public sealed record WorkOrderTimelineEntryDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset OccurredAtUtc,
+    string? ActorName,
+    string? WorkOrderNumber,
+    string? Details);
+
 public sealed record FlightDetailDto(
     Guid Id,
     string FlightNumber,

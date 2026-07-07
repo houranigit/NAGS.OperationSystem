@@ -189,8 +189,8 @@ public sealed class FlightTests
 
         var context = new FlightContext(flight.Id, flight.Customer, flight.Station, flight.OperationType,
             flight.FlightNumber, flight.Schedule, flight.AircraftType);
-        var draft = WorkOrder.OpenCompletion(context, Guid.NewGuid(), TestData.Staff(), TestData.Now);
-        flight.SettleCompleted(draft, TestData.Now).IsFailure.ShouldBeTrue();
+        var submitted = WorkOrder.OpenCompletion(context, Guid.NewGuid(), TestData.Staff(), TestData.Now);
+        flight.SettleCompleted(submitted, TestData.Now).IsFailure.ShouldBeTrue();
     }
 
     [Fact]

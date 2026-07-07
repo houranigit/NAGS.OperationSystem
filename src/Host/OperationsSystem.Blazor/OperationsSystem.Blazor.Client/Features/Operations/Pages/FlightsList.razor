@@ -80,6 +80,8 @@
                                Visible="@CanEditFlight(flight)" OnClick="@(() => OpenEditAsync(flight.Id))" />
                     <RowAction Text="Open work order" Icon="assignment_add" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                Visible="@CanOpenWorkOrder(flight)" OnClick="@(() => OpenWorkOrderAsync(flight))" />
+                    <RowAction Text="Invite employee" Icon="person_add" Permission="@OperationsPermissions.FlightsInvite"
+                               Visible="@CanInviteFlight(flight)" OnClick="@(() => OpenInviteAsync(flight))" />
                     <RowAction Separator="true" />
                     <RowAction Text="Resolve duplicates" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
                                Visible="@CanMergeFlight(flight)" OnClick="@(() => OpenMergeAsync(flight.Id))" />
@@ -361,6 +363,19 @@
         }
     }
 
+    private async Task OpenInviteAsync(FlightListItem flight)
+    {
+        var result = await DialogService.OpenAsync<FlightInviteDialog>("Invite employee",
+            new Dictionary<string, object?> { [nameof(FlightInviteDialog.FlightId)] = flight.Id },
+            new DialogOptions { Width = "700px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Employee invited", "The selected employee was assigned to the flight.");
+            await ReloadAsync();
+        }
+    }
+
     private async Task OpenCancelAsync(FlightListItem flight)
     {
         var result = await DialogService.OpenAsync<CancelFlightDialog>("Cancel flight",
@@ -389,6 +404,7 @@
 
     private static bool CanEditFlight(FlightListItem flight) => flight.Status is "Scheduled";
     private static bool CanOpenWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
+    private static bool CanInviteFlight(FlightListItem flight) => flight.Status is "Scheduled" && !flight.IsPerLanding;
     private static bool CanCancelFlight(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
 

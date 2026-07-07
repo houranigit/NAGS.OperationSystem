@@ -401,6 +401,7 @@ public sealed class AssignEmployeesCommandHandler(
         var now = timeProvider.GetUtcNow();
         var alreadyAssigned = flight.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToHashSet();
 
+        db.SetOriginalRowVersion(flight, request.RowVersion);
         var assign = flight.AssignEmployees(employees.Value, now);
         if (assign.IsFailure)
             return assign.Error;
@@ -408,7 +409,81 @@ public sealed class AssignEmployeesCommandHandler(
         foreach (var employee in employees.Value.Where(e => !alreadyAssigned.Contains(e.StaffMemberId)))
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
 
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+
+        return Result.Success();
+    }
+}
+
+// --- Invite/forward employees onto a scheduled non-Per-Landing flight -------
+
+public sealed record InviteEmployeesToFlightCommand(Guid FlightId, IReadOnlyList<Guid> StaffMemberIds, byte[] RowVersion) : ICommand;
+
+public sealed class InviteEmployeesToFlightCommandValidator : AbstractValidator<InviteEmployeesToFlightCommand>
+{
+    public InviteEmployeesToFlightCommandValidator()
+    {
+        RuleFor(x => x.FlightId).NotEmpty();
+        RuleFor(x => x.StaffMemberIds).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+    }
+}
+
+public sealed class InviteEmployeesToFlightCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    MasterDataResolver resolver,
+    IFlightTimelineWriter timeline,
+    TimeProvider timeProvider) : ICommandHandler<InviteEmployeesToFlightCommand>
+{
+    public async Task<Result> Handle(InviteEmployeesToFlightCommand request, CancellationToken cancellationToken)
+    {
+        var flight = await db.Flights
+            .Include(f => f.AssignedEmployees)
+            .Include(f => f.PlannedServices)
+            .FirstOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
+        if (accessCheck.IsFailure)
+            return accessCheck.Error;
+
+        var editCheck = flight.EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
+
+        if (flight.IsPerLanding)
+            return PerLandingAssignmentGuard.Error();
+
+        var requested = request.StaffMemberIds.Distinct().ToList();
+        var alreadyAssigned = flight.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToHashSet();
+        if (requested.Any(alreadyAssigned.Contains))
+            return Error.Conflict("One or more selected employees are already assigned to this flight.", "Operations.Flight.AssignmentAlreadyExists");
+
+        var employees = await resolver.StaffMembersForStationAsync(requested, flight.Station.StationId, cancellationToken);
+        if (employees.IsFailure)
+            return employees.Error;
+
+        var now = timeProvider.GetUtcNow();
         db.SetOriginalRowVersion(flight, request.RowVersion);
+        var assign = flight.AssignEmployees(employees.Value, now);
+        if (assign.IsFailure)
+            return assign.Error;
+
+        foreach (var employee in employees.Value)
+            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);

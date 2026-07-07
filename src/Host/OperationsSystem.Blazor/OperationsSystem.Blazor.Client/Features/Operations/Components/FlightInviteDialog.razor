@@ -1,0 +1,151 @@
+@inject OperationsApiClient Operations
+@inject DialogService DialogService
+
+<div class="ofi-form">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (flight is null)
+    {
+        <ErrorState Message="Could not load the flight." OnRetry="@LoadAsync" />
+    }
+    else
+    {
+        <div class="ofi-summary">
+            <div>
+                <p class="os-eyebrow">Invite employee</p>
+                <h2>@flight.FlightNumber</h2>
+                <p class="os-muted">@flight.CustomerName · @flight.StationIata</p>
+            </div>
+            <StatusBadge Label="@flight.Status" Tone="neutral" />
+        </div>
+
+        <div class="ofi-section-line"><RadzenIcon Icon="person_add" /><span>Eligible employees</span></div>
+
+        @if (eligibleStaff.Count == 0)
+        {
+            <EmptyState Title="No employees available" Description="Every active station employee is already assigned to this flight." Icon="groups" />
+        }
+        else
+        {
+            <div class="ofi-search-box">
+                <RadzenIcon Icon="search" class="ofi-search-icon" />
+                <input type="search" @bind="searchTerm" @bind:event="oninput" placeholder="Search employees" />
+            </div>
+
+            <div class="ofi-chip-list">
+                @foreach (var member in FilteredStaff())
+                {
+                    <button type="button" @key="member.StaffMemberId" class="@ChipClass(selectedStaffIds.Contains(member.StaffMemberId))"
+                            @onclick="@(() => Toggle(member.StaffMemberId))">
+                        <RadzenIcon Icon="person" />
+                        <span>@member.FullName</span>
+                        <small>@member.EmployeeId</small>
+                    </button>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage"
+                                      OnDismiss="@(() => errorMessage = null)">
+                @errorMessage
+            </DismissibleDialogMessage>
+        }
+
+        <div class="ofi-actions">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton Text="Invite" Icon="person_add" ButtonStyle="ButtonStyle.Primary"
+                          Disabled="@(isSubmitting || selectedStaffIds.Count == 0)"
+                          Click="@SubmitAsync" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid FlightId { get; set; }
+
+    private FlightDetail? flight;
+    private IReadOnlyList<AssignedEmployeeModel> eligibleStaff = [];
+    private readonly HashSet<Guid> selectedStaffIds = [];
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+    private string searchTerm = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        selectedStaffIds.Clear();
+
+        try
+        {
+            flight = await Operations.GetFlightAsync(FlightId);
+            if (flight.IsPerLanding)
+            {
+                errorMessage = "Per Landing flights cannot have assigned staff because they are available station-wide.";
+                eligibleStaff = [];
+                return;
+            }
+
+            eligibleStaff = await Operations.GetFlightInviteOptionsAsync(flight.Id);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load eligible employees.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private IEnumerable<AssignedEmployeeModel> FilteredStaff()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+            return eligibleStaff;
+
+        var term = searchTerm.Trim();
+        return eligibleStaff.Where(member =>
+            member.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            member.EmployeeId.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void Toggle(Guid id)
+    {
+        if (!selectedStaffIds.Add(id))
+            selectedStaffIds.Remove(id);
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (flight is null || selectedStaffIds.Count == 0)
+            return;
+
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await Operations.InviteEmployeesAsync(
+                flight.Id,
+                new AssignEmployeesRequestModel(selectedStaffIds.ToList()),
+                flight.RowVersion);
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not invite the selected employees.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private static string ChipClass(bool selected) => selected ? "ofi-chip ofi-chip-selected" : "ofi-chip";
+}

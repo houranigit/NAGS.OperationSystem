@@ -34,6 +34,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<IReadOnlyList<FlightTimelineEntryModel>> GetFlightTimelineAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<IReadOnlyList<FlightTimelineEntryModel>>($"/operations/flights/{id}/timeline", ct);
 
+    public Task<IReadOnlyList<AssignedEmployeeModel>> GetFlightInviteOptionsAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<AssignedEmployeeModel>>($"/operations/flights/{id}/invite-options", ct);
+
     public Task<Guid> ScheduleFlightAsync(ScheduleFlightRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<ScheduleFlightRequestModel, Guid>("/operations/flights", request, ct);
 
@@ -51,6 +54,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task AssignEmployeesAsync(Guid id, AssignEmployeesRequestModel request, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/operations/flights/{id}/assign", request, rowVersion, ct);
+
+    public Task InviteEmployeesAsync(Guid id, AssignEmployeesRequestModel request, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/operations/flights/{id}/invite", request, rowVersion, ct);
 
     public Task ClaimPerLandingFlightAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/operations/flights/{id}/claim", rowVersion, ct);
@@ -87,6 +93,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task<WorkOrderDetail> GetWorkOrderAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<WorkOrderDetail>($"/operations/work-orders/{id}", ct);
+
+    public Task<IReadOnlyList<WorkOrderTimelineEntryModel>> GetWorkOrderTimelineAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<WorkOrderTimelineEntryModel>>($"/operations/work-orders/{id}/timeline", ct);
 
     public Task<Guid> OpenWorkOrderAsync(Guid flightId, CancellationToken ct = default) =>
         api.PostAsync<object, Guid>($"/operations/flights/{flightId}/work-orders", new { }, ct);

@@ -29,22 +29,13 @@ public sealed class GetWorkOrderByIdQueryHandler(IOperationsDbContext db, IOpera
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        // Reads enforce the same visibility as writes: station staff may see a work order only when
-        // they can access its flight (Per-Landing station-wide, otherwise assigned staff only).
         var scopeResult = await scope.ResolveAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
 
-        var flight = await db.Flights.AsNoTracking()
-            .Include(f => f.PlannedServices)
-            .Include(f => f.AssignedEmployees)
-            .FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
-        if (flight is null)
-            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-
-        var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
-        if (accessCheck.IsFailure)
-            return accessCheck.Error;
+        var viewCheck = WorkOrderOwnership.EnsureCanView(scopeResult.Value, workOrder);
+        if (viewCheck.IsFailure)
+            return viewCheck.Error;
 
         var lines = workOrder.ServiceLines.Select(l => new WorkOrderServiceLineDto(
             l.Id, l.Service.ServiceId, l.Service.Name, l.Origin.ToString(), l.Window.From, l.Window.To,
@@ -90,6 +81,39 @@ public sealed class GetWorkOrderByIdQueryHandler(IOperationsDbContext db, IOpera
     }
 }
 
+// --- Work order timeline / history -----------------------------------------
+
+public sealed record GetWorkOrderTimelineQuery(Guid WorkOrderId) : IQuery<IReadOnlyList<WorkOrderTimelineEntryDto>>;
+
+public sealed class GetWorkOrderTimelineQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+    : IQueryHandler<GetWorkOrderTimelineQuery, IReadOnlyList<WorkOrderTimelineEntryDto>>
+{
+    public async Task<Result<IReadOnlyList<WorkOrderTimelineEntryDto>>> Handle(GetWorkOrderTimelineQuery request, CancellationToken cancellationToken)
+    {
+        var workOrder = await db.WorkOrders.AsNoTracking()
+            .FirstOrDefaultAsync(w => w.Id == request.WorkOrderId, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+
+        var viewCheck = WorkOrderOwnership.EnsureCanView(scopeResult.Value, workOrder);
+        if (viewCheck.IsFailure)
+            return viewCheck.Error;
+
+        IReadOnlyList<WorkOrderTimelineEntryDto> items = await db.WorkOrderTimelineEntries.AsNoTracking()
+            .Where(e => e.WorkOrderId == workOrder.Id)
+            .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.Id)
+            .Select(e => new WorkOrderTimelineEntryDto(
+                e.Id, e.EventType.ToString(), e.OccurredAtUtc, e.ActorName, e.WorkOrderNumber, e.Details))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success(items);
+    }
+}
+
 // --- Review queue -----------------------------------------------------------
 
 public sealed record GetReviewQueueQuery(int Page = 1, int PageSize = 20, Guid? StationId = null) : IQuery<PagedResult<ReviewQueueItemDto>>;
@@ -104,7 +128,16 @@ public sealed class GetReviewQueueQueryHandler(IOperationsDbContext db, IOperati
             return scopeResult.Error;
 
         var paging = PageRequest.From(request.Page, request.PageSize);
-        var query = db.WorkOrders.AsNoTracking().Where(w => w.Status == WorkOrderStatus.Submitted);
+        var query = db.WorkOrders.AsNoTracking()
+            .Where(w => w.Status == WorkOrderStatus.Submitted)
+            .Where(w => w.SupersededByWorkOrderId == null)
+            .Where(w => !db.WorkOrderTimelineEntries
+                .Where(e => e.WorkOrderId == w.Id)
+                .OrderByDescending(e => e.OccurredAtUtc)
+                .ThenByDescending(e => e.Id)
+                .Select(e => e.EventType)
+                .Take(1)
+                .Any(eventType => eventType == WorkOrderTimelineEventType.Returned));
 
         // Station staff only see submitted work orders for flights they can access (their station's
         // Per-Landing flights plus flights they are assigned to); holders of view-station (station
@@ -116,9 +149,7 @@ public sealed class GetReviewQueueQueryHandler(IOperationsDbContext db, IOperati
             if (!scopeResult.Value.CanViewStationWide)
             {
                 var staffId = scopeResult.Value.StaffMemberId;
-                query = query.Where(w => db.Flights.Any(f => f.Id == w.FlightId &&
-                    (f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
-                     || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))));
+                query = query.Where(w => w.OwnerStaffMemberId == staffId);
             }
         }
         else if (request.StationId is { } filterStation)

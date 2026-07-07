@@ -21,6 +21,7 @@ public static class OperationsPermissions
         public const string Schedule = "operations.flights.schedule";
         public const string Update = "operations.flights.update";
         public const string Assign = "operations.flights.assign";
+        public const string Invite = "operations.flights.invite";
         public const string Cancel = "operations.flights.cancel";
         public const string Reopen = "operations.flights.reopen";
         public const string Merge = "operations.flights.merge";

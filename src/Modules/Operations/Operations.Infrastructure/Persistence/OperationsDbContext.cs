@@ -17,6 +17,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<Flight> Flights => Set<Flight>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<FlightTimelineEntry> FlightTimelineEntries => Set<FlightTimelineEntry>();
+    public DbSet<WorkOrderTimelineEntry> WorkOrderTimelineEntries => Set<WorkOrderTimelineEntry>();
     public DbSet<StationWorkOrderSequence> StationWorkOrderSequences => Set<StationWorkOrderSequence>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

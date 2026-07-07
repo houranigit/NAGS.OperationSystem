@@ -68,6 +68,16 @@ public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken cancellationToken)
+    {
+        return await db.StaffMembers.AsNoTracking()
+            .Where(s => s.StationId == stationId && s.IsActive)
+            .OrderBy(s => s.FullName)
+            .ThenBy(s => s.EmployeeId)
+            .Select(s => new StaffMemberReadSnapshot(s.Id, s.FullName, s.EmployeeId, s.StationId, s.ManpowerTypeId, s.IsActive))
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
         db.Tools.AsNoTracking()
             .Where(t => t.Id == id)

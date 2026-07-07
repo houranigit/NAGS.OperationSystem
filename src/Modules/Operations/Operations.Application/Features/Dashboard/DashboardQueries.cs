@@ -32,7 +32,15 @@ public sealed class GetOperationsDashboardQueryHandler(IOperationsDbContext db, 
         var inProgress = await flights.CountAsync(f => f.Status == FlightStatus.InProgress, cancellationToken);
         var completed = await flights.CountAsync(f => f.Status == FlightStatus.Completed, cancellationToken);
         var canceled = await flights.CountAsync(f => f.Status == FlightStatus.Canceled, cancellationToken);
-        var pendingReview = await workOrders.CountAsync(w => w.Status == WorkOrderStatus.Submitted, cancellationToken);
+        var pendingReview = await workOrders
+            .Where(w => w.Status == WorkOrderStatus.Submitted && w.SupersededByWorkOrderId == null)
+            .CountAsync(w => !db.WorkOrderTimelineEntries
+                .Where(e => e.WorkOrderId == w.Id)
+                .OrderByDescending(e => e.OccurredAtUtc)
+                .ThenByDescending(e => e.Id)
+                .Select(e => e.EventType)
+                .Take(1)
+                .Any(eventType => eventType == WorkOrderTimelineEventType.Returned), cancellationToken);
 
         return new OperationsDashboardDto(scheduled, inProgress, pendingReview, completed, canceled);
     }

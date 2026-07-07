@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Readers;
 using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
@@ -170,8 +171,16 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
-        var workOrders = await db.WorkOrders.AsNoTracking()
-            .Where(w => w.FlightId == flight.Id)
+        var workOrderQuery = db.WorkOrders.AsNoTracking()
+            .Where(w => w.FlightId == flight.Id);
+
+        if (!scopeResult.Value.IsAdministrator && !scopeResult.Value.CanViewStationWide)
+        {
+            var staffId = scopeResult.Value.StaffMemberId;
+            workOrderQuery = workOrderQuery.Where(w => w.OwnerStaffMemberId == staffId);
+        }
+
+        var workOrders = await workOrderQuery
             .OrderBy(w => w.CreatedAtUtc)
             .Select(w => new WorkOrderSummaryDto(
                 w.Id, w.Type.ToString(), w.Status.ToString(), w.Number == null ? null : w.Number.Value,
@@ -226,6 +235,50 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             Convert.ToBase64String(flight.RowVersion));
 
         return dto;
+    }
+}
+
+// --- Invite employee options ----------------------------------------------
+
+public sealed record GetFlightInviteOptionsQuery(Guid FlightId) : IQuery<IReadOnlyList<AssignedEmployeeDto>>;
+
+public sealed class GetFlightInviteOptionsQueryHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IMasterDataReader masterData)
+    : IQueryHandler<GetFlightInviteOptionsQuery, IReadOnlyList<AssignedEmployeeDto>>
+{
+    public async Task<Result<IReadOnlyList<AssignedEmployeeDto>>> Handle(GetFlightInviteOptionsQuery request, CancellationToken cancellationToken)
+    {
+        var flight = await db.Flights.AsNoTracking()
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
+        if (accessCheck.IsFailure)
+            return accessCheck.Error;
+
+        var editCheck = flight.EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
+
+        if (flight.IsPerLanding)
+            return PerLandingAssignmentGuard.Error();
+
+        var assigned = flight.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToHashSet();
+        var staff = await masterData.GetActiveStaffMembersForStationAsync(flight.Station.StationId, cancellationToken);
+        var options = staff
+            .Where(member => !assigned.Contains(member.Id))
+            .Select(member => new AssignedEmployeeDto(member.Id, member.FullName, member.EmployeeId))
+            .ToList();
+
+        return options;
     }
 }
 

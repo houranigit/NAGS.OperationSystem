@@ -34,6 +34,7 @@ public sealed class CancelFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
+    IWorkOrderTimelineWriter workOrderTimeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<CancelFlightCommand, Guid>
 {
@@ -63,23 +64,22 @@ public sealed class CancelFlightCommandHandler(
             if (staff.IsFailure)
                 return staff.Error;
             owner = staff.Value;
+
+            var hasOwnWorkOrder = await db.WorkOrders.AnyAsync(w => w.FlightId == flight.Id &&
+                w.OwnerStaffMemberId == staffId, cancellationToken);
+            if (hasOwnWorkOrder)
+                return Error.Conflict("You already have a work order for this flight.", "Operations.WorkOrder.AlreadyOpen");
         }
 
         var now = timeProvider.GetUtcNow();
         var cancellation = new CancellationDetails(user.UserId ?? Guid.Empty, request.CanceledAtUtc.ToUniversalTime(), request.Reason?.Trim());
         var workOrder = WorkOrder.OpenCancellation(WorkOrderContextFactory.From(flight), cancellation, user.UserId ?? Guid.Empty, owner, now);
 
-        // A cancellation has no content to author, so it is submitted straight to review. The flight
-        // stays InProgress until the cancellation is approved.
-        var submit = workOrder.Submit(now);
-        if (submit.IsFailure)
-            return submit.Error;
-
         flight.OnWorkOrderSubmitted(now);
 
         db.WorkOrders.Add(workOrder);
-        await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderCreated, now, workOrder.Id, cancellationToken: cancellationToken);
         await timeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now, workOrder.Id, cancellationToken: cancellationToken);
+        await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return workOrder.Id;
     }
@@ -118,6 +118,7 @@ public sealed class ClaimPerLandingFlightCommandHandler(
 
         var now = timeProvider.GetUtcNow();
         var alreadyAssigned = flight.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId);
+        db.SetOriginalRowVersion(flight, request.RowVersion);
         var claim = flight.Claim(employee.Value, now);
         if (claim.IsFailure)
             return claim.Error;
@@ -125,7 +126,6 @@ public sealed class ClaimPerLandingFlightCommandHandler(
         if (!alreadyAssigned)
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.Value.FullName, cancellationToken: cancellationToken);
 
-        db.SetOriginalRowVersion(flight, request.RowVersion);
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
@@ -133,7 +133,7 @@ public sealed class ClaimPerLandingFlightCommandHandler(
 
 // --- Work-Order-First: create ad-hoc flight + work order --------------------
 // Collects both flight planning fields and work-order actual fields; the work order is created as a
-// Draft owned by the creating staff member and follows the normal submit/review/approve flow.
+// Submitted record owned by the creating staff member and follows the normal review/approve flow.
 
 public sealed record CreateAdHocFlightWithWorkOrderCommand(
     Guid CustomerId,
@@ -180,6 +180,7 @@ public sealed class CreateAdHocFlightWithWorkOrderCommandHandler(
     WorkOrderInputBuilder builder,
     FlightDuplicateDetector duplicateDetector,
     IFlightTimelineWriter timeline,
+    IWorkOrderTimelineWriter workOrderTimeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<CreateAdHocFlightWithWorkOrderCommand, AdHocFlightResult>
 {
@@ -247,7 +248,8 @@ public sealed class CreateAdHocFlightWithWorkOrderCommandHandler(
         db.Flights.Add(flight.Value);
         db.WorkOrders.Add(workOrder);
         await timeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.AdHocFlightCreated, now, cancellationToken: cancellationToken);
-        await timeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.WorkOrderCreated, now, workOrder.Id, cancellationToken: cancellationToken);
+        await timeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.WorkOrderSubmitted, now, workOrder.Id, cancellationToken: cancellationToken);
+        await workOrderTimeline.AppendAsync(workOrder, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         return new AdHocFlightResult(flight.Value.Id, workOrder.Id, candidates);

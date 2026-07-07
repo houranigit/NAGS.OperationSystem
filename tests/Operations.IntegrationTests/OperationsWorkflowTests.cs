@@ -215,16 +215,12 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var refs = await SetupMasterDataAsync(admin);
         var flightId = await ScheduleFlightAsync(admin, refs, "NGS200");
 
-        // Opening a draft work order must NOT change the flight status.
+        // Opening a work order submits it and moves the flight into progress.
         var workOrderId = await OpenWorkOrderAsync(admin, flightId);
-        (await GetFlightAsync(admin, flightId)).Status.ShouldBe("Scheduled");
+        (await GetFlightAsync(admin, flightId)).Status.ShouldBe("InProgress");
 
         // Author the completion: actual aircraft type + flight number + ATA/ATD (actual services optional).
         await UpdateWorkOrderAsync(admin, workOrderId, refs, actualFlightNumber: "NGS200A");
-
-        // Submit → flight becomes InProgress (not PendingReview).
-        await SubmitWorkOrderAsync(admin, workOrderId);
-        (await GetFlightAsync(admin, flightId)).Status.ShouldBe("InProgress");
 
         // Approve → flight Completed with the approved values + reference captured.
         await ApproveWorkOrderAsync(admin, workOrderId);
@@ -252,11 +248,10 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         reverted.ApprovedWorkOrder.ShouldBeNull();
 
         var returnedWorkOrder = await GetWorkOrderAsync(admin, workOrderId);
-        returnedWorkOrder.Status.ShouldBe("Returned");
+        returnedWorkOrder.Status.ShouldBe("Submitted");
         returnedWorkOrder.Number.ShouldBeNull();
 
         // Re-approval issues a NEW number (numbers are never reused).
-        await SubmitWorkOrderAsync(admin, workOrderId);
         await ApproveWorkOrderAsync(admin, workOrderId);
         var reapproved = await GetFlightAsync(admin, flightId);
         reapproved.Status.ShouldBe("Completed");
@@ -268,7 +263,6 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         timeline.ShouldNotBeNull();
         var eventTypes = timeline!.Select(t => t.EventType).ToList();
         eventTypes.ShouldContain("FlightScheduled");
-        eventTypes.ShouldContain("WorkOrderCreated");
         eventTypes.ShouldContain("WorkOrderSubmitted");
         eventTypes.ShouldContain("WorkOrderApproved");
         eventTypes.ShouldContain("FlightCompleted");
@@ -368,6 +362,63 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task Invite_permission_assigns_unassigned_employee_without_full_assign_permission()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var inviteRoleId = await PostForIdAsync(admin, $"{IdentityBase}/roles", new
+        {
+            name = $"Ops Invite Staff {Guid.NewGuid():N}",
+            description = (string?)null,
+            compatibleUserType = "StationStaff",
+            permissions = new[]
+            {
+                "operations.flights.view",
+                "operations.flights.invite",
+                "operations.work-orders.view"
+            }
+        });
+        var (inviterClient, inviterStaffId) = await CreateStaffLoginAsync(admin, refs, inviteRoleId);
+        var targetStaffId = refs.StaffMemberId;
+        var flightId = await ScheduleFlightAsync(admin, refs, "NGS450", assignedStaffIds: [inviterStaffId]);
+        var flight = await GetFlightAsync(inviterClient, flightId);
+
+        var optionsResponse = await inviterClient.GetAsync($"{Base}/flights/{flightId}/invite-options");
+        optionsResponse.StatusCode.ShouldBe(HttpStatusCode.OK, await optionsResponse.Content.ReadAsStringAsync());
+        var options = await optionsResponse.Content.ReadFromJsonAsync<List<AssignedEmployee>>();
+        options.ShouldNotBeNull();
+        options!.ShouldContain(e => e.StaffMemberId == targetStaffId);
+        options.ShouldNotContain(e => e.StaffMemberId == inviterStaffId);
+
+        var invite = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/invite")
+        {
+            Content = JsonContent.Create(new { staffMemberIds = new[] { targetStaffId } })
+        };
+        invite.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
+
+        var inviteResponse = await inviterClient.SendAsync(invite);
+        inviteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await inviteResponse.Content.ReadAsStringAsync());
+        (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldContain(e => e.StaffMemberId == targetStaffId);
+
+        var assign = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
+        {
+            Content = JsonContent.Create(new { staffMemberIds = new[] { targetStaffId } })
+        };
+        assign.Headers.TryAddWithoutValidation("If-Match", (await GetFlightAsync(inviterClient, flightId)).RowVersion);
+        (await inviterClient.SendAsync(assign)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var perLandingId = await ScheduleFlightAsync(admin, refs, "NGS451",
+            plannedServiceIds: [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var perLanding = await GetFlightAsync(inviterClient, perLandingId);
+        var perLandingInvite = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{perLandingId}/invite")
+        {
+            Content = JsonContent.Create(new { staffMemberIds = new[] { targetStaffId } })
+        };
+        perLandingInvite.Headers.TryAddWithoutValidation("If-Match", perLanding.RowVersion);
+        (await inviterClient.SendAsync(perLandingInvite)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
     // --- Ownership -----------------------------------------------------------
 
     [Fact]
@@ -389,9 +440,10 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         (await staffAClient.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", new { }))
             .StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
-        // Staff B cannot update or submit Staff A's work order.
+        // Staff B cannot view, update, or submit Staff A's work order.
         var detailA = await GetWorkOrderAsync(staffAClient, workOrderA);
         detailA.OwnerStaffMemberId.ShouldBe(staffAId);
+        (await staffBClient.GetAsync($"{Base}/work-orders/{workOrderA}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         var foreignUpdate = new HttpRequestMessage(HttpMethod.Put, $"{Base}/work-orders/{workOrderA}")
         {
@@ -408,10 +460,6 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var openB = await staffBClient.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", new { });
         openB.StatusCode.ShouldBe(HttpStatusCode.Created);
         var workOrderB = await openB.Content.ReadFromJsonAsync<Guid>();
-
-        // Both staff submit; two submitted work orders coexist while the flight is InProgress.
-        await SubmitWorkOrderAsync(staffAClient, workOrderA);
-        await SubmitWorkOrderAsync(staffBClient, workOrderB);
 
         var flight = await GetFlightAsync(admin, flightId);
         flight.Status.ShouldBe("InProgress");
@@ -455,13 +503,13 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var result = await create.Content.ReadFromJsonAsync<AdHocResult>();
         result.ShouldNotBeNull();
 
-        // The flight exists (InProgress) and the draft work order carries the supplied actual fields.
+        // The flight exists (InProgress) and the submitted work order carries the supplied actual fields.
         var flight = await GetFlightAsync(staffClient, result!.FlightId);
         flight.Status.ShouldBe("InProgress");
         flight.WorkOrders.ShouldContain(w => w.Id == result.WorkOrderId);
 
         var workOrder = await GetWorkOrderAsync(staffClient, result.WorkOrderId);
-        workOrder.Status.ShouldBe("Draft");
+        workOrder.Status.ShouldBe("Submitted");
         workOrder.OwnerStaffMemberId.ShouldBe(staffId);
         workOrder.FlightNumber.ShouldBe("ADH100A");
         workOrder.AircraftTailNumber.ShouldBe("HZ-AK9");
@@ -476,7 +524,6 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         calendar!.ShouldContain(f => f.Id == result.FlightId);
 
         // The same flight then flows through the normal review cycle.
-        await SubmitWorkOrderAsync(staffClient, result.WorkOrderId);
         await ApproveWorkOrderAsync(admin, result.WorkOrderId);
         (await GetFlightAsync(admin, result.FlightId)).Status.ShouldBe("Completed");
     }
@@ -582,6 +629,11 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     /// <summary>Creates a staff member at the refs station with portal access and returns a logged-in client.</summary>
     private async Task<(HttpClient Client, Guid StaffId)> CreateStaffLoginAsync(HttpClient admin, MasterDataRefs refs)
     {
+        return await CreateStaffLoginAsync(admin, refs, refs.StaffRoleId);
+    }
+
+    private async Task<(HttpClient Client, Guid StaffId)> CreateStaffLoginAsync(HttpClient admin, MasterDataRefs refs, Guid roleId)
+    {
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var email = $"station-staff-{suffix}@example.com";
         var staffId = await PostForIdAsync(admin, $"{MasterDataBase}/staff-members", new
@@ -594,7 +646,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             employmentContract = (object?)null,
             workingDays = (string[]?)null,
             licenses = Array.Empty<object>(),
-            portalAccessRoleId = refs.StaffRoleId
+            portalAccessRoleId = roleId
         });
 
         var invitationToken = await factory.GetInvitationTokenAsync(email);
