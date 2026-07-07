@@ -48,4 +48,14 @@ public sealed class ApiProxyExtensionsTests
         ApiProxyExtensions.IsProxyManagedRequestHeader("Authorization").ShouldBeFalse();
         ApiProxyExtensions.IsProxyManagedRequestHeader("Content-Type").ShouldBeFalse();
     }
+
+    [Fact]
+    public void ApiProxyHttpClient_disables_handler_cookie_storage()
+    {
+        using var handler = ApiProxyHttpClient.CreatePrimaryHandler();
+
+        var socketsHandler = handler.ShouldBeOfType<SocketsHttpHandler>();
+        socketsHandler.UseCookies.ShouldBeFalse();
+        socketsHandler.AllowAutoRedirect.ShouldBeFalse();
+    }
 }

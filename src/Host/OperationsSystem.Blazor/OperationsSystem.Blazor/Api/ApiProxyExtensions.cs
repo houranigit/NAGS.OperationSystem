@@ -3,6 +3,32 @@ using Microsoft.Extensions.Options;
 
 namespace OperationsSystem.Blazor.Api;
 
+public static class ApiProxyServiceCollectionExtensions
+{
+    public static IServiceCollection AddApiProxyHttpClient(this IServiceCollection services)
+    {
+        services.AddHttpClient(ApiProxyHttpClient.Name)
+            .ConfigurePrimaryHttpMessageHandler(ApiProxyHttpClient.CreatePrimaryHandler);
+
+        return services;
+    }
+}
+
+internal static class ApiProxyHttpClient
+{
+    public const string Name = "ApiProxy";
+
+    public static HttpMessageHandler CreatePrimaryHandler() =>
+        new SocketsHttpHandler
+        {
+            // The proxy must pass each browser's Cookie/Set-Cookie headers through without keeping
+            // a process-wide cookie jar. IHttpClientFactory pools handlers, so the default cookie
+            // container can otherwise replay one browser's refresh token on another browser's request.
+            UseCookies = false,
+            AllowAutoRedirect = false
+        };
+}
+
 public static class ApiProxyExtensions
 {
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
@@ -39,7 +65,7 @@ public static class ApiProxyExtensions
     {
         var targetUri = BuildTargetUri(context, options.Value);
         using var request = CreateProxyRequest(context, targetUri);
-        using var response = await httpClientFactory.CreateClient("ApiProxy")
+        using var response = await httpClientFactory.CreateClient(ApiProxyHttpClient.Name)
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
 
         context.Response.StatusCode = (int)response.StatusCode;

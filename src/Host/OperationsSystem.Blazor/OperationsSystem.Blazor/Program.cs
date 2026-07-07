@@ -10,7 +10,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents();
 
-builder.Services.AddHttpClient("ApiProxy");
+builder.Services.AddApiProxyHttpClient();
 builder.Services.AddSingleton<IValidateOptions<ApiProxyOptions>, ApiProxyOptionsValidator>();
 builder.Services.AddOptions<ApiProxyOptions>()
     .Bind(builder.Configuration.GetSection(ApiProxyOptions.SectionName))
