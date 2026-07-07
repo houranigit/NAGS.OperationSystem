@@ -25,12 +25,8 @@ public sealed class GetLicensesQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(l => l.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            var upper = term.ToUpperInvariant();
-            query = query.Where(l => l.Name.Contains(term) || l.Code.Contains(upper));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(l => l.Name.ToLower().Contains(term) || l.Code.ToLower().Contains(term));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

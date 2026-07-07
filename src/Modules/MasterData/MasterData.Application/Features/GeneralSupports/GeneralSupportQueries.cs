@@ -22,11 +22,8 @@ public sealed class GetGeneralSupportsQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(g => g.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            query = query.Where(g => g.Name.Contains(term) || (g.Description != null && g.Description.Contains(term)));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(g => g.Name.ToLower().Contains(term) || (g.Description != null && g.Description.ToLower().Contains(term)));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

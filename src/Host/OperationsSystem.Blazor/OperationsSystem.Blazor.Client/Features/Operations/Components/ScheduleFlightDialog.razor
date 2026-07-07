@@ -171,7 +171,8 @@
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="business" class="opf-field-icon" />
                     <RadzenDropDown @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select customer" />
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                    class="opf-control opf-control-icon" Placeholder="Select customer" />
                 </div>
             </div>
             <div class="opf-field-block">
@@ -198,7 +199,7 @@
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
                     <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
-                                    AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select station" />
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Select station" />
                 </div>
             </div>
             <div class="opf-field-block">
@@ -206,7 +207,7 @@
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="settings" class="opf-field-icon" />
                     <RadzenDropDown @bind-Value="model.OperationTypeId" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Select operation" />
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Select operation" />
                 </div>
             </div>
         </div>
@@ -217,7 +218,7 @@
         <div class="opf-input-wrap">
             <RadzenIcon Icon="flight" class="opf-field-icon" />
             <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                            AllowClear="true" AllowFiltering="true" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
+                            AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
         </div>
     </div>;
 

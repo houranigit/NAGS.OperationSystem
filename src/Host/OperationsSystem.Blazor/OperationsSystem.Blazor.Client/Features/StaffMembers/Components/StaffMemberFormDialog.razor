@@ -110,11 +110,11 @@
         <div class="sf-grid-2">
             <div class="sf-field-block">
                 <label class="sf-label">@UiStrings.StaffMembers.Station <span class="sf-required">*</span></label>
-                <div class="sf-input-wrap"><RadzenIcon Icon="flight_takeoff" class="sf-field-icon" /><RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectStation" /></div>
+                <div class="sf-input-wrap"><RadzenIcon Icon="flight_takeoff" class="sf-field-icon" /><RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectStation" /></div>
             </div>
             <div class="sf-field-block">
                 <label class="sf-label">@UiStrings.StaffMembers.ManpowerType <span class="sf-required">*</span></label>
-                <div class="sf-input-wrap"><RadzenIcon Icon="engineering" class="sf-field-icon" /><RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectManpowerType" /></div>
+                <div class="sf-input-wrap"><RadzenIcon Icon="engineering" class="sf-field-icon" /><RadzenDropDown @bind-Value="model.ManpowerTypeId" Data="@manpowerTypes" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="sf-control sf-control-icon" Placeholder="@UiStrings.StaffMembers.SelectManpowerType" /></div>
             </div>
         </div>
         <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="@UiStrings.StaffMembers.EmployeeIdHintTitle">
@@ -152,7 +152,7 @@
                 @foreach (var row in licenseRows)
                 {
                     <div class="sf-license-row" @key="row.Key">
-                        <RadzenDropDown @bind-Value="row.LicenseId" Data="@licenses" TextProperty="Code" ValueProperty="Id" AllowFiltering="true" Placeholder="@UiStrings.StaffMembers.License" class="sf-control" />
+                        <RadzenDropDown @bind-Value="row.LicenseId" Data="@licenses" TextProperty="Code" ValueProperty="Id" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="@UiStrings.StaffMembers.License" class="sf-control" />
                         <RadzenTextBox @bind-Value="row.LicenseNumber" Placeholder="@UiStrings.StaffMembers.LicenseNumber" class="sf-control" MaxLength="100" />
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small" Click="@(() => licenseRows.Remove(row))" />
                     </div>
@@ -173,7 +173,7 @@
                 }
                 else
                 {
-                    <RadzenDropDown @bind-Value="portalRoleId" Data="@portalRoles" TextProperty="Name" ValueProperty="Id" Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" class="sf-control" />
+                    <RadzenDropDown @bind-Value="portalRoleId" Data="@portalRoles" TextProperty="Name" ValueProperty="Id" Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="sf-control" />
                 }
             }
         }

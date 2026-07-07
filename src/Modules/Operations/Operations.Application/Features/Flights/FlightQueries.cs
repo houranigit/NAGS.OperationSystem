@@ -67,10 +67,12 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             query = query.Where(f => f.Schedule.Sta >= from);
         if (request.ToUtc is { } to)
             query = query.Where(f => f.Schedule.Sta <= to);
-        if (!string.IsNullOrWhiteSpace(request.Search))
+        if (SearchFilter.Term(request.Search) is { } term)
         {
-            var term = request.Search.Trim().ToUpperInvariant();
-            query = query.Where(f => f.FlightNumber.Value.Contains(term) || f.OriginalFlightNumber.Contains(term) || f.Customer.Name.Contains(term));
+            query = query.Where(f =>
+                f.FlightNumber.Value.ToLower().Contains(term) ||
+                f.OriginalFlightNumber.ToLower().Contains(term) ||
+                f.Customer.Name.ToLower().Contains(term));
         }
 
         var total = await query.LongCountAsync(cancellationToken);

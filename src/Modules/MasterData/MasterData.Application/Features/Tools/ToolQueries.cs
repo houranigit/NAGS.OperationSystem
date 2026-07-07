@@ -22,11 +22,8 @@ public sealed class GetToolsQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(t => t.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            query = query.Where(t => t.Name.Contains(term) || (t.Description != null && t.Description.Contains(term)));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(t => t.Name.ToLower().Contains(term) || (t.Description != null && t.Description.ToLower().Contains(term)));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

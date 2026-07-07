@@ -22,11 +22,8 @@ public sealed class GetAircraftTypesQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(a => a.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim().ToUpperInvariant();
-            query = query.Where(a => a.Model.Contains(term) || (a.Notes != null && a.Notes.Contains(request.Search.Trim())));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(a => a.Model.ToLower().Contains(term) || (a.Notes != null && a.Notes.ToLower().Contains(term)));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

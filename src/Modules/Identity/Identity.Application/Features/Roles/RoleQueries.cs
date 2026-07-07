@@ -53,11 +53,8 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
 
         var query = db.Roles.AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim().ToUpperInvariant();
-            query = query.Where(r => r.NormalizedName.Contains(term));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(r => r.NormalizedName.ToLower().Contains(term));
 
         if (request.UserType is { } userType)
             query = query.Where(r => r.CompatibleUserType == userType);

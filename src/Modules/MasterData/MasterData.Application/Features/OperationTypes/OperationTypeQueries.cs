@@ -23,11 +23,8 @@ public sealed class GetOperationTypesQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(o => o.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            query = query.Where(o => o.Name.Contains(term) || (o.Description != null && o.Description.Contains(term)));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(o => o.Name.ToLower().Contains(term) || (o.Description != null && o.Description.ToLower().Contains(term)));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

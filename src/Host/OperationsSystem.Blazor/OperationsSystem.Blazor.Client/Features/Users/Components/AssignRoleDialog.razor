@@ -7,7 +7,7 @@
             <Start><RadzenIcon Icon="badge" /></Start>
             <ChildContent>
                 <RadzenDropDown @bind-Value="model.RoleId" Data="@roles" TextProperty="@nameof(RoleOption.Name)"
-                                ValueProperty="@nameof(RoleOption.Id)" AllowFiltering="true" Style="width: 100%;" />
+                                ValueProperty="@nameof(RoleOption.Id)" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Style="width: 100%;" />
             </ChildContent>
         </RadzenFormField>
 

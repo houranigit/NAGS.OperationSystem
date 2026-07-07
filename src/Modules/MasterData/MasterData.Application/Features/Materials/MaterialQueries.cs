@@ -22,11 +22,8 @@ public sealed class GetMaterialsQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(m => m.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            query = query.Where(m => m.Name.Contains(term) || (m.Description != null && m.Description.Contains(term)));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(m => m.Name.ToLower().Contains(term) || (m.Description != null && m.Description.ToLower().Contains(term)));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

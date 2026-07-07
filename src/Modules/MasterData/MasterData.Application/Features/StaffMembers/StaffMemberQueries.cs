@@ -46,11 +46,8 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
         if (request.ManpowerTypeId is { } manpowerTypeId)
             query = query.Where(s => s.ManpowerTypeId == manpowerTypeId);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            query = query.Where(s => s.FullName.Contains(term) || s.EmployeeId.Contains(term) || s.Email.Contains(term));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(s => s.FullName.ToLower().Contains(term) || s.EmployeeId.ToLower().Contains(term) || s.Email.ToLower().Contains(term));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

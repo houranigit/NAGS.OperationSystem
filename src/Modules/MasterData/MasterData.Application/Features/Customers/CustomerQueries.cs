@@ -43,12 +43,11 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
         if (request.CountryId is { } countryId)
             query = query.Where(c => c.CountryId == countryId);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            var upper = term.ToUpperInvariant();
-            query = query.Where(c => c.Name.Contains(term) || (c.IataCode != null && c.IataCode.Contains(upper)) || (c.IcaoCode != null && c.IcaoCode.Contains(upper)));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(c =>
+                c.Name.ToLower().Contains(term) ||
+                (c.IataCode != null && c.IataCode.ToLower().Contains(term)) ||
+                (c.IcaoCode != null && c.IcaoCode.ToLower().Contains(term)));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

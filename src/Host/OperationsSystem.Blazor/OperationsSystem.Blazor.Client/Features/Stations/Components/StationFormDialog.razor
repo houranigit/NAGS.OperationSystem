@@ -240,7 +240,7 @@
                 <div class="stf-input-wrap">
                     <RadzenIcon Icon="public" class="stf-field-icon" />
                     <RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" Placeholder="@UiStrings.Stations.SelectCountry" class="stf-control stf-control-icon" />
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="@UiStrings.Stations.SelectCountry" class="stf-control stf-control-icon" />
                 </div>
             </div>
         </div>

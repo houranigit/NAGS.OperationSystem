@@ -172,7 +172,7 @@
                 <div class="owe-input-wrap">
                     <RadzenIcon Icon="airplanemode_active" class="owe-field-icon" />
                     <RadzenDropDown @bind-Value="model.ActualAircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                    AllowClear="true" AllowFiltering="true" class="owe-control owe-control-icon" Placeholder="Aircraft type" />
+                                    AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owe-control owe-control-icon" Placeholder="Aircraft type" />
                 </div>
             </div>
         </div>
@@ -240,7 +240,7 @@
                         </div>
                         <div class="owe-grid-2">
                             <RadzenDropDown @bind-Value="line.ServiceId" Data="@services" TextProperty="Name" ValueProperty="Id"
-                                            AllowFiltering="true" class="owe-control" Placeholder="Service" />
+                                            AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owe-control" Placeholder="Service" />
                             <RadzenDropDown @bind-Value="line.Origin" Data="@serviceOrigins" class="owe-control" />
                         </div>
                         <div class="owe-grid-2">
@@ -327,7 +327,7 @@
         {
             <div @key="row.Key" class="owe-resource-row">
                 <RadzenDropDown @bind-Value="row.Id" Data="@options" TextProperty="Name" ValueProperty="Id"
-                                AllowFiltering="true" class="owe-control" Placeholder="@title" />
+                                AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owe-control" Placeholder="@title" />
                 <RadzenNumeric @bind-Value="row.Quantity" Min="0.01m" Step="0.25m" class="owe-qty" />
                 <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text" Size="ButtonSize.Small"
                               ButtonType="ButtonType.Button" Click="@(() => rows.Remove(row))" />

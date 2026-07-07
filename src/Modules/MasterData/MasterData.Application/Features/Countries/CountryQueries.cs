@@ -25,12 +25,8 @@ public sealed class GetCountriesQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(c => c.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            var upper = term.ToUpperInvariant();
-            query = query.Where(c => c.Name.Contains(term) || c.IsoCode.Contains(upper));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(c => c.Name.ToLower().Contains(term) || c.IsoCode.ToLower().Contains(term));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

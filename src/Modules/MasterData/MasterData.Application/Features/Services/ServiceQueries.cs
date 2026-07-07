@@ -23,11 +23,8 @@ public sealed class GetServicesQueryHandler(IMasterDataDbContext db)
         if (request.IsActive is { } active)
             query = query.Where(s => s.IsActive == active);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            query = query.Where(s => s.Name.Contains(term) || (s.Description != null && s.Description.Contains(term)));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(s => s.Name.ToLower().Contains(term) || (s.Description != null && s.Description.ToLower().Contains(term)));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

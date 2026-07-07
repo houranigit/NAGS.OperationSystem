@@ -34,7 +34,7 @@
             <Start><RadzenIcon Icon="badge" /></Start>
             <ChildContent>
                 <RadzenDropDown @bind-Value="selectedRoleId" Data="@roles" TextProperty="Name" ValueProperty="Id"
-                                Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" Style="width: 100%;" />
+                                Placeholder="@UiStrings.PortalAccess.RolePlaceholder" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Style="width: 100%;" />
             </ChildContent>
         </RadzenFormField>
 

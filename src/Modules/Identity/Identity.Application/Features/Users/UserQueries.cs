@@ -34,12 +34,8 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
         if (request.UserType is { } userType)
             query = query.Where(u => u.UserType == userType);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim();
-            var lower = term.ToLowerInvariant();
-            query = query.Where(u => u.Email.Value.Contains(lower) || u.DisplayName.Contains(term));
-        }
+        if (SearchFilter.Term(request.Search) is { } term)
+            query = query.Where(u => u.Email.Value.ToLower().Contains(term) || u.DisplayName.ToLower().Contains(term));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))

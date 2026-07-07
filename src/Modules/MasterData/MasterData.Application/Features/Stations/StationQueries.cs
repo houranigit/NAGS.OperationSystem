@@ -41,18 +41,16 @@ public sealed class GetStationsQueryHandler(IMasterDataDbContext db, IMasterData
         if (request.CountryId is { } countryId)
             query = query.Where(s => s.CountryId == countryId);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
+        if (SearchFilter.Term(request.Search) is { } term)
         {
-            var term = request.Search.Trim();
-            var upper = term.ToUpperInvariant();
-            var matchesId = Guid.TryParse(term, out var stationId);
+            var matchesId = Guid.TryParse(request.Search!.Trim(), out var stationId);
 
             query = query.Where(s =>
                 (matchesId && s.Id == stationId) ||
-                s.Name.Contains(term) ||
-                (s.City != null && s.City.Contains(term)) ||
-                s.IataCode.Contains(upper) ||
-                (s.IcaoCode != null && s.IcaoCode.Contains(upper)));
+                s.Name.ToLower().Contains(term) ||
+                (s.City != null && s.City.ToLower().Contains(term)) ||
+                s.IataCode.ToLower().Contains(term) ||
+                (s.IcaoCode != null && s.IcaoCode.ToLower().Contains(term)));
         }
 
         var total = await query.LongCountAsync(cancellationToken);
