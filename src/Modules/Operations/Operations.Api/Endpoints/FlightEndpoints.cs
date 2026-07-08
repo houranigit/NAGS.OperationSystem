@@ -28,9 +28,14 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
-        flights.MapGet("/calendar", async (ISender sender, CancellationToken ct, DateTimeOffset fromUtc, DateTimeOffset toUtc, Guid? stationId = null) =>
+        flights.MapGet("/calendar", async (ISender sender, CancellationToken ct,
+            DateTimeOffset fromUtc,
+            DateTimeOffset toUtc,
+            Guid? stationId = null,
+            Guid? customerId = null,
+            FlightStatus? status = null) =>
         {
-            var result = await sender.Send(new GetSchedulerCalendarQuery(fromUtc, toUtc, stationId), ct);
+            var result = await sender.Send(new GetSchedulerCalendarQuery(fromUtc, toUtc, stationId, customerId, status), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 

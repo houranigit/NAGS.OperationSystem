@@ -22,9 +22,21 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
     }
 
-    public Task<IReadOnlyList<CalendarFlight>> GetCalendarAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, Guid? stationId = null, CancellationToken ct = default)
+    public Task<IReadOnlyList<CalendarFlight>> GetCalendarAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        Guid? stationId = null,
+        Guid? customerId = null,
+        string? status = null,
+        CancellationToken ct = default)
     {
-        var query = new QueryBuilder().Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("stationId", stationId).Build();
+        var query = new QueryBuilder()
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("stationId", stationId)
+            .Add("customerId", customerId)
+            .Add("status", status)
+            .Build();
         return api.GetAsync<IReadOnlyList<CalendarFlight>>($"/operations/flights/calendar{query}", ct);
     }
 

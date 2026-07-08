@@ -18,7 +18,10 @@ public sealed record FlightListItem(
 public sealed record CalendarFlight(
     Guid Id,
     string FlightNumber,
+    string? CustomerIataCode,
     string CustomerName,
+    string StationIata,
+    string StationName,
     string Status,
     bool IsPerLanding,
     DateTimeOffset ScheduledArrivalUtc,

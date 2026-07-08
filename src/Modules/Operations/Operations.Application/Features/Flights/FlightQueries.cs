@@ -124,7 +124,12 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
 
 // --- Scheduler calendar -----------------------------------------------------
 
-public sealed record GetSchedulerCalendarQuery(DateTimeOffset FromUtc, DateTimeOffset ToUtc, Guid? StationId = null)
+public sealed record GetSchedulerCalendarQuery(
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    Guid? StationId = null,
+    Guid? CustomerId = null,
+    FlightStatus? Status = null)
     : IQuery<IReadOnlyList<CalendarFlightDto>>;
 
 public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IOperationsScope scope)
@@ -156,12 +161,20 @@ public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IO
             query = query.Where(f => f.Station.StationId == filterStation);
         }
 
+        if (request.CustomerId is { } customerId)
+            query = query.Where(f => f.Customer.CustomerId == customerId);
+        if (request.Status is { } status)
+            query = query.Where(f => f.Status == status);
+
         IReadOnlyList<CalendarFlightDto> items = await query
             .OrderBy(f => f.Schedule.Sta)
             .Select(f => new CalendarFlightDto(
                 f.Id,
                 f.FlightNumber.Value,
+                f.Customer.IataCode,
                 f.Customer.Name,
+                f.Station.IataCode,
+                f.Station.Name,
                 f.Status.ToString(),
                 f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
                 f.Schedule.Sta,

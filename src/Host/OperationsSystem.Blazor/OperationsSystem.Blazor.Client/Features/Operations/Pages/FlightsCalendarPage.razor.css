@@ -2,8 +2,40 @@
     margin-top: var(--os-space-4);
 }
 
-.ofc-station-filter {
-    min-width: 220px;
+.ofc-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+    justify-content: flex-end;
+}
+
+.ofc-filter {
+    min-width: 180px;
+}
+
+.ofc-appointment {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.1rem;
+    color: inherit;
+    font-size: var(--os-text-xs);
+    line-height: 1.25;
+}
+
+.ofc-appointment strong,
+.ofc-appointment span,
+.ofc-appointment small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ofc-appointment strong {
+    font-size: var(--os-text-sm);
+}
+
+.ofc-appointment small {
+    font-weight: 700;
 }
 
 .ofc-legend {
@@ -32,3 +64,10 @@
 .ofc-dot-inprogress { background: var(--rz-warning, #f59e0b); }
 .ofc-dot-completed { background: var(--rz-success, #16a34a); }
 .ofc-dot-canceled { background: var(--rz-danger, #dc2626); }
+
+@media (max-width: 900px) {
+    .ofc-filters,
+    .ofc-filter {
+        width: 100%;
+    }
+}

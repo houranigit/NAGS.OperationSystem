@@ -3,6 +3,7 @@ using BuildingBlocks.Domain.Results;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Authorization;
 using Operations.Application.Features.Flights;
+using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 using Operations.Infrastructure.Persistence;
@@ -35,6 +36,50 @@ public sealed class FlightQueryTests
         result.Value.Items.Select(f => f.Id).ShouldBe([flight.Id]);
     }
 
+    [Fact]
+    public async Task GetSchedulerCalendar_FiltersByStatusStationAndCustomer()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var flight = CreateScheduledFlight(
+            customerIata: "RJ",
+            customerName: "Royal Jordanian",
+            flightNumber: "1",
+            customerId: customerId,
+            stationId: stationId);
+
+        db.Flights.Add(flight);
+        db.Flights.Add(CreateScheduledFlight(customerIata: "SV", customerName: "Saudia", flightNumber: "2", stationId: stationId));
+        db.Flights.Add(CreateScheduledFlight(customerIata: "RJ", customerName: "Royal Jordanian", flightNumber: "3", customerId: customerId));
+        await db.SaveChangesAsync();
+
+        var handler = new GetSchedulerCalendarQueryHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)));
+
+        var result = await handler.Handle(new GetSchedulerCalendarQuery(
+            Now.AddHours(-1),
+            Now.AddHours(2),
+            stationId,
+            customerId,
+            FlightStatus.Scheduled), CancellationToken.None);
+        var canceledResult = await handler.Handle(new GetSchedulerCalendarQuery(
+            Now.AddHours(-1),
+            Now.AddHours(2),
+            stationId,
+            customerId,
+            FlightStatus.Canceled), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Select(f => f.Id).ShouldBe([flight.Id]);
+        result.Value.Single().CustomerIataCode.ShouldBe("RJ");
+        result.Value.Single().StationIata.ShouldBe("DMM");
+        result.Value.Single().StationName.ShouldBe("Dammam");
+        canceledResult.IsSuccess.ShouldBeTrue();
+        canceledResult.Value.ShouldBeEmpty();
+    }
+
     [Theory]
     [InlineData("D")]
     [InlineData("N")]
@@ -61,10 +106,15 @@ public sealed class FlightQueryTests
             .UseInMemoryDatabase($"ops-{Guid.NewGuid()}")
             .Options);
 
-    private static Flight CreateScheduledFlight(string customerIata, string customerName, string flightNumber) =>
+    private static Flight CreateScheduledFlight(
+        string customerIata,
+        string customerName,
+        string flightNumber,
+        Guid? customerId = null,
+        Guid? stationId = null) =>
         Flight.ScheduleNew(
-            new CustomerSnapshot(Guid.NewGuid(), customerIata, customerName),
-            new StationSnapshot(Guid.NewGuid(), "DMM", "Dammam"),
+            new CustomerSnapshot(customerId ?? Guid.NewGuid(), customerIata, customerName),
+            new StationSnapshot(stationId ?? Guid.NewGuid(), "DMM", "Dammam"),
             new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
             FlightNumber.Create(flightNumber).Value,
             ScheduledTime.Create(Now, Now.AddHours(1)).Value,
