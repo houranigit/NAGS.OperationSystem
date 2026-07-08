@@ -588,6 +588,15 @@
     padding-top: 0.35rem;
 }
 
+.ofd-timeline-item--action {
+    align-items: flex-start;
+}
+
+.ofd-timeline-view {
+    margin-inline-start: auto;
+    flex-shrink: 0;
+}
+
 .ofd-timeline-title {
     margin: 0;
     color: var(--os-color-text);
@@ -636,5 +645,9 @@
 
     .ofd-timeline-item {
         flex-wrap: wrap;
+    }
+
+    .ofd-timeline-view {
+        margin-inline-start: 3.25rem;
     }
 }

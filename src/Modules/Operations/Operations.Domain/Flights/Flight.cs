@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Aggregates;
+using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Events;
@@ -11,12 +12,15 @@ namespace Operations.Domain.Flights;
 /// and flight-number history. Completion and cancellation will be reintroduced later with the next
 /// lifecycle slice.
 /// </summary>
-public sealed class Flight : AggregateRoot<Guid>
+public sealed class Flight : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<FlightAssignedEmployee> _assignedEmployees = [];
     private readonly List<PlannedService> _plannedServices = [];
 
     private Flight() { }
+
+    string IAuditable.AuditEntityType => "Flight";
+    Guid IAuditable.AuditEntityId => Id;
 
     public CustomerSnapshot Customer { get; private set; } = null!;
     public StationSnapshot Station { get; private set; } = null!;

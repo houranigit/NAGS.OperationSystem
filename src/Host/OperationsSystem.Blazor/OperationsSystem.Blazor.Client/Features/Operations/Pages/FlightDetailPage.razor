@@ -5,6 +5,7 @@
 @inject NavigationManager Navigation
 @inject AuthSession Auth
 @inject IJSRuntime JS
+@inject AuditApiClient AuditApi
 
 <PageTitle>@(flight is null ? "Flight" : DisplayFlightNumber(flight))</PageTitle>
 
@@ -103,6 +104,7 @@
                         FlightTab.Overview => OverviewTab(flight),
                         FlightTab.Services => ServicesTab(flight),
                         FlightTab.Timeline => TimelineTab(),
+                        FlightTab.History => HistoryTab(),
                         _ => OverviewTab(flight)
                     })
                 </div>
@@ -116,18 +118,21 @@
 
     private FlightDetail? flight;
     private IReadOnlyList<FlightTimelineEntryModel> timeline = [];
+    private IReadOnlyList<AuditTrailListItem> history = [];
     private IReadOnlyList<DuplicateCandidate> duplicateCandidates = [];
     private bool isLoading = true;
     private bool loadError;
     private FlightTab activeTab = FlightTab.Overview;
 
     private const int OverviewTimelinePreviewCount = 4;
+    private const int OverviewHistoryPreviewCount = 4;
 
     private bool CanEditFlight => flight is { } f && CanEdit(f);
     private bool CanInviteFlight => flight is { } f && CanInvite(f);
     private bool CanMergeFlight => flight is { } f && CanMerge(f);
+    private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
 
-    private enum FlightTab { Overview, Services, Timeline }
+    private enum FlightTab { Overview, Services, Timeline, History }
 
     private sealed record TabDef(FlightTab Key, string Label, string Icon);
 
@@ -136,6 +141,8 @@
         yield return new TabDef(FlightTab.Overview, "Overview", "dashboard");
         yield return new TabDef(FlightTab.Services, "Services & staff", "groups");
         yield return new TabDef(FlightTab.Timeline, "Timeline", "history");
+        if (CanViewAudit)
+            yield return new TabDef(FlightTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
 
     private RenderFragment OverviewTab(FlightDetail f) => @<text>
@@ -209,6 +216,21 @@
                 <p class="os-muted ofd-card-intro">Operational lifecycle events for this flight.</p>
                 @TimelineList(OverviewTimelinePreviewCount)
             </RadzenCard>
+
+            @if (CanViewAudit)
+            {
+                <RadzenCard class="ofd-card">
+                    <div class="ofd-card-head">
+                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
+                        @if (history.Count > 0)
+                        {
+                            <button type="button" class="ofd-link" @onclick="@(() => activeTab = FlightTab.History)">@UiStrings.Common.ViewAll</button>
+                        }
+                    </div>
+                    <p class="os-muted ofd-card-intro">@UiStrings.Audit.Description</p>
+                    @HistoryList(OverviewHistoryPreviewCount)
+                </RadzenCard>
+            }
         </div>
     </text>;
 
@@ -280,6 +302,44 @@
         </RadzenCard>
     </text>;
 
+    private RenderFragment HistoryTab() => @<text>
+        <RadzenCard class="ofd-card">
+            <div class="ofd-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
+            <p class="os-muted ofd-card-intro">@UiStrings.Audit.Description</p>
+            @HistoryList()
+        </RadzenCard>
+    </text>;
+
+    private RenderFragment HistoryList(int? maxItems = null) => @<text>
+        @if (history.Count == 0)
+        {
+            @HistoryEmpty()
+        }
+        else
+        {
+            <ol class="ofd-timeline">
+                @foreach (var entry in maxItems is { } take ? history.Take(take) : history)
+                {
+                    var visual = HistoryVisual(entry.Action);
+                    <li @key="entry.Id" class="ofd-timeline-item ofd-timeline-item--action">
+                        <span class="ofd-timeline-icon ofd-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="ofd-timeline-text">
+                            <p class="ofd-timeline-title">@entry.Action</p>
+                            <p class="os-muted ofd-timeline-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="ofd-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Audit.ViewDetails" Icon="visibility"
+                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      class="ofd-timeline-view" Click="@(() => OpenAuditDetailAsync(entry.Id))" />
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
     private RenderFragment TimelineList(int? maxItems = null) => @<text>
         @if (timeline.Count == 0)
         {
@@ -307,6 +367,16 @@
         }
     </text>;
 
+    private RenderFragment HistoryEmpty() => @<text>
+        <div class="ofd-timeline-empty">
+            <span class="ofd-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="ofd-timeline-title">@UiStrings.Common.NoData</p>
+                <p class="os-muted ofd-timeline-sub">@UiStrings.Audit.Empty</p>
+            </div>
+        </div>
+    </text>;
+
     private RenderFragment TimelineEmpty() => @<text>
         <div class="ofd-timeline-empty">
             <span class="ofd-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
@@ -324,8 +394,10 @@
         isLoading = true;
         loadError = false;
         duplicateCandidates = [];
+        history = [];
         try
         {
+            var historyTask = LoadHistoryAsync();
             var loadedFlight = await Operations.GetFlightAsync(Id);
             var timelineTask = Operations.GetFlightTimelineAsync(Id);
             var duplicateTask = LoadDuplicateCandidatesAsync(loadedFlight);
@@ -333,6 +405,7 @@
             flight = loadedFlight;
             timeline = await timelineTask;
             duplicateCandidates = await duplicateTask;
+            history = await historyTask;
         }
         catch (ApiException)
         {
@@ -341,6 +414,22 @@
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task<IReadOnlyList<AuditTrailListItem>> LoadHistoryAsync()
+    {
+        if (!CanViewAudit)
+            return [];
+
+        try
+        {
+            var trails = await AuditApi.GetTrailsAsync(subjectType: "Flight", subjectId: Id, pageSize: 25);
+            return trails.Items;
+        }
+        catch (ApiException)
+        {
+            return [];
         }
     }
 
@@ -396,6 +485,22 @@
         return ("history", "neutral");
     }
 
+    private static (string Icon, string Tone) HistoryVisual(string action)
+    {
+        var value = action.ToLowerInvariant();
+        if (value.Contains("creat"))
+            return ("flight", "green");
+        if (value.Contains("updat") || value.Contains("edit"))
+            return ("edit", "neutral");
+        if (value.Contains("merge") || value.Contains("duplicate"))
+            return ("merge_type", "amber");
+        if (value.Contains("cancel"))
+            return ("cancel", "red");
+        if (value.Contains("complete"))
+            return ("task_alt", "green");
+        return ("manage_history", "neutral");
+    }
+
     private void Back() => Navigation.NavigateTo("/operations/flights");
 
     private async Task OpenEditAsync()
@@ -447,6 +552,14 @@
             Notifications.Notify(NotificationSeverity.Success, "Flights merged");
             Navigation.NavigateTo("/operations/flights");
         }
+    }
+
+    private async Task OpenAuditDetailAsync(Guid trailId)
+    {
+        await DialogService.OpenAsync<AuditTrailDetailDialog>(
+            UiStrings.Audit.DetailsTitle,
+            new Dictionary<string, object?> { [nameof(AuditTrailDetailDialog.TrailId)] = trailId },
+            new DialogOptions { Width = "760px" });
     }
 
     private static string DateTimeDisplay(DateTimeOffset? value) =>
