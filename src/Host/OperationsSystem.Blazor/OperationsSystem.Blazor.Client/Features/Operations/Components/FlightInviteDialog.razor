@@ -13,15 +13,24 @@
     else
     {
         <div class="ofi-summary">
-            <div>
-                <p class="os-eyebrow">Invite employee</p>
-                <h2>@flight.FlightNumber</h2>
-                <p class="os-muted">@flight.CustomerName · @flight.StationIata</p>
+            <div class="ofi-summary-icon">
+                <RadzenIcon Icon="flight" />
+                <span class="ofi-summary-dot @StatusDotClass(flight.Status)"></span>
             </div>
-            <StatusBadge Label="@flight.Status" Tone="neutral" />
+            <div class="ofi-summary-main">
+                <div class="ofi-summary-heading">
+                    <h2>@DisplayFlightNumber(flight)</h2>
+                    <StatusBadge Label="@flight.Status" Tone="@FlightStatusTone(flight.Status)" />
+                    <span class="ofi-operation-badge"><RadzenIcon Icon="settings" />@flight.OperationTypeName</span>
+                </div>
+                <div class="ofi-summary-meta">
+                    <span><RadzenIcon Icon="business" />@flight.CustomerName</span>
+                    <span><RadzenIcon Icon="flight_takeoff" />@flight.StationIata</span>
+                </div>
+            </div>
         </div>
 
-        <div class="ofi-section-line"><RadzenIcon Icon="person_add" /><span>Eligible employees</span></div>
+        <div class="ofi-section-line"><RadzenIcon Icon="groups" /><span>Eligible employees</span></div>
 
         @if (eligibleStaff.Count == 0)
         {
@@ -29,20 +38,44 @@
         }
         else
         {
-            <div class="ofi-search-box">
-                <RadzenIcon Icon="search" class="ofi-search-icon" />
-                <input type="search" @bind="searchTerm" @bind:event="oninput" placeholder="Search employees" />
+            var filteredStaff = FilteredStaff().ToList();
+
+            <div class="ofi-step-toolbar">
+                <div class="ofi-search-box">
+                    <RadzenIcon Icon="search" class="ofi-search-icon" />
+                    <input type="search" value="@searchTerm" @oninput="@OnSearchInput" placeholder="Search staff" aria-label="Search staff" />
+                    @if (!string.IsNullOrWhiteSpace(searchTerm))
+                    {
+                        <button type="button" class="ofi-search-clear" title="Clear search" aria-label="Clear search" @onclick="@ClearSearch">
+                            <RadzenIcon Icon="close" />
+                        </button>
+                    }
+                </div>
+                <div class="ofi-toolbar-actions">
+                    <RadzenButton Text="@SelectAllStaffText" Icon="@SelectAllStaffIcon" ButtonStyle="ButtonStyle.Light"
+                                  Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@ToggleAllStaff" />
+                    <span class="ofi-selection-count">@SelectedCountText</span>
+                </div>
             </div>
 
-            <div class="ofi-chip-list">
-                @foreach (var member in FilteredStaff())
+            <div class="ofi-selection-panel ofi-selection-panel-scroll">
+                @if (filteredStaff.Count == 0)
                 {
-                    <button type="button" @key="member.StaffMemberId" class="@ChipClass(selectedStaffIds.Contains(member.StaffMemberId))"
-                            @onclick="@(() => Toggle(member.StaffMemberId))">
-                        <RadzenIcon Icon="person" />
-                        <span>@member.FullName</span>
-                        <small>@member.EmployeeId</small>
-                    </button>
+                    <div class="ofi-empty-row"><RadzenIcon Icon="search_off" />No employees match your search.</div>
+                }
+                else
+                {
+                    <div class="ofi-chip-list">
+                        @foreach (var member in filteredStaff)
+                        {
+                            <button type="button" @key="member.StaffMemberId" class="@ChipClass(selectedStaffIds.Contains(member.StaffMemberId))"
+                                    @onclick="@(() => Toggle(member.StaffMemberId))">
+                                <RadzenIcon Icon="person" />
+                                <span>@member.FullName</span>
+                                <small>@flight.StationIata</small>
+                            </button>
+                        }
+                    </div>
                 }
             </div>
         }
@@ -74,6 +107,19 @@
     private bool isSubmitting;
     private string? errorMessage;
     private string searchTerm = string.Empty;
+
+    private bool AllEligibleStaffSelected
+    {
+        get
+        {
+            var ids = eligibleStaff.Select(member => member.StaffMemberId).ToList();
+            return ids.Count > 0 && ids.All(selectedStaffIds.Contains);
+        }
+    }
+
+    private string SelectAllStaffText => AllEligibleStaffSelected ? "Clear all" : "Select all";
+    private string SelectAllStaffIcon => AllEligibleStaffSelected ? "clear_all" : "select_all";
+    private string SelectedCountText => selectedStaffIds.Count == 1 ? "1 selected" : $"{selectedStaffIds.Count} selected";
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -122,6 +168,26 @@
             selectedStaffIds.Remove(id);
     }
 
+    private void ToggleAllStaff()
+    {
+        var ids = eligibleStaff.Select(member => member.StaffMemberId).ToList();
+        if (ids.Count == 0)
+            return;
+
+        if (ids.All(selectedStaffIds.Contains))
+        {
+            selectedStaffIds.ExceptWith(ids);
+            return;
+        }
+
+        foreach (var id in ids)
+            selectedStaffIds.Add(id);
+    }
+
+    private void OnSearchInput(ChangeEventArgs args) => searchTerm = args.Value?.ToString() ?? string.Empty;
+
+    private void ClearSearch() => searchTerm = string.Empty;
+
     private async Task SubmitAsync()
     {
         if (flight is null || selectedStaffIds.Count == 0)
@@ -146,6 +212,30 @@
             isSubmitting = false;
         }
     }
+
+    private static string DisplayFlightNumber(FlightDetail flight)
+    {
+        if (string.IsNullOrWhiteSpace(flight.CustomerIataCode))
+            return flight.FlightNumber;
+
+        return $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
+    }
+
+    private static string FlightStatusTone(string status) => status switch
+    {
+        "InProgress" => "warning",
+        "Completed" => "success",
+        "Canceled" or "Merged" => "danger",
+        _ => "neutral"
+    };
+
+    private static string StatusDotClass(string status) => status switch
+    {
+        "InProgress" => "ofi-summary-dot--warning",
+        "Completed" => "ofi-summary-dot--success",
+        "Canceled" or "Merged" => "ofi-summary-dot--danger",
+        _ => "ofi-summary-dot--active"
+    };
 
     private static string ChipClass(bool selected) => selected ? "ofi-chip ofi-chip-selected" : "ofi-chip";
 }

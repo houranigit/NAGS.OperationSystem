@@ -526,7 +526,7 @@
 
         var result = await DialogService.OpenAsync<FlightInviteDialog>("Invite employee",
             new Dictionary<string, object?> { [nameof(FlightInviteDialog.FlightId)] = Id },
-            new DialogOptions { Width = "700px" });
+            new DialogOptions { Width = "760px" });
 
         if (result is true)
         {
