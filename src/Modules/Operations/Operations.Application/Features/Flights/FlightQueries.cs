@@ -70,7 +70,11 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
         if (SearchFilter.Term(request.Search) is { } term)
         {
             var compactFlightTerm = CompactFlightSearchTerm(term);
+            var flightIdTerm = ParseFlightIdSearchTerm(term);
+            var hasFlightIdTerm = flightIdTerm.HasValue;
+            var flightId = flightIdTerm.GetValueOrDefault();
             query = query.Where(f =>
+                (hasFlightIdTerm && f.Id == flightId) ||
                 f.FlightNumber.Value.ToLower().Contains(term) ||
                 f.OriginalFlightNumber.ToLower().Contains(term) ||
                 f.Customer.Name.ToLower().Contains(term) ||
@@ -105,6 +109,17 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
 
     private static string CompactFlightSearchTerm(string term) =>
         term.Replace("-", string.Empty).Replace(" ", string.Empty);
+
+    private static Guid? ParseFlightIdSearchTerm(string term)
+    {
+        if (Guid.TryParse(term, out var flightId))
+            return flightId;
+
+        var compactTerm = CompactFlightSearchTerm(term);
+        return compactTerm.Length == 32 && Guid.TryParseExact(compactTerm, "N", out flightId)
+            ? flightId
+            : null;
+    }
 }
 
 // --- Scheduler calendar -----------------------------------------------------

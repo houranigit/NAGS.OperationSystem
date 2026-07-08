@@ -35,6 +35,27 @@ public sealed class FlightQueryTests
         result.Value.Items.Select(f => f.Id).ShouldBe([flight.Id]);
     }
 
+    [Theory]
+    [InlineData("D")]
+    [InlineData("N")]
+    public async Task GetFlights_SearchMatchesFlightId(string format)
+    {
+        await using var db = NewDb();
+        var flight = CreateScheduledFlight(customerIata: "RJ", customerName: "Royal Jordanian", flightNumber: "1");
+        db.Flights.Add(flight);
+        db.Flights.Add(CreateScheduledFlight(customerIata: "SV", customerName: "Saudia", flightNumber: "2"));
+        await db.SaveChangesAsync();
+
+        var handler = new GetFlightsQueryHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)));
+
+        var result = await handler.Handle(new GetFlightsQuery(Search: flight.Id.ToString(format)), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Items.Select(f => f.Id).ShouldBe([flight.Id]);
+    }
+
     private static OperationsDbContext NewDb() =>
         new(new DbContextOptionsBuilder<OperationsDbContext>()
             .UseInMemoryDatabase($"ops-{Guid.NewGuid()}")
