@@ -63,21 +63,21 @@
                     </div>
                 </div>
 
-                @if (activeView == CalendarViewMode.Agenda)
+                @if (activeView is CalendarViewMode.Agenda or CalendarViewMode.Day)
                 {
-                    <div class="ofc-agenda">
+                    <div class="@CalendarListClass">
                         @if (items.Count == 0)
                         {
                             <div class="ofc-agenda-empty">
                                 <RadzenIcon Icon="event_busy" />
-                                <strong>No flights match your filters.</strong>
+                                <strong>@CalendarEmptyMessage</strong>
                             </div>
                         }
                         else
                         {
-                            @foreach (var group in AgendaGroups)
+                            @foreach (var group in CalendarGroups)
                             {
-                                <section class="ofc-agenda-day" @key="group.Key">
+                                <section class="@CalendarDayClass" @key="group.Key">
                                     <div class="ofc-agenda-date">
                                         <strong>@group.Key.ToString("dd")</strong>
                                         <span>@group.Key.ToString("ddd")</span>
@@ -110,7 +110,6 @@
                             @RenderAppointment(item)
                         </Template>
                         <ChildContent>
-                            <RadzenDayView />
                             <RadzenWeekView />
                             <RadzenMonthView />
                         </ChildContent>
@@ -158,15 +157,23 @@
         await FetchAsync();
     }
 
-    private IEnumerable<IGrouping<DateTime, CalendarItem>> AgendaGroups =>
-        items.OrderBy(x => x.Start).GroupBy(x => x.Start.Date);
+    private IEnumerable<IGrouping<DateTime, CalendarItem>> CalendarGroups =>
+        items.OrderBy(x => x.Start).GroupBy(x => activeView == CalendarViewMode.Day ? visibleDate.Date : x.Start.Date);
 
     private int SchedulerSelectedIndex => activeView switch
     {
-        CalendarViewMode.Week => 1,
-        CalendarViewMode.Month => 2,
+        CalendarViewMode.Month => 1,
         _ => 0
     };
+
+    private string CalendarListClass =>
+        activeView == CalendarViewMode.Day ? "ofc-agenda ofc-day-list" : "ofc-agenda";
+
+    private string CalendarDayClass =>
+        activeView == CalendarViewMode.Day ? "ofc-agenda-day ofc-agenda-day-single" : "ofc-agenda-day";
+
+    private string CalendarEmptyMessage =>
+        activeView == CalendarViewMode.Day ? "No flights scheduled for this day." : "No flights match your filters.";
 
     private string CalendarRangeLabel
     {

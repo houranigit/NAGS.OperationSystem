@@ -162,6 +162,10 @@
     margin-block-start: var(--os-space-4);
 }
 
+.ofc-agenda-day-single {
+    grid-template-columns: 1fr;
+}
+
 .ofc-agenda-date {
     display: flex;
     flex-direction: column;
@@ -180,6 +184,24 @@
     margin-block-start: 0.25rem;
     font-size: var(--os-text-sm);
     font-weight: 700;
+}
+
+.ofc-day-list .ofc-agenda-date {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--os-space-2);
+    padding: 0 var(--os-space-1) var(--os-space-2);
+}
+
+.ofc-day-list .ofc-agenda-date strong {
+    color: var(--os-color-text);
+    font-size: var(--os-text-xl);
+}
+
+.ofc-day-list .ofc-agenda-date span {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    text-transform: uppercase;
 }
 
 .ofc-agenda-items {
