@@ -32,36 +32,36 @@
 
         <div class="ofi-section-line"><RadzenIcon Icon="groups" /><span>Eligible employees</span></div>
 
-        @if (eligibleStaff.Count == 0)
-        {
-            <EmptyState Title="No employees available" Description="Every active station employee is already assigned to this flight." Icon="groups" />
-        }
-        else
-        {
-            var filteredStaff = FilteredStaff().ToList();
+        var filteredStaff = FilteredStaff().ToList();
+        var assignedStaff = flight.AssignedEmployees;
 
-            <div class="ofi-step-toolbar">
-                <div class="ofi-search-box">
-                    <span class="ofi-search-icon"><RadzenIcon Icon="search" /></span>
-                    <input type="search" value="@searchTerm" @oninput="@OnSearchInput" placeholder="Search staff" aria-label="Search staff" />
-                    @if (!string.IsNullOrWhiteSpace(searchTerm))
-                    {
-                        <button type="button" class="ofi-search-clear" title="Clear search" aria-label="Clear search" @onclick="@ClearSearch">
-                            <RadzenIcon Icon="close" />
-                        </button>
-                    }
-                </div>
-                <div class="ofi-toolbar-actions">
-                    <RadzenButton Text="@SelectAllStaffText" Icon="@SelectAllStaffIcon" ButtonStyle="ButtonStyle.Light"
-                                  Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@ToggleAllStaff" />
-                    <span class="ofi-selection-count">@SelectedCountText</span>
-                </div>
+        <div class="ofi-step-toolbar">
+            <div class="ofi-search-box">
+                <span class="ofi-search-icon"><RadzenIcon Icon="search" /></span>
+                <input type="search" value="@searchTerm" @oninput="@OnSearchInput" placeholder="Search staff" aria-label="Search staff" disabled="@(eligibleStaff.Count == 0)" />
+                @if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    <button type="button" class="ofi-search-clear" title="Clear search" aria-label="Clear search" @onclick="@ClearSearch">
+                        <RadzenIcon Icon="close" />
+                    </button>
+                }
             </div>
+            <div class="ofi-toolbar-actions">
+                <RadzenButton Text="@SelectAllStaffText" Icon="@SelectAllStaffIcon" ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@ToggleAllStaff"
+                              Disabled="@(eligibleStaff.Count == 0)" />
+                <span class="ofi-selection-count">@SelectedCountText</span>
+            </div>
+        </div>
 
-            <div class="ofi-selection-panel ofi-selection-panel-scroll">
+        <div class="ofi-staff-layout">
+            <div class="ofi-selection-panel ofi-selection-panel-scroll" aria-label="Eligible employees">
                 @if (filteredStaff.Count == 0)
                 {
-                    <div class="ofi-empty-row"><RadzenIcon Icon="search_off" />No employees match your search.</div>
+                    <div class="ofi-empty-row">
+                        <RadzenIcon Icon="@(eligibleStaff.Count == 0 ? "groups" : "search_off")" />
+                        @(eligibleStaff.Count == 0 ? "No employees available to invite." : "No employees match your search.")
+                    </div>
                 }
                 else
                 {
@@ -78,7 +78,30 @@
                     </div>
                 }
             </div>
-        }
+
+            <aside class="ofi-assigned-panel" aria-label="Already assigned employees">
+                <div class="ofi-assigned-head">
+                    <span><RadzenIcon Icon="person_check" />Already assigned</span>
+                    <small>@assignedStaff.Count</small>
+                </div>
+                @if (assignedStaff.Count == 0)
+                {
+                    <div class="ofi-assigned-empty">No one assigned yet.</div>
+                }
+                else
+                {
+                    <div class="ofi-assigned-list">
+                        @foreach (var member in assignedStaff)
+                        {
+                            <div class="ofi-assigned-item" @key="member.StaffMemberId">
+                                <RadzenIcon Icon="person" />
+                                <span>@member.FullName</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </aside>
+        </div>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
