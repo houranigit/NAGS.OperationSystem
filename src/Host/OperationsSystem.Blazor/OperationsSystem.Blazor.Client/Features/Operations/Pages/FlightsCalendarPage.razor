@@ -32,23 +32,91 @@
         else
         {
             <RadzenCard class="ofc-card">
-                <RadzenScheduler @ref="scheduler" TItem="CalendarItem" Data="@items" style="height: 720px"
-                                 StartProperty="Start" EndProperty="End" TextProperty="Text"
-                                 SelectedIndex="0" LoadData="@OnLoadDataAsync"
-                                 AppointmentSelect="@OnAppointmentSelect" AppointmentRender="@OnAppointmentRender">
-                    <Template Context="item">
-                        <div class="ofc-appointment">
-                            <strong>@item.FlightNumberDisplay</strong>
-                            <span>@StationLine(item)</span>
-                        </div>
-                    </Template>
-                    <ChildContent>
-                        <RadzenAgendaView NumberOfDays="7" />
-                        <RadzenDayView />
-                        <RadzenWeekView />
-                        <RadzenMonthView />
-                    </ChildContent>
-                </RadzenScheduler>
+                <div class="ofc-calendar-toolbar">
+                    <div class="ofc-calendar-nav">
+                        <button type="button" class="ofc-icon-button" @onclick="@(() => MoveRangeAsync(-1))">
+                            <RadzenIcon Icon="chevron_left" />
+                        </button>
+                        <button type="button" class="ofc-icon-button" @onclick="@(() => MoveRangeAsync(1))">
+                            <RadzenIcon Icon="chevron_right" />
+                        </button>
+                        <button type="button" class="ofc-today-button" @onclick="@GoTodayAsync">Today</button>
+                    </div>
+                    <strong class="ofc-range-label">@CalendarRangeLabel</strong>
+                    <div class="ofc-view-tabs">
+                        <button type="button" class="@ViewButtonClass(CalendarViewMode.Agenda)" @onclick="@(() => SelectViewAsync(CalendarViewMode.Agenda))">
+                            <RadzenIcon Icon="view_agenda" />
+                            <span>Agenda</span>
+                        </button>
+                        <button type="button" class="@ViewButtonClass(CalendarViewMode.Day)" @onclick="@(() => SelectViewAsync(CalendarViewMode.Day))">
+                            <RadzenIcon Icon="calendar_view_day" />
+                            <span>Day</span>
+                        </button>
+                        <button type="button" class="@ViewButtonClass(CalendarViewMode.Week)" @onclick="@(() => SelectViewAsync(CalendarViewMode.Week))">
+                            <RadzenIcon Icon="calendar_view_week" />
+                            <span>Week</span>
+                        </button>
+                        <button type="button" class="@ViewButtonClass(CalendarViewMode.Month)" @onclick="@(() => SelectViewAsync(CalendarViewMode.Month))">
+                            <RadzenIcon Icon="calendar_month" />
+                            <span>Month</span>
+                        </button>
+                    </div>
+                </div>
+
+                @if (activeView == CalendarViewMode.Agenda)
+                {
+                    <div class="ofc-agenda">
+                        @if (items.Count == 0)
+                        {
+                            <div class="ofc-agenda-empty">
+                                <RadzenIcon Icon="event_busy" />
+                                <strong>No flights match your filters.</strong>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var group in AgendaGroups)
+                            {
+                                <section class="ofc-agenda-day" @key="group.Key">
+                                    <div class="ofc-agenda-date">
+                                        <strong>@group.Key.ToString("dd")</strong>
+                                        <span>@group.Key.ToString("ddd")</span>
+                                    </div>
+                                    <div class="ofc-agenda-items">
+                                        @foreach (var item in group)
+                                        {
+                                            <button type="button"
+                                                    class="ofc-agenda-action"
+                                                    data-ofc-status="@StatusTone(item.Status)"
+                                                    @key="item.FlightId"
+                                                    @onclick="@(() => OpenFlight(item.FlightId))">
+                                                @RenderAppointment(item)
+                                            </button>
+                                        }
+                                    </div>
+                                </section>
+                            }
+                        }
+                    </div>
+                }
+                else
+                {
+                    <RadzenScheduler @key="activeView" TItem="CalendarItem" Data="@items" class="ofc-scheduler"
+                                     StartProperty="Start" EndProperty="End" TextProperty="Text"
+                                     Date="@visibleDate" ShowHeader="false" SelectedIndex="@SchedulerSelectedIndex"
+                                     LoadData="@OnLoadDataAsync"
+                                     AppointmentSelect="@OnAppointmentSelect" AppointmentRender="@OnAppointmentRender">
+                        <Template Context="item">
+                            @RenderAppointment(item)
+                        </Template>
+                        <ChildContent>
+                            <RadzenDayView />
+                            <RadzenWeekView />
+                            <RadzenMonthView />
+                        </ChildContent>
+                    </RadzenScheduler>
+                }
+
                 <div class="ofc-legend">
                     <span class="ofc-legend-item"><span class="ofc-dot ofc-dot-scheduled"></span> Scheduled</span>
                     <span class="ofc-legend-item"><span class="ofc-dot ofc-dot-inprogress"></span> In progress</span>
@@ -61,15 +129,16 @@
 </RequirePermission>
 
 @code {
-    private RadzenScheduler<CalendarItem>? scheduler;
     private IReadOnlyList<CalendarItem> items = [];
     private IReadOnlyList<StationFilterOption> stationOptions = [];
     private IReadOnlyList<CustomerFilterOption> customerOptions = [];
     private Guid? stationFilter;
     private Guid? customerFilter;
     private string? statusFilter;
-    private DateTime rangeStart = DateTime.UtcNow.Date.AddDays(-7);
-    private DateTime rangeEnd = DateTime.UtcNow.Date.AddDays(21);
+    private CalendarViewMode activeView = CalendarViewMode.Agenda;
+    private DateTime visibleDate = DateTime.UtcNow.Date;
+    private DateTime rangeStart = DateTime.UtcNow.Date;
+    private DateTime rangeEnd = DateTime.UtcNow.Date.AddDays(7);
     private bool loadError;
     private readonly IReadOnlyList<StatusFilterOption> statusOptions =
     [
@@ -85,7 +154,33 @@
             LoadStationOptionsAsync(),
             LoadCustomerOptionsAsync());
 
+        SetRangeForCurrentView();
         await FetchAsync();
+    }
+
+    private IEnumerable<IGrouping<DateTime, CalendarItem>> AgendaGroups =>
+        items.OrderBy(x => x.Start).GroupBy(x => x.Start.Date);
+
+    private int SchedulerSelectedIndex => activeView switch
+    {
+        CalendarViewMode.Week => 1,
+        CalendarViewMode.Month => 2,
+        _ => 0
+    };
+
+    private string CalendarRangeLabel
+    {
+        get
+        {
+            var (start, endExclusive) = GetRange(activeView, visibleDate);
+            if (activeView == CalendarViewMode.Day)
+                return start.ToString("M/d/yyyy");
+
+            if (activeView == CalendarViewMode.Month)
+                return start.ToString("MMMM yyyy");
+
+            return $"{start:M/d/yyyy} - {endExclusive.AddDays(-1):M/d/yyyy}";
+        }
     }
 
     private bool CanLoadLookup(string resourceViewPermission) =>
@@ -132,6 +227,33 @@
         await FetchAsync();
     }
 
+    private async Task SelectViewAsync(CalendarViewMode view)
+    {
+        if (activeView == view)
+            return;
+
+        activeView = view;
+        await RefreshCurrentViewAsync();
+    }
+
+    private async Task MoveRangeAsync(int direction)
+    {
+        visibleDate = activeView switch
+        {
+            CalendarViewMode.Day => visibleDate.AddDays(direction),
+            CalendarViewMode.Month => visibleDate.AddMonths(direction),
+            _ => visibleDate.AddDays(direction * 7)
+        };
+
+        await RefreshCurrentViewAsync();
+    }
+
+    private async Task GoTodayAsync()
+    {
+        visibleDate = DateTime.UtcNow.Date;
+        await RefreshCurrentViewAsync();
+    }
+
     private async Task OnStationFilterChangedAsync(Guid? value)
     {
         stationFilter = value;
@@ -151,6 +273,27 @@
     }
 
     private async Task ReloadAsync() => await FetchAsync();
+
+    private async Task RefreshCurrentViewAsync()
+    {
+        SetRangeForCurrentView();
+        await FetchAsync();
+    }
+
+    private void SetRangeForCurrentView() => (rangeStart, rangeEnd) = GetRange(activeView, visibleDate);
+
+    private static (DateTime Start, DateTime End) GetRange(CalendarViewMode view, DateTime date)
+    {
+        var day = date.Date;
+        return view switch
+        {
+            CalendarViewMode.Day => (day, day.AddDays(1)),
+            CalendarViewMode.Month => (new DateTime(day.Year, day.Month, 1), new DateTime(day.Year, day.Month, 1).AddMonths(1)),
+            _ => (StartOfWeek(day), StartOfWeek(day).AddDays(7))
+        };
+    }
+
+    private static DateTime StartOfWeek(DateTime date) => date.Date.AddDays(-(int)date.DayOfWeek);
 
     private async Task FetchAsync()
     {
@@ -177,22 +320,17 @@
     private void OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<CalendarItem> args)
     {
         if (args.Data is { } item)
-            Navigation.NavigateTo($"/operations/flights/{item.FlightId}");
+            OpenFlight(item.FlightId);
     }
+
+    private void OpenFlight(Guid flightId) => Navigation.NavigateTo($"/operations/flights/{flightId}");
 
     private void OnAppointmentRender(SchedulerAppointmentRenderEventArgs<CalendarItem> args)
     {
         if (args.Data is not { } item)
             return;
 
-        var color = item.Status switch
-        {
-            "InProgress" => "var(--rz-warning, #f59e0b)",
-            "Completed" => "var(--rz-success, #16a34a)",
-            "Canceled" or "Merged" => "var(--rz-danger, #dc2626)",
-            _ => "var(--rz-primary, #2563eb)"
-        };
-        args.Attributes["style"] = $"background: {color};";
+        args.Attributes["data-ofc-status"] = StatusTone(item.Status);
     }
 
     private static CalendarItem ToCalendarItem(CalendarFlight flight)
@@ -214,10 +352,65 @@
             ? customer.Name
             : $"{customer.IataCode.Trim().ToUpperInvariant()} · {customer.Name}";
 
-    private static string StationLine(CalendarItem item) => StationLine(item.StationName, item.IsPerLanding);
-
     private static string StationLine(string stationName, bool isPerLanding) =>
         isPerLanding ? $"{stationName} · Per Landing" : stationName;
+
+    private static string TimeDisplay(DateTime value) => value.ToString("h:mm tt");
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "InProgress" => "In progress",
+        "Completed" => "Completed",
+        "Canceled" => "Canceled",
+        _ => "Scheduled"
+    };
+
+    private static string StatusTone(string status) => status switch
+    {
+        "InProgress" => "inprogress",
+        "Completed" => "completed",
+        "Canceled" or "Merged" => "canceled",
+        _ => "scheduled"
+    };
+
+    private string ViewButtonClass(CalendarViewMode view) =>
+        activeView == view ? "ofc-view-tab ofc-view-tab-active" : "ofc-view-tab";
+
+    private RenderFragment RenderAppointment(CalendarItem item) => @<div class="ofc-appointment">
+        <span class="ofc-flight-icon"><RadzenIcon Icon="flight" /></span>
+        <div class="ofc-flight-main">
+            <div class="ofc-flight-heading">
+                <strong>@item.FlightNumberDisplay</strong>
+                @if (item.IsPerLanding)
+                {
+                    <span class="ofc-heading-sep">•</span>
+                    <span class="ofc-per-landing">Per Landing</span>
+                }
+            </div>
+            <span class="ofc-station-name">@item.StationName</span>
+        </div>
+        <div class="ofc-time-cell">
+            <span>From</span>
+            <strong>@TimeDisplay(item.Start)</strong>
+        </div>
+        <div class="ofc-time-cell">
+            <span>To</span>
+            <strong>@TimeDisplay(item.End)</strong>
+        </div>
+        <span class="ofc-status-pill ofc-status-pill--@StatusTone(item.Status)">
+            <span class="ofc-status-dot"></span>
+            @StatusLabel(item.Status)
+        </span>
+        <span class="ofc-agenda-more"><RadzenIcon Icon="more_vert" /></span>
+    </div>;
+
+    private enum CalendarViewMode
+    {
+        Agenda,
+        Day,
+        Week,
+        Month
+    }
 
     private sealed record CalendarItem(
         Guid FlightId,
