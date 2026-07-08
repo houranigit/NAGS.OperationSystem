@@ -136,20 +136,209 @@
     min-block-size: 0;
 }
 
-.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="scheduled"] {
-    background: var(--rz-primary, #2563eb);
+.os-list-page ::deep .ofc-card .rz-event:has(.rz-event-content[data-ofc-status]) {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    color: var(--os-color-text);
+    overflow: visible;
 }
 
-.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="inprogress"] {
-    background: var(--rz-warning, #f59e0b);
+.os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status] {
+    --ofc-event-accent: var(--os-color-primary);
+    --ofc-event-soft: var(--os-color-primary-soft);
+    --ofc-event-border: var(--os-color-primary-soft-border);
+    height: 100%;
+    padding: 0;
+    background: transparent !important;
+    color: var(--os-color-text);
+    overflow: hidden;
 }
 
-.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="completed"] {
-    background: var(--rz-success, #16a34a);
+.os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status="inprogress"] {
+    --ofc-event-accent: var(--os-color-warning);
+    --ofc-event-soft: var(--os-color-warning-bg);
+    --ofc-event-border: color-mix(in srgb, var(--os-color-warning) 34%, var(--os-color-border));
 }
 
-.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="canceled"] {
-    background: var(--rz-danger, #dc2626);
+.os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status="completed"] {
+    --ofc-event-accent: var(--os-color-success);
+    --ofc-event-soft: var(--os-color-success-bg);
+    --ofc-event-border: color-mix(in srgb, var(--os-color-success) 34%, var(--os-color-border));
+}
+
+.os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status="canceled"] {
+    --ofc-event-accent: var(--os-color-danger);
+    --ofc-event-soft: var(--os-color-danger-bg);
+    --ofc-event-border: color-mix(in srgb, var(--os-color-danger) 34%, var(--os-color-border));
+}
+
+.os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status] .ofc-appointment {
+    min-block-size: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-appointment {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.45rem minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 0.15rem 0.35rem;
+  height: 100%;
+  padding: 0.35rem 0.45rem 0.35rem 0.55rem;
+  border: 1px solid var(--ofc-event-border);
+  border-inline-start: 2px solid var(--ofc-event-accent);
+  border-radius: var(--os-radius-sm);
+  background: var(--os-color-surface);
+  box-shadow: var(--os-shadow-sm);
+  color: var(--os-color-text);
+  overflow: hidden;
+  margin: 0px 5px 0px 2px;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-flight-icon {
+    display: inline-grid;
+    grid-row: 1 / span 2;
+    place-items: center;
+    inline-size: 1.45rem;
+    block-size: 1.45rem;
+    border-radius: var(--os-radius-sm);
+    background: var(--ofc-event-soft);
+    color: var(--ofc-event-accent);
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-flight-icon .rz-icon {
+    font-size: 0.95rem;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-flight-main {
+    min-width: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-flight-heading {
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-flight-heading strong {
+    color: var(--ofc-event-accent);
+    font-size: 0.72rem;
+    line-height: 1.1;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-heading-sep,
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-per-landing {
+    display: inline;
+    color: var(--os-color-text-muted);
+    font-size: 0.62rem;
+    font-weight: 700;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-station-name,
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-time-range {
+    display: block;
+    overflow: hidden;
+    color: var(--os-color-text-muted);
+    font-size: 0.64rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-station-name {
+    color: var(--os-color-text);
+    opacity: 0.9;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-time-range {
+    grid-column: 1 / -1;
+}
+
+.os-list-page ::deep .ofc-card .rz-week-view .rz-event-content[data-ofc-status] .ofc-status-pill {
+    display: inline-flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-self: start;
+    gap: 0.25rem;
+    max-inline-size: 100%;
+    min-block-size: 1.15rem;
+    margin-block-start: 0.05rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: var(--os-radius-sm);
+    background: var(--ofc-event-soft);
+    color: var(--ofc-event-accent);
+    font-size: 0.58rem;
+    font-weight: 800;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event:has(.rz-event-content[data-ofc-status]) {
+    margin: 0.1rem 0.2rem;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-appointment {
+    display: grid;
+    grid-template-columns: 0.95rem minmax(0, 1fr) 0.45rem;
+    align-items: center;
+    gap: 0.2rem;
+    min-block-size: 1.35rem;
+    padding: 0.15rem 0.3rem;
+    border: 1px solid var(--ofc-event-border);
+    border-radius: var(--os-radius-sm);
+    background: var(--ofc-event-soft);
+    color: var(--os-color-text);
+    overflow: hidden;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-icon {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 0.95rem;
+    block-size: 0.95rem;
+    color: var(--ofc-event-accent);
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-icon .rz-icon {
+    font-size: 0.75rem;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-main,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-heading {
+    min-width: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-heading strong {
+    color: var(--ofc-event-accent);
+    font-size: 0.68rem;
+    line-height: 1;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-heading-sep,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-per-landing,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-station-name,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-time-range {
+    display: none;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-status-pill {
+    display: block;
+    justify-self: end;
+    inline-size: 0.45rem;
+    block-size: 0.45rem;
+    min-block-size: 0;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--ofc-event-accent);
+    color: transparent;
+    font-size: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-status-pill > * {
+    display: none;
 }
 
 .ofc-agenda {
@@ -266,6 +455,7 @@
 
 .ofc-flight-icon,
 .ofc-time-cell,
+.ofc-time-range,
 .ofc-status-pill,
 .ofc-agenda-more,
 .ofc-heading-sep,
