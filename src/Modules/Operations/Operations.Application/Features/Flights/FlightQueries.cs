@@ -180,40 +180,6 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
-        var workOrderQuery = db.WorkOrders.AsNoTracking()
-            .Where(w => w.FlightId == flight.Id);
-
-        if (!scopeResult.Value.IsAdministrator && !scopeResult.Value.CanViewStationWide)
-        {
-            var staffId = scopeResult.Value.StaffMemberId;
-            workOrderQuery = workOrderQuery.Where(w => w.OwnerStaffMemberId == staffId);
-        }
-
-        var workOrders = await workOrderQuery
-            .OrderBy(w => w.CreatedAtUtc)
-            .Select(w => new WorkOrderSummaryDto(
-                w.Id, w.Type.ToString(), w.Status.ToString(), w.Number == null ? null : w.Number.Value,
-                w.OwnerStaffMemberId, w.Owner == null ? null : w.Owner.FullName, w.CreatedAtUtc))
-            .ToListAsync(cancellationToken);
-
-        var approved = flight.ApprovedWorkOrder is null
-            ? null
-            : new ApprovedWorkOrderDto(
-                flight.ApprovedWorkOrder.WorkOrderId,
-                flight.ApprovedWorkOrder.WorkOrderNumber,
-                flight.ApprovedWorkOrder.WorkOrderType.ToString(),
-                flight.ApprovedWorkOrder.ActualFlightNumber,
-                flight.ApprovedWorkOrder.ActualAircraftTypeId,
-                flight.ApprovedWorkOrder.ActualAircraftTypeModel,
-                flight.ApprovedWorkOrder.AircraftTailNumber,
-                flight.ApprovedWorkOrder.ActualArrivalUtc,
-                flight.ApprovedWorkOrder.ActualDepartureUtc,
-                flight.ApprovedWorkOrder.Remarks,
-                flight.ApprovedWorkOrder.CustomerSignatureReference,
-                flight.ApprovedWorkOrder.CanceledAtUtc,
-                flight.ApprovedWorkOrder.CancellationReason,
-                flight.ApprovedWorkOrder.ApprovedAtUtc);
-
         var dto = new FlightDetailDto(
             flight.Id,
             flight.FlightNumber.Value,
@@ -235,10 +201,8 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.ContractNumber,
             flight.MergedIntoFlightId,
             flight.PotentialDuplicateOfFlightId,
-            approved,
             flight.PlannedServices.Select(p => new PlannedServiceDto(p.Service.ServiceId, p.Service.Name, p.IsAircraftPerLanding)).ToList(),
             flight.AssignedEmployees.Select(e => new AssignedEmployeeDto(e.Employee.StaffMemberId, e.Employee.FullName, e.Employee.EmployeeId)).ToList(),
-            workOrders,
             flight.CreatedAtUtc,
             flight.UpdatedAtUtc,
             Convert.ToBase64String(flight.RowVersion));
@@ -318,7 +282,7 @@ public sealed class GetFlightTimelineQueryHandler(IOperationsDbContext db, IOper
             .Where(e => e.FlightId == flight.Id)
             .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.Id)
             .Select(e => new FlightTimelineEntryDto(
-                e.Id, e.EventType.ToString(), e.OccurredAtUtc, e.ActorName, e.WorkOrderId, e.WorkOrderNumber, e.Details))
+                e.Id, e.EventType.ToString(), e.OccurredAtUtc, e.ActorName, e.Details))
             .ToListAsync(cancellationToken);
 
         return Result.Success(items);

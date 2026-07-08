@@ -86,7 +86,7 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
 // --- Active options (lightweight picker) -----------------------------------
 
 /// <summary>
-/// Active staff members as lightweight picker options for flight/work-order assignment forms.
+/// Active staff members as lightweight picker options for flight assignment forms.
 /// Exposed under the reference view-options permission; station staff are always confined to
 /// their own station regardless of <paramref name="StationId"/>.
 /// </summary>

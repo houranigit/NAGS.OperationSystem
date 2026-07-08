@@ -9,10 +9,7 @@ using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Features.Flights;
-using Operations.Application.Features.WorkOrders;
-using Operations.Infrastructure.BackgroundJobs;
 using Operations.Infrastructure.Persistence;
-using Quartz;
 
 namespace Operations.Infrastructure;
 
@@ -37,29 +34,12 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IOperationsScope, OperationsScope>();
         services.AddScoped<MasterDataResolver>();
         services.AddScoped<IFlightTimelineWriter, FlightTimelineWriter>();
-        services.AddScoped<IWorkOrderTimelineWriter, WorkOrderTimelineWriter>();
-        services.AddScoped<WorkOrderInputBuilder>();
         services.AddScoped<FlightDuplicateDetector>();
-        services.AddScoped<IWorkOrderNumberAllocator, WorkOrderNumberAllocator>();
 
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddSingleton<IPermissionCatalog, OperationsPermissionCatalog>();
         services.AddModuleOutbox<OperationsDbContext>();
-
-        var autoWorkOrderEnabled = configuration.GetValue("Operations:AutoWorkOrder:Enabled", true);
-        if (autoWorkOrderEnabled)
-        {
-            var pollSeconds = configuration.GetValue("Operations:AutoWorkOrder:PollSeconds", 60);
-            services.AddQuartz(q =>
-            {
-                q.AddJob<AutoWorkOrderJob>(j => j.WithIdentity(AutoWorkOrderJob.Key));
-                q.AddTrigger(t => t
-                    .ForJob(AutoWorkOrderJob.Key)
-                    .WithIdentity("operations-auto-work-order-trigger")
-                    .WithSimpleSchedule(s => s.WithIntervalInSeconds(pollSeconds).RepeatForever()));
-            });
-        }
 
         return services;
     }

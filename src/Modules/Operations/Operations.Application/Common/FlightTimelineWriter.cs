@@ -16,8 +16,6 @@ public interface IFlightTimelineWriter
         Guid flightId,
         FlightTimelineEventType eventType,
         DateTimeOffset occurredAtUtc,
-        Guid? workOrderId = null,
-        string? workOrderNumber = null,
         string? details = null,
         CancellationToken cancellationToken = default);
 }
@@ -34,15 +32,12 @@ public sealed class FlightTimelineWriter(
         Guid flightId,
         FlightTimelineEventType eventType,
         DateTimeOffset occurredAtUtc,
-        Guid? workOrderId = null,
-        string? workOrderNumber = null,
         string? details = null,
         CancellationToken cancellationToken = default)
     {
         var actorName = await ResolveActorNameAsync(cancellationToken);
         db.FlightTimelineEntries.Add(new FlightTimelineEntry(
-            flightId, eventType, occurredAtUtc, user.UserId ?? Guid.Empty, actorName,
-            workOrderId, workOrderNumber, details));
+            flightId, eventType, occurredAtUtc, user.UserId ?? Guid.Empty, actorName, details));
     }
 
     private async Task<string?> ResolveActorNameAsync(CancellationToken cancellationToken)

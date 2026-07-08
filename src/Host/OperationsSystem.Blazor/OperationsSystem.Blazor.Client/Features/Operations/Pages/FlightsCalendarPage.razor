@@ -9,7 +9,7 @@
 
 <RequirePermission Permission="@OperationsPermissions.FlightsView">
     <div class="os-list-page">
-        <PageHeader Title="Flight calendar" Description="Scheduled and ad-hoc flights in your scope. Click a flight to open it.">
+        <PageHeader Title="Flight calendar" Description="Scheduled flights in your scope. Click a flight to open it.">
             <Actions>
                 <RadzenDropDown TValue="Guid?" Data="@stationOptions" TextProperty="Label" ValueProperty="Value"
                                 Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync"

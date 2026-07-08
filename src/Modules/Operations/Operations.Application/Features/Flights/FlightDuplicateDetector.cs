@@ -7,7 +7,7 @@ namespace Operations.Application.Features.Flights;
 
 /// <summary>
 /// Exact same-flight detection. A duplicate flight is another non-terminal flight with the same
-/// customer, station, STA, and STD. Deterministic duplicate work orders are handled elsewhere.
+/// customer, station, STA, and STD.
 /// </summary>
 public sealed class FlightDuplicateDetector(IOperationsDbContext db)
 {

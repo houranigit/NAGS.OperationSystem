@@ -24,17 +24,6 @@ public sealed record CalendarFlight(
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc);
 
-public sealed record ReviewQueueItem(
-    Guid WorkOrderId,
-    Guid FlightId,
-    string FlightNumber,
-    string StationIata,
-    string CustomerName,
-    string Type,
-    string Status,
-    DateTimeOffset CreatedAtUtc,
-    string RowVersion);
-
 public sealed record DuplicateCandidate(
     Guid FlightId,
     string FlightNumber,
@@ -43,109 +32,20 @@ public sealed record DuplicateCandidate(
     DateTimeOffset ScheduledArrivalUtc,
     int Score);
 
-public sealed record WorkOrderServiceLineModel(
-    Guid Id,
-    Guid ServiceId,
-    string ServiceName,
-    string Origin,
-    DateTimeOffset FromUtc,
-    DateTimeOffset ToUtc,
-    string? Description,
-    bool ReturnToRamp,
-    IReadOnlyList<AssignedEmployeeModel> Employees);
-
-public sealed record WorkOrderResourceModel(Guid Id, string Name, decimal Quantity);
-
-public sealed record WorkOrderTaskModel(
-    Guid Id,
-    string TaskType,
-    string? Description,
-    DateTimeOffset FromUtc,
-    DateTimeOffset ToUtc,
-    bool ReturnToRamp,
-    IReadOnlyList<AssignedEmployeeModel> Employees,
-    IReadOnlyList<WorkOrderResourceModel> Tools,
-    IReadOnlyList<WorkOrderResourceModel> Materials,
-    IReadOnlyList<WorkOrderResourceModel> GeneralSupports);
-
-public sealed record WorkOrderDetail(
-    Guid Id,
-    Guid FlightId,
-    string Type,
-    string Status,
-    string? Number,
-    Guid? OwnerStaffMemberId,
-    string? OwnerName,
-    string FlightNumber,
-    string CustomerName,
-    string StationIata,
-    Guid? AircraftTypeId,
-    string? AircraftTypeModel,
-    string? AircraftTailNumber,
-    DateTimeOffset ScheduledArrivalUtc,
-    DateTimeOffset ScheduledDepartureUtc,
-    DateTimeOffset? ActualArrivalUtc,
-    DateTimeOffset? ActualDepartureUtc,
-    string? Remarks,
-    string? CustomerSignatureReference,
-    DateTimeOffset? CanceledAtUtc,
-    string? CancellationReason,
-    IReadOnlyList<WorkOrderServiceLineModel> ServiceLines,
-    IReadOnlyList<WorkOrderTaskModel> Tasks,
-    DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
-
 public sealed record OperationsDashboard(
     int ScheduledFlights,
     int InProgressFlights,
-    int PendingReviewWorkOrders,
     int CompletedFlights,
     int CanceledFlights);
 
 public sealed record PlannedServiceModel(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
 
-public sealed record WorkOrderSummaryModel(
-    Guid Id,
-    string Type,
-    string Status,
-    string? Number,
-    Guid? OwnerStaffMemberId,
-    string? OwnerName,
-    DateTimeOffset CreatedAtUtc);
-
-public sealed record ApprovedWorkOrderModel(
-    Guid WorkOrderId,
-    string WorkOrderNumber,
-    string WorkOrderType,
-    string ActualFlightNumber,
-    Guid? ActualAircraftTypeId,
-    string? ActualAircraftTypeModel,
-    string? AircraftTailNumber,
-    DateTimeOffset? ActualArrivalUtc,
-    DateTimeOffset? ActualDepartureUtc,
-    string? Remarks,
-    string? CustomerSignatureReference,
-    DateTimeOffset? CanceledAtUtc,
-    string? CancellationReason,
-    DateTimeOffset ApprovedAtUtc);
-
 public sealed record FlightTimelineEntryModel(
     Guid Id,
     string EventType,
     DateTimeOffset OccurredAtUtc,
     string? ActorName,
-    Guid? WorkOrderId,
-    string? WorkOrderNumber,
-    string? Details);
-
-public sealed record WorkOrderTimelineEntryModel(
-    Guid Id,
-    string EventType,
-    DateTimeOffset OccurredAtUtc,
-    string? ActorName,
-    string? WorkOrderNumber,
     string? Details);
 
 public sealed record FlightDetail(
@@ -169,10 +69,8 @@ public sealed record FlightDetail(
     string? ContractNumber,
     Guid? MergedIntoFlightId,
     Guid? PotentialDuplicateOfFlightId,
-    ApprovedWorkOrderModel? ApprovedWorkOrder,
     IReadOnlyList<PlannedServiceModel> PlannedServices,
     IReadOnlyList<AssignedEmployeeModel> AssignedEmployees,
-    IReadOnlyList<WorkOrderSummaryModel> WorkOrders,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion);
@@ -214,81 +112,4 @@ public sealed record ChangeFlightNumberRequestModel(string FlightNumber);
 
 public sealed record AssignEmployeesRequestModel(IReadOnlyList<Guid> StaffMemberIds);
 
-public sealed record CancelFlightRequestModel(DateTimeOffset CanceledAtUtc, string? Reason);
-
-public sealed record CreateAdHocFlightRequestModel(
-    Guid CustomerId,
-    Guid OperationTypeId,
-    string FlightNumber,
-    DateTimeOffset ScheduledArrivalUtc,
-    DateTimeOffset ScheduledDepartureUtc,
-    Guid? AircraftTypeId,
-    IReadOnlyList<Guid> PlannedServiceIds,
-    bool AcknowledgeDuplicates,
-    bool IsCancellation,
-    DateTimeOffset? CancellationAtUtc,
-    string? CancellationReason,
-    string? ActualFlightNumber,
-    Guid? ActualAircraftTypeId,
-    string? AircraftTailNumber,
-    DateTimeOffset? ActualArrivalUtc,
-    DateTimeOffset? ActualDepartureUtc,
-    IReadOnlyList<ServiceLineRequestModel> ServiceLines,
-    IReadOnlyList<TaskRequestModel> Tasks,
-    string? Remarks,
-    string? CustomerSignatureReference);
-
-public sealed record AdHocFlightResultModel(
-    Guid FlightId,
-    Guid WorkOrderId,
-    IReadOnlyList<DuplicateCandidate> DuplicateCandidates);
-
-public enum WorkOrderServiceLineOriginModel
-{
-    Planned,
-    Extra
-}
-
-public enum WorkOrderTaskTypeModel
-{
-    Major,
-    Minor
-}
-
-public sealed record ServiceLineRequestModel(
-    Guid ServiceId,
-    WorkOrderServiceLineOriginModel Origin,
-    DateTimeOffset FromUtc,
-    DateTimeOffset ToUtc,
-    string? Description,
-    bool ReturnToRamp,
-    IReadOnlyList<Guid> EmployeeIds);
-
-public sealed record ResourceUsageRequestModel(Guid Id, decimal Quantity);
-
-public sealed record TaskRequestModel(
-    WorkOrderTaskTypeModel TaskType,
-    string? Description,
-    DateTimeOffset FromUtc,
-    DateTimeOffset ToUtc,
-    bool ReturnToRamp,
-    IReadOnlyList<Guid> EmployeeIds,
-    IReadOnlyList<ResourceUsageRequestModel> Tools,
-    IReadOnlyList<ResourceUsageRequestModel> Materials,
-    IReadOnlyList<ResourceUsageRequestModel> GeneralSupports,
-    IReadOnlyList<object> Attachments);
-
-public sealed record UpdateWorkOrderRequestModel(
-    IReadOnlyList<ServiceLineRequestModel> ServiceLines,
-    IReadOnlyList<TaskRequestModel> Tasks,
-    string? ActualFlightNumber,
-    Guid? ActualAircraftTypeId,
-    DateTimeOffset? ActualArrivalUtc,
-    DateTimeOffset? ActualDepartureUtc,
-    string? AircraftTailNumber,
-    string? Remarks,
-    string? CustomerSignatureReference);
-
 public sealed record MergeFlightsRequestModel(Guid SurvivorFlightId, Guid LoserFlightId);
-
-public sealed record MergeWorkOrdersRequestModel(Guid SurvivorWorkOrderId, Guid LoserWorkOrderId);

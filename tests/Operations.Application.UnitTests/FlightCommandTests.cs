@@ -1,6 +1,7 @@
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Readers;
+using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
@@ -18,11 +19,10 @@ public sealed class FlightCommandTests
     private static readonly DateTimeOffset Now = new(2026, 7, 3, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task AssignEmployeesCommand_RejectsInProgressFlight()
+    public async Task AssignEmployeesCommand_RejectsPerLandingFlight()
     {
         await using var db = NewDb();
-        var flight = CreateScheduledFlight();
-        flight.OnWorkOrderSubmitted(Now);
+        var flight = CreateScheduledFlight(new ServiceSnapshot(WellKnownMasterDataIds.AircraftPerLandingService, "Aircraft Per Landing"));
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
 
@@ -38,7 +38,7 @@ public sealed class FlightCommandTests
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();
-        result.Error.Code.ShouldBe("Operations.Flight.NotEditable");
+        result.Error.Code.ShouldBe("Operations.PerLanding.AssignmentNotAllowed");
     }
 
     private static OperationsDbContext NewDb() =>
@@ -46,7 +46,7 @@ public sealed class FlightCommandTests
             .UseInMemoryDatabase($"ops-{Guid.NewGuid()}")
             .Options);
 
-    private static Flight CreateScheduledFlight() =>
+    private static Flight CreateScheduledFlight(ServiceSnapshot? plannedService = null) =>
         Flight.ScheduleNew(
             new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
             new StationSnapshot(Guid.NewGuid(), "RUH", "Riyadh"),
@@ -54,7 +54,7 @@ public sealed class FlightCommandTests
             FlightNumber.Create("SV1020").Value,
             ScheduledTime.Create(Now, Now.AddHours(1)).Value,
             aircraftType: null,
-            plannedServices: [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
+            plannedServices: [plannedService ?? new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
             assignedEmployees: [],
             contractId: null,
             contractNumber: null,
@@ -73,8 +73,6 @@ public sealed class FlightCommandTests
             Guid flightId,
             FlightTimelineEventType eventType,
             DateTimeOffset occurredAtUtc,
-            Guid? workOrderId = null,
-            string? workOrderNumber = null,
             string? details = null,
             CancellationToken cancellationToken = default) =>
             Task.CompletedTask;

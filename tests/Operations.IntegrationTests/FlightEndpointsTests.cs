@@ -13,11 +13,4 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
-    [Fact]
-    public async Task ReviewQueue_WithoutAuthentication_Returns401()
-    {
-        var client = factory.CreateClient();
-        var response = await client.GetAsync($"{OperationsApiFactory.Base}/work-orders/review-queue");
-        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-    }
 }

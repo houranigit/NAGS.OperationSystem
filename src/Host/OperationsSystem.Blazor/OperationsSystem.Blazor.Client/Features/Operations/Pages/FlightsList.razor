@@ -11,14 +11,8 @@
 
 <RequirePermission Permission="@OperationsPermissions.FlightsView">
     <div class="os-list-page">
-        <PageHeader Title="Flights" Description="Scheduled, in-progress, review, and settled flights within your scope.">
+        <PageHeader Title="Flights" Description="Scheduled flights within your scope.">
             <Actions>
-                <AuthorizeView Context="adhoc">
-                    @if (adhoc.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersAuthor))
-                    {
-                        <RadzenButton Text="Work order from scratch" Icon="assignment_add" ButtonStyle="ButtonStyle.Secondary" Click="@OpenAdHocAsync" />
-                    }
-                </AuthorizeView>
                 <AuthorizeView Context="schedule">
                     @if (schedule.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsSchedule))
                     {
@@ -81,15 +75,11 @@
                     <RowAction Text="Open" Icon="visibility" OnClick="@(() => OpenFlight(flight.Id))" />
                     <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
                                Visible="@CanEditFlight(flight)" OnClick="@(() => OpenEditAsync(flight.Id))" />
-                    <RowAction Text="Open work order" Icon="assignment_add" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                               Visible="@CanOpenWorkOrder(flight)" OnClick="@(() => OpenWorkOrderAsync(flight))" />
                     <RowAction Text="Invite employee" Icon="person_add" Permission="@OperationsPermissions.FlightsInvite"
                                Visible="@CanInviteFlight(flight)" OnClick="@(() => OpenInviteAsync(flight))" />
                     <RowAction Separator="true" />
                     <RowAction Text="Resolve duplicates" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
                                Visible="@CanMergeFlight(flight)" OnClick="@(() => OpenMergeAsync(flight.Id))" />
-                    <RowAction Text="Cancel flight" Icon="cancel" Danger="true" Permission="@OperationsPermissions.FlightsCancel"
-                               Visible="@CanCancelFlight(flight)" OnClick="@(() => OpenCancelAsync(flight))" />
                 </RowActionMenu>
             </RowActions>
         </DataListCard>
@@ -321,16 +311,6 @@
         }
     }
 
-    private async Task OpenAdHocAsync()
-    {
-        var result = await DialogService.OpenAsync<AdHocWorkOrderDialog>("Work order from scratch", null, new DialogOptions { Width = "1040px" });
-        if (result is true)
-        {
-            Notifications.Notify(NotificationSeverity.Success, "Ad-hoc flight created", "The flight and its work order were created.");
-            await ReloadAsync();
-        }
-    }
-
     private void OpenFlight(Guid id) => Navigation.NavigateTo($"/operations/flights/{id}");
 
     private async Task OpenEditAsync(Guid id)
@@ -346,26 +326,6 @@
         }
     }
 
-    private async Task OpenWorkOrderAsync(FlightListItem flight)
-    {
-        try
-        {
-            var id = await Operations.OpenWorkOrderAsync(flight.Id);
-            var result = await DialogService.OpenAsync<WorkOrderEditorDialog>("Work order",
-                new Dictionary<string, object?> { [nameof(WorkOrderEditorDialog.WorkOrderId)] = id },
-                new DialogOptions { Width = "760px" });
-
-            if (result is true)
-                Notifications.Notify(NotificationSeverity.Success, "Work order saved");
-
-            await ReloadAsync();
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(NotificationSeverity.Error, "Work order", ex.ToDisplayMessage("Could not open a work order."));
-        }
-    }
-
     private async Task OpenInviteAsync(FlightListItem flight)
     {
         var result = await DialogService.OpenAsync<FlightInviteDialog>("Invite employee",
@@ -375,19 +335,6 @@
         if (result is true)
         {
             Notifications.Notify(NotificationSeverity.Success, "Employee invited", "The selected employee was assigned to the flight.");
-            await ReloadAsync();
-        }
-    }
-
-    private async Task OpenCancelAsync(FlightListItem flight)
-    {
-        var result = await DialogService.OpenAsync<CancelFlightDialog>("Cancel flight",
-            new Dictionary<string, object?> { [nameof(CancelFlightDialog.FlightId)] = flight.Id },
-            new DialogOptions { Width = "640px" });
-
-        if (result is true)
-        {
-            Notifications.Notify(NotificationSeverity.Success, "Cancellation created", $"Cancellation work order for {flight.FlightNumber} is in review.");
             await ReloadAsync();
         }
     }
@@ -406,9 +353,7 @@
     }
 
     private static bool CanEditFlight(FlightListItem flight) => flight.Status is "Scheduled";
-    private static bool CanOpenWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
     private static bool CanInviteFlight(FlightListItem flight) => flight.Status is "Scheduled" && !flight.IsPerLanding;
-    private static bool CanCancelFlight(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
 
     private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");

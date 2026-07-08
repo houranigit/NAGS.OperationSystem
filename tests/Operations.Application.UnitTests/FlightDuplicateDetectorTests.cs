@@ -27,17 +27,7 @@ public sealed class FlightDuplicateDetectorTests
         var stationId = Guid.NewGuid();
 
         await using var db = NewDb();
-        var existing = Flight.CreateAdHoc(
-            new CustomerSnapshot(customerId, "SV", "Saudia"),
-            new StationSnapshot(stationId, "RUH", "Riyadh"),
-            new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
-            FlightNumber.Create("SV1020").Value,
-            ScheduledTime.Create(Now, Now.AddHours(1)).Value,
-            aircraftType: null,
-            plannedServices: [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
-            creator: new StaffMemberSnapshot(Guid.NewGuid(), "Ahmed", "E1"),
-            createdByUserId: Guid.NewGuid(),
-            now: Now).Value;
+        var existing = CreateExistingFlight(customerId, stationId);
         db.Flights.Add(existing);
         await db.SaveChangesAsync();
 
@@ -164,7 +154,7 @@ public sealed class FlightDuplicateDetectorTests
     }
 
     private static Flight CreateExistingFlight(Guid customerId, Guid stationId) =>
-        Flight.CreateAdHoc(
+        Flight.ScheduleNew(
             new CustomerSnapshot(customerId, "SV", "Saudia"),
             new StationSnapshot(stationId, "RUH", "Riyadh"),
             new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
@@ -172,7 +162,9 @@ public sealed class FlightDuplicateDetectorTests
             ScheduledTime.Create(Now, Now.AddHours(1)).Value,
             aircraftType: null,
             plannedServices: [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
-            creator: new StaffMemberSnapshot(Guid.NewGuid(), "Ahmed", "E1"),
+            assignedEmployees: [],
+            contractId: null,
+            contractNumber: null,
             createdByUserId: Guid.NewGuid(),
             now: Now).Value;
 

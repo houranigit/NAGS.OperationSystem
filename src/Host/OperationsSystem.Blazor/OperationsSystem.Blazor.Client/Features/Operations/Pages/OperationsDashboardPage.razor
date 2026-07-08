@@ -6,10 +6,9 @@
 
 <RequirePermission Permission="@OperationsPermissions.DashboardView">
     <div class="os-list-page">
-        <PageHeader Title="Operations" Description="Flight and work-order activity across your scope.">
+        <PageHeader Title="Operations" Description="Flight scheduling activity across your scope.">
             <Actions>
-                <RadzenButton Text="Flights" Icon="flight" ButtonStyle="ButtonStyle.Light" Click="@OpenFlights" />
-                <RadzenButton Text="Review queue" Icon="fact_check" ButtonStyle="ButtonStyle.Primary" Click="@OpenReviewQueue" />
+                <RadzenButton Text="Flights" Icon="flight" ButtonStyle="ButtonStyle.Primary" Click="@OpenFlights" />
             </Actions>
         </PageHeader>
 
@@ -26,7 +25,6 @@
             <div class="opd-kpis">
                 @Kpi("Scheduled flights", data.ScheduledFlights, "flight_takeoff", "neutral")
                 @Kpi("In progress", data.InProgressFlights, "engineering", "warning")
-                @Kpi("Pending review", data.PendingReviewWorkOrders, "fact_check", "warning")
                 @Kpi("Completed flights", data.CompletedFlights, "verified", "success")
                 @Kpi("Canceled flights", data.CanceledFlights, "cancel", "danger")
             </div>
@@ -34,18 +32,9 @@
             <div class="opd-panels">
                 <section class="opd-panel">
                     <div>
-                        <p class="os-eyebrow">Review control</p>
-                        <h2>Pending work orders</h2>
-                        <p class="os-muted">Submitted completion and cancellation work orders waiting for approval.</p>
-                    </div>
-                    <RadzenButton Text="Open review queue" Icon="fact_check" ButtonStyle="ButtonStyle.Primary"
-                                  Click="@OpenReviewQueue" />
-                </section>
-                <section class="opd-panel">
-                    <div>
                         <p class="os-eyebrow">Flight control</p>
                         <h2>Operations flight list</h2>
-                        <p class="os-muted">Search flights, open work orders, cancel flights, and resolve duplicate candidates.</p>
+                        <p class="os-muted">Search flights, edit schedules, assign employees, and resolve duplicate candidates.</p>
                     </div>
                     <RadzenButton Text="Open flights" Icon="flight" ButtonStyle="ButtonStyle.Secondary"
                                   Click="@OpenFlights" />
@@ -63,8 +52,6 @@
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private void OpenFlights() => Navigation.NavigateTo("/operations/flights");
-
-    private void OpenReviewQueue() => Navigation.NavigateTo("/operations/review-queue");
 
     private async Task LoadAsync()
     {

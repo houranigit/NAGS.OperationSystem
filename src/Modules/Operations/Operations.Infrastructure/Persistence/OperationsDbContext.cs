@@ -4,8 +4,6 @@ using BuildingBlocks.Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Domain.Flights;
-using Operations.Domain.Sequences;
-using Operations.Domain.WorkOrders;
 
 namespace Operations.Infrastructure.Persistence;
 
@@ -15,10 +13,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public const string Schema = "operations";
 
     public DbSet<Flight> Flights => Set<Flight>();
-    public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<FlightTimelineEntry> FlightTimelineEntries => Set<FlightTimelineEntry>();
-    public DbSet<WorkOrderTimelineEntry> WorkOrderTimelineEntries => Set<WorkOrderTimelineEntry>();
-    public DbSet<StationWorkOrderSequence> StationWorkOrderSequences => Set<StationWorkOrderSequence>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();

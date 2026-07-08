@@ -321,14 +321,13 @@
     private int CatalogPermissionCount => catalog.Sum(g => g.Permissions.Count);
 
     /// <summary>
-    /// True when the role grants flight/work-order permissions without the reference view-options
-    /// permission its forms depend on. UX hint only; the server never grants permissions implicitly.
+    /// True when the role grants flight permissions without the reference view-options permission its
+    /// forms depend on. UX hint only; the server never grants permissions implicitly.
     /// </summary>
     private bool NeedsReferenceOptionsHint =>
         !selected.Contains(MasterDataPermissions.ReferenceViewOptions) &&
         catalog.Any(g => g.Permissions.Contains(MasterDataPermissions.ReferenceViewOptions)) &&
-        selected.Any(p => p.StartsWith("operations.flights.", StringComparison.Ordinal) ||
-                          p.StartsWith("operations.work-orders.", StringComparison.Ordinal));
+        selected.Any(p => p.StartsWith("operations.flights.", StringComparison.Ordinal));
 
     private IEnumerable<TabDef> Tabs()
     {

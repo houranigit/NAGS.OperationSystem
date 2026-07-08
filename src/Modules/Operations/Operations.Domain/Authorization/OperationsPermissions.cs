@@ -22,20 +22,7 @@ public static class OperationsPermissions
         public const string Update = "operations.flights.update";
         public const string Assign = "operations.flights.assign";
         public const string Invite = "operations.flights.invite";
-        public const string Cancel = "operations.flights.cancel";
-        public const string Reopen = "operations.flights.reopen";
         public const string Merge = "operations.flights.merge";
-    }
-
-    public static class WorkOrders
-    {
-        public const string View = "operations.work-orders.view";
-        public const string Author = "operations.work-orders.author";
-        public const string Submit = "operations.work-orders.submit";
-        public const string Approve = "operations.work-orders.approve";
-        public const string Reject = "operations.work-orders.reject";
-        public const string Return = "operations.work-orders.return";
-        public const string Merge = "operations.work-orders.merge";
     }
 
     public static class Dashboard

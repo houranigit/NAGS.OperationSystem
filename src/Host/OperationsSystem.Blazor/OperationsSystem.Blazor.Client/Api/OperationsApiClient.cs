@@ -43,9 +43,6 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<IReadOnlyList<Guid>> ScheduleFlightsAsync(ScheduleFlightsRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<ScheduleFlightsRequestModel, IReadOnlyList<Guid>>("/operations/flights/bulk", request, ct);
 
-    public Task<AdHocFlightResultModel> CreateAdHocFlightAsync(CreateAdHocFlightRequestModel request, CancellationToken ct = default) =>
-        api.PostAsync<CreateAdHocFlightRequestModel, AdHocFlightResultModel>("/operations/flights/ad-hoc", request, ct);
-
     public Task UpdateFlightAsync(Guid id, UpdateScheduledFlightRequestModel request, string rowVersion, CancellationToken ct = default) =>
         api.PutAsync($"/operations/flights/{id}", request, rowVersion, ct);
 
@@ -60,9 +57,6 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task ClaimPerLandingFlightAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/operations/flights/{id}/claim", rowVersion, ct);
-
-    public Task<Guid> CancelFlightAsync(Guid flightId, CancelFlightRequestModel request, CancellationToken ct = default) =>
-        api.PostAsync<CancelFlightRequestModel, Guid>($"/operations/flights/{flightId}/cancel", request, ct);
 
     public Task<IReadOnlyList<DuplicateCandidate>> GetDuplicateCandidatesAsync(
         Guid customerId,
@@ -84,39 +78,6 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task MergeFlightsAsync(Guid survivorFlightId, Guid loserFlightId, CancellationToken ct = default) =>
         api.PostAsync("/operations/flights/merge", new MergeFlightsRequestModel(survivorFlightId, loserFlightId), ct);
-
-    public Task<PagedResult<ReviewQueueItem>> GetReviewQueueAsync(int page, int pageSize, Guid? stationId = null, CancellationToken ct = default)
-    {
-        var query = new QueryBuilder().Add("page", page).Add("pageSize", pageSize).Add("stationId", stationId).Build();
-        return api.GetAsync<PagedResult<ReviewQueueItem>>($"/operations/work-orders/review-queue{query}", ct);
-    }
-
-    public Task<WorkOrderDetail> GetWorkOrderAsync(Guid id, CancellationToken ct = default) =>
-        api.GetAsync<WorkOrderDetail>($"/operations/work-orders/{id}", ct);
-
-    public Task<IReadOnlyList<WorkOrderTimelineEntryModel>> GetWorkOrderTimelineAsync(Guid id, CancellationToken ct = default) =>
-        api.GetAsync<IReadOnlyList<WorkOrderTimelineEntryModel>>($"/operations/work-orders/{id}/timeline", ct);
-
-    public Task<Guid> OpenWorkOrderAsync(Guid flightId, CancellationToken ct = default) =>
-        api.PostAsync<object, Guid>($"/operations/flights/{flightId}/work-orders", new { }, ct);
-
-    public Task UpdateWorkOrderAsync(Guid id, UpdateWorkOrderRequestModel request, string rowVersion, CancellationToken ct = default) =>
-        api.PutAsync($"/operations/work-orders/{id}", request, rowVersion, ct);
-
-    public Task SubmitWorkOrderAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
-        api.PostAsync($"/operations/work-orders/{id}/submit", rowVersion, ct);
-
-    public Task ApproveWorkOrderAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
-        api.PostAsync($"/operations/work-orders/{id}/approve", rowVersion, ct);
-
-    public Task RejectWorkOrderAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
-        api.PostAsync($"/operations/work-orders/{id}/reject", rowVersion, ct);
-
-    public Task ReturnWorkOrderAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
-        api.PostAsync($"/operations/work-orders/{id}/return", rowVersion, ct);
-
-    public Task MergeWorkOrdersAsync(Guid survivorWorkOrderId, Guid loserWorkOrderId, CancellationToken ct = default) =>
-        api.PostAsync("/operations/work-orders/merge", new MergeWorkOrdersRequestModel(survivorWorkOrderId, loserWorkOrderId), ct);
 
     private sealed class QueryBuilder
     {

@@ -13,6 +13,5 @@ public sealed class OperationsEndpointModule : IEndpointModule
         var group = app.MapGroup("/api/v1/operations");
 
         FlightEndpoints.Map(group);
-        WorkOrderEndpoints.Map(group);
     }
 }

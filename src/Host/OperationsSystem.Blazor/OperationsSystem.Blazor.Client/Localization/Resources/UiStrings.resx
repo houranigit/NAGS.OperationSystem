@@ -269,7 +269,7 @@
   <data name="Roles.Permissions" xml:space="preserve"><value>Permissions</value></data>
   <data name="Roles.PermissionsDescription" xml:space="preserve"><value>Select the permissions this role grants.</value></data>
   <data name="Roles.PermissionsSaved" xml:space="preserve"><value>Permissions updated.</value></data>
-  <data name="Roles.ReferenceOptionsHint" xml:space="preserve"><value>Flight and work-order forms need reference lookups (dropdown options). Add the "view-options" permission under Reference so users of this role can load those forms.</value></data>
+  <data name="Roles.ReferenceOptionsHint" xml:space="preserve"><value>Flight forms need reference lookups (dropdown options). Add the "view-options" permission under Reference so users of this role can load those forms.</value></data>
   <data name="Roles.SystemRoleLocked" xml:space="preserve"><value>System roles cannot be edited or deleted.</value></data>
   <data name="Roles.ConfirmDelete" xml:space="preserve"><value>Delete this role? Users must not be assigned to it.</value></data>
   <data name="Roles.Created" xml:space="preserve"><value>Role created.</value></data>

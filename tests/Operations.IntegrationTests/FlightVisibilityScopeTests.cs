@@ -7,9 +7,8 @@ namespace Operations.IntegrationTests;
 /// <summary>
 /// Flight visibility tiers: station dispatchers (station staff holding
 /// <c>operations.flights.view-station</c>) see every flight at their own station without being on
-/// the assigned-employee roster — across flight detail, list, calendar, work-order detail, and the
-/// review queue — while staying blind to other stations. Regular station staff keep the default
-/// Per-Landing-plus-assigned visibility.
+/// the assigned-employee roster while staying blind to other stations. Regular station staff keep
+/// the default Per-Landing-plus-assigned visibility.
 /// </summary>
 public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : IClassFixture<OperationsApiFactory>
 {
@@ -22,16 +21,12 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
     private static readonly string[] DispatcherPermissions =
     [
         "operations.flights.view",
-        "operations.flights.view-station",
-        "operations.work-orders.view"
+        "operations.flights.view-station"
     ];
 
     private static readonly string[] RegularStaffPermissions =
     [
-        "operations.flights.view",
-        "operations.work-orders.view",
-        "operations.work-orders.author",
-        "operations.work-orders.submit"
+        "operations.flights.view"
     ];
 
     [Fact]
@@ -74,37 +69,6 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         (await dispatcher.Client.GetAsync($"{Base}/flights/{otherStationFlightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var list = await dispatcher.Client.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
         list!.Items.ShouldNotContain(f => f.Id == otherStationFlightId);
-    }
-
-    [Fact]
-    public async Task Station_dispatcher_sees_review_queue_and_work_orders_for_unassigned_flights()
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var refs = await SetupMasterDataAsync(admin);
-        var dispatcher = await CreateStaffLoginAsync(admin, refs, DispatcherPermissions);
-        var worker = await CreateStaffLoginAsync(admin, refs, RegularStaffPermissions);
-
-        // A flight assigned only to the worker, who authors and submits a work order.
-        var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "VIS300", assignedStaffIds: [worker.StaffId]);
-        var open = await worker.Client.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", new { });
-        open.StatusCode.ShouldBe(HttpStatusCode.Created);
-        var workOrderId = await open.Content.ReadFromJsonAsync<Guid>();
-
-        var detail = await worker.Client.GetFromJsonAsync<WorkOrderDetail>($"{Base}/work-orders/{workOrderId}");
-        var submit = new HttpRequestMessage(HttpMethod.Post, $"{Base}/work-orders/{workOrderId}/submit");
-        submit.Headers.TryAddWithoutValidation("If-Match", detail!.RowVersion);
-        (await worker.Client.SendAsync(submit)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-
-        // The dispatcher is not assigned but sees the submitted work order and the flight.
-        var queue = await dispatcher.Client.GetFromJsonAsync<PagedList<ReviewQueueItem>>($"{Base}/work-orders/review-queue?page=1&pageSize=100");
-        queue!.Items.ShouldContain(w => w.WorkOrderId == workOrderId);
-        (await dispatcher.Client.GetAsync($"{Base}/work-orders/{workOrderId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
-
-        // The dispatcher's visibility is read-only: no write permissions were granted.
-        var dispatcherDetail = await dispatcher.Client.GetFromJsonAsync<WorkOrderDetail>($"{Base}/work-orders/{workOrderId}");
-        var approve = new HttpRequestMessage(HttpMethod.Post, $"{Base}/work-orders/{workOrderId}/approve");
-        approve.Headers.TryAddWithoutValidation("If-Match", dispatcherDetail!.RowVersion);
-        (await dispatcher.Client.SendAsync(approve)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
     // --- Helpers ---------------------------------------------------------------
@@ -232,7 +196,4 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
 
     private sealed record CalendarFlight(Guid Id, string FlightNumber, string Status);
 
-    private sealed record ReviewQueueItem(Guid WorkOrderId, Guid FlightId, string FlightNumber, string Status);
-
-    private sealed record WorkOrderDetail(Guid Id, Guid FlightId, string Type, string Status, string RowVersion);
 }

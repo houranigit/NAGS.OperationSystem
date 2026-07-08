@@ -1,8 +1,6 @@
 using BuildingBlocks.Application.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Operations.Domain.Flights;
-using Operations.Domain.Sequences;
-using Operations.Domain.WorkOrders;
 
 namespace Operations.Application.Abstractions;
 
@@ -15,13 +13,7 @@ public interface IOperationsDbContext : IOutboxDbContext
 {
     public DbSet<Flight> Flights { get; }
 
-    public DbSet<WorkOrder> WorkOrders { get; }
-
     public DbSet<FlightTimelineEntry> FlightTimelineEntries { get; }
-
-    public DbSet<WorkOrderTimelineEntry> WorkOrderTimelineEntries { get; }
-
-    public DbSet<StationWorkOrderSequence> StationWorkOrderSequences { get; }
 
     /// <summary>Sets the original concurrency token so a stale update fails with a concurrency conflict.</summary>
     public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class;

@@ -3,16 +3,13 @@ using BuildingBlocks.Domain.Results;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Events;
 using Operations.Domain.ValueObjects;
-using Operations.Domain.WorkOrders;
 
 namespace Operations.Domain.Flights;
 
 /// <summary>
-/// A serviced aircraft event (scheduled in advance or created ad-hoc). Master aggregate that owns the
-/// flight lifecycle, planned services, assigned employees, and flight-number history, and references
-/// its work order(s) by id. Completed/Canceled are terminal, post-approval, billable outcomes, at
-/// which point the flight captures the approved work order's scalar values plus its reference and
-/// becomes the billing-ready source of truth.
+/// A serviced aircraft event. The aggregate owns scheduling, planned services, assigned employees,
+/// and flight-number history. Completion and cancellation will be reintroduced later with the next
+/// lifecycle slice.
 /// </summary>
 public sealed class Flight : AggregateRoot<Guid>
 {
@@ -36,13 +33,6 @@ public sealed class Flight : AggregateRoot<Guid>
     // Contract seam (no contract logic yet).
     public Guid? ContractId { get; private set; }
     public string? ContractNumber { get; private set; }
-
-    /// <summary>
-    /// The captured scalar values and reference of the approved work order. Set on approval, cleared
-    /// when the approval is returned/reverted. Actual service lines and tasks are read from the
-    /// referenced approved work order.
-    /// </summary>
-    public ApprovedWorkOrderSnapshot? ApprovedWorkOrder { get; private set; }
 
     // Merge/duplicate metadata.
     public Guid? MergedIntoFlightId { get; private set; }
@@ -100,48 +90,6 @@ public sealed class Flight : AggregateRoot<Guid>
         flight.ReplacePlannedServicesInternal(plannedServices);
         flight.ReplaceAssignedEmployeesInternal(assignedEmployees);
         flight.RaiseDomainEvent(new FlightScheduled(flightId));
-        return flight;
-    }
-
-    public static Result<Flight> CreateAdHoc(
-        CustomerSnapshot customer,
-        StationSnapshot station,
-        OperationTypeSnapshot operationType,
-        FlightNumber flightNumber,
-        ScheduledTime schedule,
-        AircraftTypeSnapshot? aircraftType,
-        IReadOnlyList<ServiceSnapshot> plannedServices,
-        StaffMemberSnapshot creator,
-        Guid createdByUserId,
-        DateTimeOffset now,
-        bool allowEmptyPlannedServices = false,
-        Guid? id = null)
-    {
-        // An ad-hoc flight created together with a cancellation work order may carry no planned
-        // services; every other creation path requires at least one.
-        var perLanding = PerLandingPolicy.ValidatePlannedServices(plannedServices, allowEmpty: allowEmptyPlannedServices);
-        if (perLanding.IsFailure)
-            return perLanding.Error;
-
-        var flightId = id ?? Guid.NewGuid();
-        var flight = new Flight
-        {
-            Id = flightId,
-            Customer = customer,
-            Station = station,
-            OperationType = operationType,
-            FlightNumber = flightNumber,
-            OriginalFlightNumber = flightNumber.Value,
-            Schedule = schedule,
-            AircraftType = aircraftType,
-            Status = FlightStatus.InProgress,
-            CreatedByUserId = createdByUserId,
-            CreatedAtUtc = now
-        };
-
-        flight.ReplacePlannedServicesInternal(plannedServices);
-        flight.ReplaceAssignedEmployeesInternal([creator]);
-        flight.RaiseDomainEvent(new AdHocFlightCreated(flightId));
         return flight;
     }
 
@@ -228,110 +176,6 @@ public sealed class Flight : AggregateRoot<Guid>
             return Error.Conflict("Only Per Landing flights can be claimed.", "Operations.Flight.NotPerLanding");
 
         return AssignEmployees([employee], now);
-    }
-
-    // --- Lifecycle transitions driven by the work order ------------------------
-    // Opening/authoring a draft work order does NOT change the flight status; the flight moves to
-    // InProgress only when a work order is submitted.
-
-    public void OnWorkOrderSubmitted(DateTimeOffset now)
-    {
-        if (Status == FlightStatus.Scheduled || Status == FlightStatus.InProgress)
-        {
-            Status = FlightStatus.InProgress;
-            UpdatedAtUtc = now;
-        }
-    }
-
-    public void OnWorkOrderReturnedToReview(DateTimeOffset now)
-    {
-        if (Status is FlightStatus.Scheduled or FlightStatus.InProgress)
-        {
-            Status = FlightStatus.InProgress;
-            UpdatedAtUtc = now;
-        }
-    }
-
-    /// <summary>Settles the flight as Completed, capturing the approved work order's values and reference.</summary>
-    public Result SettleCompleted(WorkOrder workOrder, DateTimeOffset now)
-    {
-        var snapshot = BuildApprovedSnapshot(workOrder);
-        if (snapshot.IsFailure)
-            return snapshot.Error;
-
-        if (workOrder.IsCancellation)
-            return Error.Conflict("A cancellation work order cannot complete a flight.", "Operations.Flight.WrongOutcome");
-
-        ApprovedWorkOrder = snapshot.Value;
-        Status = FlightStatus.Completed;
-        UpdatedAtUtc = now;
-        RaiseDomainEvent(new FlightCompleted(Id, workOrder.Id));
-        return Result.Success();
-    }
-
-    /// <summary>Settles the flight as Canceled, capturing the approved cancellation work order's values and reference.</summary>
-    public Result SettleCanceled(WorkOrder workOrder, DateTimeOffset now)
-    {
-        var snapshot = BuildApprovedSnapshot(workOrder);
-        if (snapshot.IsFailure)
-            return snapshot.Error;
-
-        if (!workOrder.IsCancellation)
-            return Error.Conflict("Only a cancellation work order can cancel a flight.", "Operations.Flight.WrongOutcome");
-
-        ApprovedWorkOrder = snapshot.Value;
-        Status = FlightStatus.Canceled;
-        UpdatedAtUtc = now;
-        RaiseDomainEvent(new FlightCanceled(Id, workOrder.Id));
-        return Result.Success();
-    }
-
-    /// <summary>
-    /// Clears the captured approved work order values and reference when the approval is
-    /// returned/reverted, and returns the flight to InProgress.
-    /// </summary>
-    public Result ClearApprovedSnapshot(DateTimeOffset now)
-    {
-        if (ApprovedWorkOrder is null)
-            return Error.Conflict("This flight has no approved work order to clear.", "Operations.Flight.NoApprovedSnapshot");
-
-        var clearedWorkOrderId = ApprovedWorkOrder.WorkOrderId;
-        ApprovedWorkOrder = null;
-        Status = FlightStatus.InProgress;
-        UpdatedAtUtc = now;
-        RaiseDomainEvent(new ApprovedWorkOrderSnapshotCleared(Id, clearedWorkOrderId));
-        return Result.Success();
-    }
-
-    private Result<ApprovedWorkOrderSnapshot> BuildApprovedSnapshot(WorkOrder workOrder)
-    {
-        if (workOrder.FlightId != Id)
-            return Error.Conflict("The work order does not belong to this flight.", "Operations.Flight.WorkOrderMismatch");
-
-        if (workOrder.Status != WorkOrderStatus.Approved || workOrder.Number is null ||
-            workOrder.ApprovedByUserId is not { } approvedBy || workOrder.ApprovedAtUtc is not { } approvedAt)
-        {
-            return Error.Conflict("Only an approved, numbered work order can settle a flight.", "Operations.Flight.WorkOrderNotApproved");
-        }
-
-        return new ApprovedWorkOrderSnapshot(
-            workOrder.Id,
-            workOrder.Number.Value,
-            workOrder.Type,
-            workOrder.FlightNumber.Value,
-            workOrder.AircraftType?.AircraftTypeId,
-            workOrder.AircraftType?.Manufacturer,
-            workOrder.AircraftType?.Model,
-            workOrder.AircraftTailNumber,
-            workOrder.Actuals?.Ata,
-            workOrder.Actuals?.Atd,
-            workOrder.Remarks,
-            workOrder.CustomerSignatureReference,
-            workOrder.Cancellation?.CanceledByUserId,
-            workOrder.Cancellation?.CanceledAtUtc,
-            workOrder.Cancellation?.Reason,
-            approvedBy,
-            approvedAt);
     }
 
     public Result MarkMergedInto(Guid survivorFlightId, DateTimeOffset now)

@@ -17,7 +17,7 @@
     else
     {
         <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
-            Choose the surviving flight. Non-terminal work orders from the losing flight are reassigned to the survivor.
+            Choose the surviving flight. The losing flight is marked as merged.
         </DismissibleDialogMessage>
 
         <div class="ofm-grid-2">
@@ -129,7 +129,7 @@
                 <div><dt>STD</dt><dd>@DateTimeDisplay(value.ScheduledDepartureUtc)</dd></div>
                 <div><dt>Status</dt><dd>@value.Status</dd></div>
                 <div><dt>Services</dt><dd>@(value.PlannedServices.Count == 0 ? "None" : string.Join(", ", value.PlannedServices.Select(x => x.Name)))</dd></div>
-                <div><dt>Work orders</dt><dd>@value.WorkOrders.Count</dd></div>
+                <div><dt>Assigned staff</dt><dd>@value.AssignedEmployees.Count</dd></div>
             </dl>
         }
     </section>;

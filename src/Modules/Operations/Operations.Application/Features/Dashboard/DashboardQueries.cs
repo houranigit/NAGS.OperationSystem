@@ -21,28 +21,15 @@ public sealed class GetOperationsDashboardQueryHandler(IOperationsDbContext db, 
             return scopeResult.Error;
 
         var flights = db.Flights.AsNoTracking().AsQueryable();
-        var workOrders = db.WorkOrders.AsNoTracking().AsQueryable();
         if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
-        {
             flights = flights.Where(f => f.Station.StationId == stationId);
-            workOrders = workOrders.Where(w => w.Station.StationId == stationId);
-        }
 
         var scheduled = await flights.CountAsync(f => f.Status == FlightStatus.Scheduled, cancellationToken);
         var inProgress = await flights.CountAsync(f => f.Status == FlightStatus.InProgress, cancellationToken);
         var completed = await flights.CountAsync(f => f.Status == FlightStatus.Completed, cancellationToken);
         var canceled = await flights.CountAsync(f => f.Status == FlightStatus.Canceled, cancellationToken);
-        var pendingReview = await workOrders
-            .Where(w => w.Status == WorkOrderStatus.Submitted && w.SupersededByWorkOrderId == null)
-            .CountAsync(w => !db.WorkOrderTimelineEntries
-                .Where(e => e.WorkOrderId == w.Id)
-                .OrderByDescending(e => e.OccurredAtUtc)
-                .ThenByDescending(e => e.Id)
-                .Select(e => e.EventType)
-                .Take(1)
-                .Any(eventType => eventType == WorkOrderTimelineEventType.Returned), cancellationToken);
 
-        return new OperationsDashboardDto(scheduled, inProgress, pendingReview, completed, canceled);
+        return new OperationsDashboardDto(scheduled, inProgress, completed, canceled);
     }
 }
 
