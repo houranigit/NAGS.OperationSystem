@@ -174,7 +174,7 @@
     min-width: min(16rem, 100%);
 }
 
-.ofi-search-box ::deep .ofi-search-icon {
+.ofi-search-icon {
     position: absolute;
     z-index: 1;
     inset-block: 0;
@@ -186,8 +186,8 @@
     pointer-events: none;
 }
 
-.ofi-search-box ::deep .ofi-search-icon.rz-icon,
-.ofi-search-box ::deep .ofi-search-icon.rzi {
+.ofi-search-icon ::deep .rz-icon,
+.ofi-search-icon ::deep .rzi {
     font-size: 1.15rem;
     pointer-events: none;
 }

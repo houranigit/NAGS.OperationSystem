@@ -42,7 +42,7 @@
 
             <div class="ofi-step-toolbar">
                 <div class="ofi-search-box">
-                    <RadzenIcon Icon="search" class="ofi-search-icon" />
+                    <span class="ofi-search-icon"><RadzenIcon Icon="search" /></span>
                     <input type="search" value="@searchTerm" @oninput="@OnSearchInput" placeholder="Search staff" aria-label="Search staff" />
                     @if (!string.IsNullOrWhiteSpace(searchTerm))
                     {
