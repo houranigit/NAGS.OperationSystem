@@ -36,7 +36,7 @@
                                 {
                                     <StatusBadge Label="Per landing" Tone="warning" />
                                 }
-                                @if (flight.PotentialDuplicateOfFlightId is not null)
+                                @if (HasPotentialDuplicate(flight))
                                 {
                                     <StatusBadge Label="Potential duplicate" Tone="warning" />
                                 }
@@ -88,10 +88,10 @@
                     </nav>
                 </section>
 
-                @if (flight.PotentialDuplicateOfFlightId is { } duplicateId)
+                @if (EffectiveDuplicateFlightId(flight) is { } duplicateId)
                 {
                     <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false" class="ofd-alert">
-                        This flight was flagged as a likely duplicate.
+                        This flight has a likely duplicate candidate.
                         <RadzenButton Text="Resolve now" Icon="merge_type" ButtonStyle="ButtonStyle.Warning" Size="ButtonSize.Small"
                                       Click="@(() => OpenMergeAsync(duplicateId))" />
                     </RadzenAlert>
@@ -116,6 +116,7 @@
 
     private FlightDetail? flight;
     private IReadOnlyList<FlightTimelineEntryModel> timeline = [];
+    private IReadOnlyList<DuplicateCandidate> duplicateCandidates = [];
     private bool isLoading = true;
     private bool loadError;
     private FlightTab activeTab = FlightTab.Overview;
@@ -189,7 +190,7 @@
                         </div>
                     </div>
                     <dl class="ofd-metrics">
-                        <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@(f.PotentialDuplicateOfFlightId is { } duplicate ? ShortId(duplicate) : "No")</dd></div>
+                        <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@PotentialDuplicateDisplay(f)</dd></div>
                         <div class="ofd-metric"><dt>Assigned staff</dt><dd>@f.AssignedEmployees.Count</dd></div>
                         <div class="ofd-metric"><dt>Planned services</dt><dd>@f.PlannedServices.Count</dd></div>
                         <div class="ofd-metric"><dt>Created</dt><dd>@DateTimeDisplay(f.CreatedAtUtc)</dd></div>
@@ -322,10 +323,16 @@
     {
         isLoading = true;
         loadError = false;
+        duplicateCandidates = [];
         try
         {
-            flight = await Operations.GetFlightAsync(Id);
-            timeline = await Operations.GetFlightTimelineAsync(Id);
+            var loadedFlight = await Operations.GetFlightAsync(Id);
+            var timelineTask = Operations.GetFlightTimelineAsync(Id);
+            var duplicateTask = LoadDuplicateCandidatesAsync(loadedFlight);
+
+            flight = loadedFlight;
+            timeline = await timelineTask;
+            duplicateCandidates = await duplicateTask;
         }
         catch (ApiException)
         {
@@ -334,6 +341,23 @@
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task<IReadOnlyList<DuplicateCandidate>> LoadDuplicateCandidatesAsync(FlightDetail loadedFlight)
+    {
+        try
+        {
+            return await Operations.GetDuplicateCandidatesAsync(
+                loadedFlight.CustomerId,
+                loadedFlight.ScheduledArrivalUtc,
+                loadedFlight.ScheduledDepartureUtc,
+                loadedFlight.StationId,
+                loadedFlight.Id);
+        }
+        catch (ApiException)
+        {
+            return [];
         }
     }
 
@@ -406,7 +430,7 @@
         }
     }
 
-    private Task OpenMergeAsync() => OpenMergeAsync(flight?.PotentialDuplicateOfFlightId);
+    private Task OpenMergeAsync() => OpenMergeAsync(flight is { } f ? EffectiveDuplicateFlightId(f) : null);
 
     private async Task OpenMergeAsync(Guid? candidateFlightId)
     {
@@ -453,6 +477,27 @@
     private bool HasMoreActions(FlightDetail f) =>
         (CanInvite(f) && Auth.HasPermission(OperationsPermissions.FlightsInvite))
         || (CanMerge(f) && Auth.HasPermission(OperationsPermissions.FlightsMerge));
+
+    private bool HasPotentialDuplicate(FlightDetail f) =>
+        EffectiveDuplicateFlightId(f) is not null;
+
+    private Guid? EffectiveDuplicateFlightId(FlightDetail f) =>
+        f.PotentialDuplicateOfFlightId ?? PrimaryDuplicateCandidate(f)?.FlightId;
+
+    private DuplicateCandidate? PrimaryDuplicateCandidate(FlightDetail f) =>
+        duplicateCandidates.FirstOrDefault(x => x.FlightId != f.Id);
+
+    private string PotentialDuplicateDisplay(FlightDetail f)
+    {
+        if (f.PotentialDuplicateOfFlightId is { } flaggedDuplicateId)
+            return ShortId(flaggedDuplicateId);
+
+        var candidate = PrimaryDuplicateCandidate(f);
+        if (candidate is null)
+            return "No";
+
+        return $"{candidate.FlightNumber} · {candidate.Score}%";
+    }
 
     private static bool CanEdit(FlightDetail f) => f.Status is "Scheduled";
 
