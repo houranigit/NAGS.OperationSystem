@@ -1,5 +1,11 @@
-.ofc-card {
+.os-list-page ::deep .ofc-card {
+    --ofc-card-viewport-offset: 13rem;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--ofc-card-viewport-offset));
+    height: calc(100dvh - var(--ofc-card-viewport-offset));
     margin-top: var(--os-space-4);
+    overflow: hidden;
 }
 
 .ofc-filters {
@@ -14,6 +20,7 @@
 }
 
 .ofc-calendar-toolbar {
+    flex: 0 0 auto;
     display: grid;
     grid-template-columns: auto minmax(10rem, 1fr) auto;
     align-items: center;
@@ -109,33 +116,51 @@
     font-size: 1.1rem;
 }
 
-.ofc-card ::deep .ofc-scheduler {
-    display: block;
-    height: 720px;
+.os-list-page ::deep .ofc-card .ofc-scheduler {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    height: 100%;
+    overflow: hidden;
 }
 
-.ofc-card ::deep .rz-event[data-ofc-status="scheduled"] {
+.os-list-page ::deep .ofc-card .ofc-scheduler > .rz-view {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    height: 100%;
+}
+
+.os-list-page ::deep .ofc-card .ofc-scheduler .rz-view-content {
+    flex: 1 1 auto;
+    min-block-size: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="scheduled"] {
     background: var(--rz-primary, #2563eb);
 }
 
-.ofc-card ::deep .rz-event[data-ofc-status="inprogress"] {
+.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="inprogress"] {
     background: var(--rz-warning, #f59e0b);
 }
 
-.ofc-card ::deep .rz-event[data-ofc-status="completed"] {
+.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="completed"] {
     background: var(--rz-success, #16a34a);
 }
 
-.ofc-card ::deep .rz-event[data-ofc-status="canceled"] {
+.os-list-page ::deep .ofc-card .rz-event[data-ofc-status="canceled"] {
     background: var(--rz-danger, #dc2626);
 }
 
 .ofc-agenda {
-    min-block-size: 560px;
+    flex: 1 1 auto;
+    min-block-size: 0;
     padding: var(--os-space-3);
     border: 1px solid var(--os-color-border);
     border-radius: var(--os-radius-md);
     background: var(--os-color-surface-muted);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .ofc-agenda-empty {
@@ -425,6 +450,7 @@
 }
 
 .ofc-legend {
+    flex: 0 0 auto;
     display: flex;
     flex-wrap: wrap;
     gap: var(--os-space-4);
