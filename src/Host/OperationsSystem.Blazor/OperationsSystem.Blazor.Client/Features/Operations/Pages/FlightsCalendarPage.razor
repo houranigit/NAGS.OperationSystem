@@ -20,7 +20,8 @@
                                     AllowClear="true" Placeholder="All stations" class="ofc-filter" />
                     <RadzenDropDown TValue="Guid?" Data="@customerOptions" TextProperty="Label" ValueProperty="Value"
                                     Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync"
-                                    AllowClear="true" Placeholder="All customers" class="ofc-filter" />
+                                    AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                    Placeholder="All customers" class="ofc-filter" />
                 </div>
             </Actions>
         </PageHeader>
@@ -51,10 +52,6 @@
                         <button type="button" class="@ViewButtonClass(CalendarViewMode.Day)" @onclick="@(() => SelectViewAsync(CalendarViewMode.Day))">
                             <RadzenIcon Icon="calendar_view_day" />
                             <span>Day</span>
-                        </button>
-                        <button type="button" class="@ViewButtonClass(CalendarViewMode.Week)" @onclick="@(() => SelectViewAsync(CalendarViewMode.Week))">
-                            <RadzenIcon Icon="calendar_view_week" />
-                            <span>Week</span>
                         </button>
                         <button type="button" class="@ViewButtonClass(CalendarViewMode.Month)" @onclick="@(() => SelectViewAsync(CalendarViewMode.Month))">
                             <RadzenIcon Icon="calendar_month" />
@@ -103,14 +100,13 @@
                 {
                     <RadzenScheduler @key="activeView" TItem="CalendarItem" Data="@items" class="ofc-scheduler"
                                      StartProperty="Start" EndProperty="End" TextProperty="Text"
-                                     Date="@visibleDate" ShowHeader="false" SelectedIndex="@SchedulerSelectedIndex"
+                                     Date="@visibleDate" ShowHeader="false"
                                      LoadData="@OnLoadDataAsync"
                                      AppointmentSelect="@OnAppointmentSelect" AppointmentRender="@OnAppointmentRender">
                         <Template Context="item">
                             @RenderAppointment(item)
                         </Template>
                         <ChildContent>
-                            <RadzenWeekView />
                             <RadzenMonthView />
                         </ChildContent>
                     </RadzenScheduler>
@@ -159,12 +155,6 @@
 
     private IEnumerable<IGrouping<DateTime, CalendarItem>> CalendarGroups =>
         items.OrderBy(x => x.Start).GroupBy(x => activeView == CalendarViewMode.Day ? visibleDate.Date : x.Start.Date);
-
-    private int SchedulerSelectedIndex => activeView switch
-    {
-        CalendarViewMode.Month => 1,
-        _ => 0
-    };
 
     private string CalendarListClass =>
         activeView == CalendarViewMode.Day ? "ofc-agenda ofc-day-list" : "ofc-agenda";
@@ -396,7 +386,6 @@
             </div>
             <span class="ofc-station-name">@item.StationName</span>
         </div>
-        <span class="ofc-time-range">@TimeDisplay(item.Start) - @TimeDisplay(item.End)</span>
         <div class="ofc-time-cell">
             <span>From</span>
             <strong>@TimeDisplay(item.Start)</strong>
@@ -416,7 +405,6 @@
     {
         Agenda,
         Day,
-        Week,
         Month
     }
 
