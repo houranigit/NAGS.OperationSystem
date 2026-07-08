@@ -46,28 +46,6 @@
     padding: var(--os-space-5) var(--os-space-4);
 }
 
-.ofd-back {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--os-space-1);
-    min-height: 2.25rem;
-    padding: 0.35rem 0.7rem;
-    border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-pill);
-    background: var(--os-color-surface);
-    color: var(--os-color-text-muted);
-    font: inherit;
-    font-size: var(--os-text-sm);
-    font-weight: 700;
-    cursor: pointer;
-}
-
-.ofd-back:hover {
-    border-color: var(--os-color-border-strong);
-    background: var(--os-color-surface-hover);
-    color: var(--os-color-text);
-}
-
 .ofd-avatar {
     position: relative;
     display: inline-grid;
@@ -76,8 +54,26 @@
     height: 5.5rem;
     flex-shrink: 0;
     border-radius: var(--os-radius-lg);
+}
+
+.ofd-avatar--active {
     background: var(--os-color-primary-soft);
     color: var(--os-color-primary-strong);
+}
+
+.ofd-avatar--completed {
+    background: var(--os-color-success-bg);
+    color: var(--os-color-success);
+}
+
+.ofd-avatar--warning {
+    background: var(--os-color-warning-bg);
+    color: var(--os-color-warning);
+}
+
+.ofd-avatar--danger {
+    background: var(--os-color-danger-bg);
+    color: var(--os-color-danger);
 }
 
 .ofd-avatar .rz-icon {
@@ -133,6 +129,57 @@
 
 .ofd-meta-row .rz-icon {
     font-size: 1.05rem;
+}
+
+.ofd-meta-pair {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-width: 0;
+}
+
+.ofd-meta-pair > span {
+    min-width: 0;
+    word-break: break-word;
+}
+
+.ofd-info-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    padding: 0.2rem 0.65rem;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-info-bg);
+    color: var(--os-color-info);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ofd-info-badge .rz-icon {
+    font-size: 0.95rem;
+}
+
+.ofd-copy {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: none;
+    border-radius: var(--os-radius-sm);
+    background: transparent;
+    color: var(--os-color-text-subtle);
+    cursor: pointer;
+    transition: background var(--os-transition), color var(--os-transition);
+}
+
+.ofd-copy:hover {
+    background: var(--os-color-surface-hover);
+    color: var(--os-color-primary);
+}
+
+.ofd-copy .rz-icon {
+    font-size: 1rem;
 }
 
 .ofd-hero-actions {
@@ -240,6 +287,34 @@
 
 .ofd-card-head .rz-button {
     margin-inline-start: auto;
+}
+
+.ofd-link {
+    margin-inline-start: auto;
+    border: none;
+    background: transparent;
+    color: var(--os-color-primary);
+    font-family: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ofd-link:hover {
+    color: var(--os-color-primary-strong);
+    text-decoration: underline;
+}
+
+.ofd-count {
+    margin-inline-start: auto;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.ofd-card-intro {
+    margin: calc(-1 * var(--os-space-2)) 0 var(--os-space-4);
+    font-size: var(--os-text-sm);
 }
 
 .ofd-card-action {
@@ -353,6 +428,64 @@
     gap: var(--os-space-3);
 }
 
+.ofd-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-3);
+}
+
+.ofd-list-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--os-space-3);
+    min-width: 0;
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.ofd-list-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-md);
+}
+
+.ofd-list-icon .rz-icon {
+    font-size: 1.25rem;
+}
+
+.ofd-list-icon--blue {
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.ofd-list-icon--green {
+    background: var(--os-color-success-bg);
+    color: var(--os-color-success);
+}
+
+.ofd-list-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ofd-list-title {
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.ofd-list-sub {
+    margin: 0.15rem 0 0;
+    font-size: var(--os-text-xs);
+}
+
 .ofd-chip-list {
     display: flex;
     flex-wrap: wrap;
@@ -414,6 +547,31 @@
     font-size: 1.3rem;
 }
 
+.ofd-timeline-icon--blue {
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.ofd-timeline-icon--green {
+    background: var(--os-color-success-bg);
+    color: var(--os-color-success);
+}
+
+.ofd-timeline-icon--amber {
+    background: var(--os-color-warning-bg);
+    color: var(--os-color-warning);
+}
+
+.ofd-timeline-icon--red {
+    background: var(--os-color-danger-bg);
+    color: var(--os-color-danger);
+}
+
+.ofd-timeline-icon--neutral {
+    background: var(--os-color-neutral-bg);
+    color: var(--os-color-text-muted);
+}
+
 .ofd-timeline-item:not(:last-child) .ofd-timeline-icon::after {
     content: "";
     position: absolute;
@@ -430,18 +588,29 @@
     padding-top: 0.35rem;
 }
 
-.ofd-timeline-text strong {
-    display: block;
+.ofd-timeline-title {
+    margin: 0;
     color: var(--os-color-text);
-    font-size: var(--os-text-sm);
     font-weight: 600;
 }
 
-.ofd-timeline-text span {
-    display: block;
+.ofd-timeline-sub {
     margin-top: 0.15rem;
-    color: var(--os-color-text-muted);
-    font-size: var(--os-text-xs);
+    font-size: var(--os-text-sm);
+}
+
+.ofd-dot-sep {
+    margin-inline: var(--os-space-1);
+}
+
+.ofd-timeline-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-4);
+    padding: var(--os-space-5);
+    border: 1px dashed var(--os-color-border-strong);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
 }
 
 @media (max-width: 900px) {
@@ -463,5 +632,9 @@
 
     .ofd-name {
         font-size: 1.6rem;
+    }
+
+    .ofd-timeline-item {
+        flex-wrap: wrap;
     }
 }

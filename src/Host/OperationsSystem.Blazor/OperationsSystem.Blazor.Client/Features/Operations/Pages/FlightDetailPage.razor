@@ -3,6 +3,8 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
+@inject AuthSession Auth
+@inject IJSRuntime JS
 
 <PageTitle>@(flight is null ? "Flight" : DisplayFlightNumber(flight))</PageTitle>
 
@@ -21,12 +23,7 @@
             <div class="ofd-workspace">
                 <section class="ofd-profile @ProfileClass(flight)">
                     <div class="ofd-hero">
-                        <button type="button" class="ofd-back" @onclick="@Back">
-                            <RadzenIcon Icon="arrow_back" />
-                            <span>Back</span>
-                        </button>
-
-                        <div class="ofd-avatar">
+                        <div class="ofd-avatar @AvatarClass(flight)">
                             <RadzenIcon Icon="flight" />
                             <span class="ofd-avatar-dot @DotClass(flight.Status)"></span>
                         </div>
@@ -43,29 +40,39 @@
                                 {
                                     <StatusBadge Label="Potential duplicate" Tone="warning" />
                                 }
+                                <span class="ofd-info-badge"><RadzenIcon Icon="settings" />@flight.OperationTypeName</span>
                             </div>
 
                             <div class="ofd-meta-row">
-                                <RadzenIcon Icon="business" />
-                                <span>@flight.CustomerName</span>
-                                <RadzenIcon Icon="flight_takeoff" />
-                                <span>@flight.StationIata</span>
-                                <RadzenIcon Icon="settings" />
-                                <span>@flight.OperationTypeName</span>
-                                <RadzenIcon Icon="id_card" />
-                                <span>@ShortId(flight.Id)</span>
+                                <span class="ofd-meta-pair"><RadzenIcon Icon="business" /><span>@flight.CustomerName</span></span>
+                                <span class="ofd-meta-pair"><RadzenIcon Icon="flight_takeoff" /><span>@flight.StationIata</span></span>
+                                <span class="ofd-meta-pair"><RadzenIcon Icon="schedule" /><span>@DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span></span>
+                                <span class="ofd-meta-pair">
+                                    <RadzenIcon Icon="id_card" />
+                                    <span>@ShortId(flight.Id)</span>
+                                    <button type="button" class="ofd-copy" title="Copy flight ID"
+                                            aria-label="Copy flight ID" @onclick="@(() => CopyAsync(flight.Id.ToString()))">
+                                        <RadzenIcon Icon="content_copy" />
+                                    </button>
+                                </span>
                             </div>
                         </div>
 
                         <div class="ofd-hero-actions">
-                            <RowActionMenu ShowLabel="true" Label="Actions">
-                                <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                                           Visible="@CanEditFlight" OnClick="@OpenEditAsync" />
-                                <RowAction Text="Invite employee" Icon="person_add" Permission="@OperationsPermissions.FlightsInvite"
-                                           Visible="@CanInviteFlight" OnClick="@OpenInviteAsync" />
-                                <RowAction Text="Resolve duplicate" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
-                                           Visible="@CanMergeFlight" OnClick="@OpenMergeAsync" />
-                            </RowActionMenu>
+                            <RadzenButton Text="Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@Back" />
+                            @if (CanEdit(flight) && Auth.HasPermission(OperationsPermissions.FlightsUpdate))
+                            {
+                                <RadzenButton Text="Edit flight" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                            }
+                            @if (HasMoreActions(flight))
+                            {
+                                <RowActionMenu ShowLabel="true" Label="Actions">
+                                    <RowAction Text="Invite employee" Icon="person_add" Permission="@OperationsPermissions.FlightsInvite"
+                                               Visible="@CanInvite(flight)" OnClick="@OpenInviteAsync" />
+                                    <RowAction Text="Resolve duplicate" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
+                                               Visible="@CanMerge(flight)" OnClick="@OpenMergeAsync" />
+                                </RowActionMenu>
+                            }
                         </div>
                     </div>
 
@@ -113,9 +120,11 @@
     private bool loadError;
     private FlightTab activeTab = FlightTab.Overview;
 
-    private bool CanEditFlight => flight?.Status is "Scheduled";
-    private bool CanInviteFlight => flight is { Status: "Scheduled", IsPerLanding: false };
-    private bool CanMergeFlight => flight?.Status is not "Completed" and not "Canceled" and not "Merged";
+    private const int OverviewTimelinePreviewCount = 4;
+
+    private bool CanEditFlight => flight is { } f && CanEdit(f);
+    private bool CanInviteFlight => flight is { } f && CanInvite(f);
+    private bool CanMergeFlight => flight is { } f && CanMerge(f);
 
     private enum FlightTab { Overview, Services, Timeline }
 
@@ -166,7 +175,7 @@
                         <div class="ofd-metric"><dt>Per landing</dt><dd>@(f.IsPerLanding ? "Yes" : "No")</dd></div>
                     </dl>
                     <button type="button" class="ofd-card-link" @onclick="@(() => activeTab = FlightTab.Services)">
-                        Open<RadzenIcon Icon="chevron_right" />
+                        <span>Open</span><RadzenIcon Icon="chevron_right" />
                     </button>
                 </RadzenCard>
 
@@ -176,59 +185,85 @@
                         <span class="ofd-lead-dot ofd-lead-dot--@FlightStatusTone(f.Status)"></span>
                         <div>
                             <p class="ofd-lead-title">@f.Status</p>
-                            <p class="os-muted ofd-lead-desc">Created @DateTimeDisplay(f.CreatedAtUtc) UTC</p>
+                            <p class="os-muted ofd-lead-desc">@FlightStatusDescription(f)</p>
                         </div>
                     </div>
                     <dl class="ofd-metrics">
-                        <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@(f.PotentialDuplicateOfFlightId is null ? "No" : "Yes")</dd></div>
+                        <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@(f.PotentialDuplicateOfFlightId is { } duplicate ? ShortId(duplicate) : "No")</dd></div>
                         <div class="ofd-metric"><dt>Assigned staff</dt><dd>@f.AssignedEmployees.Count</dd></div>
                         <div class="ofd-metric"><dt>Planned services</dt><dd>@f.PlannedServices.Count</dd></div>
+                        <div class="ofd-metric"><dt>Created</dt><dd>@DateTimeDisplay(f.CreatedAtUtc)</dd></div>
                     </dl>
                 </RadzenCard>
             </div>
+
+            <RadzenCard class="ofd-card">
+                <div class="ofd-card-head">
+                    <RadzenIcon Icon="history" /><h3>Timeline</h3>
+                    @if (timeline.Count > 0)
+                    {
+                        <button type="button" class="ofd-link" @onclick="@(() => activeTab = FlightTab.Timeline)">View all</button>
+                    }
+                </div>
+                <p class="os-muted ofd-card-intro">Operational lifecycle events for this flight.</p>
+                @TimelineList(OverviewTimelinePreviewCount)
+            </RadzenCard>
         </div>
     </text>;
 
     private RenderFragment ServicesTab(FlightDetail f) => @<text>
         <div class="ofd-grid-2">
             <RadzenCard class="ofd-card">
-                <div class="ofd-card-head"><RadzenIcon Icon="settings" /><h3>Planned services</h3></div>
+                <div class="ofd-card-head">
+                    <RadzenIcon Icon="settings" /><h3>Planned services</h3>
+                    <span class="ofd-count">@f.PlannedServices.Count</span>
+                </div>
                 @if (f.PlannedServices.Count == 0)
                 {
                     <EmptyState Title="No planned services" Icon="settings" />
                 }
                 else
                 {
-                    <div class="ofd-chip-list">
+                    <div class="ofd-list">
                         @foreach (var service in f.PlannedServices)
                         {
-                            <span @key="service.ServiceId" class="ofd-chip">
-                                @service.Name
+                            <div @key="service.ServiceId" class="ofd-list-row">
+                                <span class="ofd-list-icon ofd-list-icon--blue"><RadzenIcon Icon="task_alt" /></span>
+                                <div class="ofd-list-main">
+                                    <p class="ofd-list-title">@service.Name</p>
+                                    <p class="os-muted ofd-list-sub">@(service.IsAircraftPerLanding ? "Aircraft per landing" : "Scheduled service")</p>
+                                </div>
                                 @if (service.IsAircraftPerLanding)
                                 {
-                                    <small>Per landing</small>
+                                    <StatusBadge Label="Per landing" Tone="warning" />
                                 }
-                            </span>
+                            </div>
                         }
                     </div>
                 }
             </RadzenCard>
 
             <RadzenCard class="ofd-card">
-                <div class="ofd-card-head"><RadzenIcon Icon="groups" /><h3>Assigned staff</h3></div>
+                <div class="ofd-card-head">
+                    <RadzenIcon Icon="groups" /><h3>Assigned staff</h3>
+                    <span class="ofd-count">@f.AssignedEmployees.Count</span>
+                </div>
                 @if (f.AssignedEmployees.Count == 0)
                 {
                     <EmptyState Title="No assigned staff" Icon="groups" />
                 }
                 else
                 {
-                    <div class="ofd-chip-list">
+                    <div class="ofd-list">
                         @foreach (var employee in f.AssignedEmployees)
                         {
-                            <span @key="employee.StaffMemberId" class="ofd-chip">
-                                @employee.FullName
-                                <small>@employee.EmployeeId</small>
-                            </span>
+                            <div @key="employee.StaffMemberId" class="ofd-list-row">
+                                <span class="ofd-list-icon ofd-list-icon--green"><RadzenIcon Icon="badge" /></span>
+                                <div class="ofd-list-main">
+                                    <p class="ofd-list-title">@employee.FullName</p>
+                                    <p class="os-muted ofd-list-sub">@employee.EmployeeId</p>
+                                </div>
+                            </div>
                         }
                     </div>
                 }
@@ -239,26 +274,46 @@
     private RenderFragment TimelineTab() => @<text>
         <RadzenCard class="ofd-card">
             <div class="ofd-card-head"><RadzenIcon Icon="history" /><h3>Timeline</h3></div>
-            @if (timeline.Count == 0)
-            {
-                <EmptyState Title="No timeline events" Icon="history" />
-            }
-            else
-            {
-                <ol class="ofd-timeline">
-                    @foreach (var entry in timeline)
-                    {
-                        <li @key="entry.Id" class="ofd-timeline-item">
-                            <span class="ofd-timeline-icon"><RadzenIcon Icon="@TimelineIcon(entry.EventType)" /></span>
-                            <div class="ofd-timeline-text">
-                                <strong>@TimelineLabel(entry)</strong>
-                                <span>@DateTimeDisplay(entry.OccurredAtUtc) UTC - @(entry.ActorName ?? "Administrator/System")</span>
-                            </div>
-                        </li>
-                    }
-                </ol>
-            }
+            <p class="os-muted ofd-card-intro">Operational lifecycle events for this flight.</p>
+            @TimelineList()
         </RadzenCard>
+    </text>;
+
+    private RenderFragment TimelineList(int? maxItems = null) => @<text>
+        @if (timeline.Count == 0)
+        {
+            @TimelineEmpty()
+        }
+        else
+        {
+            <ol class="ofd-timeline">
+                @foreach (var entry in maxItems is { } take ? timeline.Take(take) : timeline)
+                {
+                    var visual = TimelineVisual(entry.EventType);
+                    <li @key="entry.Id" class="ofd-timeline-item">
+                        <span class="ofd-timeline-icon ofd-timeline-icon--@visual.Tone"><RadzenIcon Icon="@visual.Icon" /></span>
+                        <div class="ofd-timeline-text">
+                            <p class="ofd-timeline-title">@TimelineLabel(entry)</p>
+                            <p class="os-muted ofd-timeline-sub">
+                                <span title="@entry.OccurredAtUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredAtUtc)</span>
+                                <span class="ofd-dot-sep">&middot;</span>
+                                @(entry.ActorName ?? "Administrator/System")
+                            </p>
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+    </text>;
+
+    private RenderFragment TimelineEmpty() => @<text>
+        <div class="ofd-timeline-empty">
+            <span class="ofd-timeline-icon"><RadzenIcon Icon="history_toggle_off" /></span>
+            <div>
+                <p class="ofd-timeline-title">No timeline events</p>
+                <p class="os-muted ofd-timeline-sub">Flight activity will appear here as work progresses.</p>
+            </div>
+        </div>
     </text>;
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
@@ -282,19 +337,40 @@
         }
     }
 
-    private static string TimelineLabel(FlightTimelineEntryModel entry) => entry.EventType switch
+    private static string TimelineLabel(FlightTimelineEntryModel entry)
     {
-        "FlightScheduled" => "Flight scheduled",
-        "EmployeeAssigned" => $"Employee assigned{(string.IsNullOrWhiteSpace(entry.Details) ? "" : $": {entry.Details}")}",
-        _ => entry.EventType
-    };
+        var label = entry.EventType switch
+        {
+            "FlightScheduled" => "Flight scheduled",
+            "FlightUpdated" => "Flight updated",
+            "FlightCompleted" => "Flight completed",
+            "FlightCanceled" => "Flight canceled",
+            "FlightMerged" => "Flight merged",
+            "EmployeeAssigned" => "Employee assigned",
+            "EmployeeInvited" => "Employee invited",
+            _ => HumanizeEventType(entry.EventType)
+        };
 
-    private static string TimelineIcon(string eventType) => eventType switch
+        return string.IsNullOrWhiteSpace(entry.Details) ? label : $"{label}: {entry.Details}";
+    }
+
+    private static (string Icon, string Tone) TimelineVisual(string eventType)
     {
-        "FlightScheduled" => "flight",
-        "EmployeeAssigned" => "person_add",
-        _ => "history"
-    };
+        var value = eventType.ToLowerInvariant();
+        if (value.Contains("assign") || value.Contains("invite"))
+            return ("person_add", "blue");
+        if (value.Contains("schedule"))
+            return ("flight", "green");
+        if (value.Contains("complete"))
+            return ("task_alt", "green");
+        if (value.Contains("cancel"))
+            return ("cancel", "red");
+        if (value.Contains("merge") || value.Contains("duplicate"))
+            return ("merge_type", "amber");
+        if (value.Contains("update") || value.Contains("edit"))
+            return ("edit", "neutral");
+        return ("history", "neutral");
+    }
 
     private void Back() => Navigation.NavigateTo("/operations/flights");
 
@@ -361,12 +437,43 @@
 
     private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
 
+    private async Task CopyAsync(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Common.Copied);
+        }
+        catch (JSException)
+        {
+            // Clipboard may be unavailable in some browser contexts.
+        }
+    }
+
+    private bool HasMoreActions(FlightDetail f) =>
+        (CanInvite(f) && Auth.HasPermission(OperationsPermissions.FlightsInvite))
+        || (CanMerge(f) && Auth.HasPermission(OperationsPermissions.FlightsMerge));
+
+    private static bool CanEdit(FlightDetail f) => f.Status is "Scheduled";
+
+    private static bool CanInvite(FlightDetail f) => f is { Status: "Scheduled", IsPerLanding: false };
+
+    private static bool CanMerge(FlightDetail f) => f.Status is not "Completed" and not "Canceled" and not "Merged";
+
     private static string ProfileClass(FlightDetail flight) => flight.Status switch
     {
         "Completed" => "ofd-profile--completed",
         "Canceled" or "Merged" => "ofd-profile--danger",
         "InProgress" => "ofd-profile--warning",
         _ => "ofd-profile--active"
+    };
+
+    private static string AvatarClass(FlightDetail flight) => flight.Status switch
+    {
+        "Completed" => "ofd-avatar--completed",
+        "Canceled" or "Merged" => "ofd-avatar--danger",
+        "InProgress" => "ofd-avatar--warning",
+        _ => "ofd-avatar--active"
     };
 
     private static string DotClass(string status) => status switch
@@ -384,4 +491,53 @@
         "InProgress" => "warning",
         _ => "neutral"
     };
+
+    private static string FlightStatusDescription(FlightDetail flight) => flight.Status switch
+    {
+        "Scheduled" => flight.IsPerLanding
+            ? "Per-landing flight scheduled from the active customer contract."
+            : "Ready for staff assignment and service preparation.",
+        "InProgress" => "Work is underway for this flight.",
+        "Completed" => "Flight work has been completed.",
+        "Canceled" => "This flight was canceled.",
+        "Merged" => flight.MergedIntoFlightId is { } mergedInto
+            ? $"Merged into flight {ShortId(mergedInto)}."
+            : "Merged into another flight record.",
+        _ => "Current operational lifecycle state."
+    };
+
+    private static string RelativeTime(DateTimeOffset value)
+    {
+        var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
+        if (delta < TimeSpan.Zero)
+            delta = TimeSpan.Zero;
+
+        if (delta.TotalMinutes < 1)
+            return UiStrings.Common.JustNow;
+        if (delta.TotalHours < 1)
+            return string.Format(UiStrings.Common.MinutesAgo, (int)delta.TotalMinutes);
+        if (delta.TotalDays < 1)
+            return string.Format(UiStrings.Common.HoursAgo, (int)delta.TotalHours);
+        if (delta.TotalDays < 30)
+            return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
+
+        return value.ToLocalTime().ToString("d");
+    }
+
+    private static string HumanizeEventType(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "Timeline event";
+
+        var result = new List<char>(value.Length + 4);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (i > 0 && char.IsUpper(current) && !char.IsWhiteSpace(value[i - 1]))
+                result.Add(' ');
+            result.Add(current);
+        }
+
+        return new string(result.ToArray());
+    }
 }
