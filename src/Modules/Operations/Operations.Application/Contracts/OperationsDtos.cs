@@ -53,7 +53,6 @@ public sealed record FlightDetailDto(
     Guid? ContractId,
     string? ContractNumber,
     Guid? MergedIntoFlightId,
-    Guid? PotentialDuplicateOfFlightId,
     IReadOnlyList<PlannedServiceDto> PlannedServices,
     IReadOnlyList<AssignedEmployeeDto> AssignedEmployees,
     DateTimeOffset CreatedAtUtc,

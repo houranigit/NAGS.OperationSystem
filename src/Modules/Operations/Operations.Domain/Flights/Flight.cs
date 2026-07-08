@@ -34,9 +34,8 @@ public sealed class Flight : AggregateRoot<Guid>
     public Guid? ContractId { get; private set; }
     public string? ContractNumber { get; private set; }
 
-    // Merge/duplicate metadata.
+    // Merge metadata.
     public Guid? MergedIntoFlightId { get; private set; }
-    public Guid? PotentialDuplicateOfFlightId { get; private set; }
 
     public Guid CreatedByUserId { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
@@ -188,12 +187,6 @@ public sealed class Flight : AggregateRoot<Guid>
         UpdatedAtUtc = now;
         RaiseDomainEvent(new FlightMerged(Id, survivorFlightId));
         return Result.Success();
-    }
-
-    public void FlagPotentialDuplicate(Guid otherFlightId, DateTimeOffset now)
-    {
-        PotentialDuplicateOfFlightId = otherFlightId;
-        UpdatedAtUtc = now;
     }
 
     private void ReplacePlannedServicesInternal(IReadOnlyList<ServiceSnapshot> plannedServices)

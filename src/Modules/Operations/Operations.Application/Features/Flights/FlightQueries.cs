@@ -200,7 +200,6 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.ContractId,
             flight.ContractNumber,
             flight.MergedIntoFlightId,
-            flight.PotentialDuplicateOfFlightId,
             flight.PlannedServices.Select(p => new PlannedServiceDto(p.Service.ServiceId, p.Service.Name, p.IsAircraftPerLanding)).ToList(),
             flight.AssignedEmployees.Select(e => new AssignedEmployeeDto(e.Employee.StaffMemberId, e.Employee.FullName, e.Employee.EmployeeId)).ToList(),
             flight.CreatedAtUtc,

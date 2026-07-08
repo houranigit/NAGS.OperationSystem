@@ -482,16 +482,13 @@
         EffectiveDuplicateFlightId(f) is not null;
 
     private Guid? EffectiveDuplicateFlightId(FlightDetail f) =>
-        f.PotentialDuplicateOfFlightId ?? PrimaryDuplicateCandidate(f)?.FlightId;
+        PrimaryDuplicateCandidate(f)?.FlightId;
 
     private DuplicateCandidate? PrimaryDuplicateCandidate(FlightDetail f) =>
         duplicateCandidates.FirstOrDefault(x => x.FlightId != f.Id);
 
     private string PotentialDuplicateDisplay(FlightDetail f)
     {
-        if (f.PotentialDuplicateOfFlightId is { } flaggedDuplicateId)
-            return ShortId(flaggedDuplicateId);
-
         var candidate = PrimaryDuplicateCandidate(f);
         if (candidate is null)
             return "No";

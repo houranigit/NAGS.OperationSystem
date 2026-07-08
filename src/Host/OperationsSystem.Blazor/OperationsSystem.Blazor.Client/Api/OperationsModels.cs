@@ -68,7 +68,6 @@ public sealed record FlightDetail(
     Guid? ContractId,
     string? ContractNumber,
     Guid? MergedIntoFlightId,
-    Guid? PotentialDuplicateOfFlightId,
     IReadOnlyList<PlannedServiceModel> PlannedServices,
     IReadOnlyList<AssignedEmployeeModel> AssignedEmployees,
     DateTimeOffset CreatedAtUtc,
