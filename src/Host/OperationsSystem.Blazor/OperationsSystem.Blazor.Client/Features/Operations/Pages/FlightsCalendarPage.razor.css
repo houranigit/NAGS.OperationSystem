@@ -1,10 +1,9 @@
 .os-list-page ::deep .ofc-card {
-    --ofc-card-viewport-offset: 13rem;
+    --ofc-card-viewport-offset: 11rem;
     display: flex;
     flex-direction: column;
     height: calc(100vh - var(--ofc-card-viewport-offset));
     height: calc(100dvh - var(--ofc-card-viewport-offset));
-    margin-top: var(--os-space-4);
     overflow: hidden;
 }
 
@@ -189,9 +188,9 @@
     gap: 0.2rem;
     min-block-size: 1.35rem;
     padding: 0.15rem 0.3rem;
-    border: 1px solid white;
+    border: 1px solid var(--ofc-event-soft);
     border-radius: var(--os-radius-sm);
-    background: white;
+    background: var(--ofc-event-soft);
     color: var(--os-color-text);
     overflow: hidden;
     margin: 0px 5px 0px 2px;
