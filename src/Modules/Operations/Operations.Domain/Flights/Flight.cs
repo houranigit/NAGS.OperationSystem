@@ -158,6 +158,17 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
+    public Result ReplaceAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
+    {
+        var editCheck = EnsureScheduledDetailsEditable();
+        if (editCheck.IsFailure)
+            return editCheck.Error;
+
+        ReplaceAssignedEmployeesInternal(employees);
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
     public Result RemoveAssignment(Guid staffMemberId, DateTimeOffset now)
     {
         if (IsUpdateLocked)

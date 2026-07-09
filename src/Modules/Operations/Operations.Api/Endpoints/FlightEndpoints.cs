@@ -107,7 +107,7 @@ internal static class FlightEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new AssignEmployeesCommand(id, request.StaffMemberIds, rowVersion), ct);
+            var result = await sender.Send(new AssignEmployeesCommand(id, request.StaffMemberIds ?? [], rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Assign);
 
@@ -116,7 +116,7 @@ internal static class FlightEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds, rowVersion), ct);
+            var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds ?? [], rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Invite);
 

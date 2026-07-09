@@ -357,7 +357,7 @@ public sealed class AssignEmployeesCommandValidator : AbstractValidator<AssignEm
     public AssignEmployeesCommandValidator()
     {
         RuleFor(x => x.FlightId).NotEmpty();
-        RuleFor(x => x.StaffMemberIds).NotEmpty();
+        RuleFor(x => x.StaffMemberIds).NotNull();
         RuleFor(x => x.RowVersion).NotEmpty();
     }
 }
@@ -378,8 +378,8 @@ public sealed class AssignEmployeesCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        // Admins/schedulers assign freely; a station staff member may invite others only onto a
-        // flight they can already access (assigned to it, or a station-wide Per-Landing flight).
+        // Assign permission replaces the scheduled flight roster within the caller's data scope.
+        // Invite permission uses the add-only command below.
         var scopeResult = await scope.ResolveAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
@@ -402,7 +402,7 @@ public sealed class AssignEmployeesCommandHandler(
         var alreadyAssigned = flight.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToHashSet();
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
-        var assign = flight.AssignEmployees(employees.Value, now);
+        var assign = flight.ReplaceAssignedEmployees(employees.Value, now);
         if (assign.IsFailure)
             return assign.Error;
 

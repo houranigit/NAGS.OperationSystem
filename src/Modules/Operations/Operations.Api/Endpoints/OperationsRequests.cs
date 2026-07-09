@@ -34,6 +34,6 @@ public sealed record UpdateScheduledFlightRequest(
 
 public sealed record ChangeFlightNumberRequest(string FlightNumber);
 
-public sealed record AssignEmployeesRequest(IReadOnlyList<Guid> StaffMemberIds);
+public sealed record AssignEmployeesRequest(IReadOnlyList<Guid>? StaffMemberIds);
 
 public sealed record MergeFlightsRequest(Guid SurvivorFlightId, Guid LoserFlightId);

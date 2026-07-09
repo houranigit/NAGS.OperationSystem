@@ -191,6 +191,39 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     }
 
     [Fact]
+    public async Task Assign_endpoint_replaces_and_clears_the_scheduled_flight_roster()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var (_, replacementStaffId) = await CreateStaffLoginAsync(admin, refs);
+        var flightId = await ScheduleFlightAsync(admin, refs, "NGS403", assignedStaffIds: [refs.StaffMemberId]);
+        var flight = await GetFlightAsync(admin, flightId);
+
+        using var replaceRequest = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
+        {
+            Content = JsonContent.Create(new { staffMemberIds = new[] { replacementStaffId } })
+        };
+        replaceRequest.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
+
+        var replaceResponse = await admin.SendAsync(replaceRequest);
+        replaceResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await replaceResponse.Content.ReadAsStringAsync());
+
+        var replaced = await GetFlightAsync(admin, flightId);
+        replaced.AssignedEmployees.ShouldContain(e => e.StaffMemberId == replacementStaffId);
+        replaced.AssignedEmployees.ShouldNotContain(e => e.StaffMemberId == refs.StaffMemberId);
+
+        using var clearRequest = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
+        {
+            Content = JsonContent.Create(new { staffMemberIds = Array.Empty<Guid>() })
+        };
+        clearRequest.Headers.TryAddWithoutValidation("If-Match", replaced.RowVersion);
+
+        var clearResponse = await admin.SendAsync(clearRequest);
+        clearResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await clearResponse.Content.ReadAsStringAsync());
+        (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Invite_permission_assigns_unassigned_employee_without_full_assign_permission()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
