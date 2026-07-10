@@ -224,7 +224,7 @@
                 </div>
             </div>
             <div class="owo-field-block">
-                <label class="owo-label">Tail number <span class="owo-required">*</span></label>
+                <label class="owo-label">Tail number</label>
                 <div class="owo-input-wrap">
                     <span class="owo-field-icon"><RadzenIcon Icon="confirmation_number" /></span>
                     <RadzenTextBox @bind-Value="model.AircraftTailNumber" Immediate="true" MaxLength="20" Disabled="@ViewOnly" class="owo-control owo-control-icon" />
@@ -846,9 +846,7 @@
             messages.Add("Flight number must be at most 12 characters.");
         if (model.AircraftTypeId is null)
             messages.Add("Aircraft type is required.");
-        if (string.IsNullOrWhiteSpace(model.AircraftTailNumber))
-            messages.Add("Tail number is required.");
-        else if (model.AircraftTailNumber.Trim().Length > 20)
+        if (!string.IsNullOrWhiteSpace(model.AircraftTailNumber) && model.AircraftTailNumber.Trim().Length > 20)
             messages.Add("Tail number must be at most 20 characters.");
         if (IsMissing(model.ActualArrivalUtc))
             messages.Add("ATA is required.");
