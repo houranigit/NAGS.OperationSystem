@@ -563,7 +563,7 @@
     display: inline-block;
 }
 
-.ofc-dot-scheduled { background: var(--rz-primary, #2563eb); }
+.ofc-dot-scheduled { background: var(--rz-primary, var(--os-color-primary)); }
 .ofc-dot-inprogress { background: var(--rz-warning, #f59e0b); }
 .ofc-dot-completed { background: var(--rz-success, #16a34a); }
 .ofc-dot-canceled { background: var(--rz-danger, #dc2626); }

@@ -42,7 +42,7 @@
     flex-shrink: 0;
     border: 0.25rem solid var(--os-color-surface);
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--os-color-primary), var(--os-color-primary-strong));
+    background: var(--os-color-primary-gradient);
     box-shadow: 0 0 0 1px var(--os-color-primary-soft-border);
     color: var(--os-color-primary-contrast);
     font-size: var(--os-text-xl);

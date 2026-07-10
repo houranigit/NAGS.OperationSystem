@@ -13,19 +13,22 @@
     --os-color-text-inverse: #e8eefb;
 
     /* Brand */
-    --os-color-primary: #2563eb;
-    --os-color-primary-strong: #1d4ed8;
-    --os-color-primary-soft: #eaf1ff;
-    --os-color-primary-soft-border: #cdddff;
+    --os-color-primary: #722f37;
+    --os-color-primary-rgb: 114, 47, 55;
+    --os-color-primary-strong: #4a1f26;
+    --os-color-primary-accent: #9a3240;
+    --os-color-primary-gradient: linear-gradient(145deg, #722f37 0%, #9a3240 52%, #722f37 100%);
+    --os-color-primary-soft: #f8eaec;
+    --os-color-primary-soft-border: #e8c6cb;
     --os-color-primary-contrast: #ffffff;
 
     /* Sidebar */
-    --os-color-sidebar: #0b1222;
-    --os-color-sidebar-accent: #131d34;
-    --os-color-sidebar-text: #aeb9cc;
-    --os-color-sidebar-muted: #6f7c93;
-    --os-color-sidebar-active: rgba(37, 99, 235, 0.18);
-    --os-color-sidebar-active-text: #ffffff;
+    --os-color-sidebar: #f8fafc;
+    --os-color-sidebar-accent: #f1f4f8;
+    --os-color-sidebar-text: #364152;
+    --os-color-sidebar-muted: #778293;
+    --os-color-sidebar-active: linear-gradient(138deg, #ffffff 0%, #f8eaec 100%);
+    --os-color-sidebar-active-text: var(--os-color-primary-strong);
 
     /* Status */
     --os-color-success: #15803d;
@@ -68,7 +71,7 @@
     --os-shadow-sm: 0 1px 2px rgba(16, 23, 41, 0.06), 0 1px 3px rgba(16, 23, 41, 0.04);
     --os-shadow-md: 0 4px 12px rgba(16, 23, 41, 0.08), 0 2px 4px rgba(16, 23, 41, 0.04);
     --os-shadow-lg: 0 18px 40px rgba(16, 23, 41, 0.14), 0 6px 14px rgba(16, 23, 41, 0.08);
-    --os-ring: 0 0 0 3px rgba(37, 99, 235, 0.28);
+    --os-ring: 0 0 0 3px rgba(var(--os-color-primary-rgb), 0.28);
 
     /* Motion */
     --os-transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);

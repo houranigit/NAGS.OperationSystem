@@ -15,7 +15,7 @@
     padding: var(--os-space-8) var(--os-space-7);
     color: var(--os-color-text-inverse);
     background:
-        radial-gradient(120% 90% at 0% 0%, rgba(37, 99, 235, 0.45) 0%, rgba(37, 99, 235, 0) 55%),
+        radial-gradient(120% 90% at 0% 0%, rgba(var(--os-color-primary-rgb), 0.45) 0%, rgba(var(--os-color-primary-rgb), 0) 55%),
         linear-gradient(160deg, var(--os-color-sidebar) 0%, var(--os-color-sidebar-accent) 100%);
     overflow: hidden;
 }
@@ -28,7 +28,7 @@
     width: 28rem;
     height: 28rem;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(37, 99, 235, 0.35) 0%, rgba(37, 99, 235, 0) 70%);
+    background: radial-gradient(circle, rgba(var(--os-color-primary-rgb), 0.35) 0%, rgba(var(--os-color-primary-rgb), 0) 70%);
     pointer-events: none;
 }
 

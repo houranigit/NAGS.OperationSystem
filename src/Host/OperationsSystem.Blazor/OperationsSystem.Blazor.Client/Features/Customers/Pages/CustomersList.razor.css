@@ -13,7 +13,7 @@
     flex-shrink: 0;
     overflow: hidden;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--os-color-primary), var(--os-color-primary-strong));
+    background: var(--os-color-primary-gradient);
     color: var(--os-color-primary-contrast);
     font-size: var(--os-text-xs);
     font-weight: 700;

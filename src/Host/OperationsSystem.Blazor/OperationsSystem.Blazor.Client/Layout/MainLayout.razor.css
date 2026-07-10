@@ -20,9 +20,10 @@
     flex-direction: column;
     gap: var(--os-space-2);
     padding: var(--os-space-5) var(--os-space-4);
-    background: linear-gradient(180deg, var(--os-color-sidebar) 0%, var(--os-color-sidebar-accent) 100%);
-    color: var(--os-color-text-inverse);
-    border-inline-end: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(188deg, var(--os-color-sidebar) 0%, #ffffff 46%, var(--os-color-sidebar-accent) 100%);
+    color: var(--os-color-text);
+    border-inline-end: 1px solid var(--os-color-border);
+    box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.7), 8px 0 32px -18px rgba(16, 23, 41, 0.22);
     overflow-x: hidden;
     overflow-y: auto;
     z-index: 50;
@@ -42,8 +43,9 @@
     height: 2.5rem;
     place-items: center;
     border-radius: var(--os-radius-md);
-    background: #ffffff;
-    box-shadow: 0 6px 16px rgba(8, 12, 22, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+    border: 1px solid var(--os-color-border);
+    box-shadow: 0 2px 8px rgba(16, 23, 41, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
     flex-shrink: 0;
 }
 
@@ -62,7 +64,7 @@
 
 .os-brand-text strong {
     font-size: var(--os-text-base);
-    color: #fff;
+    color: var(--os-color-text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -102,15 +104,17 @@
     color: var(--os-color-sidebar-text);
     text-decoration: none;
     padding: 0.625rem var(--os-space-3);
+    border: 1px solid transparent;
     border-radius: var(--os-radius-sm);
     font-size: var(--os-text-sm);
     font-weight: 500;
     position: relative;
     white-space: nowrap;
-    transition: background var(--os-transition), color var(--os-transition);
+    transition: background var(--os-transition), border-color var(--os-transition), box-shadow var(--os-transition), color var(--os-transition);
 }
 
-.os-nav ::deep .os-nav-link .rz-icon {
+.os-nav ::deep .os-nav-link .rz-icon,
+.os-nav ::deep .os-nav-link .rzi {
     width: 1.25rem;
     max-width: 1.25rem;
     font-size: 1.25rem;
@@ -122,22 +126,28 @@
 }
 
 .os-nav ::deep .os-nav-link:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.06);
+    color: var(--os-color-text);
+    background: rgba(255, 255, 255, 0.78);
+    border-color: rgba(203, 213, 225, 0.75);
+    box-shadow: 0 1px 3px rgba(16, 23, 41, 0.05);
 }
 
-.os-nav ::deep .os-nav-link:hover .rz-icon {
-    color: var(--os-color-sidebar-text);
+.os-nav ::deep .os-nav-link:hover .rz-icon,
+.os-nav ::deep .os-nav-link:hover .rzi {
+    color: var(--os-color-primary);
 }
 
 .os-nav ::deep .os-nav-link.active {
     color: var(--os-color-sidebar-active-text);
     background: var(--os-color-sidebar-active);
+    border-color: rgba(232, 198, 203, 0.8);
+    box-shadow: 0 2px 8px rgba(var(--os-color-primary-rgb), 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
     font-weight: 600;
 }
 
-.os-nav ::deep .os-nav-link.active .rz-icon {
-    color: #fff;
+.os-nav ::deep .os-nav-link.active .rz-icon,
+.os-nav ::deep .os-nav-link.active .rzi {
+    color: var(--os-color-primary);
 }
 
 .os-nav ::deep .os-nav-link.active::before {
@@ -161,7 +171,8 @@
     align-items: center;
     padding: 0.2rem 0.6rem;
     border-radius: var(--os-radius-pill);
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid var(--os-color-border);
     color: var(--os-color-sidebar-muted);
     font-size: var(--os-text-xs);
     font-weight: 600;
@@ -299,7 +310,7 @@
     width: 2rem;
     height: 2rem;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--os-color-primary), var(--os-color-primary-strong));
+    background: var(--os-color-primary-gradient);
     color: var(--os-color-primary-contrast);
     font-size: var(--os-text-xs);
     font-weight: 700;
