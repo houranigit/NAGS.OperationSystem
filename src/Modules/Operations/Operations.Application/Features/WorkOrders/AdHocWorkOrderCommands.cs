@@ -45,6 +45,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     WorkOrderInputBuilder inputBuilder,
+    IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
     IWorkOrderTimelineWriter workOrderTimeline,
     IUserContext user,
@@ -145,9 +146,16 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         if (workOrder.IsFailure)
             return workOrder.Error;
 
+        var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(workOrder.Value, request.Payload, storage, now, cancellationToken);
+        if (inlineFiles.IsFailure)
+            return inlineFiles.Error;
+
         var flightState = flight.Value.OnWorkOrderSubmitted(now);
         if (flightState.IsFailure)
+        {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return flightState.Error;
+        }
 
         db.Flights.Add(flight.Value);
         db.WorkOrders.Add(workOrder.Value);
@@ -167,6 +175,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         }
         catch (DbUpdateException)
         {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return Error.Conflict("An ad-hoc work order conflict occurred. Reload and try again.", "Operations.WorkOrder.AdHocConflict");
         }
 

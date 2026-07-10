@@ -15,7 +15,8 @@ public sealed record WorkOrderEditableCommandPayload(
     string? CancellationReason,
     string? Remarks,
     IReadOnlyList<WorkOrderServiceLineCommand> ServiceLines,
-    IReadOnlyList<WorkOrderTaskCommand> Tasks);
+    IReadOnlyList<WorkOrderTaskCommand> Tasks,
+    WorkOrderSignatureCommand? CustomerSignature = null);
 
 public sealed record WorkOrderServiceLineCommand(
     Guid ServiceId,
@@ -33,13 +34,25 @@ public sealed record WorkOrderTaskCommand(
     IReadOnlyList<Guid> EmployeeIds,
     IReadOnlyList<WorkOrderTaskToolCommand> Tools,
     IReadOnlyList<WorkOrderTaskMaterialCommand> Materials,
-    IReadOnlyList<WorkOrderTaskGeneralSupportCommand> GeneralSupports);
+    IReadOnlyList<WorkOrderTaskGeneralSupportCommand> GeneralSupports,
+    IReadOnlyList<WorkOrderTaskAttachmentCommand>? Attachments = null);
 
 public sealed record WorkOrderTaskToolCommand(Guid ToolId, decimal Quantity);
 
 public sealed record WorkOrderTaskMaterialCommand(Guid MaterialId, decimal Quantity);
 
 public sealed record WorkOrderTaskGeneralSupportCommand(Guid GeneralSupportId, decimal Quantity);
+
+public sealed record WorkOrderTaskAttachmentCommand(
+    TaskAttachmentKind Kind,
+    byte[] Content,
+    string FileName,
+    string ContentType);
+
+public sealed record WorkOrderSignatureCommand(
+    byte[] Content,
+    string FileName,
+    string ContentType);
 
 public sealed record BuiltWorkOrderInput(
     FlightNumber ActualFlightNumber,
@@ -144,6 +157,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             Add(nameof(payload.ActualArrivalUtc), "Provide both ATA and ATD, or leave both blank until approval.");
         if (hasAta && hasAtd && payload.ActualDepartureUtc < payload.ActualArrivalUtc)
             Add(nameof(payload.ActualDepartureUtc), "ATD cannot be before ATA.");
+        var actualArrivalUtc = payload.ActualArrivalUtc?.ToUniversalTime();
+        var actualDepartureUtc = payload.ActualDepartureUtc?.ToUniversalTime();
 
         var serviceLines = payload.ServiceLines ?? [];
         for (var i = 0; i < serviceLines.Count; i++)
@@ -160,6 +175,10 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 Add($"{prefix}.{nameof(line.ToUtc)}", "Every service line needs a To time.");
             if (!IsMissing(line.FromUtc) && !IsMissing(line.ToUtc) && line.ToUtc < line.FromUtc)
                 Add($"{prefix}.{nameof(line.ToUtc)}", "Service line To time cannot be before From time.");
+            if (actualArrivalUtc is { } ataUtc && !IsMissing(line.FromUtc) && line.FromUtc.ToUniversalTime() < ataUtc)
+                Add($"{prefix}.{nameof(line.FromUtc)}", "Service line From time cannot be before ATA.");
+            if (actualDepartureUtc is { } atdUtc && !IsMissing(line.ToUtc) && line.ToUtc.ToUniversalTime() > atdUtc)
+                Add($"{prefix}.{nameof(line.ToUtc)}", "Service line To time cannot be after ATD.");
         }
 
         var tasks = payload.Tasks ?? [];
@@ -179,6 +198,10 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 Add($"{prefix}.{nameof(task.ToUtc)}", "Every task needs a To time.");
             if (!IsMissing(task.FromUtc) && !IsMissing(task.ToUtc) && task.ToUtc < task.FromUtc)
                 Add($"{prefix}.{nameof(task.ToUtc)}", "Task To time cannot be before From time.");
+            if (actualArrivalUtc is { } ataUtc && !IsMissing(task.FromUtc) && task.FromUtc.ToUniversalTime() < ataUtc)
+                Add($"{prefix}.{nameof(task.FromUtc)}", "Task From time cannot be before ATA.");
+            if (actualDepartureUtc is { } atdUtc && !IsMissing(task.ToUtc) && task.ToUtc.ToUniversalTime() > atdUtc)
+                Add($"{prefix}.{nameof(task.ToUtc)}", "Task To time cannot be after ATD.");
 
             ValidateResourceRows(task.Tools ?? [], $"{prefix}.{nameof(task.Tools)}", "tool", row => row.ToolId, row => row.Quantity, Add);
             ValidateResourceRows(task.Materials ?? [], $"{prefix}.{nameof(task.Materials)}", "material", row => row.MaterialId, row => row.Quantity, Add);

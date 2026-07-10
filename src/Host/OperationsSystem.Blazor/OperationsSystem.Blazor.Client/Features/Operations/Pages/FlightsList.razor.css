@@ -20,6 +20,18 @@
     min-height: 2.5rem;
 }
 
+.os-list-page ::deep .ofl-schedule-bulk-button {
+    background: var(--os-color-surface-muted);
+    border-color: var(--os-color-border-strong);
+    color: var(--os-color-text);
+}
+
+.os-list-page ::deep .ofl-schedule-bulk-button:hover {
+    background: var(--os-color-surface-hover);
+    border-color: var(--os-color-primary-soft-border);
+    color: var(--os-color-primary-strong);
+}
+
 .ofl-per-landing-badge {
     display: inline-flex;
     align-items: center;

@@ -228,7 +228,7 @@
             </FieldShell>
             <FieldShell Label="Actual aircraft type" Icon="connecting_airports">
                 <RadzenDropDown TValue="Guid?" @bind-Value="model.ActualAircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                AllowClear="true" AllowFiltering="true" class="owf-control" />
+                                AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
             </FieldShell>
             <FieldShell Label="Tail number" Icon="confirmation_number">
                 <RadzenTextBox @bind-Value="model.AircraftTailNumber" MaxLength="20" class="owf-control" />
@@ -274,17 +274,19 @@
                 <div class="owf-grid-2">
                     <FieldShell Label="Service" Icon="miscellaneous_services">
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.ServiceId" Data="@actualServices" TextProperty="Name" ValueProperty="Id"
-                                        AllowFiltering="true" class="owf-control" />
+                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     </FieldShell>
                     <FieldShell Label="Performed by" Icon="person">
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.PerformedByStaffMemberId" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        AllowFiltering="true" class="owf-control" />
+                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     </FieldShell>
                     <FieldShell Label="From (UTC)" Icon="schedule">
-                        <RadzenDatePicker TValue="DateTime?" @bind-Value="line.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
+                        <RadzenDatePicker TValue="DateTime?" @bind-Value="line.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </FieldShell>
                     <FieldShell Label="To (UTC)" Icon="schedule">
-                        <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
+                        <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </FieldShell>
                 </div>
                 <div class="owf-row-actions">
@@ -313,13 +315,15 @@
                     </FieldShell>
                     <FieldShell Label="Employees" Icon="groups">
                         <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        Multiple="true" AllowFiltering="true" class="owf-control" />
+                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     </FieldShell>
                     <FieldShell Label="From (UTC)" Icon="schedule">
-                        <RadzenDatePicker TValue="DateTime?" @bind-Value="task.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
+                        <RadzenDatePicker TValue="DateTime?" @bind-Value="task.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </FieldShell>
                     <FieldShell Label="To (UTC)" Icon="schedule">
-                        <RadzenDatePicker TValue="DateTime?" @bind-Value="task.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
+                        <RadzenDatePicker TValue="DateTime?" @bind-Value="task.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </FieldShell>
                 </div>
                 <div class="owf-row-actions">
@@ -340,7 +344,8 @@
             @foreach (var row in task.Tools)
             {
                 <div @key="row.Key" class="owf-resource-row">
-                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@toolOptions" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="owf-control" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@toolOptions" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     <RadzenNumeric TValue="decimal" @bind-Value="row.Quantity" Min="0.01m" Step="1m" class="owf-qty" />
                     <button type="button" @onclick="@(() => task.Tools.Remove(row))"><RadzenIcon Icon="close" /></button>
                 </div>
@@ -354,7 +359,8 @@
             @foreach (var row in task.Materials)
             {
                 <div @key="row.Key" class="owf-resource-row">
-                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@materialOptions" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="owf-control" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@materialOptions" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     <RadzenNumeric TValue="decimal" @bind-Value="row.Quantity" Min="0.01m" Step="1m" class="owf-qty" />
                     <button type="button" @onclick="@(() => task.Materials.Remove(row))"><RadzenIcon Icon="close" /></button>
                 </div>
@@ -368,7 +374,8 @@
             @foreach (var row in task.GeneralSupports)
             {
                 <div @key="row.Key" class="owf-resource-row">
-                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@supportOptions" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" class="owf-control" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@supportOptions" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     <RadzenNumeric TValue="decimal" @bind-Value="row.Quantity" Min="0.01m" Step="1m" class="owf-qty" />
                     <button type="button" @onclick="@(() => task.GeneralSupports.Remove(row))"><RadzenIcon Icon="close" /></button>
                 </div>
@@ -529,7 +536,7 @@
             return "Customer, station, and flight number are required.";
         if (model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
             return "STA and STD are required.";
-        if (model.ScheduledDepartureUtc <= model.ScheduledArrivalUtc)
+        if (model.ScheduledDepartureUtc!.Value <= model.ScheduledArrivalUtc!.Value)
             return "STD must be after STA.";
         return null;
     }
@@ -556,18 +563,38 @@
 
         if ((model.ActualArrivalUtc is null) != (model.ActualDepartureUtc is null))
             return "Provide both ATA and ATD, or leave both blank until approval.";
+        if (model.ActualArrivalUtc is not null && model.ActualDepartureUtc is not null && model.ActualDepartureUtc.Value < model.ActualArrivalUtc.Value)
+            return "ATD cannot be before ATA.";
         return null;
     }
 
-    private string? ValidateServiceLines() =>
-        model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || l.FromUtc is null || l.ToUtc is null)
-            ? "Every service line needs a service, performer, and time window."
-            : null;
+    private string? ValidateServiceLines()
+    {
+        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || l.FromUtc is null || l.ToUtc is null))
+            return "Every service line needs a service, performer, and time window.";
+        if (model.ServiceLines.Any(l => l.ToUtc!.Value < l.FromUtc!.Value))
+            return "Service line To time cannot be before From time.";
+        if (model.ActualArrivalUtc is { } ata && model.ServiceLines.Any(l => l.FromUtc!.Value < ata))
+            return "Service line From time cannot be before ATA.";
+        if (model.ActualDepartureUtc is { } atd && model.ServiceLines.Any(l => l.ToUtc!.Value > atd))
+            return "Service line To time cannot be after ATD.";
 
-    private string? ValidateTasks() =>
-        model.Tasks.Any(t => t.FromUtc is null || t.ToUtc is null)
-            ? "Every task needs a time window."
-            : null;
+        return null;
+    }
+
+    private string? ValidateTasks()
+    {
+        if (model.Tasks.Any(t => t.FromUtc is null || t.ToUtc is null))
+            return "Every task needs a time window.";
+        if (model.Tasks.Any(t => t.ToUtc!.Value < t.FromUtc!.Value))
+            return "Task To time cannot be before From time.";
+        if (model.ActualArrivalUtc is { } ata && model.Tasks.Any(t => t.FromUtc!.Value < ata))
+            return "Task From time cannot be before ATA.";
+        if (model.ActualDepartureUtc is { } atd && model.Tasks.Any(t => t.ToUtc!.Value > atd))
+            return "Task To time cannot be after ATD.";
+
+        return null;
+    }
 
     private async Task CheckDuplicatesAsync()
     {

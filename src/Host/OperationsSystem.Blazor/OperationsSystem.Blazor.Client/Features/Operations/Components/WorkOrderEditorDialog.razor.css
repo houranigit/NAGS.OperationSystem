@@ -132,7 +132,7 @@
 
 .owo-stepper {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     padding-inline: var(--os-space-5);
     padding-block-end: 0.75rem;
     border-block-end: 1px solid #80808036;

@@ -77,7 +77,8 @@ public sealed record WorkOrderRequest(
     string? CancellationReason,
     string? Remarks,
     IReadOnlyList<WorkOrderServiceLineRequest>? ServiceLines,
-    IReadOnlyList<WorkOrderTaskRequest>? Tasks)
+    IReadOnlyList<WorkOrderTaskRequest>? Tasks,
+    WorkOrderSignatureRequest? CustomerSignature = null)
 {
     public WorkOrderEditableCommandPayload ToPayload() =>
         new(
@@ -104,7 +105,18 @@ public sealed record WorkOrderRequest(
                 t.EmployeeIds ?? [],
                 t.Tools?.Select(tool => new WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity)).ToList() ?? [],
                 t.Materials?.Select(material => new WorkOrderTaskMaterialCommand(material.MaterialId, material.Quantity)).ToList() ?? [],
-                t.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity)).ToList() ?? [])).ToList() ?? []);
+                t.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity)).ToList() ?? [],
+                t.Attachments?.Select(attachment => new WorkOrderTaskAttachmentCommand(
+                    attachment.Kind,
+                    attachment.Content,
+                    attachment.FileName,
+                    attachment.ContentType)).ToList() ?? [])).ToList() ?? [],
+            CustomerSignature is null
+                ? null
+                : new WorkOrderSignatureCommand(
+                    CustomerSignature.Content,
+                    CustomerSignature.FileName,
+                    CustomerSignature.ContentType));
 }
 
 public sealed record MergeWorkOrdersRequest(
@@ -137,12 +149,24 @@ public sealed record WorkOrderTaskRequest(
     IReadOnlyList<Guid>? EmployeeIds,
     IReadOnlyList<WorkOrderTaskToolRequest>? Tools,
     IReadOnlyList<WorkOrderTaskMaterialRequest>? Materials,
-    IReadOnlyList<WorkOrderTaskGeneralSupportRequest>? GeneralSupports);
+    IReadOnlyList<WorkOrderTaskGeneralSupportRequest>? GeneralSupports,
+    IReadOnlyList<WorkOrderTaskAttachmentRequest>? Attachments = null);
 
 public sealed record WorkOrderTaskToolRequest(Guid ToolId, decimal Quantity);
 
 public sealed record WorkOrderTaskMaterialRequest(Guid MaterialId, decimal Quantity);
 
 public sealed record WorkOrderTaskGeneralSupportRequest(Guid GeneralSupportId, decimal Quantity);
+
+public sealed record WorkOrderTaskAttachmentRequest(
+    TaskAttachmentKind Kind,
+    byte[] Content,
+    string FileName,
+    string ContentType);
+
+public sealed record WorkOrderSignatureRequest(
+    byte[] Content,
+    string FileName,
+    string ContentType);
 
 public sealed record ReturnWorkOrderRequest(string Reason);

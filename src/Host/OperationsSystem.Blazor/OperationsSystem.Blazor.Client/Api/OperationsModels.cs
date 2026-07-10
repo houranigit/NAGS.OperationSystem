@@ -245,7 +245,8 @@ public sealed record WorkOrderRequestModel(
     string? CancellationReason,
     string? Remarks,
     IReadOnlyList<WorkOrderServiceLineRequestModel> ServiceLines,
-    IReadOnlyList<WorkOrderTaskRequestModel> Tasks);
+    IReadOnlyList<WorkOrderTaskRequestModel> Tasks,
+    WorkOrderSignatureRequestModel? CustomerSignature = null);
 
 public sealed record MergeWorkOrdersRequestModel(
     IReadOnlyList<Guid> SourceWorkOrderIds,
@@ -268,12 +269,24 @@ public sealed record WorkOrderTaskRequestModel(
     IReadOnlyList<Guid> EmployeeIds,
     IReadOnlyList<WorkOrderTaskToolRequestModel> Tools,
     IReadOnlyList<WorkOrderTaskMaterialRequestModel> Materials,
-    IReadOnlyList<WorkOrderTaskGeneralSupportRequestModel> GeneralSupports);
+    IReadOnlyList<WorkOrderTaskGeneralSupportRequestModel> GeneralSupports,
+    IReadOnlyList<WorkOrderTaskAttachmentRequestModel>? Attachments = null);
 
 public sealed record WorkOrderTaskToolRequestModel(Guid ToolId, decimal Quantity);
 
 public sealed record WorkOrderTaskMaterialRequestModel(Guid MaterialId, decimal Quantity);
 
 public sealed record WorkOrderTaskGeneralSupportRequestModel(Guid GeneralSupportId, decimal Quantity);
+
+public sealed record WorkOrderTaskAttachmentRequestModel(
+    string Kind,
+    byte[] Content,
+    string FileName,
+    string ContentType);
+
+public sealed record WorkOrderSignatureRequestModel(
+    byte[] Content,
+    string FileName,
+    string ContentType);
 
 public sealed record ReturnWorkOrderRequestModel(string Reason);

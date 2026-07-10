@@ -28,9 +28,13 @@
                 {
                     @ServiceLinesStep()
                 }
-                else
+                else if (step == 2)
                 {
                     @TasksStep()
+                }
+                else
+                {
+                    @CustomerSignatureStep()
                 }
             </div>
         }
@@ -96,7 +100,7 @@
 
     private bool IsCompletion => model.Type == "Completion";
     private bool IsCancellation => model.Type == "Cancellation";
-    private int LastStep => IsCompletion ? 2 : 0;
+    private int LastStep => IsCompletion ? 3 : 0;
     private string SubmitText => WorkOrderId is null ? "Create" : "Update";
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
@@ -220,7 +224,8 @@
                 <div class="owo-input-wrap">
                     <span class="owo-field-icon"><RadzenIcon Icon="flight" /></span>
                     <RadzenDropDown TValue="Guid?" @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                    AllowClear="true" AllowFiltering="true" Disabled="@ViewOnly" class="owo-control owo-control-icon" />
+                                    AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                    Disabled="@ViewOnly" class="owo-control owo-control-icon" />
                 </div>
             </div>
             <div class="owo-field-block">
@@ -253,7 +258,6 @@
             <label class="owo-label">Remarks</label>
             <RadzenTextArea @bind-Value="model.Remarks" Rows="4" MaxLength="2000" Disabled="@ViewOnly" class="owo-control" />
         </div>
-        @CustomerSignatureSection()
     </section>;
 
     private RenderFragment CancellationDetailsStep() => @<section class="owo-step-content">
@@ -295,21 +299,25 @@
                     <div class="owo-field-block">
                         <label class="owo-label">Service <span class="owo-required">*</span></label>
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.ServiceId" Data="@serviceOptions" TextProperty="Name" ValueProperty="Id"
-                                        AllowFiltering="true" Disabled="@ViewOnly" class="owo-control" />
+                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">Performed by <span class="owo-required">*</span></label>
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.PerformedByStaffMemberId" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        AllowFiltering="true" Disabled="@ViewOnly" class="owo-control" />
+                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">From (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">To (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                 </div>
@@ -350,16 +358,19 @@
                     <div class="owo-field-block">
                         <label class="owo-label">Employees <span class="owo-required">*</span></label>
                         <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        Multiple="true" AllowFiltering="true" Disabled="@ViewOnly" class="owo-control" />
+                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">From (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">To (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                          Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                 </div>
@@ -411,22 +422,39 @@
         @ResourceBlock("General support", "headset_mic", task.GeneralSupports, supportOptions, AddSupport, RemoveSupport)
     </div>;
 
+    private RenderFragment CustomerSignatureStep() => @<section class="owo-step-content">
+        <div class="owo-section-line"><RadzenIcon Icon="draw" /><span>Customer signature</span></div>
+        @CustomerSignatureSection()
+    </section>;
+
     private RenderFragment CustomerSignatureSection() => @<div class="owo-signature">
         <div class="owo-signature-head">
             <span><RadzenIcon Icon="draw" />Customer signature</span>
-            @if (!ViewOnly)
+            @if (!ViewOnly && CanEditSignature)
             {
-                @if (CanEditSignature)
-                {
-                    <label class="owo-signature-upload"><RadzenIcon Icon="upload" /><span>@(workOrder?.CustomerSignature is null ? "Upload PNG" : "Replace PNG")</span><InputFile OnChange="@UploadSignatureAsync" accept="image/png" /></label>
-                }
-                else
-                {
-                    <span class="owo-attachment-hint">Save the work order before capturing a signature.</span>
-                }
+                <label class="owo-signature-upload"><RadzenIcon Icon="upload" /><span>@SignatureUploadText</span><InputFile OnChange="@UploadSignatureAsync" accept="image/png" /></label>
+            }
+            else if (!ViewOnly)
+            {
+                <span class="owo-attachment-hint">Customer signatures are available only while the work order is editable.</span>
             }
         </div>
-        @if (workOrder?.CustomerSignature is { } signature)
+        @if (model.CustomerSignature is { } pendingSignature)
+        {
+            <div class="owo-signature-row">
+                <span class="owo-attachment-icon"><RadzenIcon Icon="draw" /></span>
+                <span class="owo-attachment-main">
+                    <strong>@pendingSignature.FileName</strong>
+                    <small>Pending · @FormatFileSize(pendingSignature.Size)</small>
+                </span>
+                @if (!ViewOnly)
+                {
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                  Disabled="@isAttachmentBusy" Click="@ClearPendingSignature" />
+                }
+            </div>
+        }
+        else if (workOrder?.CustomerSignature is { } signature)
         {
             <div class="owo-signature-row">
                 <span class="owo-attachment-icon"><RadzenIcon Icon="draw" /></span>
@@ -440,7 +468,7 @@
                 }
                 <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
                               Disabled="@isAttachmentBusy" Click="@DownloadSignatureAsync" />
-                @if (!ViewOnly)
+                @if (!ViewOnly && CanEditSignature)
                 {
                     <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
                                   Disabled="@isAttachmentBusy" Click="@DeleteSignatureAsync" />
@@ -468,7 +496,7 @@
                 }
                 else
                 {
-                    <span class="owo-attachment-hint">Save the work order before adding files.</span>
+                    <span class="owo-attachment-hint">Attachments are available only while the work order is editable.</span>
                 }
             }
         </div>
@@ -482,18 +510,21 @@
             <div class="owo-attachment-list">
                 @foreach (var attachment in task.Attachments)
                 {
-                    <div @key="attachment.Id" class="owo-attachment-row">
+                    <div @key="attachment.Key" class="owo-attachment-row">
                         <span class="owo-attachment-icon"><RadzenIcon Icon="@AttachmentIcon(attachment.Kind)" /></span>
                         <span class="owo-attachment-main">
                             <strong>@attachment.OriginalFileName</strong>
-                            <small>@attachment.Kind · @FormatFileSize(attachment.Size)</small>
+                            <small>@attachment.Kind · @(attachment.IsPending ? "Pending · " : string.Empty)@FormatFileSize(attachment.Size)</small>
                         </span>
                         @if (!string.IsNullOrWhiteSpace(attachment.DownloadUrl))
                         {
                             <a class="owo-attachment-link" href="@attachment.DownloadUrl" download="@attachment.OriginalFileName">Open</a>
                         }
-                        <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
-                                      Disabled="@isAttachmentBusy" Click="@(() => DownloadAttachmentAsync(task, attachment))" />
+                        @if (!attachment.IsPending)
+                        {
+                            <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                          Disabled="@isAttachmentBusy" Click="@(() => DownloadAttachmentAsync(task, attachment))" />
+                        }
                         @if (!ViewOnly)
                         {
                             <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
@@ -524,7 +555,8 @@
             {
                 <div @key="row.Key" class="owo-resource-row">
                     <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@options" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" Disabled="@ViewOnly" class="owo-control" />
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                    Disabled="@ViewOnly" class="owo-control" />
                     <RadzenNumeric @bind-Value="row.Quantity" Min="0.01m" Step="0.25m" Disabled="@ViewOnly" class="owo-qty" />
                     @if (!ViewOnly)
                     {
@@ -541,11 +573,17 @@
 
     private TaskForm CurrentTaskFor(List<ResourceForm> rows) => model.Tasks.First(t => ReferenceEquals(t.Tools, rows) || ReferenceEquals(t.Materials, rows) || ReferenceEquals(t.GeneralSupports, rows));
 
-    private void AddServiceLine() => model.ServiceLines.Add(new ServiceLineForm { FromUtc = DateTime.UtcNow, ToUtc = DateTime.UtcNow.AddHours(1) });
+    private void AddServiceLine() => model.ServiceLines.Add(new ServiceLineForm { FromUtc = DefaultWindowStart, ToUtc = DefaultWindowEnd });
     private void RemoveServiceLine(ServiceLineForm line) => model.ServiceLines.Remove(line);
 
-    private void AddTask() => model.Tasks.Add(new TaskForm { FromUtc = DateTime.UtcNow, ToUtc = DateTime.UtcNow.AddHours(1) });
+    private void AddTask() => model.Tasks.Add(new TaskForm { FromUtc = DefaultWindowStart, ToUtc = DefaultWindowEnd });
     private void RemoveTask(TaskForm task) => model.Tasks.Remove(task);
+
+    private DateTime DefaultWindowStart =>
+        model.ActualArrivalUtc ?? flight?.ScheduledArrivalUtc.UtcDateTime ?? DateTime.UtcNow;
+
+    private DateTime DefaultWindowEnd =>
+        model.ActualDepartureUtc ?? flight?.ScheduledDepartureUtc.UtcDateTime ?? DefaultWindowStart.AddHours(1);
 
     private static void AddTool(TaskForm task) => task.Tools.Add(new ResourceForm());
     private static void RemoveTool(TaskForm task, ResourceForm row) => task.Tools.Remove(row);
@@ -555,21 +593,23 @@
     private static void RemoveSupport(TaskForm task, ResourceForm row) => task.GeneralSupports.Remove(row);
 
     private bool CanUploadAttachments(TaskForm task) =>
-        WorkOrderId is not null && workOrder is not null && task.Id is not null && workOrder.Status is "Submitted" or "Returned";
+        IsCompletion && !ViewOnly && (WorkOrderId is null || workOrder is null || workOrder.Status is "Submitted" or "Returned");
 
     private bool CanEditSignature =>
-        WorkOrderId is not null && workOrder is not null && workOrder.Status is "Submitted" or "Returned" && workOrder.Type == "Completion";
+        IsCompletion && !ViewOnly && (WorkOrderId is null || workOrder is null || workOrder.Status is "Submitted" or "Returned");
+
+    private string SignatureUploadText =>
+        model.CustomerSignature is not null
+            ? "Replace PNG"
+            : workOrder?.CustomerSignature is null
+                ? "Upload PNG"
+                : "Replace PNG";
 
     private async Task UploadSignatureAsync(InputFileChangeEventArgs args)
     {
-        if (WorkOrderId is not { } workOrderId || workOrder is null)
-        {
-            errorMessage = "Save the work order before capturing a signature.";
-            return;
-        }
-
         var file = args.File;
-        if (file.ContentType != "image/png" && !file.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
+        if (!contentType.Equals("image/png", StringComparison.OrdinalIgnoreCase) && !file.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
         {
             errorMessage = "Customer signature must be a PNG image.";
             return;
@@ -587,19 +627,26 @@
             await using var stream = file.OpenReadStream(2 * 1024 * 1024);
             using var memory = new MemoryStream();
             await stream.CopyToAsync(memory);
-            await Operations.UploadWorkOrderSignatureAsync(workOrderId, memory.ToArray(), file.Name, file.ContentType, workOrder.RowVersion);
+            model.CustomerSignature = new PendingFileForm
+            {
+                Content = memory.ToArray(),
+                FileName = file.Name,
+                ContentType = contentType,
+                Size = file.Size
+            };
             signatureDownloadUrl = null;
-            await ReloadWorkOrderAsync(workOrderId);
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
-            errorMessage = ex.ToDisplayMessage("Could not upload the customer signature.");
+            errorMessage = "Could not read the customer signature.";
         }
         finally
         {
             isAttachmentBusy = false;
         }
     }
+
+    private void ClearPendingSignature() => model.CustomerSignature = null;
 
     private async Task DownloadSignatureAsync()
     {
@@ -648,12 +695,6 @@
 
     private async Task UploadAttachmentAsync(TaskForm task, string kind, InputFileChangeEventArgs args)
     {
-        if (WorkOrderId is not { } workOrderId || workOrder is null || task.Id is not { } taskId)
-        {
-            errorMessage = "Save the work order before adding files.";
-            return;
-        }
-
         var file = args.File;
         var maxBytes = MaxAttachmentBytes(kind);
         if (file.Size > maxBytes)
@@ -669,12 +710,18 @@
             await using var stream = file.OpenReadStream(maxBytes);
             using var memory = new MemoryStream();
             await stream.CopyToAsync(memory);
-            await Operations.UploadWorkOrderAttachmentAsync(workOrderId, taskId, kind, memory.ToArray(), file.Name, file.ContentType, workOrder.RowVersion);
-            await ReloadWorkOrderAsync(workOrderId);
+            task.Attachments.Add(new AttachmentForm
+            {
+                Kind = kind,
+                OriginalFileName = file.Name,
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                Size = file.Size,
+                Content = memory.ToArray()
+            });
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
-            errorMessage = ex.ToDisplayMessage("Could not upload the attachment.");
+            errorMessage = "Could not read the attachment.";
         }
         finally
         {
@@ -684,14 +731,14 @@
 
     private async Task DownloadAttachmentAsync(TaskForm task, AttachmentForm attachment)
     {
-        if (WorkOrderId is not { } workOrderId || task.Id is not { } taskId)
+        if (WorkOrderId is not { } workOrderId || task.Id is not { } taskId || attachment.Id is not { } attachmentId)
             return;
 
         isAttachmentBusy = true;
         errorMessage = null;
         try
         {
-            var file = await Operations.DownloadWorkOrderAttachmentAsync(workOrderId, taskId, attachment.Id);
+            var file = await Operations.DownloadWorkOrderAttachmentAsync(workOrderId, taskId, attachmentId);
             attachment.DownloadUrl = $"data:{file.ContentType};base64,{file.Base64}";
         }
         catch (ApiException ex)
@@ -706,14 +753,20 @@
 
     private async Task DeleteAttachmentAsync(TaskForm task, AttachmentForm attachment)
     {
-        if (WorkOrderId is not { } workOrderId || workOrder is null || task.Id is not { } taskId)
+        if (attachment.IsPending)
+        {
+            task.Attachments.Remove(attachment);
+            return;
+        }
+
+        if (WorkOrderId is not { } workOrderId || workOrder is null || task.Id is not { } taskId || attachment.Id is not { } attachmentId)
             return;
 
         isAttachmentBusy = true;
         errorMessage = null;
         try
         {
-            await Operations.DeleteWorkOrderAttachmentAsync(workOrderId, taskId, attachment.Id, workOrder.RowVersion);
+            await Operations.DeleteWorkOrderAttachmentAsync(workOrderId, taskId, attachmentId, workOrder.RowVersion);
             await ReloadWorkOrderAsync(workOrderId);
         }
         catch (ApiException ex)
@@ -852,7 +905,7 @@
             messages.Add("ATA is required.");
         if (IsMissing(model.ActualDepartureUtc))
             messages.Add("ATD is required.");
-        if (!IsMissing(model.ActualArrivalUtc) && !IsMissing(model.ActualDepartureUtc) && model.ActualDepartureUtc < model.ActualArrivalUtc)
+        if (!IsMissing(model.ActualArrivalUtc) && !IsMissing(model.ActualDepartureUtc) && model.ActualDepartureUtc!.Value < model.ActualArrivalUtc!.Value)
             messages.Add("ATD cannot be before ATA.");
         return messages;
     }
@@ -862,8 +915,12 @@
         var messages = new List<string>();
         if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
             messages.Add("Every service line needs a service, performer, From, and To time.");
-        if (model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && !IsMissing(l.ToUtc) && l.ToUtc < l.FromUtc))
+        if (model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && !IsMissing(l.ToUtc) && l.ToUtc!.Value < l.FromUtc!.Value))
             messages.Add("Service line To time cannot be before From time.");
+        if (model.ActualArrivalUtc is { } ata && model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && l.FromUtc!.Value < ata))
+            messages.Add("Service line From time cannot be before ATA.");
+        if (model.ActualDepartureUtc is { } atd && model.ServiceLines.Any(l => !IsMissing(l.ToUtc) && l.ToUtc!.Value > atd))
+            messages.Add("Service line To time cannot be after ATD.");
         return messages;
     }
 
@@ -876,8 +933,12 @@
             messages.Add("Every task needs at least one employee.");
         if (model.Tasks.Any(t => IsMissing(t.FromUtc) || IsMissing(t.ToUtc)))
             messages.Add("Every task needs a From and To time.");
-        if (model.Tasks.Any(t => !IsMissing(t.FromUtc) && !IsMissing(t.ToUtc) && t.ToUtc < t.FromUtc))
+        if (model.Tasks.Any(t => !IsMissing(t.FromUtc) && !IsMissing(t.ToUtc) && t.ToUtc!.Value < t.FromUtc!.Value))
             messages.Add("Task To time cannot be before From time.");
+        if (model.ActualArrivalUtc is { } ata && model.Tasks.Any(t => !IsMissing(t.FromUtc) && t.FromUtc!.Value < ata))
+            messages.Add("Task From time cannot be before ATA.");
+        if (model.ActualDepartureUtc is { } atd && model.Tasks.Any(t => !IsMissing(t.ToUtc) && t.ToUtc!.Value > atd))
+            messages.Add("Task To time cannot be after ATD.");
 
         AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Tools), "tool");
         AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Materials), "material");
@@ -934,8 +995,19 @@
                     t.EmployeeIds.ToList(),
                     t.Tools.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskToolRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
                     t.Materials.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskMaterialRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
-                    t.GeneralSupports.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskGeneralSupportRequestModel(r.ItemId!.Value, r.Quantity)).ToList())).ToList()
-                : []);
+                    t.GeneralSupports.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskGeneralSupportRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
+                    t.Attachments.Where(a => a.IsPending).Select(a => new WorkOrderTaskAttachmentRequestModel(
+                        a.Kind,
+                        a.Content!,
+                        a.OriginalFileName,
+                        a.ContentType)).ToList())).ToList()
+                : [],
+            !completion || model.CustomerSignature is null
+                ? null
+                : new WorkOrderSignatureRequestModel(
+                    model.CustomerSignature.Content,
+                    model.CustomerSignature.FileName,
+                    model.CustomerSignature.ContentType));
     }
 
     private string StepClass(int index) =>
@@ -945,7 +1017,8 @@
     {
         0 => "Details",
         1 => "Service lines",
-        _ => "Tasks"
+        2 => "Tasks",
+        _ => "Signature"
     };
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
@@ -958,7 +1031,18 @@
         AircraftTypeId = flight.AircraftTypeId,
         ActualArrivalUtc = flight.ScheduledArrivalUtc.UtcDateTime,
         ActualDepartureUtc = flight.ScheduledDepartureUtc.UtcDateTime,
-        CanceledAtUtc = flight.ScheduledArrivalUtc.UtcDateTime
+        CanceledAtUtc = flight.ScheduledArrivalUtc.UtcDateTime,
+        ServiceLines = flight.IsPerLanding
+            ? []
+            : flight.PlannedServices
+                .Where(service => !service.IsAircraftPerLanding)
+                .Select(service => new ServiceLineForm
+                {
+                    ServiceId = service.ServiceId,
+                    FromUtc = flight.ScheduledArrivalUtc.UtcDateTime,
+                    ToUtc = flight.ScheduledDepartureUtc.UtcDateTime
+                })
+                .ToList()
     };
 
     private static WorkOrderFormModel FromWorkOrder(WorkOrderDetail workOrder) => new()
@@ -1074,6 +1158,7 @@
         public DateTime? CanceledAtUtc { get; set; }
         public string? CancellationReason { get; set; }
         public string? Remarks { get; set; }
+        public PendingFileForm? CustomerSignature { get; set; }
         public List<ServiceLineForm> ServiceLines { get; set; } = [];
         public List<TaskForm> Tasks { get; set; } = [];
     }
@@ -1113,11 +1198,22 @@
 
     private sealed class AttachmentForm
     {
-        public Guid Id { get; set; }
+        public Guid Key { get; } = Guid.NewGuid();
+        public Guid? Id { get; set; }
         public string Kind { get; set; } = "Document";
         public string OriginalFileName { get; set; } = string.Empty;
         public string ContentType { get; set; } = "application/octet-stream";
         public long Size { get; set; }
+        public byte[]? Content { get; set; }
         public string? DownloadUrl { get; set; }
+        public bool IsPending => Content is not null;
+    }
+
+    private sealed class PendingFileForm
+    {
+        public byte[] Content { get; set; } = [];
+        public string FileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = "application/octet-stream";
+        public long Size { get; set; }
     }
 }

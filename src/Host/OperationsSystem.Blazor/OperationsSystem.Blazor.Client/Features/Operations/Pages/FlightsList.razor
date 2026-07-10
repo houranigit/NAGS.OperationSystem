@@ -16,7 +16,7 @@
                 <AuthorizeView Context="schedule">
                     @if (schedule.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsSchedule))
                     {
-                        <RadzenButton Text="Schedule flights" Icon="event_repeat" ButtonStyle="ButtonStyle.Secondary" Click="@OpenBulkScheduleAsync" />
+                        <RadzenButton Text="Schedule flights" Icon="event_repeat" ButtonStyle="ButtonStyle.Light" class="ofl-schedule-bulk-button" Click="@OpenBulkScheduleAsync" />
                         <RadzenButton Text="Schedule flight" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenScheduleAsync" />
                     }
                 </AuthorizeView>

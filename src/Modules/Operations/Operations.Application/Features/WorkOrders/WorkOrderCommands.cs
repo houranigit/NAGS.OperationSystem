@@ -35,6 +35,7 @@ public sealed class SubmitWorkOrderCommandHandler(
     IOperationsScope scope,
     WorkOrderInputBuilder inputBuilder,
     MasterDataResolver resolver,
+    IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
     IWorkOrderTimelineWriter workOrderTimeline,
     IUserContext user,
@@ -99,9 +100,16 @@ public sealed class SubmitWorkOrderCommandHandler(
         if (workOrder.IsFailure)
             return workOrder.Error;
 
+        var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(workOrder.Value, request.Payload, storage, now, cancellationToken);
+        if (inlineFiles.IsFailure)
+            return inlineFiles.Error;
+
         var flightState = flight.OnWorkOrderSubmitted(now);
         if (flightState.IsFailure)
+        {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return flightState.Error;
+        }
 
         db.WorkOrders.Add(workOrder.Value);
         await workOrderTimeline.AppendAsync(workOrder.Value.Id, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
@@ -113,6 +121,7 @@ public sealed class SubmitWorkOrderCommandHandler(
         }
         catch (DbUpdateException)
         {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return Error.Conflict("A work order conflict occurred. Reload and try again.", "Operations.WorkOrder.Conflict");
         }
 
@@ -169,6 +178,7 @@ public sealed class UpdateWorkOrderCommandHandler(
 
         var previousAttachmentReferences = WorkOrderAttachmentStorage.References(workOrder);
 
+        var now = timeProvider.GetUtcNow();
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         var update = workOrder.UpdateDetails(
             request.Type,
@@ -180,16 +190,20 @@ public sealed class UpdateWorkOrderCommandHandler(
             input.Value.Remarks,
             input.Value.ServiceLines,
             input.Value.Tasks,
-            timeProvider.GetUtcNow());
+            now);
         if (update.IsFailure)
             return update.Error;
+
+        var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(workOrder, request.Payload, storage, now, cancellationToken);
+        if (inlineFiles.IsFailure)
+            return inlineFiles.Error;
 
         var timelineType = previousType == request.Type
             ? WorkOrderTimelineEventType.Updated
             : request.Type == WorkOrderType.Completion
                 ? WorkOrderTimelineEventType.ConvertedToCompletion
                 : WorkOrderTimelineEventType.ConvertedToCancellation;
-        await timeline.AppendAsync(workOrder.Id, timelineType, timeProvider.GetUtcNow(), cancellationToken: cancellationToken);
+        await timeline.AppendAsync(workOrder.Id, timelineType, now, cancellationToken: cancellationToken);
 
         try
         {
@@ -197,7 +211,13 @@ public sealed class UpdateWorkOrderCommandHandler(
         }
         catch (DbUpdateConcurrencyException)
         {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return ConcurrencyErrors.Stale;
+        }
+        catch (DbUpdateException)
+        {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
+            return Error.Conflict("Work order update conflicted with another update. Reload and try again.", "Operations.WorkOrder.UpdateConflict");
         }
 
         var currentAttachmentReferences = WorkOrderAttachmentStorage.References(workOrder);
