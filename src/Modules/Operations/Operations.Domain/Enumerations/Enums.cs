@@ -14,5 +14,49 @@ public enum FlightStatus
 public enum FlightTimelineEventType
 {
     FlightScheduled = 0,
-    EmployeeAssigned = 1
+    EmployeeAssigned = 1,
+    WorkOrderSubmitted = 2,
+    FlightCompleted = 3,
+    FlightCanceled = 4,
+    FlightReopened = 5
+}
+
+public enum WorkOrderStatus
+{
+    Submitted = 0,
+    Returned = 1,
+    Approved = 2,
+    Merged = 3
+}
+
+public enum WorkOrderType
+{
+    Completion = 0,
+    Cancellation = 1
+}
+
+public enum TaskType
+{
+    Major = 0,
+    Minor = 1
+}
+
+public enum TaskAttachmentKind
+{
+    Image = 0,
+    Voice = 1,
+    Document = 2
+}
+
+public enum WorkOrderTimelineEventType
+{
+    Submitted = 0,
+    Updated = 1,
+    ConvertedToCompletion = 2,
+    ConvertedToCancellation = 3,
+    Approved = 4,
+    NumberAssigned = 5,
+    Returned = 6,
+    NumberReleased = 7,
+    Merged = 8
 }

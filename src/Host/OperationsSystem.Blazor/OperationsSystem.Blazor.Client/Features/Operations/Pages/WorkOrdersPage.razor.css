@@ -1,0 +1,6 @@
+.os-role-cell-title {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    flex-wrap: wrap;
+}

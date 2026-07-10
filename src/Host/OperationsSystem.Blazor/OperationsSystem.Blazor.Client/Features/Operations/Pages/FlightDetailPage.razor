@@ -61,6 +61,11 @@
 
                         <div class="ofd-hero-actions">
                             <RadzenButton Text="Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@Back" />
+                            @if (CanAuthorWorkOrder(flight) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor))
+                            {
+                                <RadzenButton Text="Open work order" Icon="task_alt" ButtonStyle="ButtonStyle.Secondary" Click="@OpenCompletionWorkOrderAsync" />
+                                <RadzenButton Text="Cancel flight" Icon="cancel" ButtonStyle="ButtonStyle.Light" Click="@OpenCancellationWorkOrderAsync" />
+                            }
                             @if (CanEdit(flight) && Auth.HasPermission(OperationsPermissions.FlightsUpdate))
                             {
                                 <RadzenButton Text="Edit flight" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
@@ -103,6 +108,7 @@
                     {
                         FlightTab.Overview => OverviewTab(flight),
                         FlightTab.Services => ServicesTab(flight),
+                        FlightTab.WorkOrders => WorkOrdersTab(flight),
                         FlightTab.Timeline => TimelineTab(),
                         FlightTab.History => HistoryTab(),
                         _ => OverviewTab(flight)
@@ -132,7 +138,7 @@
     private bool CanMergeFlight => flight is { } f && CanMerge(f);
     private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
 
-    private enum FlightTab { Overview, Services, Timeline, History }
+    private enum FlightTab { Overview, Services, WorkOrders, Timeline, History }
 
     private sealed record TabDef(FlightTab Key, string Label, string Icon);
 
@@ -140,6 +146,8 @@
     {
         yield return new TabDef(FlightTab.Overview, "Overview", "dashboard");
         yield return new TabDef(FlightTab.Services, "Services & staff", "groups");
+        if (Auth.HasPermission(OperationsPermissions.WorkOrdersView))
+            yield return new TabDef(FlightTab.WorkOrders, "Work orders", "fact_check");
         yield return new TabDef(FlightTab.Timeline, "Timeline", "history");
         if (CanViewAudit)
             yield return new TabDef(FlightTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
@@ -302,6 +310,46 @@
         </RadzenCard>
     </text>;
 
+    private RenderFragment WorkOrdersTab(FlightDetail f) => @<text>
+        <RadzenCard class="ofd-card">
+            <div class="ofd-card-head">
+                <RadzenIcon Icon="fact_check" /><h3>Work orders</h3>
+                <span class="ofd-count">@f.WorkOrders.Count</span>
+            </div>
+            @if (f.WorkOrders.Count == 0)
+            {
+                <EmptyState Title="No work orders" Icon="fact_check" />
+            }
+            else
+            {
+                <div class="ofd-list">
+                    @foreach (var workOrder in f.WorkOrders)
+                    {
+                        <div @key="workOrder.Id" class="ofd-list-row">
+                            <span class="ofd-list-icon @(workOrder.Type == "Cancellation" ? "ofd-list-icon--red" : "ofd-list-icon--green")">
+                                <RadzenIcon Icon="@(workOrder.Type == "Cancellation" ? "cancel" : "task_alt")" />
+                            </span>
+                            <div class="ofd-list-main">
+                                <p class="ofd-list-title">@DisplayWorkOrder(workOrder)</p>
+                                <p class="os-muted ofd-list-sub">@workOrder.Type · @None(workOrder.OwnerName)</p>
+                            </div>
+                            <StatusBadge Label="@workOrder.Status" Tone="@WorkOrderStatusTone(workOrder.Status)" />
+                            <RowActionMenu>
+                                <RowAction Text="View" Icon="visibility" OnClick="@(() => OpenWorkOrderSummaryAsync(workOrder, true))" />
+                                <RowAction Text="Edit" Icon="edit" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                                           Visible="@CanEditWorkOrder(workOrder)" OnClick="@(() => OpenWorkOrderSummaryAsync(workOrder, false))" />
+                                <RowAction Text="Approve" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersApprove"
+                                           Visible="@CanApproveWorkOrder(workOrder)" OnClick="@(() => ApproveWorkOrderAsync(workOrder))" />
+                                <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
+                                           Visible="@CanReturnWorkOrder(workOrder)" OnClick="@(() => ReturnWorkOrderAsync(workOrder))" />
+                            </RowActionMenu>
+                        </div>
+                    }
+                </div>
+            }
+        </RadzenCard>
+    </text>;
+
     private RenderFragment HistoryTab() => @<text>
         <RadzenCard class="ofd-card">
             <div class="ofd-card-head"><RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3></div>
@@ -458,6 +506,8 @@
             "FlightUpdated" => "Flight updated",
             "FlightCompleted" => "Flight completed",
             "FlightCanceled" => "Flight canceled",
+            "FlightReopened" => "Flight reopened",
+            "WorkOrderSubmitted" => "Work order submitted",
             "FlightMerged" => "Flight merged",
             "EmployeeAssigned" => "Employee assigned",
             "EmployeeInvited" => "Employee invited",
@@ -532,6 +582,105 @@
         {
             Notifications.Notify(NotificationSeverity.Success, "Employee invited");
             await LoadAsync();
+        }
+    }
+
+    private Task OpenCompletionWorkOrderAsync() => OpenWorkOrderAsync("Completion");
+    private Task OpenCancellationWorkOrderAsync() => OpenWorkOrderAsync("Cancellation");
+
+    private async Task OpenWorkOrderAsync(string type)
+    {
+        if (flight is null)
+            return;
+
+        try
+        {
+            var mine = await Operations.GetMyWorkOrderForFlightAsync(flight.Id);
+            var viewOnly = mine?.Status == "Approved";
+            if (mine is not null && mine.Type != type && !viewOnly)
+            {
+                var confirmed = await DialogService.Confirm(
+                    $"You already have a {mine.Type} work order for this flight. Convert it to {type}?",
+                    "Convert work order",
+                    new ConfirmOptions { OkButtonText = "Convert", CancelButtonText = "Cancel" });
+                if (confirmed is not true)
+                    return;
+            }
+
+            var result = await DialogService.OpenAsync<WorkOrderEditorDialog>(
+                viewOnly ? "Work order" : $"{type} work order",
+                new Dictionary<string, object?>
+                {
+                    [nameof(WorkOrderEditorDialog.FlightId)] = flight.Id,
+                    [nameof(WorkOrderEditorDialog.WorkOrderId)] = mine?.Id,
+                    [nameof(WorkOrderEditorDialog.Type)] = type,
+                    [nameof(WorkOrderEditorDialog.ViewOnly)] = viewOnly
+                },
+                new DialogOptions { Width = "980px" });
+
+            if (result is true)
+            {
+                Notifications.Notify(NotificationSeverity.Success, "Work order saved");
+                await LoadAsync();
+            }
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Work order unavailable", ex.ToDisplayMessage("Could not open the work order."));
+        }
+    }
+
+    private async Task OpenWorkOrderSummaryAsync(WorkOrderSummaryModel summary, bool viewOnly)
+    {
+        var result = await DialogService.OpenAsync<WorkOrderEditorDialog>(
+            viewOnly ? "Work order" : "Edit work order",
+            new Dictionary<string, object?>
+            {
+                [nameof(WorkOrderEditorDialog.WorkOrderId)] = summary.Id,
+                [nameof(WorkOrderEditorDialog.Type)] = summary.Type,
+                [nameof(WorkOrderEditorDialog.ViewOnly)] = viewOnly
+            },
+            new DialogOptions { Width = "980px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Work order updated");
+            await LoadAsync();
+        }
+    }
+
+    private async Task ApproveWorkOrderAsync(WorkOrderSummaryModel summary)
+    {
+        try
+        {
+            await Operations.ApproveWorkOrderAsync(summary.Id, summary.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Work order approved");
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Approval failed", ex.ToDisplayMessage("Could not approve the work order."));
+        }
+    }
+
+    private async Task ReturnWorkOrderAsync(WorkOrderSummaryModel summary)
+    {
+        var reason = await DialogService.OpenAsync<WorkOrderReturnDialog>(
+            "Return work order",
+            null,
+            new DialogOptions { Width = "520px" });
+        if (reason is not string value || string.IsNullOrWhiteSpace(value))
+            return;
+
+        try
+        {
+            await Operations.ReturnWorkOrderAsync(summary.Id, new ReturnWorkOrderRequestModel(value), summary.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Work order returned");
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Return failed", ex.ToDisplayMessage("Could not return the work order."));
         }
     }
 
@@ -614,6 +763,21 @@
     private static bool CanInvite(FlightDetail f) => f is { Status: "Scheduled", IsPerLanding: false };
 
     private static bool CanMerge(FlightDetail f) => f.Status is not "Completed" and not "Canceled" and not "Merged";
+    private static bool CanAuthorWorkOrder(FlightDetail f) => f.Status is "Scheduled" or "InProgress";
+    private static bool CanEditWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
+    private static bool CanApproveWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
+    private static bool CanReturnWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Approved";
+
+    private static string DisplayWorkOrder(WorkOrderSummaryModel workOrder) =>
+        string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;
+
+    private static string WorkOrderStatusTone(string status) => status switch
+    {
+        "Approved" => "success",
+        "Merged" => "danger",
+        "Submitted" => "warning",
+        _ => "neutral"
+    };
 
     private static string ProfileClass(FlightDetail flight) => flight.Status switch
     {

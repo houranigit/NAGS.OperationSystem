@@ -91,6 +91,56 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task MergeFlightsAsync(Guid survivorFlightId, Guid loserFlightId, CancellationToken ct = default) =>
         api.PostAsync("/operations/flights/merge", new MergeFlightsRequestModel(survivorFlightId, loserFlightId), ct);
 
+    public Task<Guid> SubmitWorkOrderAsync(Guid flightId, WorkOrderRequestModel request, CancellationToken ct = default) =>
+        api.PostAsync<WorkOrderRequestModel, Guid>($"/operations/flights/{flightId}/work-orders", request, ct);
+
+    public Task<WorkOrderSummaryModel?> GetMyWorkOrderForFlightAsync(Guid flightId, CancellationToken ct = default) =>
+        api.GetAsync<WorkOrderSummaryModel?>($"/operations/flights/{flightId}/work-orders/mine", ct);
+
+    public Task<PagedResult<WorkOrderListItem>> GetWorkOrdersAsync(
+        int page,
+        int pageSize,
+        string? search = null,
+        Guid? stationId = null,
+        string? status = null,
+        string? type = null,
+        Guid? flightId = null,
+        Guid? ownerUserId = null,
+        string? sort = null,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page)
+            .Add("pageSize", pageSize)
+            .Add("search", search)
+            .Add("stationId", stationId)
+            .Add("status", status)
+            .Add("type", type)
+            .Add("flightId", flightId)
+            .Add("ownerUserId", ownerUserId)
+            .Add("sort", sort)
+            .Build();
+        return api.GetAsync<PagedResult<WorkOrderListItem>>($"/operations/work-orders{query}", ct);
+    }
+
+    public Task<WorkOrderDetail> GetWorkOrderAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<WorkOrderDetail>($"/operations/work-orders/{id}", ct);
+
+    public Task<IReadOnlyList<WorkOrderTimelineEntryModel>> GetWorkOrderTimelineAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<WorkOrderTimelineEntryModel>>($"/operations/work-orders/{id}/timeline", ct);
+
+    public Task UpdateWorkOrderAsync(Guid id, WorkOrderRequestModel request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/operations/work-orders/{id}", request, rowVersion, ct);
+
+    public Task DeleteWorkOrderAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.DeleteAsync($"/operations/work-orders/{id}", rowVersion, ct);
+
+    public Task ApproveWorkOrderAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/operations/work-orders/{id}/approve", rowVersion, ct);
+
+    public Task ReturnWorkOrderAsync(Guid id, ReturnWorkOrderRequestModel request, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/operations/work-orders/{id}/return", request, rowVersion, ct);
+
     private sealed class QueryBuilder
     {
         private readonly List<string> _parts = [];

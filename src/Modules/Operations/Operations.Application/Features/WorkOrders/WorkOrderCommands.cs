@@ -1,0 +1,441 @@
+using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Auditing;
+using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Persistence;
+using BuildingBlocks.Contracts.Auditing;
+using BuildingBlocks.Domain.Results;
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Operations.Application.Abstractions;
+using Operations.Application.Authorization;
+using Operations.Application.Common;
+using Operations.Domain.Authorization;
+using Operations.Domain.Enumerations;
+using Operations.Domain.WorkOrders;
+
+namespace Operations.Application.Features.WorkOrders;
+
+public sealed record SubmitWorkOrderCommand(
+    Guid FlightId,
+    WorkOrderType Type,
+    WorkOrderEditableCommandPayload Payload) : ICommand<Guid>;
+
+public sealed class SubmitWorkOrderCommandValidator : AbstractValidator<SubmitWorkOrderCommand>
+{
+    public SubmitWorkOrderCommandValidator()
+    {
+        RuleFor(x => x.FlightId).NotEmpty();
+        RuleFor(x => x.Payload).NotNull();
+    }
+}
+
+public sealed class SubmitWorkOrderCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    WorkOrderInputBuilder inputBuilder,
+    MasterDataResolver resolver,
+    IFlightTimelineWriter flightTimeline,
+    IWorkOrderTimelineWriter workOrderTimeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<SubmitWorkOrderCommand, Guid>
+{
+    public async Task<Result<Guid>> Handle(SubmitWorkOrderCommand request, CancellationToken cancellationToken)
+    {
+        if (user.UserId is not { } ownerUserId)
+            return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
+
+        var flight = await db.Flights
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var flightAccess = scopeResult.Value.EnsureFlightAccess(flight);
+        if (flightAccess.IsFailure)
+            return flightAccess.Error;
+
+        var alreadyActive = await db.WorkOrders.AsNoTracking().AnyAsync(w =>
+            w.FlightId == flight.Id &&
+            w.OwnerUserId == ownerUserId &&
+            !w.IsMergeGenerated &&
+            (w.Status == WorkOrderStatus.Submitted || w.Status == WorkOrderStatus.Returned || w.Status == WorkOrderStatus.Approved),
+            cancellationToken);
+        if (alreadyActive)
+            return Error.Conflict("You already have an active work order for this flight.", "Operations.WorkOrder.ActiveExists");
+
+        var input = await inputBuilder.BuildAsync(request.Payload, flight.FlightNumber.Value, flight.Station.StationId, cancellationToken);
+        if (input.IsFailure)
+            return input.Error;
+
+        Operations.Domain.ValueObjects.StaffMemberSnapshot? owner = null;
+        if (scopeResult.Value.StaffMemberId is { } staffId)
+        {
+            var resolvedOwner = await resolver.StaffMemberAsync(staffId, cancellationToken);
+            if (resolvedOwner.IsFailure)
+                return resolvedOwner.Error;
+            owner = resolvedOwner.Value;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var workOrder = WorkOrder.SubmitNew(
+            flight,
+            request.Type,
+            ownerUserId,
+            owner,
+            input.Value.ActualFlightNumber,
+            input.Value.AircraftType,
+            input.Value.AircraftTailNumber,
+            input.Value.Actuals,
+            input.Value.Cancellation,
+            input.Value.Remarks,
+            input.Value.ServiceLines,
+            input.Value.Tasks,
+            now);
+        if (workOrder.IsFailure)
+            return workOrder.Error;
+
+        var flightState = flight.OnWorkOrderSubmitted(now);
+        if (flightState.IsFailure)
+            return flightState.Error;
+
+        db.WorkOrders.Add(workOrder.Value);
+        await workOrderTimeline.AppendAsync(workOrder.Value.Id, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
+        await flightTimeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now, details: workOrder.Value.Id.ToString(), cancellationToken: cancellationToken);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return Error.Conflict("A work order conflict occurred. Reload and try again.", "Operations.WorkOrder.Conflict");
+        }
+
+        return workOrder.Value.Id;
+    }
+}
+
+public sealed record UpdateWorkOrderCommand(
+    Guid Id,
+    byte[] RowVersion,
+    WorkOrderType Type,
+    WorkOrderEditableCommandPayload Payload) : ICommand;
+
+public sealed class UpdateWorkOrderCommandValidator : AbstractValidator<UpdateWorkOrderCommand>
+{
+    public UpdateWorkOrderCommandValidator()
+    {
+        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+        RuleFor(x => x.Payload).NotNull();
+    }
+}
+
+public sealed class UpdateWorkOrderCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    WorkOrderInputBuilder inputBuilder,
+    IWorkOrderTimelineWriter timeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<UpdateWorkOrderCommand>
+{
+    public async Task<Result> Handle(UpdateWorkOrderCommand request, CancellationToken cancellationToken)
+    {
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders)
+            .FirstOrDefaultAsync(w => w.Id == request.Id, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
+        if (access.IsFailure)
+            return access.Error;
+        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        if (author.IsFailure)
+            return author.Error;
+
+        var previousType = workOrder.Type;
+        var input = await inputBuilder.BuildAsync(request.Payload, workOrder.ActualFlightNumber.Value, workOrder.Station.StationId, cancellationToken);
+        if (input.IsFailure)
+            return input.Error;
+
+        db.SetOriginalRowVersion(workOrder, request.RowVersion);
+        var update = workOrder.UpdateDetails(
+            request.Type,
+            input.Value.ActualFlightNumber,
+            input.Value.AircraftType,
+            input.Value.AircraftTailNumber,
+            input.Value.Actuals,
+            input.Value.Cancellation,
+            input.Value.Remarks,
+            input.Value.ServiceLines,
+            input.Value.Tasks,
+            timeProvider.GetUtcNow());
+        if (update.IsFailure)
+            return update.Error;
+
+        var timelineType = previousType == request.Type
+            ? WorkOrderTimelineEventType.Updated
+            : request.Type == WorkOrderType.Completion
+                ? WorkOrderTimelineEventType.ConvertedToCompletion
+                : WorkOrderTimelineEventType.ConvertedToCancellation;
+        await timeline.AppendAsync(workOrder.Id, timelineType, timeProvider.GetUtcNow(), cancellationToken: cancellationToken);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+
+        return Result.Success();
+    }
+}
+
+public sealed record DeleteWorkOrderCommand(Guid Id, byte[] RowVersion) : ICommand;
+
+public sealed class DeleteWorkOrderCommandValidator : AbstractValidator<DeleteWorkOrderCommand>
+{
+    public DeleteWorkOrderCommandValidator()
+    {
+        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+    }
+}
+
+public sealed class DeleteWorkOrderCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IFlightTimelineWriter flightTimeline,
+    IUserContext user,
+    IAuditContext auditContext,
+    TimeProvider timeProvider) : ICommandHandler<DeleteWorkOrderCommand>
+{
+    public async Task<Result> Handle(DeleteWorkOrderCommand request, CancellationToken cancellationToken)
+    {
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders)
+            .FirstOrDefaultAsync(w => w.Id == request.Id, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
+        if (access.IsFailure)
+            return access.Error;
+        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        if (author.IsFailure)
+            return author.Error;
+
+        if (workOrder.Status == WorkOrderStatus.Approved)
+            return Error.Conflict("Approved work orders cannot be deleted.", "Operations.WorkOrder.ApprovedDeleteBlocked");
+        if (workOrder.Status == WorkOrderStatus.Merged)
+            return Error.Conflict("Merged work orders cannot be deleted.", "Operations.WorkOrder.MergedDeleteBlocked");
+
+        db.SetOriginalRowVersion(workOrder, request.RowVersion);
+        db.WorkOrders.Remove(workOrder);
+
+        var now = timeProvider.GetUtcNow();
+        await flightTimeline.AppendAsync(workOrder.FlightId, FlightTimelineEventType.WorkOrderSubmitted, now,
+            details: $"Work order {workOrder.Id} deleted.", cancellationToken: cancellationToken);
+        db.EnqueueAudit(auditContext, "operations", "WorkOrder", workOrder.Id, "WorkOrder", workOrder.Id, AuditActions.Deleted,
+            metadata: $"FlightId={workOrder.FlightId}");
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+
+        return Result.Success();
+    }
+}
+
+public sealed record ApproveWorkOrderCommand(Guid Id, byte[] RowVersion) : ICommand;
+
+public sealed class ApproveWorkOrderCommandValidator : AbstractValidator<ApproveWorkOrderCommand>
+{
+    public ApproveWorkOrderCommandValidator()
+    {
+        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+    }
+}
+
+public sealed class ApproveWorkOrderCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IWorkOrderNumberAllocator allocator,
+    IWorkOrderTimelineWriter workOrderTimeline,
+    IFlightTimelineWriter flightTimeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<ApproveWorkOrderCommand>
+{
+    public async Task<Result> Handle(ApproveWorkOrderCommand request, CancellationToken cancellationToken)
+    {
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders)
+            .FirstOrDefaultAsync(w => w.Id == request.Id, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var flight = await db.Flights.FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var station = scopeResult.Value.EnsureStation(workOrder.Station.StationId);
+        if (station.IsFailure)
+            return station.Error;
+
+        var alreadyApproved = await db.WorkOrders.AsNoTracking().AnyAsync(w =>
+            w.FlightId == workOrder.FlightId && w.Id != workOrder.Id && w.Status == WorkOrderStatus.Approved,
+            cancellationToken);
+        if (alreadyApproved)
+            return Error.Conflict("This flight already has an approved work order.", "Operations.WorkOrder.FlightAlreadyApproved");
+
+        var allocation = await allocator.AllocateAsync(workOrder.Station, cancellationToken);
+        if (allocation.IsFailure)
+            return allocation.Error;
+
+        db.SetOriginalRowVersion(workOrder, request.RowVersion);
+        var now = timeProvider.GetUtcNow();
+        var approve = workOrder.Approve(allocation.Value.Sequence, allocation.Value.Number, user.UserId ?? Guid.Empty, now);
+        if (approve.IsFailure)
+            return approve.Error;
+
+        var settle = workOrder.Type == WorkOrderType.Completion
+            ? flight.SettleCompleted(now)
+            : flight.SettleCanceled(now);
+        if (settle.IsFailure)
+            return settle.Error;
+
+        await workOrderTimeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Approved, now, details: workOrder.ApprovalNumber, cancellationToken: cancellationToken);
+        await workOrderTimeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.NumberAssigned, now, details: workOrder.ApprovalNumber, cancellationToken: cancellationToken);
+        await flightTimeline.AppendAsync(flight.Id,
+            workOrder.Type == WorkOrderType.Completion ? FlightTimelineEventType.FlightCompleted : FlightTimelineEventType.FlightCanceled,
+            now,
+            details: workOrder.ApprovalNumber,
+            cancellationToken: cancellationToken);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+        catch (DbUpdateException)
+        {
+            return Error.Conflict("Approval conflicted with another work order update. Reload and try again.", "Operations.WorkOrder.ApprovalConflict");
+        }
+
+        return Result.Success();
+    }
+}
+
+public sealed record ReturnWorkOrderCommand(Guid Id, byte[] RowVersion, string Reason) : ICommand;
+
+public sealed class ReturnWorkOrderCommandValidator : AbstractValidator<ReturnWorkOrderCommand>
+{
+    public ReturnWorkOrderCommandValidator()
+    {
+        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(1000);
+    }
+}
+
+public sealed class ReturnWorkOrderCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IWorkOrderTimelineWriter workOrderTimeline,
+    IFlightTimelineWriter flightTimeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<ReturnWorkOrderCommand>
+{
+    public async Task<Result> Handle(ReturnWorkOrderCommand request, CancellationToken cancellationToken)
+    {
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders)
+            .FirstOrDefaultAsync(w => w.Id == request.Id, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var flight = await db.Flights.FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var station = scopeResult.Value.EnsureStation(workOrder.Station.StationId);
+        if (station.IsFailure)
+            return station.Error;
+
+        db.SetOriginalRowVersion(workOrder, request.RowVersion);
+        var now = timeProvider.GetUtcNow();
+        var releasedNumber = workOrder.ApprovalNumber;
+        var returned = workOrder.Return(user.UserId ?? Guid.Empty, request.Reason, now);
+        if (returned.IsFailure)
+            return returned.Error;
+
+        var reopen = flight.ReopenToInProgress(now);
+        if (reopen.IsFailure)
+            return reopen.Error;
+
+        await workOrderTimeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Returned, now, details: request.Reason, cancellationToken: cancellationToken);
+        if (!string.IsNullOrWhiteSpace(releasedNumber))
+            await workOrderTimeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.NumberReleased, now, details: releasedNumber, cancellationToken: cancellationToken);
+        await flightTimeline.AppendAsync(flight.Id, FlightTimelineEventType.FlightReopened, now, details: releasedNumber, cancellationToken: cancellationToken);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+
+        return Result.Success();
+    }
+}
+
+internal static class WorkOrderLoader
+{
+    public static IQueryable<WorkOrder> ForMutation(IQueryable<WorkOrder> query) =>
+        query
+            .Include(w => w.ServiceLines)
+            .Include(w => w.Tasks).ThenInclude(t => t.Employees)
+            .Include(w => w.Tasks).ThenInclude(t => t.Tools)
+            .Include(w => w.Tasks).ThenInclude(t => t.Materials)
+            .Include(w => w.Tasks).ThenInclude(t => t.GeneralSupports)
+            .Include(w => w.Tasks).ThenInclude(t => t.Attachments);
+}
+
+internal static class WorkOrderAuthorization
+{
+    public static Result EnsureAuthorAccess(WorkOrder workOrder, IUserContext user)
+    {
+        if (user.UserId is { } userId && workOrder.OwnerUserId == userId)
+            return Result.Success();
+
+        return user.HasPermission(OperationsPermissions.WorkOrders.DeleteOthers)
+            ? Result.Success()
+            : Error.Forbidden("You can only modify your own work orders.", "Operations.WorkOrder.NotOwner");
+    }
+}

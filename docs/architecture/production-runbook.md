@@ -1,7 +1,7 @@
 # Production Configuration Runbook
 
 This runbook lists the configuration and operational steps required to deploy the Operations System
-backend (Identity + MasterData + Audit) to a production environment. The application validates the
+backend (Audit + Identity + MasterData + Operations) to a production environment. The application validates the
 security-critical settings below at startup and refuses to boot when they are missing or weak.
 
 ## Required configuration
@@ -13,7 +13,7 @@ Provide via environment variables or a secrets store (never in source control):
 | `OpenTelemetry:Enabled` | Defaults to `true`. Set `false` to disable tracing/metrics export wiring. |
 | `OpenTelemetry:ServiceName` | Service name on exported spans/metrics (default `operations-system-api`). |
 | `OpenTelemetry:OtlpEndpoint` | Optional OTLP endpoint URL. When unset, the SDK honors standard `OTEL_EXPORTER_OTLP_*` environment variables. |
-| `ConnectionStrings:Default` (or per-module `Identity`/`MasterData`/`Audit`) | SQL Server connection string. |
+| `ConnectionStrings:Default` (or per-module `Identity`/`MasterData`/`Operations`/`Audit`) | SQL Server connection string. |
 | `Database:ApplyMigrationsOnStartup` | Set `false` for production and production-like remote testing. Apply reviewed migrations separately. |
 | `Messaging:OutboxDispatchEnabled` | Set `false` for smoke tests where background outbox polling should not touch the remote database. Keep enabled in normal deployments. |
 | `Identity:Jwt:SigningKey` | >= 32 chars of entropy. Startup fails otherwise. |
@@ -38,7 +38,7 @@ emails and stored MFA secrets become unreadable after a restart.
 
 ## Migrations
 
-Apply database migrations in dependency order: **Audit -> Identity -> MasterData**. For local
+Apply database migrations in dependency order: **Audit -> Identity -> MasterData -> Operations**. For local
 development, `Database:ApplyMigrationsOnStartup` may be enabled to apply them automatically. For
 production and production-like remote testing, keep it disabled, use reviewed SQL scripts, and take a
 backup first.
@@ -53,7 +53,7 @@ backup first.
 ## Health, readiness, and observability
 
 - `GET /health/live` — process liveness (no dependency checks).
-- `GET /health/ready` — readiness; verifies the Identity, MasterData, and Audit databases are reachable. Wire this to the orchestrator's readiness probe.
+- `GET /health/ready` — readiness; verifies the Identity, MasterData, Operations, and Audit databases are reachable. Wire this to the orchestrator's readiness probe.
 - Every response carries an `X-Correlation-ID` header (echoed from the request when supplied); logs are enriched with `CorrelationId`.
 - **OpenTelemetry** (packages pinned at **1.15.3**, patched for CVE-2026-40894): ASP.NET Core + HTTP client tracing and metrics are enabled by default. Configure `OpenTelemetry:OtlpEndpoint` or standard `OTEL_EXPORTER_OTLP_ENDPOINT` to export to a collector. Health endpoints are excluded from trace instrumentation.
 - The transactional outbox retries failed integration events; after `OutboxProcessor.MaxAttempts` (10) a message is **dead-lettered** (logged at Critical, left in the outbox with its `Error` for inspection) and no longer retried.

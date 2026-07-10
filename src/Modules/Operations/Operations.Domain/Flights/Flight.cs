@@ -9,8 +9,7 @@ namespace Operations.Domain.Flights;
 
 /// <summary>
 /// A serviced aircraft event. The aggregate owns scheduling, planned services, assigned employees,
-/// and flight-number history. Completion and cancellation will be reintroduced later with the next
-/// lifecycle slice.
+/// and flight-number history. Work orders drive completion and cancellation settlement.
 /// </summary>
 public sealed class Flight : AggregateRoot<Guid>, IAuditable
 {
@@ -201,6 +200,49 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         MergedIntoFlightId = survivorFlightId;
         UpdatedAtUtc = now;
         RaiseDomainEvent(new FlightMerged(Id, survivorFlightId));
+        return Result.Success();
+    }
+
+    public Result OnWorkOrderSubmitted(DateTimeOffset now)
+    {
+        if (Status == FlightStatus.Scheduled)
+        {
+            Status = FlightStatus.InProgress;
+            UpdatedAtUtc = now;
+        }
+
+        return Status == FlightStatus.InProgress
+            ? Result.Success()
+            : Error.Conflict("Work orders can only be submitted for scheduled or in-progress flights.", "Operations.Flight.WorkOrderNotAllowed");
+    }
+
+    public Result SettleCompleted(DateTimeOffset now)
+    {
+        if (Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
+            return Error.Conflict("Only open flights can be completed.", "Operations.Flight.CannotComplete");
+
+        Status = FlightStatus.Completed;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    public Result SettleCanceled(DateTimeOffset now)
+    {
+        if (Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
+            return Error.Conflict("Only open flights can be canceled.", "Operations.Flight.CannotCancel");
+
+        Status = FlightStatus.Canceled;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    public Result ReopenToInProgress(DateTimeOffset now)
+    {
+        if (Status is not (FlightStatus.Completed or FlightStatus.Canceled))
+            return Error.Conflict("Only settled flights can be reopened.", "Operations.Flight.CannotReopen");
+
+        Status = FlightStatus.InProgress;
+        UpdatedAtUtc = now;
         return Result.Success();
     }
 

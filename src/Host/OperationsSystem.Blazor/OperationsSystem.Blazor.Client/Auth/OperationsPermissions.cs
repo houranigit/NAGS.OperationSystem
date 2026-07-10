@@ -18,4 +18,11 @@ public static class OperationsPermissions
     public const string FlightsMerge = "operations.flights.merge";
 
     public const string DashboardView = "operations.dashboard.view";
+
+    public const string WorkOrdersView = "operations.work-orders.view";
+    public const string WorkOrdersViewOthers = "operations.work-orders.view-others";
+    public const string WorkOrdersAuthor = "operations.work-orders.author";
+    public const string WorkOrdersApprove = "operations.work-orders.approve";
+    public const string WorkOrdersDeleteOthers = "operations.work-orders.delete-others";
+    public const string WorkOrdersMerge = "operations.work-orders.merge";
 }

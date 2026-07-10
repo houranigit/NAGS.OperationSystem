@@ -1,0 +1,308 @@
+@page "/operations/work-orders"
+@inject OperationsApiClient Operations
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+@inject GridPreferences GridPrefs
+
+<PageTitle>Work orders</PageTitle>
+
+<RequirePermission Permission="@OperationsPermissions.WorkOrdersView">
+    <div class="os-list-page">
+        <PageHeader Title="Work orders" Description="Submitted, returned, and approved flight work orders within your scope." />
+
+        <DataListCard @ref="list" TItem="WorkOrderListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="Search flight, customer, station, or number" CountLabel="work orders"
+                      EmptyText="No work orders match your filters." UseCollapsibleFilters="true"
+                      ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
+            <Filters>
+                <DataListFilter TValue="string" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilter" ValueChanged="@OnStatusFilterChangedAsync" />
+                <DataListFilter TValue="string" Placeholder="All types" Data="@typeOptions" Value="@typeFilter" ValueChanged="@OnTypeFilterChangedAsync" />
+                <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="WorkOrderListItem" Title="Work order">
+                    <Template Context="workOrder">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="@TypeIcon(workOrder.Type)" /></span>
+                            <div class="os-role-cell-text">
+                                <div class="os-role-cell-title">
+                                    <strong>@DisplayNumber(workOrder)</strong>
+                                    <StatusBadge Label="@workOrder.Type" Tone="@TypeTone(workOrder.Type)" />
+                                </div>
+                                <span>@DisplayFlightNumber(workOrder) · @workOrder.CustomerName</span>
+                            </div>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="WorkOrderListItem" Property="StationIata" Title="Station" Width="110px" />
+                <RadzenDataGridColumn TItem="WorkOrderListItem" Title="Owner" Width="180px">
+                    <Template Context="workOrder">@None(workOrder.OwnerName)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="WorkOrderListItem" Title="Status" Width="130px">
+                    <Template Context="workOrder"><StatusBadge Label="@workOrder.Status" Tone="@StatusTone(workOrder.Status)" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="WorkOrderListItem" Title="Schedule" Width="150px">
+                    <Template Context="workOrder">@DateDisplay(workOrder.ScheduledArrivalUtc) UTC</Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="workOrder">
+                <RowActionMenu>
+                    <RowAction Text="View" Icon="visibility" OnClick="@(() => OpenAsync(workOrder, viewOnly: true))" />
+                    <RowAction Text="Edit" Icon="edit" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                               Visible="@CanEdit(workOrder)" OnClick="@(() => OpenAsync(workOrder, viewOnly: false))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="Approve" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersApprove"
+                               Visible="@CanApprove(workOrder)" OnClick="@(() => ApproveAsync(workOrder))" />
+                    <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
+                               Visible="@CanReturn(workOrder)" OnClick="@(() => ReturnAsync(workOrder))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="Delete" Icon="delete" Danger="true" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                               Visible="@CanDelete(workOrder)" OnClick="@(() => DeleteAsync(workOrder))" />
+                </RowActionMenu>
+            </RowActions>
+        </DataListCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private const string GridKey = "operations-work-orders";
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    private DataListCard<WorkOrderListItem>? list;
+    private IReadOnlyList<WorkOrderListItem> items = [];
+    private int totalCount;
+    private bool isLoading;
+    private bool loadError;
+    private string searchTerm = string.Empty;
+    private string? statusFilter = "Approved";
+    private string? typeFilter;
+    private Guid? stationFilter;
+    private int currentPage = 1;
+    private int currentPageSize = 10;
+    private IReadOnlyList<StationFilterOption> stationOptions = [];
+
+    private readonly IReadOnlyList<FilterOption<string>> statusOptions =
+    [
+        new("Submitted", "Submitted"),
+        new("Returned", "Returned"),
+        new("Approved", "Approved"),
+        new("Merged", "Merged")
+    ];
+
+    private readonly IReadOnlyList<FilterOption<string>> typeOptions =
+    [
+        new("Completion", "Completion"),
+        new("Cancellation", "Cancellation")
+    ];
+
+    private int ActiveFilterCount =>
+        (!string.IsNullOrWhiteSpace(statusFilter) ? 1 : 0)
+        + (!string.IsNullOrWhiteSpace(typeFilter) ? 1 : 0)
+        + (stationFilter.HasValue ? 1 : 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        await LoadStationsAsync();
+        await FetchAsync();
+    }
+
+    private async Task LoadStationsAsync()
+    {
+        try
+        {
+            stationOptions = (await MasterData.GetStationOptionsAsync())
+                .Select(s => new StationFilterOption($"{s.IataCode} · {s.Name}", s.Id))
+                .ToList();
+        }
+        catch (ApiException)
+        {
+            stationOptions = [];
+        }
+    }
+
+    private async Task LoadDataAsync(LoadDataArgs args)
+    {
+        currentPageSize = args.Top ?? currentPageSize;
+        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
+        await FetchAsync();
+    }
+
+    private async Task OnPageSizeChangedAsync(int pageSize)
+    {
+        currentPageSize = pageSize;
+        await GridPrefs.SetPageSizeAsync(GridKey, pageSize);
+    }
+
+    private async Task OnStatusFilterChangedAsync(string? value)
+    {
+        statusFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnTypeFilterChangedAsync(string? value)
+    {
+        typeFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnStationFilterChangedAsync(Guid? value)
+    {
+        stationFilter = value;
+        await ReloadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        statusFilter = null;
+        typeFilter = null;
+        stationFilter = null;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        currentPage = 1;
+        if (list is not null)
+            await list.ReloadAsync();
+        else
+            await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Operations.GetWorkOrdersAsync(
+                currentPage,
+                currentPageSize,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
+                stationFilter,
+                statusFilter,
+                typeFilter,
+                sort: statusFilter == "Approved" ? "approval" : null);
+            items = result.Items;
+            totalCount = (int)result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenAsync(WorkOrderListItem workOrder, bool viewOnly)
+    {
+        var result = await DialogService.OpenAsync<WorkOrderEditorDialog>(
+            viewOnly ? "Work order" : "Edit work order",
+            new Dictionary<string, object?>
+            {
+                [nameof(WorkOrderEditorDialog.WorkOrderId)] = workOrder.Id,
+                [nameof(WorkOrderEditorDialog.Type)] = workOrder.Type,
+                [nameof(WorkOrderEditorDialog.ViewOnly)] = viewOnly
+            },
+            new DialogOptions { Width = "980px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Work order updated");
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ApproveAsync(WorkOrderListItem workOrder)
+    {
+        try
+        {
+            await Operations.ApproveWorkOrderAsync(workOrder.Id, workOrder.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Work order approved");
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Approval failed", ex.ToDisplayMessage("Could not approve the work order."));
+        }
+    }
+
+    private async Task ReturnAsync(WorkOrderListItem workOrder)
+    {
+        var reason = await DialogService.OpenAsync<WorkOrderReturnDialog>(
+            "Return work order",
+            null,
+            new DialogOptions { Width = "520px" });
+        if (reason is not string value || string.IsNullOrWhiteSpace(value))
+            return;
+
+        try
+        {
+            await Operations.ReturnWorkOrderAsync(workOrder.Id, new ReturnWorkOrderRequestModel(value), workOrder.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Work order returned");
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Return failed", ex.ToDisplayMessage("Could not return the work order."));
+        }
+    }
+
+    private async Task DeleteAsync(WorkOrderListItem workOrder)
+    {
+        var confirmed = await DialogService.Confirm("Delete this work order?", "Delete work order",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+        if (confirmed is not true)
+            return;
+
+        try
+        {
+            await Operations.DeleteWorkOrderAsync(workOrder.Id, workOrder.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Work order deleted");
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Delete failed", ex.ToDisplayMessage("Could not delete the work order."));
+        }
+    }
+
+    private static bool CanEdit(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
+    private static bool CanApprove(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
+    private static bool CanReturn(WorkOrderListItem workOrder) => workOrder.Status is "Approved";
+    private static bool CanDelete(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
+
+    private static string DisplayNumber(WorkOrderListItem workOrder) =>
+        string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;
+
+    private static string DisplayFlightNumber(WorkOrderListItem workOrder) =>
+        string.IsNullOrWhiteSpace(workOrder.CustomerIataCode)
+            ? workOrder.PlannedFlightNumber
+            : $"{workOrder.CustomerIataCode.Trim().ToUpperInvariant()}-{workOrder.PlannedFlightNumber}";
+
+    private static string DateDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+    private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
+    private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
+    private static string TypeIcon(string type) => type == "Cancellation" ? "cancel" : "task_alt";
+    private static string TypeTone(string type) => type == "Cancellation" ? "danger" : "neutral";
+
+    private static string StatusTone(string status) => status switch
+    {
+        "Approved" => "success",
+        "Merged" => "danger",
+        "Submitted" => "warning",
+        _ => "neutral"
+    };
+
+    private sealed record FilterOption<T>(string Label, T? Value);
+    private sealed record StationFilterOption(string Label, Guid? Value);
+}

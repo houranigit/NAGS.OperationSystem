@@ -4,6 +4,7 @@ using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Readers;
 using Operations.Domain.Authorization;
 using Operations.Domain.Flights;
+using Operations.Domain.WorkOrders;
 
 namespace Operations.Application.Authorization;
 
@@ -15,7 +16,13 @@ namespace Operations.Application.Authorization;
 /// visibility to every flight at their station (station dispatchers). CustomerContacts have no
 /// Operations access in this release.
 /// </summary>
-public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, Guid? StaffMemberId, bool CanViewStationWide = false)
+public sealed record OperationsScopeContext(
+    UserType UserType,
+    Guid? StationId,
+    Guid? StaffMemberId,
+    bool CanViewStationWide = false,
+    bool CanViewWorkOrdersStationWide = false,
+    Guid? UserId = null)
 {
     public bool IsAdministrator => UserType == UserType.SystemAdministrator;
 
@@ -55,6 +62,25 @@ public sealed record OperationsScopeContext(UserType UserType, Guid? StationId, 
             : Error.Forbidden(
                 "You do not have access to this flight. Non-Per-Landing flights are visible only to their assigned staff.",
                 "Operations.Scope.FlightForbidden");
+
+    public bool CanAccessWorkOrder(WorkOrder workOrder)
+    {
+        if (IsAdministrator)
+            return true;
+
+        if (StationId != workOrder.Station.StationId)
+            return false;
+
+        if (CanViewWorkOrdersStationWide)
+            return true;
+
+        return UserId is { } userId && workOrder.OwnerUserId == userId;
+    }
+
+    public Result EnsureWorkOrderAccess(WorkOrder workOrder) =>
+        CanAccessWorkOrder(workOrder)
+            ? Result.Success()
+            : Error.Forbidden("You do not have access to this work order.", "Operations.Scope.WorkOrderForbidden");
 }
 
 /// <summary>
@@ -94,8 +120,10 @@ public sealed class OperationsScope(IUserContext user, IMasterDataReader masterD
                 // Station dispatchers hold view-station and see every flight at their station
                 // without being on the assigned-employee roster.
                 var canViewStationWide = user.HasPermission(OperationsPermissions.Flights.ViewStation);
+                var canViewWorkOrdersStationWide = user.HasPermission(OperationsPermissions.WorkOrders.ViewOthers);
 
-                return new OperationsScopeContext(userType, staff.StationId, staffId, canViewStationWide);
+                return new OperationsScopeContext(
+                    userType, staff.StationId, staffId, canViewStationWide, canViewWorkOrdersStationWide, user.UserId);
             }
 
             default:

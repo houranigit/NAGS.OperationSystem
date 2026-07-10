@@ -9,6 +9,7 @@ using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Features.Flights;
+using Operations.Application.Features.WorkOrders;
 using Operations.Infrastructure.Persistence;
 
 namespace Operations.Infrastructure;
@@ -34,6 +35,9 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IOperationsScope, OperationsScope>();
         services.AddScoped<MasterDataResolver>();
         services.AddScoped<IFlightTimelineWriter, FlightTimelineWriter>();
+        services.AddScoped<WorkOrderInputBuilder>();
+        services.AddScoped<IWorkOrderTimelineWriter, WorkOrderTimelineWriter>();
+        services.AddScoped<IWorkOrderNumberAllocator, WorkOrderNumberAllocator>();
         services.AddScoped<FlightDuplicateDetector>();
 
         services.TryAddSingleton(TimeProvider.System);

@@ -62,8 +62,9 @@
                 @{
                     var canOpsDashboard = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.DashboardView);
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
+                    var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
                 }
-                @if (canOpsDashboard || canOpsFlights)
+                @if (canOpsDashboard || canOpsFlights || canOpsWorkOrders)
                 {
                     <p class="os-nav-section">Operations</p>
                 }
@@ -83,6 +84,13 @@
                     <NavLink href="/operations/calendar" class="os-nav-link" title="Flight calendar" @onclick="CloseNav">
                         <RadzenIcon Icon="calendar_month" />
                         <span>Calendar</span>
+                    </NavLink>
+                }
+                @if (canOpsWorkOrders)
+                {
+                    <NavLink href="/operations/work-orders" class="os-nav-link" title="Work orders" @onclick="CloseNav">
+                        <RadzenIcon Icon="fact_check" />
+                        <span>Work orders</span>
                     </NavLink>
                 }
             </AuthorizeView>

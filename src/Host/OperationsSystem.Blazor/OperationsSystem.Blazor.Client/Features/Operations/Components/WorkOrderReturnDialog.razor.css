@@ -1,0 +1,20 @@
+.owr-dialog {
+    display: grid;
+    gap: .75rem;
+}
+
+.owr-control {
+    width: 100%;
+}
+
+.owr-error {
+    margin: 0;
+    color: var(--rz-danger);
+    font-size: .9rem;
+}
+
+.owr-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+}

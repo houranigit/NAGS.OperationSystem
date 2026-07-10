@@ -77,9 +77,13 @@
                                Visible="@CanEditFlight(flight)" OnClick="@(() => OpenEditAsync(flight.Id))" />
                     <RowAction Text="Invite employee" Icon="person_add" Permission="@OperationsPermissions.FlightsInvite"
                                Visible="@CanInviteFlight(flight)" OnClick="@(() => OpenInviteAsync(flight))" />
-                    <RowAction Separator="true" />
                     <RowAction Text="Resolve duplicates" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
                                Visible="@CanMergeFlight(flight)" OnClick="@(() => OpenMergeAsync(flight.Id))" />
+                    <RowAction Separator="true" />
+                    <RowAction Text="Open work order" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                               Visible="@CanAuthorWorkOrder(flight)" OnClick="@(() => OpenCompletionWorkOrderAsync(flight))" />
+                    <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                               Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@(() => OpenCancellationWorkOrderAsync(flight))" />
                 </RowActionMenu>
             </RowActions>
         </DataListCard>
@@ -355,6 +359,49 @@
     private static bool CanEditFlight(FlightListItem flight) => flight.Status is "Scheduled";
     private static bool CanInviteFlight(FlightListItem flight) => flight.Status is "Scheduled" && !flight.IsPerLanding;
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
+    private static bool CanAuthorWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
+
+    private Task OpenCompletionWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Completion");
+    private Task OpenCancellationWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Cancellation");
+
+    private async Task OpenWorkOrderAsync(FlightListItem flight, string type)
+    {
+        try
+        {
+            var mine = await Operations.GetMyWorkOrderForFlightAsync(flight.Id);
+            var viewOnly = mine?.Status == "Approved";
+            if (mine is not null && mine.Type != type && !viewOnly)
+            {
+                var confirmed = await DialogService.Confirm(
+                    $"You already have a {mine.Type} work order for this flight. Convert it to {type}?",
+                    "Convert work order",
+                    new ConfirmOptions { OkButtonText = "Convert", CancelButtonText = "Cancel" });
+                if (confirmed is not true)
+                    return;
+            }
+
+            var result = await DialogService.OpenAsync<WorkOrderEditorDialog>(
+                viewOnly ? "Work order" : $"{type} work order",
+                new Dictionary<string, object?>
+                {
+                    [nameof(WorkOrderEditorDialog.FlightId)] = flight.Id,
+                    [nameof(WorkOrderEditorDialog.WorkOrderId)] = mine?.Id,
+                    [nameof(WorkOrderEditorDialog.Type)] = type,
+                    [nameof(WorkOrderEditorDialog.ViewOnly)] = viewOnly
+                },
+                new DialogOptions { Width = "980px" });
+
+            if (result is true)
+            {
+                Notifications.Notify(NotificationSeverity.Success, "Work order saved");
+                await ReloadAsync();
+            }
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Work order unavailable", ex.ToDisplayMessage("Could not open the work order."));
+        }
+    }
 
     private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
 

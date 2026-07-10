@@ -90,9 +90,13 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
         CancellationToken cancellationToken)
     {
         var response = await SendAsync(method, path, body, ifMatch, cancellationToken);
-        return JsonSerializer.Deserialize<TResponse>(response, JsonOptions)
-            ?? throw new JsonException($"The API response for '{path}' was empty.");
+        return Deserialize<TResponse>(response);
     }
+
+    private static TResponse Deserialize<TResponse>(string response) =>
+        string.IsNullOrWhiteSpace(response)
+            ? default!
+            : JsonSerializer.Deserialize<TResponse>(response, JsonOptions)!;
 
     private async Task<string> SendAsync(
         HttpMethod method,

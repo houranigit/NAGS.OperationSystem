@@ -1,0 +1,30 @@
+@inject DialogService DialogService
+
+<div class="owr-dialog">
+    <label>Return reason</label>
+    <RadzenTextArea @bind-Value="reason" Rows="4" MaxLength="1000" class="owr-control" />
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <p class="owr-error">@error</p>
+    }
+    <div class="owr-actions">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
+        <RadzenButton Text="Return" Icon="undo" ButtonStyle="ButtonStyle.Warning" Click="@Submit" />
+    </div>
+</div>
+
+@code {
+    private string? reason;
+    private string? error;
+
+    private void Submit()
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            error = "A return reason is required.";
+            return;
+        }
+
+        DialogService.Close(reason.Trim());
+    }
+}

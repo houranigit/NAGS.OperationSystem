@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
@@ -7,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Contracts;
+using Operations.Application.Features.WorkOrders;
+using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 
@@ -189,7 +192,7 @@ public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IO
 
 public sealed record GetFlightByIdQuery(Guid Id) : IQuery<FlightDetailDto>;
 
-public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperationsScope scope, IUserContext user)
     : IQueryHandler<GetFlightByIdQuery, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(GetFlightByIdQuery request, CancellationToken cancellationToken)
@@ -207,6 +210,24 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
         if (accessCheck.IsFailure)
             return accessCheck.Error;
+
+        IReadOnlyList<WorkOrderSummaryDto> workOrders = user.HasPermission(OperationsPermissions.WorkOrders.View)
+            ? await WorkOrderQueryVisibility.ApplyVisibility(
+                    db.WorkOrders.AsNoTracking().Where(w => w.FlightId == flight.Id),
+                    scopeResult.Value,
+                    user)
+                .OrderByDescending(w => w.CreatedAtUtc)
+                .Select(w => new WorkOrderSummaryDto(
+                    w.Id,
+                    w.FlightId,
+                    w.Type.ToString(),
+                    w.Status.ToString(),
+                    w.ApprovalNumber,
+                    w.OwnerUserId,
+                    w.Owner == null ? null : w.Owner.FullName,
+                    Convert.ToBase64String(w.RowVersion)))
+                .ToListAsync(cancellationToken)
+            : [];
 
         var dto = new FlightDetailDto(
             flight.Id,
@@ -230,6 +251,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.MergedIntoFlightId,
             flight.PlannedServices.Select(p => new PlannedServiceDto(p.Service.ServiceId, p.Service.Name, p.IsAircraftPerLanding)).ToList(),
             flight.AssignedEmployees.Select(e => new AssignedEmployeeDto(e.Employee.StaffMemberId, e.Employee.FullName, e.Employee.EmployeeId)).ToList(),
+            workOrders,
             flight.CreatedAtUtc,
             flight.UpdatedAtUtc,
             Convert.ToBase64String(flight.RowVersion));
