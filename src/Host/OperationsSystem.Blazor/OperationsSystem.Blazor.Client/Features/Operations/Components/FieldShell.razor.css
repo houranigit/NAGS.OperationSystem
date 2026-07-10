@@ -1,0 +1,38 @@
+.ofield {
+    display: grid;
+    gap: var(--os-space-1);
+    min-width: 0;
+}
+
+.ofield-label {
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+}
+
+.ofield-label span {
+    color: var(--rz-danger);
+}
+
+.ofield-input {
+    position: relative;
+}
+
+.ofield-icon {
+    position: absolute;
+    inset-inline-start: 0.8rem;
+    top: 50%;
+    z-index: 1;
+    color: var(--os-color-text-muted);
+    transform: translateY(-50%);
+}
+
+::deep .owf-control {
+    width: 100%;
+}
+
+::deep .owf-control.rz-textbox,
+::deep .owf-control.rz-dropdown,
+::deep .owf-control.rz-datepicker {
+    padding-inline-start: 2.35rem;
+}

@@ -41,6 +41,31 @@ public sealed record AssignEmployeesRequest(IReadOnlyList<Guid>? StaffMemberIds)
 
 public sealed record MergeFlightsRequest(Guid SurvivorFlightId, Guid LoserFlightId);
 
+public sealed record CreateAdHocWorkOrderRequest(
+    Guid CustomerId,
+    Guid StationId,
+    string FlightNumber,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    Guid? AircraftTypeId,
+    IReadOnlyList<Guid>? PlannedServiceIds,
+    IReadOnlyList<Guid>? AssignedStaffMemberIds,
+    WorkOrderRequest WorkOrder)
+{
+    public CreateAdHocWorkOrderCommand ToCommand() =>
+        new(
+            CustomerId,
+            StationId,
+            FlightNumber,
+            ScheduledArrivalUtc,
+            ScheduledDepartureUtc,
+            AircraftTypeId,
+            PlannedServiceIds ?? [],
+            AssignedStaffMemberIds ?? [],
+            WorkOrder.Type,
+            WorkOrder.ToPayload());
+}
+
 public sealed record WorkOrderRequest(
     WorkOrderType Type,
     string? ActualFlightNumber,

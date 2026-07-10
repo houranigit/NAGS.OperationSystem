@@ -240,6 +240,13 @@ internal static class WorkOrderDtoMapper
             workOrder.Cancellation?.CanceledAtUtc,
             workOrder.Cancellation?.Reason,
             workOrder.Remarks,
+            string.IsNullOrWhiteSpace(workOrder.CustomerSignatureReference) || workOrder.CustomerSignedAtUtc is null
+                ? null
+                : new WorkOrderSignatureDto(
+                    workOrder.CustomerSignatureFileName ?? "customer-signature.png",
+                    workOrder.CustomerSignatureContentType ?? "image/png",
+                    workOrder.CustomerSignatureSize ?? 0,
+                    workOrder.CustomerSignedAtUtc.Value),
             workOrder.ApprovalSequence,
             workOrder.ApprovalNumber,
             workOrder.ApprovedByUserId,

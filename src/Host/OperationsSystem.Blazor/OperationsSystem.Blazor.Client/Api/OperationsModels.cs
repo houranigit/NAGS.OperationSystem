@@ -137,6 +137,7 @@ public sealed record WorkOrderDetail(
     DateTimeOffset? CanceledAtUtc,
     string? CancellationReason,
     string? Remarks,
+    WorkOrderSignatureModel? CustomerSignature,
     int? ApprovalSequence,
     string? ApprovalNumber,
     Guid? ApprovedByUserId,
@@ -178,6 +179,8 @@ public sealed record WorkOrderTaskMaterialModel(Guid MaterialId, string Name, de
 public sealed record WorkOrderTaskGeneralSupportModel(Guid GeneralSupportId, string Name, decimal Quantity);
 
 public sealed record WorkOrderTaskAttachmentModel(Guid Id, string Kind, string OriginalFileName, string ContentType, long Size);
+
+public sealed record WorkOrderSignatureModel(string FileName, string ContentType, long Size, DateTimeOffset SignedAtUtc);
 
 public sealed record WorkOrderTimelineEntryModel(
     Guid Id,
@@ -224,6 +227,17 @@ public sealed record ChangeFlightNumberRequestModel(string FlightNumber);
 public sealed record AssignEmployeesRequestModel(IReadOnlyList<Guid> StaffMemberIds);
 
 public sealed record MergeFlightsRequestModel(Guid SurvivorFlightId, Guid LoserFlightId);
+
+public sealed record CreateAdHocWorkOrderRequestModel(
+    Guid CustomerId,
+    Guid StationId,
+    string FlightNumber,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    Guid? AircraftTypeId,
+    IReadOnlyList<Guid> PlannedServiceIds,
+    IReadOnlyList<Guid> AssignedStaffMemberIds,
+    WorkOrderRequestModel WorkOrder);
 
 public sealed record WorkOrderRequestModel(
     string Type,

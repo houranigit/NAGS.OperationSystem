@@ -162,6 +162,130 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void TaskAttachments_CanBeAddedAndRemovedWhileEditable_AndAreLockedAfterApproval()
+    {
+        var workOrder = SubmitCompletion(ScheduleFlight(), tasks: [TaskInput(null, "Attach files")]);
+        var taskId = workOrder.Tasks[0].Id;
+
+        var added = workOrder.AddTaskAttachment(
+            taskId,
+            TaskAttachmentKind.Document,
+            "work-order-attachments/file.pdf",
+            "signed.pdf",
+            "application/pdf",
+            128,
+            TestData.Now.AddMinutes(1));
+
+        added.IsSuccess.ShouldBeTrue();
+        workOrder.Tasks[0].Attachments.Count.ShouldBe(1);
+        workOrder.Tasks[0].Attachments[0].OriginalFileName.ShouldBe("signed.pdf");
+
+        var removed = workOrder.RemoveTaskAttachment(taskId, added.Value.Id, TestData.Now.AddMinutes(2));
+        removed.IsSuccess.ShouldBeTrue();
+        removed.Value.ShouldBe("work-order-attachments/file.pdf");
+        workOrder.Tasks[0].Attachments.Count.ShouldBe(0);
+
+        workOrder.UpdateDetails(
+            WorkOrderType.Completion,
+            workOrder.ActualFlightNumber,
+            TestData.AircraftType(),
+            null,
+            ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value,
+            null,
+            null,
+            [],
+            [TaskInput(taskId, "Attach files")],
+            TestData.Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
+        workOrder.Approve(1, "RUH-0001", Guid.NewGuid(), TestData.Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
+
+        var locked = workOrder.AddTaskAttachment(
+            taskId,
+            TaskAttachmentKind.Document,
+            "work-order-attachments/file-2.pdf",
+            "locked.pdf",
+            "application/pdf",
+            128,
+            TestData.Now.AddMinutes(5));
+
+        locked.IsFailure.ShouldBeTrue();
+        locked.Error.Code.ShouldBe("Operations.WorkOrder.Locked");
+    }
+
+    [Fact]
+    public void CustomerSignature_CanBeSetRemoved_AndIsLockedAfterApproval()
+    {
+        var workOrder = SubmitCompletion(ScheduleFlight());
+
+        var signed = workOrder.SetCustomerSignature(
+            "work-order-signatures/signature.png",
+            "customer signature.png",
+            "image/png",
+            512,
+            TestData.Now.AddMinutes(1));
+
+        signed.IsSuccess.ShouldBeTrue();
+        workOrder.CustomerSignatureReference.ShouldBe("work-order-signatures/signature.png");
+        workOrder.CustomerSignatureFileName.ShouldBe("customer signature.png");
+        workOrder.CustomerSignedAtUtc.ShouldBe(TestData.Now.AddMinutes(1));
+
+        var removed = workOrder.RemoveCustomerSignature(TestData.Now.AddMinutes(2));
+        removed.IsSuccess.ShouldBeTrue();
+        removed.Value.ShouldBe("work-order-signatures/signature.png");
+        workOrder.CustomerSignatureReference.ShouldBeNull();
+
+        workOrder.UpdateDetails(
+            WorkOrderType.Completion,
+            workOrder.ActualFlightNumber,
+            TestData.AircraftType(),
+            null,
+            ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value,
+            null,
+            null,
+            [],
+            [],
+            TestData.Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
+        workOrder.Approve(1, "RUH-0001", Guid.NewGuid(), TestData.Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
+
+        var locked = workOrder.SetCustomerSignature(
+            "work-order-signatures/locked.png",
+            "locked.png",
+            "image/png",
+            512,
+            TestData.Now.AddMinutes(5));
+
+        locked.IsFailure.ShouldBeTrue();
+        locked.Error.Code.ShouldBe("Operations.WorkOrder.Locked");
+    }
+
+    [Fact]
+    public void UpdateDetails_ClearsCustomerSignature_WhenConvertedToCancellation()
+    {
+        var workOrder = SubmitCompletion(ScheduleFlight());
+        workOrder.SetCustomerSignature(
+            "work-order-signatures/signature.png",
+            "signature.png",
+            "image/png",
+            512,
+            TestData.Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+
+        var converted = workOrder.UpdateDetails(
+            WorkOrderType.Cancellation,
+            workOrder.ActualFlightNumber,
+            null,
+            null,
+            null,
+            CancellationDetails.Create(TestData.Now.AddMinutes(2), "Customer canceled").Value,
+            null,
+            [],
+            [],
+            TestData.Now.AddMinutes(2));
+
+        converted.IsSuccess.ShouldBeTrue();
+        workOrder.CustomerSignatureReference.ShouldBeNull();
+        workOrder.CustomerSignedAtUtc.ShouldBeNull();
+    }
+
+    [Fact]
     public void SubmitMerged_FlagsGeneratedWorkOrder_AndSourcesCanBeMarkedMerged()
     {
         var flight = ScheduleFlight();
@@ -225,6 +349,44 @@ public sealed class WorkOrderTests
 
         flight.SettleCanceled(TestData.Now.AddHours(3)).IsSuccess.ShouldBeTrue();
         flight.Status.ShouldBe(FlightStatus.Canceled);
+    }
+
+    [Fact]
+    public void Flight_ScheduleNew_AllowsEmptyPlannedServicesOnlyWhenExplicitlyAllowed()
+    {
+        var blocked = Flight.ScheduleNew(
+            TestData.Customer(),
+            TestData.Station(),
+            TestData.OperationType(),
+            TestData.FlightNo(),
+            TestData.Schedule(),
+            aircraftType: null,
+            plannedServices: [],
+            assignedEmployees: [],
+            contractId: null,
+            contractNumber: null,
+            createdByUserId: Guid.NewGuid(),
+            now: TestData.Now);
+
+        blocked.IsFailure.ShouldBeTrue();
+        blocked.Error.Code.ShouldBe("Operations.PlannedServices.Required");
+
+        var allowed = Flight.ScheduleNew(
+            TestData.Customer(),
+            TestData.Station(),
+            TestData.OperationType(),
+            TestData.FlightNo(),
+            TestData.Schedule(),
+            aircraftType: null,
+            plannedServices: [],
+            assignedEmployees: [],
+            contractId: null,
+            contractNumber: null,
+            createdByUserId: Guid.NewGuid(),
+            now: TestData.Now,
+            allowEmptyPlannedServices: true);
+
+        allowed.IsSuccess.ShouldBeTrue();
     }
 
     private static WorkOrder SubmitCompletion(Flight flight, IReadOnlyList<WorkOrderTaskInput>? tasks = null)

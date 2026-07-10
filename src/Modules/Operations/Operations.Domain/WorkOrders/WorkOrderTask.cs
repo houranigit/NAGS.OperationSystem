@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Entities;
+using BuildingBlocks.Domain.Results;
 using Operations.Domain.Enumerations;
 using Operations.Domain.ValueObjects;
 
@@ -6,6 +7,8 @@ namespace Operations.Domain.WorkOrders;
 
 public sealed class WorkOrderTask : Entity<Guid>
 {
+    public const int MaxAttachments = 10;
+
     private readonly List<WorkOrderTaskEmployee> _employees = [];
     private readonly List<WorkOrderTaskTool> _tools = [];
     private readonly List<WorkOrderTaskMaterial> _materials = [];
@@ -34,6 +37,46 @@ public sealed class WorkOrderTask : Entity<Guid>
 
     internal void Update(WorkOrderTaskInput input) => Apply(input);
 
+    internal Result<WorkOrderTaskAttachment> AddAttachment(
+        TaskAttachmentKind kind,
+        string storageReference,
+        string originalFileName,
+        string contentType,
+        long size)
+    {
+        if (_attachments.Count >= MaxAttachments)
+            return Error.Validation("A task can have at most 10 attachments.", "Operations.WorkOrder.AttachmentLimitExceeded");
+        if (string.IsNullOrWhiteSpace(storageReference))
+            return Error.Validation("Attachment storage reference is required.", "Operations.WorkOrder.AttachmentStorageRequired");
+        if (string.IsNullOrWhiteSpace(originalFileName))
+            return Error.Validation("Attachment file name is required.", "Operations.WorkOrder.AttachmentFileNameRequired");
+        if (string.IsNullOrWhiteSpace(contentType))
+            return Error.Validation("Attachment content type is required.", "Operations.WorkOrder.AttachmentContentTypeRequired");
+        if (size <= 0)
+            return Error.Validation("Attachment file is empty.", "Operations.WorkOrder.AttachmentEmpty");
+
+        var attachment = new WorkOrderTaskAttachment(
+            WorkOrderId,
+            Id,
+            kind,
+            storageReference.Trim(),
+            TrimFileName(originalFileName),
+            contentType.Trim(),
+            size);
+        _attachments.Add(attachment);
+        return attachment;
+    }
+
+    internal Result<string> RemoveAttachment(Guid attachmentId)
+    {
+        var attachment = _attachments.FirstOrDefault(a => a.Id == attachmentId);
+        if (attachment is null)
+            return Error.NotFound("Attachment not found.", "Operations.WorkOrder.AttachmentNotFound");
+
+        _attachments.Remove(attachment);
+        return attachment.StorageReference;
+    }
+
     private void Apply(WorkOrderTaskInput input)
     {
         TaskType = input.TaskType;
@@ -55,6 +98,12 @@ public sealed class WorkOrderTask : Entity<Guid>
         _generalSupports.Clear();
         foreach (var item in input.GeneralSupports.GroupBy(g => g.GeneralSupport.GeneralSupportId).Select(g => g.First()))
             _generalSupports.Add(new WorkOrderTaskGeneralSupport(Guid.NewGuid(), WorkOrderId, Id, item.GeneralSupport, item.Quantity));
+    }
+
+    private static string TrimFileName(string fileName)
+    {
+        var trimmed = Path.GetFileName(fileName.Trim());
+        return trimmed.Length <= 255 ? trimmed : trimmed[..255];
     }
 }
 

@@ -19,6 +19,9 @@ public sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
         builder.Property(w => w.IsMergeGenerated).IsRequired();
         builder.Property(w => w.AircraftTailNumber).HasMaxLength(20);
         builder.Property(w => w.Remarks).HasMaxLength(2000);
+        builder.Property(w => w.CustomerSignatureReference).HasMaxLength(500);
+        builder.Property(w => w.CustomerSignatureFileName).HasMaxLength(255);
+        builder.Property(w => w.CustomerSignatureContentType).HasMaxLength(100);
         builder.Property(w => w.ApprovalNumber).HasMaxLength(20);
         builder.Property(w => w.CreatedAtUtc).IsRequired();
         builder.Property(w => w.RowVersion).IsRowVersion();

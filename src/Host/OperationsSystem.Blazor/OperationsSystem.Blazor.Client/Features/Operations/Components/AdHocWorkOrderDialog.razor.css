@@ -1,0 +1,267 @@
+.owf-form {
+    display: grid;
+    gap: var(--os-space-4);
+    min-width: min(980px, calc(100vw - 3rem));
+}
+
+.owf-body {
+    min-height: 28rem;
+}
+
+.owf-stepper {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.owf-stepper-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.owf-stepper-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.owf-stepper button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 3.25rem;
+    gap: var(--os-space-2);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    color: var(--os-color-text-muted);
+    background: var(--os-color-surface);
+    font-weight: 800;
+}
+
+.owf-stepper button span {
+    display: inline-grid;
+    width: 1.6rem;
+    height: 1.6rem;
+    place-items: center;
+    border-radius: 999px;
+    color: #fff;
+    background: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.owf-step-active button {
+    color: var(--os-color-primary);
+    border-color: color-mix(in srgb, var(--os-color-primary) 45%, var(--os-color-border));
+    background: color-mix(in srgb, var(--os-color-primary) 9%, var(--os-color-surface));
+}
+
+.owf-step-active button span,
+.owf-step-complete button span {
+    background: var(--os-color-primary);
+}
+
+.owf-step {
+    display: grid;
+    gap: var(--os-space-4);
+}
+
+.owf-section-line,
+.owf-step-toolbar,
+.owf-row-actions,
+.owf-actions,
+.owf-actions-end,
+.owf-type-toggle,
+.owf-warning,
+.owf-resource-head,
+.owf-resource-row {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.owf-section-line {
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+    font-weight: 900;
+}
+
+.owf-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--os-space-3);
+}
+
+.owf-field-block {
+    display: grid;
+    gap: var(--os-space-1);
+}
+
+.owf-field-block label {
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+}
+
+.owf-field-block label span {
+    color: var(--rz-danger);
+}
+
+.owf-full {
+    grid-column: 1 / -1;
+}
+
+::deep .owf-control {
+    width: 100%;
+}
+
+.owf-type-toggle {
+    flex-wrap: wrap;
+}
+
+.owf-type-option,
+.owf-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.45rem;
+    gap: var(--os-space-2);
+    border: 1px solid var(--os-color-border);
+    border-radius: 999px;
+    color: var(--os-color-text);
+    background: var(--os-color-surface);
+    font-weight: 800;
+    padding: 0.35rem 0.8rem;
+}
+
+.owf-type-option-active,
+.owf-chip-selected {
+    border-color: color-mix(in srgb, var(--os-color-primary) 55%, var(--os-color-border));
+    color: var(--os-color-primary);
+    background: color-mix(in srgb, var(--os-color-primary) 10%, var(--os-color-surface));
+}
+
+.owf-step-toolbar {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+}
+
+.owf-chip-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+    max-height: 15rem;
+    overflow: auto;
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface-muted);
+}
+
+.owf-step-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.owf-warning {
+    align-items: flex-start;
+    padding: var(--os-space-3);
+    border: 1px solid color-mix(in srgb, var(--rz-warning) 45%, var(--os-color-border));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--rz-warning) 12%, var(--os-color-surface));
+}
+
+.owf-warning div {
+    display: grid;
+    gap: var(--os-space-1);
+}
+
+.owf-warning a {
+    color: var(--os-color-primary);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.owf-row-panel {
+    display: grid;
+    gap: var(--os-space-3);
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface);
+}
+
+.owf-row-actions {
+    align-items: stretch;
+}
+
+.owf-empty {
+    display: grid;
+    min-height: 8rem;
+    place-items: center;
+    gap: var(--os-space-2);
+    border: 1px dashed var(--os-color-border);
+    border-radius: 8px;
+    color: var(--os-color-text-muted);
+    font-weight: 800;
+}
+
+.owf-resource-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--os-space-3);
+}
+
+.owf-resource-head {
+    justify-content: space-between;
+    min-height: 2rem;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+}
+
+.owf-resource-head button,
+.owf-resource-row button {
+    display: inline-grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 1px solid var(--os-color-border);
+    border-radius: 999px;
+    color: var(--os-color-text);
+    background: var(--os-color-surface);
+}
+
+.owf-resource-row {
+    margin-block-start: var(--os-space-2);
+}
+
+::deep .owf-qty {
+    width: 5.5rem;
+}
+
+.owf-actions {
+    justify-content: space-between;
+    padding-block-start: var(--os-space-2);
+}
+
+@media (max-width: 760px) {
+    .owf-form {
+        min-width: 0;
+    }
+
+    .owf-stepper,
+    .owf-stepper-3,
+    .owf-stepper-5,
+    .owf-grid-2,
+    .owf-resource-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .owf-row-actions,
+    .owf-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .owf-actions-end {
+        justify-content: flex-end;
+    }
+}

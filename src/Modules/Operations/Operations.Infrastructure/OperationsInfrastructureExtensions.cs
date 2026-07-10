@@ -10,6 +10,7 @@ using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Features.Flights;
 using Operations.Application.Features.WorkOrders;
+using Operations.Infrastructure.BackgroundJobs;
 using Operations.Infrastructure.Persistence;
 
 namespace Operations.Infrastructure;
@@ -39,6 +40,8 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IWorkOrderTimelineWriter, WorkOrderTimelineWriter>();
         services.AddScoped<IWorkOrderNumberAllocator, WorkOrderNumberAllocator>();
         services.AddScoped<FlightDuplicateDetector>();
+        services.Configure<AutoWorkOrderOptions>(configuration.GetSection(AutoWorkOrderOptions.SectionName));
+        services.AddHostedService<AutoWorkOrderBackgroundService>();
 
         services.TryAddSingleton(TimeProvider.System);
 

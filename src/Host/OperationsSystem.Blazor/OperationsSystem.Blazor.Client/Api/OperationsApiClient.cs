@@ -91,6 +91,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task MergeFlightsAsync(Guid survivorFlightId, Guid loserFlightId, CancellationToken ct = default) =>
         api.PostAsync("/operations/flights/merge", new MergeFlightsRequestModel(survivorFlightId, loserFlightId), ct);
 
+    public Task<Guid> CreateAdHocWorkOrderAsync(CreateAdHocWorkOrderRequestModel request, CancellationToken ct = default) =>
+        api.PostAsync<CreateAdHocWorkOrderRequestModel, Guid>("/operations/work-orders/from-scratch", request, ct);
+
     public Task<Guid> SubmitWorkOrderAsync(Guid flightId, WorkOrderRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<WorkOrderRequestModel, Guid>($"/operations/flights/{flightId}/work-orders", request, ct);
 
@@ -143,6 +146,39 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task ReturnWorkOrderAsync(Guid id, ReturnWorkOrderRequestModel request, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/operations/work-orders/{id}/return", request, rowVersion, ct);
+
+    public Task UploadWorkOrderAttachmentAsync(
+        Guid workOrderId,
+        Guid taskId,
+        string kind,
+        byte[] content,
+        string fileName,
+        string contentType,
+        string rowVersion,
+        CancellationToken ct = default) =>
+        api.UploadFileAsync(
+            $"/operations/work-orders/{workOrderId}/tasks/{taskId}/attachments",
+            content,
+            fileName,
+            contentType,
+            rowVersion,
+            ct,
+            new Dictionary<string, string> { ["kind"] = kind });
+
+    public Task<BrowserFileContent> DownloadWorkOrderAttachmentAsync(Guid workOrderId, Guid taskId, Guid attachmentId, CancellationToken ct = default) =>
+        api.GetFileAsync($"/operations/work-orders/{workOrderId}/tasks/{taskId}/attachments/{attachmentId}", ct);
+
+    public Task DeleteWorkOrderAttachmentAsync(Guid workOrderId, Guid taskId, Guid attachmentId, string rowVersion, CancellationToken ct = default) =>
+        api.DeleteAsync($"/operations/work-orders/{workOrderId}/tasks/{taskId}/attachments/{attachmentId}", rowVersion, ct);
+
+    public Task UploadWorkOrderSignatureAsync(Guid workOrderId, byte[] content, string fileName, string contentType, string rowVersion, CancellationToken ct = default) =>
+        api.UploadFileAsync($"/operations/work-orders/{workOrderId}/signature", content, fileName, contentType, rowVersion, ct);
+
+    public Task<BrowserFileContent> DownloadWorkOrderSignatureAsync(Guid workOrderId, CancellationToken ct = default) =>
+        api.GetFileAsync($"/operations/work-orders/{workOrderId}/signature", ct);
+
+    public Task DeleteWorkOrderSignatureAsync(Guid workOrderId, string rowVersion, CancellationToken ct = default) =>
+        api.DeleteAsync($"/operations/work-orders/{workOrderId}/signature", rowVersion, ct);
 
     private sealed class QueryBuilder
     {

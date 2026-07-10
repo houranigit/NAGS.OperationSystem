@@ -9,7 +9,16 @@
 
 <RequirePermission Permission="@OperationsPermissions.WorkOrdersView">
     <div class="os-list-page">
-        <PageHeader Title="Work orders" Description="Submitted, returned, and approved flight work orders within your scope." />
+        <PageHeader Title="Work orders" Description="Submitted, returned, and approved flight work orders within your scope.">
+            <Actions>
+                <AuthorizeView Context="workOrderActions">
+                    @if (workOrderActions.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersAuthor))
+                    {
+                        <RadzenButton Text="Create work order" Icon="add_task" ButtonStyle="ButtonStyle.Primary" Click="@OpenAdHocAsync" />
+                    }
+                </AuthorizeView>
+            </Actions>
+        </PageHeader>
 
         <DataListCard @ref="list" TItem="WorkOrderListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
@@ -60,6 +69,8 @@
                     <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
                                Visible="@CanReturn(workOrder)" OnClick="@(() => ReturnAsync(workOrder))" />
                     <RowAction Separator="true" />
+                    <RowAction Text="Merge work orders" Icon="merge_type" Permission="@OperationsPermissions.WorkOrdersMerge"
+                               Visible="@CanMerge(workOrder)" OnClick="@(() => MergeAsync(workOrder))" />
                     <RowAction Text="Delete" Icon="delete" Danger="true" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                Visible="@CanDelete(workOrder)" OnClick="@(() => DeleteAsync(workOrder))" />
                 </RowActionMenu>
@@ -222,6 +233,21 @@
         }
     }
 
+    private async Task OpenAdHocAsync()
+    {
+        var result = await DialogService.OpenAsync<AdHocWorkOrderDialog>(
+            "Create work order",
+            null,
+            new DialogOptions { Width = "1080px" });
+
+        if (result is Guid)
+        {
+            statusFilter = null;
+            Notifications.Notify(NotificationSeverity.Success, "Work order created");
+            await ReloadAsync();
+        }
+    }
+
     private async Task ApproveAsync(WorkOrderListItem workOrder)
     {
         try
@@ -276,9 +302,24 @@
         }
     }
 
+    private async Task MergeAsync(WorkOrderListItem workOrder)
+    {
+        var result = await DialogService.OpenAsync<WorkOrderMergeDialog>(
+            "Merge work orders",
+            new Dictionary<string, object?> { [nameof(WorkOrderMergeDialog.FlightId)] = workOrder.FlightId },
+            new DialogOptions { Width = "980px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Work orders merged");
+            await ReloadAsync();
+        }
+    }
+
     private static bool CanEdit(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanApprove(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanReturn(WorkOrderListItem workOrder) => workOrder.Status is "Approved";
+    private static bool CanMerge(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanDelete(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
 
     private static string DisplayNumber(WorkOrderListItem workOrder) =>

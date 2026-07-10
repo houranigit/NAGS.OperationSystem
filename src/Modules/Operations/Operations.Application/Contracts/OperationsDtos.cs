@@ -136,6 +136,7 @@ public sealed record WorkOrderDetailDto(
     DateTimeOffset? CanceledAtUtc,
     string? CancellationReason,
     string? Remarks,
+    WorkOrderSignatureDto? CustomerSignature,
     int? ApprovalSequence,
     string? ApprovalNumber,
     Guid? ApprovedByUserId,
@@ -182,6 +183,12 @@ public sealed record WorkOrderTaskAttachmentDto(
     string OriginalFileName,
     string ContentType,
     long Size);
+
+public sealed record WorkOrderSignatureDto(
+    string FileName,
+    string ContentType,
+    long Size,
+    DateTimeOffset SignedAtUtc);
 
 public sealed record WorkOrderTimelineEntryDto(
     Guid Id,

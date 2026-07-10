@@ -56,12 +56,19 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     public Task DeleteAsync(string path, string? ifMatch, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, path, body: null, ifMatch, cancellationToken);
 
-    public async Task UploadFileAsync(string path, byte[] content, string fileName, string contentType, string? ifMatch, CancellationToken cancellationToken = default)
+    public async Task UploadFileAsync(
+        string path,
+        byte[] content,
+        string fileName,
+        string contentType,
+        string? ifMatch,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? fields = null)
     {
         try
         {
             await jsRuntime.InvokeAsync<string>("operationsSystem.api.uploadFile", cancellationToken,
-                path, content, fileName, contentType, tokenStore.AccessToken, locale.Language, ifMatch);
+                path, content, fileName, contentType, tokenStore.AccessToken, locale.Language, ifMatch, fields);
         }
         catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
         {

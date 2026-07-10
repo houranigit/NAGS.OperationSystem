@@ -7,6 +7,40 @@ namespace Operations.Application.UnitTests;
 public sealed class WorkOrderMergeCommandTests
 {
     [Fact]
+    public void CreateAdHocWorkOrderCommandValidator_RequiresFlightAndPayload()
+    {
+        var validator = new CreateAdHocWorkOrderCommandValidator();
+
+        var invalid = validator.Validate(new CreateAdHocWorkOrderCommand(
+            Guid.Empty,
+            Guid.Empty,
+            "",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddHours(1),
+            AircraftTypeId: null,
+            PlannedServiceIds: [],
+            AssignedStaffMemberIds: [],
+            WorkOrderType.Completion,
+            Payload: null!));
+
+        invalid.IsValid.ShouldBeFalse();
+
+        var valid = validator.Validate(new CreateAdHocWorkOrderCommand(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "R5121",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddHours(1),
+            AircraftTypeId: null,
+            PlannedServiceIds: [Guid.NewGuid()],
+            AssignedStaffMemberIds: [],
+            WorkOrderType.Completion,
+            Payload()));
+
+        valid.IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
     public void MergeWorkOrdersCommandValidator_RequiresAtLeastTwoUniqueSources()
     {
         var validator = new MergeWorkOrdersCommandValidator();
@@ -41,4 +75,17 @@ public sealed class WorkOrderMergeCommandTests
                 ServiceLines: [],
                 Tasks: []),
             ApproveImmediately: false);
+
+    private static WorkOrderEditableCommandPayload Payload() =>
+        new(
+            ActualFlightNumber: null,
+            AircraftTypeId: null,
+            AircraftTailNumber: null,
+            ActualArrivalUtc: null,
+            ActualDepartureUtc: null,
+            CanceledAtUtc: null,
+            CancellationReason: null,
+            Remarks: null,
+            ServiceLines: [],
+            Tasks: []);
 }

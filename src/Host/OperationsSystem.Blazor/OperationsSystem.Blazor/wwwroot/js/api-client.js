@@ -71,9 +71,14 @@ window.operationsSystem.api = {
     return text;
   },
 
-  async uploadFile(path, bytes, fileName, contentType, accessToken, language, ifMatch) {
+  async uploadFile(path, bytes, fileName, contentType, accessToken, language, ifMatch, fields) {
     const data = new FormData();
     data.append("file", new Blob([bytes], { type: contentType }), fileName);
+    if (fields) {
+      Object.entries(fields).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) data.append(key, value);
+      });
+    }
     const headers = { Accept: "application/json", "Accept-Language": language || "en" };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     if (ifMatch) headers["If-Match"] = ifMatch;

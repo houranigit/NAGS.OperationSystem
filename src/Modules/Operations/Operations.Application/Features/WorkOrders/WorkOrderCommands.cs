@@ -140,6 +140,7 @@ public sealed class UpdateWorkOrderCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     WorkOrderInputBuilder inputBuilder,
+    IFileStorage storage,
     IWorkOrderTimelineWriter timeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<UpdateWorkOrderCommand>
@@ -165,6 +166,8 @@ public sealed class UpdateWorkOrderCommandHandler(
         var input = await inputBuilder.BuildAsync(request.Payload, workOrder.ActualFlightNumber.Value, workOrder.Station.StationId, cancellationToken);
         if (input.IsFailure)
             return input.Error;
+
+        var previousAttachmentReferences = WorkOrderAttachmentStorage.References(workOrder);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         var update = workOrder.UpdateDetails(
@@ -197,6 +200,12 @@ public sealed class UpdateWorkOrderCommandHandler(
             return ConcurrencyErrors.Stale;
         }
 
+        var currentAttachmentReferences = WorkOrderAttachmentStorage.References(workOrder);
+        await WorkOrderAttachmentStorage.DeleteAsync(
+            storage,
+            previousAttachmentReferences.Except(currentAttachmentReferences, StringComparer.OrdinalIgnoreCase),
+            cancellationToken);
+
         return Result.Success();
     }
 }
@@ -215,6 +224,7 @@ public sealed class DeleteWorkOrderCommandValidator : AbstractValidator<DeleteWo
 public sealed class DeleteWorkOrderCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
+    IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
     IUserContext user,
     IAuditContext auditContext,
@@ -242,6 +252,8 @@ public sealed class DeleteWorkOrderCommandHandler(
         if (workOrder.Status == WorkOrderStatus.Merged)
             return Error.Conflict("Merged work orders cannot be deleted.", "Operations.WorkOrder.MergedDeleteBlocked");
 
+        var attachmentReferences = WorkOrderAttachmentStorage.References(workOrder);
+
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
         db.WorkOrders.Remove(workOrder);
 
@@ -260,6 +272,7 @@ public sealed class DeleteWorkOrderCommandHandler(
             return ConcurrencyErrors.Stale;
         }
 
+        await WorkOrderAttachmentStorage.DeleteAsync(storage, attachmentReferences, cancellationToken);
         return Result.Success();
     }
 }

@@ -67,7 +67,9 @@
     private IReadOnlyList<GeneralSupportOption> supportOptions = [];
     private bool isLoading = true;
     private bool isSubmitting;
+    private bool isAttachmentBusy;
     private string? errorMessage;
+    private string? signatureDownloadUrl;
     private int step;
 
     private readonly IReadOnlyList<SelectOption> taskTypeOptions = [new("Major", "Major"), new("Minor", "Minor")];
@@ -228,6 +230,7 @@
             <label class="owo-label">Remarks</label>
             <RadzenTextArea @bind-Value="model.Remarks" Rows="4" MaxLength="2000" Disabled="@ViewOnly" class="owo-control" />
         </div>
+        @CustomerSignatureSection()
     </section>;
 
     private RenderFragment CancellationDetailsStep() => @<section class="owo-step-content">
@@ -346,6 +349,7 @@
                 </div>
 
                 @TaskResourceRows(task)
+                @TaskAttachments(task)
             </div>
         }
     </section>;
@@ -382,6 +386,100 @@
         @ResourceBlock("Tools", "build", task.Tools, toolOptions, AddTool, RemoveTool)
         @ResourceBlock("Materials", "category", task.Materials, materialOptions, AddMaterial, RemoveMaterial)
         @ResourceBlock("General support", "headset_mic", task.GeneralSupports, supportOptions, AddSupport, RemoveSupport)
+    </div>;
+
+    private RenderFragment CustomerSignatureSection() => @<div class="owo-signature">
+        <div class="owo-signature-head">
+            <span><RadzenIcon Icon="draw" />Customer signature</span>
+            @if (!ViewOnly)
+            {
+                @if (CanEditSignature)
+                {
+                    <label class="owo-signature-upload"><RadzenIcon Icon="upload" /><span>@(workOrder?.CustomerSignature is null ? "Upload PNG" : "Replace PNG")</span><InputFile OnChange="@UploadSignatureAsync" accept="image/png" /></label>
+                }
+                else
+                {
+                    <span class="owo-attachment-hint">Save the work order before capturing a signature.</span>
+                }
+            }
+        </div>
+        @if (workOrder?.CustomerSignature is { } signature)
+        {
+            <div class="owo-signature-row">
+                <span class="owo-attachment-icon"><RadzenIcon Icon="draw" /></span>
+                <span class="owo-attachment-main">
+                    <strong>@signature.FileName</strong>
+                    <small>@FormatFileSize(signature.Size) · @DateDisplay(signature.SignedAtUtc) UTC</small>
+                </span>
+                @if (!string.IsNullOrWhiteSpace(signatureDownloadUrl))
+                {
+                    <a class="owo-attachment-link" href="@signatureDownloadUrl" download="@signature.FileName">Open</a>
+                }
+                <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                              Disabled="@isAttachmentBusy" Click="@DownloadSignatureAsync" />
+                @if (!ViewOnly)
+                {
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                  Disabled="@isAttachmentBusy" Click="@DeleteSignatureAsync" />
+                }
+            </div>
+        }
+        else
+        {
+            <div class="owo-attachment-empty">No customer signature</div>
+        }
+    </div>;
+
+    private RenderFragment TaskAttachments(TaskForm task) => @<div class="owo-attachments">
+        <div class="owo-attachments-head">
+            <span><RadzenIcon Icon="attach_file" />Attachments</span>
+            @if (!ViewOnly)
+            {
+                @if (CanUploadAttachments(task))
+                {
+                    <div class="owo-attachment-upload">
+                        <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
+                        <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
+                        <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Document", args))" accept="application/pdf" /></label>
+                    </div>
+                }
+                else
+                {
+                    <span class="owo-attachment-hint">Save the work order before adding files.</span>
+                }
+            }
+        </div>
+
+        @if (task.Attachments.Count == 0)
+        {
+            <div class="owo-attachment-empty">No attachments</div>
+        }
+        else
+        {
+            <div class="owo-attachment-list">
+                @foreach (var attachment in task.Attachments)
+                {
+                    <div @key="attachment.Id" class="owo-attachment-row">
+                        <span class="owo-attachment-icon"><RadzenIcon Icon="@AttachmentIcon(attachment.Kind)" /></span>
+                        <span class="owo-attachment-main">
+                            <strong>@attachment.OriginalFileName</strong>
+                            <small>@attachment.Kind · @FormatFileSize(attachment.Size)</small>
+                        </span>
+                        @if (!string.IsNullOrWhiteSpace(attachment.DownloadUrl))
+                        {
+                            <a class="owo-attachment-link" href="@attachment.DownloadUrl" download="@attachment.OriginalFileName">Open</a>
+                        }
+                        <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                      Disabled="@isAttachmentBusy" Click="@(() => DownloadAttachmentAsync(task, attachment))" />
+                        @if (!ViewOnly)
+                        {
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                          Disabled="@isAttachmentBusy" Click="@(() => DeleteAttachmentAsync(task, attachment))" />
+                        }
+                    </div>
+                }
+            </div>
+        }
     </div>;
 
     private RenderFragment ResourceBlock<TOption>(
@@ -428,6 +526,184 @@
     private static void RemoveMaterial(TaskForm task, ResourceForm row) => task.Materials.Remove(row);
     private static void AddSupport(TaskForm task) => task.GeneralSupports.Add(new ResourceForm());
     private static void RemoveSupport(TaskForm task, ResourceForm row) => task.GeneralSupports.Remove(row);
+
+    private bool CanUploadAttachments(TaskForm task) =>
+        WorkOrderId is not null && workOrder is not null && task.Id is not null && workOrder.Status is "Submitted" or "Returned";
+
+    private bool CanEditSignature =>
+        WorkOrderId is not null && workOrder is not null && workOrder.Status is "Submitted" or "Returned" && workOrder.Type == "Completion";
+
+    private async Task UploadSignatureAsync(InputFileChangeEventArgs args)
+    {
+        if (WorkOrderId is not { } workOrderId || workOrder is null)
+        {
+            errorMessage = "Save the work order before capturing a signature.";
+            return;
+        }
+
+        var file = args.File;
+        if (file.ContentType != "image/png" && !file.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "Customer signature must be a PNG image.";
+            return;
+        }
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            errorMessage = "Customer signature must be at most 2 MB.";
+            return;
+        }
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            await Operations.UploadWorkOrderSignatureAsync(workOrderId, memory.ToArray(), file.Name, file.ContentType, workOrder.RowVersion);
+            signatureDownloadUrl = null;
+            await ReloadWorkOrderAsync(workOrderId);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not upload the customer signature.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DownloadSignatureAsync()
+    {
+        if (WorkOrderId is not { } workOrderId)
+            return;
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            var file = await Operations.DownloadWorkOrderSignatureAsync(workOrderId);
+            signatureDownloadUrl = $"data:{file.ContentType};base64,{file.Base64}";
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not download the customer signature.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DeleteSignatureAsync()
+    {
+        if (WorkOrderId is not { } workOrderId || workOrder is null)
+            return;
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await Operations.DeleteWorkOrderSignatureAsync(workOrderId, workOrder.RowVersion);
+            signatureDownloadUrl = null;
+            await ReloadWorkOrderAsync(workOrderId);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not delete the customer signature.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task UploadAttachmentAsync(TaskForm task, string kind, InputFileChangeEventArgs args)
+    {
+        if (WorkOrderId is not { } workOrderId || workOrder is null || task.Id is not { } taskId)
+        {
+            errorMessage = "Save the work order before adding files.";
+            return;
+        }
+
+        var file = args.File;
+        var maxBytes = MaxAttachmentBytes(kind);
+        if (file.Size > maxBytes)
+        {
+            errorMessage = $"{kind} attachments must be at most {FormatFileSize(maxBytes)}.";
+            return;
+        }
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            await Operations.UploadWorkOrderAttachmentAsync(workOrderId, taskId, kind, memory.ToArray(), file.Name, file.ContentType, workOrder.RowVersion);
+            await ReloadWorkOrderAsync(workOrderId);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not upload the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DownloadAttachmentAsync(TaskForm task, AttachmentForm attachment)
+    {
+        if (WorkOrderId is not { } workOrderId || task.Id is not { } taskId)
+            return;
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            var file = await Operations.DownloadWorkOrderAttachmentAsync(workOrderId, taskId, attachment.Id);
+            attachment.DownloadUrl = $"data:{file.ContentType};base64,{file.Base64}";
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not download the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DeleteAttachmentAsync(TaskForm task, AttachmentForm attachment)
+    {
+        if (WorkOrderId is not { } workOrderId || workOrder is null || task.Id is not { } taskId)
+            return;
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await Operations.DeleteWorkOrderAttachmentAsync(workOrderId, taskId, attachment.Id, workOrder.RowVersion);
+            await ReloadWorkOrderAsync(workOrderId);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not delete the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task ReloadWorkOrderAsync(Guid workOrderId)
+    {
+        workOrder = await Operations.GetWorkOrderAsync(workOrderId);
+        model = FromWorkOrder(workOrder);
+    }
 
     private void PreviousStep()
     {
@@ -614,7 +890,15 @@
             EmployeeIds = t.Employees.Select(e => e.StaffMemberId).ToList(),
             Tools = t.Tools.Select(x => new ResourceForm { ItemId = x.ToolId, Quantity = x.Quantity }).ToList(),
             Materials = t.Materials.Select(x => new ResourceForm { ItemId = x.MaterialId, Quantity = x.Quantity }).ToList(),
-            GeneralSupports = t.GeneralSupports.Select(x => new ResourceForm { ItemId = x.GeneralSupportId, Quantity = x.Quantity }).ToList()
+            GeneralSupports = t.GeneralSupports.Select(x => new ResourceForm { ItemId = x.GeneralSupportId, Quantity = x.Quantity }).ToList(),
+            Attachments = t.Attachments.Select(a => new AttachmentForm
+            {
+                Id = a.Id,
+                Kind = a.Kind,
+                OriginalFileName = a.OriginalFileName,
+                ContentType = a.ContentType,
+                Size = a.Size
+            }).ToList()
         }).ToList()
     };
 
@@ -622,6 +906,30 @@
         string.IsNullOrWhiteSpace(f.CustomerIataCode) ? f.FlightNumber : $"{f.CustomerIataCode.Trim().ToUpperInvariant()}-{f.FlightNumber}";
 
     private static string DateDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+
+    private static long MaxAttachmentBytes(string kind) => kind switch
+    {
+        "Image" => 10 * 1024 * 1024,
+        "Voice" => 25 * 1024 * 1024,
+        _ => 20 * 1024 * 1024
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+            return $"{bytes / 1024m / 1024m:0.#} MB";
+        if (bytes >= 1024)
+            return $"{bytes / 1024m:0.#} KB";
+        return $"{bytes} B";
+    }
+
+    private static string AttachmentIcon(string kind) => kind switch
+    {
+        "Image" => "image",
+        "Voice" => "graphic_eq",
+        "Document" => "description",
+        _ => "attach_file"
+    };
 
     private static string FlightStatusTone(string status) => status switch
     {
@@ -687,6 +995,7 @@
         public List<ResourceForm> Tools { get; set; } = [];
         public List<ResourceForm> Materials { get; set; } = [];
         public List<ResourceForm> GeneralSupports { get; set; } = [];
+        public List<AttachmentForm> Attachments { get; set; } = [];
     }
 
     private sealed class ResourceForm
@@ -694,5 +1003,15 @@
         public Guid Key { get; } = Guid.NewGuid();
         public Guid? ItemId { get; set; }
         public decimal Quantity { get; set; } = 1;
+    }
+
+    private sealed class AttachmentForm
+    {
+        public Guid Id { get; set; }
+        public string Kind { get; set; } = "Document";
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = "application/octet-stream";
+        public long Size { get; set; }
+        public string? DownloadUrl { get; set; }
     }
 }

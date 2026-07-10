@@ -40,6 +40,11 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
     public ActualTime? Actuals { get; private set; }
     public CancellationDetails? Cancellation { get; private set; }
     public string? Remarks { get; private set; }
+    public string? CustomerSignatureReference { get; private set; }
+    public string? CustomerSignatureFileName { get; private set; }
+    public string? CustomerSignatureContentType { get; private set; }
+    public long? CustomerSignatureSize { get; private set; }
+    public DateTimeOffset? CustomerSignedAtUtc { get; private set; }
 
     public int? ApprovalSequence { get; private set; }
     public string? ApprovalNumber { get; private set; }
@@ -203,6 +208,14 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         Actuals = actuals;
         Cancellation = type == WorkOrderType.Cancellation ? cancellation : null;
         Remarks = NormalizeRemarks(remarks);
+        if (Type == WorkOrderType.Cancellation)
+        {
+            CustomerSignatureReference = null;
+            CustomerSignatureFileName = null;
+            CustomerSignatureContentType = null;
+            CustomerSignatureSize = null;
+            CustomerSignedAtUtc = null;
+        }
 
         ReplaceServiceLinesInternal(serviceLines);
         var reconcile = ReconcileTasksInternal(tasks);
@@ -290,6 +303,99 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
+    public Result<WorkOrderTaskAttachment> AddTaskAttachment(
+        Guid taskId,
+        TaskAttachmentKind kind,
+        string storageReference,
+        string originalFileName,
+        string contentType,
+        long size,
+        DateTimeOffset now)
+    {
+        var editable = EnsureEditable();
+        if (editable.IsFailure)
+            return editable.Error;
+
+        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task is null)
+            return Error.NotFound("Task not found.", "Operations.WorkOrder.TaskNotFound");
+
+        var attachment = task.AddAttachment(kind, storageReference, originalFileName, contentType, size);
+        if (attachment.IsFailure)
+            return attachment.Error;
+
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return attachment;
+    }
+
+    public Result<string> RemoveTaskAttachment(Guid taskId, Guid attachmentId, DateTimeOffset now)
+    {
+        var editable = EnsureEditable();
+        if (editable.IsFailure)
+            return editable.Error;
+
+        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task is null)
+            return Error.NotFound("Task not found.", "Operations.WorkOrder.TaskNotFound");
+
+        var storageReference = task.RemoveAttachment(attachmentId);
+        if (storageReference.IsFailure)
+            return storageReference.Error;
+
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return storageReference;
+    }
+
+    public Result SetCustomerSignature(
+        string storageReference,
+        string fileName,
+        string contentType,
+        long size,
+        DateTimeOffset now)
+    {
+        var editable = EnsureEditable();
+        if (editable.IsFailure)
+            return editable.Error;
+        if (Type != WorkOrderType.Completion)
+            return Error.Conflict("Customer signatures are only available for completion work orders.", "Operations.WorkOrder.SignatureTypeInvalid");
+        if (string.IsNullOrWhiteSpace(storageReference))
+            return Error.Validation("Signature storage reference is required.", "Operations.WorkOrder.SignatureStorageRequired");
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Error.Validation("Signature file name is required.", "Operations.WorkOrder.SignatureFileNameRequired");
+        if (string.IsNullOrWhiteSpace(contentType))
+            return Error.Validation("Signature content type is required.", "Operations.WorkOrder.SignatureContentTypeRequired");
+        if (size <= 0)
+            return Error.Validation("Signature file is empty.", "Operations.WorkOrder.SignatureEmpty");
+
+        CustomerSignatureReference = storageReference.Trim();
+        CustomerSignatureFileName = TrimFileName(fileName);
+        CustomerSignatureContentType = contentType.Trim();
+        CustomerSignatureSize = size;
+        CustomerSignedAtUtc = now;
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return Result.Success();
+    }
+
+    public Result<string?> RemoveCustomerSignature(DateTimeOffset now)
+    {
+        var editable = EnsureEditable();
+        if (editable.IsFailure)
+            return editable.Error;
+
+        var storageReference = CustomerSignatureReference;
+        CustomerSignatureReference = null;
+        CustomerSignatureFileName = null;
+        CustomerSignatureContentType = null;
+        CustomerSignatureSize = null;
+        CustomerSignedAtUtc = null;
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return storageReference;
+    }
+
     public Result EnsureEditable() =>
         IsEditable
             ? Result.Success()
@@ -373,6 +479,12 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
     private static string? NormalizeRemarks(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string TrimFileName(string fileName)
+    {
+        var trimmed = Path.GetFileName(fileName.Trim());
+        return trimmed.Length <= 255 ? trimmed : trimmed[..255];
+    }
 
     private static CustomerSnapshot Copy(CustomerSnapshot value) =>
         new(value.CustomerId, value.IataCode, value.Name);

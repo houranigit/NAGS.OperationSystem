@@ -1,0 +1,20 @@
+<div class="ofield">
+    <label class="ofield-label">
+        @Label
+        @if (Required)
+        {
+            <span>*</span>
+        }
+    </label>
+    <div class="ofield-input">
+        <RadzenIcon Icon="@Icon" class="ofield-icon" />
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Icon { get; set; } = string.Empty;
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

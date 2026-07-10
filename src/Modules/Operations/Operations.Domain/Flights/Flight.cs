@@ -65,9 +65,10 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         string? contractNumber,
         Guid createdByUserId,
         DateTimeOffset now,
-        Guid? id = null)
+        Guid? id = null,
+        bool allowEmptyPlannedServices = false)
     {
-        var perLanding = PerLandingPolicy.ValidatePlannedServices(plannedServices);
+        var perLanding = PerLandingPolicy.ValidatePlannedServices(plannedServices, allowEmptyPlannedServices);
         if (perLanding.IsFailure)
             return perLanding.Error;
 

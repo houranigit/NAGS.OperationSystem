@@ -68,28 +68,64 @@
 
             <section class="owm-section">
                 <div class="owm-section-line"><RadzenIcon Icon="rule" /><span>Merged work order</span></div>
-                <div class="owm-grid-2">
+                <div class="owm-grid-2 owm-field-selectors">
                     <div class="owm-field-block">
-                        <label class="owm-label">Use details from</label>
-                        <RadzenDropDown TValue="Guid?" @bind-Value="baseWorkOrderId" Data="@BaseOptions" TextProperty="Label" ValueProperty="Id"
+                        <label class="owm-label">Type from</label>
+                        <RadzenDropDown TValue="Guid?" @bind-Value="typeSourceId" Data="@SourceOptions" TextProperty="Label" ValueProperty="Id"
                                         Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
                     </div>
+                    <div class="owm-field-block">
+                        <label class="owm-label">Actual flight # from</label>
+                        <RadzenDropDown TValue="Guid?" @bind-Value="actualFlightSourceId" Data="@SourceOptions" TextProperty="Label" ValueProperty="Id"
+                                        Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
+                    </div>
+                    @if (IsMergedCompletion)
+                    {
+                        <div class="owm-field-block">
+                            <label class="owm-label">Aircraft type from</label>
+                            <RadzenDropDown TValue="Guid?" @bind-Value="aircraftSourceId" Data="@SourceOptions" TextProperty="Label" ValueProperty="Id"
+                                            Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
+                        </div>
+                        <div class="owm-field-block">
+                            <label class="owm-label">Tail number from</label>
+                            <RadzenDropDown TValue="Guid?" @bind-Value="tailSourceId" Data="@SourceOptions" TextProperty="Label" ValueProperty="Id"
+                                            Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
+                        </div>
+                        <div class="owm-field-block">
+                            <label class="owm-label">ATA / ATD from</label>
+                            <RadzenDropDown TValue="Guid?" @bind-Value="actualTimesSourceId" Data="@SourceOptions" TextProperty="Label" ValueProperty="Id"
+                                            Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
+                        </div>
+                        <div class="owm-field-block">
+                            <label class="owm-label">Remarks from</label>
+                            <RadzenDropDown TValue="Guid?" @bind-Value="remarksSourceId" Data="@SourceOptions" TextProperty="Label" ValueProperty="Id"
+                                            Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="owm-field-block">
+                            <label class="owm-label">Cancellation from</label>
+                            <RadzenDropDown TValue="Guid?" @bind-Value="cancellationSourceId" Data="@SourceOptions" TextProperty="Label" ValueProperty="Id"
+                                            Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
+                        </div>
+                    }
                     <label class="owm-toggle-row">
                         <RadzenCheckBox TValue="bool" @bind-Value="approveImmediately" />
                         <span>Approve immediately</span>
                     </label>
                 </div>
 
-                @if (BaseWorkOrder is { } baseWorkOrder)
+                @if (TypeSource is { } typeSource)
                 {
                     <div class="owm-preview">
                         <div>
                             <span>Type</span>
-                            <strong>@baseWorkOrder.Type</strong>
+                            <strong>@typeSource.Type</strong>
                         </div>
                         <div>
                             <span>Actual flight #</span>
-                            <strong>@baseWorkOrder.ActualFlightNumber</strong>
+                            <strong>@(SourceOrFallback(actualFlightSourceId, typeSource).ActualFlightNumber)</strong>
                         </div>
                         <div>
                             <span>Service lines</span>
@@ -98,6 +134,54 @@
                         <div>
                             <span>Tasks</span>
                             <strong>@MergeTaskCount</strong>
+                        </div>
+                    </div>
+                }
+
+                @if (IsMergedCompletion)
+                {
+                    <div class="owm-include-grid">
+                        <div class="owm-include-panel">
+                            <div class="owm-include-head">
+                                <span><RadzenIcon Icon="miscellaneous_services" />Service lines</span>
+                                <div>
+                                    <RadzenButton Text="All" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@SelectAllServiceLines" />
+                                    <RadzenButton Text="None" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@ClearServiceLines" />
+                                </div>
+                            </div>
+                            @if (AvailableServiceLines.Count == 0)
+                            {
+                                <div class="owm-empty-mini">No source service lines</div>
+                            }
+                            @foreach (var item in AvailableServiceLines)
+                            {
+                                var selected = selectedServiceLineKeys.Contains(item.Key);
+                                <label @key="item.Key" class="owm-include-row @(selected ? "owm-include-row--selected" : string.Empty)">
+                                    <RadzenCheckBox TValue="bool" Value="@selected" Change="@((bool value) => ToggleServiceLine(item.Key, value))" />
+                                    <span><strong>@item.Line.ServiceName</strong><small>@DisplayWorkOrder(item.Source)</small></span>
+                                </label>
+                            }
+                        </div>
+                        <div class="owm-include-panel">
+                            <div class="owm-include-head">
+                                <span><RadzenIcon Icon="task_alt" />Tasks</span>
+                                <div>
+                                    <RadzenButton Text="All" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@SelectAllTasks" />
+                                    <RadzenButton Text="None" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@ClearTasks" />
+                                </div>
+                            </div>
+                            @if (AvailableTasks.Count == 0)
+                            {
+                                <div class="owm-empty-mini">No source tasks</div>
+                            }
+                            @foreach (var item in AvailableTasks)
+                            {
+                                var selected = selectedTaskKeys.Contains(item.Key);
+                                <label @key="item.Key" class="owm-include-row @(selected ? "owm-include-row--selected" : string.Empty)">
+                                    <RadzenCheckBox TValue="bool" Value="@selected" Change="@((bool value) => ToggleTask(item.Key, value))" />
+                                    <span><strong>@item.Task.TaskType</strong><small>@DisplayWorkOrder(item.Source) · @None(item.Task.Description)</small></span>
+                                </label>
+                            }
                         </div>
                     </div>
                 }
@@ -125,16 +209,26 @@
     private FlightDetail? flight;
     private List<WorkOrderDetail> sources = [];
     private HashSet<Guid> selectedSourceIds = [];
-    private Guid? baseWorkOrderId;
+    private HashSet<string> selectedServiceLineKeys = [];
+    private HashSet<string> selectedTaskKeys = [];
+    private Guid? typeSourceId;
+    private Guid? actualFlightSourceId;
+    private Guid? aircraftSourceId;
+    private Guid? tailSourceId;
+    private Guid? actualTimesSourceId;
+    private Guid? remarksSourceId;
+    private Guid? cancellationSourceId;
     private bool approveImmediately;
     private bool isLoading = true;
     private bool isSubmitting;
     private string? errorMessage;
 
-    private WorkOrderDetail? BaseWorkOrder =>
-        baseWorkOrderId is { } id ? sources.FirstOrDefault(source => source.Id == id) : null;
+    private WorkOrderDetail? TypeSource =>
+        SourceOrNull(typeSourceId) ?? SelectedSources.FirstOrDefault();
 
-    private IReadOnlyList<SourceOption> BaseOptions =>
+    private bool IsMergedCompletion => TypeSource?.Type != "Cancellation";
+
+    private IReadOnlyList<SourceOption> SourceOptions =>
         sources
             .Where(source => selectedSourceIds.Contains(source.Id))
             .Select(source => new SourceOption(DisplayWorkOrder(source), source.Id))
@@ -143,10 +237,20 @@
     private IReadOnlyList<WorkOrderDetail> SelectedSources =>
         sources.Where(source => selectedSourceIds.Contains(source.Id)).ToList();
 
-    private bool CanMerge => selectedSourceIds.Count >= 2 && BaseWorkOrder is not null;
+    private IReadOnlyList<ServiceLineSelection> AvailableServiceLines =>
+        SelectedSources
+            .SelectMany(source => source.ServiceLines.Select(line => new ServiceLineSelection(source, line, LineKey(source.Id, line.Id))))
+            .ToList();
+
+    private IReadOnlyList<TaskSelection> AvailableTasks =>
+        SelectedSources
+            .SelectMany(source => source.Tasks.Select(task => new TaskSelection(source, task, TaskKey(source.Id, task.Id))))
+            .ToList();
+
+    private bool CanMerge => selectedSourceIds.Count >= 2 && TypeSource is not null;
     private string SelectedCountText => selectedSourceIds.Count == 1 ? "1 selected" : $"{selectedSourceIds.Count} selected";
-    private int MergeServiceLineCount => BaseWorkOrder?.Type == "Completion" ? SelectedSources.Sum(source => source.ServiceLines.Count) : 0;
-    private int MergeTaskCount => BaseWorkOrder?.Type == "Completion" ? SelectedSources.Sum(source => source.Tasks.Count) : 0;
+    private int MergeServiceLineCount => IsMergedCompletion ? selectedServiceLineKeys.Count : 0;
+    private int MergeTaskCount => IsMergedCompletion ? selectedTaskKeys.Count : 0;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -176,7 +280,7 @@
                 .ThenBy(source => source.CreatedAtUtc)
                 .ToList();
             selectedSourceIds = sources.Take(Math.Min(2, sources.Count)).Select(source => source.Id).ToHashSet();
-            baseWorkOrderId = selectedSourceIds.Count > 0 ? selectedSourceIds.First() : null;
+            SyncMergeSelections(selectMissingLinesAndTasks: true);
         }
         catch (ApiException ex)
         {
@@ -195,25 +299,83 @@
         else
             selectedSourceIds.Remove(id);
 
-        if (baseWorkOrderId is null || !selectedSourceIds.Contains(baseWorkOrderId.Value))
-            baseWorkOrderId = selectedSourceIds.FirstOrDefault();
+        SyncMergeSelections(selectMissingLinesAndTasks: selected);
     }
 
     private void SelectAll()
     {
         selectedSourceIds = sources.Select(source => source.Id).ToHashSet();
-        baseWorkOrderId ??= selectedSourceIds.FirstOrDefault();
+        SyncMergeSelections(selectMissingLinesAndTasks: true);
     }
 
     private void ClearSelection()
     {
         selectedSourceIds.Clear();
-        baseWorkOrderId = null;
+        selectedServiceLineKeys.Clear();
+        selectedTaskKeys.Clear();
+        typeSourceId = null;
+        actualFlightSourceId = null;
+        aircraftSourceId = null;
+        tailSourceId = null;
+        actualTimesSourceId = null;
+        remarksSourceId = null;
+        cancellationSourceId = null;
     }
+
+    private void SyncMergeSelections(bool selectMissingLinesAndTasks)
+    {
+        EnsureFieldSource(ref typeSourceId);
+        EnsureFieldSource(ref actualFlightSourceId);
+        EnsureFieldSource(ref aircraftSourceId);
+        EnsureFieldSource(ref tailSourceId);
+        EnsureFieldSource(ref actualTimesSourceId);
+        EnsureFieldSource(ref remarksSourceId);
+        EnsureFieldSource(ref cancellationSourceId);
+
+        var availableLineKeys = AvailableServiceLines.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+        var availableTaskKeys = AvailableTasks.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+        selectedServiceLineKeys.IntersectWith(availableLineKeys);
+        selectedTaskKeys.IntersectWith(availableTaskKeys);
+
+        if (selectMissingLinesAndTasks)
+        {
+            selectedServiceLineKeys.UnionWith(availableLineKeys);
+            selectedTaskKeys.UnionWith(availableTaskKeys);
+        }
+    }
+
+    private void EnsureFieldSource(ref Guid? fieldSourceId)
+    {
+        if (fieldSourceId is { } id && selectedSourceIds.Contains(id))
+            return;
+
+        fieldSourceId = SelectedSources.FirstOrDefault()?.Id;
+    }
+
+    private void ToggleServiceLine(string key, bool selected)
+    {
+        if (selected)
+            selectedServiceLineKeys.Add(key);
+        else
+            selectedServiceLineKeys.Remove(key);
+    }
+
+    private void ToggleTask(string key, bool selected)
+    {
+        if (selected)
+            selectedTaskKeys.Add(key);
+        else
+            selectedTaskKeys.Remove(key);
+    }
+
+    private void SelectAllServiceLines() => selectedServiceLineKeys = AvailableServiceLines.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+    private void ClearServiceLines() => selectedServiceLineKeys.Clear();
+    private void SelectAllTasks() => selectedTaskKeys = AvailableTasks.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+    private void ClearTasks() => selectedTaskKeys.Clear();
 
     private async Task MergeAsync()
     {
-        if (flight is null || BaseWorkOrder is not { } baseWorkOrder)
+        if (flight is null || TypeSource is not { } typeSource)
             return;
 
         if (selectedSourceIds.Count < 2)
@@ -228,7 +390,7 @@
         {
             var request = new MergeWorkOrdersRequestModel(
                 selectedSourceIds.ToList(),
-                BuildMergedWorkOrder(baseWorkOrder),
+                BuildMergedWorkOrder(typeSource),
                 approveImmediately);
             await Operations.MergeWorkOrdersAsync(flight.Id, request);
             DialogService.Close(true);
@@ -246,35 +408,50 @@
     private WorkOrderRequestModel BuildMergedWorkOrder(WorkOrderDetail baseWorkOrder)
     {
         var completion = baseWorkOrder.Type == "Completion";
-        var selectedSources = SelectedSources;
+        var actualFlightSource = SourceOrFallback(actualFlightSourceId, baseWorkOrder);
+        var aircraftSource = SourceOrFallback(aircraftSourceId, baseWorkOrder);
+        var tailSource = SourceOrFallback(tailSourceId, baseWorkOrder);
+        var actualTimesSource = SourceOrFallback(actualTimesSourceId, baseWorkOrder);
+        var remarksSource = SourceOrFallback(remarksSourceId, baseWorkOrder);
+        var cancellationSource = SourceOrFallback(cancellationSourceId, baseWorkOrder);
+        var selectedLines = AvailableServiceLines.Where(item => selectedServiceLineKeys.Contains(item.Key)).ToList();
+        var selectedTasks = AvailableTasks.Where(item => selectedTaskKeys.Contains(item.Key)).ToList();
 
         return new WorkOrderRequestModel(
             baseWorkOrder.Type,
-            baseWorkOrder.ActualFlightNumber,
-            completion ? baseWorkOrder.AircraftTypeId : null,
-            completion ? baseWorkOrder.AircraftTailNumber : null,
-            completion ? baseWorkOrder.ActualArrivalUtc : null,
-            completion ? baseWorkOrder.ActualDepartureUtc : null,
-            completion ? null : baseWorkOrder.CanceledAtUtc,
-            completion ? null : baseWorkOrder.CancellationReason,
-            completion ? baseWorkOrder.Remarks : null,
-            completion ? selectedSources.SelectMany(source => source.ServiceLines).Select(line => new WorkOrderServiceLineRequestModel(
-                line.ServiceId,
-                line.PerformedByStaffMemberId,
-                line.FromUtc,
-                line.ToUtc,
-                line.Description)).ToList() : [],
-            completion ? selectedSources.SelectMany(source => source.Tasks).Select(task => new WorkOrderTaskRequestModel(
+            actualFlightSource.ActualFlightNumber,
+            completion ? aircraftSource.AircraftTypeId : null,
+            completion ? tailSource.AircraftTailNumber : null,
+            completion ? actualTimesSource.ActualArrivalUtc : null,
+            completion ? actualTimesSource.ActualDepartureUtc : null,
+            completion ? null : cancellationSource.CanceledAtUtc,
+            completion ? null : cancellationSource.CancellationReason,
+            completion ? remarksSource.Remarks : null,
+            completion ? selectedLines.Select(item => new WorkOrderServiceLineRequestModel(
+                item.Line.ServiceId,
+                item.Line.PerformedByStaffMemberId,
+                item.Line.FromUtc,
+                item.Line.ToUtc,
+                item.Line.Description)).ToList() : [],
+            completion ? selectedTasks.Select(item => new WorkOrderTaskRequestModel(
                 null,
-                task.TaskType,
-                task.Description,
-                task.FromUtc,
-                task.ToUtc,
-                task.Employees.Select(employee => employee.StaffMemberId).ToList(),
-                task.Tools.Select(tool => new WorkOrderTaskToolRequestModel(tool.ToolId, tool.Quantity)).ToList(),
-                task.Materials.Select(material => new WorkOrderTaskMaterialRequestModel(material.MaterialId, material.Quantity)).ToList(),
-                task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportRequestModel(support.GeneralSupportId, support.Quantity)).ToList())).ToList() : []);
+                item.Task.TaskType,
+                item.Task.Description,
+                item.Task.FromUtc,
+                item.Task.ToUtc,
+                item.Task.Employees.Select(employee => employee.StaffMemberId).ToList(),
+                item.Task.Tools.Select(tool => new WorkOrderTaskToolRequestModel(tool.ToolId, tool.Quantity)).ToList(),
+                item.Task.Materials.Select(material => new WorkOrderTaskMaterialRequestModel(material.MaterialId, material.Quantity)).ToList(),
+                item.Task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportRequestModel(support.GeneralSupportId, support.Quantity)).ToList())).ToList() : []);
     }
+
+    private WorkOrderDetail? SourceOrNull(Guid? id) =>
+        id is { } value && selectedSourceIds.Contains(value)
+            ? sources.FirstOrDefault(source => source.Id == value)
+            : null;
+
+    private WorkOrderDetail SourceOrFallback(Guid? id, WorkOrderDetail fallback) =>
+        SourceOrNull(id) ?? fallback;
 
     private static string DisplayFlightNumber(FlightDetail flight) =>
         string.IsNullOrWhiteSpace(flight.CustomerIataCode)
@@ -287,6 +464,8 @@
     private static string DateDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
     private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
     private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
+    private static string LineKey(Guid sourceId, Guid lineId) => $"{sourceId:N}:{lineId:N}";
+    private static string TaskKey(Guid sourceId, Guid taskId) => $"{sourceId:N}:{taskId:N}";
 
     private static string FlightStatusTone(string status) => status switch
     {
@@ -305,4 +484,6 @@
     };
 
     private sealed record SourceOption(string Label, Guid Id);
+    private sealed record ServiceLineSelection(WorkOrderDetail Source, WorkOrderServiceLineModel Line, string Key);
+    private sealed record TaskSelection(WorkOrderDetail Source, WorkOrderTaskModel Task, string Key);
 }

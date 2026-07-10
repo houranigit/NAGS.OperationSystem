@@ -391,6 +391,159 @@
     width: 86px;
 }
 
+.owo-attachments {
+    display: grid;
+    gap: var(--os-space-2);
+    padding-block-start: var(--os-space-2);
+    border-top: 1px solid var(--os-color-border);
+}
+
+.owo-attachments-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-2);
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+}
+
+.owo-attachments-head > span,
+.owo-attachment-upload label,
+.owo-attachment-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.owo-attachment-upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.owo-attachment-upload label {
+    position: relative;
+    min-height: 2rem;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text);
+    cursor: pointer;
+}
+
+.owo-attachment-upload input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.owo-attachment-hint,
+.owo-attachment-empty {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+}
+
+.owo-attachment-list {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.owo-attachment-row {
+    min-height: 3rem;
+    padding: var(--os-space-2);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface-muted);
+}
+
+.owo-attachment-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+    color: var(--os-color-primary);
+}
+
+.owo-attachment-main {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.owo-attachment-main strong,
+.owo-attachment-main small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.owo-attachment-main small {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+}
+
+.owo-attachment-link {
+    color: var(--os-color-primary);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.owo-signature {
+    display: grid;
+    gap: var(--os-space-2);
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface-muted);
+}
+
+.owo-signature-head,
+.owo-signature-row,
+.owo-signature-upload {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.owo-signature-head {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+}
+
+.owo-signature-upload {
+    position: relative;
+    min-height: 2rem;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface);
+    cursor: pointer;
+}
+
+.owo-signature-upload input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.owo-signature-row {
+    min-height: 3rem;
+}
+
 .owo-actions {
     display: flex;
     align-items: center;
@@ -433,6 +586,11 @@
 
     .owo-row-actions {
         flex-direction: column;
+    }
+
+    .owo-attachment-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
     }
 
     .owo-actions {
