@@ -28,6 +28,12 @@ internal static class WorkOrderEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.WorkOrders.View).WithTags("Operations.WorkOrders");
 
+        group.MapPost("/flights/{flightId:guid}/work-orders/merge", async (Guid flightId, MergeWorkOrdersRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(request.ToCommand(flightId), ct);
+            return result.ToCreated(id => $"/api/v1/operations/work-orders/{id}");
+        }).RequirePermission(OperationsPermissions.WorkOrders.Merge).WithTags("Operations.WorkOrders");
+
         var workOrders = group.MapGroup("/work-orders").WithTags("Operations.WorkOrders");
 
         workOrders.MapGet("/", async (ISender sender, CancellationToken ct,

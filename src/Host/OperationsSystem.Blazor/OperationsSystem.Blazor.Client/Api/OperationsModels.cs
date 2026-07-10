@@ -238,6 +238,11 @@ public sealed record WorkOrderRequestModel(
     IReadOnlyList<WorkOrderServiceLineRequestModel> ServiceLines,
     IReadOnlyList<WorkOrderTaskRequestModel> Tasks);
 
+public sealed record MergeWorkOrdersRequestModel(
+    IReadOnlyList<Guid> SourceWorkOrderIds,
+    WorkOrderRequestModel WorkOrder,
+    bool ApproveImmediately);
+
 public sealed record WorkOrderServiceLineRequestModel(
     Guid ServiceId,
     Guid PerformedByStaffMemberId,

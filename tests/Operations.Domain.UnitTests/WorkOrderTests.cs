@@ -162,6 +162,54 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void SubmitMerged_FlagsGeneratedWorkOrder_AndSourcesCanBeMarkedMerged()
+    {
+        var flight = ScheduleFlight();
+        var first = SubmitCompletion(flight);
+        var second = SubmitCompletion(flight);
+
+        var generated = WorkOrder.SubmitMerged(
+            flight,
+            WorkOrderType.Completion,
+            Guid.NewGuid(),
+            TestData.Staff(),
+            first.ActualFlightNumber,
+            TestData.AircraftType(),
+            "hz-merged",
+            ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value,
+            null,
+            "Merged from source work orders",
+            [],
+            [],
+            TestData.Now.AddMinutes(1));
+
+        generated.IsSuccess.ShouldBeTrue();
+        generated.Value.IsMergeGenerated.ShouldBeTrue();
+        generated.Value.Status.ShouldBe(WorkOrderStatus.Submitted);
+        generated.Value.MergedIntoWorkOrderId.ShouldBeNull();
+        generated.Value.AircraftTailNumber.ShouldBe("HZ-MERGED");
+
+        first.MarkMergedInto(generated.Value.Id, TestData.Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+        second.MarkMergedInto(generated.Value.Id, TestData.Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+
+        first.Status.ShouldBe(WorkOrderStatus.Merged);
+        second.Status.ShouldBe(WorkOrderStatus.Merged);
+        first.MergedIntoWorkOrderId.ShouldBe(generated.Value.Id);
+        second.MergedIntoWorkOrderId.ShouldBe(generated.Value.Id);
+    }
+
+    [Fact]
+    public void MarkMergedInto_RejectsApprovedWorkOrder()
+    {
+        var workOrder = SubmitApprovedCompletion();
+
+        var result = workOrder.MarkMergedInto(Guid.NewGuid(), TestData.Now.AddMinutes(1));
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.WorkOrder.Locked");
+    }
+
+    [Fact]
     public void Flight_WorkOrderTransitions_MoveThroughInProgressSettledAndReopened()
     {
         var flight = ScheduleFlight();

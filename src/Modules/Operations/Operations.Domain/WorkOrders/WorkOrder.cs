@@ -70,6 +70,75 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         DateTimeOffset now,
         Guid? id = null)
     {
+        return SubmitInternal(
+            flight,
+            type,
+            ownerUserId,
+            owner,
+            actualFlightNumber,
+            aircraftType,
+            aircraftTailNumber,
+            actuals,
+            cancellation,
+            remarks,
+            serviceLines,
+            tasks,
+            now,
+            isMergeGenerated: false,
+            id);
+    }
+
+    public static Result<WorkOrder> SubmitMerged(
+        Flight flight,
+        WorkOrderType type,
+        Guid ownerUserId,
+        StaffMemberSnapshot? owner,
+        FlightNumber? actualFlightNumber,
+        AircraftTypeSnapshot? aircraftType,
+        string? aircraftTailNumber,
+        ActualTime? actuals,
+        CancellationDetails? cancellation,
+        string? remarks,
+        IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
+        IReadOnlyList<WorkOrderTaskInput> tasks,
+        DateTimeOffset now,
+        Guid? id = null)
+    {
+        return SubmitInternal(
+            flight,
+            type,
+            ownerUserId,
+            owner,
+            actualFlightNumber,
+            aircraftType,
+            aircraftTailNumber,
+            actuals,
+            cancellation,
+            remarks,
+            serviceLines,
+            tasks,
+            now,
+            isMergeGenerated: true,
+            id);
+    }
+
+    private static Result<WorkOrder> SubmitInternal(
+        Flight flight,
+        WorkOrderType type,
+        Guid ownerUserId,
+        StaffMemberSnapshot? owner,
+        FlightNumber? actualFlightNumber,
+        AircraftTypeSnapshot? aircraftType,
+        string? aircraftTailNumber,
+        ActualTime? actuals,
+        CancellationDetails? cancellation,
+        string? remarks,
+        IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
+        IReadOnlyList<WorkOrderTaskInput> tasks,
+        DateTimeOffset now,
+        bool isMergeGenerated,
+        Guid? id = null)
+    {
         if (flight.Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
             return Error.Conflict("Work orders can only be submitted for scheduled or in-progress flights.", "Operations.WorkOrder.FlightNotOpen");
 
@@ -83,7 +152,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             FlightId = flight.Id,
             Type = type,
             Status = WorkOrderStatus.Submitted,
-            IsMergeGenerated = false,
+            IsMergeGenerated = isMergeGenerated,
             OwnerUserId = ownerUserId,
             Owner = owner,
             Customer = Copy(flight.Customer),

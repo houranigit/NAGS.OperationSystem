@@ -1,0 +1,308 @@
+@inject OperationsApiClient Operations
+@inject DialogService DialogService
+
+<div class="owm-form">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else if (flight is null)
+    {
+        <ErrorState Message="Could not load work orders." OnRetry="@LoadAsync" />
+    }
+    else
+    {
+        <div class="owm-summary">
+            <div class="owm-summary-icon">
+                <RadzenIcon Icon="flight" />
+            </div>
+            <div class="owm-summary-main">
+                <div class="owm-summary-heading">
+                    <h2>@DisplayFlightNumber(flight)</h2>
+                    <StatusBadge Label="@flight.Status" Tone="@FlightStatusTone(flight.Status)" />
+                    <span class="owm-operation-badge"><RadzenIcon Icon="settings" />@flight.OperationTypeName</span>
+                </div>
+                <div class="owm-summary-meta">
+                    <span><RadzenIcon Icon="business" />@flight.CustomerName</span>
+                    <span><RadzenIcon Icon="flight_takeoff" />@flight.StationIata</span>
+                    <span><RadzenIcon Icon="flight_land" />STA @DateDisplay(flight.ScheduledArrivalUtc) UTC</span>
+                </div>
+            </div>
+        </div>
+
+        @if (sources.Count < 2)
+        {
+            <div class="owm-empty">
+                <RadzenIcon Icon="merge_type" />
+                <span>At least two submitted or returned work orders are required.</span>
+            </div>
+        }
+        else
+        {
+            <section class="owm-section">
+                <div class="owm-section-line"><RadzenIcon Icon="checklist" /><span>Source work orders</span></div>
+                <div class="owm-toolbar">
+                    <RadzenButton Text="Select all" Icon="select_all" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@SelectAll" />
+                    <RadzenButton Text="Clear" Icon="clear_all" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@ClearSelection" />
+                    <span class="owm-selection-count">@SelectedCountText</span>
+                </div>
+
+                <div class="owm-source-list">
+                    @foreach (var source in sources)
+                    {
+                        var selected = selectedSourceIds.Contains(source.Id);
+                        <label @key="source.Id" class="owm-source-row @(selected ? "owm-source-row--selected" : string.Empty)">
+                            <RadzenCheckBox TValue="bool" Value="@selected" Change="@((bool value) => ToggleSource(source.Id, value))" />
+                            <span class="owm-source-icon"><RadzenIcon Icon="@(source.Type == "Cancellation" ? "cancel" : "task_alt")" /></span>
+                            <span class="owm-source-main">
+                                <strong>@DisplayWorkOrder(source)</strong>
+                                <small>@source.Type · @None(source.OwnerName)</small>
+                            </span>
+                            <StatusBadge Label="@source.Status" Tone="@WorkOrderStatusTone(source.Status)" />
+                        </label>
+                    }
+                </div>
+            </section>
+
+            <section class="owm-section">
+                <div class="owm-section-line"><RadzenIcon Icon="rule" /><span>Merged work order</span></div>
+                <div class="owm-grid-2">
+                    <div class="owm-field-block">
+                        <label class="owm-label">Use details from</label>
+                        <RadzenDropDown TValue="Guid?" @bind-Value="baseWorkOrderId" Data="@BaseOptions" TextProperty="Label" ValueProperty="Id"
+                                        Disabled="@(selectedSourceIds.Count == 0)" class="owm-control" />
+                    </div>
+                    <label class="owm-toggle-row">
+                        <RadzenCheckBox TValue="bool" @bind-Value="approveImmediately" />
+                        <span>Approve immediately</span>
+                    </label>
+                </div>
+
+                @if (BaseWorkOrder is { } baseWorkOrder)
+                {
+                    <div class="owm-preview">
+                        <div>
+                            <span>Type</span>
+                            <strong>@baseWorkOrder.Type</strong>
+                        </div>
+                        <div>
+                            <span>Actual flight #</span>
+                            <strong>@baseWorkOrder.ActualFlightNumber</strong>
+                        </div>
+                        <div>
+                            <span>Service lines</span>
+                            <strong>@MergeServiceLineCount</strong>
+                        </div>
+                        <div>
+                            <span>Tasks</span>
+                            <strong>@MergeTaskCount</strong>
+                        </div>
+                    </div>
+                }
+            </section>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                @errorMessage
+            </DismissibleDialogMessage>
+        }
+
+        <div class="owm-actions">
+            <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton Text="Merge" Icon="merge_type" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Button"
+                          Disabled="@(!CanMerge || isSubmitting)" Click="@MergeAsync" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid FlightId { get; set; }
+
+    private FlightDetail? flight;
+    private List<WorkOrderDetail> sources = [];
+    private HashSet<Guid> selectedSourceIds = [];
+    private Guid? baseWorkOrderId;
+    private bool approveImmediately;
+    private bool isLoading = true;
+    private bool isSubmitting;
+    private string? errorMessage;
+
+    private WorkOrderDetail? BaseWorkOrder =>
+        baseWorkOrderId is { } id ? sources.FirstOrDefault(source => source.Id == id) : null;
+
+    private IReadOnlyList<SourceOption> BaseOptions =>
+        sources
+            .Where(source => selectedSourceIds.Contains(source.Id))
+            .Select(source => new SourceOption(DisplayWorkOrder(source), source.Id))
+            .ToList();
+
+    private IReadOnlyList<WorkOrderDetail> SelectedSources =>
+        sources.Where(source => selectedSourceIds.Contains(source.Id)).ToList();
+
+    private bool CanMerge => selectedSourceIds.Count >= 2 && BaseWorkOrder is not null;
+    private string SelectedCountText => selectedSourceIds.Count == 1 ? "1 selected" : $"{selectedSourceIds.Count} selected";
+    private int MergeServiceLineCount => BaseWorkOrder?.Type == "Completion" ? SelectedSources.Sum(source => source.ServiceLines.Count) : 0;
+    private int MergeTaskCount => BaseWorkOrder?.Type == "Completion" ? SelectedSources.Sum(source => source.Tasks.Count) : 0;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            flight = await Operations.GetFlightAsync(FlightId);
+            var eligible = flight.WorkOrders
+                .Where(summary => summary.Status is "Submitted" or "Returned")
+                .ToList();
+
+            var loaded = new List<WorkOrderDetail>(eligible.Count);
+            foreach (var summary in eligible)
+            {
+                var detail = await Operations.GetWorkOrderAsync(summary.Id);
+                if (!detail.IsMergeGenerated && detail.MergedIntoWorkOrderId is null)
+                    loaded.Add(detail);
+            }
+
+            sources = loaded
+                .OrderBy(source => source.Type)
+                .ThenBy(source => source.OwnerName)
+                .ThenBy(source => source.CreatedAtUtc)
+                .ToList();
+            selectedSourceIds = sources.Take(Math.Min(2, sources.Count)).Select(source => source.Id).ToHashSet();
+            baseWorkOrderId = selectedSourceIds.Count > 0 ? selectedSourceIds.First() : null;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load merge candidates.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ToggleSource(Guid id, bool selected)
+    {
+        if (selected)
+            selectedSourceIds.Add(id);
+        else
+            selectedSourceIds.Remove(id);
+
+        if (baseWorkOrderId is null || !selectedSourceIds.Contains(baseWorkOrderId.Value))
+            baseWorkOrderId = selectedSourceIds.FirstOrDefault();
+    }
+
+    private void SelectAll()
+    {
+        selectedSourceIds = sources.Select(source => source.Id).ToHashSet();
+        baseWorkOrderId ??= selectedSourceIds.FirstOrDefault();
+    }
+
+    private void ClearSelection()
+    {
+        selectedSourceIds.Clear();
+        baseWorkOrderId = null;
+    }
+
+    private async Task MergeAsync()
+    {
+        if (flight is null || BaseWorkOrder is not { } baseWorkOrder)
+            return;
+
+        if (selectedSourceIds.Count < 2)
+        {
+            errorMessage = "Select at least two work orders to merge.";
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            var request = new MergeWorkOrdersRequestModel(
+                selectedSourceIds.ToList(),
+                BuildMergedWorkOrder(baseWorkOrder),
+                approveImmediately);
+            await Operations.MergeWorkOrdersAsync(flight.Id, request);
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not merge work orders.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private WorkOrderRequestModel BuildMergedWorkOrder(WorkOrderDetail baseWorkOrder)
+    {
+        var completion = baseWorkOrder.Type == "Completion";
+        var selectedSources = SelectedSources;
+
+        return new WorkOrderRequestModel(
+            baseWorkOrder.Type,
+            baseWorkOrder.ActualFlightNumber,
+            completion ? baseWorkOrder.AircraftTypeId : null,
+            completion ? baseWorkOrder.AircraftTailNumber : null,
+            completion ? baseWorkOrder.ActualArrivalUtc : null,
+            completion ? baseWorkOrder.ActualDepartureUtc : null,
+            completion ? null : baseWorkOrder.CanceledAtUtc,
+            completion ? null : baseWorkOrder.CancellationReason,
+            completion ? baseWorkOrder.Remarks : null,
+            completion ? selectedSources.SelectMany(source => source.ServiceLines).Select(line => new WorkOrderServiceLineRequestModel(
+                line.ServiceId,
+                line.PerformedByStaffMemberId,
+                line.FromUtc,
+                line.ToUtc,
+                line.Description)).ToList() : [],
+            completion ? selectedSources.SelectMany(source => source.Tasks).Select(task => new WorkOrderTaskRequestModel(
+                null,
+                task.TaskType,
+                task.Description,
+                task.FromUtc,
+                task.ToUtc,
+                task.Employees.Select(employee => employee.StaffMemberId).ToList(),
+                task.Tools.Select(tool => new WorkOrderTaskToolRequestModel(tool.ToolId, tool.Quantity)).ToList(),
+                task.Materials.Select(material => new WorkOrderTaskMaterialRequestModel(material.MaterialId, material.Quantity)).ToList(),
+                task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportRequestModel(support.GeneralSupportId, support.Quantity)).ToList())).ToList() : []);
+    }
+
+    private static string DisplayFlightNumber(FlightDetail flight) =>
+        string.IsNullOrWhiteSpace(flight.CustomerIataCode)
+            ? flight.FlightNumber
+            : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
+
+    private static string DisplayWorkOrder(WorkOrderDetail workOrder) =>
+        string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;
+
+    private static string DateDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+    private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
+    private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
+
+    private static string FlightStatusTone(string status) => status switch
+    {
+        "Completed" => "success",
+        "Canceled" or "Merged" => "danger",
+        "InProgress" => "warning",
+        _ => "neutral"
+    };
+
+    private static string WorkOrderStatusTone(string status) => status switch
+    {
+        "Approved" => "success",
+        "Merged" => "danger",
+        "Submitted" => "warning",
+        _ => "neutral"
+    };
+
+    private sealed record SourceOption(string Label, Guid Id);
+}

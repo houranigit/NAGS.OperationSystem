@@ -82,6 +82,20 @@ public sealed record WorkOrderRequest(
                 t.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity)).ToList() ?? [])).ToList() ?? []);
 }
 
+public sealed record MergeWorkOrdersRequest(
+    IReadOnlyList<Guid>? SourceWorkOrderIds,
+    WorkOrderRequest WorkOrder,
+    bool ApproveImmediately)
+{
+    public MergeWorkOrdersCommand ToCommand(Guid flightId) =>
+        new(
+            flightId,
+            SourceWorkOrderIds ?? [],
+            WorkOrder.Type,
+            WorkOrder.ToPayload(),
+            ApproveImmediately);
+}
+
 public sealed record WorkOrderServiceLineRequest(
     Guid ServiceId,
     Guid PerformedByStaffMemberId,

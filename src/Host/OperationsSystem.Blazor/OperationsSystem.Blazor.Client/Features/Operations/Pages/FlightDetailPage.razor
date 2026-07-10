@@ -315,6 +315,11 @@
             <div class="ofd-card-head">
                 <RadzenIcon Icon="fact_check" /><h3>Work orders</h3>
                 <span class="ofd-count">@f.WorkOrders.Count</span>
+                @if (CanMergeWorkOrders(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersMerge))
+                {
+                    <RadzenButton Text="Merge work orders" Icon="merge_type" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  Click="@OpenWorkOrderMergeAsync" />
+                }
             </div>
             @if (f.WorkOrders.Count == 0)
             {
@@ -684,6 +689,21 @@
         }
     }
 
+    private async Task OpenWorkOrderMergeAsync()
+    {
+        var result = await DialogService.OpenAsync<WorkOrderMergeDialog>(
+            "Merge work orders",
+            new Dictionary<string, object?> { [nameof(WorkOrderMergeDialog.FlightId)] = Id },
+            new DialogOptions { Width = "940px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Work orders merged");
+            await LoadAsync();
+            activeTab = FlightTab.WorkOrders;
+        }
+    }
+
     private Task OpenMergeAsync() => OpenMergeAsync(flight is { } f ? EffectiveDuplicateFlightId(f) : null);
 
     private async Task OpenMergeAsync(Guid? candidateFlightId)
@@ -767,6 +787,9 @@
     private static bool CanEditWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanApproveWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanReturnWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Approved";
+    private static bool CanMergeWorkOrders(FlightDetail f) =>
+        f.Status is "Scheduled" or "InProgress"
+        && f.WorkOrders.Count(workOrder => workOrder.Status is "Submitted" or "Returned") >= 2;
 
     private static string DisplayWorkOrder(WorkOrderSummaryModel workOrder) =>
         string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;

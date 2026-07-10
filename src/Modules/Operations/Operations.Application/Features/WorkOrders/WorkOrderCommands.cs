@@ -11,6 +11,7 @@ using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
+using Operations.Domain.ValueObjects;
 using Operations.Domain.WorkOrders;
 
 namespace Operations.Application.Features.WorkOrders;
@@ -412,6 +413,180 @@ public sealed class ReturnWorkOrderCommandHandler(
         }
 
         return Result.Success();
+    }
+}
+
+public sealed record MergeWorkOrdersCommand(
+    Guid FlightId,
+    IReadOnlyList<Guid> SourceWorkOrderIds,
+    WorkOrderType Type,
+    WorkOrderEditableCommandPayload Payload,
+    bool ApproveImmediately) : ICommand<Guid>;
+
+public sealed class MergeWorkOrdersCommandValidator : AbstractValidator<MergeWorkOrdersCommand>
+{
+    public MergeWorkOrdersCommandValidator()
+    {
+        RuleFor(x => x.FlightId).NotEmpty();
+        RuleFor(x => x.SourceWorkOrderIds)
+            .NotNull()
+            .Must(ids => ids is { Count: >= 2 }).WithMessage("At least two source work orders are required.")
+            .Must(ids => ids is not null && ids.Distinct().Count() == ids.Count).WithMessage("Source work orders must be unique.");
+        RuleFor(x => x.Payload).NotNull();
+    }
+}
+
+public sealed class MergeWorkOrdersCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    WorkOrderInputBuilder inputBuilder,
+    MasterDataResolver resolver,
+    IWorkOrderNumberAllocator allocator,
+    IWorkOrderTimelineWriter workOrderTimeline,
+    IFlightTimelineWriter flightTimeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<MergeWorkOrdersCommand, Guid>
+{
+    public async Task<Result<Guid>> Handle(MergeWorkOrdersCommand request, CancellationToken cancellationToken)
+    {
+        if (user.UserId is not { } ownerUserId)
+            return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
+
+        if (request.SourceWorkOrderIds is not { Count: >= 2 })
+            return Error.Validation("At least two source work orders are required.", "Operations.WorkOrder.MergeSourceCount");
+        if (request.SourceWorkOrderIds.Distinct().Count() != request.SourceWorkOrderIds.Count)
+            return Error.Validation("Source work orders must be unique.", "Operations.WorkOrder.MergeSourceDuplicate");
+
+        var flight = await db.Flights
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var station = scopeResult.Value.EnsureStation(flight.Station.StationId);
+        if (station.IsFailure)
+            return station.Error;
+
+        var sourceIds = request.SourceWorkOrderIds.ToList();
+        var sources = await WorkOrderLoader.ForMutation(db.WorkOrders)
+            .Where(w => sourceIds.Contains(w.Id))
+            .ToListAsync(cancellationToken);
+        if (sources.Count != sourceIds.Count)
+            return Error.NotFound("One or more source work orders were not found.", "Operations.WorkOrder.MergeSourceNotFound");
+
+        foreach (var source in sources)
+        {
+            var sourceStation = scopeResult.Value.EnsureStation(source.Station.StationId);
+            if (sourceStation.IsFailure)
+                return sourceStation.Error;
+            if (source.FlightId != request.FlightId)
+                return Error.Validation("All source work orders must belong to the selected flight.", "Operations.WorkOrder.MergeFlightMismatch");
+            if (source.IsMergeGenerated)
+                return Error.Conflict("Merge-generated work orders cannot be used as merge sources.", "Operations.WorkOrder.MergeGeneratedSource");
+            if (!source.IsEditable)
+                return Error.Conflict("Only submitted or returned work orders can be merged.", "Operations.WorkOrder.MergeSourceLocked");
+        }
+
+        var alreadyApproved = await db.WorkOrders.AsNoTracking().AnyAsync(w =>
+            w.FlightId == request.FlightId && w.Status == WorkOrderStatus.Approved,
+            cancellationToken);
+        if (alreadyApproved)
+            return Error.Conflict("This flight already has an approved work order.", "Operations.WorkOrder.FlightAlreadyApproved");
+
+        var input = await inputBuilder.BuildAsync(request.Payload, flight.FlightNumber.Value, flight.Station.StationId, cancellationToken);
+        if (input.IsFailure)
+            return input.Error;
+
+        StaffMemberSnapshot? owner = null;
+        if (scopeResult.Value.StaffMemberId is { } staffId)
+        {
+            var resolvedOwner = await resolver.StaffMemberAsync(staffId, cancellationToken);
+            if (resolvedOwner.IsFailure)
+                return resolvedOwner.Error;
+            owner = resolvedOwner.Value;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var generated = WorkOrder.SubmitMerged(
+            flight,
+            request.Type,
+            ownerUserId,
+            owner,
+            input.Value.ActualFlightNumber,
+            input.Value.AircraftType,
+            input.Value.AircraftTailNumber,
+            input.Value.Actuals,
+            input.Value.Cancellation,
+            input.Value.Remarks,
+            input.Value.ServiceLines,
+            input.Value.Tasks.Select(task => task with { Id = null }).ToList(),
+            now);
+        if (generated.IsFailure)
+            return generated.Error;
+
+        db.WorkOrders.Add(generated.Value);
+
+        var flightState = flight.OnWorkOrderSubmitted(now);
+        if (flightState.IsFailure)
+            return flightState.Error;
+
+        var sourceDetails = string.Join(", ", sources.Select(s => s.Id));
+        await workOrderTimeline.AppendAsync(generated.Value.Id, WorkOrderTimelineEventType.Merged, now,
+            details: $"Generated from {sources.Count} source work orders: {sourceDetails}.", cancellationToken: cancellationToken);
+
+        foreach (var source in sources)
+        {
+            var merged = source.MarkMergedInto(generated.Value.Id, now);
+            if (merged.IsFailure)
+                return merged.Error;
+
+            await workOrderTimeline.AppendAsync(source.Id, WorkOrderTimelineEventType.Merged, now,
+                details: generated.Value.Id.ToString(), cancellationToken: cancellationToken);
+        }
+
+        await flightTimeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now,
+            details: $"Merged work order {generated.Value.Id} generated from {sources.Count} source work orders.",
+            cancellationToken: cancellationToken);
+
+        if (request.ApproveImmediately)
+        {
+            var allocation = await allocator.AllocateAsync(generated.Value.Station, cancellationToken);
+            if (allocation.IsFailure)
+                return allocation.Error;
+
+            var approve = generated.Value.Approve(allocation.Value.Sequence, allocation.Value.Number, ownerUserId, now);
+            if (approve.IsFailure)
+                return approve.Error;
+
+            var settle = generated.Value.Type == WorkOrderType.Completion
+                ? flight.SettleCompleted(now)
+                : flight.SettleCanceled(now);
+            if (settle.IsFailure)
+                return settle.Error;
+
+            await workOrderTimeline.AppendAsync(generated.Value.Id, WorkOrderTimelineEventType.Approved, now, details: generated.Value.ApprovalNumber, cancellationToken: cancellationToken);
+            await workOrderTimeline.AppendAsync(generated.Value.Id, WorkOrderTimelineEventType.NumberAssigned, now, details: generated.Value.ApprovalNumber, cancellationToken: cancellationToken);
+            await flightTimeline.AppendAsync(flight.Id,
+                generated.Value.Type == WorkOrderType.Completion ? FlightTimelineEventType.FlightCompleted : FlightTimelineEventType.FlightCanceled,
+                now,
+                details: generated.Value.ApprovalNumber,
+                cancellationToken: cancellationToken);
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return Error.Conflict("Work order merge conflicted with another update. Reload and try again.", "Operations.WorkOrder.MergeConflict");
+        }
+
+        return generated.Value.Id;
     }
 }
 

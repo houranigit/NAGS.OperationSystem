@@ -94,6 +94,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<Guid> SubmitWorkOrderAsync(Guid flightId, WorkOrderRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<WorkOrderRequestModel, Guid>($"/operations/flights/{flightId}/work-orders", request, ct);
 
+    public Task<Guid> MergeWorkOrdersAsync(Guid flightId, MergeWorkOrdersRequestModel request, CancellationToken ct = default) =>
+        api.PostAsync<MergeWorkOrdersRequestModel, Guid>($"/operations/flights/{flightId}/work-orders/merge", request, ct);
+
     public Task<WorkOrderSummaryModel?> GetMyWorkOrderForFlightAsync(Guid flightId, CancellationToken ct = default) =>
         api.GetAsync<WorkOrderSummaryModel?>($"/operations/flights/{flightId}/work-orders/mine", ct);
 
