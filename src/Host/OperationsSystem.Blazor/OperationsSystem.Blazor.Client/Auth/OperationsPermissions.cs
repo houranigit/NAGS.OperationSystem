@@ -17,8 +17,6 @@ public static class OperationsPermissions
     public const string FlightsInvite = "operations.flights.invite";
     public const string FlightsMerge = "operations.flights.merge";
 
-    public const string DashboardView = "operations.dashboard.view";
-
     public const string WorkOrdersView = "operations.work-orders.view";
     public const string WorkOrdersViewOthers = "operations.work-orders.view-others";
     public const string WorkOrdersAuthor = "operations.work-orders.author";

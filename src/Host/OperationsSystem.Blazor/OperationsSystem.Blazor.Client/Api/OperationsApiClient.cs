@@ -8,9 +8,6 @@ namespace OperationsSystem.Blazor.Client.Api;
 /// </summary>
 public sealed class OperationsApiClient(BrowserApiClient api)
 {
-    public Task<OperationsDashboard> GetDashboardAsync(CancellationToken ct = default) =>
-        api.GetAsync<OperationsDashboard>("/operations/dashboard", ct);
-
     public Task<PagedResult<FlightListItem>> GetFlightsAsync(
         int page, int pageSize, string? search = null, Guid? stationId = null, Guid? customerId = null,
         Guid? operationTypeId = null, string? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null, CancellationToken ct = default)

@@ -35,12 +35,6 @@ public sealed record DuplicateCandidate(
     DateTimeOffset ScheduledArrivalUtc,
     int Score);
 
-public sealed record OperationsDashboard(
-    int ScheduledFlights,
-    int InProgressFlights,
-    int CompletedFlights,
-    int CanceledFlights);
-
 public sealed record PlannedServiceModel(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
 

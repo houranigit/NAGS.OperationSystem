@@ -77,10 +77,9 @@
 
             <AuthorizeView Context="operations">
                 @{
-                    var canOpsDashboard = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.DashboardView);
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
                     var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
-                    var canOperations = canOpsDashboard || canOpsFlights || canOpsWorkOrders;
+                    var canOperations = canOpsFlights || canOpsWorkOrders;
                     var operationsActive = IsNavGroupActive("operations");
                 }
                 @if (canOperations)
@@ -95,29 +94,22 @@
                         </button>
                         <div id="os-nav-operations" class="os-nav-children">
                             <span class="os-nav-flyout-title">Operations</span>
-                            @if (canOpsDashboard)
-                            {
-                                <NavLink href="/operations/dashboard" class="os-nav-link" title="Operations dashboard" @onclick="CloseNav">
-                                    <RadzenIcon Icon="insights" />
-                                    <span>Overview</span>
-                                </NavLink>
-                            }
                             @if (canOpsFlights)
                             {
-                                <NavLink href="/operations/flights" class="os-nav-link" title="Flights" @onclick="CloseNav">
-                                    <RadzenIcon Icon="flight" />
-                                    <span>Flights</span>
-                                </NavLink>
                                 <NavLink href="/operations/calendar" class="os-nav-link" title="Flight calendar" @onclick="CloseNav">
                                     <RadzenIcon Icon="calendar_month" />
                                     <span>Calendar</span>
+                                </NavLink>
+                                <NavLink href="/operations/flights" class="os-nav-link" title="Flights" @onclick="CloseNav">
+                                    <RadzenIcon Icon="flight" />
+                                    <span>Flights</span>
                                 </NavLink>
                             }
                             @if (canOpsWorkOrders)
                             {
                                 <NavLink href="/operations/work-orders" class="os-nav-link" title="Work orders" @onclick="CloseNav">
                                     <RadzenIcon Icon="fact_check" />
-                                    <span>Work orders</span>
+                                    <span>Work Orders</span>
                                 </NavLink>
                             }
                         </div>
