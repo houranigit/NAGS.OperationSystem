@@ -198,31 +198,42 @@
 
     private RenderFragment CompletionDetailsStep() => @<section class="owo-step-content">
         <div class="owo-section-line"><RadzenIcon Icon="fact_check" /><span>Details</span></div>
-        <div class="owo-grid-2">
+        <div class="owo-grid-1">
             <div class="owo-field-block">
-                <label class="owo-label">Flight number</label>
+                <label class="owo-label">Flight number <span class="owo-required">*</span></label>
                 <div class="owo-input-wrap">
-                    <span class="owo-field-icon"><RadzenIcon Icon="tag" /></span>
-                    <RadzenTextBox @bind-Value="model.ActualFlightNumber" MaxLength="12" Disabled="@ViewOnly" class="owo-control owo-control-icon" />
+                    <span class="owo-flight-prefix">
+                        <span>@CustomerIataPrefix</span>
+                        @if (ShowCustomerFlightPrefixDivider)
+                        {
+                            <span class="owo-flight-prefix-divider">-</span>
+                        }
+                    </span>
+                    <RadzenTextBox @bind-Value="model.ActualFlightNumber" Immediate="true" MaxLength="12"
+                                   Disabled="@ViewOnly" class="owo-control owo-control-icon owo-flight-number-control" />
                 </div>
             </div>
+        </div>
+        <div class="owo-grid-2">
             <div class="owo-field-block">
-                <label class="owo-label">Aircraft type</label>
+                <label class="owo-label">Aircraft type <span class="owo-required">*</span></label>
                 <div class="owo-input-wrap">
-                    <span class="owo-field-icon"><RadzenIcon Icon="connecting_airports" /></span>
+                    <span class="owo-field-icon"><RadzenIcon Icon="flight" /></span>
                     <RadzenDropDown TValue="Guid?" @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
                                     AllowClear="true" AllowFiltering="true" Disabled="@ViewOnly" class="owo-control owo-control-icon" />
                 </div>
             </div>
             <div class="owo-field-block">
-                <label class="owo-label">Tail number</label>
+                <label class="owo-label">Tail number <span class="owo-required">*</span></label>
                 <div class="owo-input-wrap">
                     <span class="owo-field-icon"><RadzenIcon Icon="confirmation_number" /></span>
-                    <RadzenTextBox @bind-Value="model.AircraftTailNumber" MaxLength="20" Disabled="@ViewOnly" class="owo-control owo-control-icon" />
+                    <RadzenTextBox @bind-Value="model.AircraftTailNumber" Immediate="true" MaxLength="20" Disabled="@ViewOnly" class="owo-control owo-control-icon" />
                 </div>
             </div>
+        </div>
+        <div class="owo-grid-2">
             <div class="owo-field-block">
-                <label class="owo-label">ATA (UTC)</label>
+                <label class="owo-label">ATA (UTC) <span class="owo-required">*</span></label>
                 <div class="owo-input-wrap">
                     <span class="owo-field-icon"><RadzenIcon Icon="flight_land" /></span>
                     <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
@@ -230,7 +241,7 @@
                 </div>
             </div>
             <div class="owo-field-block">
-                <label class="owo-label">ATD (UTC)</label>
+                <label class="owo-label">ATD (UTC) <span class="owo-required">*</span></label>
                 <div class="owo-input-wrap">
                     <span class="owo-field-icon"><RadzenIcon Icon="flight_takeoff" /></span>
                     <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
@@ -258,7 +269,7 @@
             </div>
             <div class="owo-field-block owo-full">
                 <label class="owo-label">Cancellation reason</label>
-                <RadzenTextArea @bind-Value="model.CancellationReason" Rows="4" MaxLength="1000" Disabled="@ViewOnly" class="owo-control" />
+                <RadzenTextArea @bind-Value="model.CancellationReason" Immediate="true" Rows="4" MaxLength="1000" Disabled="@ViewOnly" class="owo-control" />
             </div>
         </div>
     </section>;
@@ -829,8 +840,20 @@
     private List<string> ValidateDetailsStep()
     {
         var messages = new List<string>();
-        if (IsMissing(model.ActualArrivalUtc) != IsMissing(model.ActualDepartureUtc))
-            messages.Add("Provide both ATA and ATD, or leave both blank until approval.");
+        if (string.IsNullOrWhiteSpace(model.ActualFlightNumber))
+            messages.Add("Flight number is required.");
+        else if (model.ActualFlightNumber.Trim().Length > 12)
+            messages.Add("Flight number must be at most 12 characters.");
+        if (model.AircraftTypeId is null)
+            messages.Add("Aircraft type is required.");
+        if (string.IsNullOrWhiteSpace(model.AircraftTailNumber))
+            messages.Add("Tail number is required.");
+        else if (model.AircraftTailNumber.Trim().Length > 20)
+            messages.Add("Tail number must be at most 20 characters.");
+        if (IsMissing(model.ActualArrivalUtc))
+            messages.Add("ATA is required.");
+        if (IsMissing(model.ActualDepartureUtc))
+            messages.Add("ATD is required.");
         if (!IsMissing(model.ActualArrivalUtc) && !IsMissing(model.ActualDepartureUtc) && model.ActualDepartureUtc < model.ActualArrivalUtc)
             messages.Add("ATD cannot be before ATA.");
         return messages;
@@ -981,6 +1004,19 @@
             }).ToList()
         }).ToList()
     };
+
+    private bool HasCustomerIataPrefix =>
+        !string.IsNullOrWhiteSpace(flight?.CustomerIataCode);
+
+    private bool ShowCustomerFlightPrefixDivider =>
+        flight is not null;
+
+    private string CustomerIataPrefix =>
+        flight is null
+            ? "-"
+            : HasCustomerIataPrefix
+                ? flight.CustomerIataCode!.Trim().ToUpperInvariant()
+                : "N/A";
 
     private static string DisplayFlightNumber(FlightDetail f) =>
         string.IsNullOrWhiteSpace(f.CustomerIataCode) ? f.FlightNumber : $"{f.CustomerIataCode.Trim().ToUpperInvariant()}-{f.FlightNumber}";

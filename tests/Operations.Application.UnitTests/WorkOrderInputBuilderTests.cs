@@ -67,7 +67,11 @@ public sealed class WorkOrderInputBuilderTests
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("Operations.WorkOrder.Validation");
+        result.Error.Failures!.Keys.ShouldContain(nameof(WorkOrderEditableCommandPayload.ActualFlightNumber));
+        result.Error.Failures.Keys.ShouldContain(nameof(WorkOrderEditableCommandPayload.AircraftTypeId));
+        result.Error.Failures.Keys.ShouldContain(nameof(WorkOrderEditableCommandPayload.AircraftTailNumber));
         result.Error.Failures!.Keys.ShouldContain(nameof(WorkOrderEditableCommandPayload.ActualArrivalUtc));
+        result.Error.Failures.Keys.ShouldContain(nameof(WorkOrderEditableCommandPayload.ActualDepartureUtc));
         result.Error.Failures.Keys.ShouldContain("ServiceLines[0].ServiceId");
         result.Error.Failures.Keys.ShouldContain("Tasks[0].EmployeeIds");
         result.Error.Failures.Keys.ShouldContain("Tasks[0].Tools[0].ItemId");

@@ -122,6 +122,19 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             if (string.IsNullOrWhiteSpace(payload.CancellationReason))
                 Add(nameof(payload.CancellationReason), "Cancellation work orders require a reason.");
         }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(payload.ActualFlightNumber))
+                Add(nameof(payload.ActualFlightNumber), "Flight number is required.");
+            if (payload.AircraftTypeId is null || payload.AircraftTypeId == Guid.Empty)
+                Add(nameof(payload.AircraftTypeId), "Aircraft type is required.");
+            if (string.IsNullOrWhiteSpace(payload.AircraftTailNumber))
+                Add(nameof(payload.AircraftTailNumber), "Tail number is required.");
+            if (IsMissing(payload.ActualArrivalUtc))
+                Add(nameof(payload.ActualArrivalUtc), "ATA is required.");
+            if (IsMissing(payload.ActualDepartureUtc))
+                Add(nameof(payload.ActualDepartureUtc), "ATD is required.");
+        }
 
         var hasAta = !IsMissing(payload.ActualArrivalUtc);
         var hasAtd = !IsMissing(payload.ActualDepartureUtc);
