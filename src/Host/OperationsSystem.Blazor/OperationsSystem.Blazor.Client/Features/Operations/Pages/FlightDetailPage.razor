@@ -32,7 +32,9 @@
                         <div class="ofd-identity">
                             <div class="ofd-identity-headline">
                                 <h1 class="ofd-name">@DisplayFlightNumber(flight)</h1>
-                                <StatusBadge Label="@flight.Status" Tone="@FlightStatusTone(flight.Status)" />
+                                <span class="os-pill ofd-status-pill ofd-status-pill--@FlightStatusTone(flight.Status)">
+                                    @FlightStatusLabel(flight.Status)
+                                </span>
                                 @if (flight.IsPerLanding)
                                 {
                                     <StatusBadge Label="Per landing" Tone="warning" />
@@ -46,10 +48,9 @@
 
                             <div class="ofd-meta-row">
                                 <span class="ofd-meta-pair"><RadzenIcon Icon="business" /><span>@flight.CustomerName</span></span>
-                                <span class="ofd-meta-pair"><RadzenIcon Icon="flight_takeoff" /><span>@flight.StationIata</span></span>
-                                <span class="ofd-meta-pair"><RadzenIcon Icon="schedule" /><span>@DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span></span>
+                                <span class="ofd-meta-pair"><RadzenIcon Icon="flight_takeoff" /><span>@flight.StationName</span></span>
                                 <span class="ofd-meta-pair">
-                                    <RadzenIcon Icon="id_card" />
+                                    <span class="ofd-meta-hash">#</span>
                                     <span>@ShortId(flight.Id)</span>
                                     <button type="button" class="ofd-copy" title="Copy flight ID"
                                             aria-label="Copy flight ID" @onclick="@(() => CopyAsync(flight.Id.ToString()))">
@@ -61,22 +62,20 @@
 
                         <div class="ofd-hero-actions">
                             <RadzenButton Text="Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Click="@Back" />
-                            @if (CanAuthorWorkOrder(flight) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor))
-                            {
-                                <RadzenButton Text="Open work order" Icon="task_alt" ButtonStyle="ButtonStyle.Secondary" Click="@OpenCompletionWorkOrderAsync" />
-                                <RadzenButton Text="Cancel flight" Icon="cancel" ButtonStyle="ButtonStyle.Light" Click="@OpenCancellationWorkOrderAsync" />
-                            }
-                            @if (CanEdit(flight) && Auth.HasPermission(OperationsPermissions.FlightsUpdate))
-                            {
-                                <RadzenButton Text="Edit flight" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                            }
-                            @if (HasMoreActions(flight))
+                            @if (HasHeaderActions(flight))
                             {
                                 <RowActionMenu ShowLabel="true" Label="Actions">
+                                    <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
+                                               Visible="@CanEdit(flight)" OnClick="@OpenEditAsync" />
                                     <RowAction Text="Invite employee" Icon="person_add" Permission="@OperationsPermissions.FlightsInvite"
                                                Visible="@CanInvite(flight)" OnClick="@OpenInviteAsync" />
-                                    <RowAction Text="Resolve duplicate" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
+                                    <RowAction Text="Resolve duplicates" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
                                                Visible="@CanMerge(flight)" OnClick="@OpenMergeAsync" />
+                                    <RowAction Separator="true" />
+                                    <RowAction Text="Open work order" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                                               Visible="@CanAuthorWorkOrder(flight)" OnClick="@OpenCompletionWorkOrderAsync" />
+                                    <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                                               Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@OpenCancellationWorkOrderAsync" />
                                 </RowActionMenu>
                             }
                         </div>
@@ -158,56 +157,47 @@
             <div class="ofd-overview-grid">
                 <RadzenCard class="ofd-card">
                     <div class="ofd-card-head"><RadzenIcon Icon="schedule" /><h3>Schedule</h3></div>
-                    <div class="ofd-lead">
-                        <span class="ofd-lead-icon"><RadzenIcon Icon="flight_land" /></span>
-                        <div>
-                            <p class="ofd-lead-title">@DateTimeDisplay(f.ScheduledArrivalUtc) UTC</p>
-                            <p class="os-muted ofd-lead-desc">STA to STD @DateTimeDisplay(f.ScheduledDepartureUtc) UTC</p>
-                        </div>
-                    </div>
-                    <dl class="ofd-metrics">
-                        <div class="ofd-metric"><dt>Original flight #</dt><dd>@f.OriginalFlightNumber</dd></div>
-                        <div class="ofd-metric"><dt>STA (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledArrivalUtc)</dd></div>
-                        <div class="ofd-metric"><dt>STD (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledDepartureUtc)</dd></div>
-                        <div class="ofd-metric"><dt>Aircraft type</dt><dd>@None(f.AircraftTypeModel)</dd></div>
-                        <div class="ofd-metric"><dt>Contract</dt><dd>@None(f.ContractNumber)</dd></div>
-                        <div class="ofd-metric"><dt>Updated</dt><dd>@DateTimeDisplay(f.UpdatedAtUtc)</dd></div>
-                    </dl>
-                </RadzenCard>
-
-                <RadzenCard class="ofd-card">
-                    <div class="ofd-card-head"><RadzenIcon Icon="settings" /><h3>Work scope</h3></div>
-                    <div class="ofd-lead">
-                        <span class="ofd-lead-icon"><RadzenIcon Icon="task_alt" /></span>
-                        <div>
-                            <p class="ofd-lead-title">@f.PlannedServices.Count planned service(s)</p>
-                            <p class="os-muted ofd-lead-desc">@f.AssignedEmployees.Count assigned staff member(s)</p>
-                        </div>
-                    </div>
-                    <dl class="ofd-metrics">
-                        <div class="ofd-metric"><dt>Customer</dt><dd>@f.CustomerName</dd></div>
-                        <div class="ofd-metric"><dt>Station</dt><dd>@f.StationIata</dd></div>
-                        <div class="ofd-metric"><dt>Operation</dt><dd>@f.OperationTypeName</dd></div>
-                        <div class="ofd-metric"><dt>Per landing</dt><dd>@(f.IsPerLanding ? "Yes" : "No")</dd></div>
-                    </dl>
-                    <button type="button" class="ofd-card-link" @onclick="@(() => activeTab = FlightTab.Services)">
-                        <span>Open</span><RadzenIcon Icon="chevron_right" />
-                    </button>
-                </RadzenCard>
-
-                <RadzenCard class="ofd-card">
-                    <div class="ofd-card-head"><RadzenIcon Icon="info" /><h3>Flight state</h3></div>
-                    <div class="ofd-lead">
+                    <div class="ofd-lead ofd-lead--state">
                         <span class="ofd-lead-dot ofd-lead-dot--@FlightStatusTone(f.Status)"></span>
                         <div>
-                            <p class="ofd-lead-title">@f.Status</p>
+                            <p class="ofd-lead-title">@FlightStatusLabel(f.Status)</p>
                             <p class="os-muted ofd-lead-desc">@FlightStatusDescription(f)</p>
                         </div>
                     </div>
                     <dl class="ofd-metrics">
+                        <div class="ofd-metric"><dt>Flight number</dt><dd>@DisplayFlightNumber(f)</dd></div>
+                        <div class="ofd-metric"><dt>STA (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledArrivalUtc)</dd></div>
+                        <div class="ofd-metric"><dt>STD (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledDepartureUtc)</dd></div>
+                        <div class="ofd-metric"><dt>Aircraft type</dt><dd>@None(f.AircraftTypeModel)</dd></div>
+                        <div class="ofd-metric"><dt>Contract</dt><dd>@None(f.ContractNumber)</dd></div>
+                    </dl>
+                </RadzenCard>
+
+                <RadzenCard class="ofd-card">
+                    <div class="ofd-card-head">
+                        <RadzenIcon Icon="settings" /><h3>Work scope</h3>
+                        <button type="button" class="ofd-card-link ofd-card-link--head" @onclick="@(() => activeTab = FlightTab.Services)">
+                            <span>Open</span><RadzenIcon Icon="chevron_right" />
+                        </button>
+                    </div>
+                    <div class="ofd-lead">
+                        <span class="ofd-lead-icon"><RadzenIcon Icon="task_alt" /></span>
+                        <div>
+                            <p class="ofd-lead-title">@f.PlannedServices.Count planned service(s)</p>
+                        </div>
+                    </div>
+                    <dl class="ofd-metrics">
+                        <div class="ofd-metric"><dt>Customer</dt><dd>@f.CustomerName</dd></div>
+                        <div class="ofd-metric"><dt>Station</dt><dd>@f.StationName</dd></div>
+                        <div class="ofd-metric"><dt>Operation</dt><dd>@f.OperationTypeName</dd></div>
+                        <div class="ofd-metric"><dt>Per landing</dt><dd>@(f.IsPerLanding ? "Yes" : "No")</dd></div>
+                    </dl>
+                </RadzenCard>
+
+                <RadzenCard class="ofd-card">
+                    <div class="ofd-card-head"><RadzenIcon Icon="info" /><h3>Flight state</h3></div>
+                    <dl class="ofd-metrics">
                         <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@PotentialDuplicateDisplay(f)</dd></div>
-                        <div class="ofd-metric"><dt>Assigned staff</dt><dd>@f.AssignedEmployees.Count</dd></div>
-                        <div class="ofd-metric"><dt>Planned services</dt><dd>@f.PlannedServices.Count</dd></div>
                         <div class="ofd-metric"><dt>Created</dt><dd>@DateTimeDisplay(f.CreatedAtUtc)</dd></div>
                     </dl>
                 </RadzenCard>
@@ -756,9 +746,11 @@
         }
     }
 
-    private bool HasMoreActions(FlightDetail f) =>
-        (CanInvite(f) && Auth.HasPermission(OperationsPermissions.FlightsInvite))
-        || (CanMerge(f) && Auth.HasPermission(OperationsPermissions.FlightsMerge));
+    private bool HasHeaderActions(FlightDetail f) =>
+        (CanEdit(f) && Auth.HasPermission(OperationsPermissions.FlightsUpdate))
+        || (CanInvite(f) && Auth.HasPermission(OperationsPermissions.FlightsInvite))
+        || (CanMerge(f) && Auth.HasPermission(OperationsPermissions.FlightsMerge))
+        || (CanAuthorWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor));
 
     private bool HasPotentialDuplicate(FlightDetail f) =>
         EffectiveDuplicateFlightId(f) is not null;
@@ -831,7 +823,18 @@
         "Completed" => "success",
         "Canceled" or "Merged" => "danger",
         "InProgress" => "warning",
-        _ => "neutral"
+        _ => "info"
+    };
+
+    private static string FlightStatusLabel(string status) => status switch
+    {
+        "Scheduled" => "Scheduled",
+        "InProgress" => "In progress",
+        "Completed" => "Completed",
+        "Canceled" => "Canceled",
+        "Merged" => "Merged",
+        _ when !string.IsNullOrWhiteSpace(status) => status,
+        _ => "Scheduled"
     };
 
     private static string FlightStatusDescription(FlightDetail flight) => flight.Status switch

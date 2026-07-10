@@ -64,6 +64,7 @@ public sealed record FlightDetail(
     string CustomerName,
     Guid StationId,
     string StationIata,
+    string StationName,
     Guid OperationTypeId,
     string OperationTypeName,
     Guid? AircraftTypeId,

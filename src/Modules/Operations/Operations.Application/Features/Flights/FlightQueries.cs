@@ -238,6 +238,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.Customer.Name,
             flight.Station.StationId,
             flight.Station.IataCode,
+            flight.Station.Name,
             flight.OperationType.OperationTypeId,
             flight.OperationType.Name,
             flight.AircraftType == null ? null : flight.AircraftType.AircraftTypeId,

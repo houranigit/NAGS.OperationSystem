@@ -1,4 +1,16 @@
 .ofd-workspace {
+    --ofd-status-scheduled: var(--rz-info, var(--os-color-info));
+    --ofd-status-scheduled-soft: color-mix(in srgb, var(--ofd-status-scheduled) 12%, #fff);
+    --ofd-status-scheduled-border: color-mix(in srgb, var(--ofd-status-scheduled) 34%, var(--os-color-border));
+    --ofd-status-inprogress: var(--rz-warning-light, var(--os-color-warning-bg));
+    --ofd-status-inprogress-soft: color-mix(in srgb, var(--ofd-status-inprogress) 32%, #fff);
+    --ofd-status-inprogress-border: color-mix(in srgb, var(--ofd-status-inprogress) 58%, var(--os-color-border));
+    --ofd-status-completed: var(--rz-success, var(--os-color-success));
+    --ofd-status-completed-soft: color-mix(in srgb, var(--ofd-status-completed) 12%, #fff);
+    --ofd-status-completed-border: color-mix(in srgb, var(--ofd-status-completed) 34%, var(--os-color-border));
+    --ofd-status-canceled: var(--rz-danger, var(--os-color-danger));
+    --ofd-status-canceled-soft: color-mix(in srgb, var(--ofd-status-canceled) 12%, #fff);
+    --ofd-status-canceled-border: color-mix(in srgb, var(--ofd-status-canceled) 34%, var(--os-color-border));
     display: flex;
     flex-direction: column;
     gap: var(--os-space-3);
@@ -9,6 +21,9 @@
 }
 
 .ofd-profile {
+    --ofd-event-accent: var(--ofd-status-scheduled);
+    --ofd-event-soft: var(--ofd-status-scheduled-soft);
+    --ofd-event-border: var(--ofd-status-scheduled-border);
     position: relative;
     overflow: hidden;
     border: 1px solid var(--os-color-border);
@@ -23,19 +38,37 @@
     inset-block-start: 0;
     inset-inline: 0;
     height: 3px;
-    background: var(--os-color-primary);
+    background: var(--ofd-event-accent);
 }
 
 .ofd-profile--completed::before {
-    background: var(--os-color-success);
+    background: var(--ofd-event-accent);
 }
 
 .ofd-profile--warning::before {
-    background: var(--os-color-warning);
+    background: var(--ofd-event-accent);
 }
 
 .ofd-profile--danger::before {
-    background: var(--os-color-danger);
+    background: var(--ofd-event-accent);
+}
+
+.ofd-profile--completed {
+    --ofd-event-accent: var(--ofd-status-completed);
+    --ofd-event-soft: var(--ofd-status-completed-soft);
+    --ofd-event-border: var(--ofd-status-completed-border);
+}
+
+.ofd-profile--warning {
+    --ofd-event-accent: var(--ofd-status-inprogress);
+    --ofd-event-soft: var(--ofd-status-inprogress-soft);
+    --ofd-event-border: var(--ofd-status-inprogress-border);
+}
+
+.ofd-profile--danger {
+    --ofd-event-accent: var(--ofd-status-canceled);
+    --ofd-event-soft: var(--ofd-status-canceled-soft);
+    --ofd-event-border: var(--ofd-status-canceled-border);
 }
 
 .ofd-hero {
@@ -54,26 +87,33 @@
     height: 5.5rem;
     flex-shrink: 0;
     border-radius: var(--os-radius-lg);
+    border: 1px solid var(--ofd-event-border);
+    background: var(--ofd-event-soft);
+    color: var(--ofd-event-accent);
 }
 
 .ofd-avatar--active {
-    background: var(--os-color-primary-soft);
-    color: var(--os-color-primary-strong);
+    background: var(--ofd-status-scheduled-soft);
+    color: var(--ofd-status-scheduled);
+    border-color: var(--ofd-status-scheduled-border);
 }
 
 .ofd-avatar--completed {
-    background: var(--os-color-success-bg);
-    color: var(--os-color-success);
+    background: var(--ofd-status-completed-soft);
+    color: var(--ofd-status-completed);
+    border-color: var(--ofd-status-completed-border);
 }
 
 .ofd-avatar--warning {
-    background: var(--os-color-warning-bg);
-    color: var(--os-color-warning);
+    background: var(--ofd-status-inprogress-soft);
+    color: var(--ofd-status-inprogress);
+    border-color: var(--ofd-status-inprogress-border);
 }
 
 .ofd-avatar--danger {
-    background: var(--os-color-danger-bg);
-    color: var(--os-color-danger);
+    background: var(--ofd-status-canceled-soft);
+    color: var(--ofd-status-canceled);
+    border-color: var(--ofd-status-canceled-border);
 }
 
 .ofd-avatar .rz-icon {
@@ -90,10 +130,11 @@
     border-radius: 50%;
 }
 
-.ofd-avatar-dot--active { background: var(--os-color-primary); }
-.ofd-avatar-dot--success { background: var(--os-color-success); }
-.ofd-avatar-dot--warning { background: var(--os-color-warning); }
-.ofd-avatar-dot--danger { background: var(--os-color-danger); }
+.ofd-avatar-dot--active,
+.ofd-avatar-dot--info { background: var(--ofd-status-scheduled); }
+.ofd-avatar-dot--success { background: var(--ofd-status-completed); }
+.ofd-avatar-dot--warning { background: var(--ofd-status-inprogress); }
+.ofd-avatar-dot--danger { background: var(--ofd-status-canceled); }
 
 .ofd-identity {
     flex: 1 1 20rem;
@@ -141,6 +182,41 @@
 .ofd-meta-pair > span {
     min-width: 0;
     word-break: break-word;
+}
+
+.ofd-meta-hash {
+    display: inline-grid;
+    place-items: center;
+    width: 1.05rem;
+    height: 1.05rem;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+    line-height: 1;
+}
+
+.ofd-status-pill {
+    border: 1px solid var(--ofd-status-scheduled-border);
+    background: var(--ofd-status-scheduled-soft);
+    color: var(--ofd-status-scheduled);
+}
+
+.ofd-status-pill--warning {
+    border-color: var(--ofd-status-inprogress-border);
+    background: var(--ofd-status-inprogress-soft);
+    color: var(--ofd-status-inprogress);
+}
+
+.ofd-status-pill--success {
+    border-color: var(--ofd-status-completed-border);
+    background: var(--ofd-status-completed-soft);
+    color: var(--ofd-status-completed);
+}
+
+.ofd-status-pill--danger {
+    border-color: var(--ofd-status-canceled-border);
+    background: var(--ofd-status-canceled-soft);
+    color: var(--ofd-status-canceled);
 }
 
 .ofd-info-badge {
@@ -337,6 +413,12 @@
     cursor: pointer;
 }
 
+.ofd-card-link--head {
+    align-self: center;
+    margin-top: 0;
+    margin-inline-start: auto;
+}
+
 .ofd-card-link:hover {
     color: var(--os-color-primary-strong);
 }
@@ -377,9 +459,10 @@
     border-radius: 50%;
 }
 
-.ofd-lead-dot--success { background: var(--os-color-success); }
-.ofd-lead-dot--warning { background: var(--os-color-warning); }
-.ofd-lead-dot--danger { background: var(--os-color-danger); }
+.ofd-lead-dot--info { background: var(--ofd-status-scheduled); }
+.ofd-lead-dot--success { background: var(--ofd-status-completed); }
+.ofd-lead-dot--warning { background: var(--ofd-status-inprogress); }
+.ofd-lead-dot--danger { background: var(--ofd-status-canceled); }
 .ofd-lead-dot--neutral { background: var(--os-color-text-subtle); }
 
 .ofd-lead-title {
