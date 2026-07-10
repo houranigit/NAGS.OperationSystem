@@ -9,32 +9,58 @@
     }
     else
     {
+        @AdHocSummary()
         @WizardStepper()
 
-        <div class="owf-body">
+        <div class="owf-wizard-body">
             @(step switch
             {
                 0 => FlightStep(),
                 1 => PlanningStep(),
                 2 => DetailsStep(),
                 3 => ServiceLinesStep(),
-                _ => TasksStep()
+                4 => TasksStep(),
+                _ => CustomerSignatureStep()
             })
         </div>
 
         @if (duplicates.Count > 0)
         {
-            <div class="owf-warning" role="status">
-                <RadzenIcon Icon="warning_amber" />
+            <div class="owf-warning-panel" role="status">
+                <RadzenIcon Icon="warning_amber" class="owf-message-icon" />
                 <div>
                     <strong>Potential duplicates found.</strong>
-                    @foreach (var duplicate in duplicates)
-                    {
-                        <a @key="duplicate.FlightId" href="@($"/operations/flights/{duplicate.FlightId}")" target="_blank" rel="noopener noreferrer">
-                            @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata
-                        </a>
-                    }
+                    <div class="owf-duplicates">
+                        @foreach (var duplicate in duplicates)
+                        {
+                            <a @key="duplicate.FlightId" class="owf-duplicate-link" href="@($"/operations/flights/{duplicate.FlightId}")" target="_blank" rel="noopener noreferrer">
+                                @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata
+                            </a>
+                        }
+                    </div>
                 </div>
+                <button type="button" class="owf-message-close" aria-label="Dismiss duplicate message" @onclick="@(() => duplicates = [])">
+                    <RadzenIcon Icon="close" />
+                </button>
+            </div>
+        }
+
+        @if (validationMessages.Count > 0)
+        {
+            <div class="owf-error-panel" role="alert">
+                <RadzenIcon Icon="error_outline" class="owf-message-icon" />
+                <div>
+                    <strong>Please fix the following errors before continuing</strong>
+                    <ul>
+                        @foreach (var message in validationMessages)
+                        {
+                            <li>@message</li>
+                        }
+                    </ul>
+                </div>
+                <button type="button" class="owf-message-close" aria-label="Dismiss validation message" @onclick="DismissValidationMessages">
+                    <RadzenIcon Icon="close" />
+                </button>
             </div>
         }
 
@@ -66,13 +92,18 @@
     private Guid? staffLoadedForStationId;
     private bool isLoading = true;
     private bool isSubmitting;
+    private bool isAttachmentBusy;
     private string? errorMessage;
+    private List<string> validationMessages = [];
     private int step;
 
     private bool IsCompletion => model.Type == "Completion";
     private bool IsCancellation => model.Type == "Cancellation";
     private bool IsPerLandingSelected => plannedServices.Any(service => service.IsAircraftPerLanding && model.PlannedServiceIds.Contains(service.Id));
-    private int LastStep => IsCompletion ? 4 : 2;
+    private int LastStep => IsCompletion ? 5 : 2;
+    private DateTime DefaultWindowStart => model.ActualArrivalUtc ?? model.ScheduledArrivalUtc ?? DateTime.UtcNow;
+    private DateTime DefaultWindowEnd => model.ActualDepartureUtc ?? model.ScheduledDepartureUtc ?? DefaultWindowStart.AddHours(1);
+    private string SignatureUploadText => model.CustomerSignature is null ? "Upload PNG" : "Replace PNG";
 
     protected override async Task OnInitializedAsync()
     {
@@ -113,13 +144,32 @@
         }
     }
 
+    private RenderFragment AdHocSummary() => @<div class="owf-summary">
+        <div class="owf-summary-icon">
+            <RadzenIcon Icon="@(IsCancellation ? "event_busy" : "task_alt")" />
+            <span class="owf-summary-dot @StatusDotClass()"></span>
+        </div>
+        <div class="owf-summary-main">
+            <div class="owf-summary-heading">
+                <h2>@DisplayFlightNumber()</h2>
+                <StatusBadge Label="@model.Type" Tone="@(IsCancellation ? "danger" : "neutral")" />
+                <span class="owf-operation-badge"><RadzenIcon Icon="settings" />Ad Hoc</span>
+            </div>
+            <div class="owf-summary-meta">
+                <span><RadzenIcon Icon="business" />@SelectedCustomerName</span>
+                <span><RadzenIcon Icon="flight_takeoff" />@SelectedStationName</span>
+                <span><RadzenIcon Icon="flight_land" />STA @DateDisplay(model.ScheduledArrivalUtc) UTC</span>
+            </div>
+        </div>
+    </div>;
+
     private RenderFragment WizardStepper() => @<div class="@($"owf-stepper owf-stepper-{LastStep + 1}")" aria-label="Create work order steps">
         @for (var i = 0; i <= LastStep; i++)
         {
             var index = i;
             <div class="@StepClass(index)">
-                <button type="button" disabled="@(index > step)" @onclick="@(() => MoveToStep(index))">
-                    <span>
+                <button type="button" class="owf-step-button" disabled="@(index > step)" @onclick="@(() => MoveToStep(index))">
+                    <span class="owf-step-node">
                         @if (index < step)
                         {
                             <RadzenIcon Icon="check" />
@@ -129,14 +179,14 @@
                             @(index + 1)
                         }
                     </span>
-                    <small>@StepLabel(index)</small>
+                    <span class="owf-step-label">@StepLabel(index)</span>
                 </button>
             </div>
         }
     </div>;
 
-    private RenderFragment FlightStep() => @<section class="owf-step">
-        <div class="owf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight</span></div>
+    private RenderFragment FlightStep() => @<section class="owf-step-content">
+        <div class="owf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
         <div class="owf-type-toggle">
             @foreach (var option in typeOptions)
             {
@@ -147,72 +197,114 @@
             }
         </div>
         <div class="owf-grid-2">
-            <FieldShell Label="Customer" Icon="business" Required="true">
-                <RadzenDropDown TValue="Guid?" @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
-                                AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="Flight number" Icon="tag" Required="true">
-                <RadzenTextBox @bind-Value="model.FlightNumber" MaxLength="12" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="Station" Icon="flight_takeoff" Required="true">
-                <RadzenDropDown TValue="Guid?" @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
-                                AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" Change="@OnStationChanged" />
-            </FieldShell>
-            <FieldShell Label="Aircraft type" Icon="connecting_airports">
-                <RadzenDropDown TValue="Guid?" @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="STA (UTC)" Icon="flight_land" Required="true">
-                <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="STD (UTC)" Icon="flight_takeoff" Required="true">
-                <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
-            </FieldShell>
+            <div class="owf-field-block">
+                <label class="owf-label">Customer <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="business" class="owf-field-icon" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control owf-control-icon" Placeholder="Select customer" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">Flight number <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <span class="owf-flight-prefix">
+                        <span>@CustomerIataPrefix</span>
+                        @if (ShowCustomerFlightPrefixDivider)
+                        {
+                            <span class="owf-flight-prefix-divider">-</span>
+                        }
+                    </span>
+                    <RadzenTextBox @bind-Value="model.FlightNumber" MaxLength="12" class="owf-control owf-control-icon owf-flight-number-control" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">Station <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="owf-field-icon" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control owf-control-icon" Placeholder="Select station" Change="@OnStationChanged" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">Aircraft type</label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="flight" class="owf-field-icon" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                                    AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control owf-control-icon" Placeholder="Optional aircraft type" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">Scheduled arrival (UTC) <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="flight_land" class="owf-field-icon" />
+                    <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">Scheduled departure (UTC) <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="owf-field-icon" />
+                    <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
+                </div>
+            </div>
         </div>
-        <div class="owf-step-actions">
+        <div class="owf-details-actions">
             <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary" ButtonType="ButtonType.Button"
                           Disabled="@isSubmitting" Click="@CheckDuplicatesAsync" />
         </div>
     </section>;
 
-    private RenderFragment PlanningStep() => @<section class="owf-step">
-        <div class="owf-section-line"><RadzenIcon Icon="rule" /><span>Planning</span></div>
+    private RenderFragment PlanningStep() => @<section class="owf-step-content">
+        <div class="owf-section-line"><RadzenIcon Icon="settings" /><span>Planned services</span></div>
         <div class="owf-step-toolbar">
-            <span>@model.PlannedServiceIds.Count planned services</span>
+            <span class="owf-selection-count">@model.PlannedServiceIds.Count selected</span>
             @if (IsCancellation)
             {
-                <small>Optional for cancellation</small>
+                <span class="owf-hint">Optional for cancellation</span>
             }
         </div>
-        <div class="owf-chip-panel">
-            @foreach (var service in plannedServices)
-            {
-                <button type="button" @key="service.Id" class="@ChipClass(model.PlannedServiceIds.Contains(service.Id))"
-                        @onclick="@(() => TogglePlannedService(service))">
-                    <RadzenIcon Icon="miscellaneous_services" />
-                    <span>@service.Name</span>
-                </button>
-            }
+        <div class="owf-selection-panel">
+            <div class="owf-chip-list">
+                @foreach (var service in plannedServices)
+                {
+                    <button type="button" @key="service.Id" class="@ChipClass(model.PlannedServiceIds.Contains(service.Id))"
+                            @onclick="@(() => TogglePlannedService(service))">
+                        <RadzenIcon Icon="task_alt" />
+                        <span>@service.Name</span>
+                    </button>
+                }
+            </div>
         </div>
+        <div class="owf-section-line"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
         @if (IsPerLandingSelected)
         {
-            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="Per landing">
-                This flight stays station-wide, so assigned staff are not needed.
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="Per landing flight">
+                <p>This flight is per landing and does not need staff assignment because all station staff can reach the flight.</p>
             </DismissibleDialogMessage>
         }
         else
         {
             <div class="owf-step-toolbar">
-                <span>@model.AssignedStaffMemberIds.Count assigned staff</span>
+                <span class="owf-selection-count">@model.AssignedStaffMemberIds.Count selected</span>
             </div>
-            <div class="owf-chip-panel">
-                @foreach (var member in staffOptions)
+            <div class="owf-selection-panel">
+                @if (staffOptions.Count == 0)
                 {
-                    <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
-                            @onclick="@(() => ToggleStaff(member.Id))">
-                        <RadzenIcon Icon="person" />
-                        <span>@member.FullName</span>
-                    </button>
+                    <div class="owf-empty-row"><RadzenIcon Icon="person_off" /><span>No staff available for this station.</span></div>
+                }
+                else
+                {
+                    <div class="owf-chip-list">
+                        @foreach (var member in staffOptions)
+                        {
+                            <button type="button" @key="member.Id" class="@ChipClass(model.AssignedStaffMemberIds.Contains(member.Id))"
+                                    @onclick="@(() => ToggleStaff(member.Id))">
+                                <RadzenIcon Icon="person" />
+                                <span>@member.FullName</span>
+                            </button>
+                        }
+                    </div>
                 }
             </div>
         }
@@ -220,74 +312,110 @@
 
     private RenderFragment DetailsStep() => IsCancellation ? CancellationStep() : CompletionDetailsStep();
 
-    private RenderFragment CompletionDetailsStep() => @<section class="owf-step">
+    private RenderFragment CompletionDetailsStep() => @<section class="owf-step-content">
         <div class="owf-section-line"><RadzenIcon Icon="fact_check" /><span>Details</span></div>
-        <div class="owf-grid-2">
-            <FieldShell Label="Actual flight #" Icon="tag">
-                <RadzenTextBox @bind-Value="model.ActualFlightNumber" MaxLength="12" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="Actual aircraft type" Icon="connecting_airports">
-                <RadzenDropDown TValue="Guid?" @bind-Value="model.ActualAircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                                AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="Tail number" Icon="confirmation_number">
-                <RadzenTextBox @bind-Value="model.AircraftTailNumber" MaxLength="20" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="ATA (UTC)" Icon="flight_land">
-                <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
-            </FieldShell>
-            <FieldShell Label="ATD (UTC)" Icon="flight_takeoff">
-                <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
-            </FieldShell>
+        <div class="owf-grid-1">
+            <div class="owf-field-block">
+                <label class="owf-label">Flight number <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <span class="owf-flight-prefix">
+                        <span>@CustomerIataPrefix</span>
+                        @if (ShowCustomerFlightPrefixDivider)
+                        {
+                            <span class="owf-flight-prefix-divider">-</span>
+                        }
+                    </span>
+                    <RadzenTextBox @bind-Value="model.ActualFlightNumber" MaxLength="12" class="owf-control owf-control-icon owf-flight-number-control" />
+                </div>
+            </div>
         </div>
-        <div class="owf-field-block">
-            <label>Remarks</label>
-            <RadzenTextArea @bind-Value="model.Remarks" Rows="4" MaxLength="2000" class="owf-control" />
+        <div class="owf-grid-2">
+            <div class="owf-field-block">
+                <label class="owf-label">Aircraft type <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="flight" class="owf-field-icon" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="model.ActualAircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                                    AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control owf-control-icon" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">Tail number</label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="confirmation_number" class="owf-field-icon" />
+                    <RadzenTextBox @bind-Value="model.AircraftTailNumber" MaxLength="20" class="owf-control owf-control-icon" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">ATA (UTC) <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="flight_land" class="owf-field-icon" />
+                    <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
+                </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">ATD (UTC) <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="owf-field-icon" />
+                    <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
+                </div>
+            </div>
+            <div class="owf-field-block owf-full">
+                <label class="owf-label">Remarks</label>
+                <RadzenTextArea @bind-Value="model.Remarks" Rows="4" MaxLength="2000" class="owf-control" />
+            </div>
         </div>
     </section>;
 
-    private RenderFragment CancellationStep() => @<section class="owf-step">
+    private RenderFragment CancellationStep() => @<section class="owf-step-content">
         <div class="owf-section-line"><RadzenIcon Icon="event_busy" /><span>Cancellation</span></div>
         <div class="owf-grid-2">
-            <FieldShell Label="Canceled at (UTC)" Icon="event_busy" Required="true">
-                <RadzenDatePicker TValue="DateTime?" @bind-Value="model.CanceledAtUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control" />
-            </FieldShell>
+            <div class="owf-field-block">
+                <label class="owf-label">Canceled at (UTC) <span class="owf-required">*</span></label>
+                <div class="owf-input-wrap">
+                    <RadzenIcon Icon="event_busy" class="owf-field-icon" />
+                    <RadzenDatePicker TValue="DateTime?" @bind-Value="model.CanceledAtUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
+                </div>
+            </div>
             <div class="owf-field-block owf-full">
-                <label>Reason <span>*</span></label>
+                <label class="owf-label">Reason <span class="owf-required">*</span></label>
                 <RadzenTextArea @bind-Value="model.CancellationReason" Rows="4" MaxLength="1000" class="owf-control" />
             </div>
         </div>
     </section>;
 
-    private RenderFragment ServiceLinesStep() => @<section class="owf-step">
+    private RenderFragment ServiceLinesStep() => @<section class="owf-step-content">
         <div class="owf-step-toolbar">
-            <div class="owf-section-line"><RadzenIcon Icon="miscellaneous_services" /><span>Service lines</span></div>
+            <div class="owf-section-line"><RadzenIcon Icon="fact_check" /><span>Service lines</span></div>
             <RadzenButton Text="Add line" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@AddServiceLine" />
         </div>
         @if (model.ServiceLines.Count == 0)
         {
-            <div class="owf-empty"><RadzenIcon Icon="miscellaneous_services" />No service lines</div>
+            <div class="owf-empty-row"><RadzenIcon Icon="fact_check" />No service lines</div>
         }
         @foreach (var line in model.ServiceLines)
         {
             <div @key="line.Key" class="owf-row-panel">
                 <div class="owf-grid-2">
-                    <FieldShell Label="Service" Icon="miscellaneous_services">
+                    <div class="owf-field-block">
+                        <label class="owf-label">Service <span class="owf-required">*</span></label>
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.ServiceId" Data="@actualServices" TextProperty="Name" ValueProperty="Id"
                                         AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-                    </FieldShell>
-                    <FieldShell Label="Performed by" Icon="person">
+                    </div>
+                    <div class="owf-field-block">
+                        <label class="owf-label">Performed by <span class="owf-required">*</span></label>
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.PerformedByStaffMemberId" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
                                         AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-                    </FieldShell>
-                    <FieldShell Label="From (UTC)" Icon="schedule">
+                    </div>
+                    <div class="owf-field-block">
+                        <label class="owf-label">From (UTC) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
-                    </FieldShell>
-                    <FieldShell Label="To (UTC)" Icon="schedule">
+                    </div>
+                    <div class="owf-field-block">
+                        <label class="owf-label">To (UTC) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
-                    </FieldShell>
+                    </div>
                 </div>
                 <div class="owf-row-actions">
                     <RadzenTextBox @bind-Value="line.Description" MaxLength="2000" Placeholder="Description" class="owf-control" />
@@ -297,90 +425,141 @@
         }
     </section>;
 
-    private RenderFragment TasksStep() => @<section class="owf-step">
+    private RenderFragment TasksStep() => @<section class="owf-step-content">
         <div class="owf-step-toolbar">
             <div class="owf-section-line"><RadzenIcon Icon="task_alt" /><span>Tasks</span></div>
             <RadzenButton Text="Add task" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@AddTask" />
         </div>
         @if (model.Tasks.Count == 0)
         {
-            <div class="owf-empty"><RadzenIcon Icon="task_alt" />No tasks</div>
+            <div class="owf-empty-row"><RadzenIcon Icon="task_alt" />No tasks</div>
         }
         @foreach (var task in model.Tasks)
         {
             <div @key="task.Key" class="owf-row-panel">
                 <div class="owf-grid-2">
-                    <FieldShell Label="Task type" Icon="assignment">
+                    <div class="owf-field-block">
+                        <label class="owf-label">Task type <span class="owf-required">*</span></label>
                         <RadzenDropDown @bind-Value="task.TaskType" Data="@taskTypeOptions" TextProperty="Label" ValueProperty="Value" class="owf-control" />
-                    </FieldShell>
-                    <FieldShell Label="Employees" Icon="groups">
+                    </div>
+                    <div class="owf-field-block">
+                        <label class="owf-label">Employees <span class="owf-required">*</span></label>
                         <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
                                         Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-                    </FieldShell>
-                    <FieldShell Label="From (UTC)" Icon="schedule">
+                    </div>
+                    <div class="owf-field-block">
+                        <label class="owf-label">From (UTC) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
-                    </FieldShell>
-                    <FieldShell Label="To (UTC)" Icon="schedule">
+                    </div>
+                    <div class="owf-field-block">
+                        <label class="owf-label">To (UTC) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
-                    </FieldShell>
+                    </div>
                 </div>
                 <div class="owf-row-actions">
                     <RadzenTextBox @bind-Value="task.Description" MaxLength="2000" Placeholder="Description" class="owf-control" />
                     <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => RemoveTask(task))" />
                 </div>
-                @ResourceRows(task)
+                @TaskResourceRows(task)
+                @TaskAttachments(task)
             </div>
         }
     </section>;
 
-    private RenderFragment ResourceRows(TaskForm task) => @<div class="owf-resource-grid">
-        <div>
-            <div class="owf-resource-head">
-                <strong>Tools</strong>
-                <button type="button" @onclick="@(() => task.Tools.Add(new ResourceForm()))"><RadzenIcon Icon="add" /></button>
+    private RenderFragment CustomerSignatureStep() => @<section class="owf-step-content">
+        <div class="owf-section-line"><RadzenIcon Icon="draw" /><span>Customer signature</span></div>
+        @CustomerSignatureSection()
+    </section>;
+
+    private RenderFragment CustomerSignatureSection() => @<div class="owf-signature">
+        <div class="owf-signature-head">
+            <span><RadzenIcon Icon="draw" />Customer signature</span>
+            <label class="owf-signature-upload"><RadzenIcon Icon="upload" /><span>@SignatureUploadText</span><InputFile OnChange="@UploadSignatureAsync" accept="image/png" /></label>
+        </div>
+        @if (model.CustomerSignature is { } pendingSignature)
+        {
+            <div class="owf-signature-row">
+                <span class="owf-attachment-icon"><RadzenIcon Icon="draw" /></span>
+                <span class="owf-attachment-main">
+                    <strong>@pendingSignature.FileName</strong>
+                    <small>Pending · @FormatFileSize(pendingSignature.Size)</small>
+                </span>
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                              Disabled="@isAttachmentBusy" Click="@ClearPendingSignature" />
             </div>
-            @foreach (var row in task.Tools)
+        }
+        else
+        {
+            <div class="owf-attachment-empty">No customer signature</div>
+        }
+    </div>;
+
+    private RenderFragment TaskResourceRows(TaskForm task) => @<div class="owf-resource-grid">
+        @ResourceBlock("Tools", "build", task.Tools, AddTool, RemoveTool)
+        @ResourceBlock("Materials", "category", task.Materials, AddMaterial, RemoveMaterial)
+        @ResourceBlock("General support", "headset_mic", task.GeneralSupports, AddSupport, RemoveSupport)
+    </div>;
+
+    private RenderFragment ResourceBlock(
+        string title,
+        string icon,
+        List<ResourceForm> rows,
+        Action<TaskForm> add,
+        Action<TaskForm, ResourceForm> remove) => @<div class="owf-resource-block">
+            <div class="owf-resource-head">
+                <span><RadzenIcon Icon="@icon" />@title</span>
+                <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              ButtonType="ButtonType.Button" Click="@(() => add(CurrentTaskFor(rows)))" />
+            </div>
+            @foreach (var row in rows)
             {
                 <div @key="row.Key" class="owf-resource-row">
-                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@toolOptions" TextProperty="Name" ValueProperty="Id"
+                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@ResourceOptions(title)" TextProperty="Name" ValueProperty="Id"
                                     AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-                    <RadzenNumeric TValue="decimal" @bind-Value="row.Quantity" Min="0.01m" Step="1m" class="owf-qty" />
-                    <button type="button" @onclick="@(() => task.Tools.Remove(row))"><RadzenIcon Icon="close" /></button>
+                    <RadzenNumeric @bind-Value="row.Quantity" Min="0.01m" Step="0.25m" class="owf-qty" />
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@(() => remove(CurrentTaskFor(rows), row))" />
                 </div>
             }
-        </div>
-        <div>
-            <div class="owf-resource-head">
-                <strong>Materials</strong>
-                <button type="button" @onclick="@(() => task.Materials.Add(new ResourceForm()))"><RadzenIcon Icon="add" /></button>
-            </div>
-            @foreach (var row in task.Materials)
+            @if (rows.Count == 0)
             {
-                <div @key="row.Key" class="owf-resource-row">
-                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@materialOptions" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-                    <RadzenNumeric TValue="decimal" @bind-Value="row.Quantity" Min="0.01m" Step="1m" class="owf-qty" />
-                    <button type="button" @onclick="@(() => task.Materials.Remove(row))"><RadzenIcon Icon="close" /></button>
-                </div>
+                <div class="owf-resource-empty">@NoResourceText(title)</div>
             }
-        </div>
-        <div>
-            <div class="owf-resource-head">
-                <strong>General supports</strong>
-                <button type="button" @onclick="@(() => task.GeneralSupports.Add(new ResourceForm()))"><RadzenIcon Icon="add" /></button>
+        </div>;
+
+    private RenderFragment TaskAttachments(TaskForm task) => @<div class="owf-attachments">
+        <div class="owf-attachments-head">
+            <span><RadzenIcon Icon="attach_file" />Attachments</span>
+            <div class="owf-attachment-upload">
+                <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
+                <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
+                <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Document", args))" accept="application/pdf" /></label>
             </div>
-            @foreach (var row in task.GeneralSupports)
-            {
-                <div @key="row.Key" class="owf-resource-row">
-                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@supportOptions" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-                    <RadzenNumeric TValue="decimal" @bind-Value="row.Quantity" Min="0.01m" Step="1m" class="owf-qty" />
-                    <button type="button" @onclick="@(() => task.GeneralSupports.Remove(row))"><RadzenIcon Icon="close" /></button>
-                </div>
-            }
         </div>
+
+        @if (task.Attachments.Count == 0)
+        {
+            <div class="owf-attachment-empty">No attachments</div>
+        }
+        else
+        {
+            <div class="owf-attachment-list">
+                @foreach (var attachment in task.Attachments)
+                {
+                    <div @key="attachment.Key" class="owf-attachment-row">
+                        <span class="owf-attachment-icon"><RadzenIcon Icon="@AttachmentIcon(attachment.Kind)" /></span>
+                        <span class="owf-attachment-main">
+                            <strong>@attachment.OriginalFileName</strong>
+                            <small>@attachment.Kind · Pending · @FormatFileSize(attachment.Size)</small>
+                        </span>
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                      Disabled="@isAttachmentBusy" Click="@(() => DeleteAttachment(task, attachment))" />
+                    </div>
+                }
+            </div>
+        }
     </div>;
 
     private RenderFragment Actions() => @<div class="owf-actions">
@@ -389,9 +568,16 @@
             {
                 <RadzenButton Text="Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@Previous" />
             }
+            else
+            {
+                <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
+            }
         </div>
         <div class="owf-actions-end">
-            <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
+            @if (step > 0)
+            {
+                <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
+            }
             @if (step < LastStep)
             {
                 <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Button" Click="@NextAsync" />
@@ -409,6 +595,7 @@
         model.Type = type;
         if (step > LastStep)
             step = LastStep;
+        validationMessages = [];
         errorMessage = null;
     }
 
@@ -417,37 +604,54 @@
         if (index <= step && index <= LastStep)
         {
             step = index;
+            validationMessages = [];
             errorMessage = null;
         }
     }
 
     private async Task NextAsync()
     {
-        errorMessage = ValidateStep(step);
-        if (errorMessage is not null)
+        var validation = ValidateCurrentStep();
+        if (validation.Count > 0)
+        {
+            validationMessages = validation;
+            errorMessage = null;
             return;
+        }
 
         if (step == 0)
+        {
+            SeedActualDetailsFromFlight();
             await LoadStaffForStationAsync();
+        }
         if (errorMessage is not null)
             return;
 
+        validationMessages = [];
+        errorMessage = null;
         step = Math.Min(LastStep, step + 1);
     }
 
     private void Previous()
     {
+        validationMessages = [];
         errorMessage = null;
         step = Math.Max(0, step - 1);
     }
 
     private async Task SubmitAsync()
     {
-        errorMessage = ValidateAll();
-        if (errorMessage is not null)
+        var validation = ValidateAll();
+        if (validation.Count > 0)
+        {
+            validationMessages = validation;
+            errorMessage = null;
             return;
+        }
 
         isSubmitting = true;
+        validationMessages = [];
+        errorMessage = null;
         try
         {
             var request = new CreateAdHocWorkOrderRequestModel(
@@ -477,10 +681,11 @@
     private WorkOrderRequestModel BuildWorkOrderRequest()
     {
         var completion = IsCompletion;
+        var aircraftTypeId = model.ActualAircraftTypeId ?? model.AircraftTypeId;
         return new WorkOrderRequestModel(
             model.Type,
-            completion ? (string.IsNullOrWhiteSpace(model.ActualFlightNumber) ? model.FlightNumber : model.ActualFlightNumber) : null,
-            completion ? model.ActualAircraftTypeId ?? model.AircraftTypeId : null,
+            completion ? model.ActualFlightNumber : null,
+            completion ? aircraftTypeId : null,
             completion ? model.AircraftTailNumber : null,
             completion ? ToOffset(model.ActualArrivalUtc) : null,
             completion ? ToOffset(model.ActualDepartureUtc) : null,
@@ -503,110 +708,152 @@
                     ToOffset(t.FromUtc)!.Value,
                     ToOffset(t.ToUtc)!.Value,
                     t.EmployeeIds.ToList(),
-                    t.Tools.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskToolRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
-                    t.Materials.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskMaterialRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
-                    t.GeneralSupports.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskGeneralSupportRequestModel(r.ItemId!.Value, r.Quantity)).ToList())).ToList()
-                : []);
+                    t.Tools.Select(r => new WorkOrderTaskToolRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
+                    t.Materials.Select(r => new WorkOrderTaskMaterialRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
+                    t.GeneralSupports.Select(r => new WorkOrderTaskGeneralSupportRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
+                    t.Attachments.Select(a => new WorkOrderTaskAttachmentRequestModel(
+                        a.Kind,
+                        Convert.ToBase64String(a.Content),
+                        a.OriginalFileName,
+                        a.ContentType)).ToList())).ToList()
+                : [],
+            !completion || model.CustomerSignature is null
+                ? null
+                : new WorkOrderSignatureRequestModel(
+                    Convert.ToBase64String(model.CustomerSignature.Content),
+                    model.CustomerSignature.FileName,
+                    model.CustomerSignature.ContentType));
     }
 
-    private string? ValidateAll()
+    private List<string> ValidateAll()
     {
+        var messages = new List<string>();
         for (var i = 0; i <= LastStep; i++)
-        {
-            var validation = ValidateStep(i);
-            if (validation is not null)
-                return validation;
-        }
-        return null;
+            messages.AddRange(ValidateStep(i));
+        return messages.Distinct().ToList();
     }
 
-    private string? ValidateStep(int index) => index switch
+    private List<string> ValidateCurrentStep() => ValidateStep(step);
+
+    private List<string> ValidateStep(int index) => index switch
     {
         0 => ValidateFlight(),
         1 => ValidatePlanning(),
         2 => ValidateDetails(),
         3 => ValidateServiceLines(),
         4 => ValidateTasks(),
-        _ => null
+        _ => []
     };
 
-    private string? ValidateFlight()
+    private List<string> ValidateFlight()
     {
-        if (model.CustomerId is null || model.StationId is null || string.IsNullOrWhiteSpace(model.FlightNumber))
-            return "Customer, station, and flight number are required.";
-        if (model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
-            return "STA and STD are required.";
-        if (model.ScheduledDepartureUtc!.Value <= model.ScheduledArrivalUtc!.Value)
-            return "STD must be after STA.";
-        return null;
+        var messages = new List<string>();
+        if (model.CustomerId is null)
+            messages.Add("Customer is required.");
+        if (model.StationId is null)
+            messages.Add("Station is required.");
+        if (string.IsNullOrWhiteSpace(model.FlightNumber))
+            messages.Add("Flight number is required.");
+        else if (model.FlightNumber.Trim().Length > 12)
+            messages.Add("Flight number must be at most 12 characters.");
+        if (IsMissing(model.ScheduledArrivalUtc))
+            messages.Add("Scheduled arrival is required.");
+        if (IsMissing(model.ScheduledDepartureUtc))
+            messages.Add("Scheduled departure is required.");
+        if (!IsMissing(model.ScheduledArrivalUtc) && !IsMissing(model.ScheduledDepartureUtc) && model.ScheduledDepartureUtc!.Value <= model.ScheduledArrivalUtc!.Value)
+            messages.Add("Scheduled departure must be after scheduled arrival.");
+        return messages;
     }
 
-    private string? ValidatePlanning()
+    private List<string> ValidatePlanning()
     {
+        var messages = new List<string>();
         if (IsCompletion && model.PlannedServiceIds.Count == 0)
-            return "Completion work-order-first flights need at least one planned service.";
+            messages.Add("Completion work-order-first flights need at least one planned service.");
         if (IsPerLandingSelected && model.AssignedStaffMemberIds.Count > 0)
-            return "Per Landing flights cannot have assigned staff.";
-        return null;
+            messages.Add("Per landing flights cannot have assigned staff.");
+        return messages;
     }
 
-    private string? ValidateDetails()
+    private List<string> ValidateDetails()
     {
         if (IsCancellation)
         {
-            if (model.CanceledAtUtc is null)
-                return "Cancellation date/time is required.";
+            var cancellationMessages = new List<string>();
+            if (IsMissing(model.CanceledAtUtc))
+                cancellationMessages.Add("Cancellation date/time is required.");
             if (string.IsNullOrWhiteSpace(model.CancellationReason))
-                return "Cancellation reason is required.";
-            return null;
+                cancellationMessages.Add("Cancellation reason is required.");
+            return cancellationMessages;
         }
 
-        if ((model.ActualArrivalUtc is null) != (model.ActualDepartureUtc is null))
-            return "Provide both ATA and ATD, or leave both blank until approval.";
-        if (model.ActualArrivalUtc is not null && model.ActualDepartureUtc is not null && model.ActualDepartureUtc.Value < model.ActualArrivalUtc.Value)
-            return "ATD cannot be before ATA.";
-        return null;
+        var messages = new List<string>();
+        if (string.IsNullOrWhiteSpace(model.ActualFlightNumber))
+            messages.Add("Flight number is required.");
+        else if (model.ActualFlightNumber.Trim().Length > 12)
+            messages.Add("Flight number must be at most 12 characters.");
+        if (model.ActualAircraftTypeId is null && model.AircraftTypeId is null)
+            messages.Add("Aircraft type is required.");
+        if (!string.IsNullOrWhiteSpace(model.AircraftTailNumber) && model.AircraftTailNumber.Trim().Length > 20)
+            messages.Add("Tail number must be at most 20 characters.");
+        if (IsMissing(model.ActualArrivalUtc))
+            messages.Add("ATA is required.");
+        if (IsMissing(model.ActualDepartureUtc))
+            messages.Add("ATD is required.");
+        if (!IsMissing(model.ActualArrivalUtc) && !IsMissing(model.ActualDepartureUtc) && model.ActualDepartureUtc!.Value < model.ActualArrivalUtc!.Value)
+            messages.Add("ATD cannot be before ATA.");
+        return messages;
     }
 
-    private string? ValidateServiceLines()
+    private List<string> ValidateServiceLines()
     {
-        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || l.FromUtc is null || l.ToUtc is null))
-            return "Every service line needs a service, performer, and time window.";
-        if (model.ServiceLines.Any(l => l.ToUtc!.Value < l.FromUtc!.Value))
-            return "Service line To time cannot be before From time.";
-        if (model.ActualArrivalUtc is { } ata && model.ServiceLines.Any(l => l.FromUtc!.Value < ata))
-            return "Service line From time cannot be before ATA.";
-        if (model.ActualDepartureUtc is { } atd && model.ServiceLines.Any(l => l.ToUtc!.Value > atd))
-            return "Service line To time cannot be after ATD.";
-
-        return null;
+        var messages = new List<string>();
+        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
+            messages.Add("Every service line needs a service, performer, From, and To time.");
+        if (model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && !IsMissing(l.ToUtc) && l.ToUtc!.Value < l.FromUtc!.Value))
+            messages.Add("Service line To time cannot be before From time.");
+        if (model.ActualArrivalUtc is { } ata && model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && l.FromUtc!.Value < ata))
+            messages.Add("Service line From time cannot be before ATA.");
+        if (model.ActualDepartureUtc is { } atd && model.ServiceLines.Any(l => !IsMissing(l.ToUtc) && l.ToUtc!.Value > atd))
+            messages.Add("Service line To time cannot be after ATD.");
+        return messages;
     }
 
-    private string? ValidateTasks()
+    private List<string> ValidateTasks()
     {
-        if (model.Tasks.Any(t => t.FromUtc is null || t.ToUtc is null))
-            return "Every task needs a time window.";
-        if (model.Tasks.Any(t => t.ToUtc!.Value < t.FromUtc!.Value))
-            return "Task To time cannot be before From time.";
-        if (model.ActualArrivalUtc is { } ata && model.Tasks.Any(t => t.FromUtc!.Value < ata))
-            return "Task From time cannot be before ATA.";
-        if (model.ActualDepartureUtc is { } atd && model.Tasks.Any(t => t.ToUtc!.Value > atd))
-            return "Task To time cannot be after ATD.";
+        var messages = new List<string>();
+        if (model.Tasks.Any(t => string.IsNullOrWhiteSpace(t.TaskType)))
+            messages.Add("Every task needs a task type.");
+        if (model.Tasks.Any(t => t.EmployeeIds is null || !t.EmployeeIds.Any()))
+            messages.Add("Every task needs at least one employee.");
+        if (model.Tasks.Any(t => IsMissing(t.FromUtc) || IsMissing(t.ToUtc)))
+            messages.Add("Every task needs a From and To time.");
+        if (model.Tasks.Any(t => !IsMissing(t.FromUtc) && !IsMissing(t.ToUtc) && t.ToUtc!.Value < t.FromUtc!.Value))
+            messages.Add("Task To time cannot be before From time.");
+        if (model.ActualArrivalUtc is { } ata && model.Tasks.Any(t => !IsMissing(t.FromUtc) && t.FromUtc!.Value < ata))
+            messages.Add("Task From time cannot be before ATA.");
+        if (model.ActualDepartureUtc is { } atd && model.Tasks.Any(t => !IsMissing(t.ToUtc) && t.ToUtc!.Value > atd))
+            messages.Add("Task To time cannot be after ATD.");
 
-        return null;
+        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Tools), "tool");
+        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Materials), "material");
+        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.GeneralSupports), "general support");
+        return messages;
     }
 
     private async Task CheckDuplicatesAsync()
     {
         var validation = ValidateFlight();
-        if (validation is not null)
+        if (validation.Count > 0)
         {
-            errorMessage = validation;
+            validationMessages = validation;
+            errorMessage = null;
             return;
         }
 
         try
         {
+            validationMessages = [];
             duplicates = await Operations.GetDuplicateCandidatesAsync(
                 model.CustomerId!.Value,
                 ToOffset(model.ScheduledArrivalUtc)!.Value,
@@ -672,32 +919,190 @@
     }
 
     private void AddServiceLine() =>
-        model.ServiceLines.Add(new ServiceLineForm { FromUtc = model.ActualArrivalUtc ?? model.ScheduledArrivalUtc, ToUtc = model.ActualDepartureUtc ?? model.ScheduledDepartureUtc });
+        model.ServiceLines.Add(new ServiceLineForm { FromUtc = DefaultWindowStart, ToUtc = DefaultWindowEnd });
 
     private void RemoveServiceLine(ServiceLineForm line) => model.ServiceLines.Remove(line);
 
     private void AddTask() =>
-        model.Tasks.Add(new TaskForm { FromUtc = model.ActualArrivalUtc ?? model.ScheduledArrivalUtc, ToUtc = model.ActualDepartureUtc ?? model.ScheduledDepartureUtc });
+        model.Tasks.Add(new TaskForm { FromUtc = DefaultWindowStart, ToUtc = DefaultWindowEnd });
 
     private void RemoveTask(TaskForm task) => model.Tasks.Remove(task);
 
-    private string StepClass(int index) => index == step ? "owf-step-active" : index < step ? "owf-step-complete" : "owf-step-pending";
+    private TaskForm CurrentTaskFor(List<ResourceForm> rows) => model.Tasks.First(t => ReferenceEquals(t.Tools, rows) || ReferenceEquals(t.Materials, rows) || ReferenceEquals(t.GeneralSupports, rows));
+    private void AddTool(TaskForm task) => task.Tools.Add(new ResourceForm());
+    private void RemoveTool(TaskForm task, ResourceForm row) => task.Tools.Remove(row);
+    private void AddMaterial(TaskForm task) => task.Materials.Add(new ResourceForm());
+    private void RemoveMaterial(TaskForm task, ResourceForm row) => task.Materials.Remove(row);
+    private void AddSupport(TaskForm task) => task.GeneralSupports.Add(new ResourceForm());
+    private void RemoveSupport(TaskForm task, ResourceForm row) => task.GeneralSupports.Remove(row);
+    private void DeleteAttachment(TaskForm task, AttachmentForm attachment) => task.Attachments.Remove(attachment);
+
+    private async Task UploadSignatureAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
+        if (!contentType.Equals("image/png", StringComparison.OrdinalIgnoreCase) && !file.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "Customer signature must be a PNG image.";
+            return;
+        }
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            errorMessage = "Customer signature must be at most 2 MB.";
+            return;
+        }
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            model.CustomerSignature = new PendingFileForm
+            {
+                Content = memory.ToArray(),
+                FileName = file.Name,
+                ContentType = contentType,
+                Size = file.Size
+            };
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            errorMessage = "Could not read the customer signature.";
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private void ClearPendingSignature() => model.CustomerSignature = null;
+
+    private async Task UploadAttachmentAsync(TaskForm task, string kind, InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        var maxBytes = MaxAttachmentBytes(kind);
+        if (file.Size > maxBytes)
+        {
+            errorMessage = $"{kind} attachments must be at most {FormatFileSize(maxBytes)}.";
+            return;
+        }
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            task.Attachments.Add(new AttachmentForm
+            {
+                Kind = kind,
+                OriginalFileName = file.Name,
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                Size = file.Size,
+                Content = memory.ToArray()
+            });
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            errorMessage = "Could not read the attachment.";
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private void SeedActualDetailsFromFlight()
+    {
+        if (string.IsNullOrWhiteSpace(model.ActualFlightNumber))
+            model.ActualFlightNumber = model.FlightNumber;
+        model.ActualAircraftTypeId ??= model.AircraftTypeId;
+        model.ActualArrivalUtc ??= model.ScheduledArrivalUtc;
+        model.ActualDepartureUtc ??= model.ScheduledDepartureUtc;
+        model.CanceledAtUtc ??= model.ScheduledArrivalUtc;
+    }
+
+    private void DismissValidationMessages() => validationMessages = [];
+
+    private static void AddResourceValidation(List<string> messages, IEnumerable<ResourceForm> rows, string label)
+    {
+        var list = rows.ToList();
+        if (list.Any(r => r.ItemId is null))
+            messages.Add($"Every {label} row needs an item.");
+        if (list.Any(r => r.Quantity <= 0))
+            messages.Add($"{ToTitle(label)} quantities must be greater than zero.");
+    }
+
+    private IReadOnlyList<object> ResourceOptions(string title) => title switch
+    {
+        "Tools" => toolOptions.Cast<object>().ToList(),
+        "Materials" => materialOptions.Cast<object>().ToList(),
+        _ => supportOptions.Cast<object>().ToList()
+    };
+
+    private string StepClass(int index) =>
+        index == step ? "owf-step owf-step-active" : index < step ? "owf-step owf-step-complete" : "owf-step";
 
     private string StepLabel(int index) => index switch
     {
         0 => "Flight",
         1 => "Planning",
         2 => IsCancellation ? "Cancellation" : "Details",
-        3 => "Services",
-        _ => "Tasks"
+        3 => "Service lines",
+        4 => "Tasks",
+        _ => "Signature"
     };
 
     private string ChipClass(bool selected) => selected ? "owf-chip owf-chip-selected" : "owf-chip";
-
     private string TypeClass(string type) => model.Type == type ? "owf-type-option owf-type-option-active" : "owf-type-option";
+    private string SelectedCustomerName => customers.FirstOrDefault(customer => customer.Id == model.CustomerId)?.Name ?? "Select customer";
+    private string SelectedStationName => stations.FirstOrDefault(station => station.Id == model.StationId)?.IataCode ?? "Select station";
+    private string? SelectedCustomerIata => customers.FirstOrDefault(customer => customer.Id == model.CustomerId)?.IataCode;
+    private bool HasCustomerIataPrefix => !string.IsNullOrWhiteSpace(SelectedCustomerIata);
+    private bool ShowCustomerFlightPrefixDivider => model.CustomerId is not null;
+    private string CustomerIataPrefix => HasCustomerIataPrefix ? SelectedCustomerIata!.Trim().ToUpperInvariant() : model.CustomerId is null ? "-" : "N/A";
 
-    private static DateTimeOffset? ToOffset(DateTime? value) =>
-        value is null ? null : new DateTimeOffset(DateTime.SpecifyKind(value.Value, DateTimeKind.Utc));
+    private string DisplayFlightNumber()
+    {
+        var number = string.IsNullOrWhiteSpace(model.FlightNumber) ? "New work order" : model.FlightNumber.Trim();
+        return HasCustomerIataPrefix && !string.IsNullOrWhiteSpace(model.FlightNumber)
+            ? $"{SelectedCustomerIata!.Trim().ToUpperInvariant()}-{number}"
+            : number;
+    }
+
+    private static bool IsMissing(DateTime? value) => value is null || value.Value == default;
+    private static DateTimeOffset? ToOffset(DateTime? value) => value is null ? null : new DateTimeOffset(DateTime.SpecifyKind(value.Value, DateTimeKind.Utc));
+    private static string DateDisplay(DateTime? value) => value?.ToString("yyyy-MM-dd HH:mm") ?? "Not set";
+    private static string NoResourceText(string title) => $"No {title.ToLowerInvariant()} added";
+    private static string ToTitle(string value) => string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
+    private static string StatusDotClass() => "owf-summary-dot--active";
+
+    private static long MaxAttachmentBytes(string kind) => kind switch
+    {
+        "Image" => 10 * 1024 * 1024,
+        "Voice" => 25 * 1024 * 1024,
+        _ => 20 * 1024 * 1024
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+            return $"{bytes / 1024m / 1024m:0.#} MB";
+        if (bytes >= 1024)
+            return $"{bytes / 1024m:0.#} KB";
+        return $"{bytes} B";
+    }
+
+    private static string AttachmentIcon(string kind) => kind switch
+    {
+        "Image" => "image",
+        "Voice" => "graphic_eq",
+        "Document" => "description",
+        _ => "attach_file"
+    };
 
     private sealed record SelectOption(string Label, string Value);
 
@@ -720,6 +1125,7 @@
         public DateTime? CanceledAtUtc { get; set; }
         public string? CancellationReason { get; set; }
         public string? Remarks { get; set; }
+        public PendingFileForm? CustomerSignature { get; set; }
         public List<ServiceLineForm> ServiceLines { get; } = [];
         public List<TaskForm> Tasks { get; } = [];
     }
@@ -745,6 +1151,7 @@
         public List<ResourceForm> Tools { get; } = [];
         public List<ResourceForm> Materials { get; } = [];
         public List<ResourceForm> GeneralSupports { get; } = [];
+        public List<AttachmentForm> Attachments { get; } = [];
     }
 
     private sealed class ResourceForm
@@ -752,5 +1159,23 @@
         public Guid Key { get; } = Guid.NewGuid();
         public Guid? ItemId { get; set; }
         public decimal Quantity { get; set; } = 1;
+    }
+
+    private sealed class AttachmentForm
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public string Kind { get; set; } = "Document";
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = "application/octet-stream";
+        public long Size { get; set; }
+        public byte[] Content { get; set; } = [];
+    }
+
+    private sealed class PendingFileForm
+    {
+        public byte[] Content { get; set; } = [];
+        public string FileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = "application/octet-stream";
+        public long Size { get; set; }
     }
 }
