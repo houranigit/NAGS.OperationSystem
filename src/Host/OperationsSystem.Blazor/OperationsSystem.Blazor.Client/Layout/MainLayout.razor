@@ -24,37 +24,54 @@
         </div>
 
         <nav class="os-nav">
-            <p class="os-nav-section">@UiStrings.Nav.Overview</p>
-            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link" title="@UiStrings.Nav.Dashboard" @onclick="CloseNav">
+            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link os-nav-link--root" title="@UiStrings.Nav.Dashboard" @onclick="CloseNav">
                 <RadzenIcon Icon="dashboard" />
                 <span>@UiStrings.Nav.Dashboard</span>
             </NavLink>
 
             <AuthorizeView Context="users">
-                @if (HasNav)
-                {
-                    <p class="os-nav-section">@UiStrings.Nav.Administration</p>
+                @{
+                    var canUsers = users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView);
+                    var canRoles = users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView);
+                    var canAudit = users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, AuditPermissions.TrailsView);
+                    var canAdministration = canUsers || canRoles || canAudit;
+                    var administrationActive = IsNavGroupActive("users", "roles", "audit");
                 }
-                @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
+                @if (canAdministration)
                 {
-                    <NavLink href="/users" class="os-nav-link" title="@UiStrings.Nav.Users" @onclick="CloseNav">
-                        <RadzenIcon Icon="group" />
-                        <span>@UiStrings.Nav.Users</span>
-                    </NavLink>
-                }
-                @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
-                {
-                    <NavLink href="/roles" class="os-nav-link" title="@UiStrings.Nav.Roles" @onclick="CloseNav">
-                        <RadzenIcon Icon="shield" />
-                        <span>@UiStrings.Nav.Roles</span>
-                    </NavLink>
-                }
-                @if (users.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, AuditPermissions.TrailsView))
-                {
-                    <NavLink href="/audit" class="os-nav-link" title="@UiStrings.Nav.Audit" @onclick="CloseNav">
-                        <RadzenIcon Icon="history" />
-                        <span>@UiStrings.Nav.Audit</span>
-                    </NavLink>
+                    <div class="@NavGroupClass(NavGroupAdministration, administrationActive)">
+                        <button type="button" class="os-nav-parent" title="@UiStrings.Nav.Administration"
+                                aria-expanded="@(IsNavGroupExpanded(NavGroupAdministration) ? "true" : "false")" aria-controls="os-nav-administration"
+                                @onclick="() => ToggleNavGroup(NavGroupAdministration)">
+                            <RadzenIcon Icon="admin_panel_settings" />
+                            <span>@UiStrings.Nav.Administration</span>
+                            <RadzenIcon Icon="expand_more" class="os-nav-parent-chevron" />
+                        </button>
+                        <div id="os-nav-administration" class="os-nav-children">
+                            <span class="os-nav-flyout-title">@UiStrings.Nav.Administration</span>
+                            @if (canUsers)
+                            {
+                                <NavLink href="/users" class="os-nav-link" title="@UiStrings.Nav.Users" @onclick="CloseNav">
+                                    <RadzenIcon Icon="group" />
+                                    <span>@UiStrings.Nav.Users</span>
+                                </NavLink>
+                            }
+                            @if (canRoles)
+                            {
+                                <NavLink href="/roles" class="os-nav-link" title="@UiStrings.Nav.Roles" @onclick="CloseNav">
+                                    <RadzenIcon Icon="shield" />
+                                    <span>@UiStrings.Nav.Roles</span>
+                                </NavLink>
+                            }
+                            @if (canAudit)
+                            {
+                                <NavLink href="/audit" class="os-nav-link" title="@UiStrings.Nav.Audit" @onclick="CloseNav">
+                                    <RadzenIcon Icon="history" />
+                                    <span>@UiStrings.Nav.Audit</span>
+                                </NavLink>
+                            }
+                        </div>
+                    </div>
                 }
             </AuthorizeView>
 
@@ -63,35 +80,48 @@
                     var canOpsDashboard = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.DashboardView);
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
                     var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
+                    var canOperations = canOpsDashboard || canOpsFlights || canOpsWorkOrders;
+                    var operationsActive = IsNavGroupActive("operations");
                 }
-                @if (canOpsDashboard || canOpsFlights || canOpsWorkOrders)
+                @if (canOperations)
                 {
-                    <p class="os-nav-section">Operations</p>
-                }
-                @if (canOpsDashboard)
-                {
-                    <NavLink href="/operations/dashboard" class="os-nav-link" title="Operations dashboard" @onclick="CloseNav">
-                        <RadzenIcon Icon="insights" />
-                        <span>Operations</span>
-                    </NavLink>
-                }
-                @if (canOpsFlights)
-                {
-                    <NavLink href="/operations/flights" class="os-nav-link" title="Flights" @onclick="CloseNav">
-                        <RadzenIcon Icon="flight" />
-                        <span>Flights</span>
-                    </NavLink>
-                    <NavLink href="/operations/calendar" class="os-nav-link" title="Flight calendar" @onclick="CloseNav">
-                        <RadzenIcon Icon="calendar_month" />
-                        <span>Calendar</span>
-                    </NavLink>
-                }
-                @if (canOpsWorkOrders)
-                {
-                    <NavLink href="/operations/work-orders" class="os-nav-link" title="Work orders" @onclick="CloseNav">
-                        <RadzenIcon Icon="fact_check" />
-                        <span>Work orders</span>
-                    </NavLink>
+                    <div class="@NavGroupClass(NavGroupOperations, operationsActive)">
+                        <button type="button" class="os-nav-parent" title="Operations"
+                                aria-expanded="@(IsNavGroupExpanded(NavGroupOperations) ? "true" : "false")" aria-controls="os-nav-operations"
+                                @onclick="() => ToggleNavGroup(NavGroupOperations)">
+                            <RadzenIcon Icon="route" />
+                            <span>Operations</span>
+                            <RadzenIcon Icon="expand_more" class="os-nav-parent-chevron" />
+                        </button>
+                        <div id="os-nav-operations" class="os-nav-children">
+                            <span class="os-nav-flyout-title">Operations</span>
+                            @if (canOpsDashboard)
+                            {
+                                <NavLink href="/operations/dashboard" class="os-nav-link" title="Operations dashboard" @onclick="CloseNav">
+                                    <RadzenIcon Icon="insights" />
+                                    <span>Overview</span>
+                                </NavLink>
+                            }
+                            @if (canOpsFlights)
+                            {
+                                <NavLink href="/operations/flights" class="os-nav-link" title="Flights" @onclick="CloseNav">
+                                    <RadzenIcon Icon="flight" />
+                                    <span>Flights</span>
+                                </NavLink>
+                                <NavLink href="/operations/calendar" class="os-nav-link" title="Flight calendar" @onclick="CloseNav">
+                                    <RadzenIcon Icon="calendar_month" />
+                                    <span>Calendar</span>
+                                </NavLink>
+                            }
+                            @if (canOpsWorkOrders)
+                            {
+                                <NavLink href="/operations/work-orders" class="os-nav-link" title="Work orders" @onclick="CloseNav">
+                                    <RadzenIcon Icon="fact_check" />
+                                    <span>Work orders</span>
+                                </NavLink>
+                            }
+                        </div>
+                    </div>
                 }
             </AuthorizeView>
 
@@ -109,94 +139,107 @@
                     var canStations = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsView);
                     var canCustomers = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersView);
                     var canStaff = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersView);
+                    var canMasterData = canCountries || canManpower || canLicenses || canServices || canOperationTypes || canAircraftTypes || canTools || canMaterials || canGeneralSupports || canStations || canCustomers || canStaff;
+                    var masterDataActive = IsNavGroupActive("master-data");
                 }
-                @if (canCountries || canManpower || canLicenses || canServices || canOperationTypes || canAircraftTypes || canTools || canMaterials || canGeneralSupports || canStations || canCustomers || canStaff)
+                @if (canMasterData)
                 {
-                    <p class="os-nav-section">@UiStrings.Nav.MasterData</p>
-                }
-                @if (canCountries)
-                {
-                    <NavLink href="/master-data/countries" class="os-nav-link" title="@UiStrings.Nav.Countries" @onclick="CloseNav">
-                        <RadzenIcon Icon="public" />
-                        <span>@UiStrings.Nav.Countries</span>
-                    </NavLink>
-                }
-                @if (canManpower)
-                {
-                    <NavLink href="/master-data/manpower-types" class="os-nav-link" title="@UiStrings.Nav.ManpowerTypes" @onclick="CloseNav">
-                        <RadzenIcon Icon="engineering" />
-                        <span>@UiStrings.Nav.ManpowerTypes</span>
-                    </NavLink>
-                }
-                @if (canLicenses)
-                {
-                    <NavLink href="/master-data/licenses" class="os-nav-link" title="@UiStrings.Nav.Licenses" @onclick="CloseNav">
-                        <RadzenIcon Icon="badge" />
-                        <span>@UiStrings.Nav.Licenses</span>
-                    </NavLink>
-                }
-                @if (canServices)
-                {
-                    <NavLink href="/master-data/services" class="os-nav-link" title="@UiStrings.Nav.Services" @onclick="CloseNav">
-                        <RadzenIcon Icon="settings" />
-                        <span>@UiStrings.Nav.Services</span>
-                    </NavLink>
-                }
-                @if (canOperationTypes)
-                {
-                    <NavLink href="/master-data/operation-types" class="os-nav-link" title="@UiStrings.Nav.OperationTypes" @onclick="CloseNav">
-                        <RadzenIcon Icon="timeline" />
-                        <span>@UiStrings.Nav.OperationTypes</span>
-                    </NavLink>
-                }
-                @if (canAircraftTypes)
-                {
-                    <NavLink href="/master-data/aircraft-types" class="os-nav-link" title="@UiStrings.Nav.AircraftTypes" @onclick="CloseNav">
-                        <RadzenIcon Icon="flight" />
-                        <span>@UiStrings.Nav.AircraftTypes</span>
-                    </NavLink>
-                }
-                @if (canTools)
-                {
-                    <NavLink href="/master-data/tools" class="os-nav-link" title="@UiStrings.Nav.Tools" @onclick="CloseNav">
-                        <RadzenIcon Icon="build" />
-                        <span>@UiStrings.Nav.Tools</span>
-                    </NavLink>
-                }
-                @if (canMaterials)
-                {
-                    <NavLink href="/master-data/materials" class="os-nav-link" title="@UiStrings.Nav.Materials" @onclick="CloseNav">
-                        <RadzenIcon Icon="category" />
-                        <span>@UiStrings.Nav.Materials</span>
-                    </NavLink>
-                }
-                @if (canGeneralSupports)
-                {
-                    <NavLink href="/master-data/general-supports" class="os-nav-link" title="@UiStrings.Nav.GeneralSupports" @onclick="CloseNav">
-                        <RadzenIcon Icon="headset_mic" />
-                        <span>@UiStrings.Nav.GeneralSupports</span>
-                    </NavLink>
-                }
-                @if (canStations)
-                {
-                    <NavLink href="/master-data/stations" class="os-nav-link" title="@UiStrings.Nav.Stations" @onclick="CloseNav">
-                        <RadzenIcon Icon="flight_takeoff" />
-                        <span>@UiStrings.Nav.Stations</span>
-                    </NavLink>
-                }
-                @if (canCustomers)
-                {
-                    <NavLink href="/master-data/customers" class="os-nav-link" title="@UiStrings.Nav.Customers" @onclick="CloseNav">
-                        <RadzenIcon Icon="business" />
-                        <span>@UiStrings.Nav.Customers</span>
-                    </NavLink>
-                }
-                @if (canStaff)
-                {
-                    <NavLink href="/master-data/staff-members" class="os-nav-link" title="@UiStrings.Nav.StaffMembers" @onclick="CloseNav">
-                        <RadzenIcon Icon="groups" />
-                        <span>@UiStrings.Nav.StaffMembers</span>
-                    </NavLink>
+                    <div class="@NavGroupClass(NavGroupMasterData, masterDataActive)">
+                        <button type="button" class="os-nav-parent" title="@UiStrings.Nav.MasterData"
+                                aria-expanded="@(IsNavGroupExpanded(NavGroupMasterData) ? "true" : "false")" aria-controls="os-nav-master-data"
+                                @onclick="() => ToggleNavGroup(NavGroupMasterData)">
+                            <RadzenIcon Icon="apps" />
+                            <span>@UiStrings.Nav.MasterData</span>
+                            <RadzenIcon Icon="expand_more" class="os-nav-parent-chevron" />
+                        </button>
+                        <div id="os-nav-master-data" class="os-nav-children">
+                            <span class="os-nav-flyout-title">@UiStrings.Nav.MasterData</span>
+                            @if (canCountries)
+                            {
+                                <NavLink href="/master-data/countries" class="os-nav-link" title="@UiStrings.Nav.Countries" @onclick="CloseNav">
+                                    <RadzenIcon Icon="public" />
+                                    <span>@UiStrings.Nav.Countries</span>
+                                </NavLink>
+                            }
+                            @if (canManpower)
+                            {
+                                <NavLink href="/master-data/manpower-types" class="os-nav-link" title="@UiStrings.Nav.ManpowerTypes" @onclick="CloseNav">
+                                    <RadzenIcon Icon="engineering" />
+                                    <span>@UiStrings.Nav.ManpowerTypes</span>
+                                </NavLink>
+                            }
+                            @if (canLicenses)
+                            {
+                                <NavLink href="/master-data/licenses" class="os-nav-link" title="@UiStrings.Nav.Licenses" @onclick="CloseNav">
+                                    <RadzenIcon Icon="badge" />
+                                    <span>@UiStrings.Nav.Licenses</span>
+                                </NavLink>
+                            }
+                            @if (canServices)
+                            {
+                                <NavLink href="/master-data/services" class="os-nav-link" title="@UiStrings.Nav.Services" @onclick="CloseNav">
+                                    <RadzenIcon Icon="settings" />
+                                    <span>@UiStrings.Nav.Services</span>
+                                </NavLink>
+                            }
+                            @if (canOperationTypes)
+                            {
+                                <NavLink href="/master-data/operation-types" class="os-nav-link" title="@UiStrings.Nav.OperationTypes" @onclick="CloseNav">
+                                    <RadzenIcon Icon="timeline" />
+                                    <span>@UiStrings.Nav.OperationTypes</span>
+                                </NavLink>
+                            }
+                            @if (canAircraftTypes)
+                            {
+                                <NavLink href="/master-data/aircraft-types" class="os-nav-link" title="@UiStrings.Nav.AircraftTypes" @onclick="CloseNav">
+                                    <RadzenIcon Icon="flight" />
+                                    <span>@UiStrings.Nav.AircraftTypes</span>
+                                </NavLink>
+                            }
+                            @if (canTools)
+                            {
+                                <NavLink href="/master-data/tools" class="os-nav-link" title="@UiStrings.Nav.Tools" @onclick="CloseNav">
+                                    <RadzenIcon Icon="build" />
+                                    <span>@UiStrings.Nav.Tools</span>
+                                </NavLink>
+                            }
+                            @if (canMaterials)
+                            {
+                                <NavLink href="/master-data/materials" class="os-nav-link" title="@UiStrings.Nav.Materials" @onclick="CloseNav">
+                                    <RadzenIcon Icon="category" />
+                                    <span>@UiStrings.Nav.Materials</span>
+                                </NavLink>
+                            }
+                            @if (canGeneralSupports)
+                            {
+                                <NavLink href="/master-data/general-supports" class="os-nav-link" title="@UiStrings.Nav.GeneralSupports" @onclick="CloseNav">
+                                    <RadzenIcon Icon="headset_mic" />
+                                    <span>@UiStrings.Nav.GeneralSupports</span>
+                                </NavLink>
+                            }
+                            @if (canStations)
+                            {
+                                <NavLink href="/master-data/stations" class="os-nav-link" title="@UiStrings.Nav.Stations" @onclick="CloseNav">
+                                    <RadzenIcon Icon="flight_takeoff" />
+                                    <span>@UiStrings.Nav.Stations</span>
+                                </NavLink>
+                            }
+                            @if (canCustomers)
+                            {
+                                <NavLink href="/master-data/customers" class="os-nav-link" title="@UiStrings.Nav.Customers" @onclick="CloseNav">
+                                    <RadzenIcon Icon="business" />
+                                    <span>@UiStrings.Nav.Customers</span>
+                                </NavLink>
+                            }
+                            @if (canStaff)
+                            {
+                                <NavLink href="/master-data/staff-members" class="os-nav-link" title="@UiStrings.Nav.StaffMembers" @onclick="CloseNav">
+                                    <RadzenIcon Icon="groups" />
+                                    <span>@UiStrings.Nav.StaffMembers</span>
+                                </NavLink>
+                            }
+                        </div>
+                    </div>
                 }
             </AuthorizeView>
         </nav>
@@ -210,7 +253,7 @@
         <header class="os-topbar">
             <div class="os-topbar-lead">
                 <button type="button" class="os-icon-btn os-rail-toggle" aria-label="@UiStrings.Nav.ToggleMenu"
-                        aria-expanded="@(!railCollapsed)" @onclick="ToggleRail">
+                        aria-expanded="@(!railCollapsed ? "true" : "false")" @onclick="ToggleRail">
                     <RadzenIcon Icon="menu" />
                 </button>
                 <button type="button" class="os-icon-btn os-nav-toggle" aria-label="@UiStrings.Nav.ToggleMenu" @onclick="ToggleNav">
@@ -279,13 +322,16 @@
 </div>
 
 @code {
+    private const string NavGroupAdministration = "administration";
+    private const string NavGroupOperations = "operations";
+    private const string NavGroupMasterData = "master-data";
+
     private bool navOpen;
     private bool railCollapsed;
     private bool profileOpen;
+    private readonly HashSet<string> expandedNavGroups = new(StringComparer.Ordinal);
 
     private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
-
-    private bool HasNav => Auth.HasPermission(IdentityPermissions.UsersView) || Auth.HasPermission(IdentityPermissions.RolesView);
 
     protected override async Task OnInitializedAsync()
     {
@@ -293,6 +339,7 @@
         Auth.StateChanged += OnStateChanged;
         Locale.Changed += OnStateChanged;
         Navigation.LocationChanged += OnLocationChanged;
+        ExpandActiveNavGroup();
         RedirectToMfaEnrollmentIfNeeded();
     }
 
@@ -300,7 +347,89 @@
 
     private void CloseNav() => navOpen = false;
 
-    private void ToggleRail() => railCollapsed = !railCollapsed;
+    private void ToggleRail()
+    {
+        railCollapsed = !railCollapsed;
+
+        if (!railCollapsed)
+            ExpandActiveNavGroup();
+    }
+
+    private void ToggleNavGroup(string group)
+    {
+        if (expandedNavGroups.Contains(group))
+        {
+            expandedNavGroups.Remove(group);
+            return;
+        }
+
+        expandedNavGroups.Clear();
+        expandedNavGroups.Add(group);
+    }
+
+    private bool IsNavGroupExpanded(string group) => expandedNavGroups.Contains(group);
+
+    private string NavGroupClass(string group, bool isActive)
+    {
+        var classes = "os-nav-group";
+
+        if (IsNavGroupExpanded(group))
+            classes += " os-nav-group--open";
+
+        if (isActive)
+            classes += " os-nav-group--active";
+
+        return classes;
+    }
+
+    private bool IsNavGroupActive(params string[] prefixes)
+    {
+        var path = CurrentPath;
+
+        foreach (var prefix in prefixes)
+        {
+            if (string.Equals(path, prefix, StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith($"{prefix}/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string CurrentPath
+    {
+        get
+        {
+            var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+            return relative.Split(['?', '#'], 2)[0].Trim('/');
+        }
+    }
+
+    private void ExpandActiveNavGroup()
+    {
+        var activeGroup = CurrentActiveNavGroup();
+
+        expandedNavGroups.Clear();
+
+        if (activeGroup is not null)
+            expandedNavGroups.Add(activeGroup);
+    }
+
+    private string? CurrentActiveNavGroup()
+    {
+        if (IsNavGroupActive("users", "roles", "audit"))
+            return NavGroupAdministration;
+
+        if (IsNavGroupActive("operations"))
+            return NavGroupOperations;
+
+        if (IsNavGroupActive("master-data"))
+            return NavGroupMasterData;
+
+        return null;
+    }
 
     private void ToggleProfile() => profileOpen = !profileOpen;
 
@@ -365,6 +494,7 @@
         {
             await InvokeAsync(() =>
             {
+                ExpandActiveNavGroup();
                 RedirectToMfaEnrollmentIfNeeded();
                 StateHasChanged();
             });
@@ -381,6 +511,7 @@
         {
             await InvokeAsync(() =>
             {
+                ExpandActiveNavGroup();
                 RedirectToMfaEnrollmentIfNeeded();
                 StateHasChanged();
             });
