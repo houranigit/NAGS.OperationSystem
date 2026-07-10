@@ -23,12 +23,16 @@ internal static class WorkOrderInlineFileApplier
 
         if (payload.CustomerSignature is { } signature)
         {
-            var validation = WorkOrderSignaturePolicy.Validate(signature.Content, signature.FileName, signature.ContentType);
+            var signatureContent = DecodeBase64(signature.Base64Content, "signature");
+            if (signatureContent.IsFailure)
+                return await FailAsync(signatureContent.Error);
+
+            var validation = WorkOrderSignaturePolicy.Validate(signatureContent.Value, signature.FileName, signature.ContentType);
             if (validation.IsFailure)
                 return await FailAsync(validation.Error);
 
-            await using var signatureContent = new MemoryStream(signature.Content);
-            var stored = await storage.SaveAsync("work-order-signatures", signature.FileName, signature.ContentType, signatureContent, cancellationToken);
+            await using var signatureStream = new MemoryStream(signatureContent.Value);
+            var stored = await storage.SaveAsync("work-order-signatures", signature.FileName, signature.ContentType, signatureStream, cancellationToken);
             storedReferences.Add(stored.StorageKey);
 
             var set = workOrder.SetCustomerSignature(stored.StorageKey, signature.FileName, stored.ContentType, stored.SizeBytes, now);
@@ -49,16 +53,20 @@ internal static class WorkOrderInlineFileApplier
             var task = taskCommands[i];
             foreach (var attachment in task.Attachments ?? [])
             {
+                var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
+                if (attachmentContent.IsFailure)
+                    return await FailAsync(attachmentContent.Error);
+
                 var validation = WorkOrderAttachmentPolicy.Validate(
                     attachment.Kind,
-                    attachment.Content,
+                    attachmentContent.Value,
                     attachment.FileName,
                     attachment.ContentType);
                 if (validation.IsFailure)
                     return await FailAsync(validation.Error);
 
-                await using var attachmentContent = new MemoryStream(attachment.Content);
-                var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentContent, cancellationToken);
+                await using var attachmentStream = new MemoryStream(attachmentContent.Value);
+                var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
                 storedReferences.Add(stored.StorageKey);
 
                 var add = workOrder.AddTaskAttachment(
@@ -76,6 +84,24 @@ internal static class WorkOrderInlineFileApplier
 
         return storedReferences;
     }
+
+    private static Result<byte[]> DecodeBase64(string? value, string label)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Error.Validation($"The {label} file is empty.", $"Operations.WorkOrder.{ToCodeLabel(label)}Empty");
+
+        try
+        {
+            return Convert.FromBase64String(value);
+        }
+        catch (FormatException)
+        {
+            return Error.Validation($"The {label} file content is invalid.", $"Operations.WorkOrder.{ToCodeLabel(label)}InvalidContent");
+        }
+    }
+
+    private static string ToCodeLabel(string value) =>
+        string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
 
     private static Result<IReadOnlyList<Guid>> ResolveTaskIds(
         WorkOrder workOrder,

@@ -280,12 +280,12 @@ public sealed record WorkOrderTaskGeneralSupportRequestModel(Guid GeneralSupport
 
 public sealed record WorkOrderTaskAttachmentRequestModel(
     string Kind,
-    byte[] Content,
+    string Base64Content,
     string FileName,
     string ContentType);
 
 public sealed record WorkOrderSignatureRequestModel(
-    byte[] Content,
+    string Base64Content,
     string FileName,
     string ContentType);
 

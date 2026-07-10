@@ -45,12 +45,12 @@ public sealed record WorkOrderTaskGeneralSupportCommand(Guid GeneralSupportId, d
 
 public sealed record WorkOrderTaskAttachmentCommand(
     TaskAttachmentKind Kind,
-    byte[] Content,
+    string Base64Content,
     string FileName,
     string ContentType);
 
 public sealed record WorkOrderSignatureCommand(
-    byte[] Content,
+    string Base64Content,
     string FileName,
     string ContentType);
 

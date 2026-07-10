@@ -998,14 +998,14 @@
                     t.GeneralSupports.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskGeneralSupportRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
                     t.Attachments.Where(a => a.IsPending).Select(a => new WorkOrderTaskAttachmentRequestModel(
                         a.Kind,
-                        a.Content!,
+                        Convert.ToBase64String(a.Content!),
                         a.OriginalFileName,
                         a.ContentType)).ToList())).ToList()
                 : [],
             !completion || model.CustomerSignature is null
                 ? null
                 : new WorkOrderSignatureRequestModel(
-                    model.CustomerSignature.Content,
+                    Convert.ToBase64String(model.CustomerSignature.Content),
                     model.CustomerSignature.FileName,
                     model.CustomerSignature.ContentType));
     }

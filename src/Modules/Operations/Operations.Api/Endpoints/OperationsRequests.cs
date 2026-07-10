@@ -108,13 +108,13 @@ public sealed record WorkOrderRequest(
                 t.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity)).ToList() ?? [],
                 t.Attachments?.Select(attachment => new WorkOrderTaskAttachmentCommand(
                     attachment.Kind,
-                    attachment.Content,
+                    attachment.Base64Content,
                     attachment.FileName,
                     attachment.ContentType)).ToList() ?? [])).ToList() ?? [],
             CustomerSignature is null
                 ? null
                 : new WorkOrderSignatureCommand(
-                    CustomerSignature.Content,
+                    CustomerSignature.Base64Content,
                     CustomerSignature.FileName,
                     CustomerSignature.ContentType));
 }
@@ -160,12 +160,12 @@ public sealed record WorkOrderTaskGeneralSupportRequest(Guid GeneralSupportId, d
 
 public sealed record WorkOrderTaskAttachmentRequest(
     TaskAttachmentKind Kind,
-    byte[] Content,
+    string Base64Content,
     string FileName,
     string ContentType);
 
 public sealed record WorkOrderSignatureRequest(
-    byte[] Content,
+    string Base64Content,
     string FileName,
     string ContentType);
 
