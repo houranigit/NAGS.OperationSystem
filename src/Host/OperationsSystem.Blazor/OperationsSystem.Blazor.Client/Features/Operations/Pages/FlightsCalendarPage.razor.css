@@ -1,5 +1,17 @@
 .os-list-page ::deep .ofc-card {
     --ofc-card-viewport-offset: 11rem;
+    --ofc-status-scheduled: var(--rz-info, var(--os-color-info));
+    --ofc-status-scheduled-soft: color-mix(in srgb, var(--ofc-status-scheduled) 12%, #fff);
+    --ofc-status-scheduled-border: color-mix(in srgb, var(--ofc-status-scheduled) 34%, var(--os-color-border));
+    --ofc-status-inprogress: var(--rz-warning-light, var(--os-color-warning-bg));
+    --ofc-status-inprogress-soft: color-mix(in srgb, var(--ofc-status-inprogress) 32%, #fff);
+    --ofc-status-inprogress-border: color-mix(in srgb, var(--ofc-status-inprogress) 58%, var(--os-color-border));
+    --ofc-status-completed: var(--rz-success, var(--os-color-success));
+    --ofc-status-completed-soft: color-mix(in srgb, var(--ofc-status-completed) 12%, #fff);
+    --ofc-status-completed-border: color-mix(in srgb, var(--ofc-status-completed) 34%, var(--os-color-border));
+    --ofc-status-canceled: var(--rz-danger, var(--os-color-danger));
+    --ofc-status-canceled-soft: color-mix(in srgb, var(--ofc-status-canceled) 12%, #fff);
+    --ofc-status-canceled-border: color-mix(in srgb, var(--ofc-status-canceled) 34%, var(--os-color-border));
     display: flex;
     flex-direction: column;
     height: calc(100vh - var(--ofc-card-viewport-offset));
@@ -145,9 +157,9 @@
 }
 
 .os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status] {
-    --ofc-event-accent: var(--os-color-primary);
-    --ofc-event-soft: var(--os-color-primary-soft);
-    --ofc-event-border: var(--os-color-primary-soft-border);
+    --ofc-event-accent: var(--ofc-status-scheduled);
+    --ofc-event-soft: var(--ofc-status-scheduled-soft);
+    --ofc-event-border: var(--ofc-status-scheduled-border);
     height: 100%;
     padding: 0;
     background: transparent !important;
@@ -156,21 +168,21 @@
 }
 
 .os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status="inprogress"] {
-    --ofc-event-accent: var(--os-color-warning);
-    --ofc-event-soft: var(--os-color-warning-bg);
-    --ofc-event-border: color-mix(in srgb, var(--os-color-warning) 34%, var(--os-color-border));
+    --ofc-event-accent: var(--ofc-status-inprogress);
+    --ofc-event-soft: var(--ofc-status-inprogress-soft);
+    --ofc-event-border: var(--ofc-status-inprogress-border);
 }
 
 .os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status="completed"] {
-    --ofc-event-accent: var(--os-color-success);
-    --ofc-event-soft: var(--os-color-success-bg);
-    --ofc-event-border: color-mix(in srgb, var(--os-color-success) 34%, var(--os-color-border));
+    --ofc-event-accent: var(--ofc-status-completed);
+    --ofc-event-soft: var(--ofc-status-completed-soft);
+    --ofc-event-border: var(--ofc-status-completed-border);
 }
 
 .os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status="canceled"] {
-    --ofc-event-accent: var(--os-color-danger);
-    --ofc-event-soft: var(--os-color-danger-bg);
-    --ofc-event-border: color-mix(in srgb, var(--os-color-danger) 34%, var(--os-color-border));
+    --ofc-event-accent: var(--ofc-status-canceled);
+    --ofc-event-soft: var(--ofc-status-canceled-soft);
+    --ofc-event-border: var(--ofc-status-canceled-border);
 }
 
 .os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status] .ofc-appointment {
@@ -340,11 +352,6 @@
     text-align: inherit;
 }
 
-.ofc-agenda-action:hover .ofc-appointment {
-    border-color: var(--os-color-primary-soft-border);
-    box-shadow: var(--os-shadow-md);
-}
-
 .ofc-appointment {
     display: flex;
     min-width: 0;
@@ -353,6 +360,35 @@
     color: inherit;
     font-size: var(--os-text-xs);
     line-height: 1.25;
+}
+
+.ofc-agenda-action[data-ofc-status] {
+    --ofc-event-accent: var(--ofc-status-scheduled);
+    --ofc-event-soft: var(--ofc-status-scheduled-soft);
+    --ofc-event-border: var(--ofc-status-scheduled-border);
+}
+
+.ofc-agenda-action[data-ofc-status="inprogress"] {
+    --ofc-event-accent: var(--ofc-status-inprogress);
+    --ofc-event-soft: var(--ofc-status-inprogress-soft);
+    --ofc-event-border: var(--ofc-status-inprogress-border);
+}
+
+.ofc-agenda-action[data-ofc-status="completed"] {
+    --ofc-event-accent: var(--ofc-status-completed);
+    --ofc-event-soft: var(--ofc-status-completed-soft);
+    --ofc-event-border: var(--ofc-status-completed-border);
+}
+
+.ofc-agenda-action[data-ofc-status="canceled"] {
+    --ofc-event-accent: var(--ofc-status-canceled);
+    --ofc-event-soft: var(--ofc-status-canceled-soft);
+    --ofc-event-border: var(--ofc-status-canceled-border);
+}
+
+.ofc-agenda-action:hover .ofc-appointment {
+    border-color: var(--ofc-event-border);
+    box-shadow: var(--os-shadow-md);
 }
 
 .ofc-flight-icon,
@@ -418,19 +454,7 @@
     inset-block: 0;
     inset-inline-start: 0;
     inline-size: 3px;
-    background: var(--os-color-primary);
-}
-
-.ofc-agenda-action[data-ofc-status="inprogress"] .ofc-appointment::before {
-    background: var(--os-color-warning);
-}
-
-.ofc-agenda-action[data-ofc-status="completed"] .ofc-appointment::before {
-    background: var(--os-color-success);
-}
-
-.ofc-agenda-action[data-ofc-status="canceled"] .ofc-appointment::before {
-    background: var(--os-color-danger);
+    background: var(--ofc-event-accent);
 }
 
 .ofc-agenda-action .ofc-flight-icon {
@@ -439,8 +463,9 @@
     inline-size: 2.25rem;
     block-size: 2.25rem;
     border-radius: var(--os-radius-sm);
-    background: var(--os-color-primary-soft);
-    color: var(--os-color-primary);
+    background: var(--ofc-event-soft);
+    color: var(--ofc-event-accent);
+    border: 1px solid var(--ofc-event-border);
 }
 
 .ofc-agenda-action .ofc-flight-icon .rz-icon {
@@ -448,7 +473,7 @@
 }
 
 .ofc-agenda-action .ofc-flight-heading strong {
-    color: var(--os-color-primary);
+    color: var(--ofc-event-accent);
     font-size: var(--os-text-base);
 }
 
@@ -501,26 +526,12 @@
     min-block-size: 1.75rem;
     padding: 0.25rem 0.65rem;
     border-radius: var(--os-radius-sm);
-    background: var(--os-color-primary-soft);
-    color: var(--os-color-primary);
+    background: var(--ofc-event-soft);
+    color: var(--ofc-event-accent);
+    border: 1px solid var(--ofc-event-border);
     font-size: var(--os-text-xs);
     font-weight: 700;
     white-space: nowrap;
-}
-
-.ofc-status-pill--inprogress {
-    background: var(--os-color-warning-bg);
-    color: var(--os-color-warning);
-}
-
-.ofc-status-pill--completed {
-    background: var(--os-color-success-bg);
-    color: var(--os-color-success);
-}
-
-.ofc-status-pill--canceled {
-    background: var(--os-color-danger-bg);
-    color: var(--os-color-danger);
 }
 
 .ofc-status-dot {
@@ -563,10 +574,10 @@
     display: inline-block;
 }
 
-.ofc-dot-scheduled { background: var(--rz-primary, var(--os-color-primary)); }
-.ofc-dot-inprogress { background: var(--rz-warning, #f59e0b); }
-.ofc-dot-completed { background: var(--rz-success, #16a34a); }
-.ofc-dot-canceled { background: var(--rz-danger, #dc2626); }
+.ofc-dot-scheduled { background: var(--ofc-status-scheduled); }
+.ofc-dot-inprogress { background: var(--ofc-status-inprogress); }
+.ofc-dot-completed { background: var(--ofc-status-completed); }
+.ofc-dot-canceled { background: var(--ofc-status-canceled); }
 
 @media (max-width: 980px) {
     .ofc-calendar-toolbar {

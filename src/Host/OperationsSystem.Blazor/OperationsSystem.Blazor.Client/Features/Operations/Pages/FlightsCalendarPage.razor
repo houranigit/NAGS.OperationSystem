@@ -356,9 +356,12 @@
 
     private static string StatusLabel(string status) => status switch
     {
+        "Scheduled" => "Scheduled",
         "InProgress" => "In progress",
         "Completed" => "Completed",
         "Canceled" => "Canceled",
+        "Merged" => "Merged",
+        _ when !string.IsNullOrWhiteSpace(status) => status,
         _ => "Scheduled"
     };
 

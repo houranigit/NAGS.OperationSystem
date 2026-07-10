@@ -14,10 +14,10 @@
     --rz-on-primary: var(--os-color-primary-contrast);
     --rz-primary-contrast-text: var(--os-color-primary-contrast);
 
-    --rz-success: var(--os-color-success);
+    /*--rz-success: var(--os-color-success);
     --rz-warning: var(--os-color-warning);
     --rz-danger: var(--os-color-danger);
-    --rz-info: var(--os-color-info);
+    --rz-info: var(--os-color-info);*/
 
     --rz-text-color: var(--os-color-text);
     --rz-text-secondary-color: var(--os-color-text-muted);
