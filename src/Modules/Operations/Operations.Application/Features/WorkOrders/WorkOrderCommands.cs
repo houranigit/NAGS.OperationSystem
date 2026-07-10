@@ -68,7 +68,7 @@ public sealed class SubmitWorkOrderCommandHandler(
         if (alreadyActive)
             return Error.Conflict("You already have an active work order for this flight.", "Operations.WorkOrder.ActiveExists");
 
-        var input = await inputBuilder.BuildAsync(request.Payload, flight.FlightNumber.Value, flight.Station.StationId, cancellationToken);
+        var input = await inputBuilder.BuildAsync(request.Payload, request.Type, flight.FlightNumber.Value, flight.Station.StationId, cancellationToken);
         if (input.IsFailure)
             return input.Error;
 
@@ -163,7 +163,7 @@ public sealed class UpdateWorkOrderCommandHandler(
             return author.Error;
 
         var previousType = workOrder.Type;
-        var input = await inputBuilder.BuildAsync(request.Payload, workOrder.ActualFlightNumber.Value, workOrder.Station.StationId, cancellationToken);
+        var input = await inputBuilder.BuildAsync(request.Payload, request.Type, workOrder.ActualFlightNumber.Value, workOrder.Station.StationId, cancellationToken);
         if (input.IsFailure)
             return input.Error;
 
@@ -510,7 +510,7 @@ public sealed class MergeWorkOrdersCommandHandler(
         if (alreadyApproved)
             return Error.Conflict("This flight already has an approved work order.", "Operations.WorkOrder.FlightAlreadyApproved");
 
-        var input = await inputBuilder.BuildAsync(request.Payload, flight.FlightNumber.Value, flight.Station.StationId, cancellationToken);
+        var input = await inputBuilder.BuildAsync(request.Payload, request.Type, flight.FlightNumber.Value, flight.Station.StationId, cancellationToken);
         if (input.IsFailure)
             return input.Error;
 

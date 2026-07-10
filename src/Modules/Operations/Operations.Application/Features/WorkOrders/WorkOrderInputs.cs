@@ -55,10 +55,15 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
 {
     public async Task<Result<BuiltWorkOrderInput>> BuildAsync(
         WorkOrderEditableCommandPayload payload,
+        WorkOrderType type,
         string fallbackFlightNumber,
         Guid stationId,
         CancellationToken cancellationToken)
     {
+        var validation = ValidatePayload(payload, type);
+        if (validation.IsFailure)
+            return validation.Error;
+
         var actualFlightNumber = FlightNumber.Create(
             string.IsNullOrWhiteSpace(payload.ActualFlightNumber) ? fallbackFlightNumber : payload.ActualFlightNumber);
         if (actualFlightNumber.IsFailure)
@@ -94,6 +99,114 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             serviceLines.Value,
             tasks.Value);
     }
+
+    private static Result ValidatePayload(WorkOrderEditableCommandPayload payload, WorkOrderType type)
+    {
+        var failures = new Dictionary<string, List<string>>();
+
+        void Add(string field, string message)
+        {
+            if (!failures.TryGetValue(field, out var messages))
+            {
+                messages = [];
+                failures[field] = messages;
+            }
+
+            messages.Add(message);
+        }
+
+        if (type == WorkOrderType.Cancellation)
+        {
+            if (IsMissing(payload.CanceledAtUtc))
+                Add(nameof(payload.CanceledAtUtc), "Cancellation work orders require a cancellation time.");
+            if (string.IsNullOrWhiteSpace(payload.CancellationReason))
+                Add(nameof(payload.CancellationReason), "Cancellation work orders require a reason.");
+        }
+
+        var hasAta = !IsMissing(payload.ActualArrivalUtc);
+        var hasAtd = !IsMissing(payload.ActualDepartureUtc);
+        if (payload.ActualArrivalUtc is { } ata && ata == default)
+            Add(nameof(payload.ActualArrivalUtc), "ATA must be a valid time.");
+        if (payload.ActualDepartureUtc is { } atd && atd == default)
+            Add(nameof(payload.ActualDepartureUtc), "ATD must be a valid time.");
+        if (hasAta != hasAtd)
+            Add(nameof(payload.ActualArrivalUtc), "Provide both ATA and ATD, or leave both blank until approval.");
+        if (hasAta && hasAtd && payload.ActualDepartureUtc < payload.ActualArrivalUtc)
+            Add(nameof(payload.ActualDepartureUtc), "ATD cannot be before ATA.");
+
+        var serviceLines = payload.ServiceLines ?? [];
+        for (var i = 0; i < serviceLines.Count; i++)
+        {
+            var line = serviceLines[i];
+            var prefix = $"{nameof(payload.ServiceLines)}[{i}]";
+            if (line.ServiceId == Guid.Empty)
+                Add($"{prefix}.{nameof(line.ServiceId)}", "Every service line needs a service.");
+            if (line.PerformedByStaffMemberId == Guid.Empty)
+                Add($"{prefix}.{nameof(line.PerformedByStaffMemberId)}", "Every service line needs a performer.");
+            if (IsMissing(line.FromUtc))
+                Add($"{prefix}.{nameof(line.FromUtc)}", "Every service line needs a From time.");
+            if (IsMissing(line.ToUtc))
+                Add($"{prefix}.{nameof(line.ToUtc)}", "Every service line needs a To time.");
+            if (!IsMissing(line.FromUtc) && !IsMissing(line.ToUtc) && line.ToUtc < line.FromUtc)
+                Add($"{prefix}.{nameof(line.ToUtc)}", "Service line To time cannot be before From time.");
+        }
+
+        var tasks = payload.Tasks ?? [];
+        for (var i = 0; i < tasks.Count; i++)
+        {
+            var task = tasks[i];
+            var prefix = $"{nameof(payload.Tasks)}[{i}]";
+            if (!Enum.IsDefined(task.TaskType))
+                Add($"{prefix}.{nameof(task.TaskType)}", "Every task needs a valid task type.");
+            if (task.EmployeeIds is not { Count: > 0 })
+                Add($"{prefix}.{nameof(task.EmployeeIds)}", "Every task needs at least one employee.");
+            else if (task.EmployeeIds.Any(id => id == Guid.Empty))
+                Add($"{prefix}.{nameof(task.EmployeeIds)}", "Task employees must be selected.");
+            if (IsMissing(task.FromUtc))
+                Add($"{prefix}.{nameof(task.FromUtc)}", "Every task needs a From time.");
+            if (IsMissing(task.ToUtc))
+                Add($"{prefix}.{nameof(task.ToUtc)}", "Every task needs a To time.");
+            if (!IsMissing(task.FromUtc) && !IsMissing(task.ToUtc) && task.ToUtc < task.FromUtc)
+                Add($"{prefix}.{nameof(task.ToUtc)}", "Task To time cannot be before From time.");
+
+            ValidateResourceRows(task.Tools ?? [], $"{prefix}.{nameof(task.Tools)}", "tool", row => row.ToolId, row => row.Quantity, Add);
+            ValidateResourceRows(task.Materials ?? [], $"{prefix}.{nameof(task.Materials)}", "material", row => row.MaterialId, row => row.Quantity, Add);
+            ValidateResourceRows(task.GeneralSupports ?? [], $"{prefix}.{nameof(task.GeneralSupports)}", "general support", row => row.GeneralSupportId, row => row.Quantity, Add);
+        }
+
+        if (failures.Count == 0)
+            return Result.Success();
+
+        return Error.Validation(
+            failures.ToDictionary(pair => pair.Key, pair => pair.Value.Distinct().ToArray()),
+            "Please fix the work order before saving.",
+            "Operations.WorkOrder.Validation");
+    }
+
+    private static void ValidateResourceRows<T>(
+        IReadOnlyList<T> rows,
+        string prefix,
+        string label,
+        Func<T, Guid> itemId,
+        Func<T, decimal> quantity,
+        Action<string, string> add)
+    {
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (itemId(row) == Guid.Empty)
+                add($"{prefix}[{i}].ItemId", $"Every {label} row needs an item.");
+            if (quantity(row) <= 0)
+                add($"{prefix}[{i}].Quantity", $"{ToTitle(label)} quantities must be greater than zero.");
+        }
+    }
+
+    private static bool IsMissing(DateTimeOffset? value) => value is null || value.Value == default;
+
+    private static bool IsMissing(DateTimeOffset value) => value == default;
+
+    private static string ToTitle(string value) =>
+        string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
 
     private static Result<ActualTime?> BuildActuals(DateTimeOffset? ata, DateTimeOffset? atd)
     {

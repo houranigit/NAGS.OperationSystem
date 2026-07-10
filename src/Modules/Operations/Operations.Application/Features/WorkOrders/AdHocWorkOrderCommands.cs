@@ -96,7 +96,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         if (employees.IsFailure)
             return employees.Error;
 
-        var workOrderInput = await inputBuilder.BuildAsync(request.Payload, flightInput.Value.FlightNumber.Value, request.StationId, cancellationToken);
+        var workOrderInput = await inputBuilder.BuildAsync(request.Payload, request.Type, flightInput.Value.FlightNumber.Value, request.StationId, cancellationToken);
         if (workOrderInput.IsFailure)
             return workOrderInput.Error;
 

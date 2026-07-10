@@ -2,8 +2,8 @@
     display: flex;
     flex-direction: column;
     gap: var(--os-space-4);
-    width: min(920px, calc(100vw - 3rem));
-    max-width: 920px;
+    width: min(688px, calc(100vw - 3rem));
+    max-width: 688px;
     margin-inline: auto;
     color: var(--os-color-text);
 }
@@ -74,7 +74,6 @@
     word-break: break-word;
 }
 
-.owo-type-badge,
 .owo-operation-badge {
     display: inline-flex;
     align-items: center;
@@ -87,18 +86,11 @@
     white-space: nowrap;
 }
 
-.owo-type-badge {
-    background: var(--os-color-surface-muted);
-    color: var(--os-color-text-muted);
-}
-
 .owo-operation-badge {
     background: var(--os-color-info-bg);
     color: var(--os-color-info);
 }
 
-.owo-type-badge ::deep .rz-icon,
-.owo-type-badge ::deep .rzi,
 .owo-operation-badge ::deep .rz-icon,
 .owo-operation-badge ::deep .rzi {
     font-size: 0.95rem;
@@ -273,6 +265,10 @@
     font-weight: 800;
 }
 
+.owo-required {
+    color: var(--os-color-danger);
+}
+
 .owo-input-wrap {
     position: relative;
     min-width: 0;
@@ -353,7 +349,6 @@
 
 .owo-resource-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--os-space-3);
 }
 
@@ -361,6 +356,8 @@
     display: grid;
     gap: var(--os-space-2);
     min-width: 0;
+    padding-block-start: var(--os-space-3);
+    border-top: 1px solid var(--os-color-border);
 }
 
 .owo-resource-head {
@@ -376,19 +373,41 @@
 .owo-resource-head span {
     display: inline-flex;
     align-items: center;
-    gap: var(--os-space-1);
+    gap: var(--os-space-2);
     min-width: 0;
+}
+
+.owo-resource-head span ::deep .rz-icon,
+.owo-resource-head span ::deep .rzi {
+    display: inline-grid;
+    place-items: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+    font-size: 1rem;
 }
 
 .owo-resource-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 86px auto;
+    grid-template-columns: minmax(0, 1fr) 7rem auto;
     gap: var(--os-space-2);
     align-items: center;
 }
 
 .owo-qty {
-    width: 86px;
+    width: 7rem;
+}
+
+.owo-resource-empty {
+    padding: var(--os-space-3);
+    border: 1px dashed var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
 }
 
 .owo-attachments {
@@ -558,6 +577,72 @@
     gap: var(--os-space-2);
 }
 
+.owo-error-panel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--os-space-3);
+    align-items: start;
+    padding: var(--os-space-4);
+    border: 2px solid color-mix(in srgb, var(--os-color-danger) 62%, white);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--os-color-danger-bg) 72%, white);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--os-color-danger) 12%, transparent);
+    color: var(--os-color-text);
+}
+
+.owo-error-panel ::deep .owo-message-icon {
+    color: var(--os-color-danger);
+    font-size: 1.35rem;
+    margin-block-start: 2px;
+}
+
+.owo-error-panel strong {
+    display: block;
+    margin-block-end: var(--os-space-2);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+}
+
+.owo-error-panel ul {
+    margin: 0;
+    padding-inline-start: 1.25rem;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-base);
+}
+
+.owo-error-panel li {
+    padding-inline-start: var(--os-space-1);
+}
+
+.owo-message-close {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    margin-block-start: -0.25rem;
+    margin-inline-end: -0.25rem;
+    border: 0;
+    border-radius: var(--os-radius-pill);
+    background: transparent;
+    color: var(--os-color-text-subtle);
+    cursor: pointer;
+}
+
+.owo-message-close:hover {
+    background: color-mix(in srgb, var(--os-color-text) 8%, transparent);
+    color: var(--os-color-text);
+}
+
+.owo-message-close ::deep .rz-icon,
+.owo-message-close ::deep .rzi {
+    position: static;
+    transform: none;
+    color: currentColor;
+    font-size: 1rem;
+    margin: 0;
+    pointer-events: auto;
+}
+
 @media (max-width: 760px) {
     .owo-form {
         min-width: 0;
@@ -575,8 +660,7 @@
         font-size: var(--os-text-xs);
     }
 
-    .owo-grid-2,
-    .owo-resource-grid {
+    .owo-grid-2 {
         grid-template-columns: 1fr;
     }
 
@@ -601,5 +685,13 @@
     .owo-actions-end {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .owo-resource-row {
+        grid-template-columns: minmax(0, 1fr) 6rem auto;
+    }
+
+    .owo-qty {
+        width: 6rem;
     }
 }

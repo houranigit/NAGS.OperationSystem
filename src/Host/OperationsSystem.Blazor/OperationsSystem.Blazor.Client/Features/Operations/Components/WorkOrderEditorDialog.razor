@@ -39,6 +39,25 @@
             @CancellationDetailsStep()
         }
 
+        @if (validationMessages.Count > 0)
+        {
+            <div class="owo-error-panel" role="alert">
+                <RadzenIcon Icon="error_outline" class="owo-message-icon" />
+                <div>
+                    <strong>Please fix the following errors before continuing</strong>
+                    <ul>
+                        @foreach (var message in validationMessages)
+                        {
+                            <li>@message</li>
+                        }
+                    </ul>
+                </div>
+                <button type="button" class="owo-message-close" aria-label="Dismiss validation message" @onclick="DismissValidationMessages">
+                    <RadzenIcon Icon="close" />
+                </button>
+            </div>
+        }
+
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
             <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
@@ -69,6 +88,7 @@
     private bool isSubmitting;
     private bool isAttachmentBusy;
     private string? errorMessage;
+    private List<string> validationMessages = [];
     private string? signatureDownloadUrl;
     private int step;
 
@@ -77,9 +97,7 @@
     private bool IsCompletion => model.Type == "Completion";
     private bool IsCancellation => model.Type == "Cancellation";
     private int LastStep => IsCompletion ? 2 : 0;
-    private string TitleText => IsCancellation ? "Cancellation work order" : "Completion work order";
     private string SubmitText => WorkOrderId is null ? "Create" : "Update";
-    private string WorkOrderTypeIcon => IsCancellation ? "event_busy" : "task_alt";
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -87,6 +105,7 @@
     {
         isLoading = true;
         errorMessage = null;
+        validationMessages = [];
         step = 0;
 
         try
@@ -146,18 +165,11 @@
             <div class="owo-summary-heading">
                 <h2>@DisplayFlightNumber(flight!)</h2>
                 <StatusBadge Label="@flight!.Status" Tone="@FlightStatusTone(flight.Status)" />
-                <span class="owo-type-badge"><RadzenIcon Icon="@WorkOrderTypeIcon" />@TitleText</span>
                 <span class="owo-operation-badge"><RadzenIcon Icon="settings" />@flight.OperationTypeName</span>
-                @if (workOrder is not null)
-                {
-                    <StatusBadge Label="@workOrder.Status" Tone="@WorkOrderStatusTone(workOrder.Status)" />
-                }
             </div>
             <div class="owo-summary-meta">
                 <span><RadzenIcon Icon="business" />@flight.CustomerName</span>
                 <span><RadzenIcon Icon="flight_takeoff" />@flight.StationIata</span>
-                <span><RadzenIcon Icon="flight_land" />STA @DateDisplay(flight.ScheduledArrivalUtc) UTC</span>
-                <span><RadzenIcon Icon="schedule" />STD @DateDisplay(flight.ScheduledDepartureUtc) UTC</span>
             </div>
         </div>
     </div>;
@@ -188,7 +200,7 @@
         <div class="owo-section-line"><RadzenIcon Icon="fact_check" /><span>Details</span></div>
         <div class="owo-grid-2">
             <div class="owo-field-block">
-                <label class="owo-label">Actual flight #</label>
+                <label class="owo-label">Flight number</label>
                 <div class="owo-input-wrap">
                     <span class="owo-field-icon"><RadzenIcon Icon="tag" /></span>
                     <RadzenTextBox @bind-Value="model.ActualFlightNumber" MaxLength="12" Disabled="@ViewOnly" class="owo-control owo-control-icon" />
@@ -253,7 +265,7 @@
 
     private RenderFragment ServiceLinesStep() => @<section class="owo-step-content">
         <div class="owo-step-toolbar">
-            <div class="owo-section-line"><RadzenIcon Icon="miscellaneous_services" /><span>Service lines</span></div>
+            <div class="owo-section-line"><RadzenIcon Icon="checklist" /><span>Service lines</span></div>
             @if (!ViewOnly)
             {
                 <RadzenButton Text="Add line" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
@@ -263,29 +275,29 @@
 
         @if (model.ServiceLines.Count == 0)
         {
-            <div class="owo-empty-row"><RadzenIcon Icon="miscellaneous_services" />No service lines</div>
+            <div class="owo-empty-row"><RadzenIcon Icon="checklist" />No service lines</div>
         }
         @foreach (var line in model.ServiceLines)
         {
             <div @key="line.Key" class="owo-row-panel">
                 <div class="owo-grid-2">
                     <div class="owo-field-block">
-                        <label class="owo-label">Service</label>
+                        <label class="owo-label">Service <span class="owo-required">*</span></label>
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.ServiceId" Data="@serviceOptions" TextProperty="Name" ValueProperty="Id"
                                         AllowFiltering="true" Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
-                        <label class="owo-label">Performed by</label>
+                        <label class="owo-label">Performed by <span class="owo-required">*</span></label>
                         <RadzenDropDown TValue="Guid?" @bind-Value="line.PerformedByStaffMemberId" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
                                         AllowFiltering="true" Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
-                        <label class="owo-label">From (UTC)</label>
+                        <label class="owo-label">From (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
-                        <label class="owo-label">To (UTC)</label>
+                        <label class="owo-label">To (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
@@ -320,22 +332,22 @@
             <div @key="task.Key" class="owo-row-panel">
                 <div class="owo-grid-2">
                     <div class="owo-field-block">
-                        <label class="owo-label">Task type</label>
+                        <label class="owo-label">Task type <span class="owo-required">*</span></label>
                         <RadzenDropDown @bind-Value="task.TaskType" Data="@taskTypeOptions" TextProperty="Label" ValueProperty="Value"
                                         Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
-                        <label class="owo-label">Employees</label>
+                        <label class="owo-label">Employees <span class="owo-required">*</span></label>
                         <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
                                         Multiple="true" AllowFiltering="true" Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
-                        <label class="owo-label">From (UTC)</label>
+                        <label class="owo-label">From (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
-                        <label class="owo-label">To (UTC)</label>
+                        <label class="owo-label">To (UTC) <span class="owo-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
@@ -509,6 +521,10 @@
                                       ButtonType="ButtonType.Button" Click="@(() => remove(CurrentTaskFor(rows), row))" />
                     }
                 </div>
+            }
+            @if (rows.Count == 0)
+            {
+                <div class="owo-resource-empty">@NoResourceText(title)</div>
             }
         </div>;
 
@@ -708,6 +724,7 @@
     private void PreviousStep()
     {
         errorMessage = null;
+        validationMessages = [];
         step = Math.Max(0, step - 1);
     }
 
@@ -717,12 +734,14 @@
             return Task.CompletedTask;
 
         var validation = ValidateCurrentStep();
-        if (validation is not null)
+        if (validation.Count > 0)
         {
-            errorMessage = validation;
+            validationMessages = validation;
+            errorMessage = null;
             return Task.CompletedTask;
         }
 
+        validationMessages = [];
         errorMessage = null;
         step++;
         return Task.CompletedTask;
@@ -734,6 +753,7 @@
             return;
 
         errorMessage = null;
+        validationMessages = [];
         step = index;
     }
 
@@ -743,13 +763,15 @@
             return;
 
         var validation = Validate();
-        if (validation is not null)
+        if (validation.Count > 0)
         {
-            errorMessage = validation;
+            validationMessages = validation;
+            errorMessage = null;
             return;
         }
 
         isSubmitting = true;
+        validationMessages = [];
         errorMessage = null;
         try
         {
@@ -771,34 +793,92 @@
         }
     }
 
-    private string? ValidateCurrentStep()
-    {
-        if (IsCompletion && step == 0 && (model.ActualArrivalUtc is null) != (model.ActualDepartureUtc is null))
-            return "Provide both ATA and ATD, or leave both blank until approval.";
+    private void DismissValidationMessages() => validationMessages = [];
 
-        return null;
+    private List<string> ValidateCurrentStep()
+    {
+        if (!IsCompletion)
+            return [];
+
+        return step switch
+        {
+            0 => ValidateDetailsStep(),
+            1 => ValidateServiceLinesStep(),
+            _ => ValidateTasksStep()
+        };
     }
 
-    private string? Validate()
+    private List<string> Validate()
     {
         if (IsCancellation)
         {
-            if (model.CanceledAtUtc is null)
-                return "Cancellation work orders require a cancellation time.";
+            var cancellationMessages = new List<string>();
+            if (IsMissing(model.CanceledAtUtc))
+                cancellationMessages.Add("Cancellation work orders require a cancellation time.");
             if (string.IsNullOrWhiteSpace(model.CancellationReason))
-                return "Cancellation work orders require a reason.";
-            return null;
+                cancellationMessages.Add("Cancellation work orders require a reason.");
+            return cancellationMessages;
         }
 
-        var stepValidation = ValidateCurrentStep();
-        if (stepValidation is not null)
-            return stepValidation;
-        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || l.FromUtc is null || l.ToUtc is null))
-            return "Every service line needs a service, performer, and time window.";
-        if (model.Tasks.Any(t => t.FromUtc is null || t.ToUtc is null))
-            return "Every task needs a time window.";
-        return null;
+        var messages = ValidateDetailsStep();
+        messages.AddRange(ValidateServiceLinesStep());
+        messages.AddRange(ValidateTasksStep());
+        return messages;
     }
+
+    private List<string> ValidateDetailsStep()
+    {
+        var messages = new List<string>();
+        if (IsMissing(model.ActualArrivalUtc) != IsMissing(model.ActualDepartureUtc))
+            messages.Add("Provide both ATA and ATD, or leave both blank until approval.");
+        if (!IsMissing(model.ActualArrivalUtc) && !IsMissing(model.ActualDepartureUtc) && model.ActualDepartureUtc < model.ActualArrivalUtc)
+            messages.Add("ATD cannot be before ATA.");
+        return messages;
+    }
+
+    private List<string> ValidateServiceLinesStep()
+    {
+        var messages = new List<string>();
+        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
+            messages.Add("Every service line needs a service, performer, From, and To time.");
+        if (model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && !IsMissing(l.ToUtc) && l.ToUtc < l.FromUtc))
+            messages.Add("Service line To time cannot be before From time.");
+        return messages;
+    }
+
+    private List<string> ValidateTasksStep()
+    {
+        var messages = new List<string>();
+        if (model.Tasks.Any(t => string.IsNullOrWhiteSpace(t.TaskType)))
+            messages.Add("Every task needs a task type.");
+        if (model.Tasks.Any(t => t.EmployeeIds is null || !t.EmployeeIds.Any()))
+            messages.Add("Every task needs at least one employee.");
+        if (model.Tasks.Any(t => IsMissing(t.FromUtc) || IsMissing(t.ToUtc)))
+            messages.Add("Every task needs a From and To time.");
+        if (model.Tasks.Any(t => !IsMissing(t.FromUtc) && !IsMissing(t.ToUtc) && t.ToUtc < t.FromUtc))
+            messages.Add("Task To time cannot be before From time.");
+
+        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Tools), "tool");
+        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Materials), "material");
+        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.GeneralSupports), "general support");
+        return messages;
+    }
+
+    private static void AddResourceValidation(List<string> messages, IEnumerable<ResourceForm> rows, string label)
+    {
+        var list = rows.ToList();
+        if (list.Any(r => r.ItemId is null))
+            messages.Add($"Every {label} row needs an item.");
+        if (list.Any(r => r.Quantity <= 0))
+            messages.Add($"{ToTitle(label)} quantities must be greater than zero.");
+    }
+
+    private static bool IsMissing(DateTime? value) => value is null || value.Value == default;
+
+    private static string ToTitle(string value) =>
+        string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
+
+    private static string NoResourceText(string title) => $"No {title.ToLowerInvariant()} added";
 
     private WorkOrderRequestModel BuildRequest()
     {
@@ -945,14 +1025,6 @@
         "Completed" => "owo-summary-dot--success",
         "Canceled" or "Merged" => "owo-summary-dot--danger",
         _ => "owo-summary-dot--active"
-    };
-
-    private static string WorkOrderStatusTone(string status) => status switch
-    {
-        "Approved" => "success",
-        "Merged" => "danger",
-        "Submitted" => "warning",
-        _ => "neutral"
     };
 
     private sealed record SelectOption(string Label, string Value);
