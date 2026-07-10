@@ -84,6 +84,8 @@
                                Visible="@CanAuthorWorkOrder(flight)" OnClick="@(() => OpenCompletionWorkOrderAsync(flight))" />
                     <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@(() => OpenCancellationWorkOrderAsync(flight))" />
+                    <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
+                               Visible="@CanReturnApprovedWorkOrder(flight)" OnClick="@(() => ReturnApprovedWorkOrderAsync(flight))" />
                 </RowActionMenu>
             </RowActions>
         </DataListCard>
@@ -360,6 +362,7 @@
     private static bool CanInviteFlight(FlightListItem flight) => flight.Status is "Scheduled" && !flight.IsPerLanding;
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
     private static bool CanAuthorWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
+    private static bool CanReturnApprovedWorkOrder(FlightListItem flight) => flight.Status is "Completed" or "Canceled";
 
     private Task OpenCompletionWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Completion");
     private Task OpenCancellationWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Cancellation");
@@ -391,9 +394,9 @@
                 },
                 new DialogOptions { Width = "760px" });
 
-            if (result is true)
+            if (IsWorkOrderDialogSuccess(result))
             {
-                Notifications.Notify(NotificationSeverity.Success, "Work order saved");
+                Notifications.Notify(NotificationSeverity.Success, WorkOrderDialogSuccessTitle(result, "Work order saved"));
                 await ReloadAsync();
             }
         }
@@ -402,6 +405,58 @@
             Notifications.Notify(NotificationSeverity.Error, "Work order unavailable", ex.ToDisplayMessage("Could not open the work order."));
         }
     }
+
+    private async Task ReturnApprovedWorkOrderAsync(FlightListItem flight)
+    {
+        try
+        {
+            var detail = await Operations.GetFlightAsync(flight.Id);
+            var approved = detail.WorkOrders.FirstOrDefault(CanReturnWorkOrder);
+            if (approved is null)
+            {
+                Notifications.Notify(NotificationSeverity.Warning, "Return unavailable", "No approved work order was found for this flight.");
+                return;
+            }
+
+            await ReturnWorkOrderAsync(approved);
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Return unavailable", ex.ToDisplayMessage("Could not load the approved work order."));
+        }
+    }
+
+    private async Task ReturnWorkOrderAsync(WorkOrderSummaryModel workOrder)
+    {
+        var reason = await DialogService.OpenAsync<WorkOrderReturnDialog>(
+            "Return work order",
+            null,
+            new DialogOptions { Width = "520px" });
+        if (reason is not string value || string.IsNullOrWhiteSpace(value))
+            return;
+
+        try
+        {
+            await Operations.ReturnWorkOrderAsync(workOrder.Id, new ReturnWorkOrderRequestModel(value), workOrder.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Work order returned");
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Return failed", ex.ToDisplayMessage("Could not return the work order."));
+        }
+    }
+
+    private static bool CanReturnWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Approved";
+
+    private static bool IsWorkOrderDialogSuccess(object? result) => result is true or "approved" or "returned";
+
+    private static string WorkOrderDialogSuccessTitle(object? result, string fallback) => result switch
+    {
+        "approved" => "Work order approved",
+        "returned" => "Work order returned",
+        _ => fallback
+    };
 
     private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
 

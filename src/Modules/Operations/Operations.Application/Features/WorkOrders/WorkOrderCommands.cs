@@ -523,6 +523,8 @@ public sealed class MergeWorkOrdersCommandHandler(
             if (!source.IsEditable)
                 return Error.Conflict("Only submitted or returned work orders can be merged.", "Operations.WorkOrder.MergeSourceLocked");
         }
+        if (sources.Any(source => source.Type != request.Type) || sources.Select(source => source.Type).Distinct().Count() != 1)
+            return Error.Validation("All source work orders must have the same type.", "Operations.WorkOrder.MergeTypeMismatch");
 
         var alreadyApproved = await db.WorkOrders.AsNoTracking().AnyAsync(w =>
             w.FlightId == request.FlightId && w.Status == WorkOrderStatus.Approved,

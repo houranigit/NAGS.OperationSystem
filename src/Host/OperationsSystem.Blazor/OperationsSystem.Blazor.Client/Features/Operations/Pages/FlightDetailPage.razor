@@ -76,6 +76,8 @@
                                                Visible="@CanAuthorWorkOrder(flight)" OnClick="@OpenCompletionWorkOrderAsync" />
                                     <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                                Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@OpenCancellationWorkOrderAsync" />
+                                    <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
+                                               Visible="@CanReturnApprovedWorkOrder(flight)" OnClick="@ReturnApprovedFlightWorkOrderAsync" />
                                 </RowActionMenu>
                             }
                         </div>
@@ -647,9 +649,9 @@
                 },
                 new DialogOptions { Width = "760px" });
 
-            if (result is true)
+            if (IsWorkOrderDialogSuccess(result))
             {
-                Notifications.Notify(NotificationSeverity.Success, "Work order saved");
+                Notifications.Notify(NotificationSeverity.Success, WorkOrderDialogSuccessTitle(result, "Work order saved"));
                 await LoadAsync();
             }
         }
@@ -671,11 +673,26 @@
             },
             new DialogOptions { Width = "760px" });
 
-        if (result is true)
+        if (IsWorkOrderDialogSuccess(result))
         {
-            Notifications.Notify(NotificationSeverity.Success, "Work order updated");
+            Notifications.Notify(NotificationSeverity.Success, WorkOrderDialogSuccessTitle(result, "Work order updated"));
             await LoadAsync();
         }
+    }
+
+    private async Task ReturnApprovedFlightWorkOrderAsync()
+    {
+        if (flight is null)
+            return;
+
+        var approved = flight.WorkOrders.FirstOrDefault(CanReturnWorkOrder);
+        if (approved is null)
+        {
+            Notifications.Notify(NotificationSeverity.Warning, "Return unavailable", "No approved work order was found for this flight.");
+            return;
+        }
+
+        await ReturnWorkOrderAsync(approved);
     }
 
     private async Task ApproveWorkOrderAsync(WorkOrderSummaryModel summary)
@@ -784,7 +801,8 @@
         (CanEdit(f) && Auth.HasPermission(OperationsPermissions.FlightsUpdate))
         || (CanInvite(f) && Auth.HasPermission(OperationsPermissions.FlightsInvite))
         || (CanMerge(f) && Auth.HasPermission(OperationsPermissions.FlightsMerge))
-        || (CanAuthorWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor));
+        || (CanAuthorWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor))
+        || (CanReturnApprovedWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersApprove));
 
     private bool HasPotentialDuplicate(FlightDetail f) =>
         EffectiveDuplicateFlightId(f) is not null;
@@ -813,9 +831,20 @@
     private static bool CanEditWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanApproveWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanReturnWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Approved";
+    private static bool CanReturnApprovedWorkOrder(FlightDetail f) =>
+        f.Status is "Completed" or "Canceled" && f.WorkOrders.Any(CanReturnWorkOrder);
     private static bool CanMergeWorkOrders(FlightDetail f) =>
         f.Status is "Scheduled" or "InProgress"
         && f.WorkOrders.Count(workOrder => workOrder.Status is "Submitted" or "Returned") >= 2;
+
+    private static bool IsWorkOrderDialogSuccess(object? result) => result is true or "approved" or "returned";
+
+    private static string WorkOrderDialogSuccessTitle(object? result, string fallback) => result switch
+    {
+        "approved" => "Work order approved",
+        "returned" => "Work order returned",
+        _ => fallback
+    };
 
     private static string DisplayWorkOrder(WorkOrderSummaryModel workOrder) =>
         string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;

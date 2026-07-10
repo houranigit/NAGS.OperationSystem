@@ -89,7 +89,7 @@
     private bool isLoading;
     private bool loadError;
     private string searchTerm = string.Empty;
-    private string? statusFilter = "Approved";
+    private string? statusFilter;
     private string? typeFilter;
     private Guid? stationFilter;
     private int currentPage = 1;
@@ -226,9 +226,9 @@
             },
             new DialogOptions { Width = "760px" });
 
-        if (result is true)
+        if (IsWorkOrderDialogSuccess(result))
         {
-            Notifications.Notify(NotificationSeverity.Success, "Work order updated");
+            Notifications.Notify(NotificationSeverity.Success, WorkOrderDialogSuccessTitle(result));
             await ReloadAsync();
         }
     }
@@ -321,6 +321,15 @@
     private static bool CanReturn(WorkOrderListItem workOrder) => workOrder.Status is "Approved";
     private static bool CanMerge(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanDelete(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
+
+    private static bool IsWorkOrderDialogSuccess(object? result) => result is true or "approved" or "returned";
+
+    private static string WorkOrderDialogSuccessTitle(object? result) => result switch
+    {
+        "approved" => "Work order approved",
+        "returned" => "Work order returned",
+        _ => "Work order updated"
+    };
 
     private static string DisplayNumber(WorkOrderListItem workOrder) =>
         string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;

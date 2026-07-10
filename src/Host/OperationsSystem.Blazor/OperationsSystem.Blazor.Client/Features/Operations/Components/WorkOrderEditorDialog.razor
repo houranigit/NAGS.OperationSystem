@@ -1,6 +1,7 @@
 @inject OperationsApiClient Operations
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
+@inject AuthSession Auth
 
 <div class="owo-form">
     @if (isLoading)
@@ -404,9 +405,20 @@
             {
                 <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
             }
+            @if (CanApproveCurrentWorkOrder)
+            {
+                <RadzenButton Text="Approve" Icon="task_alt" ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting"
+                              ButtonType="ButtonType.Button" Click="@ApproveCurrentWorkOrderAsync" />
+            }
+            @if (CanReturnCurrentWorkOrder)
+            {
+                <RadzenButton Text="Return" Icon="undo" ButtonStyle="ButtonStyle.Warning" Disabled="@isSubmitting"
+                              ButtonType="ButtonType.Button" Click="@ReturnCurrentWorkOrderAsync" />
+            }
             @if (IsCompletion && step < LastStep)
             {
-                <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Button" Click="@NextAsync" />
+                <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="@(ViewOnly ? ButtonStyle.Light : ButtonStyle.Primary)"
+                              ButtonType="ButtonType.Button" Click="@NextAsync" />
             }
             else if (!ViewOnly)
             {
@@ -598,6 +610,16 @@
     private bool CanEditSignature =>
         IsCompletion && !ViewOnly && (WorkOrderId is null || workOrder is null || workOrder.Status is "Submitted" or "Returned");
 
+    private bool CanApproveCurrentWorkOrder =>
+        ViewOnly
+        && workOrder?.Status is "Submitted" or "Returned"
+        && Auth.HasPermission(OperationsPermissions.WorkOrdersApprove);
+
+    private bool CanReturnCurrentWorkOrder =>
+        ViewOnly
+        && workOrder?.Status == "Approved"
+        && Auth.HasPermission(OperationsPermissions.WorkOrdersApprove);
+
     private string SignatureUploadText =>
         model.CustomerSignature is not null
             ? "Replace PNG"
@@ -776,6 +798,57 @@
         finally
         {
             isAttachmentBusy = false;
+        }
+    }
+
+    private async Task ApproveCurrentWorkOrderAsync()
+    {
+        if (workOrder is null)
+            return;
+
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await Operations.ApproveWorkOrderAsync(workOrder.Id, workOrder.RowVersion);
+            DialogService.Close("approved");
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not approve the work order.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task ReturnCurrentWorkOrderAsync()
+    {
+        if (workOrder is null)
+            return;
+
+        var reason = await DialogService.OpenAsync<WorkOrderReturnDialog>(
+            "Return work order",
+            null,
+            new DialogOptions { Width = "520px" });
+        if (reason is not string value || string.IsNullOrWhiteSpace(value))
+            return;
+
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await Operations.ReturnWorkOrderAsync(workOrder.Id, new ReturnWorkOrderRequestModel(value), workOrder.RowVersion);
+            DialogService.Close("returned");
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not return the work order.");
+        }
+        finally
+        {
+            isSubmitting = false;
         }
     }
 

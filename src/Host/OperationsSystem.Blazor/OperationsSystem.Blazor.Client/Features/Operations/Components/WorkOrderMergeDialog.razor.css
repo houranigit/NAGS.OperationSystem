@@ -25,10 +25,11 @@
 }
 
 .owm-summary-icon {
+    position: relative;
     display: inline-grid;
     place-items: center;
-    width: 4rem;
-    height: 4rem;
+    width: 4.5rem;
+    height: 4.5rem;
     border-radius: var(--os-radius-md);
     background: var(--os-color-primary-soft);
     color: var(--os-color-primary-strong);
@@ -36,8 +37,23 @@
 
 .owm-summary-icon ::deep .rz-icon,
 .owm-summary-icon ::deep .rzi {
-    font-size: 1.65rem;
+    font-size: 1.8rem;
 }
+
+.owm-summary-dot {
+    position: absolute;
+    inset-block-end: -2px;
+    inset-inline-end: -2px;
+    width: 1rem;
+    height: 1rem;
+    border: 3px solid var(--os-color-surface);
+    border-radius: 50%;
+}
+
+.owm-summary-dot--active { background: var(--os-color-primary); }
+.owm-summary-dot--success { background: var(--os-color-success); }
+.owm-summary-dot--warning { background: var(--os-color-warning); }
+.owm-summary-dot--danger { background: var(--os-color-danger); }
 
 .owm-summary-main {
     min-width: 0;
@@ -176,6 +192,11 @@
     background: var(--os-color-primary-soft);
 }
 
+.owm-source-row--disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 .owm-source-icon {
     display: inline-grid;
     place-items: center;
@@ -212,7 +233,10 @@
 }
 
 .owm-field-selectors {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--os-space-4);
+    align-items: start;
 }
 
 .owm-field-block {
@@ -230,6 +254,71 @@
 
 .owm-form ::deep .owm-control {
     width: 100%;
+}
+
+.owm-value-options {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.owm-value-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--os-space-2);
+    min-height: 3.25rem;
+    width: 100%;
+    padding: var(--os-space-2);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface);
+    color: var(--os-color-text);
+    text-align: start;
+    cursor: pointer;
+    transition: background var(--os-transition), border-color var(--os-transition);
+}
+
+.owm-value-option:hover {
+    background: var(--os-color-surface-hover);
+}
+
+.owm-value-option--selected {
+    border-color: var(--os-color-primary);
+    background: var(--os-color-primary-soft);
+}
+
+.owm-value-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-primary);
+}
+
+.owm-value-main {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.owm-value-main strong,
+.owm-value-main small {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.owm-value-main strong {
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+}
+
+.owm-value-main small {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 700;
 }
 
 .owm-toggle-row {
