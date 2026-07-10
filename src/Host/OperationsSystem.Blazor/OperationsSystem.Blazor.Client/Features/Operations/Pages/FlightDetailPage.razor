@@ -155,8 +155,7 @@
     private RenderFragment OverviewTab(FlightDetail f) => @<text>
         <div class="ofd-stack">
             <div class="ofd-overview-grid">
-                <RadzenCard class="ofd-card">
-                    <div class="ofd-card-head"><RadzenIcon Icon="schedule" /><h3>Schedule</h3></div>
+                <RadzenCard class="ofd-card ofd-card--schedule">
                     <div class="ofd-lead ofd-lead--state">
                         <span class="ofd-lead-dot ofd-lead-dot--@FlightStatusTone(f.Status)"></span>
                         <div>
@@ -168,29 +167,28 @@
                         <div class="ofd-metric"><dt>Flight number</dt><dd>@DisplayFlightNumber(f)</dd></div>
                         <div class="ofd-metric"><dt>STA (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledArrivalUtc)</dd></div>
                         <div class="ofd-metric"><dt>STD (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledDepartureUtc)</dd></div>
-                        <div class="ofd-metric"><dt>Aircraft type</dt><dd>@None(f.AircraftTypeModel)</dd></div>
-                        <div class="ofd-metric"><dt>Contract</dt><dd>@None(f.ContractNumber)</dd></div>
+                        <div class="ofd-metric"><dt>Customer</dt><dd>@f.CustomerName</dd></div>
+                        <div class="ofd-metric"><dt>Station</dt><dd>@f.StationName</dd></div>
                     </dl>
                 </RadzenCard>
 
-                <RadzenCard class="ofd-card">
-                    <div class="ofd-card-head">
-                        <RadzenIcon Icon="settings" /><h3>Work scope</h3>
-                        <button type="button" class="ofd-card-link ofd-card-link--head" @onclick="@(() => activeTab = FlightTab.Services)">
-                            <span>Open</span><RadzenIcon Icon="chevron_right" />
+                <RadzenCard class="ofd-card ofd-card--scope">
+                    <div class="ofd-scope-actions">
+                        <button type="button" class="ofd-scope-action" @onclick="@(() => activeTab = FlightTab.Services)">
+                            <span class="ofd-scope-icon"><RadzenIcon Icon="task_alt" /></span>
+                            <span class="ofd-scope-action-title">@f.PlannedServices.Count planned service(s)</span>
+                            <span class="ofd-scope-view">View <RadzenIcon Icon="chevron_right" /></span>
+                        </button>
+                        <button type="button" class="ofd-scope-action" @onclick="@(() => activeTab = FlightTab.Services)">
+                            <span class="ofd-scope-icon"><RadzenIcon Icon="task_alt" /></span>
+                            <span class="ofd-scope-action-title">@($"{f.AssignedEmployees.Count} Employee(s)")</span>
+                            <span class="ofd-scope-view">View <RadzenIcon Icon="chevron_right" /></span>
                         </button>
                     </div>
-                    <div class="ofd-lead">
-                        <span class="ofd-lead-icon"><RadzenIcon Icon="task_alt" /></span>
-                        <div>
-                            <p class="ofd-lead-title">@f.PlannedServices.Count planned service(s)</p>
-                        </div>
-                    </div>
                     <dl class="ofd-metrics">
-                        <div class="ofd-metric"><dt>Customer</dt><dd>@f.CustomerName</dd></div>
-                        <div class="ofd-metric"><dt>Station</dt><dd>@f.StationName</dd></div>
-                        <div class="ofd-metric"><dt>Operation</dt><dd>@f.OperationTypeName</dd></div>
-                        <div class="ofd-metric"><dt>Per landing</dt><dd>@(f.IsPerLanding ? "Yes" : "No")</dd></div>
+                        <div class="ofd-metric"><dt>Aircraft Type</dt><dd>@None(f.AircraftTypeModel)</dd></div>
+                        <div class="ofd-metric"><dt>Operation Type</dt><dd>@f.OperationTypeName</dd></div>
+                        <div class="ofd-metric"><dt>Per Landing</dt><dd>@(f.IsPerLanding ? "Yes" : "No")</dd></div>
                     </dl>
                 </RadzenCard>
 

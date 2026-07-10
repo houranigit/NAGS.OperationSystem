@@ -344,6 +344,10 @@
     flex-direction: column;
 }
 
+.ofd-card--scope {
+    gap: 0;
+}
+
 .ofd-card-head {
     display: flex;
     align-items: center;
@@ -413,12 +417,6 @@
     cursor: pointer;
 }
 
-.ofd-card-link--head {
-    align-self: center;
-    margin-top: 0;
-    margin-inline-start: auto;
-}
-
 .ofd-card-link:hover {
     color: var(--os-color-primary-strong);
 }
@@ -476,6 +474,73 @@
     margin: 0.15rem 0 0;
     font-size: var(--os-text-sm);
     line-height: 1.4;
+}
+
+.ofd-scope-actions {
+    display: grid;
+    margin-bottom: var(--os-space-4);
+    border-bottom: 1px solid var(--os-color-border);
+}
+
+.ofd-scope-action {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--os-space-3);
+    width: 100%;
+    min-height: 4rem;
+    padding: var(--os-space-3) 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.ofd-scope-action + .ofd-scope-action {
+    border-top: 1px solid var(--os-color-border);
+}
+
+.ofd-scope-action:hover .ofd-scope-view,
+.ofd-scope-action:focus-visible .ofd-scope-view {
+    color: var(--os-color-primary-strong);
+}
+
+.ofd-scope-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.ofd-scope-icon .rz-icon {
+    font-size: 1.25rem;
+}
+
+.ofd-scope-action-title {
+    min-width: 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.ofd-scope-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    color: var(--os-color-primary);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.ofd-scope-view .rz-icon {
+    font-size: 1.1rem;
 }
 
 .ofd-metrics {
