@@ -130,7 +130,7 @@
     private FlightTab activeTab = FlightTab.Overview;
 
     private const int OverviewTimelinePreviewCount = 4;
-    private const int OverviewHistoryPreviewCount = 4;
+    private const int OverviewHistoryPreviewCount = 1;
 
     private bool CanEditFlight => flight is { } f && CanEdit(f);
     private bool CanInviteFlight => flight is { } f && CanInvite(f);
@@ -192,12 +192,28 @@
                     </dl>
                 </RadzenCard>
 
-                <RadzenCard class="ofd-card">
-                    <div class="ofd-card-head"><RadzenIcon Icon="info" /><h3>Flight state</h3></div>
-                    <dl class="ofd-metrics">
+                <RadzenCard class="ofd-card ofd-card--state">
+                    <dl class="ofd-metrics ofd-state-metrics">
                         <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@PotentialDuplicateDisplay(f)</dd></div>
-                        <div class="ofd-metric"><dt>Created</dt><dd>@DateTimeDisplay(f.CreatedAtUtc)</dd></div>
+                        <div class="ofd-metric"><dt>Created Date</dt><dd>@DateTimeDisplay(f.CreatedAtUtc)</dd></div>
+                        <div class="ofd-metric"><dt>Updated Date</dt><dd>@DateTimeDisplay(f.UpdatedAtUtc)</dd></div>
                     </dl>
+                    @if (CanViewAudit)
+                    {
+                        <div class="ofd-state-history">
+                            <div class="ofd-state-history-head">
+                                <span class="ofd-state-history-icon"><RadzenIcon Icon="manage_history" /></span>
+                                <div class="ofd-state-history-title">
+                                    <p>@UiStrings.Audit.HistoryTitle</p>
+                                    <span>Latest audit activity</span>
+                                </div>
+                                <button type="button" class="ofd-state-history-view" @onclick="@(() => activeTab = FlightTab.History)">
+                                    <span>@UiStrings.Common.ViewAll</span><RadzenIcon Icon="chevron_right" />
+                                </button>
+                            </div>
+                            @HistoryPreview(OverviewHistoryPreviewCount)
+                        </div>
+                    }
                 </RadzenCard>
             </div>
 
@@ -212,21 +228,6 @@
                 <p class="os-muted ofd-card-intro">Operational lifecycle events for this flight.</p>
                 @TimelineList(OverviewTimelinePreviewCount)
             </RadzenCard>
-
-            @if (CanViewAudit)
-            {
-                <RadzenCard class="ofd-card">
-                    <div class="ofd-card-head">
-                        <RadzenIcon Icon="manage_history" /><h3>@UiStrings.Audit.HistoryTitle</h3>
-                        @if (history.Count > 0)
-                        {
-                            <button type="button" class="ofd-link" @onclick="@(() => activeTab = FlightTab.History)">@UiStrings.Common.ViewAll</button>
-                        }
-                    </div>
-                    <p class="os-muted ofd-card-intro">@UiStrings.Audit.Description</p>
-                    @HistoryList(OverviewHistoryPreviewCount)
-                </RadzenCard>
-            }
         </div>
     </text>;
 
@@ -378,6 +379,41 @@
                     </li>
                 }
             </ol>
+        }
+    </text>;
+
+    private RenderFragment HistoryPreview(int maxItems) => @<text>
+        @if (history.Count == 0)
+        {
+            <div class="ofd-state-history-empty">
+                <span class="ofd-state-history-entry-icon ofd-state-history-entry-icon--neutral"><RadzenIcon Icon="history_toggle_off" /></span>
+                <div>
+                    <p class="ofd-state-history-entry-title">No audit activity</p>
+                    <p class="os-muted ofd-state-history-entry-sub">No history recorded yet.</p>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="ofd-state-history-list">
+                @foreach (var entry in history.Take(maxItems))
+                {
+                    var visual = HistoryVisual(entry.Action);
+                    <div @key="entry.Id" class="ofd-state-history-entry">
+                        <span class="ofd-state-history-entry-icon ofd-state-history-entry-icon--@visual.Tone">
+                            <RadzenIcon Icon="@visual.Icon" />
+                        </span>
+                        <div>
+                            <p class="ofd-state-history-entry-title">@entry.Action</p>
+                            <p class="os-muted ofd-state-history-entry-sub">
+                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span class="ofd-dot-sep">&middot;</span>
+                                @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
+                            </p>
+                        </div>
+                    </div>
+                }
+            </div>
         }
     </text>;
 

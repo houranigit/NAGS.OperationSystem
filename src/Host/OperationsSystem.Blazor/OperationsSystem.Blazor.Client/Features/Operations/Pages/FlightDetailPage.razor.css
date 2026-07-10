@@ -348,6 +348,11 @@
     gap: 0;
 }
 
+.ofd-card--state {
+    justify-content: flex-start;
+    min-height: 0;
+}
+
 .ofd-card-head {
     display: flex;
     align-items: center;
@@ -541,6 +546,135 @@
 
 .ofd-scope-view .rz-icon {
     font-size: 1.1rem;
+}
+
+.ofd-state-metrics {
+    padding-bottom: var(--os-space-4);
+    border-bottom: 1px solid var(--os-color-border);
+}
+
+.ofd-state-history {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--os-space-3);
+    margin-top: var(--os-space-4);
+    min-height: 0;
+}
+
+.ofd-state-history-head {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--os-space-3);
+}
+
+.ofd-state-history-icon,
+.ofd-state-history-entry-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.ofd-state-history-icon .rz-icon,
+.ofd-state-history-entry-icon .rz-icon {
+    font-size: 1.25rem;
+}
+
+.ofd-state-history-title {
+    min-width: 0;
+}
+
+.ofd-state-history-title p,
+.ofd-state-history-entry-title {
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.ofd-state-history-title span,
+.ofd-state-history-entry-sub {
+    display: block;
+    margin: 0.15rem 0 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+}
+
+.ofd-state-history-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    border: 0;
+    background: transparent;
+    color: var(--os-color-primary);
+    font: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.ofd-state-history-view:hover,
+.ofd-state-history-view:focus-visible {
+    color: var(--os-color-primary-strong);
+}
+
+.ofd-state-history-view .rz-icon {
+    font-size: 1.1rem;
+}
+
+.ofd-state-history-list {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.ofd-state-history-entry,
+.ofd-state-history-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+    min-width: 0;
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.ofd-state-history-entry > div,
+.ofd-state-history-empty > div {
+    min-width: 0;
+}
+
+.ofd-state-history-entry-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+}
+
+.ofd-state-history-entry-icon--green {
+    background: var(--os-color-success-bg);
+    color: var(--os-color-success);
+}
+
+.ofd-state-history-entry-icon--amber {
+    background: var(--os-color-warning-bg);
+    color: var(--os-color-warning);
+}
+
+.ofd-state-history-entry-icon--red {
+    background: var(--os-color-danger-bg);
+    color: var(--os-color-danger);
+}
+
+.ofd-state-history-entry-icon--neutral {
+    background: var(--os-color-neutral-bg);
+    color: var(--os-color-text-muted);
 }
 
 .ofd-metrics {
