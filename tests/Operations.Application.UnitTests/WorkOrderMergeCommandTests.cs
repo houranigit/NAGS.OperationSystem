@@ -32,7 +32,7 @@ public sealed class WorkOrderMergeCommandTests
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddHours(1),
             AircraftTypeId: null,
-            PlannedServiceIds: [Guid.NewGuid()],
+            PlannedServiceIds: [],
             AssignedStaffMemberIds: [],
             WorkOrderType.Completion,
             Payload()));

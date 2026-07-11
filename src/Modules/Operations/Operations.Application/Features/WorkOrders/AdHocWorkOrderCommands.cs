@@ -64,9 +64,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         if (stationCheck.IsFailure)
             return stationCheck.Error;
 
-        var allowEmptyPlannedServices = request.Type == WorkOrderType.Cancellation;
-        if (!allowEmptyPlannedServices && request.PlannedServiceIds.Count == 0)
-            return Error.Validation("At least one planned service is required.", "Operations.PlannedServices.Required");
+        const bool allowEmptyPlannedServices = true;
 
         var flightInput = await FlightBuildHelpers.BuildAsync(
             resolver,
