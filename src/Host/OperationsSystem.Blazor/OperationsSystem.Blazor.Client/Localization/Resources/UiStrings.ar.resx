@@ -39,6 +39,15 @@
   <data name="Common.MinutesAgo" xml:space="preserve"><value>منذ {0} د</value></data>
   <data name="Common.HoursAgo" xml:space="preserve"><value>منذ {0} س</value></data>
   <data name="Common.DaysAgo" xml:space="preserve"><value>منذ {0} ي</value></data>
+  <data name="Flights.Export" xml:space="preserve"><value>تصدير</value></data>
+  <data name="Flights.Exporting" xml:space="preserve"><value>جارٍ التصدير...</value></data>
+  <data name="Flights.ExcelWorkbook" xml:space="preserve"><value>مصنف Excel (.xlsx)</value></data>
+  <data name="Flights.CsvFile" xml:space="preserve"><value>ملف CSV (.csv)</value></data>
+  <data name="Flights.PdfReport" xml:space="preserve"><value>تقرير PDF (.pdf)</value></data>
+  <data name="Flights.ExportReady" xml:space="preserve"><value>تم تجهيز التصدير</value></data>
+  <data name="Flights.ExportReadyDetail" xml:space="preserve"><value>تم تنزيل {0}.</value></data>
+  <data name="Flights.ExportFailed" xml:space="preserve"><value>تعذر التصدير</value></data>
+  <data name="Flights.ExportFailedDetail" xml:space="preserve"><value>تعذر إنشاء ملف التصدير. يرجى المحاولة مرة أخرى.</value></data>
   <data name="Auth.SignInTitle" xml:space="preserve"><value>تسجيل الدخول</value></data>
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>استخدم حساب البوابة الإلكترونية الخاص بك للمتابعة.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>

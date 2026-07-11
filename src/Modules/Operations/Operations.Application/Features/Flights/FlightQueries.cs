@@ -29,6 +29,20 @@ public sealed record GetFlightsQuery(
     DateTimeOffset? ToUtc = null,
     string? Sort = null) : IQuery<PagedResult<FlightListItemDto>>;
 
+/// <summary>
+/// Returns every flight visible to the caller that matches the list filters. Pagination is
+/// deliberately absent: callers use this query only to build complete export files.
+/// </summary>
+public sealed record GetFlightsExportQuery(
+    string? Search = null,
+    Guid? StationId = null,
+    Guid? CustomerId = null,
+    Guid? OperationTypeId = null,
+    FlightStatus? Status = null,
+    DateTimeOffset? FromUtc = null,
+    DateTimeOffset? ToUtc = null,
+    string? Sort = null) : IQuery<IReadOnlyList<FlightExportRowDto>>;
+
 public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope)
     : IQueryHandler<GetFlightsQuery, PagedResult<FlightListItemDto>>
 {
@@ -39,59 +53,23 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             return scopeResult.Error;
 
         var paging = PageRequest.From(request.Page, request.PageSize);
-        var query = db.Flights.AsNoTracking().Where(f => f.Status != FlightStatus.Merged);
-
-        // Station staff see their station's Per-Landing flights (station-wide) plus the flights they
-        // are assigned to; holders of view-station (station dispatchers) see every flight at their
-        // station; admins see everything (optionally filtered).
-        if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
-        {
-            query = query.Where(f => f.Station.StationId == stationId);
-
-            if (!scopeResult.Value.CanViewStationWide)
-            {
-                var staffId = scopeResult.Value.StaffMemberId;
-                query = query.Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
-                                         || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
-            }
-        }
-        else if (request.StationId is { } filterStation)
-        {
-            query = query.Where(f => f.Station.StationId == filterStation);
-        }
-
-        if (request.CustomerId is { } customer)
-            query = query.Where(f => f.Customer.CustomerId == customer);
-        if (request.OperationTypeId is { } operationType)
-            query = query.Where(f => f.OperationType.OperationTypeId == operationType);
-        if (request.Status is { } status)
-            query = query.Where(f => f.Status == status);
-        if (request.FromUtc is { } from)
-            query = query.Where(f => f.Schedule.Sta >= from);
-        if (request.ToUtc is { } to)
-            query = query.Where(f => f.Schedule.Sta <= to);
-        if (SearchFilter.Term(request.Search) is { } term)
-        {
-            var compactFlightTerm = CompactFlightSearchTerm(term);
-            var flightIdTerm = ParseFlightIdSearchTerm(term);
-            var hasFlightIdTerm = flightIdTerm.HasValue;
-            var flightId = flightIdTerm.GetValueOrDefault();
-            query = query.Where(f =>
-                (hasFlightIdTerm && f.Id == flightId) ||
-                f.FlightNumber.Value.ToLower().Contains(term) ||
-                f.OriginalFlightNumber.ToLower().Contains(term) ||
-                f.Customer.Name.ToLower().Contains(term) ||
-                (f.Customer.IataCode != null &&
-                 ((f.Customer.IataCode.ToLower() + "-" + f.FlightNumber.Value.ToLower()).Contains(term) ||
-                  (f.Customer.IataCode.ToLower() + f.FlightNumber.Value.ToLower()).Contains(compactFlightTerm))));
-        }
+        var query = FlightListQuery.ApplyScopeAndFilters(
+            db.Flights.AsNoTracking(),
+            scopeResult.Value,
+            new FlightListFilter(
+                request.Search,
+                request.StationId,
+                request.CustomerId,
+                request.OperationTypeId,
+                request.Status,
+                request.FromUtc,
+                request.ToUtc));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))
             return paging.Empty<FlightListItemDto>(total);
 
-        var items = await query
-            .OrderByDescending(f => f.Schedule.Sta).ThenBy(f => f.Id)
+        var items = await FlightListQuery.ApplySort(query, request.Sort)
             .Skip(paging.Skip).Take(paging.PageSize)
             .Select(f => new FlightListItemDto(
                 f.Id,
@@ -109,6 +87,155 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
 
         return paging.ToResult(items, total);
     }
+}
+
+public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+    : IQueryHandler<GetFlightsExportQuery, IReadOnlyList<FlightExportRowDto>>
+{
+    public async Task<Result<IReadOnlyList<FlightExportRowDto>>> Handle(
+        GetFlightsExportQuery request,
+        CancellationToken cancellationToken)
+    {
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+
+        var query = FlightListQuery.ApplyScopeAndFilters(
+            db.Flights.AsNoTracking(),
+            scopeResult.Value,
+            new FlightListFilter(
+                request.Search,
+                request.StationId,
+                request.CustomerId,
+                request.OperationTypeId,
+                request.Status,
+                request.FromUtc,
+                request.ToUtc));
+
+        IReadOnlyList<FlightExportRowDto> items = await FlightListQuery.ApplySort(query, request.Sort)
+            .Select(f => new FlightExportRowDto(
+                f.Id,
+                f.FlightNumber.Value,
+                f.OriginalFlightNumber,
+                f.Customer.IataCode,
+                f.Customer.Name,
+                f.Station.IataCode,
+                f.Station.Name,
+                f.OperationType.Name,
+                f.Schedule.Sta,
+                f.Schedule.Std,
+                f.Status.ToString(),
+                f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success(items);
+    }
+}
+
+internal sealed record FlightListFilter(
+    string? Search,
+    Guid? StationId,
+    Guid? CustomerId,
+    Guid? OperationTypeId,
+    FlightStatus? Status,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
+
+internal static class FlightListQuery
+{
+    public static IQueryable<Flight> ApplyScopeAndFilters(
+        IQueryable<Flight> query,
+        OperationsScopeContext scope,
+        FlightListFilter filter)
+    {
+        query = query.Where(f => f.Status != FlightStatus.Merged);
+
+        // Station staff see their station's Per-Landing flights (station-wide) plus the flights they
+        // are assigned to; holders of view-station (station dispatchers) see every flight at their
+        // station; admins see everything (optionally filtered).
+        if (!scope.IsAdministrator && scope.StationId is { } stationId)
+        {
+            query = query.Where(f => f.Station.StationId == stationId);
+
+            if (!scope.CanViewStationWide)
+            {
+                var staffId = scope.StaffMemberId;
+                query = query.Where(f =>
+                    f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) ||
+                    f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
+            }
+        }
+        else if (filter.StationId is { } filterStation)
+        {
+            query = query.Where(f => f.Station.StationId == filterStation);
+        }
+
+        if (filter.CustomerId is { } customer)
+            query = query.Where(f => f.Customer.CustomerId == customer);
+        if (filter.OperationTypeId is { } operationType)
+            query = query.Where(f => f.OperationType.OperationTypeId == operationType);
+        if (filter.Status is { } status)
+            query = query.Where(f => f.Status == status);
+        if (filter.FromUtc is { } from)
+            query = query.Where(f => f.Schedule.Sta >= from);
+        if (filter.ToUtc is { } to)
+            query = query.Where(f => f.Schedule.Sta <= to);
+        if (SearchFilter.Term(filter.Search) is { } term)
+        {
+            var compactFlightTerm = CompactFlightSearchTerm(term);
+            var flightIdTerm = ParseFlightIdSearchTerm(term);
+            var hasFlightIdTerm = flightIdTerm.HasValue;
+            var flightId = flightIdTerm.GetValueOrDefault();
+            query = query.Where(f =>
+                (hasFlightIdTerm && f.Id == flightId) ||
+                f.FlightNumber.Value.ToLower().Contains(term) ||
+                f.OriginalFlightNumber.ToLower().Contains(term) ||
+                f.Customer.Name.ToLower().Contains(term) ||
+                (f.Customer.IataCode != null &&
+                 ((f.Customer.IataCode.ToLower() + "-" + f.FlightNumber.Value.ToLower()).Contains(term) ||
+                  (f.Customer.IataCode.ToLower() + f.FlightNumber.Value.ToLower()).Contains(compactFlightTerm))));
+        }
+
+        return query;
+    }
+
+    public static IOrderedQueryable<Flight> ApplySort(IQueryable<Flight> query, string? sort)
+    {
+        if (SortSpec.Parse(sort) is not { } spec)
+            return DefaultSort(query);
+
+        return spec.Field switch
+        {
+            "flightnumber" => spec.Descending
+                ? query.OrderByDescending(f => f.FlightNumber.Value).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.FlightNumber.Value).ThenBy(f => f.Id),
+            "originalflightnumber" => spec.Descending
+                ? query.OrderByDescending(f => f.OriginalFlightNumber).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.OriginalFlightNumber).ThenBy(f => f.Id),
+            "customername" => spec.Descending
+                ? query.OrderByDescending(f => f.Customer.Name).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.Customer.Name).ThenBy(f => f.Id),
+            "stationiata" => spec.Descending
+                ? query.OrderByDescending(f => f.Station.IataCode).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.Station.IataCode).ThenBy(f => f.Id),
+            "operationtypename" => spec.Descending
+                ? query.OrderByDescending(f => f.OperationType.Name).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.OperationType.Name).ThenBy(f => f.Id),
+            "scheduledarrivalutc" => spec.Descending
+                ? query.OrderByDescending(f => f.Schedule.Sta).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.Schedule.Sta).ThenBy(f => f.Id),
+            "scheduleddepartureutc" => spec.Descending
+                ? query.OrderByDescending(f => f.Schedule.Std).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.Schedule.Std).ThenBy(f => f.Id),
+            "status" => spec.Descending
+                ? query.OrderByDescending(f => f.Status).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.Status).ThenBy(f => f.Id),
+            _ => DefaultSort(query)
+        };
+    }
+
+    private static IOrderedQueryable<Flight> DefaultSort(IQueryable<Flight> query) =>
+        query.OrderByDescending(f => f.Schedule.Sta).ThenBy(f => f.Id);
 
     private static string CompactFlightSearchTerm(string term) =>
         term.Replace("-", string.Empty).Replace(" ", string.Empty);

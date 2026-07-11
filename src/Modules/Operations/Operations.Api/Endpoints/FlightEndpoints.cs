@@ -2,6 +2,7 @@ using BuildingBlocks.Api.Authorization;
 using BuildingBlocks.Api.Concurrency;
 using BuildingBlocks.Api.Results;
 using BuildingBlocks.Application.Persistence;
+using BuildingBlocks.Domain.Results;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Routing;
 using Operations.Application.Features.Dashboard;
 using Operations.Application.Features.Flights;
 using Operations.Application.Features.Merge;
+using Operations.Api.Exports;
 using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
 
@@ -27,6 +29,61 @@ internal static class FlightEndpoints
             var result = await sender.Send(new GetFlightsQuery(page, pageSize, search, stationId, customerId, operationTypeId, status, fromUtc, toUtc, sort), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
+
+        flights.MapGet("/export", async (
+            string format,
+            ISender sender,
+            TimeProvider timeProvider,
+            CancellationToken ct,
+            string? search = null,
+            Guid? stationId = null,
+            Guid? customerId = null,
+            Guid? operationTypeId = null,
+            FlightStatus? status = null,
+            DateTimeOffset? fromUtc = null,
+            DateTimeOffset? toUtc = null,
+            string? sort = null) =>
+        {
+            if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    new Dictionary<string, string[]>
+                    {
+                        ["format"] = ["Format must be one of: xlsx, csv, or pdf."]
+                    },
+                    code: "Operations.Flight.ExportFormatInvalid"));
+            }
+
+            var result = await sender.Send(new GetFlightsExportQuery(
+                search,
+                stationId,
+                customerId,
+                operationTypeId,
+                status,
+                fromUtc,
+                toUtc,
+                sort), ct);
+
+            if (result.IsFailure)
+                return ApiResults.Problem(result.Error);
+
+            var file = FlightExportDocumentFactory.Create(
+                exportFormat,
+                result.Value,
+                new FlightExportCriteria(
+                    search,
+                    stationId,
+                    customerId,
+                    operationTypeId,
+                    status,
+                    fromUtc,
+                    toUtc,
+                    sort),
+                timeProvider.GetUtcNow());
+
+            return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Flights.Export)
+            .WithName("ExportFlights");
 
         flights.MapGet("/calendar", async (ISender sender, CancellationToken ct,
             DateTimeOffset fromUtc,

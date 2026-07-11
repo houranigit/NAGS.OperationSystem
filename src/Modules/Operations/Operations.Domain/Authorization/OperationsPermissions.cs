@@ -10,6 +10,8 @@ public static class OperationsPermissions
     {
         public const string View = "operations.flights.view";
 
+        public const string Export = "operations.flights.export";
+
         /// <summary>
         /// Station-wide flight visibility for station staff (e.g. station dispatchers): every flight
         /// at their own station regardless of the assigned-employee roster. Without it, station staff

@@ -89,6 +89,39 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
         }
     }
 
+    /// <summary>
+    /// Downloads an authenticated API response directly through the browser without copying it through
+    /// .NET as Base64. The response's Content-Disposition filename wins over the optional fallback.
+    /// </summary>
+    public async Task DownloadFileAsync(
+        string path,
+        string? fallbackFileName = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await InvokeDownloadAsync(path, fallbackFileName, cancellationToken);
+        }
+        catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
+        {
+            var isRefresh = path.Contains("/auth/refresh", StringComparison.Ordinal);
+            if (statusCode == 401 && !isRefresh && await refresher.TryRefreshAsync(cancellationToken))
+            {
+                try
+                {
+                    await InvokeDownloadAsync(path, fallbackFileName, cancellationToken);
+                    return;
+                }
+                catch (JSException retryEx) when (TryReadApiError(retryEx.Message, out var retryStatus, out var retryBody))
+                {
+                    throw new ApiException(retryStatus, retryBody);
+                }
+            }
+
+            throw new ApiException(statusCode, responseBody);
+        }
+    }
+
     private async Task<TResponse> SendAsync<TResponse>(
         HttpMethod method,
         string path,
@@ -148,6 +181,15 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
             tokenStore.AccessToken,
             locale.Language,
             ifMatch);
+
+    private async Task InvokeDownloadAsync(string path, string? fallbackFileName, CancellationToken cancellationToken) =>
+        await jsRuntime.InvokeVoidAsync(
+            "operationsSystem.api.downloadFile",
+            cancellationToken,
+            path,
+            fallbackFileName,
+            tokenStore.AccessToken,
+            locale.Language);
 
     private static bool TryReadApiError(string message, out int statusCode, out string responseBody)
     {

@@ -105,4 +105,57 @@ window.operationsSystem.api = {
     });
     return { base64, contentType: blob.type || "application/octet-stream" };
   },
+
+  async downloadFile(path, fallbackFileName, accessToken, language) {
+    const headers = { Accept: "*/*", "Accept-Language": language || "en" };
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+    const response = await fetch(`/api/v1${path}`, { headers, credentials: "include" });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(JSON.stringify({ status: response.status, body: text }));
+    }
+
+    const safeFileName = (value) => {
+      const finalSegment = (value || "").split(/[\\/]/).pop() || "";
+      return finalSegment.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+    };
+
+    const fileNameFromDisposition = (contentDisposition) => {
+      if (!contentDisposition) return null;
+
+      const extended = contentDisposition.match(/filename\*\s*=\s*([^;]+)/i);
+      if (extended) {
+        const raw = extended[1].trim().replace(/^"(.*)"$/, "$1");
+        const encoded = raw.match(/^[^']*'[^']*'(.*)$/)?.[1] || raw;
+        try {
+          return decodeURIComponent(encoded);
+        } catch {
+          return encoded;
+        }
+      }
+
+      const standard = contentDisposition.match(/filename\s*=\s*(?:"((?:\\.|[^"])*)"|([^;]+))/i);
+      if (!standard) return null;
+      return standard[1] ? standard[1].replace(/\\(.)/g, "$1") : standard[2].trim();
+    };
+
+    const responseFileName = fileNameFromDisposition(response.headers.get("Content-Disposition"));
+    const fileName = safeFileName(responseFileName) || safeFileName(fallbackFileName) || "download";
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    try {
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+    } finally {
+      anchor.remove();
+      // Keep the blob alive long enough for slower browsers to begin consuming the download.
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    }
+  },
 };

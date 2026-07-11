@@ -32,6 +32,38 @@
     color: var(--os-color-primary-strong);
 }
 
+.ofl-export-menu {
+    display: inline-flex;
+    margin-inline-start: auto;
+}
+
+.os-list-page ::deep .ofl-export-menu .os-row-actions-trigger--labeled {
+    min-height: 2.5rem;
+    padding-inline: var(--os-space-3);
+    border: 1px solid var(--os-color-primary-soft-border);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+    color: var(--os-color-primary-strong);
+    box-shadow: var(--os-shadow-sm);
+    font-weight: 700;
+}
+
+.os-list-page ::deep .ofl-export-menu .os-row-actions-trigger--labeled:hover:not(:disabled) {
+    border-color: var(--os-color-primary);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.os-list-page ::deep .ofl-export-menu .os-row-actions-trigger--labeled:focus-visible {
+    outline: none;
+    box-shadow: var(--os-ring);
+}
+
+.os-list-page ::deep .ofl-export-menu .os-row-actions-trigger--labeled:disabled {
+    border-color: var(--os-color-border);
+    background: var(--os-color-surface-muted);
+}
+
 .ofl-per-landing-badge {
     display: inline-flex;
     align-items: center;

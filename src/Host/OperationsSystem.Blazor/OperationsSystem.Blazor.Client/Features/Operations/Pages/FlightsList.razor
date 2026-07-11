@@ -43,6 +43,22 @@
                                       Placeholder="To date" class="ofl-date-filter" />
                 </div>
             </Filters>
+            <Toolbar>
+                <AuthorizeView Context="exportAccess">
+                    @if (exportAccess.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsExport))
+                    {
+                        <div class="ofl-export-menu">
+                            <RowActionMenu Label="@UiStrings.Flights.Export" BusyLabel="@UiStrings.Flights.Exporting"
+                                           ShowLabel="true" TriggerIcon="download" EndIcon="expand_more"
+                                           Disabled="@(isLoading || loadError || totalCount <= 0)" Busy="@isExporting">
+                                <RowAction Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view" OnClick="@(() => ExportAsync("xlsx"))" />
+                                <RowAction Text="@UiStrings.Flights.CsvFile" Icon="csv" OnClick="@(() => ExportAsync("csv"))" />
+                                <RowAction Text="@UiStrings.Flights.PdfReport" Icon="picture_as_pdf" OnClick="@(() => ExportAsync("pdf"))" />
+                            </RowActionMenu>
+                        </div>
+                    }
+                </AuthorizeView>
+            </Toolbar>
             <Columns>
                 <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" Title="Flight #">
                     <Template Context="flight">
@@ -101,6 +117,7 @@
     private int totalCount;
     private bool isLoading;
     private bool loadError;
+    private bool isExporting;
     private string searchTerm = string.Empty;
     private string? statusFilter;
     private Guid? stationFilter;
@@ -406,6 +423,53 @@
         }
     }
 
+    private async Task ExportAsync(string format)
+    {
+        if (isExporting || isLoading || loadError || totalCount <= 0)
+            return;
+
+        isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            await Operations.ExportFlightsAsync(
+                format,
+                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
+                stationFilter,
+                customerFilter,
+                operationTypeFilter,
+                statusFilter,
+                DateBoundaryUtc(fromFilter, false),
+                DateBoundaryUtc(toFilter, true),
+                currentSort);
+
+            Notifications.Notify(
+                NotificationSeverity.Success,
+                UiStrings.Flights.ExportReady,
+                string.Format(UiStrings.Flights.ExportReadyDetail, ExportFormatLabel(format)));
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(
+                NotificationSeverity.Error,
+                UiStrings.Flights.ExportFailed,
+                ex.ToDisplayMessage(UiStrings.Flights.ExportFailedDetail));
+        }
+        catch (JSException)
+        {
+            Notifications.Notify(
+                NotificationSeverity.Error,
+                UiStrings.Flights.ExportFailed,
+                UiStrings.Flights.ExportFailedDetail);
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task ReturnApprovedWorkOrderAsync(FlightListItem flight)
     {
         try
@@ -513,6 +577,14 @@
         "Canceled" or "Merged" => "danger",
         "InProgress" => "warning",
         _ => "neutral"
+    };
+
+    private static string ExportFormatLabel(string format) => format switch
+    {
+        "xlsx" => UiStrings.Flights.ExcelWorkbook,
+        "csv" => UiStrings.Flights.CsvFile,
+        "pdf" => UiStrings.Flights.PdfReport,
+        _ => UiStrings.Flights.Export
     };
 
     private sealed record StatusFilterOption(string Label, string Value);

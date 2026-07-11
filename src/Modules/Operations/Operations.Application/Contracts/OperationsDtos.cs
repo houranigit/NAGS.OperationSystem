@@ -13,6 +13,25 @@ public sealed record FlightListItemDto(
     string Status,
     bool IsPerLanding);
 
+/// <summary>
+/// Stable, presentation-neutral row used by the supported flight report formats. Durations and
+/// display flight numbers are derived by the renderer so CSV can retain machine-friendly values
+/// while PDF and Excel use their richer native formatting.
+/// </summary>
+public sealed record FlightExportRowDto(
+    Guid Id,
+    string FlightNumber,
+    string OriginalFlightNumber,
+    string? CustomerIataCode,
+    string CustomerName,
+    string StationIata,
+    string StationName,
+    string OperationTypeName,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    string Status,
+    bool IsPerLanding);
+
 public sealed record CalendarFlightDto(
     Guid Id,
     string FlightNumber,

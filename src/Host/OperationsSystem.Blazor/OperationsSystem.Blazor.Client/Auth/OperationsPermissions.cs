@@ -12,6 +12,7 @@ public static class OperationsPermissions
     public const string FlightsViewStation = "operations.flights.view-station";
 
     public const string FlightsSchedule = "operations.flights.schedule";
+    public const string FlightsExport = "operations.flights.export";
     public const string FlightsUpdate = "operations.flights.update";
     public const string FlightsAssign = "operations.flights.assign";
     public const string FlightsInvite = "operations.flights.invite";

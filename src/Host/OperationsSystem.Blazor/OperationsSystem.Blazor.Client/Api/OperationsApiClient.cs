@@ -19,6 +19,32 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
     }
 
+    public Task ExportFlightsAsync(
+        string format,
+        string? search = null,
+        Guid? stationId = null,
+        Guid? customerId = null,
+        Guid? operationTypeId = null,
+        string? status = null,
+        DateTimeOffset? fromUtc = null,
+        DateTimeOffset? toUtc = null,
+        string? sort = null,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("format", format)
+            .Add("search", search)
+            .Add("stationId", stationId)
+            .Add("customerId", customerId)
+            .Add("operationTypeId", operationTypeId)
+            .Add("status", status)
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("sort", sort)
+            .Build();
+        return api.DownloadFileAsync($"/operations/flights/export{query}", cancellationToken: ct);
+    }
+
     public Task<IReadOnlyList<CalendarFlight>> GetCalendarAsync(
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,

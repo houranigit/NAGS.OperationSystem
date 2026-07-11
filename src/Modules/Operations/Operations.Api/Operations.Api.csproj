@@ -5,6 +5,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="PDFsharp-MigraDoc" />
+    <PackageReference Include="Uno.Fonts.OpenSans" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Regular.ttf"
+                      LogicalName="Operations.Api.Fonts.OpenSans-Regular.ttf" />
+    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Bold.ttf"
+                      LogicalName="Operations.Api.Fonts.OpenSans-Bold.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Operations.Application\Operations.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Api\BuildingBlocks.Api.csproj" />
   </ItemGroup>

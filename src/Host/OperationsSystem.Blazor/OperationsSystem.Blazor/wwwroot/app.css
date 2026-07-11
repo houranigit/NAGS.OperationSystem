@@ -258,6 +258,16 @@ a {
     color: var(--os-color-text);
 }
 
+.os-row-actions-trigger:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.os-row-actions-trigger:disabled:hover {
+    background: transparent;
+    color: var(--os-color-text-muted);
+}
+
 .os-row-actions-trigger .rz-icon {
     font-size: 1.25rem;
 }
@@ -270,6 +280,19 @@ a {
     font-family: inherit;
     font-size: var(--os-text-sm);
     font-weight: 600;
+}
+
+.os-row-actions-trigger-end {
+    margin-inline-start: var(--os-space-1);
+    font-size: 1.05rem !important;
+}
+
+.os-row-actions-trigger-icon--busy {
+    animation: os-row-actions-spin 850ms linear infinite;
+}
+
+@keyframes os-row-actions-spin {
+    to { transform: rotate(360deg); }
 }
 
 /* The dropdown is rendered by ContextMenuService at the document root; strip the

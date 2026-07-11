@@ -101,6 +101,117 @@ public sealed class FlightQueryTests
         result.Value.Items.Select(f => f.Id).ShouldBe([flight.Id]);
     }
 
+    [Fact]
+    public async Task GetFlightsExport_ReturnsEveryMatchingRowBeyondPagedListLimit()
+    {
+        await using var db = NewDb();
+        var flights = Enumerable.Range(1, 125)
+            .Select(number => CreateScheduledFlight(
+                customerIata: "RJ",
+                customerName: "Royal Jordanian",
+                flightNumber: number.ToString()))
+            .ToList();
+        db.Flights.AddRange(flights);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var listResult = await new GetFlightsQueryHandler(db, scope).Handle(
+            new GetFlightsQuery(Page: 1, PageSize: int.MaxValue),
+            CancellationToken.None);
+        var exportResult = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(),
+            CancellationToken.None);
+
+        listResult.IsSuccess.ShouldBeTrue();
+        listResult.Value.Items.Count.ShouldBe(100);
+        listResult.Value.TotalCount.ShouldBe(125);
+        exportResult.IsSuccess.ShouldBeTrue();
+        exportResult.Value.Count.ShouldBe(125);
+    }
+
+    [Fact]
+    public async Task GetFlightsExport_AppliesListFiltersAndAssignedStaffScope()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var otherStationId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var otherCustomerId = Guid.NewGuid();
+        var operationTypeId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        StaffMemberSnapshot[] assignedStaff = [new(staffId, "Scoped Staff", "EMP-100")];
+
+        var matching = CreateScheduledFlight(
+            "RJ", "Royal Jordanian", "MATCH100", customerId, stationId, operationTypeId, Now, assignedStaff);
+        var unassignedAtOwnStation = CreateScheduledFlight(
+            "RJ", "Royal Jordanian", "MATCH200", customerId, stationId, operationTypeId, Now);
+        var assignedAtOtherStation = CreateScheduledFlight(
+            "RJ", "Royal Jordanian", "MATCH300", customerId, otherStationId, operationTypeId, Now, assignedStaff);
+        var wrongCustomer = CreateScheduledFlight(
+            "SV", "Saudia", "MATCH400", otherCustomerId, stationId, operationTypeId, Now, assignedStaff);
+        var outsideDateRange = CreateScheduledFlight(
+            "RJ", "Royal Jordanian", "MATCH500", customerId, stationId, operationTypeId, Now.AddDays(-2), assignedStaff);
+        var wrongStatus = CreateScheduledFlight(
+            "RJ", "Royal Jordanian", "MATCH600", customerId, stationId, operationTypeId, Now, assignedStaff);
+        wrongStatus.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        wrongStatus.SettleCompleted(Now).IsSuccess.ShouldBeTrue();
+
+        db.Flights.AddRange(
+            matching,
+            unassignedAtOwnStation,
+            assignedAtOtherStation,
+            wrongCustomer,
+            outsideDateRange,
+            wrongStatus);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, staffId));
+        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(
+                Search: "match",
+                CustomerId: customerId,
+                OperationTypeId: operationTypeId,
+                Status: FlightStatus.Scheduled,
+                FromUtc: Now.AddHours(-1),
+                ToUtc: Now.AddHours(1)),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Select(f => f.Id).ShouldBe([matching.Id]);
+        result.Value.Single().StationName.ShouldBe("Dammam");
+    }
+
+    [Theory]
+    [InlineData("FlightNumber:asc")]
+    [InlineData("FlightNumber:desc")]
+    [InlineData("unsupported:asc")]
+    public async Task GetFlightsAndExport_UseTheSameWhitelistedSort(string sort)
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateScheduledFlight("RJ", "Royal Jordanian", "300"),
+            CreateScheduledFlight("RJ", "Royal Jordanian", "100"),
+            CreateScheduledFlight("RJ", "Royal Jordanian", "200"));
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var listResult = await new GetFlightsQueryHandler(db, scope).Handle(
+            new GetFlightsQuery(PageSize: 100, Sort: sort),
+            CancellationToken.None);
+        var exportResult = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(Sort: sort),
+            CancellationToken.None);
+
+        listResult.IsSuccess.ShouldBeTrue();
+        exportResult.IsSuccess.ShouldBeTrue();
+        exportResult.Value.Select(f => f.Id).ShouldBe(listResult.Value.Items.Select(f => f.Id));
+
+        if (sort == "FlightNumber:asc")
+            exportResult.Value.Select(f => f.FlightNumber).ShouldBe(["100", "200", "300"]);
+        else if (sort == "FlightNumber:desc")
+            exportResult.Value.Select(f => f.FlightNumber).ShouldBe(["300", "200", "100"]);
+    }
+
     private static OperationsDbContext NewDb() =>
         new(new DbContextOptionsBuilder<OperationsDbContext>()
             .UseInMemoryDatabase($"ops-{Guid.NewGuid()}")
@@ -111,20 +222,28 @@ public sealed class FlightQueryTests
         string customerName,
         string flightNumber,
         Guid? customerId = null,
-        Guid? stationId = null) =>
-        Flight.ScheduleNew(
+        Guid? stationId = null,
+        Guid? operationTypeId = null,
+        DateTimeOffset? scheduledArrival = null,
+        IReadOnlyList<StaffMemberSnapshot>? assignedEmployees = null)
+    {
+        var arrival = scheduledArrival ?? Now;
+        return Flight.ScheduleNew(
             new CustomerSnapshot(customerId ?? Guid.NewGuid(), customerIata, customerName),
             new StationSnapshot(stationId ?? Guid.NewGuid(), "DMM", "Dammam"),
-            new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
+            new OperationTypeSnapshot(operationTypeId ?? Guid.NewGuid(), "Transit"),
             FlightNumber.Create(flightNumber).Value,
-            ScheduledTime.Create(Now, Now.AddHours(1)).Value,
+            ScheduledTime.Create(arrival, arrival.AddHours(1)).Value,
             aircraftType: null,
             plannedServices: [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
-            assignedEmployees: [],
+            assignedEmployees: assignedEmployees?
+                .Select(employee => new StaffMemberSnapshot(employee.StaffMemberId, employee.FullName, employee.EmployeeId))
+                .ToList() ?? [],
             contractId: null,
             contractNumber: null,
             createdByUserId: Guid.NewGuid(),
             now: Now).Value;
+    }
 
     private sealed class StaticScope(OperationsScopeContext context) : IOperationsScope
     {
