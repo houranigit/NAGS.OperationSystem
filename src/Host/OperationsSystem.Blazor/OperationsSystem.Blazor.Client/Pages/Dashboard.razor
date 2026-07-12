@@ -1,89 +1,334 @@
 @page "/"
-@implements IAsyncDisposable
-@inject AuthSession Auth
-@inject NavigationManager Navigation
 
 <PageTitle>@UiStrings.Nav.Dashboard</PageTitle>
 
 <RequireAuth>
     @if (Auth.User is { } user)
     {
-        <PageHeader Eyebrow="@UiStrings.Dashboard.WelcomeBack" Title="@user.DisplayName" Description="@user.Email" />
-
-        <div class="os-cards-grid os-stats">
-            <RadzenCard class="os-stat">
-                <span class="os-stat-icon os-stat-icon--blue"><RadzenIcon Icon="badge" /></span>
-                <div class="os-stat-body">
-                    <p class="os-stat-label">@UiStrings.Account.Role</p>
-                    <p class="os-stat-value">@user.RoleName</p>
-                </div>
-            </RadzenCard>
-
-            <RadzenCard class="os-stat">
-                <span class="os-stat-icon os-stat-icon--green"><RadzenIcon Icon="key" /></span>
-                <div class="os-stat-body">
-                    <p class="os-stat-label">@UiStrings.Dashboard.PermissionsCard</p>
-                    <p class="os-stat-value">@user.Permissions.Count</p>
-                </div>
-            </RadzenCard>
-
-            <RadzenCard class="os-stat">
-                <span class="os-stat-icon os-stat-icon--amber"><RadzenIcon Icon="mail" /></span>
-                <div class="os-stat-body">
-                    <p class="os-stat-label">@UiStrings.Dashboard.IdentityCard</p>
-                    <p class="os-stat-value os-stat-value--sm">@user.Email</p>
-                </div>
-            </RadzenCard>
-        </div>
-
-        @if (HasQuickActions)
-        {
-            <RadzenCard class="os-quick">
-                <p class="os-eyebrow">@UiStrings.Dashboard.Overview</p>
-                <h3 class="os-quick-title">@UiStrings.Common.Actions</h3>
-                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.75rem" Wrap="FlexWrap.Wrap" class="os-quick-actions">
-                    <AuthorizeView Context="usersLink">
-                        @if (usersLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersView))
+        <main class="os-dashboard">
+            <section class="os-dashboard-hero">
+                <div class="os-hero-copy">
+                    <div class="os-hero-eyebrow">
+                        <span><RadzenIcon Icon="radar" /> @UiStrings.Dashboard.ControlCenter</span>
+                        @if (HasLiveOperations)
                         {
-                            <RadzenButton Text="@UiStrings.Dashboard.ManageUsers" Icon="group" ButtonStyle="ButtonStyle.Primary"
-                                          Click="@(() => Navigation.NavigateTo("/users"))" />
+                            <span class="@LiveChipClass"><i></i>@LiveChipLabel</span>
                         }
-                    </AuthorizeView>
-                    <AuthorizeView Context="rolesLink">
-                        @if (rolesLink.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
+                    </div>
+                    <h1>@string.Format(UiStrings.Dashboard.WelcomeTitle, FirstName)</h1>
+                    <p>@UiStrings.Dashboard.Description</p>
+                    <div class="os-hero-meta">
+                        <span><RadzenIcon Icon="calendar_today" /> @TodayLabel</span>
+                        <span><RadzenIcon Icon="verified_user" /> @user.RoleName</span>
+                    </div>
+                </div>
+
+                <aside class="os-hero-control">
+                    <div class="os-sync-summary">
+                        <span class="os-sync-icon"><RadzenIcon Icon="sync" /></span>
+                        <div>
+                            <strong>@SyncTitle</strong>
+                            <small>@SyncDescription</small>
+                        </div>
+                    </div>
+
+                    <div class="os-hero-buttons">
+                        @if (CanScheduleFlights)
                         {
-                            <RadzenButton Text="@UiStrings.Dashboard.ManageRoles" Icon="shield" ButtonStyle="ButtonStyle.Light"
-                                          Click="@(() => Navigation.NavigateTo("/roles"))" />
+                            <RadzenButton Text="@UiStrings.Dashboard.ScheduleFlight" Icon="add" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@(() => NavigateTo("/operations/flights"))" />
                         }
-                    </AuthorizeView>
-                    <RadzenButton Text="@UiStrings.Account.Title" Icon="account_circle" ButtonStyle="ButtonStyle.Light"
-                                  Click="@(() => Navigation.NavigateTo("/account"))" />
-                </RadzenStack>
-            </RadzenCard>
-        }
+                        @if (CanAuthorWorkOrders)
+                        {
+                            <RadzenButton Text="@UiStrings.Dashboard.CreateWorkOrder" Icon="add_task" ButtonStyle="ButtonStyle.Light"
+                                          Click="@(() => NavigateTo("/operations/work-orders"))" />
+                        }
+                        @if (HasRefreshableData)
+                        {
+                            <RadzenButton Text="@RefreshButtonText" Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                                          Disabled="@isRefreshing" Click="@RefreshAllAsync" />
+                        }
+                        @if (!CanScheduleFlights && !CanAuthorWorkOrders && !HasRefreshableData)
+                        {
+                            <RadzenButton Text="@UiStrings.Account.Title" Icon="manage_accounts" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@(() => NavigateTo("/account"))" />
+                        }
+                    </div>
+                </aside>
+            </section>
+
+            @if (isInitialLoading)
+            {
+                <div class="os-dashboard-skeleton" aria-label="@UiStrings.Common.Loading">
+                    <div class="os-skeleton-line os-skeleton-line--short"></div>
+                    <div class="os-skeleton-cards">
+                        @for (var index = 0; index < 5; index++)
+                        {
+                            <div class="os-skeleton-card" @key="index"></div>
+                        }
+                    </div>
+                    <div class="os-skeleton-panels">
+                        <div class="os-skeleton-panel"></div>
+                        <div class="os-skeleton-panel os-skeleton-panel--wide"></div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @if (HasDataWarning)
+                {
+                    <div class="os-dashboard-warning" role="status">
+                        <RadzenIcon Icon="cloud_off" />
+                        <span>@UiStrings.Dashboard.PartialDataWarning</span>
+                        <button type="button" @onclick="RefreshAllAsync">@UiStrings.Common.Refresh</button>
+                    </div>
+                }
+
+                @if (masterMetrics.Count > 0)
+                {
+                    <section class="os-dashboard-section" aria-labelledby="master-data-heading">
+                        <header class="os-section-heading">
+                            <div>
+                                <p class="os-eyebrow">@UiStrings.Dashboard.Overview</p>
+                                <h2 id="master-data-heading">@UiStrings.Dashboard.MasterDataTitle</h2>
+                                <p>@UiStrings.Dashboard.MasterDataDescription</p>
+                            </div>
+                        </header>
+
+                        <div class="os-master-grid">
+                            @foreach (var metric in masterMetrics)
+                            {
+                                <button @key="metric.Key" type="button" class="os-master-card" @onclick="() => NavigateTo(metric.Href)">
+                                    <span class="@($"os-master-icon os-master-icon--{metric.Tone}")"><RadzenIcon Icon="@metric.Icon" /></span>
+                                    <span class="os-master-card-copy">
+                                        <small>@UiStrings.Dashboard.ActiveRecords</small>
+                                        <strong>@FormatCount(metric.Value)</strong>
+                                        <span>@metric.Label</span>
+                                    </span>
+                                    <RadzenIcon Icon="arrow_forward" class="os-card-arrow" />
+                                </button>
+                            }
+                        </div>
+                    </section>
+                }
+
+                @if (HasFlightOperations)
+                {
+                    <section class="os-dashboard-section" aria-labelledby="flight-operations-heading">
+                        <header class="os-section-heading os-section-heading--action">
+                            <div>
+                                <p class="os-eyebrow">@UiStrings.Dashboard.Live</p>
+                                <h2 id="flight-operations-heading">@UiStrings.Dashboard.OperationsTitle</h2>
+                                <p>@UiStrings.Dashboard.OperationsDescription</p>
+                            </div>
+                            @if (CanViewFlights)
+                            {
+                                <button type="button" class="os-text-link" @onclick="OpenFlights">
+                                    @UiStrings.Common.ViewAll <RadzenIcon Icon="arrow_forward" />
+                                </button>
+                            }
+                        </header>
+
+                        @if (CanViewFlightSummary)
+                        {
+                            <div class="os-flight-kpis">
+                                @foreach (var status in FlightStatusCards)
+                                {
+                                    <article @key="status.Key" class="@($"os-flight-kpi os-flight-kpi--{status.Tone}")">
+                                        <span class="os-flight-kpi-icon"><RadzenIcon Icon="@status.Icon" /></span>
+                                        <div>
+                                            <small>@status.Label</small>
+                                            <strong>@FormatCount(status.Count)</strong>
+                                            <span>@status.Hint</span>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        }
+
+                        <div class="@OperationsGridClass">
+                            @if (CanViewFlightSummary)
+                            {
+                                <article class="os-panel os-flight-mix-panel">
+                                    <header class="os-panel-heading">
+                                        <div>
+                                            <h3>@UiStrings.Dashboard.FlightMix</h3>
+                                            <p>@UiStrings.Dashboard.FlightMixDescription</p>
+                                        </div>
+                                    </header>
+
+                                    <div class="os-flight-mix-content">
+                                        <div class="os-donut" role="img" aria-label="@UiStrings.Dashboard.FlightMix">
+                                            <svg viewBox="0 0 120 120" aria-hidden="true">
+                                                <circle class="os-donut-track" cx="60" cy="60" r="48" pathLength="100" />
+                                                @if (TotalFlights > 0)
+                                                {
+                                                    @foreach (var segment in FlightDonutSegments.Where(segment => segment.Count > 0))
+                                                    {
+                                                        <circle @key="segment.Key" class="@($"os-donut-segment os-donut-segment--{segment.Tone}")"
+                                                                cx="60" cy="60" r="48" pathLength="100"
+                                                                stroke-dasharray="@DonutDashArray(segment.Count)"
+                                                                stroke-dashoffset="@DonutDashOffset(segment.Offset)" />
+                                                    }
+                                                }
+                                            </svg>
+                                            <div class="os-donut-center">
+                                                <strong>@FormatCount(TotalFlights)</strong>
+                                                <span>@UiStrings.Dashboard.TotalFlights</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="os-flight-legend">
+                                            @foreach (var segment in FlightDonutSegments)
+                                            {
+                                                <div @key="segment.Key" class="os-flight-legend-row">
+                                                    <span class="@($"os-legend-dot os-legend-dot--{segment.Tone}")"></span>
+                                                    <span>@segment.Label</span>
+                                                    <strong>@FormatCount(segment.Count)</strong>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </article>
+                            }
+
+                            @if (CanViewFlights)
+                            {
+                                <article class="os-panel os-flight-board-panel">
+                                    <header class="os-panel-heading os-panel-heading--action">
+                                        <div>
+                                            <h3>@UiStrings.Dashboard.LiveBoardTitle</h3>
+                                            <p>@UiStrings.Dashboard.LiveBoardDescription</p>
+                                        </div>
+                                        <span class="os-panel-count">@activeFlights.Count</span>
+                                    </header>
+
+                                    @if (activeFlights.Count == 0)
+                                    {
+                                        <div class="os-dashboard-empty">
+                                            <span><RadzenIcon Icon="flight_takeoff" /></span>
+                                            <p>@UiStrings.Dashboard.NoActiveFlights</p>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="os-live-table">
+                                            <div class="os-live-table-head" aria-hidden="true">
+                                                <span>@UiStrings.Dashboard.Flight</span>
+                                                <span>@UiStrings.Dashboard.Customer</span>
+                                                <span>@UiStrings.Dashboard.Station</span>
+                                                <span>@UiStrings.Dashboard.Arrival</span>
+                                                <span>@UiStrings.Users.Status</span>
+                                            </div>
+                                            @foreach (var flight in activeFlights)
+                                            {
+                                                <button @key="flight.Id" type="button" class="os-live-table-row"
+                                                        @onclick="() => OpenFlight(flight.Id)">
+                                                    <span class="os-flight-identity">
+                                                        <strong>@DisplayFlightNumber(flight)</strong>
+                                                        <small>@flight.OperationTypeName</small>
+                                                    </span>
+                                                    <span class="os-flight-customer">@flight.CustomerName</span>
+                                                    <span><b class="os-station-code">@flight.StationIata</b></span>
+                                                    <span class="os-flight-time">
+                                                        <strong>@FlightTime(flight.ScheduledArrivalUtc)</strong>
+                                                        <small>@FlightDate(flight.ScheduledArrivalUtc) UTC</small>
+                                                    </span>
+                                                    <span><StatusBadge Label="@FlightStatusLabel(flight.Status)" Tone="@FlightStatusTone(flight.Status)" /></span>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </article>
+                            }
+                        </div>
+                    </section>
+                }
+
+                @if (CanViewWorkOrders)
+                {
+                    <section class="os-dashboard-section" aria-labelledby="work-orders-heading">
+                        <header class="os-section-heading os-section-heading--action">
+                            <div>
+                                <p class="os-eyebrow">@UiStrings.Dashboard.Overview</p>
+                                <h2 id="work-orders-heading">@UiStrings.Dashboard.WorkOrdersTitle</h2>
+                                <p>@UiStrings.Dashboard.WorkOrdersDescription</p>
+                            </div>
+                            <button type="button" class="os-text-link" @onclick="OpenWorkOrders">
+                                @UiStrings.Common.ViewAll <RadzenIcon Icon="arrow_forward" />
+                            </button>
+                        </header>
+
+                        <div class="os-work-order-grid">
+                            <article class="os-panel os-lifecycle-panel">
+                                <div class="os-lifecycle-track">
+                                    @foreach (var stage in WorkOrderStages)
+                                    {
+                                        <div @key="stage.Key" class="@($"os-lifecycle-stage os-lifecycle-stage--{stage.Tone}")">
+                                            <span class="os-lifecycle-icon"><RadzenIcon Icon="@stage.Icon" /></span>
+                                            <div>
+                                                <small>@stage.Label</small>
+                                                <strong>@FormatCount(stage.Count)</strong>
+                                                <span>@stage.Hint</span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </article>
+
+                            <article class="os-panel os-recent-work-orders">
+                                <header class="os-panel-heading os-panel-heading--action">
+                                    <div>
+                                        <h3>@UiStrings.Dashboard.RecentActivity</h3>
+                                        <p>@UiStrings.Dashboard.RecentActivityDescription</p>
+                                    </div>
+                                    <span class="os-panel-count">@recentWorkOrders.Count</span>
+                                </header>
+
+                                @if (recentWorkOrders.Count == 0)
+                                {
+                                    <div class="os-dashboard-empty os-dashboard-empty--compact">
+                                        <span><RadzenIcon Icon="assignment" /></span>
+                                        <p>@UiStrings.Dashboard.NoRecentWorkOrders</p>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="os-work-order-list">
+                                        @foreach (var workOrder in recentWorkOrders)
+                                        {
+                                            <div @key="workOrder.Id" class="os-work-order-row">
+                                                <span class="@($"os-work-order-type os-work-order-type--{WorkOrderTypeTone(workOrder.Type)}")">
+                                                    <RadzenIcon Icon="@WorkOrderTypeIcon(workOrder.Type)" />
+                                                </span>
+                                                <span class="os-work-order-copy">
+                                                    <strong>@DisplayWorkOrderNumber(workOrder)</strong>
+                                                    <small>@DisplayWorkOrderFlight(workOrder) · @workOrder.StationIata · @RelativeTime(workOrder.UpdatedAtUtc ?? workOrder.CreatedAtUtc)</small>
+                                                </span>
+                                                <StatusBadge Label="@WorkOrderStatusLabel(workOrder.Status)" Tone="@WorkOrderStatusTone(workOrder.Status)" />
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </article>
+                        </div>
+                    </section>
+                }
+
+                @if (!HasDashboardDataAccess)
+                {
+                    <section class="os-account-home">
+                        <span class="os-account-home-icon"><RadzenIcon Icon="space_dashboard" /></span>
+                        <div>
+                            <p class="os-eyebrow">@user.RoleName</p>
+                            <h2>@UiStrings.Dashboard.AccountHomeTitle</h2>
+                            <p>@UiStrings.Dashboard.AccountHomeDescription</p>
+                        </div>
+                        <RadzenButton Text="@UiStrings.Account.Title" Icon="manage_accounts" ButtonStyle="ButtonStyle.Primary"
+                                      Click="@(() => NavigateTo("/account"))" />
+                    </section>
+                }
+            }
+        </main>
     }
 </RequireAuth>
-
-@code {
-    private bool HasQuickActions => true;
-
-    protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
-
-    private async void OnAuthStateChanged()
-    {
-        try
-        {
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            await DispatchExceptionAsync(ex);
-        }
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        Auth.StateChanged -= OnAuthStateChanged;
-        return ValueTask.CompletedTask;
-    }
-}

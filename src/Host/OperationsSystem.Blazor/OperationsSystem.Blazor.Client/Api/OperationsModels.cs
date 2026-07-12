@@ -2,6 +2,12 @@ namespace OperationsSystem.Blazor.Client.Api;
 
 // Client-side mirrors of Operations API contracts (the backend stays authoritative).
 
+public sealed record OperationsDashboard(
+    int ScheduledFlights,
+    int InProgressFlights,
+    int CompletedFlights,
+    int CanceledFlights);
+
 public sealed record FlightListItem(
     Guid Id,
     string FlightNumber,

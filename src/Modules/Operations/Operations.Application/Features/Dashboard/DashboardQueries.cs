@@ -20,9 +20,19 @@ public sealed class GetOperationsDashboardQueryHandler(IOperationsDbContext db, 
         if (scopeResult.IsFailure)
             return scopeResult.Error;
 
-        var flights = db.Flights.AsNoTracking().AsQueryable();
-        if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
-            flights = flights.Where(f => f.Station.StationId == stationId);
+        var flights = FlightListQuery.ApplyScopeAndFilters(
+            db.Flights.AsNoTracking(),
+            scopeResult.Value,
+            new FlightListFilter(
+                Search: null,
+                StationId: null,
+                CustomerId: null,
+                OperationTypeId: null,
+                Statuses: null,
+                FromUtc: null,
+                ToUtc: null,
+                ServiceCategories: null),
+            db.WorkOrders.AsNoTracking());
 
         var scheduled = await flights.CountAsync(f => f.Status == FlightStatus.Scheduled, cancellationToken);
         var inProgress = await flights.CountAsync(f => f.Status == FlightStatus.InProgress, cancellationToken);

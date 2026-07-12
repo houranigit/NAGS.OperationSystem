@@ -687,7 +687,7 @@
         inset-inline-start: 0;
     }
 
-    :global([dir="rtl"]) .os-shell--rail .os-nav-children {
+    [dir="rtl"] .os-shell--rail .os-nav-children {
         inset-inline-start: auto;
         inset-inline-end: calc(100% + 0.7rem);
     }
@@ -730,11 +730,11 @@
     }
 
     /* RTL: slide the off-canvas sidebar in from the opposite edge */
-    :global([dir="rtl"]) .os-sidebar {
+    [dir="rtl"] .os-sidebar {
         transform: translateX(105%);
     }
 
-    :global([dir="rtl"]) .os-shell--nav-open .os-sidebar {
+    [dir="rtl"] .os-shell--nav-open .os-sidebar {
         transform: translateX(0);
     }
 }

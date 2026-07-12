@@ -107,9 +107,15 @@
   <data name="Nav.Countries" xml:space="preserve"><value>بلدان</value></data>
   <data name="Nav.ManpowerTypes" xml:space="preserve"><value>أنواع القوى العاملة</value></data>
   <data name="Nav.Licenses" xml:space="preserve"><value>التراخيص</value></data>
-  <data name="Nav.Stations" xml:space="preserve"><value>محطات</value></data>
-  <data name="Nav.Customers" xml:space="preserve"><value>عملاء</value></data>
-  <data name="Nav.StaffMembers" xml:space="preserve"><value>أعضاء هيئة التدريس</value></data>
+  <data name="Nav.Services" xml:space="preserve"><value>الخدمات</value></data>
+  <data name="Nav.OperationTypes" xml:space="preserve"><value>أنواع العمليات</value></data>
+  <data name="Nav.AircraftTypes" xml:space="preserve"><value>أنواع الطائرات</value></data>
+  <data name="Nav.Tools" xml:space="preserve"><value>الأدوات</value></data>
+  <data name="Nav.Materials" xml:space="preserve"><value>المواد</value></data>
+  <data name="Nav.GeneralSupports" xml:space="preserve"><value>خدمات الدعم العام</value></data>
+  <data name="Nav.Stations" xml:space="preserve"><value>المحطات</value></data>
+  <data name="Nav.Customers" xml:space="preserve"><value>العملاء</value></data>
+  <data name="Nav.StaffMembers" xml:space="preserve"><value>أعضاء الطاقم</value></data>
   <data name="Nav.ToggleMenu" xml:space="preserve"><value>تبديل التنقل</value></data>
   <data name="Nav.Language" xml:space="preserve"><value>لغة</value></data>
   <data name="Audit.Title" xml:space="preserve"><value>سجل التدقيق</value></data>
@@ -144,6 +150,56 @@
   <data name="Audit.Field.Status" xml:space="preserve"><value>الحالة</value></data>
   <data name="Audit.Entity.User" xml:space="preserve"><value>مستخدم</value></data>
   <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>مرحبًا بعودتك</value></data>
+  <data name="Dashboard.ControlCenter" xml:space="preserve"><value>مركز التحكم التشغيلي</value></data>
+  <data name="Dashboard.WelcomeTitle" xml:space="preserve"><value>مرحبًا بعودتك، {0}</value></data>
+  <data name="Dashboard.Description" xml:space="preserve"><value>عرض مباشر للرحلات وأوامر العمل والبيانات الأساسية ضمن نطاق وصولك.</value></data>
+  <data name="Dashboard.Live" xml:space="preserve"><value>مباشر</value></data>
+  <data name="Dashboard.Stale" xml:space="preserve"><value>مشكلة في التحديث</value></data>
+  <data name="Dashboard.UpdatedFormat" xml:space="preserve"><value>تم التحديث {0}</value></data>
+  <data name="Dashboard.WaitingForData" xml:space="preserve"><value>بانتظار أول تحديث</value></data>
+  <data name="Dashboard.AutoRefresh" xml:space="preserve"><value>تحديث تلقائي كل 30 ثانية</value></data>
+  <data name="Dashboard.RefreshData" xml:space="preserve"><value>تحديث البيانات</value></data>
+  <data name="Dashboard.MasterDataTitle" xml:space="preserve"><value>البيانات الأساسية</value></data>
+  <data name="Dashboard.MasterDataDescription" xml:space="preserve"><value>السجلات النشطة التي تدعم التخطيط والعمليات اليومية.</value></data>
+  <data name="Dashboard.ActiveRecords" xml:space="preserve"><value>سجلات نشطة</value></data>
+  <data name="Dashboard.OperationsTitle" xml:space="preserve"><value>عمليات الرحلات</value></data>
+  <data name="Dashboard.OperationsDescription" xml:space="preserve"><value>الحالة الحالية لجميع الرحلات الظاهرة ضمن نطاقك.</value></data>
+  <data name="Dashboard.Scheduled" xml:space="preserve"><value>مجدولة</value></data>
+  <data name="Dashboard.ScheduledHint" xml:space="preserve"><value>في قائمة العمليات</value></data>
+  <data name="Dashboard.InProgress" xml:space="preserve"><value>قيد التنفيذ</value></data>
+  <data name="Dashboard.InProgressHint" xml:space="preserve"><value>تتم خدمتها الآن</value></data>
+  <data name="Dashboard.Completed" xml:space="preserve"><value>مكتملة</value></data>
+  <data name="Dashboard.CompletedHint" xml:space="preserve"><value>أُغلقت بنجاح</value></data>
+  <data name="Dashboard.Canceled" xml:space="preserve"><value>ملغاة</value></data>
+  <data name="Dashboard.CanceledHint" xml:space="preserve"><value>عمليات ملغاة</value></data>
+  <data name="Dashboard.FlightMix" xml:space="preserve"><value>توزيع حالات الرحلات</value></data>
+  <data name="Dashboard.FlightMixDescription" xml:space="preserve"><value>جميع الرحلات الظاهرة حسب حالتها الحالية.</value></data>
+  <data name="Dashboard.TotalFlights" xml:space="preserve"><value>إجمالي الرحلات</value></data>
+  <data name="Dashboard.LiveBoardTitle" xml:space="preserve"><value>لوحة الرحلات المباشرة</value></data>
+  <data name="Dashboard.LiveBoardDescription" xml:space="preserve"><value>الرحلات المجدولة وقيد التنفيذ خلال الساعات الـ 48 القادمة.</value></data>
+  <data name="Dashboard.Flight" xml:space="preserve"><value>الرحلة</value></data>
+  <data name="Dashboard.Customer" xml:space="preserve"><value>العميل</value></data>
+  <data name="Dashboard.Station" xml:space="preserve"><value>المحطة</value></data>
+  <data name="Dashboard.Arrival" xml:space="preserve"><value>الوصول</value></data>
+  <data name="Dashboard.NoActiveFlights" xml:space="preserve"><value>لا توجد رحلات مجدولة أو قيد التنفيذ ضمن هذه الفترة.</value></data>
+  <data name="Dashboard.WorkOrdersTitle" xml:space="preserve"><value>دورة حياة أوامر العمل</value></data>
+  <data name="Dashboard.WorkOrdersDescription" xml:space="preserve"><value>حجم العمل المباشر وتقدم الاعتماد لأوامر العمل التي يمكنك الوصول إليها.</value></data>
+  <data name="Dashboard.Submitted" xml:space="preserve"><value>مُرسلة</value></data>
+  <data name="Dashboard.SubmittedHint" xml:space="preserve"><value>بانتظار المراجعة</value></data>
+  <data name="Dashboard.Returned" xml:space="preserve"><value>مُعادة</value></data>
+  <data name="Dashboard.ReturnedHint" xml:space="preserve"><value>تتطلب تعديلات</value></data>
+  <data name="Dashboard.Approved" xml:space="preserve"><value>مُعتمدة</value></data>
+  <data name="Dashboard.ApprovedHint" xml:space="preserve"><value>جاهزة ومرقمة</value></data>
+  <data name="Dashboard.Merged" xml:space="preserve"><value>مدمجة</value></data>
+  <data name="Dashboard.MergedHint" xml:space="preserve"><value>سجلات مجمعة</value></data>
+  <data name="Dashboard.RecentActivity" xml:space="preserve"><value>أوامر العمل الأخيرة</value></data>
+  <data name="Dashboard.RecentActivityDescription" xml:space="preserve"><value>أحدث تغييرات دورة الحياة ضمن نطاقك.</value></data>
+  <data name="Dashboard.NoRecentWorkOrders" xml:space="preserve"><value>لم يتم إنشاء أي أوامر عمل بعد.</value></data>
+  <data name="Dashboard.PartialDataWarning" xml:space="preserve"><value>تعذر تحديث بعض البيانات المباشرة. ما زالت آخر القيم الناجحة معروضة.</value></data>
+  <data name="Dashboard.AccountHomeTitle" xml:space="preserve"><value>مساحة عملك جاهزة</value></data>
+  <data name="Dashboard.AccountHomeDescription" xml:space="preserve"><value>لا يتضمن دورك لوحات العمليات أو البيانات الأساسية. لا يزال بإمكانك إدارة ملفك الشخصي وأمان حسابك.</value></data>
+  <data name="Dashboard.ScheduleFlight" xml:space="preserve"><value>جدولة رحلة</value></data>
+  <data name="Dashboard.CreateWorkOrder" xml:space="preserve"><value>إنشاء أمر عمل</value></data>
   <data name="Dashboard.Overview" xml:space="preserve"><value>ملخص</value></data>
   <data name="Dashboard.IdentityCard" xml:space="preserve"><value>الوصول إلى الحساب</value></data>
   <data name="Dashboard.PermissionsCard" xml:space="preserve"><value>الأذونات</value></data>
