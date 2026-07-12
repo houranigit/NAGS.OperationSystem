@@ -1,8 +1,12 @@
-<span class="os-pill os-pill--@Tone">@Label</span>
+<span class="@CssClass">@Label</span>
 
 @code {
     [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
 
     /// <summary>One of: success, warning, danger, neutral.</summary>
     [Parameter] public string Tone { get; set; } = "neutral";
+
+    [Parameter] public bool Compact { get; set; }
+
+    private string CssClass => $"os-pill os-pill--{Tone}{(Compact ? " os-pill--compact" : "")}";
 }

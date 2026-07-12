@@ -237,6 +237,17 @@ a {
 .os-pill--info { background: var(--os-color-info-bg); color: var(--os-color-info); }
 .os-pill--neutral { background: var(--os-color-neutral-bg); color: var(--os-color-text-muted); }
 
+.os-pill--compact {
+    padding: 0.125rem 0.4rem;
+    font-size: 0.5rem;
+    line-height: 1.4;
+}
+
+.os-pill--compact::before {
+    width: 0.3rem;
+    height: 0.3rem;
+}
+
 /* --- Row actions menu ---------------------------------------------------- */
 /* The per-row "more" trigger used inside grids. A quiet ghost button that opens
    a dropdown of the actions available for that row. */
