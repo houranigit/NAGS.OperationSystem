@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -173,7 +174,7 @@ fun VoiceAttachmentButton(
     val context = LocalContext.current
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var outputFile by remember { mutableStateOf<File?>(null) }
-    var elapsedMs by remember { mutableStateOf(0L) }
+    var elapsedMs by remember { mutableLongStateOf(0L) }
     var recording by remember { mutableStateOf(false) }
 
     fun stopAndCapture() {
@@ -273,7 +274,7 @@ fun DocumentAttachmentButton(
     AttachmentActionTile(
         label = "Docs",
         icon = Icons.Default.Description,
-        onClick = { picker.launch("*/*") },
+        onClick = { picker.launch("application/pdf") },
         modifier = modifier,
     )
 }

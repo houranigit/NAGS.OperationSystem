@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import com.nags.operations.ui.workorder.WorkOrderFormLimits
 
 /**
  * Confirmation dialog for cancelling a flight from the actions sheet. Filing a
@@ -41,6 +42,8 @@ import java.time.ZoneOffset
  * @param flightOffset Zone offset of the flight so the picker shows local time.
  * @param initialCanceledAtIso Existing cancellation time when editing; null seeds the picker to now.
  * @param isUpdate When true, the copy reflects editing an existing cancellation rather than filing a new one.
+ * @param isSubmitting True while the cancellation is being written durably to the local outbox.
+ * @param errorMessage Enqueue failure shown without closing the dialog, allowing the user to retry.
  * @param onConfirm Invoked with the chosen cancellation time as an ISO-8601 string.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +56,8 @@ fun CancelFlightDialog(
     initialCanceledAtIso: String? = null,
     initialReason: String? = null,
     isUpdate: Boolean = false,
+    isSubmitting: Boolean = false,
+    errorMessage: String? = null,
 ) {
     var canceledAt by remember(initialCanceledAtIso) {
         mutableStateOf(
@@ -63,7 +68,7 @@ fun CancelFlightDialog(
     var reason by remember(initialReason) { mutableStateOf(initialReason.orEmpty()) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -114,21 +119,30 @@ fun CancelFlightDialog(
                     defaultInitialIso = flightStdIso,
                     onIsoConfirmed = { canceledAt = it },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSubmitting,
                 )
                 // Cancellation work orders require a reason on the server.
                 androidx.compose.material3.OutlinedTextField(
                     value = reason,
-                    onValueChange = { reason = it },
+                    onValueChange = { reason = it.take(WorkOrderFormLimits.CancellationReason) },
                     label = { Text("Reason") },
                     placeholder = { Text("Why was this flight canceled?") },
                     minLines = 2,
+                    enabled = !isSubmitting,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (errorMessage != null) {
+                    Text(
+                        errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
-                enabled = reason.isNotBlank(),
+                enabled = reason.isNotBlank() && !isSubmitting,
                 onClick = {
                     canceledAt.takeIf { it.isNotBlank() }?.let { onConfirm(it, reason.trim()) }
                 },
@@ -136,11 +150,18 @@ fun CancelFlightDialog(
                     containerColor = MaterialTheme.colorScheme.error,
                 ),
             ) {
-                Text(if (isUpdate) "Update cancellation" else "Cancel flight", fontWeight = FontWeight.SemiBold)
+                Text(
+                    when {
+                        isSubmitting -> "Saving…"
+                        isUpdate -> "Update cancellation"
+                        else -> "Cancel flight"
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
                 Text(if (isUpdate) "Discard" else "Keep flight")
             }
         },

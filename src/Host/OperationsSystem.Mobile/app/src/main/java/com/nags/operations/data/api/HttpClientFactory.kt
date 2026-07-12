@@ -20,10 +20,12 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.CancellationException
 
 /**
  * Single source of truth for the JWT-aware Ktor [HttpClient]. The `Auth`
@@ -51,8 +53,10 @@ object HttpClientFactory {
         install(ContentNegotiation) {
             json(json)
         }
-        install(Logging) {
-            level = LogLevel.INFO
+        if (BuildConfig.DEBUG) {
+            install(Logging) {
+                level = LogLevel.INFO
+            }
         }
         install(Auth) {
             bearer {
@@ -73,8 +77,17 @@ object HttpClientFactory {
                             headers { /* explicitly no Authorization header */ }
                             setBody(RefreshRequest(refreshToken))
                         }
-                        if (!response.status.isSuccess()) {
-                            tokenStore.clear()
+                        if (response.status == HttpStatusCode.BadRequest ||
+                            response.status == HttpStatusCode.Unauthorized
+                        ) {
+                            // The refresh credential is definitively invalid. Keep the remembered
+                            // account/profile so the same user can sign in again without losing
+                            // offline work; authenticated navigation reacts to the token removal.
+                            tokenStore.clearTokens()
+                            null
+                        } else if (!response.status.isSuccess()) {
+                            // 429/5xx/network-edge failures are transient. Do not turn a backend
+                            // outage into a destructive local sign-out.
                             null
                         } else {
                             val body = response.body<MobileTokensResponse>()
@@ -86,19 +99,21 @@ object HttpClientFactory {
                             )
                             BearerTokens(body.accessToken, body.refreshToken)
                         }
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         // Network blip — keep the existing tokens so a retry can succeed.
                         null
                     } finally {
                         refreshClient.close()
                     }
                 }
-                // Login and refresh are anonymous calls — return false so they aren't
+                // Login, refresh, and logout are anonymous calls — return false so they aren't
                 // pre-decorated with a stale Authorization header from a prior session.
                 sendWithoutRequest { request ->
                     val path = request.url.toString()
                     !path.contains("/auth/mobile/login") &&
-                        !path.contains("/auth/mobile/refresh")
+                        !path.contains("/auth/mobile/refresh") &&
+                        !path.contains("/auth/mobile/logout")
                 }
             }
         }

@@ -9,6 +9,8 @@ import com.nags.operations.data.MobileTokensResponse
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.HttpClientFactory.bodyOrThrow
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.auth.authProvider
+import io.ktor.client.plugins.auth.providers.BearerAuthProvider
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -27,9 +29,9 @@ class AuthApi(
     private fun url(path: String) = HttpClientFactory.url(path)
 
     suspend fun login(email: String, password: String): MobileLoginResponse {
-        // Drop any stale token before the login call so the Bearer plugin's
-        // `sendWithoutRequest` filter doesn't pre-fetch a refresh on the way in.
-        tokenStore.clear()
+        // Login is excluded by sendWithoutRequest. Clearing Ktor's in-memory bearer cache here
+        // ensures the first authenticated call after login reloads the newly published token.
+        clearBearerTokenCache()
         val response = client.post(url("api/v1/identity/auth/mobile/login")) {
             contentType(ContentType.Application.Json)
             setBody(LoginRequest(email = email, password = password))
@@ -57,5 +59,9 @@ class AuthApi(
             contentType(ContentType.Application.Json)
             setBody(MobileLogoutRequest(refreshToken))
         }
+    }
+
+    fun clearBearerTokenCache() {
+        client.authProvider<BearerAuthProvider>()?.clearToken()
     }
 }

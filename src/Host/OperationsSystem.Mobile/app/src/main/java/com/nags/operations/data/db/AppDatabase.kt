@@ -90,8 +90,10 @@ abstract class AppDatabase : RoomDatabase() {
             return instance ?: synchronized(this) {
                 instance ?: Room
                     .databaseBuilder(context.applicationContext, AppDatabase::class.java, "operations.db")
-                    // Legacy (v ≤ 10) data targets the retired API contract; start clean.
-                    .fallbackToDestructiveMigration()
+                    // Only legacy schemas target the retired API contract. Starting with v11,
+                    // every schema change must provide an explicit migration so pending field
+                    // work can never be erased by an accidentally omitted migration.
+                    .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
                     .build()
                     .also { instance = it }
             }

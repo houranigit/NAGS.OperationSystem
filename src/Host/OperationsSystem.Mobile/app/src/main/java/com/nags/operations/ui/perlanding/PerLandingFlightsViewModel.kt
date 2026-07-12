@@ -118,10 +118,16 @@ class PerLandingFlightsViewModel(
     }
 
     /** Queues a flight cancellation (or updates an existing cancellation WO). */
-    fun cancelFlight(flightId: String, canceledAtIso: String, reason: String) {
+    fun cancelFlight(
+        flightId: String,
+        canceledAtIso: String,
+        reason: String,
+        onFinished: (success: Boolean, message: String?) -> Unit,
+    ) {
         cancelFlightInternal(
             allItems, outboxRepository, viewModelScope,
             flightId, canceledAtIso, reason, WorkOrderOutboxEntity.FLIGHT_KIND_PER_LANDING,
+            onFinished,
         )
     }
 

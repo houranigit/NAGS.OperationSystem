@@ -207,6 +207,10 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OwnerUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<Guid?>("WorkOrderId")
                         .HasColumnType("uniqueidentifier");
 

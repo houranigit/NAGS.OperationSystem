@@ -37,28 +37,31 @@ class NetworkMonitor(
         }
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                trySend(true)
+                trySend(hasValidatedActiveNetwork())
             }
 
             override fun onLost(network: Network) {
-                trySend(hasActiveCapability())
+                trySend(hasValidatedActiveNetwork())
             }
 
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                trySend(caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
+                // A captive portal advertises INTERNET but is not VALIDATED. Always inspect the
+                // active network so a callback from a secondary network cannot pause a healthy one.
+                trySend(hasValidatedActiveNetwork())
             }
         }
         val request = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
         cm.registerNetworkCallback(request, callback)
-        trySend(hasActiveCapability())
+        trySend(hasValidatedActiveNetwork())
         awaitClose { cm.unregisterNetworkCallback(callback) }
-    }.stateIn(scope, SharingStarted.Eagerly, initialValue = hasActiveCapability())
+    }.stateIn(scope, SharingStarted.Eagerly, initialValue = hasValidatedActiveNetwork())
 
-    private fun hasActiveCapability(): Boolean {
+    private fun hasValidatedActiveNetwork(): Boolean {
         val active = cm?.activeNetwork ?: return false
         val caps = cm.getNetworkCapabilities(active) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 }

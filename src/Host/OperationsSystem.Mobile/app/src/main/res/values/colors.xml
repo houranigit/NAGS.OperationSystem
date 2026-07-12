@@ -3,11 +3,5 @@
     <!-- NAGS brand palette. The deep red mirrors the portal icon. -->
     <color name="brand_red">#7E1414</color>
     <color name="brand_red_dark">#5A0E0E</color>
-    <color name="brand_red_light">#A52828</color>
-
     <color name="surface_light">#FFFAFA</color>
-    <color name="on_surface_light">#1A1416</color>
-
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
 </resources>

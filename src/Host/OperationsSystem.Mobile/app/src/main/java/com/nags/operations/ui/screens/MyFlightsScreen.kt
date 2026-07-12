@@ -175,9 +175,8 @@ fun MyFlightsTab(
                     sheetFlight = null
                     sheetCallbacks.onInviteTeammate(id)
                 },
-                onCancelFlight = { id, canceledAtIso, reason ->
-                    sheetFlight = null
-                    viewModel.cancelFlight(id, canceledAtIso, reason)
+                onCancelFlight = { id, canceledAtIso, reason, onFinished ->
+                    viewModel.cancelFlight(id, canceledAtIso, reason, onFinished)
                 },
             ),
             onDismiss = { sheetFlight = null },

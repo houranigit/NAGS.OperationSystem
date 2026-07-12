@@ -9,3 +9,11 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Release signing material must stay outside the repository.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key

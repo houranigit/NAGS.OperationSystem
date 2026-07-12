@@ -16,3 +16,38 @@ data class TaskAttachmentDraft(
     val capturedAtIso: String,
     val sizeBytes: Long,
 )
+
+/** Applies a potentially stale UI field edit without rolling back asynchronous attachments. */
+internal fun TaskFormRow.mergeNonAttachmentEdit(edited: TaskFormRow): TaskFormRow = edited.copy(
+    attachments = attachments,
+    existingAttachmentNames = existingAttachmentNames,
+)
+
+internal fun CreateWorkOrderFormState.withTaskAttachmentAdded(
+    taskLocalKey: Long,
+    attachment: TaskAttachmentDraft,
+): CreateWorkOrderFormState = copy(
+    tasks = tasks.map { task ->
+        if (
+            task.localKey == taskLocalKey &&
+            task.existingAttachmentNames.size + task.attachments.size < WorkOrderFormLimits.TaskAttachments
+        ) {
+            task.copy(attachments = task.attachments + attachment)
+        } else {
+            task
+        }
+    },
+)
+
+internal fun CreateWorkOrderFormState.withTaskAttachmentRemoved(
+    taskLocalKey: Long,
+    attachment: TaskAttachmentDraft,
+): CreateWorkOrderFormState = copy(
+    tasks = tasks.map { task ->
+        if (task.localKey != taskLocalKey) return@map task
+        val index = task.attachments.indexOf(attachment)
+        if (index < 0) task else task.copy(
+            attachments = task.attachments.toMutableList().apply { removeAt(index) },
+        )
+    },
+)

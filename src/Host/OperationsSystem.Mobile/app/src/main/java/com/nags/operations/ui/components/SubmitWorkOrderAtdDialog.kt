@@ -32,7 +32,7 @@ import java.time.ZoneOffset
  * confirm actual time of departure (ATD) via date/time pickers before the work order is posted.
  * Posting to the server is wired separately.
  *
- * @param defaultAtdIso Optional seed when reopening the same session (not read from the work-order form).
+ * @param defaultAtdIso Current form ATD, preserved from cached work orders and local drafts.
  * @param flightStdIso Default anchor when opening the picker if [iso] is blank (scheduled departure).
  */
 @OptIn(ExperimentalMaterial3Api::class)

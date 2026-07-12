@@ -4,13 +4,15 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.media.ExifInterface
 import android.net.Uri
 import android.util.Base64
+import androidx.exifinterface.media.ExifInterface
 import com.nags.operations.data.TaskAttachmentKindValue
 import com.nags.operations.ui.workorder.TaskAttachmentDraft
 import java.io.ByteArrayOutputStream
 import java.time.OffsetDateTime
+import java.util.Collections
+import java.util.IdentityHashMap
 
 // Long edge after downscaling; keeps detail readable while shedding most pixels.
 private const val MaxDimensionPx = 1920
@@ -44,22 +46,25 @@ internal fun compressImageToDraft(context: Context, uri: Uri): TaskAttachmentDra
             BitmapFactory.decodeStream(it, null, decodeOptions)
         } ?: return@runCatching null
 
-        val orientation = readExifOrientation(context, uri)
-        val rotated = applyOrientation(decoded, orientation)
-        val scaled = scaleToMaxDimension(rotated, MaxDimensionPx)
+        var rotated: Bitmap? = null
+        var scaled: Bitmap? = null
+        try {
+            val orientation = readExifOrientation(context, uri)
+            rotated = applyOrientation(decoded, orientation)
+            scaled = scaleToMaxDimension(rotated, MaxDimensionPx)
 
-        val bytes = encodeJpegToTarget(scaled, TargetBytes)
-        if (scaled !== decoded) scaled.recycle()
-        decoded.recycle()
-
-        TaskAttachmentDraft(
-            kind = TaskAttachmentKindValue.Image,
-            contentType = "image/jpeg",
-            fileName = "photo_${System.currentTimeMillis()}.jpg",
-            base64 = Base64.encodeToString(bytes, Base64.NO_WRAP),
-            capturedAtIso = OffsetDateTime.now().toString(),
-            sizeBytes = bytes.size.toLong(),
-        )
+            val bytes = encodeJpegToTarget(scaled, TargetBytes)
+            TaskAttachmentDraft(
+                kind = TaskAttachmentKindValue.Image,
+                contentType = "image/jpeg",
+                fileName = "photo_${System.currentTimeMillis()}.jpg",
+                base64 = Base64.encodeToString(bytes, Base64.NO_WRAP),
+                capturedAtIso = OffsetDateTime.now().toString(),
+                sizeBytes = bytes.size.toLong(),
+            )
+        } finally {
+            recycleDistinct(decoded, rotated, scaled)
+        }
     }.getOrNull()
 }
 
@@ -102,8 +107,14 @@ private fun applyOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
         else -> return bitmap
     }
     val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-    if (rotated !== bitmap) bitmap.recycle()
     return rotated
+}
+
+private fun recycleDistinct(vararg bitmaps: Bitmap?) {
+    val seen = Collections.newSetFromMap(IdentityHashMap<Bitmap, Boolean>())
+    bitmaps.filterNotNull().forEach { bitmap ->
+        if (seen.add(bitmap) && !bitmap.isRecycled) bitmap.recycle()
+    }
 }
 
 private fun scaleToMaxDimension(bitmap: Bitmap, maxDimension: Int): Bitmap {

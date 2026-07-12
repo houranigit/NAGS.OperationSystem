@@ -23,6 +23,8 @@ data class OutboxPayload(
     val scratchFlight: ScratchFlightInput? = null,
     /** Set only for [Kind.CancelFlight]. */
     val cancelFlight: CancelFlightInput? = null,
+    /** Base64 row version captured with an editable work order; required for safe offline updates. */
+    val baseRowVersion: String? = null,
 ) {
     @Serializable
     enum class Kind {

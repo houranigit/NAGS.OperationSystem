@@ -7,7 +7,8 @@ namespace Operations.Api.Mobile;
 
 /// <summary>
 /// REST catch-up for the offline-sync channel. The client calls this after a SignalR reconnect
-/// with the max cursor it last applied; the server answers with one <c>refresh</c> envelope per
+/// with the oldest cursor its table caches have all applied; the server answers with one
+/// <c>refresh</c> envelope per
 /// requested table, telling the client to re-pull those tables through the bulk read endpoints.
 /// This is the deliberate pragmatic model: no server-side change log or tombstones — a full-table
 /// refresh reconciles any pushes missed while disconnected.

@@ -11,6 +11,7 @@ import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.sync.SyncCoordinator
 import io.reactivex.rxjava3.core.Single
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -27,6 +28,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.OffsetDateTime
 import kotlin.coroutines.resume
 
 /**
@@ -73,32 +76,44 @@ class RealtimeChannel(
     val lastEventAt: StateFlow<Long?> = _lastEventAt.asStateFlow()
 
     @Volatile private var loop: Job? = null
+    @Volatile private var acceptingChanges = false
+    private val lifecycleLock = Any()
+    private val applyJobs = mutableSetOf<Job>()
 
     /** Idempotent — wires up the connect/reconnect/auth lifecycle exactly once per process. */
     fun start() {
-        if (loop?.isActive == true) return
-        loop = appScope.launch {
-            combine(
-                tokenStore.accessTokenFlow,
-                networkMonitor.isOnline,
-            ) { token, online -> (token != null) && online }
-                .distinctUntilChanged()
-                .collectLatest { canConnect ->
-                    if (!canConnect) {
-                        // Either the JWT disappeared (logout) or the radio dropped.
-                        // collectLatest will give us a fresh sweep when both come back.
-                        _state.value = RealtimeChannelState.Disconnected
-                        return@collectLatest
+        synchronized(lifecycleLock) {
+            if (loop?.isActive == true) return
+            acceptingChanges = true
+            loop = appScope.launch {
+                combine(
+                    tokenStore.accessTokenFlow,
+                    networkMonitor.isOnline,
+                ) { token, online -> (token != null) && online }
+                    .distinctUntilChanged()
+                    .collectLatest { canConnect ->
+                        if (!canConnect) {
+                            // Either the JWT disappeared (logout) or the radio dropped.
+                            // collectLatest will give us a fresh sweep when both come back.
+                            _state.value = RealtimeChannelState.Disconnected
+                            return@collectLatest
+                        }
+                        runConnectionLoop()
                     }
-                    runConnectionLoop()
-                }
+            }
         }
     }
 
     /** Tear down the channel — used by the explicit sign-out path. */
     suspend fun stop() {
-        loop?.cancelAndJoin()
-        loop = null
+        val connectionJob = synchronized(lifecycleLock) {
+            acceptingChanges = false
+            loop.also { loop = null }
+        }
+        connectionJob?.cancelAndJoin()
+        val inFlightApplies = synchronized(lifecycleLock) { applyJobs.toList() }
+        inFlightApplies.forEach { it.cancel() }
+        inFlightApplies.forEach { it.join() }
         _state.value = RealtimeChannelState.Disconnected
     }
 
@@ -162,23 +177,31 @@ class RealtimeChannel(
     }
 
     private fun handleIncoming(change: MobileSyncChangeDto) {
-        _lastEventAt.value = System.currentTimeMillis()
-        appScope.launch {
-            // applyChange is suspending; the SDK callback fires on its own thread
-            // pool, so we marshal back onto our app scope to keep DB writes off
-            // the SignalR I/O threads.
-            coordinator.applyChange(change)
+        val job = synchronized(lifecycleLock) {
+            if (!acceptingChanges) return
+            appScope.launch(start = CoroutineStart.LAZY) {
+                // applyChange is suspending; the SDK callback fires on its own thread
+                // pool, so we marshal back onto our app scope to keep DB writes off
+                // the SignalR I/O threads.
+                coordinator.applyChange(change)
+            }.also { applyJobs += it }
         }
+        _lastEventAt.value = System.currentTimeMillis()
+        job.invokeOnCompletion {
+            synchronized(lifecycleLock) { applyJobs -= job }
+        }
+        job.start()
     }
 
     private suspend fun runCatchup() {
         val cursors = getCursors()
-        // We treat the freshest per-table cursor as "if anything moved since
-        // the oldest cache, we want to know". Server returns one refresh
-        // envelope per table; the coordinator turns each into a full re-sync.
-        val since = cursors.values.filterNotNull().maxOrNull()
+        // A null cursor means at least one table has never synced, so request an unbounded catch-up.
+        // Otherwise start at the oldest table; using the newest cursor can skip a lagging table.
+        val since = oldestCompleteCursor(cursors)
         val envelopes = mobileApi.syncChanges(tables = null, since = since)
-        for (envelope in envelopes) {
+        // Every catalog refresh uses the same aggregate endpoint. Applying six equivalent
+        // envelopes would download and replace that payload six times on each reconnect.
+        for (envelope in coalesceCatalogRefreshes(envelopes)) {
             coordinator.applyChange(envelope)
         }
     }
@@ -225,6 +248,37 @@ class RealtimeChannel(
         private const val TAG = "RealtimeChannel"
         private const val HUB_PATH = "hubs/mobile-sync"
         private const val CHANGE_METHOD = "change"
+    }
+}
+
+internal fun oldestCompleteCursor(cursors: Map<String, String?>): String? {
+    if (cursors.isEmpty() || cursors.values.any { it.isNullOrBlank() }) return null
+    val parsed = cursors.values.map { raw ->
+        val value = raw ?: return null
+        val instant = runCatching { OffsetDateTime.parse(value).toInstant() }
+            .recoverCatching { Instant.parse(value) }
+            .getOrNull()
+            ?: return null
+        value to instant
+    }
+    return parsed.minByOrNull { it.second }?.first
+}
+
+internal fun coalesceCatalogRefreshes(
+    envelopes: List<MobileSyncChangeDto>,
+): List<MobileSyncChangeDto> {
+    var catalogRefreshSeen = false
+    return envelopes.filter { envelope ->
+        val isCatalogRefresh = envelope.op == MobileSyncOps.Refresh &&
+            envelope.table in MobileSyncTables.CatalogTables
+        if (!isCatalogRefresh) {
+            true
+        } else if (!catalogRefreshSeen) {
+            catalogRefreshSeen = true
+            true
+        } else {
+            false
+        }
     }
 }
 

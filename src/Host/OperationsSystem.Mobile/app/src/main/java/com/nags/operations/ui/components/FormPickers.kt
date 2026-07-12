@@ -37,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,7 +64,9 @@ fun <T> InlineSearchableDropdownField(
     options: List<T>,
     renderOption: (T) -> String,
     onSelect: (T) -> Unit,
+    onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
+    hasSelection: Boolean = selectedText.isNotEmpty(),
     readOnly: Boolean = false,
     isError: Boolean = false,
     supportingText: @Composable (() -> Unit)? = null,
@@ -71,7 +74,18 @@ fun <T> InlineSearchableDropdownField(
     matches: ((T, String) -> Boolean)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var query by remember(selectedText) { mutableStateOf(selectedText) }
+    var query by remember { mutableStateOf(selectedText) }
+    var previousSelectedText by remember { mutableStateOf(selectedText) }
+    var localSelectionActive by remember(hasSelection, selectedText) { mutableStateOf(hasSelection) }
+
+    // Hydration/draft changes must update the label, but clearing a selection because the user is
+    // typing must not erase the search query they just entered.
+    LaunchedEffect(selectedText) {
+        if (selectedText.isNotEmpty() || query == previousSelectedText) {
+            query = selectedText
+        }
+        previousSelectedText = selectedText
+    }
 
     val filtered = remember(options, query) {
         if (query.isBlank()) options
@@ -92,6 +106,10 @@ fun <T> InlineSearchableDropdownField(
             value = query,
             onValueChange = {
                 query = it
+                if (localSelectionActive && it != selectedText) {
+                    localSelectionActive = false
+                    onClearSelection()
+                }
                 if (!readOnly) expanded = true
             },
             readOnly = readOnly,
@@ -107,6 +125,10 @@ fun <T> InlineSearchableDropdownField(
                     if (query.isNotEmpty() && !readOnly) {
                         IconButton(onClick = {
                             query = ""
+                            if (localSelectionActive) {
+                                localSelectionActive = false
+                                onClearSelection()
+                            }
                             expanded = true
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "Clear")
@@ -146,6 +168,7 @@ fun <T> InlineSearchableDropdownField(
                         onClick = {
                             onSelect(option)
                             query = renderOption(option)
+                            localSelectionActive = true
                             expanded = false
                         },
                     )
@@ -248,7 +271,7 @@ private fun <T> MultiSelectOptionSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
     var localKeys by remember(initialSelectedKeys) {
-        mutableStateOf(initialSelectedKeys.toMutableSet())
+        mutableStateOf(initialSelectedKeys.toSet())
     }
 
     val filtered = remember(options, query) {
@@ -327,9 +350,7 @@ private fun <T> MultiSelectOptionSheet(
                                 MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
                             ),
                             onClick = {
-                                localKeys = localKeys.toMutableSet().apply {
-                                    if (checked) remove(key) else add(key)
-                                }
+                                localKeys = if (checked) localKeys - key else localKeys + key
                             },
                         ) {
                             Row(
@@ -341,9 +362,7 @@ private fun <T> MultiSelectOptionSheet(
                                 Checkbox(
                                     checked = checked,
                                     onCheckedChange = { now ->
-                                        localKeys = localKeys.toMutableSet().apply {
-                                            if (now) add(key) else remove(key)
-                                        }
+                                        localKeys = if (now) localKeys + key else localKeys - key
                                     },
                                 )
                                 Column(modifier = Modifier.weight(1f)) {

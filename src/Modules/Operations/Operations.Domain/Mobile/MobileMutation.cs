@@ -17,6 +17,12 @@ public sealed class MobileMutation
     /// <summary>Mutation kind, for diagnostics (e.g. submit-work-order, cancel-flight).</summary>
     public string Kind { get; private set; } = null!;
 
+    /// <summary>
+    /// SHA-256 of the semantic request. Reusing an idempotency key with a different request is a
+    /// conflict instead of silently replaying the first mutation's result.
+    /// </summary>
+    public string? RequestFingerprint { get; private set; }
+
     public Guid? WorkOrderId { get; private set; }
 
     public Guid? FlightId { get; private set; }
@@ -33,12 +39,14 @@ public sealed class MobileMutation
         Guid? workOrderId,
         Guid? flightId,
         Guid? clientFlightId,
+        string requestFingerprint,
         DateTimeOffset now) =>
         new()
         {
             ClientMutationId = clientMutationId,
             OwnerUserId = ownerUserId,
             Kind = kind,
+            RequestFingerprint = requestFingerprint,
             WorkOrderId = workOrderId,
             FlightId = flightId,
             ClientFlightId = clientFlightId,

@@ -12,7 +12,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -111,7 +111,7 @@ fun AdHocFlightsTab(
                 ) {
                     val noFiltersActive = state.search.isBlank() && state.statusFilter == null
                     EmptyState(
-                        icon = Icons.Default.Assignment,
+                        icon = Icons.AutoMirrored.Filled.Assignment,
                         title = if (noFiltersActive) "No Ad Hoc flights right now" else "No matching Ad Hoc flights",
                         message = when {
                             noFiltersActive ->
@@ -161,9 +161,8 @@ fun AdHocFlightsTab(
                     sheetFlight = null
                     sheetCallbacks.onReturnToRamp(id)
                 },
-                onCancelFlight = { id, canceledAtIso, reason ->
-                    sheetFlight = null
-                    viewModel.cancelFlight(id, canceledAtIso, reason)
+                onCancelFlight = { id, canceledAtIso, reason, onFinished ->
+                    viewModel.cancelFlight(id, canceledAtIso, reason, onFinished)
                 },
             ),
             onDismiss = { sheetFlight = null },

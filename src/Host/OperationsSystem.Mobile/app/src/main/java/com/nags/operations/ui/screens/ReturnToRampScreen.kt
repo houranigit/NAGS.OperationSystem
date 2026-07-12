@@ -57,7 +57,9 @@ fun ReturnToRampScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val appCtx = LocalContext.current.applicationContext
 
-    BackHandler(onBack = onBack)
+    BackHandler {
+        if (!state.isSubmitting) onBack()
+    }
 
     Scaffold(
         topBar = {
@@ -66,7 +68,7 @@ fun ReturnToRampScreen(
                     Text("Return to ramp", fontWeight = FontWeight.SemiBold)
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, enabled = !state.isSubmitting) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -191,6 +193,8 @@ fun ReturnToRampScreen(
                             materials = state.catalogMaterials,
                             generalSupports = state.catalogGeneralSupports,
                             onChange = viewModel::replaceTask,
+                            onAttachmentAdded = { viewModel.addTaskAttachment(row.localKey, it) },
+                            onAttachmentRemoved = { viewModel.removeTaskAttachment(row.localKey, it) },
                             onRemove = { viewModel.removeTask(row.localKey) },
                             canRemove = true,
                         )
@@ -208,7 +212,7 @@ fun ReturnToRampScreen(
                     Button(
                         onClick = {
                             viewModel.submitValidateAndEnqueue(
-                                onInstantNavigate = onBack,
+                                onEnqueuedNavigate = onBack,
                                 onFinished = { outcome ->
                                     when (outcome) {
                                         is SubmitOfflineResult.Enqueued -> { }
@@ -223,6 +227,7 @@ fun ReturnToRampScreen(
                             .fillMaxWidth()
                             .padding(top = 8.dp),
                         shape = RoundedCornerShape(14.dp),
+                        enabled = !state.isSubmitting,
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
                     ) {
                         Text("Submit")

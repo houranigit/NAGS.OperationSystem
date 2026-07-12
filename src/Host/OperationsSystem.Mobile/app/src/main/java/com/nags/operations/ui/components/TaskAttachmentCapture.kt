@@ -40,12 +40,18 @@ internal fun captureAttachmentInternal(context: Context, uri: Uri, kind: String)
         val type = resolver.getType(uri) ?: when (kind) {
             TaskAttachmentKindValue.Image -> "image/jpeg"
             TaskAttachmentKindValue.Voice -> "audio/mp4"
+            TaskAttachmentKindValue.Document -> "application/pdf"
             else -> "application/octet-stream"
         }
         val name = uri.lastPathSegment ?: when (kind) {
             TaskAttachmentKindValue.Image -> "photo.jpg"
             TaskAttachmentKindValue.Voice -> "voice.m4a"
             else -> "document"
+        }
+        if (kind == TaskAttachmentKindValue.Document &&
+            (type != "application/pdf" || !bytes.hasPdfSignature())
+        ) {
+            return@runCatching null
         }
         TaskAttachmentDraft(
             kind = kind,
@@ -57,3 +63,7 @@ internal fun captureAttachmentInternal(context: Context, uri: Uri, kind: String)
         )
     }.getOrNull()
 }
+
+private fun ByteArray.hasPdfSignature(): Boolean =
+    size >= 5 && this[0] == 0x25.toByte() && this[1] == 0x50.toByte() &&
+        this[2] == 0x44.toByte() && this[3] == 0x46.toByte() && this[4] == 0x2D.toByte()

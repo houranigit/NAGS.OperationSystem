@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.CardDefaults
@@ -26,10 +27,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nags.operations.data.TaskTypeKind
@@ -282,6 +287,7 @@ fun ServiceLineCard(
                     onSelected = { svc ->
                         onChange(row.copy(serviceId = svc.serviceId))
                     },
+                    onCleared = { onChange(row.copy(serviceId = null)) },
                     isError = lineErrors?.serviceType != null,
                     supportingText = fieldErrorSupportingText(lineErrors?.serviceType),
                 )
@@ -291,6 +297,7 @@ fun ServiceLineCard(
                     onSelected = { emp ->
                         onChange(row.copy(employeeId = emp.staffMemberId))
                     },
+                    onCleared = { onChange(row.copy(employeeId = null)) },
                     isError = lineErrors?.performer != null,
                     supportingText = fieldErrorSupportingText(lineErrors?.performer),
                 )
@@ -323,13 +330,17 @@ fun ServiceLineCard(
                 }
                 OutlinedTextField(
                     value = row.description,
-                    onValueChange = { onChange(row.copy(description = it)) },
+                    onValueChange = {
+                        onChange(row.copy(description = it.take(WorkOrderFormLimits.LineDescription)))
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = fieldShape,
                     label = { Text("Notes (optional)") },
                     placeholder = { Text("Optional detail for this service") },
                     minLines = 2,
                     maxLines = 4,
+                    isError = lineErrors?.description != null,
+                    supportingText = fieldErrorSupportingText(lineErrors?.description),
                 )
             }
         }
@@ -349,6 +360,8 @@ fun TaskLineCard(
     materials: List<MaterialEntity>,
     generalSupports: List<GeneralSupportEntity>,
     onChange: (TaskFormRow) -> Unit,
+    onAttachmentAdded: (TaskAttachmentDraft) -> Unit,
+    onAttachmentRemoved: (TaskAttachmentDraft) -> Unit,
     onRemove: () -> Unit,
     canRemove: Boolean,
 ) {
@@ -432,6 +445,13 @@ fun TaskLineCard(
                         modifier = Modifier.weight(1f),
                     )
                 }
+                lineErrors?.taskType?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
 
                 val employeeOrderedIds = remember(employees) { employees.map { it.staffMemberId } }
                 MultiSelectDropdownField(
@@ -475,7 +495,22 @@ fun TaskLineCard(
                     renderOption = { it.name },
                     readOnly = tools.isEmpty(),
                     onSelectionChange = { keys ->
-                        onChange(row.copy(toolIds = idsPreservingCatalogOrder(keys, toolOrderedIds)))
+                        val ids = idsPreservingCatalogOrder(keys, toolOrderedIds)
+                        onChange(
+                            row.copy(
+                                toolIds = ids,
+                                toolQuantities = quantitiesForSelection(ids, row.toolQuantities),
+                            ),
+                        )
+                    },
+                )
+                ResourceQuantityFields(
+                    selectedIds = row.toolIds,
+                    namesById = tools.associate { it.toolId to it.name },
+                    quantities = row.toolQuantities,
+                    error = lineErrors?.tools,
+                    onQuantityChanged = { id, quantity ->
+                        onChange(row.copy(toolQuantities = row.toolQuantities + (id to quantity)))
                     },
                 )
                 val materialOrderedIds = remember(materials) { materials.map { it.materialId } }
@@ -491,7 +526,22 @@ fun TaskLineCard(
                     renderOption = { it.name },
                     readOnly = materials.isEmpty(),
                     onSelectionChange = { keys ->
-                        onChange(row.copy(materialIds = idsPreservingCatalogOrder(keys, materialOrderedIds)))
+                        val ids = idsPreservingCatalogOrder(keys, materialOrderedIds)
+                        onChange(
+                            row.copy(
+                                materialIds = ids,
+                                materialQuantities = quantitiesForSelection(ids, row.materialQuantities),
+                            ),
+                        )
+                    },
+                )
+                ResourceQuantityFields(
+                    selectedIds = row.materialIds,
+                    namesById = materials.associate { it.materialId to it.name },
+                    quantities = row.materialQuantities,
+                    error = lineErrors?.materials,
+                    onQuantityChanged = { id, quantity ->
+                        onChange(row.copy(materialQuantities = row.materialQuantities + (id to quantity)))
                     },
                 )
                 val gsOrderedIds = remember(generalSupports) { generalSupports.map { it.generalSupportId } }
@@ -509,9 +559,27 @@ fun TaskLineCard(
                     renderOption = { it.name },
                     readOnly = generalSupports.isEmpty(),
                     onSelectionChange = { keys ->
+                        val ids = idsPreservingCatalogOrder(keys, gsOrderedIds)
                         onChange(
                             row.copy(
-                                generalSupportIds = idsPreservingCatalogOrder(keys, gsOrderedIds),
+                                generalSupportIds = ids,
+                                generalSupportQuantities = quantitiesForSelection(
+                                    ids,
+                                    row.generalSupportQuantities,
+                                ),
+                            ),
+                        )
+                    },
+                )
+                ResourceQuantityFields(
+                    selectedIds = row.generalSupportIds,
+                    namesById = generalSupports.associate { it.generalSupportId to it.name },
+                    quantities = row.generalSupportQuantities,
+                    error = lineErrors?.generalSupports,
+                    onQuantityChanged = { id, quantity ->
+                        onChange(
+                            row.copy(
+                                generalSupportQuantities = row.generalSupportQuantities + (id to quantity),
                             ),
                         )
                     },
@@ -546,54 +614,143 @@ fun TaskLineCard(
                 }
 
                 Text(
-                    text = "Attachments",
+                    text = "Attachments (${row.existingAttachmentNames.size + row.attachments.size}/${WorkOrderFormLimits.TaskAttachments})",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    PhotoAttachmentButton(
-                        modifier = Modifier.weight(1f),
-                        onAttachment = { onChange(row.copy(attachments = row.attachments + it)) },
-                    )
-                    VoiceAttachmentButton(
-                        modifier = Modifier.weight(1f),
-                        onAttachment = { onChange(row.copy(attachments = row.attachments + it)) },
-                    )
-                    DocumentAttachmentButton(
-                        modifier = Modifier.weight(1f),
-                        onAttachment = { onChange(row.copy(attachments = row.attachments + it)) },
+                if (row.existingAttachmentNames.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            "Already uploaded",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        row.existingAttachmentNames.forEach { name ->
+                            Text(
+                                "• $name",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                val attachmentCount = row.existingAttachmentNames.size + row.attachments.size
+                if (attachmentCount < WorkOrderFormLimits.TaskAttachments) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        PhotoAttachmentButton(
+                            modifier = Modifier.weight(1f),
+                            onAttachment = onAttachmentAdded,
+                        )
+                        VoiceAttachmentButton(
+                            modifier = Modifier.weight(1f),
+                            onAttachment = onAttachmentAdded,
+                        )
+                        DocumentAttachmentButton(
+                            modifier = Modifier.weight(1f),
+                            onAttachment = onAttachmentAdded,
+                        )
+                    }
+                } else {
+                    Text(
+                        "Attachment limit reached. Remove a new attachment before adding another.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (row.attachments.isNotEmpty()) {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        row.attachments.forEachIndexed { idx, att ->
+                        row.attachments.forEach { att ->
                             TaskAttachmentRow(
                                 attachment = att,
-                                onRemove = {
-                                    val next = row.attachments.toMutableList().apply { removeAt(idx) }
-                                    onChange(row.copy(attachments = next))
-                                },
+                                onRemove = { onAttachmentRemoved(att) },
                             )
                         }
                     }
                 }
+                lineErrors?.attachments?.let { message ->
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
 
                 OutlinedTextField(
                     value = row.description,
-                    onValueChange = { onChange(row.copy(description = it)) },
+                    onValueChange = {
+                        onChange(row.copy(description = it.take(WorkOrderFormLimits.LineDescription)))
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = fieldShape,
                     label = { Text("Description (optional)") },
                     placeholder = { Text("What was observed or corrected") },
                     minLines = 2,
                     maxLines = 4,
+                    isError = lineErrors?.description != null,
+                    supportingText = fieldErrorSupportingText(lineErrors?.description),
                 )
             }
         }
     }
 }
+
+@Composable
+private fun ResourceQuantityFields(
+    selectedIds: List<String>,
+    namesById: Map<String, String>,
+    quantities: Map<String, Double>,
+    error: String?,
+    onQuantityChanged: (String, Double) -> Unit,
+) {
+    if (selectedIds.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        selectedIds.forEach { id ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = namesById[id] ?: "Selected item",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val quantity = resourceQuantity(quantities, id)
+                var quantityText by remember(id) { mutableStateOf(formatQuantity(quantity)) }
+                OutlinedTextField(
+                    value = quantityText,
+                    onValueChange = { raw ->
+                        if (raw.count { it == '.' } <= 1 && raw.all { it.isDigit() || it == '.' }) {
+                            quantityText = raw
+                            onQuantityChanged(id, raw.toDoubleOrNull() ?: 0.0)
+                        }
+                    },
+                    modifier = Modifier.width(112.dp),
+                    label = { Text("Quantity") },
+                    singleLine = true,
+                    isError = !isValidResourceQuantity(quantity),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+            }
+        }
+        error?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+private fun formatQuantity(value: Double): String =
+    if (value.isFinite() && value % 1.0 == 0.0) value.toLong().toString() else value.toString()

@@ -51,8 +51,19 @@ data class FlightSheetCallbacks(
     val onCompleteWorkOrderDraft: (draftId: String) -> Unit = {},
     val onOpenWorkOrder: (flightId: String) -> Unit = {},
     val onInviteTeammate: (flightId: String) -> Unit = {},
-    /** Queue a flight cancellation with the chosen cancellation time (ISO-8601) and reason. */
-    val onCancelFlight: (flightId: String, canceledAtIso: String, reason: String) -> Unit = { _, _, _ -> },
+    /**
+     * Durably queue a flight cancellation, then report whether the local outbox write succeeded.
+     * The sheet remains open until [onFinished] reports success so an enqueue failure cannot be
+     * mistaken for a submitted cancellation.
+     */
+    val onCancelFlight: (
+        flightId: String,
+        canceledAtIso: String,
+        reason: String,
+        onFinished: (success: Boolean, message: String?) -> Unit,
+    ) -> Unit = { _, _, _, onFinished ->
+        onFinished(false, "Cancellation is unavailable.")
+    },
     val onReturnToRamp: (flightId: String) -> Unit = {},
 )
 
@@ -68,7 +79,9 @@ fun FlightDetailsActionsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val decision = deriveFlightSummaryActions(flight)
-    var showCancelDialog by remember { mutableStateOf(false) }
+    var showCancelDialog by remember(flight.id) { mutableStateOf(false) }
+    var cancelSubmitting by remember(flight.id) { mutableStateOf(false) }
+    var cancelError by remember(flight.id) { mutableStateOf<String?>(null) }
     // True when the caller's work order is itself a cancellation: the "update" action edits
     // the cancellation details (dialog) instead of opening the regular work-order form, and
     // return-to-ramp is meaningless for a cancelled flight.
@@ -117,7 +130,10 @@ fun FlightDetailsActionsSheet(
                         SheetActionButton(
                             icon = Icons.Default.Cancel,
                             label = "Update cancellation",
-                            onClick = { showCancelDialog = true },
+                            onClick = {
+                                cancelError = null
+                                showCancelDialog = true
+                            },
                             primary = true,
                         )
                     } else {
@@ -200,7 +216,10 @@ fun FlightDetailsActionsSheet(
                 SheetActionButton(
                     icon = Icons.Default.Cancel,
                     label = "Cancel work order",
-                    onClick = { showCancelDialog = true },
+                    onClick = {
+                        cancelError = null
+                        showCancelDialog = true
+                    },
                     primary = false,
                 )
             }
@@ -215,11 +234,26 @@ fun FlightDetailsActionsSheet(
             initialCanceledAtIso = flight.myWorkOrder?.canceledAtUtc,
             initialReason = flight.myWorkOrder?.cancellationReason,
             isUpdate = myWorkOrderIsCancellation,
-            onDismiss = { showCancelDialog = false },
+            isSubmitting = cancelSubmitting,
+            errorMessage = cancelError,
+            onDismiss = {
+                if (!cancelSubmitting) {
+                    showCancelDialog = false
+                    cancelError = null
+                }
+            },
             onConfirm = { canceledAtIso, reason ->
-                showCancelDialog = false
-                callbacks.onCancelFlight(flight.id, canceledAtIso, reason)
-                onDismiss()
+                cancelSubmitting = true
+                cancelError = null
+                callbacks.onCancelFlight(flight.id, canceledAtIso, reason) { success, message ->
+                    cancelSubmitting = false
+                    if (success) {
+                        showCancelDialog = false
+                        onDismiss()
+                    } else {
+                        cancelError = message ?: "Could not save the cancellation. Please try again."
+                    }
+                }
             },
         )
     }

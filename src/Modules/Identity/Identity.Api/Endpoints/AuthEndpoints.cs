@@ -135,7 +135,7 @@ internal static class AuthEndpoints
         {
             var result = await sender.Send(new LogoutCommand(request.RefreshToken), ct);
             return result.ToNoContent();
-        }).RequireAuthorization();
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
 
         auth.MapPost("/activate", async (ActivateAccountRequest request, ISender sender, CancellationToken ct) =>
         {

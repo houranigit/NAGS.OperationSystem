@@ -125,6 +125,25 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     // --- Mobile writes (outbox endpoints) -----------------------------------------
 
     [Fact]
+    public async Task Mobile_write_rejects_non_uuid_mutation_ids()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var flightId = await ScheduleFlightAsync(admin, refs, "MOB190", [staff.StaffId]);
+
+        var response = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = "../datastore",
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId)
+            });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Mobile_work_order_submit_is_idempotent_by_client_mutation_id()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -152,6 +171,17 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         replay!.Idempotent.ShouldBeTrue();
         replay.WorkOrderId.ShouldBe(created.WorkOrderId);
 
+        // An idempotency key is bound to the original semantic request. Reusing it for changed
+        // content must be rejected instead of pretending the changed work was accepted.
+        var mismatched = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId,
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId, remarks: "Changed payload")
+            });
+        mismatched.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
         // The caller's active work order is embedded on the my-flights row for offline hydration.
         var myFlights = await staff.Client.GetFromJsonAsync<List<MobileFlight>>($"{MobileBase}/flights/my");
         var flight = myFlights!.Single(f => f.Id == flightId);
@@ -159,6 +189,56 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         flight.MyWorkOrder.ShouldNotBeNull();
         flight.MyWorkOrder!.Id.ShouldBe(created.WorkOrderId);
         flight.MyWorkOrder.ServiceLines.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Mobile_work_order_update_rejects_a_stale_offline_base_revision()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var flightId = await ScheduleFlightAsync(admin, refs, "MOB250", [staff.StaffId]);
+
+        var submit = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId)
+            });
+        submit.StatusCode.ShouldBe(HttpStatusCode.Created, await submit.Content.ReadAsStringAsync());
+        var created = await submit.Content.ReadFromJsonAsync<MobileWriteResult>();
+
+        var original = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{created!.WorkOrderId}");
+        original.ShouldNotBeNull();
+        original!.RowVersion.ShouldNotBeNullOrWhiteSpace();
+
+        var accepted = await staff.Client.PutAsJsonAsync(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                baseRowVersion = original.RowVersion,
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId, remarks: "Newer portal-equivalent edit")
+            });
+        accepted.StatusCode.ShouldBe(HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
+
+        // This request was prepared from the original offline snapshot. It must conflict rather
+        // than overwrite the edit accepted immediately above.
+        var stale = await staff.Client.PutAsJsonAsync(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                baseRowVersion = original.RowVersion,
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId, remarks: "Stale offline edit")
+            });
+        stale.StatusCode.ShouldBe(HttpStatusCode.Conflict, await stale.Content.ReadAsStringAsync());
+
+        var current = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}");
+        current!.Remarks.ShouldBe("Newer portal-equivalent edit");
     }
 
     [Fact]
@@ -268,7 +348,10 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
     // --- Helpers -------------------------------------------------------------------
 
-    private static object CompletionWorkOrderBody(MasterDataRefs refs, Guid performerId) => new
+    private static object CompletionWorkOrderBody(
+        MasterDataRefs refs,
+        Guid performerId,
+        string remarks = "Mobile submission") => new
     {
         type = "Completion",
         actualFlightNumber = "MOB999",
@@ -276,7 +359,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         aircraftTailNumber = "HZ-TEST",
         actualArrivalUtc = DateTimeOffset.UtcNow.AddHours(-1),
         actualDepartureUtc = DateTimeOffset.UtcNow.AddHours(1),
-        remarks = "Mobile submission",
+        remarks,
         serviceLines = new[]
         {
             new
@@ -443,7 +526,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
     private sealed record WorkOrderDetail(
         Guid Id, Guid FlightId, string Type, string Status,
-        string? CancellationReason, List<ServiceLine> ServiceLines);
+        string? CancellationReason, string? Remarks, List<ServiceLine> ServiceLines, string RowVersion);
 
     private sealed record ServiceLine(Guid Id, Guid ServiceId, string ServiceName);
 

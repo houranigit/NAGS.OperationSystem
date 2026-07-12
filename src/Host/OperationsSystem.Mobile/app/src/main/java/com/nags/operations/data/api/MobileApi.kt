@@ -132,8 +132,8 @@ class MobileApi(
 
     /**
      * Replace an editable (Submitted/Returned) work order. Service lines are clear-and-rebuild;
-     * tasks reconcile by id — resend task ids to keep their attachments. The server resolves
-     * the concurrency token; offline clients never hold a fresh RowVersion.
+     * tasks reconcile by id — resend task ids to keep their attachments. The request carries the
+     * cached base RowVersion so stale offline edits conflict instead of overwriting newer changes.
      */
     suspend fun updateWorkOrder(
         workOrderId: String,
@@ -247,6 +247,8 @@ data class WorkOrderSignatureInput(
 data class MobileWorkOrderWriteRequest(
     val clientMutationId: String,
     val workOrder: WorkOrderWireRequest,
+    /** Base64 concurrency token captured with the editable work order; null for creates. */
+    val baseRowVersion: String? = null,
 )
 
 @Serializable

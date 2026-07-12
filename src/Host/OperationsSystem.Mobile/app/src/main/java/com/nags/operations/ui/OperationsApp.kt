@@ -4,11 +4,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -51,6 +54,23 @@ fun OperationsApp() {
     val factory = remember(graph) { AppViewModelFactory(graph) }
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
+    val accessToken by graph.tokenStore.accessTokenFlow.collectAsStateWithLifecycle(initialValue = null)
+
+    fun navigateToLogin() {
+        if (navController.currentDestination?.route == Routes.Login) return
+        navController.navigate(Routes.Login) {
+            popUpTo(navController.graph.id) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+
+    // Invalid/expired refresh credentials remove only the bearer pair. Route back to login while
+    // preserving the remembered subject, cache, drafts, and outbox for same-user reauthentication.
+    LaunchedEffect(accessToken) {
+        if (accessToken == null && navController.currentDestination?.route != null) {
+            navigateToLogin()
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -99,9 +119,7 @@ fun OperationsApp() {
                 onLogout = {
                     coroutineScope.launch {
                         graph.signOut()
-                        navController.navigate(Routes.Login) {
-                            popUpTo(Routes.Main) { inclusive = true }
-                        }
+                        navigateToLogin()
                     }
                 },
             )

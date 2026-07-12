@@ -27,15 +27,21 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +80,9 @@ fun SyncCenterScreen(
     val realtimeState by viewModel.realtimeState.collectAsStateWithLifecycle()
     val lastRealtimeEventAt by viewModel.lastRealtimeEventAt.collectAsStateWithLifecycle()
     val now by viewModel.nowTick.collectAsStateWithLifecycle()
+    val outboxRows by viewModel.outboxRows.collectAsStateWithLifecycle()
+    val outboxActionState by viewModel.outboxActionState.collectAsStateWithLifecycle()
+    var discardTarget by remember { mutableStateOf<OutboxRowState?>(null) }
 
     Column(
         modifier = Modifier
@@ -103,10 +112,68 @@ fun SyncCenterScreen(
                     onClick = { viewModel.refreshNow() },
                 )
             }
+            item {
+                OutboxSectionHeader(itemCount = outboxRows.size)
+            }
+            outboxActionState.errorMessage?.let { message ->
+                item(key = "outbox-action-error") {
+                    OutboxActionError(
+                        message = message,
+                        onDismiss = viewModel::clearOutboxActionError,
+                    )
+                }
+            }
+            if (outboxRows.isEmpty()) {
+                item(key = "outbox-empty") { EmptyOutboxCard() }
+            } else {
+                items(outboxRows, key = { "outbox-${it.clientMutationId}" }) { row ->
+                    OutboxRowCard(
+                        row = row,
+                        actionState = outboxActionState,
+                        onRetry = { viewModel.retryFailed(row.clientMutationId) },
+                        onDiscard = { discardTarget = row },
+                    )
+                }
+            }
+            item {
+                Text(
+                    text = "Cached data",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
             items(rows, key = { it.table.storageKey }) { row ->
                 SyncRowCard(row)
             }
         }
+    }
+
+    discardTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { discardTarget = null },
+            title = { Text("Discard queued work?") },
+            text = {
+                Text(
+                    "${target.kindLabel} for ${target.flightLabel} and its saved attachments " +
+                        "will be permanently removed from this device. This cannot be undone.",
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { discardTarget = null }) { Text("Keep") }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        discardTarget = null
+                        viewModel.discardTerminal(target.clientMutationId)
+                    },
+                ) {
+                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                }
+            },
+        )
     }
 }
 
@@ -330,6 +397,291 @@ private fun RefreshNowButton(
                 modifier = Modifier.padding(start = 8.dp),
                 fontWeight = FontWeight.SemiBold,
             )
+        }
+    }
+}
+
+@Composable
+private fun OutboxSectionHeader(itemCount: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "Queued work",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = "Offline submissions stay on this device until the server accepts them.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = itemCount.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyOutboxCard() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                RoundedCornerShape(18.dp),
+            )
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF35C271).copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF258A50),
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "Everything is submitted",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "New offline work will appear here until it syncs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OutboxActionError(message: String, onDismiss: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.errorContainer)
+            .padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "Queued work could not be updated",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier.align(Alignment.End),
+        ) {
+            Text("Dismiss", color = MaterialTheme.colorScheme.onErrorContainer)
+        }
+    }
+}
+
+@Composable
+private fun OutboxRowCard(
+    row: OutboxRowState,
+    actionState: OutboxActionState,
+    onRetry: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    val isActive = actionState.activeClientMutationId == row.clientMutationId
+    val statusColor = when (row.status) {
+        OutboxStatus.Pending -> Color(0xFF9A6A00)
+        OutboxStatus.Sending -> Color(0xFF1769AA)
+        OutboxStatus.Failed -> MaterialTheme.colorScheme.error
+        OutboxStatus.Conflict -> Color(0xFF8A3E98)
+        OutboxStatus.Accepted -> Color(0xFF258A50)
+        OutboxStatus.Unknown -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val statusIcon = when (row.status) {
+        OutboxStatus.Sending -> Icons.Default.Sync
+        OutboxStatus.Failed,
+        OutboxStatus.Conflict,
+        OutboxStatus.Unknown -> Icons.Default.ErrorOutline
+        OutboxStatus.Accepted -> Icons.Default.CheckCircle
+        OutboxStatus.Pending -> Icons.Default.CloudOff
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, statusColor.copy(alpha = 0.42f), RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(statusColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isActive) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = statusColor,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        statusIcon,
+                        contentDescription = null,
+                        tint = statusColor,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = row.kindLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = row.flightLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(statusColor.copy(alpha = 0.12f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = when {
+                        isActive && actionState.activeAction == OutboxAction.Retry -> "Retrying…"
+                        isActive && actionState.activeAction == OutboxAction.Discard -> "Discarding…"
+                        else -> row.status.label
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = statusColor,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            MetadataPair("Attempts", row.attempts.toString())
+            MetadataPair("Reference", row.flightId.take(12))
+        }
+
+        row.lastError?.takeIf { it.isNotBlank() }?.let { error ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "Last error",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        if (row.status == OutboxStatus.Conflict) {
+            Text(
+                text = "This saved request conflicts with newer server data. Discard it and " +
+                    "open the flight again to submit a fresh version.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (row.canRetry || row.canDiscard) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (row.canRetry) {
+                    OutlinedButton(
+                        onClick = onRetry,
+                        enabled = !actionState.isWorking,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (isActive && actionState.activeAction == OutboxAction.Retry) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text("Retrying…", modifier = Modifier.padding(start = 8.dp))
+                        } else {
+                            Text("Retry")
+                        }
+                    }
+                }
+                if (row.canDiscard) {
+                    TextButton(
+                        onClick = onDiscard,
+                        enabled = !actionState.isWorking,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Discard", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
         }
     }
 }

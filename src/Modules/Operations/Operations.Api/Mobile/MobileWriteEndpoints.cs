@@ -13,8 +13,8 @@ namespace Operations.Api.Mobile;
 /// <summary>
 /// Write surface of the dedicated mobile BFF. Every mutation carries a client-generated
 /// <c>clientMutationId</c> (the mobile outbox row id) so retries after lost responses replay
-/// idempotently instead of duplicating work orders. Concurrency tokens are resolved server-side
-/// because an offline client cannot hold a fresh RowVersion.
+/// idempotently instead of duplicating work orders. Updates carry the cached base RowVersion so
+/// an offline edit conflicts instead of overwriting work accepted by the portal in the meantime.
 /// </summary>
 internal static class MobileWriteEndpoints
 {
@@ -49,7 +49,11 @@ internal static class MobileWriteEndpoints
             async (Guid workOrderId, MobileWorkOrderWriteRequest request, ISender sender, CancellationToken ct) =>
             {
                 var result = await sender.Send(new MobileUpdateWorkOrderCommand(
-                    workOrderId, request.WorkOrder.Type, request.WorkOrder.ToPayload(), request.ClientMutationId), ct);
+                    workOrderId,
+                    request.WorkOrder.Type,
+                    request.WorkOrder.ToPayload(),
+                    request.ClientMutationId,
+                    request.BaseRowVersion ?? string.Empty), ct);
                 return ToWriteResult(result, created: false);
             }).RequirePermission(OperationsPermissions.WorkOrders.Author);
 
@@ -107,7 +111,10 @@ internal static class MobileWriteEndpoints
     }
 }
 
-public sealed record MobileWorkOrderWriteRequest(string ClientMutationId, WorkOrderRequest WorkOrder);
+public sealed record MobileWorkOrderWriteRequest(
+    string ClientMutationId,
+    WorkOrderRequest WorkOrder,
+    string? BaseRowVersion = null);
 
 public sealed record MobileScratchWorkOrderRequest(
     string ClientMutationId,

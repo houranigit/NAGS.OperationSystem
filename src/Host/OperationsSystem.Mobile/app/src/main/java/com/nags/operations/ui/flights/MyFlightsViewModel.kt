@@ -17,6 +17,7 @@ import com.nags.operations.data.sync.SyncReport
 import com.nags.operations.data.sync.SyncTable
 import com.nags.operations.data.toSummary
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -123,10 +124,15 @@ class MyFlightsViewModel(
      * connectivity returns. When the flight already carries an editable cancellation work
      * order, this updates that work order's cancellation details instead of filing a new one.
      */
-    fun cancelFlight(flightId: String, canceledAtIso: String, reason: String) {
+    fun cancelFlight(
+        flightId: String,
+        canceledAtIso: String,
+        reason: String,
+        onFinished: (success: Boolean, message: String?) -> Unit,
+    ) {
         cancelFlightInternal(
             allItems, outboxRepository, viewModelScope,
-            flightId, canceledAtIso, reason, WorkOrderOutboxEntity.FLIGHT_KIND_MY,
+            flightId, canceledAtIso, reason, WorkOrderOutboxEntity.FLIGHT_KIND_MY, onFinished,
         )
     }
 
@@ -200,28 +206,47 @@ internal fun cancelFlightInternal(
     canceledAtIso: String,
     reason: String,
     flightKind: Int,
+    onFinished: (success: Boolean, message: String?) -> Unit,
 ) {
     val flight = allItems.firstOrNull { it.id == flightId }
     val cancelWo = flight?.myWorkOrder?.takeIf {
         WorkOrderTypeKind.fromWire(it.type) == WorkOrderTypeKind.Cancellation
     }
     scope.launch {
-        if (cancelWo != null) {
-            outboxRepository.enqueueCancellationUpdate(
-                flightId = flightId,
-                flightKind = flightKind,
-                workOrderId = cancelWo.id,
-                canceledAtIso = canceledAtIso,
-                reason = reason,
-                remarks = cancelWo.remarks,
+        if (cancelWo != null && cancelWo.rowVersion.isBlank()) {
+            onFinished(
+                false,
+                "This cancellation is missing its base revision. Refresh the flight and try again.",
             )
-        } else {
-            outboxRepository.enqueueCancel(
-                flightId = flightId,
-                flightKind = flightKind,
-                canceledAtIso = canceledAtIso,
-                reason = reason,
-            )
+            return@launch
         }
+        try {
+            if (cancelWo != null) {
+                outboxRepository.enqueueCancellationUpdate(
+                    flightId = flightId,
+                    flightKind = flightKind,
+                    workOrderId = cancelWo.id,
+                    baseRowVersion = cancelWo.rowVersion,
+                    canceledAtIso = canceledAtIso,
+                    reason = reason,
+                    remarks = cancelWo.remarks,
+                )
+            } else {
+                outboxRepository.enqueueCancel(
+                    flightId = flightId,
+                    flightKind = flightKind,
+                    canceledAtIso = canceledAtIso,
+                    reason = reason,
+                )
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            onFinished(
+                false,
+                "Could not save the cancellation on this device. Please try again.",
+            )
+            return@launch
+        }
+        onFinished(true, null)
     }
 }

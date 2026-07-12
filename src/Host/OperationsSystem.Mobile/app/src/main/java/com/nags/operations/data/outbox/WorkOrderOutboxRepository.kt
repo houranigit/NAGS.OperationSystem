@@ -2,14 +2,20 @@ package com.nags.operations.data.outbox
 
 import android.content.Context
 import android.util.Base64
+import android.util.Log
 import com.nags.operations.data.db.AppDatabase
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
 import com.nags.operations.data.sync.OutboxOpStatus
 import com.nags.operations.data.sync.PendingDisplayItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.util.UUID
 
 /**
@@ -26,8 +32,13 @@ import java.util.UUID
 class WorkOrderOutboxRepository(
     private val context: Context,
     private val db: AppDatabase,
+    private val onPendingWork: suspend () -> Unit = {},
 ) {
     private val dao get() = db.workOrderOutboxDao()
+    private val mutationMutex = Mutex()
+
+    @Volatile private var acceptingEnqueues = true
+    @Volatile private var enqueueGeneration = 0L
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -43,8 +54,21 @@ class WorkOrderOutboxRepository(
      * after attachments are written and removed by [deleteAndCleanup] when the
      * row is gone.
      */
-    private fun directoryFor(clientMutationId: String): File =
-        File(rootDir, clientMutationId)
+    private fun directoryFor(clientMutationId: String): File {
+        val root = rootDir.canonicalFile
+        val directory = File(root, canonicalClientMutationId(clientMutationId)).canonicalFile
+        check(directory.parentFile == root) { "Queued attachment directory escaped its storage root." }
+        return directory
+    }
+
+    /** Resolves only the exact directory written by [enqueue], never a path supplied by sync data. */
+    private fun attachmentDirectoryFor(row: WorkOrderOutboxEntity): File? {
+        val storedPath = row.attachmentsDir ?: return null
+        val expected = directoryFor(row.clientMutationId)
+        val stored = File(storedPath).canonicalFile
+        check(stored == expected) { "Queued attachment directory is outside its storage root." }
+        return expected
+    }
 
     /** Stream of every row (newest first) — used by the Sync Center. */
     fun observeAll(): Flow<List<WorkOrderOutboxEntity>> = dao.observeAll()
@@ -108,6 +132,9 @@ class WorkOrderOutboxRepository(
     /** First [WorkOrderOutboxEntity.STATUS_PENDING] row by FIFO; null when the queue is empty. */
     suspend fun nextPending(): WorkOrderOutboxEntity? = dao.listPendingFifo().firstOrNull()
 
+    /** FIFO snapshot used by the worker to skip rows whose retry backoff has not elapsed. */
+    suspend fun pendingFifo(): List<WorkOrderOutboxEntity> = dao.listPendingFifo()
+
     /**
      * Atomic single-row insert: writes every attachment from its in-memory
      * base64 to a per-mutation directory under `filesDir/outbox/{id}/`, then
@@ -121,62 +148,89 @@ class WorkOrderOutboxRepository(
     suspend fun enqueue(
         request: EnqueueRequest,
     ): WorkOrderOutboxEntity {
-        val mutationId = request.clientMutationId
-        val durableAttachments = mutableListOf<OutboxPayload.AttachmentInput>()
+        // Capture before waiting for the mutex. A logout/account switch increments the generation,
+        // so an enqueue already queued behind cleanup cannot publish stale work afterward.
+        val observedGeneration = enqueueGeneration
+        val entity = mutationMutex.withLock {
+            check(acceptingEnqueues && observedGeneration == enqueueGeneration) {
+                "The session changed before the submission could be saved. Sign in and try again."
+            }
 
-        if (request.attachmentsToPersist.isNotEmpty()) {
-            val dir = directoryFor(mutationId)
-            dir.mkdirs()
-            request.attachmentsToPersist.forEachIndexed { index, source ->
-                val safeName = sanitizeFileName(source.fileName)
-                val relative = "$index-$safeName"
-                val target = File(dir, relative)
-                target.outputStream().use { out ->
-                    out.write(Base64.decode(source.base64, Base64.NO_WRAP))
+            val mutationId = canonicalClientMutationId(request.clientMutationId)
+            check(!dao.hasOtherUnresolvedForFlight(request.flightId, mutationId)) {
+                "This flight already has a queued or failed operation. Review it in Sync Center before submitting another."
+            }
+            val durableAttachments = mutableListOf<OutboxPayload.AttachmentInput>()
+            var attachmentDir: File? = null
+
+            try {
+                if (request.attachmentsToPersist.isNotEmpty()) {
+                    val dir = directoryFor(mutationId)
+                    attachmentDir = dir
+                    if (dir.exists() && !dir.deleteRecursively()) {
+                        throw IOException("Could not reset the attachment staging directory.")
+                    }
+                    if (!dir.mkdirs() && !dir.isDirectory) {
+                        throw IOException("Could not create the attachment staging directory.")
+                    }
+                    request.attachmentsToPersist.forEachIndexed { index, source ->
+                        val safeName = sanitizeFileName(source.fileName)
+                        val relative = "$index-$safeName"
+                        val target = File(dir, relative)
+                        FileOutputStream(target).use { out ->
+                            out.write(Base64.decode(source.base64, Base64.NO_WRAP))
+                            out.flush()
+                            out.fd.sync()
+                        }
+                        durableAttachments += OutboxPayload.AttachmentInput(
+                            relativePath = relative,
+                            kind = source.kind,
+                            contentType = source.contentType,
+                            fileName = source.fileName,
+                            capturedAtIso = source.capturedAtIso,
+                            sizeBytes = source.sizeBytes,
+                        )
+                    }
                 }
-                durableAttachments += OutboxPayload.AttachmentInput(
-                    relativePath = relative,
-                    kind = source.kind,
-                    contentType = source.contentType,
-                    fileName = source.fileName,
-                    capturedAtIso = source.capturedAtIso,
-                    sizeBytes = source.sizeBytes,
+
+                // Re-stitch durable attachments onto the per-task list in the order they were enqueued.
+                val workOrder = request.payload.workOrder
+                val payloadOnDisk = if (workOrder == null) {
+                    request.payload
+                } else {
+                    val attachmentCursor = AttachmentCursor(durableAttachments)
+                    val tasksWithDurable = workOrder.tasks.map { task ->
+                        val count = task.attachments.size
+                        task.copy(attachments = attachmentCursor.takeNext(count))
+                    }
+                    request.payload.copy(workOrder = workOrder.copy(tasks = tasksWithDurable))
+                }
+
+                val now = System.currentTimeMillis()
+                val entity = WorkOrderOutboxEntity(
+                    clientMutationId = mutationId,
+                    flightId = request.flightId,
+                    flightKind = request.flightKind,
+                    clientFlightId = request.clientFlightId,
+                    payloadJson = json.encodeToString(OutboxPayload.serializer(), payloadOnDisk),
+                    attachmentsDir = if (durableAttachments.isEmpty()) null else attachmentDir?.absolutePath,
+                    status = WorkOrderOutboxEntity.STATUS_PENDING,
+                    attempts = 0,
+                    lastError = null,
+                    createdAtEpochMs = now,
+                    updatedAtEpochMs = now,
+                    serverWorkOrderId = request.knownServerWorkOrderId,
                 )
+                dao.upsert(entity)
+                entity
+            } catch (e: Exception) {
+                // A file failure or Room failure must not leave a half-formed directory that a
+                // later worker could mistake for a durable submission.
+                attachmentDir?.deleteRecursively()
+                throw e
             }
         }
-
-        // Re-stitch durable attachments onto the per-task list in the order they were enqueued.
-        // The pickers added them sequentially, so a single running index gives us the right slot.
-        // CancelFlight rows carry no work order (and no attachments), so there's nothing to stitch.
-        val workOrder = request.payload.workOrder
-        val payloadOnDisk = if (workOrder == null) {
-            request.payload
-        } else {
-            val attachmentCursor = AttachmentCursor(durableAttachments)
-            val tasksWithDurable = workOrder.tasks.map { task ->
-                val count = task.attachments.size
-                task.copy(attachments = attachmentCursor.takeNext(count))
-            }
-            request.payload.copy(workOrder = workOrder.copy(tasks = tasksWithDurable))
-        }
-
-        val now = System.currentTimeMillis()
-        val entity = WorkOrderOutboxEntity(
-            clientMutationId = mutationId,
-            flightId = request.flightId,
-            flightKind = request.flightKind,
-            clientFlightId = request.clientFlightId,
-            payloadJson = json.encodeToString(OutboxPayload.serializer(), payloadOnDisk),
-            attachmentsDir = if (durableAttachments.isEmpty()) null
-            else directoryFor(mutationId).absolutePath,
-            status = WorkOrderOutboxEntity.STATUS_PENDING,
-            attempts = 0,
-            lastError = null,
-            createdAtEpochMs = now,
-            updatedAtEpochMs = now,
-            serverWorkOrderId = request.knownServerWorkOrderId,
-        )
-        dao.upsert(entity)
+        notifyPendingWork()
         return entity
     }
 
@@ -220,6 +274,7 @@ class WorkOrderOutboxRepository(
         flightId: String,
         flightKind: Int,
         workOrderId: String,
+        baseRowVersion: String,
         canceledAtIso: String,
         reason: String,
         remarks: String?,
@@ -245,6 +300,7 @@ class WorkOrderOutboxRepository(
                     tasks = emptyList(),
                     customerSignaturePngBase64 = null,
                 ),
+                baseRowVersion = baseRowVersion,
             ),
             attachmentsToPersist = emptyList(),
             knownServerWorkOrderId = workOrderId,
@@ -268,7 +324,11 @@ class WorkOrderOutboxRepository(
      * where the user's intent is still valid and a backoff retry is the right
      * move.
      */
-    suspend fun markPendingAfterRetry(row: WorkOrderOutboxEntity, error: String?) {
+    suspend fun markPendingAfterRetry(
+        row: WorkOrderOutboxEntity,
+        error: String?,
+        schedulePersistentWork: Boolean = true,
+    ) {
         dao.updateStatus(
             id = row.clientMutationId,
             status = WorkOrderOutboxEntity.STATUS_PENDING,
@@ -277,6 +337,7 @@ class WorkOrderOutboxRepository(
             serverWorkOrderId = row.serverWorkOrderId,
             updatedAtEpochMs = System.currentTimeMillis(),
         )
+        if (schedulePersistentWork) notifyPendingWork()
     }
 
     /** Worker hook: terminal 4xx (non-409) — surfaces in Sync Center for review. */
@@ -332,14 +393,75 @@ class WorkOrderOutboxRepository(
      * mutation lands, and from `clearForLogout` as part of a full reset.
      */
     suspend fun deleteAndCleanup(clientMutationId: String) {
-        dao.deleteById(clientMutationId)
-        runCatching { directoryFor(clientMutationId).deleteRecursively() }
+        mutationMutex.withLock {
+            // Sync events are server-controlled. Never turn their mutation id into a path: first
+            // require an exact local row, then resolve the trusted path persisted by enqueue().
+            val row = dao.getById(clientMutationId) ?: return@withLock
+            val dir = attachmentDirectoryFor(row)
+            if (dir != null && dir.exists() && !dir.deleteRecursively()) {
+                throw IOException("Could not remove queued attachment files.")
+            }
+            dao.deleteById(row.clientMutationId)
+        }
     }
 
     /** Logout-only — wipes every queued mutation along with the on-disk attachments. */
     suspend fun deleteAll() {
-        dao.deleteAll()
-        runCatching { rootDir.deleteRecursively() }
+        mutationMutex.withLock {
+            enqueueGeneration++
+            acceptingEnqueues = false
+            dao.deleteAll()
+            val root = File(context.filesDir, "outbox")
+            if (root.exists() && !root.deleteRecursively()) {
+                throw IOException("Could not remove queued attachment files.")
+            }
+        }
+    }
+
+    /** Stops late screen coroutines from enqueueing after logout without deleting same-user work. */
+    suspend fun pauseEnqueues() {
+        mutationMutex.withLock {
+            enqueueGeneration++
+            acceptingEnqueues = false
+        }
+    }
+
+    suspend fun resumeEnqueues() {
+        mutationMutex.withLock { acceptingEnqueues = true }
+    }
+
+    /** Best-effort cleanup for directories orphaned by process death between SQL and file cleanup. */
+    suspend fun cleanupOrphanedAttachmentDirectories() {
+        mutationMutex.withLock {
+            val liveIds = dao.snapshot().mapTo(mutableSetOf()) { it.clientMutationId }
+            val root = File(context.filesDir, "outbox")
+            root.listFiles()
+                ?.filter { it.isDirectory && it.name !in liveIds }
+                ?.forEach { it.deleteRecursively() }
+        }
+    }
+
+    /** Completes a process-interrupted HTTP-acknowledgement cleanup without replaying payloads. */
+    suspend fun cleanupSucceededRows() {
+        mutationMutex.withLock {
+            var firstFailure: IOException? = null
+            dao.snapshot()
+                .filter { it.status == WorkOrderOutboxEntity.STATUS_SUCCEEDED }
+                .forEach { row ->
+                    try {
+                        val dir = attachmentDirectoryFor(row)
+                        if (dir != null && dir.exists() && !dir.deleteRecursively()) {
+                            throw IOException("Could not remove acknowledged attachment files.")
+                        }
+                        dao.deleteById(row.clientMutationId)
+                    } catch (e: Exception) {
+                        if (firstFailure == null) {
+                            firstFailure = if (e is IOException) e else IOException(e)
+                        }
+                    }
+                }
+            firstFailure?.let { throw it }
+        }
     }
 
     /**
@@ -350,6 +472,17 @@ class WorkOrderOutboxRepository(
      */
     suspend fun recoverInterruptedSends() {
         dao.recoverInterruptedSends(System.currentTimeMillis())
+    }
+
+    /** Scheduling is best-effort here: the row is already durable and session resume retries it. */
+    private suspend fun notifyPendingWork() {
+        try {
+            onPendingWork()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not schedule persistent outbox delivery", e)
+        }
     }
 
     private fun WorkOrderOutboxEntity.toPendingAdHoc(json: Json): PendingAdHocFlight? {
@@ -382,11 +515,22 @@ class WorkOrderOutboxRepository(
             return slice
         }
     }
+
+    private companion object {
+        const val TAG = "WorkOrderOutbox"
+    }
 }
 
 /** Strips path-traversal-friendly characters that the OS would otherwise let through. */
 private fun sanitizeFileName(raw: String): String =
     raw.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96).ifBlank { "file" }
+
+/** UUIDs are the only supported mutation ids and therefore the only valid directory names. */
+internal fun canonicalClientMutationId(raw: String): String {
+    val parsed = runCatching { UUID.fromString(raw) }.getOrNull()
+    require(parsed != null && parsed.toString() == raw) { "Client mutation id must be a canonical UUID." }
+    return raw
+}
 
 /** Translate the persisted integer status to the user-facing chip state. */
 private fun Int.toOutboxOpStatus(): OutboxOpStatus = when (this) {

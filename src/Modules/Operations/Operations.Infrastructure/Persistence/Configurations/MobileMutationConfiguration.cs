@@ -13,6 +13,7 @@ internal sealed class MobileMutationConfiguration : IEntityTypeConfiguration<Mob
         builder.HasKey(m => m.ClientMutationId);
         builder.Property(m => m.ClientMutationId).HasMaxLength(64);
         builder.Property(m => m.Kind).HasMaxLength(40).IsRequired();
+        builder.Property(m => m.RequestFingerprint).HasMaxLength(64);
 
         builder.HasIndex(m => m.OwnerUserId);
 

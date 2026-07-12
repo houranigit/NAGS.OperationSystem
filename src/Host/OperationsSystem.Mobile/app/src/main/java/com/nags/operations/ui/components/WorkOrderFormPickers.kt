@@ -32,6 +32,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -89,6 +90,7 @@ fun WorkOrderDateTimePickerField(
     modifier: Modifier = Modifier,
     isError: Boolean = false,
     supportingText: @Composable (() -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
     var dialogOpen by remember { mutableStateOf(false) }
 
@@ -101,6 +103,7 @@ fun WorkOrderDateTimePickerField(
             value = iso.takeIf { it.isNotBlank() }?.let { formatIsoForDisplay(it) }.orEmpty(),
             onValueChange = {},
             readOnly = true,
+            enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
             isError = isError,
@@ -115,6 +118,7 @@ fun WorkOrderDateTimePickerField(
             Modifier
                 .fillMaxSize()
                 .clickable(
+                    enabled = enabled,
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                 ) { dialogOpen = true },
@@ -182,7 +186,7 @@ private fun WorkOrderOffsetDateTimePickerDialog(
         is24Hour = false,
     )
 
-    var tabIndex by remember { mutableStateOf(0) }
+    var tabIndex by remember { mutableIntStateOf(0) }
 
     DatePickerDialog(
         onDismissRequest = onDismiss,
@@ -251,6 +255,7 @@ fun AircraftTypePicker(
     selectedId: String?,
     options: List<AircraftTypeEntity>,
     onSelected: (AircraftTypeEntity) -> Unit,
+    onCleared: () -> Unit,
     readOnly: Boolean = false,
     isError: Boolean = false,
     supportingText: @Composable (() -> Unit)? = null,
@@ -263,6 +268,8 @@ fun AircraftTypePicker(
         options = options,
         renderOption = { it.model },
         onSelect = onSelected,
+        onClearSelection = onCleared,
+        hasSelection = selectedId != null,
         readOnly = readOnly,
         isError = isError,
         supportingText = supportingText,
@@ -274,21 +281,24 @@ fun WorkOrderServicePicker(
     selectedId: String?,
     options: List<ServiceEntity>,
     onSelected: (ServiceEntity) -> Unit,
+    onCleared: () -> Unit,
     readOnly: Boolean = false,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
     supportingText: @Composable (() -> Unit)? = null,
 ) {
-    val selected = options.firstOrNull { it.serviceId == selectedId }
+    val selectableOptions = options.filterNot { it.isAircraftPerLanding }
+    val selected = selectableOptions.firstOrNull { it.serviceId == selectedId }
     InlineSearchableDropdownField(
         label = "Service type",
         selectedText = selected?.name.orEmpty(),
         placeholder = "Type to search services",
-        options = options,
+        options = selectableOptions,
         renderOption = { it.name },
-        secondaryLine = { svc -> if (svc.isAircraftPerLanding) "Per Landing" else null },
         onSelect = onSelected,
-        readOnly = readOnly || options.isEmpty(),
+        onClearSelection = onCleared,
+        hasSelection = selectedId != null,
+        readOnly = readOnly || selectableOptions.isEmpty(),
         modifier = modifier,
         isError = isError,
         supportingText = supportingText,
@@ -300,6 +310,7 @@ fun WorkOrderEmployeePicker(
     selectedId: String?,
     options: List<EmployeeEntity>,
     onSelected: (EmployeeEntity) -> Unit,
+    onCleared: () -> Unit,
     readOnly: Boolean = false,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
@@ -314,6 +325,8 @@ fun WorkOrderEmployeePicker(
         renderOption = { it.workOrderPickerDisplayLine() },
         secondaryLine = { emp -> emp.employeeNumber.takeIf { s -> s.isNotBlank() } },
         onSelect = onSelected,
+        onClearSelection = onCleared,
+        hasSelection = selectedId != null,
         readOnly = readOnly || options.isEmpty(),
         modifier = modifier,
         isError = isError,

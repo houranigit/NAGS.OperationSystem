@@ -43,6 +43,29 @@ interface WorkOrderOutboxDao {
     @Query("SELECT * FROM work_order_outbox WHERE clientMutationId = :id LIMIT 1")
     suspend fun getById(id: String): WorkOrderOutboxEntity?
 
+    /**
+     * Prevents two unresolved operations for the same server flight. A succeeded row is safe to
+     * ignore because its server-side mutation has already completed and startup cleanup may not
+     * have removed the local row yet.
+     */
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM work_order_outbox
+            WHERE flightId = :flightId
+              AND clientMutationId != :clientMutationId
+              AND status != 4
+        )
+        """,
+    )
+    suspend fun hasOtherUnresolvedForFlight(
+        flightId: String,
+        clientMutationId: String,
+    ): Boolean
+
+    @Query("SELECT * FROM work_order_outbox")
+    suspend fun snapshot(): List<WorkOrderOutboxEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: WorkOrderOutboxEntity)
 

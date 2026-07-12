@@ -21,6 +21,7 @@ import com.nags.operations.data.toFlightEntity
 import com.nags.operations.data.toPerLandingEntity
 import com.nags.operations.data.userMessage
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.time.Instant
+import java.time.OffsetDateTime
 
 /**
  * The bridge between the server and the local Room cache. Every screen reads from Room; only
@@ -58,26 +61,31 @@ class SyncCoordinator(
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
     private val refreshMutex = Mutex()
+    /** Serializes full snapshot replacement against SignalR/catch-up mutations. */
+    private val cacheMutationMutex = Mutex()
+    private val versionTracker = MobileSyncVersionTracker()
 
     /** Fan-out refresh of every synced table with a per-table outcome report. */
     suspend fun refreshAll(): SyncReport {
         if (!refreshMutex.tryLock()) return SyncReport.AlreadyRunning
         _isSyncing.value = true
         try {
-            refreshStaffProfile()
-            val outcomes = coroutineScope {
-                val catalogsJob = async { syncCatalogs() }
-                val employeesJob = async { syncEmployees() }
-                val flightsJob = async { syncMyFlights() }
-                val perLandingJob = async { syncPerLandingFlights() }
-                val adHocFlightsJob = async { syncAdHocFlights() }
+            val outcomes = cacheMutationMutex.withLock {
+                refreshStaffProfile()
+                coroutineScope {
+                    val catalogsJob = async { syncCatalogs() }
+                    val employeesJob = async { syncEmployees() }
+                    val flightsJob = async { syncMyFlights() }
+                    val perLandingJob = async { syncPerLandingFlights() }
+                    val adHocFlightsJob = async { syncAdHocFlights() }
 
-                catalogsJob.await() + listOf(
-                    employeesJob.await(),
-                    flightsJob.await(),
-                    perLandingJob.await(),
-                    adHocFlightsJob.await(),
-                )
+                    catalogsJob.await() + listOf(
+                        employeesJob.await(),
+                        flightsJob.await(),
+                        perLandingJob.await(),
+                        adHocFlightsJob.await(),
+                    )
+                }
             }
             return SyncReport.Completed(outcomes)
         } finally {
@@ -124,6 +132,7 @@ class SyncCoordinator(
             )
                 .map { SyncOutcome.Success(it) }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             val message = e.userMessage()
             // One failure burns down all catalog tables — they share the call.
             val catalogTables = listOf(
@@ -152,6 +161,7 @@ class SyncCoordinator(
                 fullName = me.fullName,
             )
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.w(TAG, "Staff profile refresh failed — screens fall back to cached data", e)
         }
     }
@@ -194,24 +204,55 @@ class SyncCoordinator(
      * reconnect's catch-up `since=` is honest about cache freshness.
      */
     suspend fun applyChange(change: MobileSyncChangeDto) {
-        try {
-            when (change.op) {
-                MobileSyncOps.Refresh -> applyRefresh(change.table)
-                MobileSyncOps.Delete -> applyDelete(change.table, change.entityId)
-                MobileSyncOps.Upsert -> applyUpsert(change.table, change.entityId)
-                else -> Log.w(TAG, "Unknown mobile-sync op: ${change.op}")
+        cacheMutationMutex.withLock {
+            val incomingVersion = parseServerVersion(change.version)
+            if (incomingVersion != null && versionTracker.isStaleOrDuplicate(
+                    change.table,
+                    change.entityId,
+                    incomingVersion,
+                )
+            ) {
+                Log.d(TAG, "Ignoring stale mobile-sync change ${change.table}/${change.op} at ${change.version}")
+                return
             }
-            // After the server-truth row lands, drop the matching outbox row + attachment files
-            // so the optimistic chip is replaced by the real myWorkOrder chip in the same frame.
-            val mutationId = change.originMutationId
-            val repo = outboxRepository
-            if (!mutationId.isNullOrBlank() && repo != null) {
-                runCatching { repo.deleteAndCleanup(mutationId) }
-                    .onFailure { e -> Log.w(TAG, "Failed to clean up outbox row for $mutationId", e) }
+
+            try {
+                val applied = when (change.op) {
+                    MobileSyncOps.Refresh -> applyRefresh(change.table)
+                    MobileSyncOps.Delete -> applyDelete(change.table, change.entityId)
+                    MobileSyncOps.Upsert -> applyUpsert(change.table, change.entityId)
+                    else -> {
+                        Log.w(TAG, "Unknown mobile-sync op: ${change.op}")
+                        false
+                    }
+                }
+                if (!applied) return
+
+                // After the server-truth row lands, drop the matching outbox row + attachment files
+                // so the optimistic chip is replaced by the real myWorkOrder chip in the same frame.
+                val mutationId = change.originMutationId
+                val repo = outboxRepository
+                if (!mutationId.isNullOrBlank() && repo != null) {
+                    runCatching { repo.deleteAndCleanup(mutationId) }
+                        .onFailure { e -> Log.w(TAG, "Failed to clean up outbox row for $mutationId", e) }
+                }
+                val updatedTables = if (
+                    change.op == MobileSyncOps.Refresh && change.table in MobileSyncTables.CatalogTables
+                ) {
+                    MobileSyncTables.CatalogTables
+                } else {
+                    setOf(change.table)
+                }
+                updatedTables.forEach { table ->
+                    updateCursor(table, change.version)
+                    if (incomingVersion != null) {
+                        versionTracker.recordApplied(table, change.entityId, incomingVersion)
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w(TAG, "Failed to apply mobile-sync change ${change.table}/${change.op}", e)
             }
-            updateCursor(change.table, change.version)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to apply mobile-sync change ${change.table}/${change.op}", e)
         }
     }
 
@@ -221,58 +262,65 @@ class SyncCoordinator(
      * immediately — the server's broadcast targets the invitees, not the inviter.
      */
     suspend fun refreshMyFlight(flightId: String) {
-        val row = api.flightById(flightId)
-        db.flightDao().upsert(row.toFlightEntity())
+        cacheMutationMutex.withLock {
+            val row = api.flightById(flightId)
+            db.flightDao().upsert(row.toFlightEntity())
+        }
     }
 
-    private suspend fun applyRefresh(table: String) {
+    private suspend fun applyRefresh(table: String): Boolean =
         when (table) {
-            MobileSyncTables.Flights -> syncMyFlights()
-            MobileSyncTables.FlightsPerLanding -> syncPerLandingFlights()
-            MobileSyncTables.FlightsAdHoc -> syncAdHocFlights()
-            MobileSyncTables.Employees -> syncEmployees()
+            MobileSyncTables.Flights -> syncMyFlights() is SyncOutcome.Success
+            MobileSyncTables.FlightsPerLanding -> syncPerLandingFlights() is SyncOutcome.Success
+            MobileSyncTables.FlightsAdHoc -> syncAdHocFlights() is SyncOutcome.Success
+            MobileSyncTables.Employees -> syncEmployees() is SyncOutcome.Success
             // Catalog tables share one API call — refresh them all together.
             MobileSyncTables.Services,
             MobileSyncTables.Tools,
             MobileSyncTables.Materials,
             MobileSyncTables.GeneralSupports,
             MobileSyncTables.Customers,
-            MobileSyncTables.AircraftTypes -> syncCatalogs()
-            else -> Log.w(TAG, "Unknown table on refresh: $table")
+            MobileSyncTables.AircraftTypes -> syncCatalogs().all { it is SyncOutcome.Success }
+            else -> {
+                Log.w(TAG, "Unknown table on refresh: $table")
+                false
+            }
         }
-    }
 
-    private suspend fun applyDelete(table: String, entityId: String?) {
+    private suspend fun applyDelete(table: String, entityId: String?): Boolean {
         if (entityId.isNullOrBlank()) {
             Log.w(TAG, "Delete envelope for $table without entityId — ignored")
-            return
+            return false
         }
-        when (table) {
-            MobileSyncTables.Flights -> db.flightDao().deleteById(entityId)
-            MobileSyncTables.FlightsPerLanding -> db.perLandingFlightDao().deleteById(entityId)
-            MobileSyncTables.FlightsAdHoc -> db.adHocFlightDao().deleteById(entityId)
+        return when (table) {
+            MobileSyncTables.Flights -> db.flightDao().deleteById(entityId).let { true }
+            MobileSyncTables.FlightsPerLanding -> db.perLandingFlightDao().deleteById(entityId).let { true }
+            MobileSyncTables.FlightsAdHoc -> db.adHocFlightDao().deleteById(entityId).let { true }
             // Catalog / employee deletes route through a refresh.
             else -> applyRefresh(table)
         }
     }
 
-    private suspend fun applyUpsert(table: String, entityId: String?) {
+    private suspend fun applyUpsert(table: String, entityId: String?): Boolean {
         if (entityId.isNullOrBlank()) {
             Log.w(TAG, "Upsert envelope for $table without entityId — ignored")
-            return
+            return false
         }
-        when (table) {
+        return when (table) {
             MobileSyncTables.Flights -> {
                 val row = api.flightById(entityId)
                 db.flightDao().upsert(row.toFlightEntity())
+                true
             }
             MobileSyncTables.FlightsPerLanding -> {
                 val row = api.flightById(entityId)
                 db.perLandingFlightDao().upsert(row.toPerLandingEntity())
+                true
             }
             MobileSyncTables.FlightsAdHoc -> {
                 val row = api.flightById(entityId)
                 db.adHocFlightDao().upsert(row.toAdHocEntity())
+                true
             }
             // Catalog tables don't carry per-row payloads — route to a refresh.
             else -> applyRefresh(table)
@@ -281,7 +329,11 @@ class SyncCoordinator(
 
     private suspend fun updateCursor(table: String, version: String) {
         val storageKey = storageKeyFor(table) ?: return
-        db.syncStateDao().updateCursor(storageKey, version)
+        if (db.syncStateDao().updateCursor(storageKey, version) == 0) {
+            db.syncStateDao().upsert(
+                SyncStateEntity(storageKey, null, null, null, cursor = version),
+            )
+        }
     }
 
     private fun storageKeyFor(table: String): String? = when (table) {
@@ -316,6 +368,7 @@ class SyncCoordinator(
             recordSuccess(table, System.currentTimeMillis() - startedAt)
             SyncOutcome.Success(table)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             val message = e.userMessage()
             recordFailure(table, message)
             SyncOutcome.Failure(table, message)
@@ -323,13 +376,16 @@ class SyncCoordinator(
     }
 
     private suspend fun recordSuccess(table: SyncTable, durationMs: Long) {
+        val previous = db.syncStateDao().get(table.storageKey)
         db.syncStateDao().upsert(
             SyncStateEntity(
                 tableName = table.storageKey,
                 lastSyncedAt = System.currentTimeMillis(),
                 lastDurationMs = durationMs,
                 lastError = null,
-                cursor = nowIso(),
+                // Full REST snapshots have no authoritative per-table version. Preserve the
+                // latest server envelope cursor instead of replacing it with the device clock.
+                cursor = previous?.cursor,
             ),
         )
     }
@@ -348,31 +404,60 @@ class SyncCoordinator(
         )
     }
 
-    private fun nowIso(): String = java.time.Instant.now().toString()
-
     /**
-     * Wipes every synced table plus the metadata table. Called from logout so the next
-     * sign-in doesn't read the previous user's data.
+     * Wipes every owner-scoped table before a different JWT subject is published. Explicit
+     * same-user logout does not call this; it keeps offline drafts and queued work recoverable.
      */
-    suspend fun clearForLogout() {
+    suspend fun clearForAccountSwitch() {
         refreshMutex.withLock {
-            db.serviceDao().deleteAll()
-            db.toolDao().deleteAll()
-            db.materialDao().deleteAll()
-            db.generalSupportDao().deleteAll()
-            db.customerDao().deleteAll()
-            db.aircraftTypeDao().deleteAll()
-            db.employeeDao().deleteAll()
-            db.flightDao().deleteAll()
-            db.perLandingFlightDao().deleteAll()
-            db.adHocFlightDao().deleteAll()
-            db.syncStateDao().deleteAll()
-            db.workOrderDraftDao().deleteAll()
-            // Drop every queued write and its on-disk attachments too.
-            runCatching { outboxRepository?.deleteAll() }
+            cacheMutationMutex.withLock {
+                db.serviceDao().deleteAll()
+                db.toolDao().deleteAll()
+                db.materialDao().deleteAll()
+                db.generalSupportDao().deleteAll()
+                db.customerDao().deleteAll()
+                db.aircraftTypeDao().deleteAll()
+                db.employeeDao().deleteAll()
+                db.flightDao().deleteAll()
+                db.perLandingFlightDao().deleteAll()
+                db.adHocFlightDao().deleteAll()
+                db.syncStateDao().deleteAll()
+                db.workOrderDraftDao().deleteAll()
+                // Drop every queued write and its on-disk attachments too.
+                outboxRepository?.deleteAll()
+                versionTracker.clear()
+            }
         }
         _isSyncing.update { false }
     }
+
+    private fun parseServerVersion(value: String): Instant? =
+        runCatching { OffsetDateTime.parse(value).toInstant() }
+            .recoverCatching { Instant.parse(value) }
+            .getOrNull()
+
+}
+
+/** In-process ordering guard; reconnect catch-up provides the cross-process reconciliation. */
+internal class MobileSyncVersionTracker {
+    private val latestByKey = mutableMapOf<String, Instant>()
+
+    fun isStaleOrDuplicate(table: String, entityId: String?, incoming: Instant): Boolean {
+        val latest = listOfNotNull(
+            latestByKey[key(table, entityId)],
+            // A later table-wide refresh already contains every older entity mutation.
+            entityId?.let { latestByKey[key(table, null)] },
+        ).maxOrNull()
+        return latest != null && !incoming.isAfter(latest)
+    }
+
+    fun recordApplied(table: String, entityId: String?, version: Instant) {
+        latestByKey[key(table, entityId)] = version
+    }
+
+    fun clear() = latestByKey.clear()
+
+    private fun key(table: String, entityId: String?): String = "$table|${entityId ?: "*"}"
 }
 
 /** Per-table outcome reported back by [SyncCoordinator.refreshAll]. */

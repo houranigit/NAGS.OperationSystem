@@ -16,8 +16,10 @@ shape and business rules.
   reconciles after every reconnect, and a 5-minute foreground poll is the safety net.
 * **Offline writes (outbox)** — work-order create/update, ad-hoc scratch create, return-to-ramp,
   and flight cancellation queue locally (attachments on disk) and drain FIFO with exponential
-  backoff when connectivity returns. Every mutation carries a `clientMutationId` so server retries
-  are idempotent; the SignalR echo (`originMutationId`) clears the optimistic chip.
+  backoff when connectivity returns. A unique, network-constrained WorkManager job persists the
+  wake-up across process death and device reboot, while a shared drain lock prevents the foreground
+  and background uploaders from submitting the same row. Every mutation carries a
+  `clientMutationId` so server retries are idempotent.
 * **Screens** — My Flights / Per Landing / Ad Hoc tabs, create/update work order (planned services
   seed the form as service lines to complete or remove — never Per Landing), return-to-ramp,
   invite teammates (online-only), cancel flight (time + reason), local drafts, and the Sync Center
@@ -43,21 +45,86 @@ app/src/main/java/com/nags/operations/
   MainActivity.kt                   — single Compose activity, hosts the NavHost
   data/api/                         — Ktor HTTP: AuthApi (mobile auth), MobileApi (/api/v1/mobile)
   data/db/                          — Room database (v11), entities, DAOs, converters
-  data/outbox/                      — offline write queue + worker (clientMutationId idempotency)
+  data/outbox/                      — durable queue + foreground/WorkManager delivery
   data/realtime/                    — SignalR channel + change envelope
   data/repo/                        — read-only Flow repositories over Room
   data/sync/                        — SyncCoordinator (single writer), SyncScheduler, sync tables
   ui/                               — Compose screens, ViewModels, components
 ```
 
+## Build prerequisites
+
+The project is pinned to Gradle 8.9, Android Gradle Plugin 8.7.3, and JDK 17. Run Gradle with a
+JDK 17 `JAVA_HOME` instead of relying on an unverified machine default. On macOS:
+
+```sh
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+```
+
 ## Local development
 
-Point the app at a local API by adding to `local.properties`:
+Debug defaults to the API's emulator endpoint at `http://10.0.2.2:5211`. Override it in the ignored
+`local.properties` file when needed:
 
+```properties
+operations.api.debug.base.url=http://10.0.2.2:5211
 ```
-operations.api.base.url=http://10.0.2.2:5119
+
+`10.0.2.2` is the Android emulator's host-loopback alias. Cleartext HTTP is allowed only for that
+domain in the Debug variant; Release always rejects cleartext traffic.
+
+Verified Debug checks:
+
+```sh
+./gradlew clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-(`10.0.2.2` is the Android emulator's loopback alias for the host machine.)
+## Release configuration
 
-Build: `./gradlew :app:assembleDebug`
+Release never reads the developer's `local.properties`. Supply the production API URL with one of:
+
+- Gradle property `operations.api.release.base.url`
+- Environment variable `OPERATIONS_API_RELEASE_BASE_URL`
+
+The value must be an absolute HTTPS URL with a non-loopback host and no embedded credentials,
+query string, or fragment. Release compilation and packaging fail when it is absent or invalid.
+For example:
+
+```sh
+export OPERATIONS_API_RELEASE_BASE_URL=https://api.operations.example
+./gradlew :app:lintRelease :app:assembleRelease
+```
+
+`assembleRelease` may produce an unsigned APK for verification. A distributable App Bundle must be
+signed. Configure all four values below through CI secrets, environment variables, or a user-level
+`~/.gradle/gradle.properties` file. Do not put them in this repository or pass passwords on a shared
+shell command line.
+
+| Gradle property | Environment variable |
+|---|---|
+| `operations.android.signing.store.file` | `OPERATIONS_ANDROID_SIGNING_STORE_FILE` |
+| `operations.android.signing.store.password` | `OPERATIONS_ANDROID_SIGNING_STORE_PASSWORD` |
+| `operations.android.signing.key.alias` | `OPERATIONS_ANDROID_SIGNING_KEY_ALIAS` |
+| `operations.android.signing.key.password` | `OPERATIONS_ANDROID_SIGNING_KEY_PASSWORD` |
+
+The store file may be absolute or relative to the mobile project root. `bundleRelease` fails before
+distribution when any signing value is absent or the keystore does not exist.
+
+Verified pre-release checks and signed bundle command:
+
+```sh
+./gradlew clean \
+  :app:testDebugUnitTest \
+  :app:lintDebug \
+  :app:lintRelease \
+  :app:assembleDebug \
+  :app:assembleRelease
+
+# Requires the four signing values above.
+./gradlew :app:bundleRelease
+```
+
+R8/resource shrinking remains disabled until native regression tests and keep rules cover Room,
+Kotlin serialization, Ktor, and SignalR. Sensitive auth state, the Room cache, and pending outbox
+attachments are excluded from backup/device transfer; application backup is disabled as an
+additional safeguard.

@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Dev: allow HTTP to the emulator host (10.0.2.2), LAN IPs (VM), etc.
-     Tighten for release builds once the API is reachable over HTTPS. -->
+<!-- Secure default for Release and any future non-debug variants. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

@@ -19,8 +19,6 @@ import com.nags.operations.data.repo.EmployeesRepository
 import com.nags.operations.data.repo.FlightsRepository
 import com.nags.operations.data.repo.WorkOrderFlightRow
 import com.nags.operations.ui.util.normalizeWorkOrderFlightNumberInput
-import com.nags.operations.ui.util.parseOffsetDateTime
-import java.time.OffsetDateTime
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +41,7 @@ data class ReturnToRampUiState(
     val submitFieldErrors: CreateWorkOrderSubmitFieldErrors? = null,
     val formLevelError: String? = null,
     val loggedInEmployeeId: String? = null,
+    val isSubmitting: Boolean = false,
 )
 
 /**
@@ -73,7 +72,7 @@ class ReturnToRampViewModel(
         }
         viewModelScope.launch {
             catalogsRepository.servicesFlow().collect { list ->
-                _state.update { it.copy(catalogServices = list) }
+                _state.update { it.copy(catalogServices = list.filterNot(ServiceEntity::isAircraftPerLanding)) }
             }
         }
         viewModelScope.launch {
@@ -168,11 +167,16 @@ class ReturnToRampViewModel(
 
     fun addServiceLine() {
         val preset = _state.value.loggedInEmployeeId
+        val flight = _state.value.flight
+        val from = flight?.cachedMyWorkOrder?.actualArrivalUtc ?: flight?.sta.orEmpty()
+        val to = flight?.cachedMyWorkOrder?.actualDepartureUtc ?: flight?.std.orEmpty()
         updateForm {
             it.copy(
                 serviceLines = it.serviceLines + ServiceLineFormRow(
                     localKey = allocKey(),
                     employeeId = preset,
+                    fromIso = from,
+                    toIso = to,
                     returnToRamp = true,
                 ),
             )
@@ -191,11 +195,16 @@ class ReturnToRampViewModel(
 
     fun addTask() {
         val preset = _state.value.loggedInEmployeeId?.let { listOf(it) } ?: emptyList()
+        val flight = _state.value.flight
+        val from = flight?.cachedMyWorkOrder?.actualArrivalUtc ?: flight?.sta.orEmpty()
+        val to = flight?.cachedMyWorkOrder?.actualDepartureUtc ?: flight?.std.orEmpty()
         updateForm {
             it.copy(
                 tasks = it.tasks + TaskFormRow(
                     localKey = allocKey(),
                     employeeIds = preset,
+                    fromIso = from,
+                    toIso = to,
                     returnToRamp = true,
                 ),
             )
@@ -208,12 +217,28 @@ class ReturnToRampViewModel(
 
     fun replaceTask(row: TaskFormRow) {
         updateForm { f ->
-            f.copy(tasks = f.tasks.map { if (it.localKey == row.localKey) row else it })
+            f.copy(
+                tasks = f.tasks.map { current ->
+                    if (current.localKey == row.localKey) {
+                        current.mergeNonAttachmentEdit(row)
+                    } else {
+                        current
+                    }
+                },
+            )
         }
     }
 
+    fun addTaskAttachment(localKey: Long, attachment: TaskAttachmentDraft) {
+        updateForm { f -> f.withTaskAttachmentAdded(localKey, attachment) }
+    }
+
+    fun removeTaskAttachment(localKey: Long, attachment: TaskAttachmentDraft) {
+        updateForm { f -> f.withTaskAttachmentRemoved(localKey, attachment) }
+    }
+
     fun submitValidateAndEnqueue(
-        onInstantNavigate: () -> Unit,
+        onEnqueuedNavigate: () -> Unit,
         onFinished: (SubmitOfflineResult) -> Unit,
     ) {
         val snapshot = _state.value
@@ -250,7 +275,7 @@ class ReturnToRampViewModel(
         val payload = buildOutboxPayload(form)
         val attachments = collectAttachments(form)
 
-        onInstantNavigate()
+        _state.update { it.copy(isSubmitting = true) }
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val request = EnqueueRequest(
@@ -264,10 +289,13 @@ class ReturnToRampViewModel(
                 )
                 outboxRepository.enqueue(request)
                 withContext(Dispatchers.Main.immediate) {
+                    _state.update { it.copy(isSubmitting = false) }
+                    onEnqueuedNavigate()
                     onFinished(SubmitOfflineResult.Enqueued(clientMutationId = mutationId))
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main.immediate) {
+                    _state.update { it.copy(isSubmitting = false) }
                     onFinished(
                         SubmitOfflineResult.Failed(
                             e.message ?: e.javaClass.simpleName,
@@ -312,9 +340,15 @@ class ReturnToRampViewModel(
                     fromIso = task.fromIso,
                     toIso = task.toIso,
                     employeeIds = task.employeeIds,
-                    tools = task.toolIds.map { OutboxPayload.ResourceInput(it) },
-                    materials = task.materialIds.map { OutboxPayload.ResourceInput(it) },
-                    generalSupports = task.generalSupportIds.map { OutboxPayload.ResourceInput(it) },
+                    tools = task.toolIds.map {
+                        OutboxPayload.ResourceInput(it, resourceQuantity(task.toolQuantities, it))
+                    },
+                    materials = task.materialIds.map {
+                        OutboxPayload.ResourceInput(it, resourceQuantity(task.materialQuantities, it))
+                    },
+                    generalSupports = task.generalSupportIds.map {
+                        OutboxPayload.ResourceInput(it, resourceQuantity(task.generalSupportQuantities, it))
+                    },
                     attachments = List(task.attachments.size) { idx ->
                         OutboxPayload.AttachmentInput(
                             relativePath = "",
@@ -355,79 +389,11 @@ class ReturnToRampViewModel(
         woAta: String?,
         woAtd: String?,
     ): CreateWorkOrderSubmitFieldErrors? {
-        fun safeParse(iso: String?): OffsetDateTime? =
-            iso?.trim()?.takeIf { it.isNotEmpty() }?.let { runCatching { parseOffsetDateTime(it) }.getOrNull() }
-
-        val ataDt = safeParse(woAta)
-        val atdDt = safeParse(woAtd)
-
-        fun mergeMsg(a: String?, b: String): String = when {
-            a.isNullOrBlank() -> b
-            a.contains(b) -> a
-            else -> "$a\n$b"
-        }
-
-        val serviceMap = LinkedHashMap<Long, ServiceLineSubmitFieldErrors>()
-        form.serviceLines.forEach { row ->
-            var st = if (row.serviceId.isNullOrBlank()) "Service type is required." else null
-            var perf = if (row.employeeId.isNullOrBlank()) "Performed by is required." else null
-            var fromE = if (row.fromIso.isBlank()) "From date and time is required." else null
-            var toE = if (row.toIso.isBlank()) "To date and time is required." else null
-
-            val fromDt = row.fromIso.takeIf { it.isNotBlank() }?.let { safeParse(it) }
-            val toDt = row.toIso.takeIf { it.isNotBlank() }?.let { safeParse(it) }
-            if (row.fromIso.isNotBlank() && fromDt == null) {
-                fromE = mergeMsg(fromE, "Invalid From date or time.")
-            }
-            if (row.toIso.isNotBlank() && toDt == null) {
-                toE = mergeMsg(toE, "Invalid To date or time.")
-            }
-            if (fromDt != null && toDt != null && toDt.isBefore(fromDt)) {
-                toE = mergeMsg(toE, "Must be on or after From.")
-            }
-            if (ataDt != null && fromDt != null && fromDt.isBefore(ataDt)) {
-                fromE = mergeMsg(fromE, "Can't be before actual arrival (ATA).")
-            }
-            if (atdDt != null && toDt != null && toDt.isAfter(atdDt)) {
-                toE = mergeMsg(toE, "Can't be after departure (ATD).")
-            }
-            if (st != null || perf != null || fromE != null || toE != null) {
-                serviceMap[row.localKey] = ServiceLineSubmitFieldErrors(st, perf, fromE, toE)
-            }
-        }
-
-        val taskMap = LinkedHashMap<Long, TaskLineSubmitFieldErrors>()
-        form.tasks.forEach { row ->
-            var performers = if (row.employeeIds.isEmpty()) "Choose at least one person." else null
-            var fromE = if (row.fromIso.isBlank()) "From date and time is required." else null
-            var toE = if (row.toIso.isBlank()) "To date and time is required." else null
-            val fromDt = row.fromIso.takeIf { it.isNotBlank() }?.let { safeParse(it) }
-            val toDt = row.toIso.takeIf { it.isNotBlank() }?.let { safeParse(it) }
-            if (row.fromIso.isNotBlank() && fromDt == null) {
-                fromE = mergeMsg(fromE, "Invalid From date or time.")
-            }
-            if (row.toIso.isNotBlank() && toDt == null) {
-                toE = mergeMsg(toE, "Invalid To date or time.")
-            }
-            if (fromDt != null && toDt != null && toDt.isBefore(fromDt)) {
-                toE = mergeMsg(toE, "Must be on or after From.")
-            }
-            if (ataDt != null && fromDt != null && fromDt.isBefore(ataDt)) {
-                fromE = mergeMsg(fromE, "Can't be before actual arrival (ATA).")
-            }
-            if (atdDt != null && toDt != null && toDt.isAfter(atdDt)) {
-                toE = mergeMsg(toE, "Can't be after departure (ATD).")
-            }
-            if (performers != null || fromE != null || toE != null) {
-                taskMap[row.localKey] = TaskLineSubmitFieldErrors(performers, fromE, toE)
-            }
-        }
-
-        val hasProblems = serviceMap.isNotEmpty() || taskMap.isNotEmpty()
-        return if (!hasProblems) null
+        val errors = computeWorkOrderLineErrors(form, woAta, woAtd)
+        return if (errors.services.isEmpty() && errors.tasks.isEmpty()) null
         else CreateWorkOrderSubmitFieldErrors(
-            serviceLinesByKey = serviceMap,
-            tasksByKey = taskMap,
+            serviceLinesByKey = errors.services,
+            tasksByKey = errors.tasks,
         )
     }
 

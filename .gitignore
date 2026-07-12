@@ -21,6 +21,12 @@ dist/
 .env.*
 !.env.example
 appsettings.*.local.json
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
 
 # OS
 .DS_Store

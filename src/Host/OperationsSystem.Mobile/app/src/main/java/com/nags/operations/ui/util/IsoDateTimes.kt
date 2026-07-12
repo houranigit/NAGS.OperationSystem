@@ -6,8 +6,9 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-private val displayFormatter =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(Locale.getDefault())
+private fun displayFormatter(): DateTimeFormatter =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+        .withLocale(Locale.getDefault())
 
 fun parseOffsetDateTime(iso: String): OffsetDateTime =
     try {
@@ -18,7 +19,7 @@ fun parseOffsetDateTime(iso: String): OffsetDateTime =
 
 fun formatIsoForDisplay(iso: String): String =
     try {
-        parseOffsetDateTime(iso).format(displayFormatter)
+        parseOffsetDateTime(iso).format(displayFormatter())
     } catch (_: Exception) {
         iso
     }

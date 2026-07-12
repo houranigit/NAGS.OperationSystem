@@ -49,6 +49,8 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
                 coordinator = graph.syncCoordinator,
                 networkMonitor = graph.networkMonitor,
                 realtimeChannel = graph.realtimeChannel,
+                outboxRepository = graph.workOrderOutboxRepository,
+                outboxWorker = graph.outboxWorker,
             )
             else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")
         } as T

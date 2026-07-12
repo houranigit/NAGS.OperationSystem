@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.automirrored.filled.Note
@@ -195,6 +195,6 @@ enum class BottomNavDestination(
     PerLanding("per_landing_flights", "Per Landing", Icons.Filled.Flight),
     /** Center FAB — opens root create flow; not a real inner-nav tab destination. */
     Create("quick_create", "Create", Icons.Filled.Add),
-    AdHoc("ad_hoc_flights", "Ad Hoc flights", Icons.Filled.Assignment),
+    AdHoc("ad_hoc_flights", "Ad Hoc flights", Icons.AutoMirrored.Filled.Assignment),
     Drafts("work_order_drafts", "Drafts", Icons.AutoMirrored.Filled.Note),
 }

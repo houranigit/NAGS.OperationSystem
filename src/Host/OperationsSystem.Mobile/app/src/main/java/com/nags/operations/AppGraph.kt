@@ -8,6 +8,7 @@ import com.nags.operations.data.api.MobileApi
 import com.nags.operations.data.db.AppDatabase
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.outbox.OutboxWorker
+import com.nags.operations.data.outbox.OutboxWorkScheduler
 import com.nags.operations.data.outbox.WorkOrderOutboxRepository
 import com.nags.operations.data.realtime.RealtimeChannel
 import com.nags.operations.data.repo.AuthRepository
@@ -22,6 +23,9 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Tiny hand-rolled DI container so screens / ViewModels can resolve everything
@@ -50,9 +54,13 @@ class AppGraph private constructor(context: Context) {
     val employeesRepository: EmployeesRepository = EmployeesRepository(database)
     val flightsRepository: FlightsRepository = FlightsRepository(database)
     val workOrderDraftsRepository: WorkOrderDraftsRepository = WorkOrderDraftsRepository(database)
+    private val outboxWorkScheduler = OutboxWorkScheduler(context.applicationContext)
     val workOrderOutboxRepository: WorkOrderOutboxRepository =
-        WorkOrderOutboxRepository(context.applicationContext, database)
-    val authRepository: AuthRepository = AuthRepository(authApi, tokenStore)
+        WorkOrderOutboxRepository(
+            context = context.applicationContext,
+            db = database,
+            onPendingWork = outboxWorkScheduler::scheduleAndAwait,
+        )
 
     val networkMonitor: NetworkMonitor = NetworkMonitor(context.applicationContext, appScope)
 
@@ -117,33 +125,74 @@ class AppGraph private constructor(context: Context) {
         appScope = appScope,
     )
 
+    private val sessionTransitionMutex = Mutex()
+    @Volatile private var secureStorageReady = false
+
+    val authRepository: AuthRepository = AuthRepository(
+        api = authApi,
+        tokenStore = tokenStore,
+        onAccountSwitch = { _, _ -> prepareForAccountSwitch() },
+        onSessionPublished = { resumeSessionServices() },
+    )
+
     init {
-        // Sign-in, foreground-resume, network-restored, and periodic refresh are all
-        // handled inside the scheduler — it self-suspends while the user is logged out
-        // or offline, so starting it eagerly is safe and cheap.
-        syncScheduler.start()
-        // The realtime channel uses the same JWT + connectivity gating as the
-        // scheduler, so eager start is also free — it sits idle until both
-        // signals go green.
-        realtimeChannel.start()
-        // Outbox drains writes; same gating, same lifetime as the scheduler.
-        outboxWorker.start()
+        appScope.launch {
+            tokenStore.initializeSecureStorage()
+            secureStorageReady = true
+            resumeSessionServices()
+        }
     }
 
     /**
-     * Sign-out side-effect that the UI must invoke before navigating back to the
-     * login screen. Order matters: we close the realtime channel first (so it
-     * can't push another upsert after we wipe the cache), then clear the cache,
-     * then drop the JWT.
+     * Stops every authenticated job before revoking credentials. Same-user cache, drafts, and
+     * queued work are deliberately retained; a later login with a different JWT subject runs the
+     * account-switch cleanup before that new token is published.
      */
     suspend fun signOut() {
-        realtimeChannel.stop()
-        syncCoordinator.clearForLogout()
-        authRepository.logout()
+        sessionTransitionMutex.withLock {
+            pauseSessionServices()
+            authRepository.logout()
+        }
     }
 
     /** Convenience for screens / view-models that want to trigger an on-demand refresh. */
     fun refreshNow() = syncScheduler.refreshNow()
+
+    /** Single-activity foreground hook; an unchanged token/network pair otherwise emits nothing. */
+    fun onForeground() {
+        if (secureStorageReady) syncScheduler.refreshNow()
+    }
+
+    private suspend fun prepareForAccountSwitch() {
+        sessionTransitionMutex.withLock {
+            pauseSessionServices()
+            // Make the old bearer unobservable before deleting its local rows. If cleanup fails,
+            // saveLogin propagates the failure and never publishes the new account.
+            tokenStore.clearTokens()
+            syncCoordinator.clearForAccountSwitch()
+            tokenStore.clearAll()
+        }
+    }
+
+    private suspend fun pauseSessionServices() {
+        workOrderOutboxRepository.pauseEnqueues()
+        outboxWorker.stop()
+        outboxWorkScheduler.pauseAndCancel()
+        syncScheduler.stop()
+        realtimeChannel.stop()
+    }
+
+    private suspend fun resumeSessionServices() {
+        sessionTransitionMutex.withLock {
+            workOrderOutboxRepository.resumeEnqueues()
+            syncScheduler.start()
+            realtimeChannel.start()
+            outboxWorker.start()
+            if (tokenStore.getAccessToken() != null) {
+                outboxWorkScheduler.resumeAndSchedule()
+            }
+        }
+    }
 
     companion object {
         @Volatile private var instance: AppGraph? = null

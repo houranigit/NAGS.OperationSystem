@@ -38,6 +38,15 @@ object MobileSyncTables {
     const val GeneralSupports = "general-supports"
     const val Customers = "customers"
     const val AircraftTypes = "aircraft-types"
+
+    val CatalogTables: Set<String> = setOf(
+        Services,
+        Tools,
+        Materials,
+        GeneralSupports,
+        Customers,
+        AircraftTypes,
+    )
 }
 
 /** Operations used in [MobileSyncChangeDto.op]. */

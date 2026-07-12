@@ -10,6 +10,9 @@ using Operations.Application.Features.Flights;
 using Operations.Application.Features.WorkOrders;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Mobile;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Operations.Application.Features.Mobile;
 
@@ -27,9 +30,51 @@ public sealed record MobileWriteResultDto(Guid WorkOrderId, Guid FlightId, bool 
 /// </summary>
 internal static class MobileMutations
 {
-    public static Task<MobileMutation?> FindAsync(IOperationsDbContext db, string clientMutationId, CancellationToken ct) =>
-        db.MobileMutations.AsNoTracking()
+    public static bool IsCanonicalClientMutationId(string? value) =>
+        Guid.TryParseExact(value, "D", out var parsed) &&
+        string.Equals(parsed.ToString(), value, StringComparison.Ordinal);
+
+    public static string Fingerprint<T>(T request)
+    {
+        var json = JsonSerializer.Serialize(request);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+    }
+
+    public static async Task<Result<MobileMutation?>> FindReplayAsync(
+        IOperationsDbContext db,
+        string clientMutationId,
+        Guid ownerUserId,
+        string expectedKind,
+        string requestFingerprint,
+        Guid? expectedWorkOrderId,
+        Guid? expectedFlightId,
+        Guid? expectedClientFlightId,
+        CancellationToken ct)
+    {
+        var mutation = await db.MobileMutations.AsNoTracking()
             .FirstOrDefaultAsync(m => m.ClientMutationId == clientMutationId, ct);
+        if (mutation is null)
+            return Result.Success<MobileMutation?>(null);
+
+        var targetMismatch =
+            (expectedWorkOrderId is not null && mutation.WorkOrderId != expectedWorkOrderId) ||
+            (expectedFlightId is not null && mutation.FlightId != expectedFlightId) ||
+            (expectedClientFlightId is not null && mutation.ClientFlightId != expectedClientFlightId);
+        var fingerprintMismatch = !string.IsNullOrWhiteSpace(mutation.RequestFingerprint) &&
+            !string.Equals(mutation.RequestFingerprint, requestFingerprint, StringComparison.Ordinal);
+
+        if (mutation.OwnerUserId != ownerUserId ||
+            !string.Equals(mutation.Kind, expectedKind, StringComparison.Ordinal) ||
+            targetMismatch ||
+            fingerprintMismatch)
+        {
+            return Error.Conflict(
+                "This client mutation id was already used for a different request.",
+                "Operations.Mobile.MutationKeyReused");
+        }
+
+        return Result.Success<MobileMutation?>(mutation);
+    }
 
     public static async Task<Result<MobileWriteResultDto>> ReplayAsync(
         IOperationsDbContext db, MobileMutation mutation, CancellationToken ct)
@@ -63,7 +108,11 @@ public sealed class MobileSubmitWorkOrderCommandValidator : AbstractValidator<Mo
     {
         RuleFor(x => x.FlightId).NotEmpty();
         RuleFor(x => x.Payload).NotNull();
-        RuleFor(x => x.ClientMutationId).NotEmpty().MaximumLength(64);
+        RuleFor(x => x.ClientMutationId)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .Must(MobileMutations.IsCanonicalClientMutationId)
+            .WithMessage("Client mutation id must be a canonical UUID.");
     }
 }
 
@@ -78,15 +127,23 @@ public sealed class MobileSubmitWorkOrderCommandHandler(
         if (user.UserId is not { } userId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
-        if (await MobileMutations.FindAsync(db, request.ClientMutationId, cancellationToken) is { } replay)
-            return await MobileMutations.ReplayAsync(db, replay, cancellationToken);
+        const string mutationKind = "submit-work-order";
+        var fingerprint = MobileMutations.Fingerprint(new { request.FlightId, request.Type, request.Payload });
+        var replay = await MobileMutations.FindReplayAsync(
+            db, request.ClientMutationId, userId, mutationKind, fingerprint,
+            expectedWorkOrderId: null, expectedFlightId: request.FlightId, expectedClientFlightId: null,
+            cancellationToken);
+        if (replay.IsFailure)
+            return replay.Error;
+        if (replay.Value is { } prior)
+            return await MobileMutations.ReplayAsync(db, prior, cancellationToken);
 
         // Pre-generate the work order id and stage the mutation record so the inner command's
         // SaveChanges persists both atomically.
         var workOrderId = Guid.NewGuid();
         db.MobileMutations.Add(MobileMutation.Record(
-            request.ClientMutationId, userId, "submit-work-order",
-            workOrderId, request.FlightId, clientFlightId: null, timeProvider.GetUtcNow()));
+            request.ClientMutationId, userId, mutationKind,
+            workOrderId, request.FlightId, clientFlightId: null, fingerprint, timeProvider.GetUtcNow()));
 
         var result = await sender.Send(
             new SubmitWorkOrderCommand(request.FlightId, request.Type, request.Payload, request.ClientMutationId, workOrderId),
@@ -120,7 +177,11 @@ public sealed class MobileCreateScratchWorkOrderCommandValidator : AbstractValid
         RuleFor(x => x.CustomerId).NotEmpty();
         RuleFor(x => x.FlightNumber).NotEmpty().MaximumLength(12);
         RuleFor(x => x.Payload).NotNull();
-        RuleFor(x => x.ClientMutationId).NotEmpty().MaximumLength(64);
+        RuleFor(x => x.ClientMutationId)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .Must(MobileMutations.IsCanonicalClientMutationId)
+            .WithMessage("Client mutation id must be a canonical UUID.");
         RuleFor(x => x.ClientFlightId).NotEmpty();
     }
 }
@@ -137,8 +198,27 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
         if (user.UserId is not { } userId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
-        if (await MobileMutations.FindAsync(db, request.ClientMutationId, cancellationToken) is { } replay)
-            return await MobileMutations.ReplayAsync(db, replay, cancellationToken);
+        const string mutationKind = "scratch-work-order";
+        var fingerprint = MobileMutations.Fingerprint(new
+        {
+            request.CustomerId,
+            request.FlightNumber,
+            request.ScheduledArrivalUtc,
+            request.ScheduledDepartureUtc,
+            request.AircraftTypeId,
+            request.PlannedServiceIds,
+            request.Type,
+            request.Payload,
+            request.ClientFlightId
+        });
+        var replay = await MobileMutations.FindReplayAsync(
+            db, request.ClientMutationId, userId, mutationKind, fingerprint,
+            expectedWorkOrderId: null, expectedFlightId: null, expectedClientFlightId: request.ClientFlightId,
+            cancellationToken);
+        if (replay.IsFailure)
+            return replay.Error;
+        if (replay.Value is { } prior)
+            return await MobileMutations.ReplayAsync(db, prior, cancellationToken);
 
         // A different mutation already materialised this client flight (e.g. the same offline draft
         // submitted twice, or from a second device) — a duplicate scratch flight is a conflict.
@@ -156,8 +236,8 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
         var flightId = Guid.NewGuid();
         var workOrderId = Guid.NewGuid();
         db.MobileMutations.Add(MobileMutation.Record(
-            request.ClientMutationId, userId, "scratch-work-order",
-            workOrderId, flightId, request.ClientFlightId, timeProvider.GetUtcNow()));
+            request.ClientMutationId, userId, mutationKind,
+            workOrderId, flightId, request.ClientFlightId, fingerprint, timeProvider.GetUtcNow()));
 
         var result = await sender.Send(
             new CreateAdHocWorkOrderCommand(
@@ -189,7 +269,8 @@ public sealed record MobileUpdateWorkOrderCommand(
     Guid WorkOrderId,
     WorkOrderType Type,
     WorkOrderEditableCommandPayload Payload,
-    string ClientMutationId) : ICommand<MobileWriteResultDto>;
+    string ClientMutationId,
+    string BaseRowVersion) : ICommand<MobileWriteResultDto>;
 
 public sealed class MobileUpdateWorkOrderCommandValidator : AbstractValidator<MobileUpdateWorkOrderCommand>
 {
@@ -197,7 +278,11 @@ public sealed class MobileUpdateWorkOrderCommandValidator : AbstractValidator<Mo
     {
         RuleFor(x => x.WorkOrderId).NotEmpty();
         RuleFor(x => x.Payload).NotNull();
-        RuleFor(x => x.ClientMutationId).NotEmpty().MaximumLength(64);
+        RuleFor(x => x.ClientMutationId)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .Must(MobileMutations.IsCanonicalClientMutationId)
+            .WithMessage("Client mutation id must be a canonical UUID.");
     }
 }
 
@@ -212,24 +297,56 @@ public sealed class MobileUpdateWorkOrderCommandHandler(
         if (user.UserId is not { } userId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
-        if (await MobileMutations.FindAsync(db, request.ClientMutationId, cancellationToken) is { } replay)
-            return await MobileMutations.ReplayAsync(db, replay, cancellationToken);
+        const string mutationKind = "update-work-order";
+        var fingerprint = MobileMutations.Fingerprint(new
+        {
+            request.WorkOrderId,
+            request.Type,
+            request.Payload,
+            request.BaseRowVersion
+        });
+        var replay = await MobileMutations.FindReplayAsync(
+            db, request.ClientMutationId, userId, mutationKind, fingerprint,
+            expectedWorkOrderId: request.WorkOrderId, expectedFlightId: null, expectedClientFlightId: null,
+            cancellationToken);
+        if (replay.IsFailure)
+            return replay.Error;
+        if (replay.Value is { } prior)
+            return await MobileMutations.ReplayAsync(db, prior, cancellationToken);
 
-        // Offline clients cannot hold a fresh RowVersion, so the mobile surface resolves the
-        // current token server-side. Ownership/editability are enforced by the inner command.
+        if (string.IsNullOrWhiteSpace(request.BaseRowVersion))
+        {
+            return Error.Validation(
+                "The cached base row version is required for an offline update.",
+                "Operations.Mobile.BaseRowVersionRequired");
+        }
+
+        byte[] baseRowVersion;
+        try
+        {
+            baseRowVersion = Convert.FromBase64String(request.BaseRowVersion);
+        }
+        catch (FormatException)
+        {
+            return Error.Validation("The base row version is invalid.", "Operations.Mobile.InvalidBaseRowVersion");
+        }
+
+        // The cached base revision is part of the queued mutation. If the portal or another device
+        // changed this work order while the client was offline, the inner command returns 409
+        // instead of applying a stale full replacement over newer data.
         var current = await db.WorkOrders.AsNoTracking()
             .Where(w => w.Id == request.WorkOrderId)
-            .Select(w => new { w.FlightId, w.RowVersion })
+            .Select(w => new { w.FlightId })
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
         db.MobileMutations.Add(MobileMutation.Record(
-            request.ClientMutationId, userId, "update-work-order",
-            request.WorkOrderId, current.FlightId, clientFlightId: null, timeProvider.GetUtcNow()));
+            request.ClientMutationId, userId, mutationKind,
+            request.WorkOrderId, current.FlightId, clientFlightId: null, fingerprint, timeProvider.GetUtcNow()));
 
         var result = await sender.Send(
-            new UpdateWorkOrderCommand(request.WorkOrderId, current.RowVersion, request.Type, request.Payload, request.ClientMutationId),
+            new UpdateWorkOrderCommand(request.WorkOrderId, baseRowVersion, request.Type, request.Payload, request.ClientMutationId),
             cancellationToken);
 
         if (result.IsFailure)
@@ -252,7 +369,11 @@ public sealed class MobileReturnToRampCommandValidator : AbstractValidator<Mobil
     public MobileReturnToRampCommandValidator()
     {
         RuleFor(x => x.WorkOrderId).NotEmpty();
-        RuleFor(x => x.ClientMutationId).NotEmpty().MaximumLength(64);
+        RuleFor(x => x.ClientMutationId)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .Must(MobileMutations.IsCanonicalClientMutationId)
+            .WithMessage("Client mutation id must be a canonical UUID.");
         RuleFor(x => x)
             .Must(x => (x.ServiceLines?.Count ?? 0) + (x.Tasks?.Count ?? 0) > 0)
             .WithMessage("Return to ramp requires at least one service line or task.");
@@ -276,8 +397,21 @@ public sealed class MobileReturnToRampCommandHandler(
         if (user.UserId is not { } userId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
-        if (await MobileMutations.FindAsync(db, request.ClientMutationId, cancellationToken) is { } replay)
-            return await MobileMutations.ReplayAsync(db, replay, cancellationToken);
+        const string mutationKind = "return-to-ramp";
+        var fingerprint = MobileMutations.Fingerprint(new
+        {
+            request.WorkOrderId,
+            request.ServiceLines,
+            request.Tasks
+        });
+        var replay = await MobileMutations.FindReplayAsync(
+            db, request.ClientMutationId, userId, mutationKind, fingerprint,
+            expectedWorkOrderId: request.WorkOrderId, expectedFlightId: null, expectedClientFlightId: null,
+            cancellationToken);
+        if (replay.IsFailure)
+            return replay.Error;
+        if (replay.Value is { } prior)
+            return await MobileMutations.ReplayAsync(db, prior, cancellationToken);
 
         var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders.AsNoTracking())
             .FirstOrDefaultAsync(w => w.Id == request.WorkOrderId, cancellationToken);
@@ -317,8 +451,8 @@ public sealed class MobileReturnToRampCommandHandler(
                 .ToList());
 
         db.MobileMutations.Add(MobileMutation.Record(
-            request.ClientMutationId, userId, "return-to-ramp",
-            workOrder.Id, workOrder.FlightId, clientFlightId: null, timeProvider.GetUtcNow()));
+            request.ClientMutationId, userId, mutationKind,
+            workOrder.Id, workOrder.FlightId, clientFlightId: null, fingerprint, timeProvider.GetUtcNow()));
 
         var result = await sender.Send(
             new UpdateWorkOrderCommand(workOrder.Id, workOrder.RowVersion, workOrder.Type, combinedPayload, request.ClientMutationId),
@@ -346,7 +480,11 @@ public sealed class MobileCancelFlightCommandValidator : AbstractValidator<Mobil
         RuleFor(x => x.FlightId).NotEmpty();
         RuleFor(x => x.CanceledAtUtc).NotEmpty();
         RuleFor(x => x.Reason).NotEmpty().MaximumLength(1000);
-        RuleFor(x => x.ClientMutationId).NotEmpty().MaximumLength(64);
+        RuleFor(x => x.ClientMutationId)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .Must(MobileMutations.IsCanonicalClientMutationId)
+            .WithMessage("Client mutation id must be a canonical UUID.");
     }
 }
 
@@ -361,8 +499,21 @@ public sealed class MobileCancelFlightCommandHandler(
         if (user.UserId is not { } userId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
-        if (await MobileMutations.FindAsync(db, request.ClientMutationId, cancellationToken) is { } replay)
-            return await MobileMutations.ReplayAsync(db, replay, cancellationToken);
+        const string mutationKind = "cancel-flight";
+        var fingerprint = MobileMutations.Fingerprint(new
+        {
+            request.FlightId,
+            request.CanceledAtUtc,
+            request.Reason
+        });
+        var replay = await MobileMutations.FindReplayAsync(
+            db, request.ClientMutationId, userId, mutationKind, fingerprint,
+            expectedWorkOrderId: null, expectedFlightId: request.FlightId, expectedClientFlightId: null,
+            cancellationToken);
+        if (replay.IsFailure)
+            return replay.Error;
+        if (replay.Value is { } prior)
+            return await MobileMutations.ReplayAsync(db, prior, cancellationToken);
 
         var payload = new WorkOrderEditableCommandPayload(
             ActualFlightNumber: null,
@@ -378,8 +529,8 @@ public sealed class MobileCancelFlightCommandHandler(
 
         var workOrderId = Guid.NewGuid();
         db.MobileMutations.Add(MobileMutation.Record(
-            request.ClientMutationId, userId, "cancel-flight",
-            workOrderId, request.FlightId, clientFlightId: null, timeProvider.GetUtcNow()));
+            request.ClientMutationId, userId, mutationKind,
+            workOrderId, request.FlightId, clientFlightId: null, fingerprint, timeProvider.GetUtcNow()));
 
         var result = await sender.Send(
             new SubmitWorkOrderCommand(request.FlightId, WorkOrderType.Cancellation, payload, request.ClientMutationId, workOrderId),

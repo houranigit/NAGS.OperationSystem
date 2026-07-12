@@ -39,29 +39,48 @@ class SyncScheduler(
     private val pollIntervalMs: Long = 5L * 60L * 1_000L,
 ) {
     @Volatile private var loop: Job? = null
+    @Volatile private var onDemandRefresh: Job? = null
+    @Volatile private var enabled = false
+    private val lifecycleLock = Any()
 
     /** Idempotent — multiple calls are safe; only the first actually starts the loop. */
     fun start() {
-        if (loop?.isActive == true) return
-        loop = appScope.launch {
-            // We re-launch the inner polling loop every time (signedIn, online) flips,
-            // so the loop simply doesn't exist while the user is logged out or offline.
-            combine(
-                tokenStore.accessTokenFlow,
-                networkMonitor.isOnline,
-            ) { token, online -> token != null && online }
-                .distinctUntilChanged()
-                .collectLatest { canSync ->
-                    if (!canSync) return@collectLatest
-                    // Immediate sync on transition into the "can sync" state — captures
-                    // both sign-in (token appears) and reconnect (online flips true).
-                    runCatching { coordinator.refreshAll() }
-                    while (true) {
-                        delay(pollIntervalMs)
+        synchronized(lifecycleLock) {
+            if (loop?.isActive == true) return
+            enabled = true
+            loop = appScope.launch {
+                // We re-launch the inner polling loop every time (signedIn, online) flips,
+                // so the loop simply doesn't exist while the user is logged out or offline.
+                combine(
+                    tokenStore.accessTokenFlow,
+                    networkMonitor.isOnline,
+                ) { token, online -> token != null && online }
+                    .distinctUntilChanged()
+                    .collectLatest { canSync ->
+                        if (!canSync) return@collectLatest
+                        // Immediate sync on transition into the "can sync" state — captures
+                        // both sign-in (token appears) and reconnect (online flips true).
                         runCatching { coordinator.refreshAll() }
+                        while (true) {
+                            delay(pollIntervalMs)
+                            runCatching { coordinator.refreshAll() }
+                        }
                     }
-                }
+            }
         }
+    }
+
+    /** Cancels both periodic and foreground/manual work before a session transition. */
+    suspend fun stop() {
+        val jobs = synchronized(lifecycleLock) {
+            enabled = false
+            listOfNotNull(loop, onDemandRefresh).also {
+                loop = null
+                onDemandRefresh = null
+            }
+        }
+        jobs.forEach { it.cancel() }
+        jobs.forEach { it.join() }
     }
 
     /**
@@ -70,12 +89,16 @@ class SyncScheduler(
      * progress and the `sync_state` table for results.
      */
     fun refreshNow() {
-        appScope.launch {
-            val signedIn = tokenStore.accessTokenFlow.firstOrNull() != null
-            if (!signedIn) return@launch
-            val online = networkMonitor.isOnline.first()
-            if (!online) return@launch
-            coordinator.refreshAll()
+        synchronized(lifecycleLock) {
+            if (!enabled) return
+            if (onDemandRefresh?.isActive == true) return
+            onDemandRefresh = appScope.launch {
+                val signedIn = tokenStore.accessTokenFlow.firstOrNull() != null
+                if (!signedIn) return@launch
+                val online = networkMonitor.isOnline.first()
+                if (!online) return@launch
+                coordinator.refreshAll()
+            }
         }
     }
 }

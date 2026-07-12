@@ -39,4 +39,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        AppGraph.get(applicationContext).onForeground()
+    }
 }

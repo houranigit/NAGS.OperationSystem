@@ -30,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,26 +51,22 @@ import com.nags.operations.ui.components.InlineSearchableDropdownField
 import com.nags.operations.ui.components.AircraftTypePicker
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.SignatureField
-import com.nags.operations.ui.components.SubmitWorkOrderAtdDialog
 import com.nags.operations.ui.components.WorkOrderAtaPickerField
+import com.nags.operations.ui.components.WorkOrderDateTimePickerField
 import com.nags.operations.ui.components.WorkOrderFlightSummaryCard
 import com.nags.operations.ui.util.offsetSameAsFlight
 import com.nags.operations.ui.workorder.CreateWorkOrderUiState
 import com.nags.operations.ui.workorder.CreateWorkOrderViewModel
-import com.nags.operations.ui.workorder.ServiceLineFormRow
-import com.nags.operations.ui.workorder.ServiceLineSubmitFieldErrors
 import com.nags.operations.ui.workorder.SubmitOfflineResult
-import com.nags.operations.ui.workorder.SubmitValidationResult
-import com.nags.operations.ui.workorder.TaskFormRow
-import com.nags.operations.ui.workorder.TaskLineSubmitFieldErrors
 import com.nags.operations.ui.workorder.WorkOrderFlightLoadState
+import com.nags.operations.ui.workorder.WorkOrderWizardStep
 import com.nags.operations.ui.workorder.FormSectionTitle
 import com.nags.operations.ui.workorder.ServiceLineCard
 import com.nags.operations.ui.workorder.ServiceLinesSectionHeading
 import com.nags.operations.ui.workorder.TaskLineCard
 import com.nags.operations.ui.workorder.TasksSectionHeading
 import com.nags.operations.ui.workorder.fieldErrorSupportingText
-import java.time.ZoneOffset
+import com.nags.operations.ui.workorder.firstWizardStepWithErrors
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,7 +78,9 @@ fun CreateWorkOrderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    BackHandler(onBack = onBack)
+    BackHandler {
+        if (!state.isSubmitting) onBack()
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -98,7 +97,7 @@ fun CreateWorkOrderScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, enabled = !state.isSubmitting) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -153,75 +152,48 @@ private fun CreateWorkOrderFormContent(
     val scope = rememberCoroutineScope()
     val appCtx = LocalContext.current.applicationContext
     val submitErrs = state.submitFieldErrors
-    var showSubmitAtdDialog by remember { mutableStateOf(false) }
+    var currentStep by remember(flight.id) { mutableStateOf(WorkOrderWizardStep.Flight) }
+    val scrollState = rememberScrollState()
 
-    LaunchedEffect(state.submitValidationResult) {
-        if (state.submitValidationResult is SubmitValidationResult.Passed) {
-            showSubmitAtdDialog = true
-            viewModel.clearSubmitValidationResult()
-        }
+    BackHandler(
+        enabled = currentStep != WorkOrderWizardStep.Flight && !state.isSubmitting,
+    ) {
+        currentStep = WorkOrderWizardStep.entries[currentStep.ordinal - 1]
     }
-
-    if (showSubmitAtdDialog) {
-        SubmitWorkOrderAtdDialog(
-            defaultAtdIso = null,
-            flightStdIso = flight.std,
-            flightOffset = flightOffset,
-            atdValidationError = submitErrs?.atd,
-            onAtdIsoChanged = viewModel::clearAtdSubmitError,
-            onDismiss = { showSubmitAtdDialog = false },
-            onConfirm = { atdIso ->
-                val errs = viewModel.confirmSubmitWithAtd(atdIso)
-                if (errs == null) {
-                    showSubmitAtdDialog = false
-                    viewModel.enqueueSubmission(
-                        onInstantNavigate = onClose,
-                        onFinished = { outcome ->
-                            when (outcome) {
-                                is SubmitOfflineResult.Enqueued -> {
-                                    // Navigated immediately; pending chip appears once Room flush completes.
-                                }
-                                is SubmitOfflineResult.Failed -> {
-                                    Toast.makeText(appCtx, outcome.message, Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        },
-                    )
-                } else {
-                    val needsFormFix = errs.customer != null || errs.aircraftType != null || errs.ata != null ||
-                        errs.serviceLinesByKey.isNotEmpty() || errs.tasksByKey.isNotEmpty()
-                    if (needsFormFix) {
-                        showSubmitAtdDialog = false
-                    }
-                    scope.launch {
-                        val msg = errs.atd?.lineSequence()?.firstOrNull()
-                            ?: errs.ata?.lineSequence()?.firstOrNull()
-                            ?: "Fix the highlighted fields on the form."
-                        snackbarHostState.showSnackbar(msg)
-                    }
-                }
-            },
-        )
+    LaunchedEffect(currentStep) {
+        scrollState.scrollTo(0)
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        WorkOrderWizardStepper(
+            currentStep = currentStep,
+            onStepSelected = { selected ->
+                if (selected.ordinal < currentStep.ordinal) currentStep = selected
+            },
+        )
+
+        when (currentStep) {
+            WorkOrderWizardStep.Flight -> {
+                FormSectionTitle("Flight details")
         if (state.isAdHocScratch) {
             val customers = state.catalogCustomers
             val selected: CustomerEntity? =
                 customers.firstOrNull { it.customerId == state.selectedCustomerId }
             InlineSearchableDropdownField(
                 label = "Customer",
-                selectedText = selected?.let { "${it.name} (${it.iataCode})" } ?: "",
+                selectedText = selected?.let { customerDisplay(it) } ?: "",
                 placeholder = "Search or select customer",
                 options = customers,
-                renderOption = { "${it.name} (${it.iataCode})" },
+                renderOption = ::customerDisplay,
                 onSelect = { viewModel.selectCustomer(it.customerId) },
+                onClearSelection = { viewModel.selectCustomer(null) },
+                hasSelection = state.selectedCustomerId != null,
                 isError = submitErrs?.customer != null,
                 supportingText = fieldErrorSupportingText(submitErrs?.customer),
             )
@@ -252,11 +224,14 @@ private fun CreateWorkOrderFormContent(
             shape = RoundedCornerShape(14.dp),
             label = { Text("Flight number") },
             singleLine = true,
+            isError = submitErrs?.flightNumber != null,
+            supportingText = fieldErrorSupportingText(submitErrs?.flightNumber),
         )
         AircraftTypePicker(
             selectedId = state.form.aircraftTypeId,
             options = state.catalogAircraftTypes,
             onSelected = { viewModel.setAircraftType(it.aircraftTypeId) },
+            onCleared = { viewModel.setAircraftType(null) },
             isError = submitErrs?.aircraftType != null,
             supportingText = fieldErrorSupportingText(submitErrs?.aircraftType),
         )
@@ -274,7 +249,31 @@ private fun CreateWorkOrderFormContent(
             shape = RoundedCornerShape(14.dp),
             label = { Text("Aircraft tail number") },
             singleLine = true,
+            isError = submitErrs?.aircraftTailNumber != null,
+            supportingText = fieldErrorSupportingText(submitErrs?.aircraftTailNumber),
         )
+        if (state.isAdHocScratch) {
+            WorkOrderDateTimePickerField(
+                iso = state.form.scheduledArrivalIso,
+                label = "STA (Scheduled time of arrival)",
+                placeholder = "Tap to set scheduled arrival",
+                flightOffset = flightOffset,
+                defaultInitialIso = flight.sta,
+                onIsoConfirmed = viewModel::updateScratchScheduledArrival,
+                isError = submitErrs?.scheduledArrival != null,
+                supportingText = fieldErrorSupportingText(submitErrs?.scheduledArrival),
+            )
+            WorkOrderDateTimePickerField(
+                iso = state.form.scheduledDepartureIso,
+                label = "STD (Scheduled time of departure)",
+                placeholder = "Tap to set scheduled departure",
+                flightOffset = flightOffset,
+                defaultInitialIso = state.form.scheduledArrivalIso.ifBlank { flight.std },
+                onIsoConfirmed = viewModel::updateScratchScheduledDeparture,
+                isError = submitErrs?.scheduledDeparture != null,
+                supportingText = fieldErrorSupportingText(submitErrs?.scheduledDeparture),
+            )
+        }
         WorkOrderAtaPickerField(
             ataIso = state.form.ataIso,
             staIso = flight.sta,
@@ -283,9 +282,21 @@ private fun CreateWorkOrderFormContent(
             isError = submitErrs?.ata != null,
             supportingText = fieldErrorSupportingText(submitErrs?.ata),
         )
+        WorkOrderDateTimePickerField(
+            iso = state.form.atdIso,
+            label = "ATD (Actual time of departure)",
+            placeholder = "Tap to set departure date & time",
+            flightOffset = flightOffset,
+            defaultInitialIso = flight.std,
+            onIsoConfirmed = { iso -> viewModel.updateForm { it.copy(atdIso = iso) } },
+            isError = submitErrs?.atd != null,
+            supportingText = fieldErrorSupportingText(submitErrs?.atd),
+        )
         OutlinedTextField(
             value = state.form.remarks,
-            onValueChange = { v -> viewModel.updateForm { it.copy(remarks = v) } },
+            onValueChange = { v ->
+                viewModel.updateForm { it.copy(remarks = v.take(com.nags.operations.ui.workorder.WorkOrderFormLimits.Remarks)) }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(160.dp),
@@ -293,8 +304,12 @@ private fun CreateWorkOrderFormContent(
             label = { Text("Remarks (optional)") },
             minLines = 5,
             maxLines = 8,
+            isError = submitErrs?.remarks != null,
+            supportingText = fieldErrorSupportingText(submitErrs?.remarks),
         )
+            }
 
+            WorkOrderWizardStep.ServiceLines -> {
         ServiceLinesSectionHeading(
             catalogsMissingServices = state.catalogServices.isEmpty(),
             catalogsMissingEmployees = state.catalogEmployees.isEmpty(),
@@ -331,7 +346,9 @@ private fun CreateWorkOrderFormContent(
             Spacer(Modifier.width(10.dp))
             Text("Add service")
         }
+            }
 
+            WorkOrderWizardStep.Tasks -> {
         FormSectionTitle("Tasks")
         TasksSectionHeading(
             catalogsMissingEmployees = state.catalogEmployees.isEmpty(),
@@ -359,6 +376,8 @@ private fun CreateWorkOrderFormContent(
                 materials = state.catalogMaterials,
                 generalSupports = state.catalogGeneralSupports,
                 onChange = viewModel::replaceTask,
+                onAttachmentAdded = { viewModel.addTaskAttachment(row.localKey, it) },
+                onAttachmentRemoved = { viewModel.removeTaskAttachment(row.localKey, it) },
                 onRemove = { viewModel.removeTask(row.localKey) },
                 canRemove = true,
             )
@@ -373,59 +392,115 @@ private fun CreateWorkOrderFormContent(
             Spacer(Modifier.width(10.dp))
             Text("Add task")
         }
+            }
 
+            WorkOrderWizardStep.Signature -> {
         FormSectionTitle("Customer signature")
+        state.form.existingCustomerSignatureName?.let { name ->
+            Text(
+                if (state.form.customerSignaturePng == null) {
+                    "Existing signature: $name. Drawing a new signature will replace it."
+                } else {
+                    "The new signature will replace the existing signature: $name."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         SignatureField(
             signaturePng = state.form.customerSignaturePng,
             onChange = { png ->
                 viewModel.updateForm { it.copy(customerSignaturePng = png) }
             },
         )
+            }
+        }
+
+        val draftActionLabel = when {
+            state.showSaveAsDraftButton -> "Save as draft"
+            state.activeDraftId != null -> "Update draft"
+            else -> null
+        }
+        if (draftActionLabel != null) {
+            OutlinedButton(
+                onClick = {
+                    viewModel.saveDraft { success, msg ->
+                        if (success) {
+                            onClose()
+                        } else {
+                            scope.launch { snackbarHostState.showSnackbar(msg) }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                enabled = !state.isSubmitting,
+            ) {
+                Text(draftActionLabel)
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.showSaveAsDraftButton) {
+            if (currentStep != WorkOrderWizardStep.Flight) {
                 OutlinedButton(
                     onClick = {
-                        viewModel.saveDraft { success, msg ->
-                            if (success) {
-                                onClose()
-                            } else {
-                                scope.launch { snackbarHostState.showSnackbar(msg) }
-                            }
-                        }
+                        currentStep = WorkOrderWizardStep.entries[currentStep.ordinal - 1]
                     },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(14.dp),
+                    enabled = !state.isSubmitting,
                 ) {
-                    Text("Save as draft")
-                }
-            } else if (state.activeDraftId != null) {
-                OutlinedButton(
-                    onClick = {
-                        viewModel.saveDraft { success, msg ->
-                            if (success) {
-                                onClose()
-                            } else {
-                                scope.launch { snackbarHostState.showSnackbar(msg) }
-                            }
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(14.dp),
-                ) {
-                    Text("Update draft")
+                    Text("Previous")
                 }
             }
             Button(
-                onClick = { viewModel.submitDryRunValidate() },
+                onClick = {
+                    if (currentStep != WorkOrderWizardStep.Signature) {
+                        if (viewModel.validateWizardStep(currentStep)) {
+                            currentStep = WorkOrderWizardStep.entries[currentStep.ordinal + 1]
+                        } else {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Fix the highlighted fields before continuing.")
+                            }
+                        }
+                    } else {
+                        val errors = viewModel.confirmSubmitWithAtd(state.form.atdIso)
+                        if (errors != null) {
+                            currentStep = firstWizardStepWithErrors(errors)
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Fix the highlighted fields before submitting.")
+                            }
+                        } else {
+                            viewModel.enqueueSubmission(
+                                onEnqueuedNavigate = onClose,
+                                onFinished = { outcome ->
+                                    if (outcome is SubmitOfflineResult.Failed) {
+                                        Toast.makeText(
+                                            appCtx,
+                                            outcome.message,
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                },
+                            )
+                        }
+                    }
+                },
+                enabled = !state.isSubmitting,
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(14.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
             ) {
-                Text("Submit")
+                Text(
+                    when {
+                        currentStep != WorkOrderWizardStep.Signature -> "Next"
+                        state.isUpdatingCachedUnderReviewWorkOrder -> "Update"
+                        else -> "Create"
+                    },
+                )
             }
         }
 
@@ -433,3 +508,49 @@ private fun CreateWorkOrderFormContent(
     }
 }
 
+@Composable
+private fun WorkOrderWizardStepper(
+    currentStep: WorkOrderWizardStep,
+    onStepSelected: (WorkOrderWizardStep) -> Unit,
+) {
+    val labels = listOf("Flight", "Service lines", "Tasks", "Signature")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        WorkOrderWizardStep.entries.forEachIndexed { index, step ->
+            val active = step == currentStep
+            val completed = step.ordinal < currentStep.ordinal
+            TextButton(
+                onClick = { onStepSelected(step) },
+                enabled = completed,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    disabledContentColor = if (active) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                ),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (completed) "✓" else (index + 1).toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = labels[index],
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 2,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun customerDisplay(customer: CustomerEntity): String =
+    customer.iataCode?.takeIf { it.isNotBlank() }?.let { "${customer.name} ($it)" } ?: customer.name
