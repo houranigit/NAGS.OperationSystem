@@ -34,7 +34,10 @@ else
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found");
-app.UseHttpsRedirection();
+
+// Opt-in HTTPS redirect so HTTP-only Windows/IIS hosting (e.g. http://operation.nags-ksa.com) works.
+if (app.Configuration.GetValue("ForceHttpsRedirect", false))
+    app.UseHttpsRedirection();
 
 app.UseAntiforgery();
 
