@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Secure default for Release and any future non-debug variants. -->
+<!-- Release cleartext is limited to the known production API hosts (HTTP IIS today). -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">operation.nags-ksa.com</domain>
+        <domain includeSubdomains="false">80.209.234.61</domain>
+    </domain-config>
 </network-security-config>

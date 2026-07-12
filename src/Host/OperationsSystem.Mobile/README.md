@@ -61,17 +61,54 @@ JDK 17 `JAVA_HOME` instead of relying on an unverified machine default. On macOS
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 ```
 
-## Local development
+## Switching API environments (Dev ↔ Production)
 
-Debug defaults to the API's emulator endpoint at `http://10.0.2.2:5211`. Override it in the ignored
-`local.properties` file when needed:
+The mobile app reads `BuildConfig.API_BASE_URL`. That value is set at **build time**, not at runtime.
+
+| Build | Where to change the URL | Current production value |
+|---|---|---|
+| **Debug** (Android Studio Run / `assembleDebug`) | `local.properties` → `operations.api.debug.base.url` | `http://operation.nags-ksa.com:5211` |
+| **Release** (`assembleRelease`) | `gradle.properties` → `operations.api.release.base.url` (or env `OPERATIONS_API_RELEASE_BASE_URL`) | `http://operation.nags-ksa.com:5211` |
+
+### Debug → local emulator API
+
+In `local.properties`:
 
 ```properties
 operations.api.debug.base.url=http://10.0.2.2:5211
 ```
 
-`10.0.2.2` is the Android emulator's host-loopback alias. Cleartext HTTP is allowed only for that
-domain in the Debug variant; Release always rejects cleartext traffic.
+`10.0.2.2` is the Android emulator’s host-loopback alias.
+
+### Debug → production API
+
+In `local.properties`:
+
+```properties
+operations.api.debug.base.url=http://operation.nags-ksa.com:5211
+```
+
+If DNS is not reachable from the phone/emulator, use the server IP instead:
+
+```properties
+operations.api.debug.base.url=http://80.209.234.61:5211
+```
+
+After changing `local.properties`, do a **Sync Gradle** / rebuild (clean install if the old URL was cached).
+
+### Release → production (default)
+
+`gradle.properties` already contains:
+
+```properties
+operations.api.release.base.url=http://operation.nags-ksa.com:5211
+```
+
+Override for one build without editing the file:
+
+```sh
+./gradlew :app:assembleRelease -Poperations.api.release.base.url=http://80.209.234.61:5211
+```
 
 Verified Debug checks:
 
@@ -81,17 +118,17 @@ Verified Debug checks:
 
 ## Release configuration
 
-Release never reads the developer's `local.properties`. Supply the production API URL with one of:
+Release never reads `local.properties`. Supply the production API URL with one of:
 
-- Gradle property `operations.api.release.base.url`
+- `gradle.properties` / Gradle property `operations.api.release.base.url`
 - Environment variable `OPERATIONS_API_RELEASE_BASE_URL`
 
-The value must be an absolute HTTPS URL with a non-loopback host and no embedded credentials,
+The value must be an absolute `http`/`https` URL with a non-loopback host and no embedded credentials,
 query string, or fragment. Release compilation and packaging fail when it is absent or invalid.
 For example:
 
 ```sh
-export OPERATIONS_API_RELEASE_BASE_URL=https://api.operations.example
+export OPERATIONS_API_RELEASE_BASE_URL=http://operation.nags-ksa.com:5211
 ./gradlew :app:lintRelease :app:assembleRelease
 ```
 

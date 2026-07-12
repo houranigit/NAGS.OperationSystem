@@ -44,8 +44,9 @@ fun releaseApiBaseUrlError(value: String?): String? {
         return "Release API URL is not a valid absolute URI."
     }
 
-    if (!uri.scheme.equals("https", ignoreCase = true))
-        return "Release API URL must use HTTPS."
+    val scheme = uri.scheme?.lowercase(Locale.ROOT)
+    if (scheme != "https" && scheme != "http")
+        return "Release API URL must use http or https."
 
     val host = uri.host?.trim('[', ']')?.lowercase(Locale.ROOT)?.removeSuffix(".")
         ?: return "Release API URL must include a valid host."
@@ -73,9 +74,9 @@ fun releaseApiBaseUrlError(value: String?): String? {
     return null
 }
 
-// Debug may use the emulator host over HTTP. Release never reads local.properties: its HTTPS
-// endpoint must come from a Gradle property or environment variable so a developer-local value
-// cannot silently leak into a distributable build.
+// Debug reads local.properties. Release never does: its endpoint must come from
+// gradle.properties, -Poperations.api.release.base.url, or OPERATIONS_API_RELEASE_BASE_URL.
+
 val localProperties = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
@@ -247,7 +248,7 @@ ksp {
 
 val validateReleaseApiConfiguration = tasks.register("validateReleaseApiConfiguration") {
     group = "verification"
-    description = "Validates the explicit HTTPS API endpoint required by Release variants."
+    description = "Validates the explicit API endpoint required by Release variants."
 
     doLast {
         releaseApiBaseUrlError(releaseApiBaseUrl)?.let { error ->
