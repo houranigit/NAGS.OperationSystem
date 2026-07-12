@@ -343,11 +343,18 @@ class CreateWorkOrderViewModel(
         }
     }
 
-    /** Planned services seeded into the form, excluding the Per-Landing designation. */
+    /** Planned services seeded into the form; Per-Landing flights instead begin with On Call. */
     private fun seededServiceLines(row: WorkOrderFlightRow): List<ServiceLineFormRow> {
-        // Per-Landing flights start with zero seeded lines — Per Landing is a flight
-        // designation, never a performable service line (mirrors the portal's NewModel()).
-        if (row.isPerLanding) return emptyList()
+        if (row.isPerLanding) {
+            return listOf(
+                ServiceLineFormRow(
+                    localKey = allocKey(),
+                    serviceId = ON_CALL_SERVICE_ID,
+                    fromIso = row.sta,
+                    toIso = row.std,
+                ),
+            )
+        }
         return row.plannedServices
             .filterNot { it.isAircraftPerLanding }
             .map { svc ->
@@ -1180,6 +1187,8 @@ class CreateWorkOrderViewModel(
     }
 
     private companion object {
+        const val ON_CALL_SERVICE_ID = "40000000-0000-0000-0000-000000000002"
+
         fun normalizedFormIdentifiers(form: CreateWorkOrderFormState): CreateWorkOrderFormState =
             form.copy(
                 flightNumber = normalizeWorkOrderFlightNumberInput(form.flightNumber),

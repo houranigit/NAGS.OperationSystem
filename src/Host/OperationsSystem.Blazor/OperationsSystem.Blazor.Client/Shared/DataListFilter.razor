@@ -17,6 +17,10 @@
                     ValueProperty="@ValueProperty"
                     Placeholder="@Placeholder"
                     AllowClear="@AllowClear"
+                    AllowFiltering="@AllowFiltering"
+                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    Multiple="@Multiple"
+                    Chips="@Chips"
                     class="os-filter-select"
                     aria-label="@Placeholder" />
 </div>
@@ -34,10 +38,12 @@
 
     /// <summary>Show a clear (×) button to reset the filter to its "all" state.</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
+    [Parameter] public bool AllowFiltering { get; set; }
+    [Parameter] public bool Multiple { get; set; }
+    [Parameter] public bool Chips { get; set; }
 
     private async Task OnValueChangedAsync(TValue? value)
     {
-        Value = value;
         await ValueChanged.InvokeAsync(value);
     }
 }

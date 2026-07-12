@@ -23,7 +23,7 @@ internal sealed record FlightExportCriteria(
     Guid? StationId,
     Guid? CustomerId,
     Guid? OperationTypeId,
-    FlightStatus? Status,
+    IReadOnlyList<FlightStatus>? Statuses,
     DateTimeOffset? FromUtc,
     DateTimeOffset? ToUtc,
     string? Sort);
@@ -36,7 +36,8 @@ internal sealed record FlightExportFile(byte[] Content, string ContentType, stri
 /// </summary>
 internal static class FlightExportDocumentFactory
 {
-    private const string ReportTitle = "Flight Operations Report";
+    private const string ReportTitle = "Daily Operation Report";
+    private const string CompanyName = "National Aviation Ground Support";
     private const string WorkbookContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private const string CsvContentType = "text/csv; charset=utf-8";
     private const string PdfContentType = "application/pdf";
@@ -49,24 +50,18 @@ internal static class FlightExportDocumentFactory
     private const string MutedTextColor = "#64748B";
     private const string BorderColor = "#D7DEE8";
     private const string AlternateRowColor = "#F6F8FB";
+    private const string PerLandingRowColor = "#FFF3BF";
+    private const string CanceledRowColor = "#FADADD";
 
     private static readonly object FontResolverLock = new();
 
     private static readonly string[] CsvHeaders =
     [
-        "Flight ID",
-        "Flight Number",
-        "Original Flight Number",
-        "Customer IATA",
-        "Customer",
-        "Station",
-        "Station Name",
-        "Operation",
-        "Scheduled Arrival (UTC)",
-        "Scheduled Departure (UTC)",
-        "Duration (minutes)",
-        "Status",
-        "Flight Type"
+        "#", "WO#", "Flight#", "WO Flight#", "STA", "STD", "ATA", "ATD",
+        "Arrival Delay", "Departure Delay", "Scheduled Duration", "Actual Duration",
+        "Customer IATA Code", "Customer Name", "Station IATA Code", "Station Name",
+        "Aircraft Manufacturer", "Aircraft Model", "Aircraft Tail Number", "Planned Services",
+        "Services", "Assigned Employees", "Remarks", "Status"
     ];
 
     public static bool TryParseFormat(string? value, out FlightExportFormat format)
@@ -125,7 +120,7 @@ internal static class FlightExportDocumentFactory
         FlightExportCriteria criteria,
         DateTimeOffset generatedAtUtc)
     {
-        const int columnCount = 13;
+        const int columnCount = 24;
         const int headerRowNumber = 5;
 
         using var workbook = new XLWorkbook();
@@ -179,16 +174,17 @@ internal static class FlightExportDocumentFactory
         sheet.Row(headerRowNumber).Height = 30;
 
         var rowNumber = headerRowNumber + 1;
+        var sequence = 1;
         foreach (var row in rows)
         {
-            WriteWorkbookRow(sheet, rowNumber, row);
+            WriteWorkbookRow(sheet, rowNumber, sequence++, row);
 
             if ((rowNumber - headerRowNumber) % 2 == 0)
                 sheet.Range(rowNumber, 1, rowNumber, columnCount).Style.Fill.BackgroundColor = XLColor.FromHtml(AlternateRowColor);
 
             sheet.Range(rowNumber, 1, rowNumber, columnCount).Style.Border.BottomBorder = XLBorderStyleValues.Hair;
             sheet.Range(rowNumber, 1, rowNumber, columnCount).Style.Border.BottomBorderColor = XLColor.FromHtml(BorderColor);
-            ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 12), row.Status);
+            ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 24), row.Status);
             sheet.Row(rowNumber).Height = 20;
             rowNumber++;
         }
@@ -198,45 +194,50 @@ internal static class FlightExportDocumentFactory
         sheet.SheetView.FreezeRows(headerRowNumber);
 
         SetWorkbookColumnWidths(sheet);
-        sheet.Column(9).Style.DateFormat.Format = "yyyy-mm-dd hh:mm \"UTC\"";
-        sheet.Column(10).Style.DateFormat.Format = "yyyy-mm-dd hh:mm \"UTC\"";
-        sheet.Column(11).Style.NumberFormat.Format = "[h]\"h \"mm\"m\"";
+        foreach (var column in new[] { 5, 6, 7, 8 })
+            sheet.Column(column).Style.DateFormat.Format = "yyyy-mm-dd hh:mm \"UTC\"";
+        foreach (var column in new[] { 9, 10 })
+            sheet.Column(column).Style.NumberFormat.Format = "0 \"min\";-0 \"min\"";
+        foreach (var column in new[] { 11, 12 })
+            sheet.Column(column).Style.NumberFormat.Format = "[h]\"h \"mm\"m\"";
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         return stream.ToArray();
     }
 
-    private static void WriteWorkbookRow(IXLWorksheet sheet, int rowNumber, FlightExportRowDto row)
+    private static void WriteWorkbookRow(IXLWorksheet sheet, int rowNumber, int sequence, FlightExportRowDto row)
     {
-        sheet.Cell(rowNumber, 1).SetValue(row.Id.ToString("D"));
-        sheet.Cell(rowNumber, 2).SetValue(SpreadsheetSafeText(DisplayFlightNumber(row)));
-        sheet.Cell(rowNumber, 3).SetValue(SpreadsheetSafeText(row.OriginalFlightNumber));
-        sheet.Cell(rowNumber, 4).SetValue(SpreadsheetSafeText(row.CustomerIataCode ?? string.Empty));
-        sheet.Cell(rowNumber, 5).SetValue(SpreadsheetSafeText(row.CustomerName));
-        sheet.Cell(rowNumber, 6).SetValue(SpreadsheetSafeText(row.StationIata));
-        sheet.Cell(rowNumber, 7).SetValue(SpreadsheetSafeText(row.StationName));
-        sheet.Cell(rowNumber, 8).SetValue(SpreadsheetSafeText(row.OperationTypeName));
-        sheet.Cell(rowNumber, 9).SetValue(row.ScheduledArrivalUtc.UtcDateTime);
-        sheet.Cell(rowNumber, 10).SetValue(row.ScheduledDepartureUtc.UtcDateTime);
+        var approved = row.ApprovedWorkOrder;
+        sheet.Cell(rowNumber, 1).SetValue(sequence);
+        sheet.Cell(rowNumber, 2).SetValue(SpreadsheetSafeText(approved?.ApprovalNumber ?? "-"));
+        sheet.Cell(rowNumber, 3).SetValue(SpreadsheetSafeText(DisplayFlightNumber(row, row.FlightNumber)));
+        SetOptionalText(sheet.Cell(rowNumber, 4), approved is null ? null : DisplayFlightNumber(row, approved.ActualFlightNumber));
+        sheet.Cell(rowNumber, 5).SetValue(row.ScheduledArrivalUtc.UtcDateTime);
+        sheet.Cell(rowNumber, 6).SetValue(row.ScheduledDepartureUtc.UtcDateTime);
+        SetOptionalDate(sheet.Cell(rowNumber, 7), approved?.ActualArrivalUtc);
+        SetOptionalDate(sheet.Cell(rowNumber, 8), approved?.ActualDepartureUtc);
+        SetOptionalMinutes(sheet.Cell(rowNumber, 9), ArrivalDelay(row));
+        SetOptionalMinutes(sheet.Cell(rowNumber, 10), DepartureDelay(row));
+        SetOptionalDuration(sheet.Cell(rowNumber, 11), ScheduledDuration(row));
+        SetOptionalDuration(sheet.Cell(rowNumber, 12), ActualDuration(row));
+        SetOptionalText(sheet.Cell(rowNumber, 13), row.CustomerIataCode);
+        sheet.Cell(rowNumber, 14).SetValue(SpreadsheetSafeText(row.CustomerName));
+        sheet.Cell(rowNumber, 15).SetValue(SpreadsheetSafeText(row.StationIata));
+        sheet.Cell(rowNumber, 16).SetValue(SpreadsheetSafeText(row.StationName));
+        SetOptionalText(sheet.Cell(rowNumber, 17), approved?.AircraftManufacturer);
+        SetOptionalText(sheet.Cell(rowNumber, 18), approved?.AircraftModel);
+        SetOptionalText(sheet.Cell(rowNumber, 19), approved?.AircraftTailNumber);
+        SetOptionalText(sheet.Cell(rowNumber, 20), JoinNames(row.PlannedServiceNames));
+        SetOptionalText(sheet.Cell(rowNumber, 21), approved is null ? null : JoinNames(approved.ServiceNames));
+        SetOptionalText(sheet.Cell(rowNumber, 22), JoinNames(row.AssignedEmployeeNames));
+        SetOptionalText(sheet.Cell(rowNumber, 23), approved?.Remarks);
+        sheet.Cell(rowNumber, 24).SetValue(StatusLabel(row.Status));
 
-        var duration = FlightDuration(row);
-        if (duration is { } validDuration)
-            sheet.Cell(rowNumber, 11).SetValue(validDuration);
-        else
-            sheet.Cell(rowNumber, 11).SetValue("-");
-
-        var statusCell = sheet.Cell(rowNumber, 12);
-        statusCell.SetValue(StatusLabel(row.Status));
-
-        sheet.Cell(rowNumber, 13).SetValue(row.IsPerLanding ? "Per landing" : "Standard");
-
-        var rowRange = sheet.Range(rowNumber, 1, rowNumber, 13);
+        var rowRange = sheet.Range(rowNumber, 1, rowNumber, 24);
         rowRange.Style.Font.FontSize = 9;
         rowRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
         rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        sheet.Cell(rowNumber, 1).Style.Font.FontName = "Consolas";
-        sheet.Cell(rowNumber, 1).Style.Font.FontSize = 8;
     }
 
     private static void ApplyWorkbookStatusStyle(IXLCell cell, string status)
@@ -257,19 +258,9 @@ internal static class FlightExportDocumentFactory
 
     private static void SetWorkbookColumnWidths(IXLWorksheet sheet)
     {
-        sheet.Column(1).Width = 38;
-        sheet.Column(2).Width = 18;
-        sheet.Column(3).Width = 20;
-        sheet.Column(4).Width = 14;
-        sheet.Column(5).Width = 30;
-        sheet.Column(6).Width = 12;
-        sheet.Column(7).Width = 24;
-        sheet.Column(8).Width = 22;
-        sheet.Column(9).Width = 23;
-        sheet.Column(10).Width = 23;
-        sheet.Column(11).Width = 18;
-        sheet.Column(12).Width = 16;
-        sheet.Column(13).Width = 16;
+        var widths = new[] { 7d, 16, 18, 18, 21, 21, 21, 21, 16, 18, 19, 17, 18, 28, 18, 26, 22, 20, 20, 35, 35, 35, 40, 16 };
+        for (var index = 0; index < widths.Length; index++)
+            sheet.Column(index + 1).Width = widths[index];
     }
 
     private static byte[] CreateCsv(IReadOnlyList<FlightExportRowDto> rows)
@@ -281,24 +272,29 @@ internal static class FlightExportDocumentFactory
         {
             WriteCsvRow(writer, CsvHeaders);
 
-            foreach (var row in rows)
+            for (var index = 0; index < rows.Count; index++)
             {
-                var duration = FlightDuration(row);
+                var row = rows[index];
+                var approved = row.ApprovedWorkOrder;
                 WriteCsvRow(writer,
                 [
-                    row.Id.ToString("D"),
-                    SpreadsheetSafeText(DisplayFlightNumber(row)),
-                    SpreadsheetSafeText(row.OriginalFlightNumber),
-                    SpreadsheetSafeText(row.CustomerIataCode ?? string.Empty),
-                    SpreadsheetSafeText(row.CustomerName),
-                    SpreadsheetSafeText(row.StationIata),
-                    SpreadsheetSafeText(row.StationName),
-                    SpreadsheetSafeText(row.OperationTypeName),
-                    row.ScheduledArrivalUtc.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
-                    row.ScheduledDepartureUtc.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
-                    duration is null ? string.Empty : Math.Round(duration.Value.TotalMinutes).ToString(CultureInfo.InvariantCulture),
-                    StatusLabel(row.Status),
-                    row.IsPerLanding ? "Per landing" : "Standard"
+                    (index + 1).ToString(CultureInfo.InvariantCulture),
+                    SpreadsheetSafeText(approved?.ApprovalNumber ?? "-"),
+                    SpreadsheetSafeText(DisplayFlightNumber(row, row.FlightNumber)),
+                    SpreadsheetSafeText(approved is null ? string.Empty : DisplayFlightNumber(row, approved.ActualFlightNumber)),
+                    FormatCsvTimestamp(row.ScheduledArrivalUtc), FormatCsvTimestamp(row.ScheduledDepartureUtc),
+                    FormatCsvTimestamp(approved?.ActualArrivalUtc), FormatCsvTimestamp(approved?.ActualDepartureUtc),
+                    FormatCsvDuration(ArrivalDelay(row)), FormatCsvDuration(DepartureDelay(row)),
+                    FormatCsvDuration(ScheduledDuration(row)), FormatCsvDuration(ActualDuration(row)),
+                    SpreadsheetSafeText(row.CustomerIataCode ?? string.Empty), SpreadsheetSafeText(row.CustomerName),
+                    SpreadsheetSafeText(row.StationIata), SpreadsheetSafeText(row.StationName),
+                    SpreadsheetSafeText(approved?.AircraftManufacturer ?? string.Empty),
+                    SpreadsheetSafeText(approved?.AircraftModel ?? string.Empty),
+                    SpreadsheetSafeText(approved?.AircraftTailNumber ?? string.Empty),
+                    SpreadsheetSafeText(JoinNames(row.PlannedServiceNames)),
+                    SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.ServiceNames)),
+                    SpreadsheetSafeText(JoinNames(row.AssignedEmployeeNames)),
+                    SpreadsheetSafeText(approved?.Remarks ?? string.Empty), StatusLabel(row.Status)
                 ]);
             }
         }
@@ -350,44 +346,15 @@ internal static class FlightExportDocumentFactory
         var section = document.AddSection();
         section.PageSetup.PageFormat = PageFormat.A4;
         section.PageSetup.Orientation = Orientation.Landscape;
-        section.PageSetup.TopMargin = Unit.FromCentimeter(1.35);
+        section.PageSetup.TopMargin = Unit.FromCentimeter(1.05);
         section.PageSetup.BottomMargin = Unit.FromCentimeter(1.35);
         section.PageSetup.LeftMargin = Unit.FromCentimeter(1.15);
         section.PageSetup.RightMargin = Unit.FromCentimeter(1.15);
         section.PageSetup.HeaderDistance = Unit.FromCentimeter(0.45);
-        section.PageSetup.FooterDistance = Unit.FromCentimeter(0.55);
+        section.PageSetup.FooterDistance = Unit.FromCentimeter(0.45);
 
-        AddPdfHeader(section);
         AddPdfFooter(section, generatedAtUtc);
-
-        var title = section.AddParagraph(ReportTitle);
-        title.Format.Font.Name = FontFamily;
-        title.Format.Font.Size = Unit.FromPoint(19);
-        title.Format.Font.Bold = true;
-        title.Format.Font.Color = Color.Parse(BrandColor);
-        title.Format.SpaceAfter = Unit.FromPoint(3);
-
-        var summary = section.AddParagraph();
-        summary.Format.Font.Size = Unit.FromPoint(8.5);
-        summary.Format.Font.Color = Color.Parse(MutedTextColor);
-        summary.AddFormattedText(
-            $"{rows.Count.ToString("N0", CultureInfo.InvariantCulture)} records",
-            TextFormat.Bold);
-        summary.AddText($"   |   Generated {FormatReportTimestamp(generatedAtUtc)}");
-        summary.Format.SpaceAfter = Unit.FromPoint(4);
-
-        var filters = section.AddParagraph();
-        filters.Format.Font.Size = Unit.FromPoint(8);
-        filters.Format.Font.Color = Color.Parse(TextColor);
-        filters.Format.Shading.Color = Color.Parse("#F3E9EA");
-        filters.Format.Borders.Color = Color.Parse("#E4CBCD");
-        filters.Format.Borders.Width = Unit.FromPoint(0.5);
-        filters.Format.LeftIndent = Unit.FromPoint(5);
-        filters.Format.RightIndent = Unit.FromPoint(5);
-        filters.Format.SpaceBefore = Unit.FromPoint(2);
-        filters.Format.SpaceAfter = Unit.FromPoint(8);
-        filters.AddFormattedText("Scope: ", TextFormat.Bold);
-        filters.AddText(PdfSafeText(BuildFilterSummary(rows, criteria)));
+        AddPdfFirstPageHeader(section, rows, criteria);
 
         if (rows.Count == 0)
         {
@@ -399,7 +366,7 @@ internal static class FlightExportDocumentFactory
         }
         else
         {
-            AddPdfTable(section, rows);
+            AddPdfTable(section, rows, criteria);
         }
 
         var renderer = new PdfDocumentRenderer { Document = document };
@@ -410,21 +377,88 @@ internal static class FlightExportDocumentFactory
         return stream.ToArray();
     }
 
-    private static void AddPdfHeader(Section section)
+    private static void AddPdfFirstPageHeader(
+        Section section,
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria)
     {
-        var header = section.Headers.Primary.AddParagraph();
-        header.AddFormattedText("OPERATIONS SYSTEM", TextFormat.Bold);
-        header.AddText("   /   FLIGHTS");
-        header.Format.Font.Name = FontFamily;
-        header.Format.Font.Size = Unit.FromPoint(7.5);
-        header.Format.Font.Color = Color.Parse(BrandColor);
-        header.Format.Borders.Bottom.Color = Color.Parse("#D9BFC2");
-        header.Format.Borders.Bottom.Width = Unit.FromPoint(0.75);
-        header.Format.SpaceAfter = Unit.FromPoint(3);
+        var masthead = section.AddTable();
+        masthead.Borders.Bottom.Color = Color.Parse(BrandColor);
+        masthead.Borders.Bottom.Width = Unit.FromPoint(1.2);
+        AddPdfColumn(masthead, 4.0, ParagraphAlignment.Left);
+        AddPdfColumn(masthead, 17.4, ParagraphAlignment.Center);
+        AddPdfColumn(masthead, 4.0, ParagraphAlignment.Right);
+        var mastheadRow = masthead.AddRow();
+        mastheadRow.VerticalAlignment = VerticalAlignment.Center;
+        mastheadRow.BottomPadding = Unit.FromPoint(7);
+
+        var logo = mastheadRow.Cells[0].AddImage(GetLogoDataUri());
+        logo.LockAspectRatio = true;
+        logo.Height = Unit.FromCentimeter(1.5);
+
+        var company = mastheadRow.Cells[1].AddParagraph();
+        company.Format.Alignment = ParagraphAlignment.Center;
+        company.Format.Font.Size = Unit.FromPoint(15);
+        company.Format.Font.Bold = true;
+        company.Format.Font.Color = Color.Parse(BrandDarkColor);
+        company.AddText(CompanyName);
+        var report = mastheadRow.Cells[1].AddParagraph(ReportTitle);
+        report.Format.Alignment = ParagraphAlignment.Center;
+        report.Format.Font.Size = Unit.FromPoint(11);
+        report.Format.Font.Color = Color.Parse(BrandColor);
+        report.Format.SpaceBefore = Unit.FromPoint(2);
+
+        var date = mastheadRow.Cells[2].AddParagraph(PdfSafeText(PdfDateScope(criteria)));
+        date.Format.Alignment = ParagraphAlignment.Right;
+        date.Format.Font.Size = Unit.FromPoint(8);
+        date.Format.Font.Bold = true;
+        date.Format.Font.Color = Color.Parse(TextColor);
+
+        var scopeLines = BuildPdfScopeLines(rows, criteria);
+        if (scopeLines.Count > 0)
+        {
+            var scopeTable = section.AddTable();
+            scopeTable.Rows.LeftIndent = Unit.Zero;
+            AddPdfColumn(scopeTable, 25.4, ParagraphAlignment.Left);
+            var scopeRow = scopeTable.AddRow();
+            scopeRow.TopPadding = Unit.FromPoint(4);
+            scopeRow.BottomPadding = Unit.FromPoint(4);
+            var scopeCell = scopeRow.Cells[0];
+            scopeCell.Shading.Color = Color.Parse("#F7F1F2");
+            scopeCell.Borders.Color = Color.Parse("#E4CBCD");
+            scopeCell.Borders.Width = Unit.FromPoint(0.5);
+            var scope = scopeCell.AddParagraph();
+            scope.Format.Font.Size = Unit.FromPoint(8);
+            scope.Format.Font.Color = Color.Parse(TextColor);
+            for (var index = 0; index < scopeLines.Count; index++)
+            {
+                if (index > 0)
+                    scope.AddLineBreak();
+                scope.AddFormattedText(PdfSafeText(scopeLines[index]), TextFormat.Bold);
+            }
+        }
+
+        section.AddParagraph().Format.SpaceAfter = Unit.FromPoint(2);
     }
 
     private static void AddPdfFooter(Section section, DateTimeOffset generatedAtUtc)
     {
+        var legend = section.Footers.Primary.AddTable();
+        legend.Rows.LeftIndent = Unit.Zero;
+        AddPdfColumn(legend, 0.35, ParagraphAlignment.Center);
+        AddPdfColumn(legend, 2.0, ParagraphAlignment.Left);
+        AddPdfColumn(legend, 0.35, ParagraphAlignment.Center);
+        AddPdfColumn(legend, 2.0, ParagraphAlignment.Left);
+        var legendRow = legend.AddRow();
+        legendRow.Cells[0].Shading.Color = Color.Parse(PerLandingRowColor);
+        legendRow.Cells[1].AddParagraph("Per Landing");
+        legendRow.Cells[2].Shading.Color = Color.Parse(CanceledRowColor);
+        legendRow.Cells[3].AddParagraph("Canceled");
+        legend.Format.Font.Name = FontFamily;
+        legend.Format.Font.Size = Unit.FromPoint(5.5);
+        legendRow.TopPadding = Unit.FromPoint(1);
+        legendRow.BottomPadding = Unit.FromPoint(2);
+
         var footer = section.Footers.Primary.AddParagraph();
         footer.Format.Font.Name = FontFamily;
         footer.Format.Font.Size = Unit.FromPoint(7);
@@ -439,8 +473,9 @@ internal static class FlightExportDocumentFactory
         footer.AddNumPagesField();
     }
 
-    private static void AddPdfTable(Section section, IReadOnlyList<FlightExportRowDto> rows)
+    private static void AddPdfTable(Section section, IReadOnlyList<FlightExportRowDto> rows, FlightExportCriteria criteria)
     {
+        var columns = BuildPdfColumns(criteria);
         var table = section.AddTable();
         table.Rows.LeftIndent = Unit.Zero;
         table.Borders.Color = Color.Parse(BorderColor);
@@ -448,15 +483,8 @@ internal static class FlightExportDocumentFactory
         table.Format.Font.Name = FontFamily;
         table.Format.Font.Size = Unit.FromPoint(7.2);
 
-        AddPdfColumn(table, 2.3, ParagraphAlignment.Left);
-        AddPdfColumn(table, 4.6, ParagraphAlignment.Left);
-        AddPdfColumn(table, 1.4, ParagraphAlignment.Center);
-        AddPdfColumn(table, 2.8, ParagraphAlignment.Left);
-        AddPdfColumn(table, 3.05, ParagraphAlignment.Center);
-        AddPdfColumn(table, 3.05, ParagraphAlignment.Center);
-        AddPdfColumn(table, 1.8, ParagraphAlignment.Center);
-        AddPdfColumn(table, 2.1, ParagraphAlignment.Center);
-        AddPdfColumn(table, 1.8, ParagraphAlignment.Center);
+        foreach (var column in columns)
+            AddPdfColumn(table, column.WidthCentimeters, column.Alignment);
 
         var heading = table.AddRow();
         heading.HeadingFormat = true;
@@ -468,9 +496,8 @@ internal static class FlightExportDocumentFactory
         heading.TopPadding = Unit.FromPoint(5);
         heading.BottomPadding = Unit.FromPoint(5);
 
-        var headers = new[] { "Flight #", "Customer", "Station", "Operation", "STA (UTC)", "STD (UTC)", "Duration", "Status", "Type" };
-        for (var index = 0; index < headers.Length; index++)
-            heading.Cells[index].AddParagraph(headers[index]);
+        for (var index = 0; index < columns.Count; index++)
+            heading.Cells[index].AddParagraph(columns[index].Header);
 
         for (var index = 0; index < rows.Count; index++)
         {
@@ -480,20 +507,43 @@ internal static class FlightExportDocumentFactory
             row.TopPadding = Unit.FromPoint(3.5);
             row.BottomPadding = Unit.FromPoint(3.5);
 
-            if (index % 2 == 1)
+            if (flight.Status is "Canceled" or "Merged")
+                row.Shading.Color = Color.Parse(CanceledRowColor);
+            else if (flight.IsPerLanding)
+                row.Shading.Color = Color.Parse(PerLandingRowColor);
+            else if (index % 2 == 1)
                 row.Shading.Color = Color.Parse(AlternateRowColor);
 
-            AddPdfCell(row.Cells[0], DisplayFlightNumber(flight), bold: true);
-            AddPdfCell(row.Cells[1], CustomerDisplay(flight));
-            AddPdfCell(row.Cells[2], flight.StationIata);
-            AddPdfCell(row.Cells[3], flight.OperationTypeName);
-            AddPdfCell(row.Cells[4], FormatPdfTimestamp(flight.ScheduledArrivalUtc));
-            AddPdfCell(row.Cells[5], FormatPdfTimestamp(flight.ScheduledDepartureUtc));
-            AddPdfCell(row.Cells[6], DurationDisplay(flight));
-            AddPdfCell(row.Cells[7], StatusLabel(flight.Status), bold: true, color: PdfStatusColor(flight.Status));
-            AddPdfCell(row.Cells[8], flight.IsPerLanding ? "Per landing" : "Standard");
+            for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+                AddPdfCell(row.Cells[columnIndex], columns[columnIndex].Value(flight, index + 1), bold: columnIndex <= 2);
         }
     }
+
+    private static IReadOnlyList<PdfColumnSpec> BuildPdfColumns(FlightExportCriteria criteria)
+    {
+        var columns = new List<PdfColumnSpec>
+        {
+            new("#", 0.8, ParagraphAlignment.Center, (_, sequence) => sequence.ToString(CultureInfo.InvariantCulture)),
+            new("WO#", 2.2, ParagraphAlignment.Center, (row, _) => row.ApprovedWorkOrder?.ApprovalNumber ?? "-"),
+            new("Flight#", 2.1, ParagraphAlignment.Left, (row, _) => DisplayFlightNumber(row, row.ApprovedWorkOrder?.ActualFlightNumber ?? row.FlightNumber))
+        };
+        if (!criteria.CustomerId.HasValue)
+            columns.Add(new("Customer", 5.0, ParagraphAlignment.Left, (row, _) => row.CustomerName));
+        if (!criteria.StationId.HasValue)
+            columns.Add(new("Station", 2.5, ParagraphAlignment.Left, (row, _) => row.StationName));
+
+        var reclaimed = (criteria.CustomerId.HasValue ? 2.5 : 0) + (criteria.StationId.HasValue ? 1.25 : 0);
+        columns.Add(new("Aircraft", 2.4, ParagraphAlignment.Left, (row, _) => row.ApprovedWorkOrder?.AircraftModel ?? string.Empty));
+        columns.Add(new("Services", 5.0 + reclaimed, ParagraphAlignment.Left, (row, _) => PdfServices(row)));
+        columns.Add(new("Remarks", 5.4 + reclaimed, ParagraphAlignment.Left, (row, _) => row.ApprovedWorkOrder?.Remarks ?? string.Empty));
+        return columns;
+    }
+
+    private sealed record PdfColumnSpec(
+        string Header,
+        double WidthCentimeters,
+        ParagraphAlignment Alignment,
+        Func<FlightExportRowDto, int, string> Value);
 
     private static void AddPdfColumn(Table table, double centimeters, ParagraphAlignment alignment)
     {
@@ -536,15 +586,6 @@ internal static class FlightExportDocumentFactory
             filters.Add(customer is null ? "Customer filter applied" : $"Customer: {CustomerDisplay(customer)}");
         }
 
-        if (criteria.OperationTypeId.HasValue)
-        {
-            var operation = rows.FirstOrDefault();
-            filters.Add(operation is null ? "Operation filter applied" : $"Operation: {operation.OperationTypeName}");
-        }
-
-        if (criteria.Status is { } status)
-            filters.Add($"Status: {StatusLabel(status.ToString())}");
-
         if (criteria.FromUtc is { } from && criteria.ToUtc is { } to)
             filters.Add($"Scheduled arrival: {from.UtcDateTime:yyyy-MM-dd} to {to.UtcDateTime:yyyy-MM-dd}");
         else if (criteria.FromUtc is { } fromOnly)
@@ -586,37 +627,107 @@ internal static class FlightExportDocumentFactory
         return builder.ToString();
     }
 
-    private static string DisplayFlightNumber(FlightExportRowDto row) =>
+    private static string DisplayFlightNumber(FlightExportRowDto row, string flightNumber) =>
         string.IsNullOrWhiteSpace(row.CustomerIataCode)
-            ? row.FlightNumber
-            : $"{row.CustomerIataCode.Trim().ToUpperInvariant()}-{row.FlightNumber}";
+            ? flightNumber
+            : $"{row.CustomerIataCode.Trim().ToUpperInvariant()}-{flightNumber}";
 
     private static string CustomerDisplay(FlightExportRowDto row) =>
         string.IsNullOrWhiteSpace(row.CustomerIataCode)
             ? row.CustomerName
             : $"{row.CustomerIataCode.Trim().ToUpperInvariant()} - {row.CustomerName}";
 
-    private static TimeSpan? FlightDuration(FlightExportRowDto row)
+    private static TimeSpan? ScheduledDuration(FlightExportRowDto row) =>
+        NonNegative(row.ScheduledDepartureUtc - row.ScheduledArrivalUtc);
+
+    private static TimeSpan? ActualDuration(FlightExportRowDto row) =>
+        row.ApprovedWorkOrder is { ActualArrivalUtc: { } ata, ActualDepartureUtc: { } atd }
+            ? NonNegative(atd - ata)
+            : null;
+
+    private static TimeSpan? ArrivalDelay(FlightExportRowDto row) =>
+        row.ApprovedWorkOrder?.ActualArrivalUtc is { } ata ? ata - row.ScheduledArrivalUtc : null;
+
+    private static TimeSpan? DepartureDelay(FlightExportRowDto row) =>
+        row.ApprovedWorkOrder?.ActualDepartureUtc is { } atd ? atd - row.ScheduledDepartureUtc : null;
+
+    private static TimeSpan? NonNegative(TimeSpan value) => value < TimeSpan.Zero ? null : value;
+
+    private static void SetOptionalDate(IXLCell cell, DateTimeOffset? value)
     {
-        var duration = row.ScheduledDepartureUtc - row.ScheduledArrivalUtc;
-        return duration < TimeSpan.Zero ? null : duration;
+        if (value.HasValue)
+            cell.SetValue(value.Value.UtcDateTime);
     }
 
-    private static string DurationDisplay(FlightExportRowDto row)
+    private static void SetOptionalText(IXLCell cell, string? value)
     {
-        if (FlightDuration(row) is not { } duration)
-            return "-";
+        if (!string.IsNullOrWhiteSpace(value))
+            cell.SetValue(SpreadsheetSafeText(value));
+    }
 
-        var totalMinutes = (int)Math.Round(duration.TotalMinutes);
-        var days = totalMinutes / 1_440;
-        var hours = totalMinutes % 1_440 / 60;
-        var minutes = totalMinutes % 60;
+    private static void SetOptionalDuration(IXLCell cell, TimeSpan? value)
+    {
+        if (value.HasValue)
+            cell.SetValue(value.Value);
+    }
 
-        if (days > 0)
-            return minutes > 0 ? $"{days}d {hours}h {minutes}m" : hours > 0 ? $"{days}d {hours}h" : $"{days}d";
-        if (hours > 0)
-            return minutes > 0 ? $"{hours}h {minutes}m" : $"{hours}h";
-        return $"{minutes}m";
+    private static void SetOptionalMinutes(IXLCell cell, TimeSpan? value)
+    {
+        if (value.HasValue)
+            cell.SetValue(Math.Round(value.Value.TotalMinutes));
+    }
+
+    private static string JoinNames(IReadOnlyList<string> names) => string.Join(", ", names);
+
+    private static string PdfServices(FlightExportRowDto row)
+    {
+        if (row.ApprovedWorkOrder is null)
+            return string.Empty;
+        if (row.ApprovedWorkOrder.ServiceNames.Count == 0 && row.IsPerLanding)
+            return "Per Landing";
+        return JoinNames(row.ApprovedWorkOrder.ServiceNames);
+    }
+
+    private static string FormatCsvTimestamp(DateTimeOffset? value) => value?.UtcDateTime
+        .ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private static string FormatCsvDuration(TimeSpan? value) => value.HasValue
+        ? Math.Round(value.Value.TotalMinutes).ToString(CultureInfo.InvariantCulture)
+        : string.Empty;
+
+    private static string PdfDateScope(FlightExportCriteria criteria)
+    {
+        if (criteria.FromUtc is { } from && criteria.ToUtc is { } to)
+            return $"From {from.UtcDateTime:dd MMM yyyy HH:mm} UTC\nTo   {to.UtcDateTime:dd MMM yyyy HH:mm} UTC";
+        if (criteria.FromUtc is { } fromOnly)
+            return $"From {fromOnly.UtcDateTime:dd MMM yyyy HH:mm} UTC";
+        if (criteria.ToUtc is { } toOnly)
+            return $"To   {toOnly.UtcDateTime:dd MMM yyyy HH:mm} UTC";
+        return string.Empty;
+    }
+
+    private static IReadOnlyList<string> BuildPdfScopeLines(
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria)
+    {
+        var lines = new List<string>();
+        if (criteria.CustomerId.HasValue)
+            lines.Add(rows.FirstOrDefault() is { } row ? $"Customer: {CustomerDisplay(row)}" : "Customer filter applied");
+        if (criteria.StationId.HasValue)
+            lines.Add(rows.FirstOrDefault() is { } row ? $"Station: {row.StationIata} - {row.StationName}" : "Station filter applied");
+        if (!string.IsNullOrWhiteSpace(criteria.Search))
+            lines.Add($"Search: {criteria.Search.Trim()}");
+        return lines;
+    }
+
+    private static string GetLogoDataUri()
+    {
+        using var stream = typeof(FlightExportDocumentFactory).Assembly
+            .GetManifestResourceStream("Operations.Api.Assets.NagsLogo.png")
+            ?? throw new InvalidOperationException("The report logo resource is missing.");
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return "base64:" + Convert.ToBase64String(memory.ToArray());
     }
 
     private static string StatusLabel(string status) => status switch

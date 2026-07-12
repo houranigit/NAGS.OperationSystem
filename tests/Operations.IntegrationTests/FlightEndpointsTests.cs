@@ -71,10 +71,18 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
                 {
                     var sheet = workbook.Worksheet("Flights");
                     var lastRow = sheet.LastRowUsed()!.RowNumber();
+                    sheet.Cell(5, 1).GetString().ShouldBe("#");
+                    sheet.Cell(5, 24).GetString().ShouldBe("Status");
+                    sheet.Cell(6, 1).GetValue<int>().ShouldBe(1);
+                    sheet.Cell(6, 2).GetString().ShouldBe("-");
+                    sheet.Cell(6, 4).IsEmpty().ShouldBeTrue();
+                    sheet.Cell(6, 17).IsEmpty().ShouldBeTrue();
+                    sheet.Cell(6, 21).IsEmpty().ShouldBeTrue();
+                    sheet.Cell(6, 23).IsEmpty().ShouldBeTrue();
 
                     for (var row = 6; row <= lastRow; row++)
                     {
-                        var statusCell = sheet.Cell(row, 12);
+                        var statusCell = sheet.Cell(row, 24);
                         var expectedColors = statusCell.GetString() switch
                         {
                             "Completed" => (Background: "#DDF7E7", Foreground: "#18733A"),
@@ -99,7 +107,7 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
 
                 var csv = Encoding.UTF8.GetString(content, 3, content.Length - 3);
                 var header = csv.Split('\n', 2)[0].TrimEnd('\r');
-                header.ShouldContain("Flight Number");
+                header.ShouldBe("#,WO#,Flight#,WO Flight#,STA,STD,ATA,ATD,Arrival Delay,Departure Delay,Scheduled Duration,Actual Duration,Customer IATA Code,Customer Name,Station IATA Code,Station Name,Aircraft Manufacturer,Aircraft Model,Aircraft Tail Number,Planned Services,Services,Assigned Employees,Remarks,Status");
                 csv.ShouldContain("Export Customer");
                 break;
             case "pdf":

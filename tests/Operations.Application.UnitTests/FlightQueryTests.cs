@@ -6,6 +6,7 @@ using Operations.Application.Features.Flights;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
+using Operations.Domain.WorkOrders;
 using Operations.Infrastructure.Persistence;
 using Shouldly;
 
@@ -171,7 +172,7 @@ public sealed class FlightQueryTests
                 Search: "match",
                 CustomerId: customerId,
                 OperationTypeId: operationTypeId,
-                Status: FlightStatus.Scheduled,
+                Statuses: [FlightStatus.Scheduled],
                 FromUtc: Now.AddHours(-1),
                 ToUtc: Now.AddHours(1)),
             CancellationToken.None);
@@ -179,6 +180,62 @@ public sealed class FlightQueryTests
         result.IsSuccess.ShouldBeTrue();
         result.Value.Select(f => f.Id).ShouldBe([matching.Id]);
         result.Value.Single().StationName.ShouldBe("Dammam");
+    }
+
+    [Fact]
+    public async Task GetFlightsExport_UsesOnlyApprovedWorkOrderValues()
+    {
+        await using var db = NewDb();
+        var approvedFlight = CreateScheduledFlight("RJ", "Royal Jordanian", "100");
+        var submittedFlight = CreateScheduledFlight("SV", "Saudia", "200");
+        db.Flights.AddRange(approvedFlight, submittedFlight);
+        await db.SaveChangesAsync();
+
+        var approved = CreateWorkOrder(approvedFlight, "101", "Approved remarks");
+        approved.Approve(1, "DMM-0001", Guid.NewGuid(), Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
+        var submitted = CreateWorkOrder(submittedFlight, "201", "Submitted remarks");
+        db.WorkOrders.AddRange(approved, submitted);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(Sort: "FlightNumber:asc"),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var approvedRow = result.Value.Single(row => row.Id == approvedFlight.Id);
+        approvedRow.ApprovedWorkOrder.ShouldNotBeNull();
+        approvedRow.ApprovedWorkOrder!.ApprovalNumber.ShouldBe("DMM-0001");
+        approvedRow.ApprovedWorkOrder.ActualFlightNumber.ShouldBe("101");
+        approvedRow.ApprovedWorkOrder.AircraftManufacturer.ShouldBe("Airbus");
+        approvedRow.ApprovedWorkOrder.AircraftModel.ShouldBe("A320");
+        approvedRow.ApprovedWorkOrder.AircraftTailNumber.ShouldBe("HZ-ABC");
+        approvedRow.ApprovedWorkOrder.ServiceNames.ShouldBe(["Deicing"]);
+        approvedRow.ApprovedWorkOrder.Remarks.ShouldBe("Approved remarks");
+        result.Value.Single(row => row.Id == submittedFlight.Id).ApprovedWorkOrder.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetFlights_AcceptsMultipleStatuses()
+    {
+        await using var db = NewDb();
+        var scheduled = CreateScheduledFlight("RJ", "Royal Jordanian", "100");
+        var completed = CreateScheduledFlight("SV", "Saudia", "200");
+        completed.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        completed.SettleCompleted(Now).IsSuccess.ShouldBeTrue();
+        var canceled = CreateScheduledFlight("XY", "Other", "300");
+        canceled.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        canceled.SettleCanceled(Now).IsSuccess.ShouldBeTrue();
+        db.Flights.AddRange(scheduled, completed, canceled);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsQueryHandler(db, scope).Handle(
+            new GetFlightsQuery(PageSize: 100, Statuses: [FlightStatus.Scheduled, FlightStatus.Completed]),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Items.Select(row => row.Id).ShouldBe([scheduled.Id, completed.Id], ignoreOrder: true);
     }
 
     [Theory]
@@ -243,6 +300,30 @@ public sealed class FlightQueryTests
             contractNumber: null,
             createdByUserId: Guid.NewGuid(),
             now: Now).Value;
+    }
+
+    private static WorkOrder CreateWorkOrder(Flight flight, string actualFlightNumber, string remarks)
+    {
+        var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1");
+        var workOrder = WorkOrder.SubmitNew(
+            flight,
+            WorkOrderType.Completion,
+            Guid.NewGuid(),
+            employee,
+            FlightNumber.Create(actualFlightNumber).Value,
+            new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A320"),
+            "HZ-ABC",
+            ActualTime.Create(Now.AddMinutes(10), Now.AddHours(1).AddMinutes(15)).Value,
+            null,
+            remarks,
+            [new WorkOrderServiceLineInput(
+                new ServiceSnapshot(Guid.NewGuid(), "Deicing"),
+                employee,
+                TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
+                null)],
+            [],
+            Now).Value;
+        return workOrder;
     }
 
     private sealed class StaticScope(OperationsScopeContext context) : IOperationsScope

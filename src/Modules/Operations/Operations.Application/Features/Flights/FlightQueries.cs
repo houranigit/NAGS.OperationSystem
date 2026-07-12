@@ -24,7 +24,7 @@ public sealed record GetFlightsQuery(
     Guid? StationId = null,
     Guid? CustomerId = null,
     Guid? OperationTypeId = null,
-    FlightStatus? Status = null,
+    IReadOnlyList<FlightStatus>? Statuses = null,
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
     string? Sort = null) : IQuery<PagedResult<FlightListItemDto>>;
@@ -38,7 +38,7 @@ public sealed record GetFlightsExportQuery(
     Guid? StationId = null,
     Guid? CustomerId = null,
     Guid? OperationTypeId = null,
-    FlightStatus? Status = null,
+    IReadOnlyList<FlightStatus>? Statuses = null,
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
     string? Sort = null) : IQuery<IReadOnlyList<FlightExportRowDto>>;
@@ -61,7 +61,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 request.StationId,
                 request.CustomerId,
                 request.OperationTypeId,
-                request.Status,
+                request.Statuses,
                 request.FromUtc,
                 request.ToUtc));
 
@@ -110,25 +110,65 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
                 request.StationId,
                 request.CustomerId,
                 request.OperationTypeId,
-                request.Status,
+                request.Statuses,
                 request.FromUtc,
                 request.ToUtc));
 
-        IReadOnlyList<FlightExportRowDto> items = await FlightListQuery.ApplySort(query, request.Sort)
-            .Select(f => new FlightExportRowDto(
+        var flightRows = await FlightListQuery.ApplySort(query, request.Sort)
+            .Select(f => new
+            {
                 f.Id,
-                f.FlightNumber.Value,
+                FlightNumber = f.FlightNumber.Value,
                 f.OriginalFlightNumber,
-                f.Customer.IataCode,
-                f.Customer.Name,
-                f.Station.IataCode,
-                f.Station.Name,
-                f.OperationType.Name,
-                f.Schedule.Sta,
-                f.Schedule.Std,
-                f.Status.ToString(),
-                f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)))
+                CustomerIataCode = f.Customer.IataCode,
+                CustomerName = f.Customer.Name,
+                StationIata = f.Station.IataCode,
+                StationName = f.Station.Name,
+                OperationTypeName = f.OperationType.Name,
+                ScheduledArrivalUtc = f.Schedule.Sta,
+                ScheduledDepartureUtc = f.Schedule.Std,
+                Status = f.Status.ToString(),
+                IsPerLanding = f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+                PlannedServiceNames = f.PlannedServices.Select(p => p.Service.Name).ToList(),
+                AssignedEmployeeNames = f.AssignedEmployees.Select(e => e.Employee.FullName).ToList()
+            })
             .ToListAsync(cancellationToken);
+
+        var flightIds = flightRows.Select(f => f.Id).ToList();
+        var approvedWorkOrders = await db.WorkOrders.AsNoTracking()
+            .Where(w => flightIds.Contains(w.FlightId) && w.Status == WorkOrderStatus.Approved)
+            .Select(w => new
+            {
+                w.FlightId,
+                WorkOrder = new ApprovedWorkOrderExportDto(
+                    w.ApprovalNumber,
+                    w.ActualFlightNumber.Value,
+                    w.Actuals == null ? null : w.Actuals.Ata,
+                    w.Actuals == null ? null : w.Actuals.Atd,
+                    w.AircraftType == null ? null : w.AircraftType.Manufacturer,
+                    w.AircraftType == null ? null : w.AircraftType.Model,
+                    w.AircraftTailNumber,
+                    w.ServiceLines.Select(line => line.Service.Name).ToList(),
+                    w.Remarks)
+            })
+            .ToDictionaryAsync(w => w.FlightId, w => w.WorkOrder, cancellationToken);
+
+        IReadOnlyList<FlightExportRowDto> items = flightRows.Select(f => new FlightExportRowDto(
+            f.Id,
+            f.FlightNumber,
+            f.OriginalFlightNumber,
+            f.CustomerIataCode,
+            f.CustomerName,
+            f.StationIata,
+            f.StationName,
+            f.OperationTypeName,
+            f.ScheduledArrivalUtc,
+            f.ScheduledDepartureUtc,
+            f.Status,
+            f.IsPerLanding,
+            f.PlannedServiceNames,
+            f.AssignedEmployeeNames,
+            approvedWorkOrders.GetValueOrDefault(f.Id))).ToList();
 
         return Result.Success(items);
     }
@@ -139,7 +179,7 @@ internal sealed record FlightListFilter(
     Guid? StationId,
     Guid? CustomerId,
     Guid? OperationTypeId,
-    FlightStatus? Status,
+    IReadOnlyList<FlightStatus>? Statuses,
     DateTimeOffset? FromUtc,
     DateTimeOffset? ToUtc);
 
@@ -176,8 +216,8 @@ internal static class FlightListQuery
             query = query.Where(f => f.Customer.CustomerId == customer);
         if (filter.OperationTypeId is { } operationType)
             query = query.Where(f => f.OperationType.OperationTypeId == operationType);
-        if (filter.Status is { } status)
-            query = query.Where(f => f.Status == status);
+        if (filter.Statuses is { Count: > 0 } statuses)
+            query = query.Where(f => statuses.Contains(f.Status));
         if (filter.FromUtc is { } from)
             query = query.Where(f => f.Schedule.Sta >= from);
         if (filter.ToUtc is { } to)

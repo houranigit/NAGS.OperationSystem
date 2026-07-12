@@ -15,6 +15,8 @@
                       LogicalName="Operations.Api.Fonts.OpenSans-Regular.ttf" />
     <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Bold.ttf"
                       LogicalName="Operations.Api.Fonts.OpenSans-Bold.ttf" />
+    <EmbeddedResource Include="../../../Host/OperationsSystem.Mobile/app/src/main/res/drawable-nodpi/nags_logo.png"
+                      LogicalName="Operations.Api.Assets.NagsLogo.png" />
   </ItemGroup>
 
   <ItemGroup>

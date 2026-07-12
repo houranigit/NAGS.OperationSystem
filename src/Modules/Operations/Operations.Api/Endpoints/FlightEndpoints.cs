@@ -24,9 +24,12 @@ internal static class FlightEndpoints
 
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
-            Guid? operationTypeId = null, FlightStatus? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>
+            Guid? operationTypeId = null, string? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>
         {
-            var result = await sender.Send(new GetFlightsQuery(page, pageSize, search, stationId, customerId, operationTypeId, status, fromUtc, toUtc, sort), ct);
+            var statuses = ParseStatuses(status);
+            if (statuses is null)
+                return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
+            var result = await sender.Send(new GetFlightsQuery(page, pageSize, search, stationId, customerId, operationTypeId, statuses, fromUtc, toUtc, sort), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
@@ -39,7 +42,7 @@ internal static class FlightEndpoints
             Guid? stationId = null,
             Guid? customerId = null,
             Guid? operationTypeId = null,
-            FlightStatus? status = null,
+            string? status = null,
             DateTimeOffset? fromUtc = null,
             DateTimeOffset? toUtc = null,
             string? sort = null) =>
@@ -54,12 +57,16 @@ internal static class FlightEndpoints
                     code: "Operations.Flight.ExportFormatInvalid"));
             }
 
+            var statuses = ParseStatuses(status);
+            if (statuses is null)
+                return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
+
             var result = await sender.Send(new GetFlightsExportQuery(
                 search,
                 stationId,
                 customerId,
                 operationTypeId,
-                status,
+                statuses,
                 fromUtc,
                 toUtc,
                 sort), ct);
@@ -75,7 +82,7 @@ internal static class FlightEndpoints
                     stationId,
                     customerId,
                     operationTypeId,
-                    status,
+                    statuses,
                     fromUtc,
                     toUtc,
                     sort),
@@ -197,5 +204,21 @@ internal static class FlightEndpoints
             var result = await sender.Send(new GetOperationsDashboardQuery(), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Dashboard.View).WithTags("Operations.Dashboard");
+    }
+
+    private static IReadOnlyList<FlightStatus>? ParseStatuses(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        var statuses = new List<FlightStatus>();
+        foreach (var item in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Enum.TryParse<FlightStatus>(item, ignoreCase: true, out var status))
+                return null;
+            if (!statuses.Contains(status))
+                statuses.Add(status);
+        }
+        return statuses;
     }
 }

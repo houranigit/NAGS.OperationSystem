@@ -31,7 +31,21 @@ public sealed record FlightExportRowDto(
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
     string Status,
-    bool IsPerLanding);
+    bool IsPerLanding,
+    IReadOnlyList<string> PlannedServiceNames,
+    IReadOnlyList<string> AssignedEmployeeNames,
+    ApprovedWorkOrderExportDto? ApprovedWorkOrder);
+
+public sealed record ApprovedWorkOrderExportDto(
+    string? ApprovalNumber,
+    string ActualFlightNumber,
+    DateTimeOffset? ActualArrivalUtc,
+    DateTimeOffset? ActualDepartureUtc,
+    string? AircraftManufacturer,
+    string? AircraftModel,
+    string? AircraftTailNumber,
+    IReadOnlyList<string> ServiceNames,
+    string? Remarks);
 
 public sealed record CalendarFlightDto(
     Guid Id,
