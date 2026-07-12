@@ -336,7 +336,7 @@
         var start = flight.ScheduledArrivalUtc.UtcDateTime;
         var end = flight.ScheduledDepartureUtc.UtcDateTime;
         var text = $"{flightNumber} · {StationLine(flight.StationName, flight.IsPerLanding)}";
-        return new CalendarItem(flight.Id, text, flightNumber, flight.CustomerName, flight.StationName, start, end, flight.Status, flight.IsPerLanding);
+        return new CalendarItem(flight.Id, text, flightNumber, flight.CustomerName, flight.StationName, start, end, flight.Status, flight.IsPerLanding, flight.IsOnCall);
     }
 
     private static string DisplayFlightNumber(CalendarFlight flight) =>
@@ -386,6 +386,11 @@
                     <span class="ofc-heading-sep">•</span>
                     <span class="ofc-per-landing">Per Landing</span>
                 }
+                @if (item.IsOnCall)
+                {
+                    <span class="ofc-heading-sep">•</span>
+                    <span class="ofc-per-landing">On Call</span>
+                }
             </div>
             <span class="ofc-station-name">@item.StationName</span>
         </div>
@@ -420,7 +425,8 @@
         DateTime Start,
         DateTime End,
         string Status,
-        bool IsPerLanding);
+        bool IsPerLanding,
+        bool IsOnCall);
 
     private sealed record StatusFilterOption(string Label, string Value);
     private sealed record StationFilterOption(string Label, Guid? Value);

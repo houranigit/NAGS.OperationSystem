@@ -13,7 +13,8 @@ public sealed record FlightListItem(
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
     string Status,
-    bool IsPerLanding);
+    bool IsPerLanding,
+    bool IsOnCall);
 
 public sealed record CalendarFlight(
     Guid Id,
@@ -24,6 +25,7 @@ public sealed record CalendarFlight(
     string StationName,
     string Status,
     bool IsPerLanding,
+    bool IsOnCall,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc);
 
@@ -73,6 +75,7 @@ public sealed record FlightDetail(
     DateTimeOffset ScheduledDepartureUtc,
     string Status,
     bool IsPerLanding,
+    bool IsOnCall,
     Guid? ContractId,
     string? ContractNumber,
     Guid? MergedIntoFlightId,

@@ -11,7 +11,8 @@ public sealed record FlightListItemDto(
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
     string Status,
-    bool IsPerLanding);
+    bool IsPerLanding,
+    bool IsOnCall);
 
 /// <summary>
 /// Stable, presentation-neutral row used by the supported flight report formats. Durations and
@@ -41,6 +42,7 @@ public sealed record CalendarFlightDto(
     string StationName,
     string Status,
     bool IsPerLanding,
+    bool IsOnCall,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc);
 
@@ -83,6 +85,7 @@ public sealed record FlightDetailDto(
     DateTimeOffset ScheduledDepartureUtc,
     string Status,
     bool IsPerLanding,
+    bool IsOnCall,
     Guid? ContractId,
     string? ContractNumber,
     Guid? MergedIntoFlightId,

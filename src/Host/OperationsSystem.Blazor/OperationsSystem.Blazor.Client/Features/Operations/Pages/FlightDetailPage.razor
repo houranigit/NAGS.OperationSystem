@@ -39,6 +39,10 @@
                                 {
                                     <StatusBadge Label="Per landing" Tone="warning" />
                                 }
+                                @if (flight.IsOnCall)
+                                {
+                                    <StatusBadge Label="On Call" Tone="info" />
+                                }
                                 @if (HasPotentialDuplicate(flight))
                                 {
                                     <StatusBadge Label="Potential duplicate" Tone="warning" />

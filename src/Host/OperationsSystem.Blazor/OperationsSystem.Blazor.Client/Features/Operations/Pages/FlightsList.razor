@@ -71,6 +71,10 @@
                                     {
                                         <span class="ofl-per-landing-badge">Per landing</span>
                                     }
+                                    @if (flight.IsOnCall)
+                                    {
+                                        <span class="ofl-per-landing-badge">On Call</span>
+                                    }
                                 </div>
                                 <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span>
                             </div>

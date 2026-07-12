@@ -82,7 +82,9 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 f.Schedule.Sta,
                 f.Schedule.Std,
                 f.Status.ToString(),
-                f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)))
+                f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+                db.WorkOrders.Any(w => w.FlightId == f.Id &&
+                    w.ServiceLines.Any(line => line.Service.ServiceId == WellKnownMasterDataIds.OnCallService))))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult(items, total);
@@ -307,6 +309,8 @@ public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IO
                 f.Station.Name,
                 f.Status.ToString(),
                 f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+                db.WorkOrders.Any(w => w.FlightId == f.Id &&
+                    w.ServiceLines.Any(line => line.Service.ServiceId == WellKnownMasterDataIds.OnCallService)),
                 f.Schedule.Sta,
                 f.Schedule.Std))
             .ToListAsync(cancellationToken);
@@ -374,6 +378,8 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.Schedule.Std,
             flight.Status.ToString(),
             flight.IsPerLanding,
+            await db.WorkOrders.AsNoTracking().AnyAsync(w => w.FlightId == flight.Id &&
+                w.ServiceLines.Any(line => line.Service.ServiceId == WellKnownMasterDataIds.OnCallService), cancellationToken),
             flight.ContractId,
             flight.ContractNumber,
             flight.MergedIntoFlightId,

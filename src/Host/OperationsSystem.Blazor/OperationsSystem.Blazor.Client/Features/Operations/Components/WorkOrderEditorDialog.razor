@@ -75,6 +75,7 @@
 </div>
 
 @code {
+    private static readonly Guid OnCallServiceId = new("40000000-0000-0000-0000-000000000002");
     [Parameter] public Guid? FlightId { get; set; }
     [Parameter] public Guid? WorkOrderId { get; set; }
     [Parameter] public string Type { get; set; } = "Completion";
@@ -1106,7 +1107,12 @@
         ActualDepartureUtc = flight.ScheduledDepartureUtc.UtcDateTime,
         CanceledAtUtc = flight.ScheduledArrivalUtc.UtcDateTime,
         ServiceLines = flight.IsPerLanding
-            ? []
+            ? [new ServiceLineForm
+            {
+                ServiceId = OnCallServiceId,
+                FromUtc = flight.ScheduledArrivalUtc.UtcDateTime,
+                ToUtc = flight.ScheduledDepartureUtc.UtcDateTime
+            }]
             : flight.PlannedServices
                 .Where(service => !service.IsAircraftPerLanding)
                 .Select(service => new ServiceLineForm
