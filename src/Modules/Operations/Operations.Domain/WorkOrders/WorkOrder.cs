@@ -241,6 +241,21 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         UpdateDetails(type, actualFlightNumber, aircraftType, aircraftTailNumber, actuals, cancellation, remarks, serviceLines, tasks, now);
 
     public Result Approve(int sequence, string approvalNumber, Guid approverUserId, DateTimeOffset now)
+        => ApproveInternal(sequence, approvalNumber, approverUserId, now, requireCompletionDetails: true);
+
+    /// <summary>
+    /// Approves an eligible Per Landing completion produced for review. The application layer must
+    /// verify that the flight is Per Landing, In Progress, and has no On Call work order.
+    /// </summary>
+    public Result ApprovePerLandingExtraction(int sequence, string approvalNumber, Guid approverUserId, DateTimeOffset now)
+        => ApproveInternal(sequence, approvalNumber, approverUserId, now, requireCompletionDetails: false);
+
+    private Result ApproveInternal(
+        int sequence,
+        string approvalNumber,
+        Guid approverUserId,
+        DateTimeOffset now,
+        bool requireCompletionDetails)
     {
         var editable = EnsureEditable();
         if (editable.IsFailure)
@@ -250,8 +265,10 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (string.IsNullOrWhiteSpace(approvalNumber))
             return Error.Validation("Approval number is required.", "Operations.WorkOrder.ApprovalNumberRequired");
 
-        if (Type == WorkOrderType.Completion && (Actuals is null || AircraftType is null))
+        if (Type == WorkOrderType.Completion && requireCompletionDetails && (Actuals is null || AircraftType is null))
             return Error.Conflict("Completion work orders require actual times and aircraft type before approval.", "Operations.WorkOrder.CompletionApprovalIncomplete");
+        if (Type != WorkOrderType.Completion && !requireCompletionDetails)
+            return Error.Conflict("Per Landing extraction can approve completion work orders only.", "Operations.PerLanding.CompletionRequired");
         if (Type == WorkOrderType.Cancellation && Cancellation is null)
             return Error.Conflict("Cancellation work orders require cancellation details before approval.", "Operations.WorkOrder.CancellationApprovalIncomplete");
 

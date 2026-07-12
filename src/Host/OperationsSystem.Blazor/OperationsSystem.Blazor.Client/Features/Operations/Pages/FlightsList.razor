@@ -34,6 +34,7 @@
                 <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
                 <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
                 <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
+                <DataListFilter TValue="IEnumerable<string>" Placeholder="All service types" Data="@serviceCategoryOptions" Value="@serviceCategoryFilters" ValueChanged="@OnServiceCategoryFilterChangedAsync" Multiple="true" Chips="true" />
                 <div class="ofl-date-range">
                     <RadzenDatePicker TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
                                       DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
@@ -44,6 +45,15 @@
                 </div>
             </Filters>
             <Toolbar>
+                <AuthorizeView Context="approveAccess">
+                    @if (approveAccess.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersApprove))
+                    {
+                        <a class="ofl-extract-link" href="@BuildPerLandingExtractUrl()" target="_blank" rel="noopener noreferrer">
+                            <RadzenIcon Icon="download" />
+                            <span>Extract Per Landing</span>
+                        </a>
+                    }
+                </AuthorizeView>
                 <AuthorizeView Context="exportAccess">
                     @if (exportAccess.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsExport))
                     {
@@ -124,6 +134,7 @@
     private bool isExporting;
     private string searchTerm = string.Empty;
     private IReadOnlyList<string> statusFilters = [];
+    private IReadOnlyList<string> serviceCategoryFilters = [];
     private Guid? stationFilter;
     private Guid? customerFilter;
     private Guid? operationTypeFilter;
@@ -142,11 +153,18 @@
         new("Completed", "Completed"),
         new("Canceled", "Canceled")
     ];
+    private readonly IReadOnlyList<StatusFilterOption> serviceCategoryOptions =
+    [
+        new("Per Landing flights", "PerLanding"),
+        new("On Call", "OnCall"),
+        new("Other (not Per Landing or On Call)", "Other")
+    ];
 
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)
         + (customerFilter.HasValue ? 1 : 0)
         + (statusFilters.Count > 0 ? 1 : 0)
+        + (serviceCategoryFilters.Count > 0 ? 1 : 0)
         + (operationTypeFilter.HasValue ? 1 : 0)
         + (fromFilter.HasValue ? 1 : 0)
         + (toFilter.HasValue ? 1 : 0);
@@ -240,6 +258,12 @@
         await ReloadAsync();
     }
 
+    private async Task OnServiceCategoryFilterChangedAsync(IEnumerable<string>? values)
+    {
+        serviceCategoryFilters = values?.Distinct().ToList() ?? [];
+        await ReloadAsync();
+    }
+
     private async Task OnOperationTypeFilterChangedAsync(Guid? value)
     {
         operationTypeFilter = value;
@@ -266,6 +290,7 @@
         stationFilter = null;
         customerFilter = null;
         statusFilters = [];
+        serviceCategoryFilters = [];
         operationTypeFilter = null;
         fromFilter = null;
         toFilter = null;
@@ -300,7 +325,7 @@
         {
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
                 string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, stationFilter, customerFilter, operationTypeFilter,
-                statusFilters, DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort);
+                statusFilters, DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), serviceCategoryFilters, currentSort);
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -446,6 +471,7 @@
                 statusFilters,
                 DateBoundaryUtc(fromFilter, false),
                 DateBoundaryUtc(toFilter, true),
+                serviceCategoryFilters,
                 currentSort);
 
             Notifications.Notify(
@@ -590,6 +616,29 @@
         "pdf" => UiStrings.Flights.PdfReport,
         _ => UiStrings.Flights.Export
     };
+
+    private string BuildPerLandingExtractUrl()
+    {
+        var query = new List<string>();
+        AddQuery(query, "search", string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim());
+        AddQuery(query, "stationId", stationFilter?.ToString());
+        AddQuery(query, "customerId", customerFilter?.ToString());
+        AddQuery(query, "operationTypeId", operationTypeFilter?.ToString());
+        AddQuery(query, "status", statusFilters.Count > 0 ? string.Join(',', statusFilters) : null);
+        AddQuery(query, "fromUtc", DateBoundaryUtc(fromFilter, false)?.ToString("O"));
+        AddQuery(query, "toUtc", DateBoundaryUtc(toFilter, true)?.ToString("O"));
+        AddQuery(query, "serviceCategory", serviceCategoryFilters.Count > 0 ? string.Join(',', serviceCategoryFilters) : null);
+        AddQuery(query, "sort", currentSort);
+        return query.Count == 0
+            ? "/operations/flights/per-landing-extract"
+            : $"/operations/flights/per-landing-extract?{string.Join('&', query)}";
+    }
+
+    private static void AddQuery(List<string> query, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            query.Add($"{key}={Uri.EscapeDataString(value)}");
+    }
 
     private sealed record StatusFilterOption(string Label, string Value);
     private sealed record StationFilterOption(string Label, Guid? Value);

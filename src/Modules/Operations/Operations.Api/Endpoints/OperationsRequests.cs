@@ -41,6 +41,14 @@ public sealed record AssignEmployeesRequest(IReadOnlyList<Guid>? StaffMemberIds)
 
 public sealed record MergeFlightsRequest(Guid SurvivorFlightId, Guid LoserFlightId);
 
+public sealed record PerLandingApprovalSelectionRequest(Guid FlightId, Guid WorkOrderId, byte[] RowVersion);
+
+public sealed record ApprovePerLandingFlightsRequest(IReadOnlyList<PerLandingApprovalSelectionRequest>? Selections)
+{
+    public ApprovePerLandingFlightsCommand ToCommand() => new(
+        Selections?.Select(x => new PerLandingApprovalSelection(x.FlightId, x.WorkOrderId, x.RowVersion)).ToList() ?? []);
+}
+
 public sealed record CreateAdHocWorkOrderRequest(
     Guid CustomerId,
     Guid StationId,

@@ -10,12 +10,13 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 {
     public Task<PagedResult<FlightListItem>> GetFlightsAsync(
         int page, int pageSize, string? search = null, Guid? stationId = null, Guid? customerId = null,
-        Guid? operationTypeId = null, IReadOnlyList<string>? statuses = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null, CancellationToken ct = default)
+        Guid? operationTypeId = null, IReadOnlyList<string>? statuses = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null,
+        IReadOnlyList<string>? serviceCategories = null, string? sort = null, CancellationToken ct = default)
     {
         var query = new QueryBuilder()
             .Add("page", page).Add("pageSize", pageSize).Add("search", search)
             .Add("stationId", stationId).Add("customerId", customerId).Add("operationTypeId", operationTypeId).Add("status", JoinValues(statuses))
-            .Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("sort", sort).Build();
+            .Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("serviceCategory", JoinValues(serviceCategories)).Add("sort", sort).Build();
         return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
     }
 
@@ -28,6 +29,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         IReadOnlyList<string>? statuses = null,
         DateTimeOffset? fromUtc = null,
         DateTimeOffset? toUtc = null,
+        IReadOnlyList<string>? serviceCategories = null,
         string? sort = null,
         CancellationToken ct = default)
     {
@@ -40,10 +42,45 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             .Add("status", JoinValues(statuses))
             .Add("fromUtc", fromUtc)
             .Add("toUtc", toUtc)
+            .Add("serviceCategory", JoinValues(serviceCategories))
             .Add("sort", sort)
             .Build();
         return api.DownloadFileAsync($"/operations/flights/export{query}", cancellationToken: ct);
     }
+
+    public Task<IReadOnlyList<PerLandingExtractionItem>> GetPerLandingExtractionAsync(
+        string? search = null,
+        Guid? stationId = null,
+        Guid? customerId = null,
+        Guid? operationTypeId = null,
+        IReadOnlyList<string>? statuses = null,
+        DateTimeOffset? fromUtc = null,
+        DateTimeOffset? toUtc = null,
+        IReadOnlyList<string>? serviceCategories = null,
+        string? sort = null,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("search", search)
+            .Add("stationId", stationId)
+            .Add("customerId", customerId)
+            .Add("operationTypeId", operationTypeId)
+            .Add("status", JoinValues(statuses))
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("serviceCategory", JoinValues(serviceCategories))
+            .Add("sort", sort)
+            .Build();
+        return api.GetAsync<IReadOnlyList<PerLandingExtractionItem>>($"/operations/flights/per-landing-extract{query}", ct);
+    }
+
+    public Task<int> ApprovePerLandingFlightsAsync(
+        IReadOnlyList<PerLandingApprovalSelectionModel> selections,
+        CancellationToken ct = default) =>
+        api.PostAsync<ApprovePerLandingFlightsRequestModel, int>(
+            "/operations/flights/per-landing-extract/approve",
+            new ApprovePerLandingFlightsRequestModel(selections),
+            ct);
 
     public Task<IReadOnlyList<CalendarFlight>> GetCalendarAsync(
         DateTimeOffset fromUtc,

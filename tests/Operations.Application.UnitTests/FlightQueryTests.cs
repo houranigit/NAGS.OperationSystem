@@ -1,5 +1,6 @@
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Authorization;
 using Operations.Application.Features.Flights;
@@ -239,6 +240,77 @@ public sealed class FlightQueryTests
     }
 
     [Theory]
+    [InlineData(FlightServiceCategory.PerLanding)]
+    [InlineData(FlightServiceCategory.OnCall)]
+    [InlineData(FlightServiceCategory.Other)]
+    public async Task GetFlights_FiltersByServiceCategory(FlightServiceCategory category)
+    {
+        await using var db = NewDb();
+        var perLanding = CreateScheduledFlight(
+            "PL", "Per Landing", "100", plannedServices: [PerLandingService()]);
+        var onCall = CreateScheduledFlight("OC", "On Call", "200");
+        var other = CreateScheduledFlight("OT", "Other", "300");
+        db.Flights.AddRange(perLanding, onCall, other);
+        await db.SaveChangesAsync();
+
+        db.WorkOrders.Add(CreateWorkOrder(
+            onCall,
+            "200",
+            "On Call",
+            new ServiceSnapshot(WellKnownMasterDataIds.OnCallService, "On Call")));
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsQueryHandler(db, scope).Handle(
+            new GetFlightsQuery(PageSize: 100, ServiceCategories: [category]),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var expectedId = category switch
+        {
+            FlightServiceCategory.PerLanding => perLanding.Id,
+            FlightServiceCategory.OnCall => onCall.Id,
+            _ => other.Id
+        };
+        result.Value.Items.Select(row => row.Id).ShouldBe([expectedId]);
+    }
+
+    [Fact]
+    public async Task GetPerLandingExtraction_ReturnsOnlyInProgressPerLandingWithoutOnCall()
+    {
+        await using var db = NewDb();
+        var eligible = CreateScheduledFlight(
+            "PL", "Eligible", "100", plannedServices: [PerLandingService()]);
+        var onCall = CreateScheduledFlight(
+            "PL", "On Call", "200", plannedServices: [PerLandingService()]);
+        var scheduled = CreateScheduledFlight(
+            "PL", "Scheduled", "300", plannedServices: [PerLandingService()]);
+        eligible.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        onCall.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        db.Flights.AddRange(eligible, onCall, scheduled);
+        await db.SaveChangesAsync();
+
+        var eligibleWorkOrder = CreateWorkOrder(eligible, "100", "Per Landing review");
+        var onCallWorkOrder = CreateWorkOrder(
+            onCall,
+            "200",
+            "On Call",
+            new ServiceSnapshot(WellKnownMasterDataIds.OnCallService, "On Call"));
+        db.WorkOrders.AddRange(eligibleWorkOrder, onCallWorkOrder);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetPerLandingExtractionQueryHandler(db, scope).Handle(
+            new GetPerLandingExtractionQuery(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var item = result.Value.ShouldHaveSingleItem();
+        item.FlightId.ShouldBe(eligible.Id);
+        item.WorkOrderId.ShouldBe(eligibleWorkOrder.Id);
+    }
+
+    [Theory]
     [InlineData("FlightNumber:asc")]
     [InlineData("FlightNumber:desc")]
     [InlineData("unsupported:asc")]
@@ -282,7 +354,8 @@ public sealed class FlightQueryTests
         Guid? stationId = null,
         Guid? operationTypeId = null,
         DateTimeOffset? scheduledArrival = null,
-        IReadOnlyList<StaffMemberSnapshot>? assignedEmployees = null)
+        IReadOnlyList<StaffMemberSnapshot>? assignedEmployees = null,
+        IReadOnlyList<ServiceSnapshot>? plannedServices = null)
     {
         var arrival = scheduledArrival ?? Now;
         return Flight.ScheduleNew(
@@ -292,7 +365,7 @@ public sealed class FlightQueryTests
             FlightNumber.Create(flightNumber).Value,
             ScheduledTime.Create(arrival, arrival.AddHours(1)).Value,
             aircraftType: null,
-            plannedServices: [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
+            plannedServices: plannedServices ?? [new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
             assignedEmployees: assignedEmployees?
                 .Select(employee => new StaffMemberSnapshot(employee.StaffMemberId, employee.FullName, employee.EmployeeId))
                 .ToList() ?? [],
@@ -302,7 +375,11 @@ public sealed class FlightQueryTests
             now: Now).Value;
     }
 
-    private static WorkOrder CreateWorkOrder(Flight flight, string actualFlightNumber, string remarks)
+    private static WorkOrder CreateWorkOrder(
+        Flight flight,
+        string actualFlightNumber,
+        string remarks,
+        ServiceSnapshot? service = null)
     {
         var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1");
         var workOrder = WorkOrder.SubmitNew(
@@ -317,7 +394,7 @@ public sealed class FlightQueryTests
             null,
             remarks,
             [new WorkOrderServiceLineInput(
-                new ServiceSnapshot(Guid.NewGuid(), "Deicing"),
+                service ?? new ServiceSnapshot(Guid.NewGuid(), "Deicing"),
                 employee,
                 TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
                 null)],
@@ -325,6 +402,9 @@ public sealed class FlightQueryTests
             Now).Value;
         return workOrder;
     }
+
+    private static ServiceSnapshot PerLandingService() =>
+        new(WellKnownMasterDataIds.AircraftPerLandingService, "Aircraft Per Landing");
 
     private sealed class StaticScope(OperationsScopeContext context) : IOperationsScope
     {

@@ -37,6 +37,35 @@
     margin-inline-start: auto;
 }
 
+.ofl-extract-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--os-space-2);
+    min-height: 2.5rem;
+    margin-inline-end: var(--os-space-2);
+    padding-inline: var(--os-space-3);
+    border: 1px solid var(--os-color-border-strong);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+    color: var(--os-color-text);
+    box-shadow: var(--os-shadow-sm);
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.ofl-extract-link:hover {
+    border-color: var(--os-color-primary);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.ofl-extract-link:focus-visible {
+    outline: none;
+    box-shadow: var(--os-ring);
+}
+
 .os-list-page ::deep .ofl-export-menu .os-row-actions-trigger--labeled {
     min-height: 2.5rem;
     padding-inline: var(--os-space-3);

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Routing;
 using Operations.Application.Features.Dashboard;
 using Operations.Application.Features.Flights;
 using Operations.Application.Features.Merge;
+using Operations.Application.Features.WorkOrders;
 using Operations.Api.Exports;
 using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
@@ -24,12 +25,17 @@ internal static class FlightEndpoints
 
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
-            Guid? operationTypeId = null, string? status = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>
+            Guid? operationTypeId = null, string? status = null, string? serviceCategory = null,
+            DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>
         {
             var statuses = ParseStatuses(status);
             if (statuses is null)
                 return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
-            var result = await sender.Send(new GetFlightsQuery(page, pageSize, search, stationId, customerId, operationTypeId, statuses, fromUtc, toUtc, sort), ct);
+            var serviceCategories = ParseServiceCategories(serviceCategory);
+            if (serviceCategories is null)
+                return ApiResults.Problem(Error.Validation("One or more flight service categories are invalid.", "Operations.Flight.ServiceCategoryInvalid"));
+            var result = await sender.Send(new GetFlightsQuery(
+                page, pageSize, search, stationId, customerId, operationTypeId, statuses, fromUtc, toUtc, serviceCategories, sort), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
@@ -43,6 +49,7 @@ internal static class FlightEndpoints
             Guid? customerId = null,
             Guid? operationTypeId = null,
             string? status = null,
+            string? serviceCategory = null,
             DateTimeOffset? fromUtc = null,
             DateTimeOffset? toUtc = null,
             string? sort = null) =>
@@ -60,6 +67,9 @@ internal static class FlightEndpoints
             var statuses = ParseStatuses(status);
             if (statuses is null)
                 return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
+            var serviceCategories = ParseServiceCategories(serviceCategory);
+            if (serviceCategories is null)
+                return ApiResults.Problem(Error.Validation("One or more flight service categories are invalid.", "Operations.Flight.ServiceCategoryInvalid"));
 
             var result = await sender.Send(new GetFlightsExportQuery(
                 search,
@@ -69,6 +79,7 @@ internal static class FlightEndpoints
                 statuses,
                 fromUtc,
                 toUtc,
+                serviceCategories,
                 sort), ct);
 
             if (result.IsFailure)
@@ -85,12 +96,56 @@ internal static class FlightEndpoints
                     statuses,
                     fromUtc,
                     toUtc,
+                    serviceCategories,
                     sort),
                 timeProvider.GetUtcNow());
 
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Flights.Export)
             .WithName("ExportFlights");
+
+        flights.MapGet("/per-landing-extract", async (
+            ISender sender,
+            CancellationToken ct,
+            string? search = null,
+            Guid? stationId = null,
+            Guid? customerId = null,
+            Guid? operationTypeId = null,
+            string? status = null,
+            string? serviceCategory = null,
+            DateTimeOffset? fromUtc = null,
+            DateTimeOffset? toUtc = null,
+            string? sort = null) =>
+        {
+            var statuses = ParseStatuses(status);
+            if (statuses is null)
+                return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
+            var serviceCategories = ParseServiceCategories(serviceCategory);
+            if (serviceCategories is null)
+                return ApiResults.Problem(Error.Validation("One or more flight service categories are invalid.", "Operations.Flight.ServiceCategoryInvalid"));
+
+            var result = await sender.Send(new GetPerLandingExtractionQuery(
+                search,
+                stationId,
+                customerId,
+                operationTypeId,
+                statuses,
+                fromUtc,
+                toUtc,
+                serviceCategories,
+                sort), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View)
+            .RequirePermission(OperationsPermissions.WorkOrders.Approve);
+
+        flights.MapPost("/per-landing-extract/approve", async (
+            ApprovePerLandingFlightsRequest request,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            var result = await sender.Send(request.ToCommand(), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.WorkOrders.Approve);
 
         flights.MapGet("/calendar", async (ISender sender, CancellationToken ct,
             DateTimeOffset fromUtc,
@@ -220,5 +275,21 @@ internal static class FlightEndpoints
                 statuses.Add(status);
         }
         return statuses;
+    }
+
+    private static IReadOnlyList<FlightServiceCategory>? ParseServiceCategories(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        var categories = new List<FlightServiceCategory>();
+        foreach (var item in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Enum.TryParse<FlightServiceCategory>(item, ignoreCase: true, out var category))
+                return null;
+            if (!categories.Contains(category))
+                categories.Add(category);
+        }
+        return categories;
     }
 }

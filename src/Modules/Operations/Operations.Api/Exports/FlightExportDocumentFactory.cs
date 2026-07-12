@@ -26,6 +26,7 @@ internal sealed record FlightExportCriteria(
     IReadOnlyList<FlightStatus>? Statuses,
     DateTimeOffset? FromUtc,
     DateTimeOffset? ToUtc,
+    IReadOnlyList<FlightServiceCategory>? ServiceCategories,
     string? Sort);
 
 internal sealed record FlightExportFile(byte[] Content, string ContentType, string FileName);
@@ -593,10 +594,20 @@ internal static class FlightExportDocumentFactory
         else if (criteria.ToUtc is { } toOnly)
             filters.Add($"Scheduled arrival through: {toOnly.UtcDateTime:yyyy-MM-dd}");
 
+        if (criteria.ServiceCategories is { Count: > 0 } categories)
+            filters.Add($"Service category: {string.Join(", ", categories.Select(ServiceCategoryLabel))}");
+
         return filters.Count == 0
             ? "All flights within your authorized scope"
             : string.Join("  |  ", filters);
     }
+
+    private static string ServiceCategoryLabel(FlightServiceCategory category) => category switch
+    {
+        FlightServiceCategory.PerLanding => "Per Landing",
+        FlightServiceCategory.OnCall => "On Call",
+        _ => "Other"
+    };
 
     private static string SpreadsheetSafeText(string value)
     {

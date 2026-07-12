@@ -10,6 +10,14 @@ public enum FlightStatus
     Merged = 4
 }
 
+/// <summary>Service-derived grouping used by flight list filters.</summary>
+public enum FlightServiceCategory
+{
+    PerLanding = 0,
+    OnCall = 1,
+    Other = 2
+}
+
 /// <summary>Kind of event recorded on a flight's portal-visible timeline.</summary>
 public enum FlightTimelineEventType
 {

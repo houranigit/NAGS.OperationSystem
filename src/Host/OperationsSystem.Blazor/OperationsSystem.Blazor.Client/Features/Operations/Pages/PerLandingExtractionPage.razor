@@ -1,0 +1,199 @@
+@page "/operations/flights/per-landing-extract"
+@inject OperationsApiClient Operations
+@inject DialogService DialogService
+@inject NotificationService Notifications
+
+<PageTitle>Extract Per Landing</PageTitle>
+
+<RequirePermission Permission="@OperationsPermissions.FlightsView">
+    <RequirePermission Permission="@OperationsPermissions.WorkOrdersApprove">
+        <div class="os-list-page per-landing-extract-page">
+            <PageHeader Title="Extract Per Landing" Description="In Progress Per Landing flights without an On Call work order.">
+                <Actions>
+                    <RadzenButton Text="@ApproveButtonText" Icon="task_alt" ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(isLoading || loadError || isApproving || selectedFlightIds.Count == 0)"
+                                  Click="@ApproveSelectedAsync" />
+                </Actions>
+            </PageHeader>
+
+            <div class="ple-summary">
+                <RadzenIcon Icon="filter_alt" />
+                <span>The filters from the Flights page are applied to this extraction.</span>
+            </div>
+
+            <DataListCard TItem="PerLandingExtractionItem" Data="@items" Count="@items.Count"
+                          IsLoading="@isLoading" HasError="@loadError" OnRetry="@LoadAsync"
+                          ShowSearch="false" AllowSorting="true" PageSize="25" CountLabel="eligible flights"
+                          EmptyText="No eligible Per Landing flights match the applied filters.">
+                <Columns>
+                    <RadzenDataGridColumn TItem="PerLandingExtractionItem" Sortable="false" Filterable="false" Width="56px" TextAlign="TextAlign.Center">
+                        <HeaderTemplate>
+                            <RadzenCheckBox TValue="bool" Value="@AllSelected" Change="@ToggleAll" aria-label="Select all eligible flights" />
+                        </HeaderTemplate>
+                        <Template Context="flight">
+                            <span @key="flight.FlightId" @onclick:stopPropagation="true">
+                                <RadzenCheckBox TValue="bool" Value="@selectedFlightIds.Contains(flight.FlightId)"
+                                                Change="@((bool value) => ToggleFlight(flight.FlightId, value))"
+                                                aria-label="@($"Select {DisplayFlightNumber(flight)}")" />
+                            </span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="PerLandingExtractionItem" Property="FlightNumber" Title="Flight #" Width="220px">
+                        <Template Context="flight">
+                            <div class="ple-flight-cell">
+                                <span class="ple-flight-icon"><RadzenIcon Icon="flight" /></span>
+                                <div>
+                                    <strong>@DisplayFlightNumber(flight)</strong>
+                                    <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span>
+                                </div>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="PerLandingExtractionItem" Property="CustomerName" Title="Customer" />
+                    <RadzenDataGridColumn TItem="PerLandingExtractionItem" Property="StationIata" Title="Station" Width="120px" />
+                    <RadzenDataGridColumn TItem="PerLandingExtractionItem" Title="Status" Sortable="false" Width="140px">
+                        <Template Context="flight"><StatusBadge Label="InProgress" Tone="warning" /></Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </DataListCard>
+        </div>
+    </RequirePermission>
+</RequirePermission>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "stationId")] public Guid? StationId { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "customerId")] public Guid? CustomerId { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "operationTypeId")] public Guid? OperationTypeId { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "status")] public string? Status { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "fromUtc")] public string? FromUtc { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "toUtc")] public string? ToUtc { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "serviceCategory")] public string? ServiceCategory { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
+
+    private IReadOnlyList<PerLandingExtractionItem> items = [];
+    private readonly HashSet<Guid> selectedFlightIds = [];
+    private bool isLoading;
+    private bool loadError;
+    private bool isApproving;
+
+    private bool AllSelected => items.Count > 0 && selectedFlightIds.Count == items.Count;
+    private string ApproveButtonText => isApproving
+        ? "Approving..."
+        : selectedFlightIds.Count == 0
+            ? "Approve selected"
+            : $"Approve selected ({selectedFlightIds.Count})";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            items = await Operations.GetPerLandingExtractionAsync(
+                Search,
+                StationId,
+                CustomerId,
+                OperationTypeId,
+                SplitValues(Status),
+                ParseTimestamp(FromUtc),
+                ParseTimestamp(ToUtc),
+                SplitValues(ServiceCategory),
+                Sort);
+            selectedFlightIds.IntersectWith(items.Select(item => item.FlightId));
+        }
+        catch (ApiException)
+        {
+            loadError = true;
+            items = [];
+            selectedFlightIds.Clear();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleAll(bool value)
+    {
+        selectedFlightIds.Clear();
+        if (value)
+            selectedFlightIds.UnionWith(items.Select(item => item.FlightId));
+    }
+
+    private void ToggleFlight(Guid flightId, bool value)
+    {
+        if (value)
+            selectedFlightIds.Add(flightId);
+        else
+            selectedFlightIds.Remove(flightId);
+    }
+
+    private async Task ApproveSelectedAsync()
+    {
+        if (isApproving || selectedFlightIds.Count == 0)
+            return;
+
+        var confirmed = await DialogService.Confirm(
+            $"Approve {selectedFlightIds.Count} selected Per Landing flight(s)? This will complete the flights and assign work order numbers.",
+            "Approve Per Landing flights",
+            new ConfirmOptions { OkButtonText = "Approve", CancelButtonText = "Cancel" });
+        if (confirmed is not true)
+            return;
+
+        isApproving = true;
+        StateHasChanged();
+
+        try
+        {
+            var selections = items
+                .Where(item => selectedFlightIds.Contains(item.FlightId))
+                .Select(item => new PerLandingApprovalSelectionModel(
+                    item.FlightId,
+                    item.WorkOrderId,
+                    item.WorkOrderRowVersion))
+                .ToList();
+            var approved = await Operations.ApprovePerLandingFlightsAsync(selections);
+
+            Notifications.Notify(
+                NotificationSeverity.Success,
+                "Per Landing flights approved",
+                $"Approved {approved} flight(s).");
+            selectedFlightIds.Clear();
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(
+                NotificationSeverity.Error,
+                "Approval failed",
+                ex.ToDisplayMessage("The selected flights could not be approved. Reload and try again."));
+        }
+        finally
+        {
+            isApproving = false;
+            StateHasChanged();
+        }
+    }
+
+    private static IReadOnlyList<string> SplitValues(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToList();
+
+    private static DateTimeOffset? ParseTimestamp(string? value) =>
+        DateTimeOffset.TryParse(value, out var timestamp) ? timestamp : null;
+
+    private static string DisplayFlightNumber(PerLandingExtractionItem flight) =>
+        string.IsNullOrWhiteSpace(flight.CustomerIataCode)
+            ? flight.FlightNumber
+            : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
+
+    private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+
+}

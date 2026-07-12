@@ -16,6 +16,22 @@ public sealed record FlightListItem(
     bool IsPerLanding,
     bool IsOnCall);
 
+public sealed record PerLandingExtractionItem(
+    Guid FlightId,
+    Guid WorkOrderId,
+    string WorkOrderRowVersion,
+    string FlightNumber,
+    string? CustomerIataCode,
+    string CustomerName,
+    string StationIata,
+    string OperationTypeName,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc);
+
+public sealed record PerLandingApprovalSelectionModel(Guid FlightId, Guid WorkOrderId, string RowVersion);
+
+public sealed record ApprovePerLandingFlightsRequestModel(IReadOnlyList<PerLandingApprovalSelectionModel> Selections);
+
 public sealed record CalendarFlight(
     Guid Id,
     string FlightNumber,

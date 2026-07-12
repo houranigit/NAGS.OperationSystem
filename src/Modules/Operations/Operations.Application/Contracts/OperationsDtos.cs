@@ -14,6 +14,18 @@ public sealed record FlightListItemDto(
     bool IsPerLanding,
     bool IsOnCall);
 
+public sealed record PerLandingExtractionItemDto(
+    Guid FlightId,
+    Guid WorkOrderId,
+    string WorkOrderRowVersion,
+    string FlightNumber,
+    string? CustomerIataCode,
+    string CustomerName,
+    string StationIata,
+    string OperationTypeName,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc);
+
 /// <summary>
 /// Stable, presentation-neutral row used by the supported flight report formats. Durations and
 /// display flight numbers are derived by the renderer so CSV can retain machine-friendly values

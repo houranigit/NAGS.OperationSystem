@@ -12,6 +12,7 @@ using Operations.Application.Features.WorkOrders;
 using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
+using Operations.Domain.WorkOrders;
 
 namespace Operations.Application.Features.Flights;
 
@@ -27,6 +28,7 @@ public sealed record GetFlightsQuery(
     IReadOnlyList<FlightStatus>? Statuses = null,
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
+    IReadOnlyList<FlightServiceCategory>? ServiceCategories = null,
     string? Sort = null) : IQuery<PagedResult<FlightListItemDto>>;
 
 /// <summary>
@@ -41,7 +43,19 @@ public sealed record GetFlightsExportQuery(
     IReadOnlyList<FlightStatus>? Statuses = null,
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
+    IReadOnlyList<FlightServiceCategory>? ServiceCategories = null,
     string? Sort = null) : IQuery<IReadOnlyList<FlightExportRowDto>>;
+
+public sealed record GetPerLandingExtractionQuery(
+    string? Search = null,
+    Guid? StationId = null,
+    Guid? CustomerId = null,
+    Guid? OperationTypeId = null,
+    IReadOnlyList<FlightStatus>? Statuses = null,
+    DateTimeOffset? FromUtc = null,
+    DateTimeOffset? ToUtc = null,
+    IReadOnlyList<FlightServiceCategory>? ServiceCategories = null,
+    string? Sort = null) : IQuery<IReadOnlyList<PerLandingExtractionItemDto>>;
 
 public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope)
     : IQueryHandler<GetFlightsQuery, PagedResult<FlightListItemDto>>
@@ -63,7 +77,9 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 request.OperationTypeId,
                 request.Statuses,
                 request.FromUtc,
-                request.ToUtc));
+                request.ToUtc,
+                request.ServiceCategories),
+            db.WorkOrders.AsNoTracking());
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))
@@ -112,7 +128,9 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
                 request.OperationTypeId,
                 request.Statuses,
                 request.FromUtc,
-                request.ToUtc));
+                request.ToUtc,
+                request.ServiceCategories),
+            db.WorkOrders.AsNoTracking());
 
         var flightRows = await FlightListQuery.ApplySort(query, request.Sort)
             .Select(f => new
@@ -174,6 +192,70 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
     }
 }
 
+public sealed class GetPerLandingExtractionQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+    : IQueryHandler<GetPerLandingExtractionQuery, IReadOnlyList<PerLandingExtractionItemDto>>
+{
+    public async Task<Result<IReadOnlyList<PerLandingExtractionItemDto>>> Handle(
+        GetPerLandingExtractionQuery request,
+        CancellationToken cancellationToken)
+    {
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+
+        var workOrders = db.WorkOrders.AsNoTracking();
+        var query = FlightListQuery.ApplyScopeAndFilters(
+                db.Flights.AsNoTracking(),
+                scopeResult.Value,
+                new FlightListFilter(
+                    request.Search,
+                    request.StationId,
+                    request.CustomerId,
+                    request.OperationTypeId,
+                    request.Statuses,
+                    request.FromUtc,
+                    request.ToUtc,
+                    request.ServiceCategories),
+                workOrders)
+            .Where(f => f.Status == FlightStatus.InProgress)
+            .Where(f => f.PlannedServices.Any(p =>
+                p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService))
+            .Where(f => !workOrders.Any(w => w.FlightId == f.Id &&
+                w.ServiceLines.Any(line => line.Service.ServiceId == WellKnownMasterDataIds.OnCallService)))
+            .Where(f => workOrders.Any(w => w.FlightId == f.Id &&
+                w.Type == WorkOrderType.Completion &&
+                (w.Status == WorkOrderStatus.Submitted || w.Status == WorkOrderStatus.Returned)));
+
+        var flights = await FlightListQuery.ApplySort(query, request.Sort)
+            .Select(f => new
+            {
+                Flight = f,
+                WorkOrder = workOrders
+                    .Where(w => w.FlightId == f.Id &&
+                        w.Type == WorkOrderType.Completion &&
+                        (w.Status == WorkOrderStatus.Submitted || w.Status == WorkOrderStatus.Returned))
+                    .OrderBy(w => w.OwnerUserId == Guid.Empty ? 0 : 1)
+                    .ThenBy(w => w.CreatedAtUtc)
+                    .Select(w => new { w.Id, w.RowVersion })
+                    .First()
+            })
+            .Select(x => new PerLandingExtractionItemDto(
+                x.Flight.Id,
+                x.WorkOrder.Id,
+                Convert.ToBase64String(x.WorkOrder.RowVersion),
+                x.Flight.FlightNumber.Value,
+                x.Flight.Customer.IataCode,
+                x.Flight.Customer.Name,
+                x.Flight.Station.IataCode,
+                x.Flight.OperationType.Name,
+                x.Flight.Schedule.Sta,
+                x.Flight.Schedule.Std))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success<IReadOnlyList<PerLandingExtractionItemDto>>(flights);
+    }
+}
+
 internal sealed record FlightListFilter(
     string? Search,
     Guid? StationId,
@@ -181,14 +263,16 @@ internal sealed record FlightListFilter(
     Guid? OperationTypeId,
     IReadOnlyList<FlightStatus>? Statuses,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    IReadOnlyList<FlightServiceCategory>? ServiceCategories);
 
 internal static class FlightListQuery
 {
     public static IQueryable<Flight> ApplyScopeAndFilters(
         IQueryable<Flight> query,
         OperationsScopeContext scope,
-        FlightListFilter filter)
+        FlightListFilter filter,
+        IQueryable<WorkOrder> workOrders)
     {
         query = query.Where(f => f.Status != FlightStatus.Merged);
 
@@ -222,6 +306,23 @@ internal static class FlightListQuery
             query = query.Where(f => f.Schedule.Sta >= from);
         if (filter.ToUtc is { } to)
             query = query.Where(f => f.Schedule.Sta <= to);
+        if (filter.ServiceCategories is { Count: > 0 } categories)
+        {
+            var includePerLanding = categories.Contains(FlightServiceCategory.PerLanding);
+            var includeOnCall = categories.Contains(FlightServiceCategory.OnCall);
+            var includeOther = categories.Contains(FlightServiceCategory.Other);
+
+            query = query.Where(f =>
+                (includePerLanding && f.PlannedServices.Any(p =>
+                    p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)) ||
+                (includeOnCall && workOrders.Any(w => w.FlightId == f.Id &&
+                    w.ServiceLines.Any(line => line.Service.ServiceId == WellKnownMasterDataIds.OnCallService))) ||
+                (includeOther &&
+                    !f.PlannedServices.Any(p =>
+                        p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) &&
+                    !workOrders.Any(w => w.FlightId == f.Id &&
+                        w.ServiceLines.Any(line => line.Service.ServiceId == WellKnownMasterDataIds.OnCallService))));
+        }
         if (SearchFilter.Term(filter.Search) is { } term)
         {
             var compactFlightTerm = CompactFlightSearchTerm(term);

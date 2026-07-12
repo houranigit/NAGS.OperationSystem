@@ -112,6 +112,18 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void ApprovePerLandingExtraction_AllowsIncompleteCompletion()
+    {
+        var workOrder = SubmitCompletion(ScheduleFlight());
+
+        var result = workOrder.ApprovePerLandingExtraction(1, "RUH-0001", Guid.NewGuid(), TestData.Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        workOrder.Status.ShouldBe(WorkOrderStatus.Approved);
+        workOrder.ApprovalNumber.ShouldBe("RUH-0001");
+    }
+
+    [Fact]
     public void Return_ReleasesApprovalNumber_AndMakesWorkOrderEditable()
     {
         var workOrder = SubmitCompletion(ScheduleFlight());
