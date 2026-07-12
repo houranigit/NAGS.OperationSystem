@@ -95,4 +95,52 @@ public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
             .Where(g => g.Id == id)
             .Select(g => new GeneralSupportReadSnapshot(g.Id, g.Name, g.IsActive))
             .FirstOrDefaultAsync(cancellationToken);
+
+    public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken) =>
+        db.ManpowerTypes.AsNoTracking()
+            .Where(m => m.Id == id)
+            .Select(m => new ManpowerTypeReadSnapshot(m.Id, m.Name, m.IsActive))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken) =>
+        await db.Services.AsNoTracking()
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.Name)
+            .Select(s => new ServiceReadSnapshot(s.Id, s.Name, s.IsActive))
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ToolReadSnapshot>> GetActiveToolsAsync(CancellationToken cancellationToken) =>
+        await db.Tools.AsNoTracking()
+            .Where(t => t.IsActive)
+            .OrderBy(t => t.Name)
+            .Select(t => new ToolReadSnapshot(t.Id, t.Name, t.IsActive))
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<MaterialReadSnapshot>> GetActiveMaterialsAsync(CancellationToken cancellationToken) =>
+        await db.Materials.AsNoTracking()
+            .Where(m => m.IsActive)
+            .OrderBy(m => m.Name)
+            .Select(m => new MaterialReadSnapshot(m.Id, m.Name, m.IsActive))
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<GeneralSupportReadSnapshot>> GetActiveGeneralSupportsAsync(CancellationToken cancellationToken) =>
+        await db.GeneralSupports.AsNoTracking()
+            .Where(g => g.IsActive)
+            .OrderBy(g => g.Name)
+            .Select(g => new GeneralSupportReadSnapshot(g.Id, g.Name, g.IsActive))
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<CustomerReadSnapshot>> GetActiveCustomersAsync(CancellationToken cancellationToken) =>
+        await db.Customers.AsNoTracking()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .Select(c => new CustomerReadSnapshot(c.Id, c.IataCode, c.IcaoCode, c.Name, c.IsActive))
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<AircraftTypeReadSnapshot>> GetActiveAircraftTypesAsync(CancellationToken cancellationToken) =>
+        await db.AircraftTypes.AsNoTracking()
+            .Where(a => a.IsActive)
+            .OrderBy(a => a.Model)
+            .Select(a => new AircraftTypeReadSnapshot(a.Id, a.Manufacturer.ToString(), a.Model, a.IsActive))
+            .ToListAsync(cancellationToken);
 }

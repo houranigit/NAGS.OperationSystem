@@ -56,7 +56,7 @@ For every rewritten feature, first extract the business facts from the old proje
 - A storage abstraction for binary files/attachments (local filesystem in v1.0.0, designed to swap to S3/Azure Blob later)
 - A notification delivery abstraction (composite pusher) so a mobile push provider (FCM) can be added later without rework
 - Redis is not part of v1.0.0 unless a measured distributed-caching need appears
-- Mobile push (FCM), the mobile BFF, and the mobile offline-sync protocol are deferred with the mobile client (see Section 26)
+- The mobile BFF and offline-sync protocol live under `/api/v1/mobile` + `/hubs/mobile-sync` (see Section 27); mobile push (FCM) remains deferred with the Notifications module
 
 ### Frontend
 
@@ -69,8 +69,9 @@ For every rewritten feature, first extract the business facts from the old proje
 
 ### Mobile
 
-- Existing Android app remains an important API consumer
-- The Blazor web portal and Android must consume the same backend API
+- Native Android app (Kotlin + Jetpack Compose) at `src/Host/OperationsSystem.Mobile`, rewritten from the legacy app while preserving its offline-first engine (Room cache, outbox, SignalR + catch-up sync)
+- The Blazor web portal and Android consume the same backend API and business rules
+- Mobile-facing surface: `/api/v1/identity/auth/mobile/*` (bearer auth, refresh token in JSON body), `/api/v1/mobile/*` (BFF reads, offline-sync catch-up, idempotent writes), and the `/hubs/mobile-sync` SignalR hub
 - Avoid web-only or mobile-only business rules in the backend
 
 ## 4. Architecture Direction
@@ -553,12 +554,19 @@ The legacy is already a DDD modular monolith with strong patterns. Preserve thes
 - Device-token registration and mobile push (FCM/APNS) are deferred with the mobile client, but the pusher abstraction must allow adding them without reworking notification producers.
 - Real-time delivery is best-effort and must never be the only path to a state change; the authoritative state is always the persisted data, re-fetchable via the API.
 
-## 27. Mobile Strategy (Deferred For v1.0.0)
+## 27. Mobile Strategy
 
-- v1.0.0 focuses on the web client and the shared backend API. The mobile client is deferred.
-- Do not build the mobile BFF, the mobile offline-sync protocol, mobile-specific JWT policies, or FCM push in v1.0.0.
-- Do not design them out either: keep business rules in the domain/application (never web-only), keep a Bearer auth scheme possible, keep the notification pusher abstraction, and keep the Identity-User-to-Employee link in mind.
-- When mobile returns, it gets a dedicated BFF/read + offline-sync surface that reuses the same domain and business rules; it does not get its own business logic. Record that decision and its API/versioning shape here when it happens.
+The mobile client has returned as a rewrite of the legacy Android app: the new backend's flight/work-order shape and rules merged with the legacy app's proven offline-sync engine and screens.
+
+- The Android app lives at `src/Host/OperationsSystem.Mobile` (Kotlin + Jetpack Compose, Room, Ktor, SignalR). The legacy app under `legacy/src/Host/MobileApplication` stays read-only reference.
+- The backend exposes a dedicated mobile surface implemented inside the owning modules and composed at the host:
+  - **Auth (Identity):** `POST /api/v1/identity/auth/mobile/{login, login/mfa, refresh, logout}` reuse the exact web login/refresh/session handlers but exchange the refresh token through the JSON body (native clients keep it in secure device storage; the web keeps its httpOnly cookie).
+  - **Reads (Operations, composing the MasterData reader):** `GET /api/v1/mobile/{me, catalogs, employees/at-my-station, flights/my, flights/per-landing, flights/ad-hoc, flights/{id}, flights/{id}/work-orders/mine, work-orders/{id}}`. Flight rows embed the caller's active work order for offline form hydration. `OperationsScope` enforces station/assignment scoping; the surface serves StationStaff accounts only (fail-closed without an active staff link).
+  - **Offline sync:** SignalR hub at `/hubs/mobile-sync` pushes `MobileSyncChange` envelopes (`table`, `op` = upsert/delete/refresh, `entityId`, `audience` = employee/station/all-stations, `version`, `originMutationId`) after commit via `MobileSyncBroadcastBehavior`; `GET /api/v1/mobile/sync/changes` is the reconnect catch-up and returns refresh envelopes per table (pragmatic model — no server-side change log or tombstones in this release).
+  - **Writes (Operations):** idempotent outbox endpoints `POST /flights/{id}/work-orders`, `POST /work-orders/scratch`, `PUT /work-orders/{id}`, `POST /work-orders/{id}/return-to-ramp`, `POST /flights/{id}/cancel`, `POST /flights/{id}/invite` under `/api/v1/mobile`. Every mutation carries a `clientMutationId` recorded in `operations.Operations_MobileMutations` atomically with the business change; scratch creates dedupe by `clientFlightId`. Concurrency tokens resolve server-side (offline clients cannot hold a fresh RowVersion).
+- Mobile reuses the same domain and business rules — planned services copied into seeded work-order lines (never Per-Landing), one active work order per user per flight, clear-and-rebuild service lines, task reconciliation by stable id. It has no business logic of its own.
+- The legacy AOG naming is retired everywhere in favour of Per Landing (`flights-per-landing` sync table, `flights_per_landing` Room table, Per Landing tab).
+- FCM push and device-token registration remain deferred with the Notifications module; the SignalR sync hub is standalone and independent of notifications.
 
 ## 28. Decisions Log
 
@@ -612,3 +620,9 @@ Use this section to record decisions as they become final.
 | 2026-07-06 | `operations.flights.view-station` grants station staff station-wide flight visibility (station dispatchers) through `OperationsScopeContext`; default staff visibility stays Per-Landing plus assigned | Dispatchers must see and review all their station's flights and work orders without being on the assigned-employee roster; admin-type dispatchers already see all stations via data scope |
 | 2026-07-09 | Work order approval numbers are a current approved display sequence with station-scoped gap-filling reuse; the permanent work-order reference is the Guid Id | Supersedes the removed implementation's "numbers never reused" behavior. Return releases `ApprovalSequence`/`ApprovalNumber`; reapproval allocates the lowest currently free station number. A full ApprovalHistory table is deferred until billing requires historical number retention |
 | 2026-07-11 | Flight list reports are generated server-side with ClosedXML for XLSX and PDFsharp/MigraDoc for PDF; CSV is emitted directly, and Open Sans is embedded for portable PDF rendering | Produces native, styled, filter-aware reports without browser-print inconsistencies or a commercial reporting-library license; report generation stays in the Operations API presentation layer while row selection and scope remain in application queries |
+| 2026-07-11 | Mobile client returns as a native Android (Kotlin/Compose) rewrite at `src/Host/OperationsSystem.Mobile`, reusing the legacy offline engine and screens against the new API | Preserves the proven offline-first UX while adopting the correct v1.0.0 flight/work-order shape and rules |
+| 2026-07-11 | Mobile-facing backend is a dedicated `/api/v1/mobile` surface implemented in the owning modules (Operations reads/writes/sync, MasterData catalog lists via contracts, Identity mobile auth) | One unified mobile route prefix without breaking module boundaries; mobile has no business logic of its own |
+| 2026-07-11 | Mobile auth adds `auth/mobile/*` bearer endpoints that exchange the refresh token in the JSON body; web keeps the httpOnly cookie | Native clients store refresh tokens in secure device storage; the same login/refresh/session handlers and rotation serve both clients |
+| 2026-07-11 | Offline sync uses the pragmatic model: post-commit SignalR `change` envelopes (`/hubs/mobile-sync`) + full-table refresh + REST reconnect catch-up + client outbox with `clientMutationId` idempotency | Matches the legacy protocol that proved reliable in the field; avoids server-side change-log/tombstone complexity until measured need |
+| 2026-07-11 | Mobile writes are idempotent via an `Operations_MobileMutations` record persisted atomically with the business change; scratch flights dedupe by `clientFlightId` | Offline retries after lost responses must never duplicate work orders or ad-hoc flights |
+| 2026-07-11 | The legacy AOG naming is retired; the concept is Per Landing everywhere (tabs, sync tables, endpoints) | Aligns the mobile vocabulary with the v1.0.0 domain (`Flight.IsPerLanding`, Aircraft Per Landing service) |

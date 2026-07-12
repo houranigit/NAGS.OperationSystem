@@ -31,6 +31,7 @@ public sealed class FlightCommandTests
             new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
             new MasterDataResolver(new ThrowingMasterDataReader()),
             new NoopTimelineWriter(),
+            new NoopMobileSyncBroadcaster(),
             TimeProvider.System);
 
         var result = await handler.Handle(
@@ -78,6 +79,18 @@ public sealed class FlightCommandTests
             Task.CompletedTask;
     }
 
+    private sealed class NoopMobileSyncBroadcaster : BuildingBlocks.Application.Mobile.IMobileSyncBroadcaster
+    {
+        public void Enqueue(BuildingBlocks.Application.Mobile.MobileSyncChange change)
+        {
+        }
+
+        public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task BroadcastNowAsync(BuildingBlocks.Application.Mobile.MobileSyncChange change, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
     private sealed class ThrowingMasterDataReader : IMasterDataReader
     {
         public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
@@ -114,6 +127,27 @@ public sealed class FlightCommandTests
             throw new NotImplementedException();
 
         public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
+        public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<ToolReadSnapshot>> GetActiveToolsAsync(CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<MaterialReadSnapshot>> GetActiveMaterialsAsync(CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<GeneralSupportReadSnapshot>> GetActiveGeneralSupportsAsync(CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<CustomerReadSnapshot>> GetActiveCustomersAsync(CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<AircraftTypeReadSnapshot>> GetActiveAircraftTypesAsync(CancellationToken cancellationToken) =>
             throw new NotImplementedException();
     }
 }

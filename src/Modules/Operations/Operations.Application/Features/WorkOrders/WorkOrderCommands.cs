@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Auditing;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Contracts.Auditing;
 using BuildingBlocks.Domain.Results;
@@ -9,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
+using Operations.Application.Features.Mobile;
 using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
 using Operations.Domain.ValueObjects;
@@ -19,7 +21,9 @@ namespace Operations.Application.Features.WorkOrders;
 public sealed record SubmitWorkOrderCommand(
     Guid FlightId,
     WorkOrderType Type,
-    WorkOrderEditableCommandPayload Payload) : ICommand<Guid>;
+    WorkOrderEditableCommandPayload Payload,
+    string? ClientMutationId = null,
+    Guid? WorkOrderId = null) : ICommand<Guid>;
 
 public sealed class SubmitWorkOrderCommandValidator : AbstractValidator<SubmitWorkOrderCommand>
 {
@@ -38,6 +42,7 @@ public sealed class SubmitWorkOrderCommandHandler(
     IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
     IWorkOrderTimelineWriter workOrderTimeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<SubmitWorkOrderCommand, Guid>
 {
@@ -96,7 +101,8 @@ public sealed class SubmitWorkOrderCommandHandler(
             input.Value.Remarks,
             input.Value.ServiceLines,
             input.Value.Tasks,
-            now);
+            now,
+            request.WorkOrderId);
         if (workOrder.IsFailure)
             return workOrder.Error;
 
@@ -114,6 +120,8 @@ public sealed class SubmitWorkOrderCommandHandler(
         db.WorkOrders.Add(workOrder.Value);
         await workOrderTimeline.AppendAsync(workOrder.Value.Id, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
         await flightTimeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now, details: workOrder.Value.Id.ToString(), cancellationToken: cancellationToken);
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight, request.ClientMutationId);
 
         try
         {
@@ -133,7 +141,8 @@ public sealed record UpdateWorkOrderCommand(
     Guid Id,
     byte[] RowVersion,
     WorkOrderType Type,
-    WorkOrderEditableCommandPayload Payload) : ICommand;
+    WorkOrderEditableCommandPayload Payload,
+    string? ClientMutationId = null) : ICommand;
 
 public sealed class UpdateWorkOrderCommandValidator : AbstractValidator<UpdateWorkOrderCommand>
 {
@@ -151,6 +160,7 @@ public sealed class UpdateWorkOrderCommandHandler(
     WorkOrderInputBuilder inputBuilder,
     IFileStorage storage,
     IWorkOrderTimelineWriter timeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<UpdateWorkOrderCommand>
 {
@@ -205,6 +215,15 @@ public sealed class UpdateWorkOrderCommandHandler(
                 : WorkOrderTimelineEventType.ConvertedToCancellation;
         await timeline.AppendAsync(workOrder.Id, timelineType, now, cancellationToken: cancellationToken);
 
+        // The mobile cache stores the caller's work order embedded on the flight row, so an update
+        // is a flight upsert to every audience that may hold the row.
+        var syncFlight = await db.Flights.AsNoTracking()
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+        if (syncFlight is not null)
+            MobileFlightSync.EnqueueUpsert(mobileSync, syncFlight, request.ClientMutationId);
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -230,7 +249,7 @@ public sealed class UpdateWorkOrderCommandHandler(
     }
 }
 
-public sealed record DeleteWorkOrderCommand(Guid Id, byte[] RowVersion) : ICommand;
+public sealed record DeleteWorkOrderCommand(Guid Id, byte[] RowVersion, string? ClientMutationId = null) : ICommand;
 
 public sealed class DeleteWorkOrderCommandValidator : AbstractValidator<DeleteWorkOrderCommand>
 {
@@ -246,6 +265,7 @@ public sealed class DeleteWorkOrderCommandHandler(
     IOperationsScope scope,
     IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<DeleteWorkOrderCommand>
@@ -283,6 +303,13 @@ public sealed class DeleteWorkOrderCommandHandler(
         db.EnqueueAudit(auditContext, "operations", "WorkOrder", workOrder.Id, "WorkOrder", workOrder.Id, AuditActions.Deleted,
             metadata: $"FlightId={workOrder.FlightId}");
 
+        var syncFlight = await db.Flights.AsNoTracking()
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+        if (syncFlight is not null)
+            MobileFlightSync.EnqueueUpsert(mobileSync, syncFlight, request.ClientMutationId);
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -314,6 +341,7 @@ public sealed class ApproveWorkOrderCommandHandler(
     IWorkOrderNumberAllocator allocator,
     IWorkOrderTimelineWriter workOrderTimeline,
     IFlightTimelineWriter flightTimeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<ApproveWorkOrderCommand>
 {
@@ -324,7 +352,10 @@ public sealed class ApproveWorkOrderCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var flight = await db.Flights.FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+        var flight = await db.Flights
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
@@ -365,6 +396,8 @@ public sealed class ApproveWorkOrderCommandHandler(
             details: workOrder.ApprovalNumber,
             cancellationToken: cancellationToken);
 
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -399,6 +432,7 @@ public sealed class ReturnWorkOrderCommandHandler(
     IOperationsScope scope,
     IWorkOrderTimelineWriter workOrderTimeline,
     IFlightTimelineWriter flightTimeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<ReturnWorkOrderCommand>
 {
@@ -409,7 +443,10 @@ public sealed class ReturnWorkOrderCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var flight = await db.Flights.FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
+        var flight = await db.Flights
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
+            .FirstOrDefaultAsync(f => f.Id == workOrder.FlightId, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
@@ -435,6 +472,8 @@ public sealed class ReturnWorkOrderCommandHandler(
         if (!string.IsNullOrWhiteSpace(releasedNumber))
             await workOrderTimeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.NumberReleased, now, details: releasedNumber, cancellationToken: cancellationToken);
         await flightTimeline.AppendAsync(flight.Id, FlightTimelineEventType.FlightReopened, now, details: releasedNumber, cancellationToken: cancellationToken);
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         try
         {
@@ -477,6 +516,7 @@ public sealed class MergeWorkOrdersCommandHandler(
     IWorkOrderNumberAllocator allocator,
     IWorkOrderTimelineWriter workOrderTimeline,
     IFlightTimelineWriter flightTimeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<MergeWorkOrdersCommand, Guid>
 {
@@ -611,6 +651,8 @@ public sealed class MergeWorkOrdersCommandHandler(
                 details: generated.Value.ApprovalNumber,
                 cancellationToken: cancellationToken);
         }
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         try
         {

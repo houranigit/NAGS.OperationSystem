@@ -22,6 +22,8 @@ public sealed record MaterialReadSnapshot(Guid Id, string Name, bool IsActive);
 
 public sealed record GeneralSupportReadSnapshot(Guid Id, string Name, bool IsActive);
 
+public sealed record ManpowerTypeReadSnapshot(Guid Id, string Name, bool IsActive);
+
 /// <summary>
 /// Cross-module read seam over MasterData catalogs. Implemented in MasterData.Infrastructure and
 /// registered by the MasterData module. Consuming modules depend only on this contract.
@@ -51,4 +53,21 @@ public interface IMasterDataReader
     public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken cancellationToken);
 
     public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken cancellationToken);
+
+    public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken);
+
+    // Active catalog listings for the mobile offline cache (small, low-volatility lists that the
+    // mobile client mirrors into its local database on each catalog refresh).
+
+    public Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<ToolReadSnapshot>> GetActiveToolsAsync(CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<MaterialReadSnapshot>> GetActiveMaterialsAsync(CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<GeneralSupportReadSnapshot>> GetActiveGeneralSupportsAsync(CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<CustomerReadSnapshot>> GetActiveCustomersAsync(CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<AircraftTypeReadSnapshot>> GetActiveAircraftTypesAsync(CancellationToken cancellationToken);
 }

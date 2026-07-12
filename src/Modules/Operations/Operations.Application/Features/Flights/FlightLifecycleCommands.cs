@@ -1,9 +1,11 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Domain.Results;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
+using Operations.Application.Features.Mobile;
 using Operations.Domain.Enumerations;
 
 namespace Operations.Application.Features.Flights;
@@ -17,6 +19,7 @@ public sealed class ClaimPerLandingFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
+    IMobileSyncBroadcaster mobileSync,
     TimeProvider timeProvider) : ICommandHandler<ClaimPerLandingFlightCommand>
 {
     public async Task<Result> Handle(ClaimPerLandingFlightCommand request, CancellationToken cancellationToken)
@@ -48,6 +51,8 @@ public sealed class ClaimPerLandingFlightCommandHandler(
 
         if (!alreadyAssigned)
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.Value.FullName, cancellationToken: cancellationToken);
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();

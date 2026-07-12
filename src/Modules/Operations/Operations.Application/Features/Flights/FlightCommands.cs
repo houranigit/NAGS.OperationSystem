@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -8,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
+using Operations.Application.Features.Mobile;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
@@ -44,6 +46,7 @@ public sealed class ScheduleFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<ScheduleFlightCommand, Guid>
 {
@@ -87,6 +90,8 @@ public sealed class ScheduleFlightCommandHandler(
         foreach (var employee in employees.Value)
             await timeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
 
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight.Value);
+
         await db.SaveChangesAsync(cancellationToken);
         return flight.Value.Id;
     }
@@ -124,6 +129,7 @@ public sealed class ScheduleFlightsCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<ScheduleFlightsCommand, IReadOnlyList<Guid>>
 {
@@ -191,6 +197,8 @@ public sealed class ScheduleFlightsCommandHandler(
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.FlightScheduled, now, cancellationToken: cancellationToken);
             foreach (var employee in flight.AssignedEmployees)
                 await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.Employee.FullName, cancellationToken: cancellationToken);
+
+            MobileFlightSync.EnqueueUpsert(mobileSync, flight);
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -230,6 +238,7 @@ public sealed class UpdateScheduledFlightCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
+    IMobileSyncBroadcaster mobileSync,
     TimeProvider timeProvider) : ICommandHandler<UpdateScheduledFlightCommand>
 {
     public async Task<Result> Handle(UpdateScheduledFlightCommand request, CancellationToken cancellationToken)
@@ -265,6 +274,7 @@ public sealed class UpdateScheduledFlightCommandHandler(
             return services.Error;
 
         var now = timeProvider.GetUtcNow();
+        var wasPerLanding = flight.IsPerLanding;
         var updateSchedule = flight.UpdateSchedule(schedule.Value, aircraft.Value, now);
         if (updateSchedule.IsFailure)
             return updateSchedule.Error;
@@ -272,6 +282,18 @@ public sealed class UpdateScheduledFlightCommandHandler(
         var updateServices = flight.ReplacePlannedServices(services.Value, now);
         if (updateServices.IsFailure)
             return updateServices.Error;
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
+        if (wasPerLanding && !flight.IsPerLanding)
+        {
+            // The flight left the Per-Landing plane; tell the station caches to drop it.
+            mobileSync.Enqueue(new MobileSyncChange(
+                MobileSyncTables.FlightsPerLanding,
+                MobileSyncOps.Delete,
+                flight.Id.ToString(),
+                MobileSyncAudience.Station(flight.Station.IataCode),
+                now));
+        }
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
         try
@@ -304,6 +326,7 @@ public sealed class ChangeFlightNumberCommandValidator : AbstractValidator<Chang
 public sealed class ChangeFlightNumberCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
+    IMobileSyncBroadcaster mobileSync,
     TimeProvider timeProvider) : ICommandHandler<ChangeFlightNumberCommand>
 {
     public async Task<Result> Handle(ChangeFlightNumberCommand request, CancellationToken cancellationToken)
@@ -333,6 +356,8 @@ public sealed class ChangeFlightNumberCommandHandler(
         var change = flight.ChangeFlightNumber(number.Value, timeProvider.GetUtcNow());
         if (change.IsFailure)
             return change.Error;
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
         try
@@ -367,6 +392,7 @@ public sealed class AssignEmployeesCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
+    IMobileSyncBroadcaster mobileSync,
     TimeProvider timeProvider) : ICommandHandler<AssignEmployeesCommand>
 {
     public async Task<Result> Handle(AssignEmployeesCommand request, CancellationToken cancellationToken)
@@ -409,6 +435,13 @@ public sealed class AssignEmployeesCommandHandler(
         foreach (var employee in employees.Value.Where(e => !alreadyAssigned.Contains(e.StaffMemberId)))
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
 
+        // Current roster gets an upsert; staff removed from the roster get a targeted delete so the
+        // flight disappears from their "my flights" cache immediately.
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
+        var currentRoster = employees.Value.Select(e => e.StaffMemberId).ToHashSet();
+        foreach (var removedStaffId in alreadyAssigned.Where(id => !currentRoster.Contains(id)))
+            MobileFlightSync.EnqueueFlightForStaffMember(mobileSync, flight, removedStaffId, MobileSyncOps.Delete);
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -441,6 +474,7 @@ public sealed class InviteEmployeesToFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
+    IMobileSyncBroadcaster mobileSync,
     TimeProvider timeProvider) : ICommandHandler<InviteEmployeesToFlightCommand>
 {
     public async Task<Result> Handle(InviteEmployeesToFlightCommand request, CancellationToken cancellationToken)
@@ -483,6 +517,8 @@ public sealed class InviteEmployeesToFlightCommandHandler(
 
         foreach (var employee in employees.Value)
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         try
         {

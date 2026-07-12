@@ -90,6 +90,53 @@ internal static class AuthEndpoints
             return result.ToNoContent();
         }).RequireAuthorization();
 
+        // Mobile (bearer-only) variants: same handlers and session rotation as the web flow, but the
+        // refresh token is exchanged through the JSON body instead of the httpOnly cookie.
+        var mobile = auth.MapGroup("/mobile");
+
+        mobile.MapPost("/login", async (LoginRequest request, ISender sender, HttpContext http, CancellationToken ct) =>
+        {
+            var result = await sender.Send(
+                new LoginCommand(request.Email, request.Password, AuthCookies.ClientIp(http), AuthCookies.UserAgent(http)), ct);
+
+            if (result.IsFailure)
+                return ApiResults.Problem(result.Error);
+
+            if (result.Value.MfaRequired)
+                return Results.Ok(new LoginChallengeResponse(true, result.Value.MfaToken!));
+
+            return Results.Ok(ToMobileTokens(result.Value.Tokens!));
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
+
+        mobile.MapPost("/login/mfa", async (LoginMfaRequest request, ISender sender, HttpContext http, CancellationToken ct) =>
+        {
+            var result = await sender.Send(
+                new LoginMfaCommand(request.MfaToken, request.Code, AuthCookies.ClientIp(http), AuthCookies.UserAgent(http)), ct);
+
+            return result.IsFailure
+                ? ApiResults.Problem(result.Error)
+                : Results.Ok(ToMobileTokens(result.Value));
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
+
+        mobile.MapPost("/refresh", async (MobileRefreshRequest request, ISender sender, HttpContext http, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.RefreshToken))
+                return ApiResults.Problem(Error.Unauthorized("No refresh token.", "Identity.Auth.NoRefreshToken"));
+
+            var result = await sender.Send(
+                new RefreshTokenCommand(request.RefreshToken, AuthCookies.ClientIp(http), AuthCookies.UserAgent(http)), ct);
+
+            return result.IsFailure
+                ? ApiResults.Problem(result.Error)
+                : Results.Ok(ToMobileTokens(result.Value));
+        }).AllowAnonymous().RequireRateLimiting(RateLimitPolicies.AnonymousAuth);
+
+        mobile.MapPost("/logout", async (MobileLogoutRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new LogoutCommand(request.RefreshToken), ct);
+            return result.ToNoContent();
+        }).RequireAuthorization();
+
         auth.MapPost("/activate", async (ActivateAccountRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(
@@ -128,4 +175,7 @@ internal static class AuthEndpoints
             return result.ToOk();
         }).RequireAuthorization().WithTags("Identity.Auth");
     }
+
+    private static MobileTokensResponse ToMobileTokens(Identity.Application.Contracts.AuthTokensDto tokens) =>
+        new(tokens.AccessToken, tokens.AccessTokenExpiresAtUtc, tokens.RefreshToken, tokens.RefreshTokenExpiresAtUtc);
 }

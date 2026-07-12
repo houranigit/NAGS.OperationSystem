@@ -12,6 +12,16 @@ public sealed record LoginChallengeResponse(bool MfaRequired, string MfaToken);
 public sealed record LoginMfaRequest(string MfaToken, string Code);
 public sealed record ConfirmMfaRequest(string Code);
 
+// Mobile auth: the refresh token travels in the JSON body instead of the web httpOnly cookie,
+// because native clients keep it in secure device storage (Keychain/EncryptedSharedPreferences).
+public sealed record MobileTokensResponse(
+    string AccessToken,
+    DateTimeOffset AccessTokenExpiresAtUtc,
+    string RefreshToken,
+    DateTimeOffset RefreshTokenExpiresAtUtc);
+public sealed record MobileRefreshRequest(string RefreshToken);
+public sealed record MobileLogoutRequest(string? RefreshToken);
+
 // Roles
 public sealed record CreateRoleRequest(string Name, string? Description, BuildingBlocks.Contracts.Authorization.UserType? CompatibleUserType, IReadOnlyList<string> Permissions);
 public sealed record UpdateRoleRequest(string Name, string? Description);

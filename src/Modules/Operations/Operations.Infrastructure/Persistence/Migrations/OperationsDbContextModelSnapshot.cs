@@ -184,6 +184,43 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("flight_planned_services", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Domain.Mobile.MobileMutation", b =>
+                {
+                    b.Property<string>("ClientMutationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("ClientFlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("WorkOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("ClientMutationId");
+
+                    b.HasIndex("ClientFlightId")
+                        .IsUnique()
+                        .HasFilter("[ClientFlightId] IS NOT NULL");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.ToTable("Operations_MobileMutations", "operations");
+                });
+
             modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrder", b =>
                 {
                     b.Property<Guid>("Id")

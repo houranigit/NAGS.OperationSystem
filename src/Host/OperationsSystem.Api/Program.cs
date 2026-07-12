@@ -22,6 +22,7 @@ using Identity.Infrastructure.Security;
 using MasterData.Api;
 using MasterData.Infrastructure;
 using Operations.Api;
+using Operations.Api.Mobile;
 using Operations.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
@@ -81,6 +82,9 @@ var moduleApplicationAssemblies = new[]
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssemblies(moduleApplicationAssemblies);
+    // MobileSyncBroadcastBehavior is registered first (outermost) so the mobile-sync buffer
+    // flushes only after validation and the handler (including its SaveChanges) succeeded.
+    cfg.AddOpenBehavior(typeof(BuildingBlocks.Application.Mobile.MobileSyncBroadcastBehavior<,>));
     cfg.AddOpenBehavior(typeof(ValidationPipelineBehavior<,>));
 });
 foreach (var assembly in moduleApplicationAssemblies)
@@ -98,6 +102,9 @@ builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
 builder.Services.AddMasterDataModule(builder.Configuration);
 builder.Services.AddOperationsModule(builder.Configuration);
+
+// Mobile offline-sync: SignalR hub + per-request change broadcaster.
+builder.Services.AddMobileSync();
 
 // Compose the cross-module permission catalog after all module catalogs are registered.
 builder.Services.AddPermissionRegistry();
@@ -125,6 +132,19 @@ builder.Services
         // session). The validator may cache briefly to avoid a remote DB trip on every API call.
         options.Events = new JwtBearerEvents
         {
+            // SignalR WebSocket upgrades cannot carry an Authorization header, so the mobile
+            // client passes the bearer token as ?access_token= on hub paths.
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            },
             OnTokenValidated = async context =>
             {
                 var principal = context.Principal;
@@ -219,6 +239,8 @@ new AuditEndpointModule().MapEndpoints(app);
 new IdentityEndpointModule().MapEndpoints(app);
 new MasterDataEndpointModule().MapEndpoints(app);
 new OperationsEndpointModule().MapEndpoints(app);
+
+app.MapHub<Operations.Api.Mobile.MobileSyncHub>(Operations.Api.Mobile.MobileSyncHub.Path);
 
 var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")
     ?? app.Environment.IsDevelopment();

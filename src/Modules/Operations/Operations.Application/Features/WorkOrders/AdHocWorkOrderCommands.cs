@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Contracts.Seeding;
@@ -8,6 +9,7 @@ using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Features.Flights;
+using Operations.Application.Features.Mobile;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
@@ -25,7 +27,10 @@ public sealed record CreateAdHocWorkOrderCommand(
     IReadOnlyList<Guid> PlannedServiceIds,
     IReadOnlyList<Guid> AssignedStaffMemberIds,
     WorkOrderType Type,
-    WorkOrderEditableCommandPayload Payload) : ICommand<Guid>;
+    WorkOrderEditableCommandPayload Payload,
+    string? ClientMutationId = null,
+    Guid? FlightId = null,
+    Guid? WorkOrderId = null) : ICommand<Guid>;
 
 public sealed class CreateAdHocWorkOrderCommandValidator : AbstractValidator<CreateAdHocWorkOrderCommand>
 {
@@ -48,6 +53,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
     IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
     IWorkOrderTimelineWriter workOrderTimeline,
+    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<CreateAdHocWorkOrderCommand, Guid>
 {
@@ -123,6 +129,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
             contractNumber: null,
             createdByUserId: ownerUserId,
             now: now,
+            id: request.FlightId,
             allowEmptyPlannedServices: allowEmptyPlannedServices);
         if (flight.IsFailure)
             return flight.Error;
@@ -140,7 +147,8 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
             workOrderInput.Value.Remarks,
             workOrderInput.Value.ServiceLines,
             workOrderInput.Value.Tasks,
-            now);
+            now,
+            request.WorkOrderId);
         if (workOrder.IsFailure)
             return workOrder.Error;
 
@@ -166,6 +174,8 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         await flightTimeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.WorkOrderSubmitted, now,
             details: workOrder.Value.Id.ToString(), cancellationToken: cancellationToken);
         await workOrderTimeline.AppendAsync(workOrder.Value.Id, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
+
+        MobileFlightSync.EnqueueUpsert(mobileSync, flight.Value, request.ClientMutationId);
 
         try
         {
