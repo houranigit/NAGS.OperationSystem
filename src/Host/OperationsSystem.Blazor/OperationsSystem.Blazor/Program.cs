@@ -40,9 +40,11 @@ if (app.Configuration.GetValue("ForceHttpsRedirect", false))
     app.UseHttpsRedirection();
 
 app.UseAntiforgery();
+app.UseWebSockets();
 
 app.MapStaticAssets();
 app.MapApiProxy();
+app.MapNotificationsHubProxy();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()

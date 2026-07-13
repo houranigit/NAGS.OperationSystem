@@ -21,6 +21,9 @@ using Identity.Infrastructure;
 using Identity.Infrastructure.Security;
 using MasterData.Api;
 using MasterData.Infrastructure;
+using Notifications.Api;
+using Notifications.Api.Realtime;
+using Notifications.Infrastructure;
 using Operations.Api;
 using Operations.Api.Mobile;
 using Operations.Infrastructure;
@@ -63,6 +66,7 @@ builder.Services.AddOperationsOpenTelemetry(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<Identity.Infrastructure.Persistence.IdentityDbContext>("identity-db", tags: ["ready"])
     .AddDbContextCheck<MasterData.Infrastructure.Persistence.MasterDataDbContext>("masterdata-db", tags: ["ready"])
+    .AddDbContextCheck<Notifications.Infrastructure.Persistence.NotificationsDbContext>("notifications-db", tags: ["ready"])
     .AddDbContextCheck<Operations.Infrastructure.Persistence.OperationsDbContext>("operations-db", tags: ["ready"])
     .AddDbContextCheck<Audit.Infrastructure.Persistence.AuditDbContext>("audit-db", tags: ["ready"]);
 
@@ -76,6 +80,7 @@ var moduleApplicationAssemblies = new[]
     Audit.Application.AssemblyReference.Assembly,
     Identity.Application.AssemblyReference.Assembly,
     MasterData.Application.AssemblyReference.Assembly,
+    Notifications.Application.AssemblyReference.Assembly,
     Operations.Application.AssemblyReference.Assembly
 };
 
@@ -101,6 +106,8 @@ builder.Services.AddDurableEmail(builder.Configuration, builder.Environment);
 builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
 builder.Services.AddMasterDataModule(builder.Configuration);
+builder.Services.AddNotificationsModule(builder.Configuration);
+builder.Services.AddNotificationsApi();
 builder.Services.AddOperationsModule(builder.Configuration);
 
 // Mobile offline-sync: SignalR hub + per-request change broadcaster.
@@ -238,9 +245,11 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 new AuditEndpointModule().MapEndpoints(app);
 new IdentityEndpointModule().MapEndpoints(app);
 new MasterDataEndpointModule().MapEndpoints(app);
+new NotificationsEndpointModule().MapEndpoints(app);
 new OperationsEndpointModule().MapEndpoints(app);
 
 app.MapHub<Operations.Api.Mobile.MobileSyncHub>(Operations.Api.Mobile.MobileSyncHub.Path);
+app.MapHub<NotificationsHub>(NotificationsHub.Path);
 
 var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")
     ?? app.Environment.IsDevelopment();
@@ -252,6 +261,7 @@ if (applyMigrationsOnStartup)
     await app.Services.MigrateAndSeedIdentityAsync();
     await app.Services.MigrateAndSeedMasterDataAsync();
     await app.Services.MigrateOperationsAsync();
+    await app.Services.MigrateNotificationsAsync();
 }
 else
 {
@@ -262,7 +272,7 @@ app.Run();
 
 static void WarnForSlowSqlConnectionSettings(Microsoft.Extensions.Logging.ILogger logger, IConfiguration configuration)
 {
-    string[] connectionNames = ["Default", "Identity", "MasterData", "Operations", "Audit"];
+    string[] connectionNames = ["Default", "Identity", "MasterData", "Operations", "Notifications", "Audit"];
     var inspected = new HashSet<string>(StringComparer.Ordinal);
 
     foreach (var connectionName in connectionNames)

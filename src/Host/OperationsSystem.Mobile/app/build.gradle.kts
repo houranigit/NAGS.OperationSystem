@@ -11,6 +11,15 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Firebase projects are environment-specific. Local/debug source builds remain possible without
+// checking google-services.json into source control; distribution builds validate that CI has
+// provisioned the file before applying the Google Services resource processor.
+val googleServicesJson = file("google-services.json")
+val firebaseConfigured = googleServicesJson.isFile
+if (firebaseConfigured) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 fun configuredValue(
     gradlePropertyName: String,
     environmentVariableName: String,
@@ -134,6 +143,7 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
     }
 
     signingConfigs {
@@ -230,6 +240,9 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.exifinterface)
 
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+
     // Real-time sync over SignalR. The signalr client brings RxJava + OkHttp
     // transitively; slf4j-android is the Android logging binding so the
     // connection lifecycle is observable in logcat instead of silently NOP'd.
@@ -279,11 +292,28 @@ val validateReleaseSigningConfiguration = tasks.register("validateReleaseSigning
     }
 }
 
+val validateReleaseFirebaseConfiguration = tasks.register("validateReleaseFirebaseConfiguration") {
+    group = "verification"
+    description = "Validates the Firebase Android client configuration required by Release variants."
+
+    doLast {
+        if (!googleServicesJson.isFile) {
+            throw GradleException(
+                "Firebase is not configured. Provision app/google-services.json from CI or the " +
+                    "Firebase console before building a Release artifact.",
+            )
+        }
+    }
+}
+
 // Any Release compilation/package validates the endpoint. APK assembly is intentionally allowed
 // without signing for CI verification; AAB distribution tasks additionally require signing.
 tasks.configureEach {
     when (name) {
-        "preReleaseBuild" -> dependsOn(validateReleaseApiConfiguration)
+        "preReleaseBuild" -> dependsOn(
+            validateReleaseApiConfiguration,
+            validateReleaseFirebaseConfiguration,
+        )
         "signReleaseBundle", "packageReleaseBundle", "bundleRelease" ->
             dependsOn(validateReleaseSigningConfiguration)
     }

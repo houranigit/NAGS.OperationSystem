@@ -695,6 +695,32 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>بانتظار تأكيد {0} قبل تغيير بريد تسجيل الدخول المرتبط.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
+  <data name="Notifications.Title" xml:space="preserve"><value>الإشعارات</value></data>
+  <data name="Notifications.Description" xml:space="preserve"><value>تعيينات الرحلات والتحديثات الأخرى المرسلة إلى حسابك.</value></data>
+  <data name="Notifications.BellLabel" xml:space="preserve"><value>فتح الإشعارات</value></data>
+  <data name="Notifications.Recent" xml:space="preserve"><value>أحدث الإشعارات</value></data>
+  <data name="Notifications.MarkAllRead" xml:space="preserve"><value>تحديد الكل كمقروء</value></data>
+  <data name="Notifications.MarkRead" xml:space="preserve"><value>تحديد كمقروء</value></data>
+  <data name="Notifications.ViewAll" xml:space="preserve"><value>عرض جميع الإشعارات</value></data>
+  <data name="Notifications.All" xml:space="preserve"><value>الكل</value></data>
+  <data name="Notifications.Unread" xml:space="preserve"><value>غير المقروءة</value></data>
+  <data name="Notifications.EmptyTitle" xml:space="preserve"><value>لا توجد إشعارات جديدة</value></data>
+  <data name="Notifications.EmptyDescription" xml:space="preserve"><value>ستظهر تعيينات الرحلات الجديدة هنا.</value></data>
+  <data name="Notifications.UnreadEmptyTitle" xml:space="preserve"><value>لا توجد إشعارات غير مقروءة</value></data>
+  <data name="Notifications.UnreadEmptyDescription" xml:space="preserve"><value>لقد راجعت جميع الإشعارات في صندوق الوارد.</value></data>
+  <data name="Notifications.LoadFailed" xml:space="preserve"><value>تعذر تحميل الإشعارات.</value></data>
+  <data name="Notifications.LiveUnavailable" xml:space="preserve"><value>قد تتأخر الإشعارات الأخيرة. حدّث الصفحة للمحاولة مرة أخرى.</value></data>
+  <data name="Notifications.Archive" xml:space="preserve"><value>أرشفة</value></data>
+  <data name="Notifications.ArchiveAll" xml:space="preserve"><value>أرشفة الكل</value></data>
+  <data name="Notifications.ArchiveAllTitle" xml:space="preserve"><value>هل تريد أرشفة جميع الإشعارات؟</value></data>
+  <data name="Notifications.ArchiveAllConfirm" xml:space="preserve"><value>سيؤدي ذلك إلى إخلاء صندوق الوارد الحالي، وستبقى الإشعارات المؤرشفة محفوظة في السجل.</value></data>
+  <data name="Notifications.ActionFailed" xml:space="preserve"><value>تعذر تحديث الإشعار. يرجى المحاولة مرة أخرى.</value></data>
+  <data name="Notifications.OpenFlight" xml:space="preserve"><value>فتح الرحلة</value></data>
+  <data name="Notifications.FlightAssignment" xml:space="preserve"><value>تعيين رحلة</value></data>
+  <data name="Notifications.Previous" xml:space="preserve"><value>السابق</value></data>
+  <data name="Notifications.Next" xml:space="preserve"><value>التالي</value></data>
+  <data name="Notifications.PageSummary" xml:space="preserve"><value>الصفحة {0} من {1}</value></data>
+  <data name="Notifications.UnreadCount" xml:space="preserve"><value>{0} غير مقروء</value></data>
   <data name="Errors.Forbidden" xml:space="preserve"><value>ليس لديك الإذن بمشاهدة هذا.</value></data>
   <data name="Errors.NotFound" xml:space="preserve"><value>لم يتم العثور على العنصر المطلوب.</value></data>
   <data name="Errors.LoadFailed" xml:space="preserve"><value>لم نتمكن من تحميل هذا. يرجى المحاولة مرة أخرى.</value></data>

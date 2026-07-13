@@ -695,6 +695,32 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>Waiting for {0} to confirm before the linked login email changes.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>Login email change failed</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>Identity could not start verification: {0}</value></data>
+  <data name="Notifications.Title" xml:space="preserve"><value>Notifications</value></data>
+  <data name="Notifications.Description" xml:space="preserve"><value>Flight assignments and other updates sent to your account.</value></data>
+  <data name="Notifications.BellLabel" xml:space="preserve"><value>Open notifications</value></data>
+  <data name="Notifications.Recent" xml:space="preserve"><value>Recent notifications</value></data>
+  <data name="Notifications.MarkAllRead" xml:space="preserve"><value>Mark all as read</value></data>
+  <data name="Notifications.MarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="Notifications.ViewAll" xml:space="preserve"><value>View all notifications</value></data>
+  <data name="Notifications.All" xml:space="preserve"><value>All</value></data>
+  <data name="Notifications.Unread" xml:space="preserve"><value>Unread</value></data>
+  <data name="Notifications.EmptyTitle" xml:space="preserve"><value>You're all caught up</value></data>
+  <data name="Notifications.EmptyDescription" xml:space="preserve"><value>New flight assignments will appear here.</value></data>
+  <data name="Notifications.UnreadEmptyTitle" xml:space="preserve"><value>No unread notifications</value></data>
+  <data name="Notifications.UnreadEmptyDescription" xml:space="preserve"><value>You've reviewed every notification in your inbox.</value></data>
+  <data name="Notifications.LoadFailed" xml:space="preserve"><value>We couldn't load your notifications.</value></data>
+  <data name="Notifications.LiveUnavailable" xml:space="preserve"><value>Recent notifications may be delayed. Refresh to try again.</value></data>
+  <data name="Notifications.Archive" xml:space="preserve"><value>Archive</value></data>
+  <data name="Notifications.ArchiveAll" xml:space="preserve"><value>Archive all</value></data>
+  <data name="Notifications.ArchiveAllTitle" xml:space="preserve"><value>Archive all notifications?</value></data>
+  <data name="Notifications.ArchiveAllConfirm" xml:space="preserve"><value>This clears your current inbox. Archived notifications remain in history.</value></data>
+  <data name="Notifications.ActionFailed" xml:space="preserve"><value>The notification could not be updated. Please try again.</value></data>
+  <data name="Notifications.OpenFlight" xml:space="preserve"><value>Open flight</value></data>
+  <data name="Notifications.FlightAssignment" xml:space="preserve"><value>Flight assignment</value></data>
+  <data name="Notifications.Previous" xml:space="preserve"><value>Previous</value></data>
+  <data name="Notifications.Next" xml:space="preserve"><value>Next</value></data>
+  <data name="Notifications.PageSummary" xml:space="preserve"><value>Page {0} of {1}</value></data>
+  <data name="Notifications.UnreadCount" xml:space="preserve"><value>{0} unread</value></data>
   <data name="Errors.Forbidden" xml:space="preserve"><value>You do not have permission to view this.</value></data>
   <data name="Errors.NotFound" xml:space="preserve"><value>The requested item was not found.</value></data>
   <data name="Errors.LoadFailed" xml:space="preserve"><value>We couldn't load this. Please try again.</value></data>

@@ -1,0 +1,181 @@
+@implements IAsyncDisposable
+@inject NotificationCenterState Center
+@inject LocaleState Locale
+@inject NavigationManager Navigation
+@inject NotificationService Toasts
+
+<div class="os-notification-bell @(isOpen ? "os-notification-bell--open" : null)">
+    <button type="button" class="os-notification-bell__trigger" title="@UiStrings.Notifications.Title"
+            aria-label="@UiStrings.Notifications.BellLabel" aria-haspopup="true" aria-expanded="@isOpen"
+            @onclick="Toggle">
+        <RadzenIcon Icon="notifications_none" />
+        @if (Center.UnreadCount > 0)
+        {
+            <span class="os-notification-bell__badge" aria-label="@string.Format(UiStrings.Notifications.UnreadCount, Center.UnreadCount)">
+                @(Center.UnreadCount > 99 ? "99+" : Center.UnreadCount.ToString())
+            </span>
+        }
+    </button>
+
+    @if (isOpen)
+    {
+        <button type="button" class="os-notification-bell__backdrop" aria-label="@UiStrings.Common.Close" @onclick="Close"></button>
+        <section class="os-notification-bell__panel" aria-label="@UiStrings.Notifications.Recent">
+            <header class="os-notification-bell__header">
+                <div>
+                    <strong>@UiStrings.Notifications.Title</strong>
+                    @if (Center.UnreadCount > 0)
+                    {
+                        <small>@string.Format(UiStrings.Notifications.UnreadCount, Center.UnreadCount)</small>
+                    }
+                </div>
+                @if (Center.UnreadCount > 0)
+                {
+                    <button type="button" class="os-notification-bell__text-action" disabled="@isUpdating" @onclick="MarkAllReadAsync">
+                        @UiStrings.Notifications.MarkAllRead
+                    </button>
+                }
+            </header>
+
+            <div class="os-notification-bell__content">
+                @if (Center.IsLoading)
+                {
+                    @for (var index = 0; index < 3; index++)
+                    {
+                        <div class="os-notification-bell__skeleton" @key="index">
+                            <span></span><span></span><span></span>
+                        </div>
+                    }
+                }
+                else if (Center.HasError)
+                {
+                    <div class="os-notification-bell__state">
+                        <span class="os-notification-bell__state-icon"><RadzenIcon Icon="cloud_off" /></span>
+                        <strong>@UiStrings.Notifications.LoadFailed</strong>
+                        <small>@UiStrings.Notifications.LiveUnavailable</small>
+                        <button type="button" @onclick="RefreshAsync">@UiStrings.Common.Refresh</button>
+                    </div>
+                }
+                else if (Center.Recent.Count == 0)
+                {
+                    <div class="os-notification-bell__state">
+                        <span class="os-notification-bell__state-icon os-notification-bell__state-icon--success"><RadzenIcon Icon="done_all" /></span>
+                        <strong>@UiStrings.Notifications.EmptyTitle</strong>
+                        <small>@UiStrings.Notifications.EmptyDescription</small>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var notification in Center.Recent)
+                    {
+                        <button @key="notification.Id" type="button"
+                                class="os-notification-bell__item @(!notification.IsRead ? "os-notification-bell__item--unread" : null)"
+                                @onclick="() => OpenAsync(notification)">
+                            <span class="os-notification-bell__item-icon"><RadzenIcon Icon="flight_takeoff" /></span>
+                            <span class="os-notification-bell__item-copy">
+                                <strong>@NotificationPresentation.Title(notification, Locale)</strong>
+                                <span>@NotificationPresentation.Body(notification, Locale)</span>
+                                <small title="@notification.CreatedAtUtc.ToLocalTime().ToString("F")">@RelativeTime(notification.CreatedAtUtc)</small>
+                            </span>
+                            @if (!notification.IsRead)
+                            {
+                                <span class="os-notification-bell__unread-dot"></span>
+                            }
+                        </button>
+                    }
+                }
+            </div>
+
+            <footer class="os-notification-bell__footer">
+                <button type="button" @onclick="ViewAll">
+                    <span>@UiStrings.Notifications.ViewAll</span>
+                    <RadzenIcon Icon="arrow_forward" />
+                </button>
+            </footer>
+        </section>
+    }
+</div>
+
+@code {
+    private bool isOpen;
+    private bool isUpdating;
+
+    protected override void OnInitialized() => Center.Changed += OnCenterChanged;
+
+    private void Toggle() => isOpen = !isOpen;
+
+    private void Close() => isOpen = false;
+
+    private async Task RefreshAsync() => await Center.RefreshAsync();
+
+    private async Task MarkAllReadAsync()
+    {
+        isUpdating = true;
+        try
+        {
+            await Center.MarkAllAsReadAsync();
+        }
+        catch (Exception)
+        {
+            Toasts.Notify(NotificationSeverity.Error, UiStrings.Notifications.Title, UiStrings.Notifications.ActionFailed);
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+
+    private async Task OpenAsync(NotificationDto notification)
+    {
+        if (!notification.IsRead)
+        {
+            try
+            {
+                await Center.MarkAsReadAsync(notification.Id);
+            }
+            catch (Exception)
+            {
+                Toasts.Notify(NotificationSeverity.Error, UiStrings.Notifications.Title, UiStrings.Notifications.ActionFailed);
+            }
+        }
+
+        isOpen = false;
+        Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? "/notifications");
+    }
+
+    private void ViewAll()
+    {
+        isOpen = false;
+        Navigation.NavigateTo("/notifications");
+    }
+
+    private static string RelativeTime(DateTimeOffset createdAtUtc)
+    {
+        var elapsed = DateTimeOffset.UtcNow - createdAtUtc;
+        if (elapsed < TimeSpan.FromMinutes(1))
+            return UiStrings.Common.JustNow;
+        if (elapsed < TimeSpan.FromHours(1))
+            return string.Format(UiStrings.Common.MinutesAgo, Math.Max(1, (int)elapsed.TotalMinutes));
+        if (elapsed < TimeSpan.FromDays(1))
+            return string.Format(UiStrings.Common.HoursAgo, Math.Max(1, (int)elapsed.TotalHours));
+        return string.Format(UiStrings.Common.DaysAgo, Math.Max(1, (int)elapsed.TotalDays));
+    }
+
+    private async void OnCenterChanged()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Center.Changed -= OnCenterChanged;
+        return ValueTask.CompletedTask;
+    }
+}

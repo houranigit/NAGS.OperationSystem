@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -25,6 +26,8 @@ import com.nags.operations.ui.components.AppHeader
 import com.nags.operations.ui.components.BottomNavBar
 import com.nags.operations.ui.components.BottomNavDestination
 import com.nags.operations.ui.components.FlightSheetCallbacks
+import com.nags.operations.ui.components.NotificationPermissionPrompt
+import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.adhoc.AdHocFlightsViewModel
 import com.nags.operations.ui.perlanding.PerLandingFlightsViewModel
 import com.nags.operations.ui.flights.MyFlightsViewModel
@@ -56,12 +59,17 @@ fun MainShellScreen(
     onLogout: () -> Unit,
     onOpenWorkOrderDraft: (draftId: String) -> Unit,
     onOpenCreateAdHocFlight: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    notificationOpenRequest: NotificationOpenRequest? = null,
+    onNotificationHandled: (String?) -> Unit = {},
     flightSheetCallbacks: FlightSheetCallbacks = FlightSheetCallbacks(),
 ) {
     val displayName by tokenStore.displayNameFlow
         .collectAsStateWithLifecycle(initialValue = null)
     val isOnline by graph.networkMonitor.isOnline.collectAsStateWithLifecycle()
     val isSyncing by graph.syncCoordinator.isSyncing.collectAsStateWithLifecycle()
+    val unreadNotifications by graph.notificationsRepository.observeUnreadCount()
+        .collectAsStateWithLifecycle(initialValue = 0)
 
     val innerNav = rememberNavController()
     val innerEntry by innerNav.currentBackStackEntryAsState()
@@ -71,6 +79,19 @@ fun MainShellScreen(
         BottomNavDestination.Drafts.route -> BottomNavDestination.Drafts
         else -> BottomNavDestination.MyFlights
     }
+
+    LaunchedEffect(notificationOpenRequest?.notificationId, notificationOpenRequest?.flightId) {
+        if (notificationOpenRequest != null &&
+            innerEntry?.destination?.route != BottomNavDestination.MyFlights.route
+        ) {
+            innerNav.navigate(BottomNavDestination.MyFlights.route) {
+                popUpTo(BottomNavDestination.MyFlights.route) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    NotificationPermissionPrompt()
 
     Scaffold(
         bottomBar = {
@@ -111,6 +132,8 @@ fun MainShellScreen(
                 onSyncCenterClick = onOpenSyncCenter,
                 isOnline = isOnline,
                 isSyncing = isSyncing,
+                onNotificationsClick = onOpenNotifications,
+                unreadNotifications = unreadNotifications,
             )
             NavHost(
                 navController = innerNav,
@@ -122,6 +145,10 @@ fun MainShellScreen(
                     MyFlightsTab(
                         viewModel = vm,
                         sheetCallbacks = flightSheetCallbacks,
+                        requestedFlightId = notificationOpenRequest?.flightId,
+                        onRequestedFlightOpened = {
+                            onNotificationHandled(notificationOpenRequest?.notificationId)
+                        },
                     )
                 }
                 composable(BottomNavDestination.PerLanding.route) {

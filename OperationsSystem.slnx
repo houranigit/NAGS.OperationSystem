@@ -41,6 +41,13 @@
     <Project Path="src/Modules/Operations/Operations.Domain/Operations.Domain.csproj" />
     <Project Path="src/Modules/Operations/Operations.Infrastructure/Operations.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Notifications/">
+    <Project Path="src/Modules/Notifications/Notifications.Api/Notifications.Api.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Application/Notifications.Application.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Contracts/Notifications.Contracts.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Domain/Notifications.Domain.csproj" />
+    <Project Path="src/Modules/Notifications/Notifications.Infrastructure/Notifications.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Identity.Application.UnitTests/Identity.Application.UnitTests.csproj" />
     <Project Path="tests/Identity.Domain.UnitTests/Identity.Domain.UnitTests.csproj" />
@@ -53,5 +60,7 @@
     <Project Path="tests/Operations.Application.UnitTests/Operations.Application.UnitTests.csproj" />
     <Project Path="tests/Operations.IntegrationTests/Operations.IntegrationTests.csproj" />
     <Project Path="tests/OperationsSystem.Blazor.UnitTests/OperationsSystem.Blazor.UnitTests.csproj" />
+    <Project Path="tests/Notifications.Domain.UnitTests/Notifications.Domain.UnitTests.csproj" />
+    <Project Path="tests/Notifications.Application.UnitTests/Notifications.Application.UnitTests.csproj" />
   </Folder>
 </Solution>

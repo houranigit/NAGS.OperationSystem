@@ -5,6 +5,7 @@ import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.AuthApi
 import com.nags.operations.data.api.HttpClientFactory
 import com.nags.operations.data.api.MobileApi
+import com.nags.operations.data.api.NotificationsApi
 import com.nags.operations.data.db.AppDatabase
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.outbox.OutboxWorker
@@ -15,6 +16,7 @@ import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.CatalogsRepository
 import com.nags.operations.data.repo.EmployeesRepository
 import com.nags.operations.data.repo.FlightsRepository
+import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.repo.WorkOrderDraftsRepository
 import com.nags.operations.data.sync.SyncCoordinator
 import com.nags.operations.data.sync.SyncScheduler
@@ -26,6 +28,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.nags.operations.notifications.DeviceTokenManager
+import com.nags.operations.notifications.NotificationNavigationCoordinator
+import com.nags.operations.notifications.SystemNotificationManager
+import com.nags.operations.data.notifications.NotificationPushPayload
 
 /**
  * Tiny hand-rolled DI container so screens / ViewModels can resolve everything
@@ -47,6 +53,7 @@ class AppGraph private constructor(context: Context) {
     private val httpClient: HttpClient = HttpClientFactory.create(tokenStore)
     private val authApi: AuthApi = AuthApi(tokenStore, httpClient)
     val mobileApi: MobileApi = MobileApi(tokenStore, httpClient)
+    private val notificationsApi: NotificationsApi = NotificationsApi(tokenStore, httpClient)
 
     val database: AppDatabase = AppDatabase.get(context.applicationContext)
 
@@ -54,6 +61,8 @@ class AppGraph private constructor(context: Context) {
     val employeesRepository: EmployeesRepository = EmployeesRepository(database)
     val flightsRepository: FlightsRepository = FlightsRepository(database)
     val workOrderDraftsRepository: WorkOrderDraftsRepository = WorkOrderDraftsRepository(database)
+    val notificationsRepository: NotificationsRepository =
+        NotificationsRepository(notificationsApi, database, tokenStore)
     private val outboxWorkScheduler = OutboxWorkScheduler(context.applicationContext)
     val workOrderOutboxRepository: WorkOrderOutboxRepository =
         WorkOrderOutboxRepository(
@@ -63,6 +72,16 @@ class AppGraph private constructor(context: Context) {
         )
 
     val networkMonitor: NetworkMonitor = NetworkMonitor(context.applicationContext, appScope)
+    val notificationNavigation = NotificationNavigationCoordinator(context.applicationContext)
+    private val systemNotificationManager = SystemNotificationManager(context.applicationContext)
+    private val notificationDisplayGate = NotificationDisplayGate()
+    val deviceTokenManager = DeviceTokenManager(
+        context = context.applicationContext,
+        tokenStore = tokenStore,
+        api = notificationsApi,
+        networkMonitor = networkMonitor,
+        appScope = appScope,
+    )
 
     val syncCoordinator: SyncCoordinator = SyncCoordinator(
         api = mobileApi,
@@ -139,6 +158,7 @@ class AppGraph private constructor(context: Context) {
         appScope.launch {
             tokenStore.initializeSecureStorage()
             secureStorageReady = true
+            deviceTokenManager.start()
             resumeSessionServices()
         }
     }
@@ -150,8 +170,11 @@ class AppGraph private constructor(context: Context) {
      */
     suspend fun signOut() {
         sessionTransitionMutex.withLock {
+            deactivateNotificationDisplay(tokenStore.getSessionSubject())
             pauseSessionServices()
+            deviceTokenManager.revokeBeforeLogout()
             authRepository.logout()
+            notificationsRepository.clearLocal()
         }
     }
 
@@ -160,21 +183,40 @@ class AppGraph private constructor(context: Context) {
 
     /** Single-activity foreground hook; an unchanged token/network pair otherwise emits nothing. */
     fun onForeground() {
-        if (secureStorageReady) syncScheduler.refreshNow()
+        if (secureStorageReady) {
+            syncScheduler.refreshNow()
+            appScope.launch {
+                if (tokenStore.getAccessToken() != null) {
+                    runCatching { notificationsRepository.refreshUnreadCount() }
+                }
+            }
+        }
+    }
+
+    /** Atomically rejects a late push once logout/account switching has closed the display gate. */
+    fun showNotificationIfCurrent(
+        payload: NotificationPushPayload,
+        expectedSubject: String,
+    ): Boolean = notificationDisplayGate.runIfCurrent(expectedSubject) { activeSubject ->
+        systemNotificationManager.show(payload, activeSubject)
     }
 
     private suspend fun prepareForAccountSwitch() {
         sessionTransitionMutex.withLock {
+            deactivateNotificationDisplay(tokenStore.getSessionSubject())
             pauseSessionServices()
+            deviceTokenManager.revokeBeforeLogout()
             // Make the old bearer unobservable before deleting its local rows. If cleanup fails,
             // saveLogin propagates the failure and never publishes the new account.
             tokenStore.clearTokens()
+            notificationsRepository.clearLocal()
             syncCoordinator.clearForAccountSwitch()
             tokenStore.clearAll()
         }
     }
 
     private suspend fun pauseSessionServices() {
+        deviceTokenManager.pause()
         workOrderOutboxRepository.pauseEnqueues()
         outboxWorker.stop()
         outboxWorkScheduler.pauseAndCancel()
@@ -185,11 +227,26 @@ class AppGraph private constructor(context: Context) {
     private suspend fun resumeSessionServices() {
         sessionTransitionMutex.withLock {
             workOrderOutboxRepository.resumeEnqueues()
+            deviceTokenManager.resume()
             syncScheduler.start()
             realtimeChannel.start()
             outboxWorker.start()
             if (tokenStore.getAccessToken() != null) {
+                tokenStore.getSessionSubject()?.takeIf(String::isNotBlank)?.let {
+                    notificationDisplayGate.activate(it)
+                }
                 outboxWorkScheduler.resumeAndSchedule()
+                appScope.launch { runCatching { notificationsRepository.refresh() } }
+            }
+        }
+    }
+
+    private fun deactivateNotificationDisplay(fallbackSubject: String?) {
+        notificationDisplayGate.deactivate(fallbackSubject) { subject ->
+            if (subject.isNullOrBlank()) {
+                systemNotificationManager.cancelAllManaged()
+            } else {
+                systemNotificationManager.cancelForAccount(subject)
             }
         }
     }
@@ -202,5 +259,37 @@ class AppGraph private constructor(context: Context) {
                 instance ?: AppGraph(context.applicationContext).also { instance = it }
             }
         }
+    }
+}
+
+/** Serializes system-alert display against logout/account-switch cancellation. */
+internal class NotificationDisplayGate {
+    private val lock = Any()
+    private var activeSubject: String? = null
+    private var acceptsInitialAuthenticatedSubject = true
+
+    fun activate(subject: String) = synchronized(lock) {
+        activeSubject = subject
+        acceptsInitialAuthenticatedSubject = true
+    }
+
+    fun deactivate(fallbackSubject: String?, cancel: (String?) -> Unit) = synchronized(lock) {
+        val subjectToCancel = activeSubject ?: fallbackSubject
+        activeSubject = null
+        acceptsInitialAuthenticatedSubject = false
+        cancel(subjectToCancel)
+    }
+
+    fun runIfCurrent(expectedSubject: String, action: (String) -> Unit): Boolean = synchronized(lock) {
+        // A killed app can be awakened directly in FirebaseMessagingService before AppGraph's
+        // asynchronous startup reaches resumeSessionServices. The authenticated service call may
+        // establish that initial subject, but a logout/switch deactivation blocks reactivation.
+        if (activeSubject == null && acceptsInitialAuthenticatedSubject) {
+            activeSubject = expectedSubject
+        }
+        val active = activeSubject
+        if (active == null || !active.equals(expectedSubject, ignoreCase = true)) return false
+        action(active)
+        true
     }
 }

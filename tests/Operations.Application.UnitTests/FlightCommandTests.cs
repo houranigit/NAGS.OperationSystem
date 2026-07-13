@@ -1,8 +1,10 @@
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
+using System.Text.Json;
 using MasterData.Contracts.Readers;
 using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
+using Operations.Contracts;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Features.Flights;
@@ -32,6 +34,8 @@ public sealed class FlightCommandTests
             new MasterDataResolver(new ThrowingMasterDataReader()),
             new NoopTimelineWriter(),
             new NoopMobileSyncBroadcaster(),
+            new StaticUserContext(),
+            new StaticAuditContext(),
             TimeProvider.System);
 
         var result = await handler.Handle(
@@ -42,25 +46,194 @@ public sealed class FlightCommandTests
         result.Error.Code.ShouldBe("Operations.PerLanding.AssignmentNotAllowed");
     }
 
+    [Fact]
+    public async Task ScheduleFlightCommand_Enqueues_one_assignment_event_per_new_recipient()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var staff = Staff(Guid.NewGuid(), stationId, "Assigned");
+        var reader = new ThrowingMasterDataReader([StaffRead(staff, stationId)]);
+        var handler = new ScheduleFlightCommandHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
+            new MasterDataResolver(reader),
+            new NoopTimelineWriter(),
+            new NoopMobileSyncBroadcaster(),
+            new StaticUserContext(),
+            new StaticAuditContext(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(new ScheduleFlightCommand(
+            Guid.NewGuid(),
+            stationId,
+            Guid.NewGuid(),
+            "SV300",
+            Now,
+            Now.AddHours(1),
+            null,
+            [Guid.NewGuid()],
+            [staff.StaffMemberId]), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var message = await db.OutboxMessages.SingleAsync();
+        message.Content.ShouldContain(staff.StaffMemberId.ToString());
+        message.Content.ShouldContain("SV300");
+    }
+
+    [Fact]
+    public async Task ScheduleFlightsCommand_Enqueues_assignment_event_for_each_flight_and_recipient()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var staff = Staff(Guid.NewGuid(), stationId, "Assigned");
+        var handler = new ScheduleFlightsCommandHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
+            new MasterDataResolver(new ThrowingMasterDataReader([StaffRead(staff, stationId)])),
+            new NoopTimelineWriter(),
+            new NoopMobileSyncBroadcaster(),
+            new StaticUserContext(),
+            new StaticAuditContext(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(new ScheduleFlightsCommand(
+            Guid.NewGuid(),
+            stationId,
+            Guid.NewGuid(),
+            "SV301",
+            new TimeOnly(10, 0),
+            new TimeOnly(11, 0),
+            [new DateOnly(2026, 7, 13), new DateOnly(2026, 7, 14)],
+            null,
+            [Guid.NewGuid()],
+            [staff.StaffMemberId]), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        (await db.OutboxMessages.CountAsync()).ShouldBe(2);
+        (await db.OutboxMessages.Select(message => message.Id).Distinct().CountAsync()).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task AssignEmployeesCommand_Enqueues_events_only_for_roster_additions()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var existing = Staff(Guid.NewGuid(), stationId, "Existing");
+        var added = Staff(Guid.NewGuid(), stationId, "Added");
+        var flight = CreateScheduledFlight(assignedEmployees: [existing], stationId: stationId);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var user = new StaticUserContext();
+        var handler = new AssignEmployeesCommandHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
+            new MasterDataResolver(new ThrowingMasterDataReader([StaffRead(existing, stationId), StaffRead(added, stationId)])),
+            new NoopTimelineWriter(),
+            new NoopMobileSyncBroadcaster(),
+            user,
+            new StaticAuditContext(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new AssignEmployeesCommand(flight.Id, [existing.StaffMemberId, added.StaffMemberId], flight.RowVersion),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var message = await db.OutboxMessages.SingleAsync();
+        message.Type.ShouldContain(nameof(FlightEmployeeAssigned));
+        message.Content.ShouldContain(added.StaffMemberId.ToString());
+        message.Content.ShouldNotContain(existing.StaffMemberId.ToString());
+    }
+
+    [Fact]
+    public async Task AssignEmployeesCommand_Does_not_enqueue_for_unassign()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var retained = Staff(Guid.NewGuid(), stationId, "Retained");
+        var removed = Staff(Guid.NewGuid(), stationId, "Removed");
+        var flight = CreateScheduledFlight(assignedEmployees: [retained, removed], stationId: stationId);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var handler = new AssignEmployeesCommandHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
+            new MasterDataResolver(new ThrowingMasterDataReader([StaffRead(retained, stationId)])),
+            new NoopTimelineWriter(),
+            new NoopMobileSyncBroadcaster(),
+            new StaticUserContext(),
+            new StaticAuditContext(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new AssignEmployeesCommand(flight.Id, [retained.StaffMemberId], flight.RowVersion),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        (await db.OutboxMessages.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task InviteEmployeesCommand_Ignores_existing_and_enqueues_only_new_recipients()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var existing = Staff(Guid.NewGuid(), stationId, "Existing");
+        var added = Staff(Guid.NewGuid(), stationId, "Added");
+        var flight = CreateScheduledFlight(assignedEmployees: [existing], stationId: stationId);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var handler = new InviteEmployeesToFlightCommandHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
+            new MasterDataResolver(new ThrowingMasterDataReader([StaffRead(added, stationId)])),
+            new NoopTimelineWriter(),
+            new NoopMobileSyncBroadcaster(),
+            new StaticUserContext(),
+            new StaticAuditContext(),
+            TimeProvider.System);
+
+        var result = await handler.Handle(
+            new InviteEmployeesToFlightCommand(flight.Id, [existing.StaffMemberId, added.StaffMemberId], flight.RowVersion),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        flight.AssignedEmployees.Count.ShouldBe(2);
+        var message = await db.OutboxMessages.SingleAsync();
+        message.Content.ShouldContain(added.StaffMemberId.ToString());
+        message.Content.ShouldNotContain(existing.StaffMemberId.ToString());
+        JsonSerializer.Deserialize<FlightEmployeeAssigned>(message.Content)!.Source
+            .ShouldBe(FlightAssignmentSource.Invite);
+    }
+
     private static OperationsDbContext NewDb() =>
         new(new DbContextOptionsBuilder<OperationsDbContext>()
             .UseInMemoryDatabase($"ops-{Guid.NewGuid()}")
             .Options);
 
-    private static Flight CreateScheduledFlight(ServiceSnapshot? plannedService = null) =>
+    private static Flight CreateScheduledFlight(
+        ServiceSnapshot? plannedService = null,
+        IReadOnlyList<StaffMemberSnapshot>? assignedEmployees = null,
+        Guid? stationId = null) =>
         Flight.ScheduleNew(
             new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
-            new StationSnapshot(Guid.NewGuid(), "RUH", "Riyadh"),
+            new StationSnapshot(stationId ?? Guid.NewGuid(), "RUH", "Riyadh"),
             new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
             FlightNumber.Create("SV1020").Value,
             ScheduledTime.Create(Now, Now.AddHours(1)).Value,
             aircraftType: null,
             plannedServices: [plannedService ?? new ServiceSnapshot(Guid.NewGuid(), "Marshalling")],
-            assignedEmployees: [],
+            assignedEmployees: assignedEmployees ?? [],
             contractId: null,
             contractNumber: null,
             createdByUserId: Guid.NewGuid(),
             now: Now).Value;
+
+    private static StaffMemberSnapshot Staff(Guid id, Guid stationId, string name) =>
+        new(id, name, $"EMP-{id:N}"[..12]);
+
+    private static StaffMemberReadSnapshot StaffRead(StaffMemberSnapshot staff, Guid stationId) =>
+        new(staff.StaffMemberId, staff.FullName, staff.EmployeeId, stationId, Guid.NewGuid(), true);
 
     private sealed class StaticScope(OperationsScopeContext context) : IOperationsScope
     {
@@ -91,16 +264,33 @@ public sealed class FlightCommandTests
             Task.CompletedTask;
     }
 
-    private sealed class ThrowingMasterDataReader : IMasterDataReader
+    private sealed class StaticUserContext : BuildingBlocks.Application.Abstractions.IUserContext
+    {
+        public bool IsAuthenticated => true;
+        public Guid? UserId { get; } = Guid.NewGuid();
+        public UserType? UserType => BuildingBlocks.Contracts.Authorization.UserType.SystemAdministrator;
+        public Guid? ExternalReferenceId => null;
+        public bool HasPermission(string permission) => true;
+    }
+
+    private sealed class StaticAuditContext : BuildingBlocks.Application.Auditing.IAuditContext
+    {
+        public Guid? ActorId => Guid.NewGuid();
+        public string? ActorDisplayName => "Test Dispatcher";
+        public bool IsSystemActor => false;
+        public string? CorrelationId => null;
+    }
+
+    private sealed class ThrowingMasterDataReader(IReadOnlyList<StaffMemberReadSnapshot>? staff = null) : IMasterDataReader
     {
         public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<CustomerReadSnapshot?>(new CustomerReadSnapshot(id, "SV", null, "Saudia", true));
 
         public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<StationReadSnapshot?>(new StationReadSnapshot(id, "RUH", null, "Riyadh", true));
 
         public Task<OperationTypeReadSnapshot?> GetOperationTypeAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<OperationTypeReadSnapshot?>(new OperationTypeReadSnapshot(id, "Transit", true));
 
         public Task<AircraftTypeReadSnapshot?> GetAircraftTypeAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
@@ -109,13 +299,15 @@ public sealed class FlightCommandTests
             throw new NotImplementedException();
 
         public Task<IReadOnlyList<ServiceReadSnapshot>> GetServicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<IReadOnlyList<ServiceReadSnapshot>>(ids.Select(id => new ServiceReadSnapshot(id, "Marshalling", true)).ToList());
 
         public Task<StaffMemberReadSnapshot?> GetStaffMemberAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
 
         public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetStaffMembersAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<IReadOnlyList<StaffMemberReadSnapshot>>((staff ?? [])
+                .Where(item => ids.Contains(item.Id))
+                .ToList());
 
         public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken cancellationToken) =>
             throw new NotImplementedException();

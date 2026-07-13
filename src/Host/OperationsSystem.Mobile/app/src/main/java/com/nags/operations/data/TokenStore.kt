@@ -44,6 +44,7 @@ class TokenStore internal constructor(
     }
     val userIdFlow: Flow<String?> = context.dataStore.data.map { it[userIdKey] }
     val displayNameFlow: Flow<String?> = context.dataStore.data.map { it[displayNameKey] }
+    val sessionSubjectFlow: Flow<String?> = context.dataStore.data.map { it[sessionSubjectKey] }
 
     suspend fun getAccessToken(): String? = context.dataStore.data
         .map { prefs -> prefs[accessKey]?.let(::unprotectOrNull) }

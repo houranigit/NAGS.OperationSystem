@@ -1,5 +1,6 @@
 using OperationsSystem.Blazor.Api;
 using Shouldly;
+using Microsoft.AspNetCore.Http;
 
 namespace OperationsSystem.Blazor.UnitTests.Api;
 
@@ -57,5 +58,21 @@ public sealed class ApiProxyExtensionsTests
         var socketsHandler = handler.ShouldBeOfType<SocketsHttpHandler>();
         socketsHandler.UseCookies.ShouldBeFalse();
         socketsHandler.AllowAutoRedirect.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Notifications_hub_target_preserves_path_query_and_converts_to_websocket_scheme()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.RouteValues["path"] = "negotiate";
+        context.Request.QueryString = new QueryString("?negotiateVersion=1&access_token=token");
+
+        var httpTarget = ApiProxyExtensions.BuildNotificationsHubTargetUri(
+            context,
+            new ApiProxyOptions { BaseUrl = "https://api.example.test/" });
+        var webSocketTarget = ApiProxyExtensions.ToWebSocketUri(httpTarget);
+
+        httpTarget.ToString().ShouldBe("https://api.example.test/hubs/notifications/negotiate?negotiateVersion=1&access_token=token");
+        webSocketTarget.ToString().ShouldBe("wss://api.example.test/hubs/notifications/negotiate?negotiateVersion=1&access_token=token");
     }
 }

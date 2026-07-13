@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Radzen.Blazor" />
   </ItemGroup>
 
@@ -20,6 +21,12 @@
     <EmbeddedResource Update="Localization\Resources\UiStrings.ar.resx">
       <Culture>ar</Culture>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>OperationsSystem.Blazor.UnitTests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

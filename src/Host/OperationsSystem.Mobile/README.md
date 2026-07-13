@@ -24,8 +24,13 @@ shape and business rules.
   seed the form as service lines to complete or remove — never Per Landing), return-to-ramp,
   invite teammates (online-only), cancel flight (time + reason), local drafts, and the Sync Center
   diagnostics screen.
+* **Notifications** — persisted bilingual inbox, unread bell badge, read/archive actions, and
+  high-priority FCM flight-assignment alerts. Notification taps select My Flights and open the
+  same flight action sheet used by flight cards; cold starts and warm `singleTask` intents share
+  one durable navigation handoff.
 
-Deferred: FCM push notifications (arrives with the backend Notifications module).
+The mobile-sync SignalR hub remains data synchronization only. User-facing closed/background app
+alerts use FCM and the Notifications API under `/api/v1/notifications`.
 
 ## Business rules mirrored from the backend
 
@@ -47,7 +52,9 @@ app/src/main/java/com/nags/operations/
   data/db/                          — Room database (v11), entities, DAOs, converters
   data/outbox/                      — durable queue + foreground/WorkManager delivery
   data/realtime/                    — SignalR channel + change envelope
+  data/notifications/               — notification wire models and typed push payload
   data/repo/                        — read-only Flow repositories over Room
+  notifications/                    — FCM registration, receipt, system UI, deep-link handoff
   data/sync/                        — SyncCoordinator (single writer), SyncScheduler, sync tables
   ui/                               — Compose screens, ViewModels, components
 ```
@@ -125,6 +132,17 @@ Release never reads `local.properties`. Supply the production API URL with one o
 
 The value must be an absolute `http`/`https` URL with a non-loopback host and no embedded credentials,
 query string, or fragment. Release compilation and packaging fail when it is absent or invalid.
+
+### Firebase client configuration
+
+Provision the Android Firebase client file at `app/google-services.json` before building a release.
+It must be the Android client configuration for application id `com.nags.operations`, not the
+server-side Firebase Admin service-account JSON. The file is ignored by git and should be injected by
+CI or supplied locally from the Firebase console.
+
+Debug/unit builds intentionally remain available without this file; `BuildConfig.FIREBASE_CONFIGURED`
+then disables device registration while the inbox REST surface continues to work. Every Release build
+runs `validateReleaseFirebaseConfiguration` and fails when the file is absent.
 For example:
 
 ```sh

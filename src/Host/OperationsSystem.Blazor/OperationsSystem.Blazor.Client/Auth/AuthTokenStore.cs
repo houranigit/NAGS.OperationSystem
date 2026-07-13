@@ -4,5 +4,11 @@ public sealed class AuthTokenStore
 {
     public string? AccessToken { get; private set; }
 
-    public void SetAccessToken(string? accessToken) => AccessToken = accessToken;
+    public DateTimeOffset? ExpiresAtUtc { get; private set; }
+
+    public void SetAccessToken(string? accessToken, DateTimeOffset? expiresAtUtc = null)
+    {
+        AccessToken = accessToken;
+        ExpiresAtUtc = accessToken is null ? null : expiresAtUtc;
+    }
 }

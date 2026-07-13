@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">العمليات</string>
+    <string name="notification_channel_name">تعيينات الرحلات</string>
+    <string name="notification_channel_description">تنبيهات عند إضافتك إلى رحلة من قِبل أحد زملائك</string>
+    <string name="notification_assigned_title">تم تعيينك في رحلة</string>
+    <string name="notification_assigned_body">أضافك %1$s إلى الرحلة %2$s.</string>
+    <string name="notification_fallback_teammate">أحد زملائك</string>
+    <string name="notification_unknown_flight">رحلتك</string>
+    <string name="notifications_title">الإشعارات</string>
+    <string name="notifications_all">الكل</string>
+    <string name="notifications_unread">غير المقروءة</string>
+    <string name="notifications_mark_all_read">تحديد الكل كمقروء</string>
+    <string name="notifications_clear_all">مسح صندوق الوارد</string>
+    <string name="notifications_clear_confirm_title">مسح صندوق الوارد؟</string>
+    <string name="notifications_clear_confirm_body">ستتم أرشفة الإشعارات وإزالتها من هذه القائمة.</string>
+    <string name="notifications_clear_confirm_action">مسح</string>
+    <string name="notifications_cancel">إلغاء</string>
+    <string name="notifications_empty_title">لا توجد إشعارات جديدة</string>
+    <string name="notifications_empty_body">ستظهر تعيينات الرحلات الجديدة هنا.</string>
+    <string name="notifications_empty_unread_body">ليس لديك إشعارات غير مقروءة.</string>
+    <string name="notifications_load_error">تعذر تحميل الإشعارات</string>
+    <string name="notifications_retry">إعادة المحاولة</string>
+    <string name="notifications_load_more">تحميل المزيد</string>
+    <string name="notifications_open">فتح الإشعار</string>
+    <string name="notifications_bell">فتح الإشعارات</string>
+    <plurals name="notifications_bell_with_count">
+        <item quantity="zero">فتح الإشعارات، لا توجد إشعارات غير مقروءة</item>
+        <item quantity="one">فتح الإشعارات، إشعار واحد غير مقروء</item>
+        <item quantity="two">فتح الإشعارات، إشعاران غير مقروءان</item>
+        <item quantity="few">فتح الإشعارات، %d إشعارات غير مقروءة</item>
+        <item quantity="many">فتح الإشعارات، %d إشعارًا غير مقروء</item>
+        <item quantity="other">فتح الإشعارات، %d إشعار غير مقروء</item>
+    </plurals>
+    <string name="notifications_permission_title">ابقَ على اطلاع</string>
+    <string name="notifications_permission_body">اسمح بالإشعارات لاستلام تعيينات الرحلات عند إغلاق التطبيق.</string>
+    <string name="notifications_permission_allow">سماح</string>
+    <string name="notifications_permission_not_now">ليس الآن</string>
+    <string name="notifications_flight_unavailable">تعذر فتح هذه الرحلة. حدّث الصفحة وحاول مرة أخرى.</string>
+    <plurals name="notifications_unread_count">
+        <item quantity="zero">لا توجد إشعارات غير مقروءة</item>
+        <item quantity="one">إشعار واحد غير مقروء</item>
+        <item quantity="two">إشعاران غير مقروءان</item>
+        <item quantity="few">%d إشعارات غير مقروءة</item>
+        <item quantity="many">%d إشعارًا غير مقروء</item>
+        <item quantity="other">%d إشعار غير مقروء</item>
+    </plurals>
+</resources>

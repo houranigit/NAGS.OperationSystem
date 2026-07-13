@@ -145,8 +145,13 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var (unassignedClient, _) = await CreateStaffLoginAsync(admin, refs);
 
         var flightId = await ScheduleFlightAsync(admin, refs, "NGS400", assignedStaffIds: [assignedStaffId]);
+        await factory.DrainOutboxesAsync();
 
         (await assignedClient.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var assignedInbox = await assignedClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
+        assignedInbox!.Items.ShouldContain(notification =>
+            notification.Kind == "StaffAssignedToFlight" &&
+            notification.Payload["flightId"] == flightId.ToString());
         (await unassignedClient.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         var assignedList = await assignedClient.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
@@ -195,7 +200,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var (_, replacementStaffId) = await CreateStaffLoginAsync(admin, refs);
+        var (replacementClient, replacementStaffId) = await CreateStaffLoginAsync(admin, refs);
         var flightId = await ScheduleFlightAsync(admin, refs, "NGS403", assignedStaffIds: [refs.StaffMemberId]);
         var flight = await GetFlightAsync(admin, flightId);
 
@@ -207,10 +212,14 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
         var replaceResponse = await admin.SendAsync(replaceRequest);
         replaceResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await replaceResponse.Content.ReadAsStringAsync());
+        await factory.DrainOutboxesAsync();
 
         var replaced = await GetFlightAsync(admin, flightId);
         replaced.AssignedEmployees.ShouldContain(e => e.StaffMemberId == replacementStaffId);
         replaced.AssignedEmployees.ShouldNotContain(e => e.StaffMemberId == refs.StaffMemberId);
+        var replacementInbox = await replacementClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
+        replacementInbox!.Items.ShouldContain(notification =>
+            notification.Payload["flightId"] == flightId.ToString());
 
         using var clearRequest = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
         {
@@ -220,7 +229,10 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
         var clearResponse = await admin.SendAsync(clearRequest);
         clearResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await clearResponse.Content.ReadAsStringAsync());
+        await factory.DrainOutboxesAsync();
         (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldBeEmpty();
+        var afterUnassign = await replacementClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
+        afterUnassign!.Items.Count(notification => notification.Payload["flightId"] == flightId.ToString()).ShouldBe(1);
     }
 
     [Fact]
@@ -240,7 +252,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             }
         });
         var (inviterClient, inviterStaffId) = await CreateStaffLoginAsync(admin, refs, inviteRoleId);
-        var targetStaffId = refs.StaffMemberId;
+        var (targetClient, targetStaffId) = await CreateStaffLoginAsync(admin, refs);
         var flightId = await ScheduleFlightAsync(admin, refs, "NGS450", assignedStaffIds: [inviterStaffId]);
         var flight = await GetFlightAsync(inviterClient, flightId);
 
@@ -259,7 +271,13 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
         var inviteResponse = await inviterClient.SendAsync(invite);
         inviteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await inviteResponse.Content.ReadAsStringAsync());
+        await factory.DrainOutboxesAsync();
         (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldContain(e => e.StaffMemberId == targetStaffId);
+        var targetInbox = await targetClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
+        targetInbox!.Items.ShouldContain(notification =>
+            notification.Kind == "EmployeeInvitedToFlight" &&
+            notification.Payload["flightId"] == flightId.ToString() &&
+            notification.BodyEn.Contains("NGS450", StringComparison.Ordinal));
 
         var assign = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
         {
@@ -272,6 +290,9 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     private sealed record MasterDataRefs(
         Guid CountryId, Guid StationId, Guid CustomerId, Guid OperationTypeId,
         Guid ServiceId, Guid AircraftTypeId, Guid ManpowerTypeId, Guid StaffMemberId, Guid StaffRoleId);
+
+    private sealed record NotificationPage(List<NotificationItem> Items);
+    private sealed record NotificationItem(string Kind, string BodyEn, Dictionary<string, string> Payload);
 
     private async Task<MasterDataRefs> SetupMasterDataAsync(HttpClient admin)
     {

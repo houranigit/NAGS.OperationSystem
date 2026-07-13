@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Auditing;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Domain.Results;
@@ -55,6 +56,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
     IWorkOrderTimelineWriter workOrderTimeline,
     IMobileSyncBroadcaster mobileSync,
     IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<CreateAdHocWorkOrderCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateAdHocWorkOrderCommand request, CancellationToken cancellationToken)
@@ -175,6 +177,13 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
             details: workOrder.Value.Id.ToString(), cancellationToken: cancellationToken);
         await workOrderTimeline.AppendAsync(workOrder.Value.Id, WorkOrderTimelineEventType.Submitted, now, cancellationToken: cancellationToken);
 
+        FlightAssignmentEvents.Enqueue(
+            db,
+            flight.Value,
+            employees.Value.Select(employee => employee.StaffMemberId),
+            user,
+            auditContext,
+            now);
         MobileFlightSync.EnqueueUpsert(mobileSync, flight.Value, request.ClientMutationId);
 
         try

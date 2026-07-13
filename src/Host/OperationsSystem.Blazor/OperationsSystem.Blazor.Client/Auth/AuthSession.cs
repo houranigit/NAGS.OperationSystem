@@ -62,7 +62,7 @@ public sealed class AuthSession
                 new { },
                 cancellationToken);
 
-            tokenStore.SetAccessToken(token.AccessToken);
+            tokenStore.SetAccessToken(token.AccessToken, token.ExpiresAtUtc);
             User = await apiClient.GetAsync<AuthenticatedUser>("/identity/me", cancellationToken);
             Status = AuthStatus.Authenticated;
         }
@@ -126,14 +126,14 @@ public sealed class AuthSession
             new { },
             cancellationToken);
 
-        tokenStore.SetAccessToken(token.AccessToken);
+        tokenStore.SetAccessToken(token.AccessToken, token.ExpiresAtUtc);
         User = await apiClient.GetAsync<AuthenticatedUser>("/identity/me", cancellationToken);
         StateChanged?.Invoke();
     }
 
     private async Task EstablishAuthenticatedSessionAsync(AccessTokenResponse token, CancellationToken cancellationToken)
     {
-        tokenStore.SetAccessToken(token.AccessToken);
+        tokenStore.SetAccessToken(token.AccessToken, token.ExpiresAtUtc);
         User = await apiClient.GetAsync<AuthenticatedUser>("/identity/me", cancellationToken);
         Status = AuthStatus.Authenticated;
         StateChanged?.Invoke();

@@ -57,7 +57,7 @@ public sealed class ClientTokenRefresher(IJSRuntime jsRuntime, AuthTokenStore to
                 return false;
             }
 
-            tokenStore.SetAccessToken(token.AccessToken);
+            tokenStore.SetAccessToken(token.AccessToken, token.ExpiresAtUtc);
             return true;
         }
         catch (Exception)

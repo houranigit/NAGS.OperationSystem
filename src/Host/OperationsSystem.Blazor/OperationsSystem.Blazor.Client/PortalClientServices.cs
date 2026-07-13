@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Auth;
+using OperationsSystem.Blazor.Client.Features.Notifications;
 using OperationsSystem.Blazor.Client.State;
 using Radzen;
 
@@ -27,7 +28,10 @@ public static class PortalClientServices
         services.AddScoped<MasterDataApiClient>();
         services.AddScoped<OperationsApiClient>();
         services.AddScoped<AuditApiClient>();
+        services.AddScoped<NotificationsApiClient>();
         services.AddScoped<AuthSession>();
+        services.AddScoped<NotificationCenterState>();
+        services.AddScoped<NotificationsRealtimeClient>();
 
         services.AddAuthorizationCore();
         services.AddCascadingAuthenticationState();

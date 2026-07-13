@@ -9,6 +9,7 @@ import com.nags.operations.ui.flights.MyFlightsViewModel
 import com.nags.operations.ui.login.LoginViewModel
 import com.nags.operations.ui.sync.SyncCenterViewModel
 import com.nags.operations.ui.workorder.WorkOrderDraftsViewModel
+import com.nags.operations.ui.notifications.NotificationsViewModel
 
 /**
  * Resolves ViewModels from [AppGraph]. Routes use this through Compose's
@@ -25,7 +26,11 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
                 draftsRepository = graph.workOrderDraftsRepository,
                 outboxRepository = graph.workOrderOutboxRepository,
                 coordinator = graph.syncCoordinator,
+                mobileApi = graph.mobileApi,
                 networkMonitor = graph.networkMonitor,
+            )
+            NotificationsViewModel::class.java -> NotificationsViewModel(
+                repository = graph.notificationsRepository,
             )
             WorkOrderDraftsViewModel::class.java -> WorkOrderDraftsViewModel(
                 draftsRepository = graph.workOrderDraftsRepository,

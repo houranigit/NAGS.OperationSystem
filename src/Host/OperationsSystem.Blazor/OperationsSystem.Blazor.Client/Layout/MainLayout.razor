@@ -3,6 +3,9 @@
 @inject AuthSession Auth
 @inject LocaleState Locale
 @inject NavigationManager Navigation
+@inject NotificationCenterState NotificationCenter
+@inject NotificationsRealtimeClient NotificationsRealtime
+@inject NotificationService ToastNotifications
 
 <RadzenDialog />
 <RadzenNotification />
@@ -255,6 +258,11 @@
             </div>
 
             <div class="os-topbar-actions">
+                @if (Auth.User is not null)
+                {
+                    <NotificationBell />
+                }
+
                 <button type="button" class="os-lang-btn" @onclick="ToggleLanguageAsync">
                     <RadzenIcon Icon="translate" />
                     <span>@LanguageLabel</span>
@@ -321,6 +329,7 @@
     private bool navOpen;
     private bool railCollapsed;
     private bool profileOpen;
+    private Guid? notificationUserId;
     private readonly HashSet<string> expandedNavGroups = new(StringComparer.Ordinal);
 
     private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
@@ -331,8 +340,11 @@
         Auth.StateChanged += OnStateChanged;
         Locale.Changed += OnStateChanged;
         Navigation.LocationChanged += OnLocationChanged;
+        NotificationsRealtime.NotificationReceived += OnNotificationReceived;
+        NotificationsRealtime.Connected += OnNotificationsConnected;
         ExpandActiveNavGroup();
         RedirectToMfaEnrollmentIfNeeded();
+        await SyncNotificationsForAuthAsync();
     }
 
     private void ToggleNav() => navOpen = !navOpen;
@@ -501,8 +513,9 @@
     {
         try
         {
-            await InvokeAsync(() =>
+            await InvokeAsync(async () =>
             {
+                await SyncNotificationsForAuthAsync();
                 ExpandActiveNavGroup();
                 RedirectToMfaEnrollmentIfNeeded();
                 StateHasChanged();
@@ -514,11 +527,126 @@
         }
     }
 
-    public ValueTask DisposeAsync()
+    private async Task SyncNotificationsForAuthAsync()
+    {
+        if (Auth.Status == AuthStatus.Authenticated && Auth.User is { } user)
+        {
+            if (notificationUserId == user.Id)
+                return;
+
+            if (notificationUserId is not null)
+            {
+                await NotificationsRealtime.StopAsync();
+                NotificationCenter.Clear();
+            }
+
+            notificationUserId = user.Id;
+            await NotificationCenter.InitializeAsync(user.Id);
+
+            if (Auth.Status != AuthStatus.Authenticated || Auth.User?.Id != user.Id)
+            {
+                notificationUserId = null;
+                NotificationCenter.Clear();
+                return;
+            }
+
+            await NotificationsRealtime.StartAsync();
+            return;
+        }
+
+        if (Auth.Status == AuthStatus.Anonymous && notificationUserId is not null)
+        {
+            notificationUserId = null;
+            await NotificationsRealtime.StopAsync();
+            NotificationCenter.Clear();
+        }
+    }
+
+    private async void OnNotificationReceived(NotificationDto notification)
+    {
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                if (NotificationCenter.ApplyLive(notification))
+                {
+                    ToastNotifications.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Info,
+                        Summary = NotificationPresentation.Title(notification, Locale),
+                        Detail = NotificationPresentation.Body(notification, Locale),
+                        Duration = 7000,
+                        ShowProgress = true,
+                        CloseOnClick = true,
+                        Payload = notification,
+                        Click = OnToastClick
+                    });
+                }
+
+                // A duplicate can be the delivery that exposes skew between the independently read
+                // inbox page and unread count, so every hub message queues an authoritative pass.
+                await NotificationCenter.ReconcileAfterSignalAsync();
+            });
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    private async void OnNotificationsConnected()
+    {
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                if (Auth.Status == AuthStatus.Authenticated && notificationUserId == Auth.User?.Id)
+                    await NotificationCenter.RefreshAsync();
+            });
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    private async void OnToastClick(NotificationMessage message)
+    {
+        try
+        {
+            if (message.Payload is not NotificationDto notification)
+                return;
+
+            await InvokeAsync(async () =>
+            {
+                if (!notification.IsRead)
+                {
+                    try
+                    {
+                        await NotificationCenter.MarkAsReadAsync(notification.Id);
+                    }
+                    catch (Exception)
+                    {
+                        // Opening the flight is more important than a transient read-state failure.
+                    }
+                }
+
+                Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? "/notifications");
+            });
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
     {
         Auth.StateChanged -= OnStateChanged;
         Locale.Changed -= OnStateChanged;
         Navigation.LocationChanged -= OnLocationChanged;
-        return ValueTask.CompletedTask;
+        NotificationsRealtime.NotificationReceived -= OnNotificationReceived;
+        NotificationsRealtime.Connected -= OnNotificationsConnected;
+        await NotificationsRealtime.StopAsync();
     }
 }

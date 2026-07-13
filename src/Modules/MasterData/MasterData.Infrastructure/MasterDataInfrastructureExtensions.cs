@@ -39,6 +39,7 @@ public static class MasterDataInfrastructureExtensions
 
         // Cross-module read seam consumed by Operations (validation + snapshotting).
         services.AddScoped<IMasterDataReader, MasterDataReader>();
+        services.AddScoped<IStaffNotificationReader, StaffNotificationReader>();
 
         services.TryAddSingleton(TimeProvider.System);
 

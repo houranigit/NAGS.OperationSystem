@@ -1,1 +1,4 @@
 /build
+
+# Provision per environment by CI/developers; never substitute the server service-account JSON.
+/google-services.json

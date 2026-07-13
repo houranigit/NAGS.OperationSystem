@@ -6,6 +6,8 @@ import com.nags.operations.data.FlightStatusKind
 import com.nags.operations.data.MobileFlightDto
 import com.nags.operations.data.WorkOrderTypeKind
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
+import com.nags.operations.data.api.MobileApi
+import com.nags.operations.data.userMessage
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.outbox.WorkOrderOutboxRepository
 import com.nags.operations.data.repo.FlightsRepository
@@ -30,6 +32,7 @@ class MyFlightsViewModel(
     draftsRepository: WorkOrderDraftsRepository,
     private val outboxRepository: WorkOrderOutboxRepository,
     private val coordinator: SyncCoordinator,
+    private val mobileApi: MobileApi,
     networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
@@ -52,6 +55,9 @@ class MyFlightsViewModel(
         val draftIdByFlightId: Map<String, String> = emptyMap(),
         /** Optimistic outbox state keyed by flight id; null entry = no chip. */
         val pendingByFlightId: Map<String, PendingDisplayItem> = emptyMap(),
+        val requestedFlight: MobileFlightDto? = null,
+        val requestedFlightError: String? = null,
+        val isOpeningRequestedFlight: Boolean = false,
     )
 
     private val _state = MutableStateFlow(UiState())
@@ -59,6 +65,7 @@ class MyFlightsViewModel(
 
     private var allItems: List<MobileFlightDto> = emptyList()
     private var refreshJob: Job? = null
+    private var requestedFlightJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -117,6 +124,42 @@ class MyFlightsViewModel(
                 )
             }
         }
+    }
+
+    fun openRequestedFlight(flightId: String, force: Boolean = false) {
+        if (!force && (_state.value.requestedFlight?.id == flightId ||
+                (_state.value.isOpeningRequestedFlight && requestedFlightJob?.isActive == true))
+        ) return
+        requestedFlightJob?.cancel()
+        requestedFlightJob = viewModelScope.launch {
+            _state.update {
+                it.copy(isOpeningRequestedFlight = true, requestedFlightError = null)
+            }
+            val cached = allItems.firstOrNull { it.id.equals(flightId, ignoreCase = true) }
+            val result = cached?.let { Result.success(it) }
+                ?: runCatching { mobileApi.flightById(flightId) }
+            result.onSuccess { flight ->
+                _state.update {
+                    it.copy(
+                        requestedFlight = flight,
+                        requestedFlightError = null,
+                        isOpeningRequestedFlight = false,
+                    )
+                }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        requestedFlight = null,
+                        requestedFlightError = error.userMessage(),
+                        isOpeningRequestedFlight = false,
+                    )
+                }
+            }
+        }
+    }
+
+    fun consumeRequestedFlight() {
+        _state.update { it.copy(requestedFlight = null, requestedFlightError = null) }
     }
 
     /**

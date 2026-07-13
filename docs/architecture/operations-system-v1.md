@@ -54,9 +54,9 @@ For every rewritten feature, first extract the business facts from the old proje
 - Central Package Management with Directory.Packages.props
 - SignalR for web real-time updates (notifications and live data)
 - A storage abstraction for binary files/attachments (local filesystem in v1.0.0, designed to swap to S3/Azure Blob later)
-- A notification delivery abstraction (composite pusher) so a mobile push provider (FCM) can be added later without rework
+- A composite notification delivery abstraction with independent SignalR and Firebase Cloud Messaging transports
 - Redis is not part of v1.0.0 unless a measured distributed-caching need appears
-- The mobile BFF and offline-sync protocol live under `/api/v1/mobile` + `/hubs/mobile-sync` (see Section 27); mobile push (FCM) remains deferred with the Notifications module
+- The mobile BFF and offline-sync protocol live under `/api/v1/mobile` + `/hubs/mobile-sync` (see Section 27); user-facing alerts use FCM and remain separate from mobile sync
 
 ### Frontend
 
@@ -549,9 +549,9 @@ The legacy is already a DDD modular monolith with strong patterns. Preserve thes
 
 - v1.0.0 delivers in-app and live updates to the web client via SignalR.
 - Notifications persist to a store (so users have an inbox/history with read/archive state) and are pushed live through a delivery abstraction.
-- The delivery abstraction is a composite pusher: each transport (SignalR now; a mobile push provider such as FCM later) implements a common interface, and a failure in one transport must not block the others.
+- The delivery abstraction is a composite pusher: SignalR and FCM implement a common interface, every transport is attempted independently, and failed delivery remains retryable through the integration inbox.
 - When a notification is raised as a consequence of a business event, prefer raising it off domain/integration events (and the outbox where the event is transactional) rather than inline side effects.
-- Device-token registration and mobile push (FCM/APNS) are deferred with the mobile client, but the pusher abstraction must allow adding them without reworking notification producers.
+- Authenticated device registration/revoke and FCM delivery are part of the Notifications module. Device destinations are bound to the current user and rotated by a stable app-installation id.
 - Real-time delivery is best-effort and must never be the only path to a state change; the authoritative state is always the persisted data, re-fetchable via the API.
 
 ## 27. Mobile Strategy
@@ -566,7 +566,7 @@ The mobile client has returned as a rewrite of the legacy Android app: the new b
   - **Writes (Operations):** idempotent outbox endpoints `POST /flights/{id}/work-orders`, `POST /work-orders/scratch`, `PUT /work-orders/{id}`, `POST /work-orders/{id}/return-to-ramp`, `POST /flights/{id}/cancel`, `POST /flights/{id}/invite` under `/api/v1/mobile`. Every mutation carries a `clientMutationId` recorded in `operations.Operations_MobileMutations` atomically with the business change; scratch creates dedupe by `clientFlightId`. Editable offline updates also carry the cached base `RowVersion`, so a portal or second-device edit made while the phone is offline produces a conflict instead of being overwritten.
 - Mobile reuses the same domain and business rules — planned services copied into seeded work-order lines (never Per-Landing), one active work order per user per flight, clear-and-rebuild service lines, task reconciliation by stable id. It has no business logic of its own.
 - The legacy AOG naming is retired everywhere in favour of Per Landing (`flights-per-landing` sync table, `flights_per_landing` Room table, Per Landing tab).
-- FCM push and device-token registration remain deferred with the Notifications module; the SignalR sync hub is standalone and independent of notifications.
+- FCM push and device registration/revoke are provided by the Notifications module; the SignalR sync hub remains standalone and independent of user-facing notifications.
 
 ## 28. Decisions Log
 

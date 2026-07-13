@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nags.operations.data.db.dao.AdHocFlightDao
 import com.nags.operations.data.db.dao.AircraftTypeDao
 import com.nags.operations.data.db.dao.CustomerDao
@@ -12,6 +14,7 @@ import com.nags.operations.data.db.dao.EmployeeDao
 import com.nags.operations.data.db.dao.FlightDao
 import com.nags.operations.data.db.dao.GeneralSupportDao
 import com.nags.operations.data.db.dao.MaterialDao
+import com.nags.operations.data.db.dao.NotificationDao
 import com.nags.operations.data.db.dao.PerLandingFlightDao
 import com.nags.operations.data.db.dao.ServiceDao
 import com.nags.operations.data.db.dao.SyncStateDao
@@ -25,6 +28,7 @@ import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.FlightEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
+import com.nags.operations.data.db.entities.NotificationEntity
 import com.nags.operations.data.db.entities.PerLandingFlightEntity
 import com.nags.operations.data.db.entities.ServiceEntity
 import com.nags.operations.data.db.entities.SyncStateEntity
@@ -45,7 +49,7 @@ import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
  * and cannot be replayed against the new API; caches repopulate on first sync.
  */
 @Database(
-    version = 11,
+    version = 13,
     exportSchema = true,
     entities = [
         ServiceEntity::class,
@@ -61,6 +65,7 @@ import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
         SyncStateEntity::class,
         WorkOrderDraftEntity::class,
         WorkOrderOutboxEntity::class,
+        NotificationEntity::class,
     ],
 )
 @TypeConverters(
@@ -82,6 +87,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncStateDao(): SyncStateDao
     abstract fun workOrderDraftDao(): WorkOrderDraftDao
     abstract fun workOrderOutboxDao(): WorkOrderOutboxDao
+    abstract fun notificationDao(): NotificationDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -94,8 +100,39 @@ abstract class AppDatabase : RoomDatabase() {
                     // every schema change must provide an explicit migration so pending field
                     // work can never be erased by an accidentally omitted migration.
                     .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+                    .addMigrations(MIGRATION_11_12, MIGRATION_12_13)
                     .build()
                     .also { instance = it }
+            }
+        }
+
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS notifications (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        recipientUserId TEXT,
+                        kind TEXT NOT NULL,
+                        titleEn TEXT NOT NULL,
+                        bodyEn TEXT NOT NULL,
+                        titleAr TEXT NOT NULL,
+                        bodyAr TEXT NOT NULL,
+                        payloadJson TEXT NOT NULL,
+                        isRead INTEGER NOT NULL,
+                        createdAtUtc TEXT NOT NULL,
+                        readAtUtc TEXT
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE notifications ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0",
+                )
             }
         }
     }

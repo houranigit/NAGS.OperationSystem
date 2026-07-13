@@ -61,6 +61,36 @@ public static class UiStrings
         public static string ExportFailedDetail => UiText.Get("Flights.ExportFailedDetail", "The export could not be generated. Please try again.");
     }
 
+    public static class Notifications
+    {
+        public static string Title => UiText.Get("Notifications.Title", "Notifications");
+        public static string Description => UiText.Get("Notifications.Description", "Flight assignments and other updates sent to your account.");
+        public static string BellLabel => UiText.Get("Notifications.BellLabel", "Open notifications");
+        public static string Recent => UiText.Get("Notifications.Recent", "Recent notifications");
+        public static string MarkAllRead => UiText.Get("Notifications.MarkAllRead", "Mark all as read");
+        public static string MarkRead => UiText.Get("Notifications.MarkRead", "Mark as read");
+        public static string ViewAll => UiText.Get("Notifications.ViewAll", "View all notifications");
+        public static string All => UiText.Get("Notifications.All", "All");
+        public static string Unread => UiText.Get("Notifications.Unread", "Unread");
+        public static string EmptyTitle => UiText.Get("Notifications.EmptyTitle", "You're all caught up");
+        public static string EmptyDescription => UiText.Get("Notifications.EmptyDescription", "New flight assignments will appear here.");
+        public static string UnreadEmptyTitle => UiText.Get("Notifications.UnreadEmptyTitle", "No unread notifications");
+        public static string UnreadEmptyDescription => UiText.Get("Notifications.UnreadEmptyDescription", "You've reviewed every notification in your inbox.");
+        public static string LoadFailed => UiText.Get("Notifications.LoadFailed", "We couldn't load your notifications.");
+        public static string LiveUnavailable => UiText.Get("Notifications.LiveUnavailable", "Recent notifications may be delayed. Refresh to try again.");
+        public static string Archive => UiText.Get("Notifications.Archive", "Archive");
+        public static string ArchiveAll => UiText.Get("Notifications.ArchiveAll", "Archive all");
+        public static string ArchiveAllTitle => UiText.Get("Notifications.ArchiveAllTitle", "Archive all notifications?");
+        public static string ArchiveAllConfirm => UiText.Get("Notifications.ArchiveAllConfirm", "This clears your current inbox. Archived notifications remain in history.");
+        public static string ActionFailed => UiText.Get("Notifications.ActionFailed", "The notification could not be updated. Please try again.");
+        public static string OpenFlight => UiText.Get("Notifications.OpenFlight", "Open flight");
+        public static string FlightAssignment => UiText.Get("Notifications.FlightAssignment", "Flight assignment");
+        public static string Previous => UiText.Get("Notifications.Previous", "Previous");
+        public static string Next => UiText.Get("Notifications.Next", "Next");
+        public static string PageSummary => UiText.Get("Notifications.PageSummary", "Page {0} of {1}");
+        public static string UnreadCount => UiText.Get("Notifications.UnreadCount", "{0} unread");
+    }
+
     public static class Auth
     {
         public static string SignInTitle => UiText.Get("Auth.SignInTitle", "Sign in");

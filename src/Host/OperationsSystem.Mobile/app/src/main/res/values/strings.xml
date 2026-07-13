@@ -1,3 +1,40 @@
 <resources>
     <string name="app_name">Operations</string>
+    <string name="notification_channel_id" translatable="false">flight_assignments</string>
+    <string name="notification_channel_name">Flight assignments</string>
+    <string name="notification_channel_description">Alerts when a teammate assigns you to a flight</string>
+    <string name="notification_assigned_title">You were assigned to a flight</string>
+    <string name="notification_assigned_body">%1$s added you to flight %2$s.</string>
+    <string name="notification_fallback_teammate">A teammate</string>
+    <string name="notification_unknown_flight">your flight</string>
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_all">All</string>
+    <string name="notifications_unread">Unread</string>
+    <string name="notifications_mark_all_read">Mark all read</string>
+    <string name="notifications_clear_all">Clear inbox</string>
+    <string name="notifications_clear_confirm_title">Clear your inbox?</string>
+    <string name="notifications_clear_confirm_body">Notifications will be archived and removed from this list.</string>
+    <string name="notifications_clear_confirm_action">Clear</string>
+    <string name="notifications_cancel">Cancel</string>
+    <string name="notifications_empty_title">You’re all caught up</string>
+    <string name="notifications_empty_body">New flight assignments will appear here.</string>
+    <string name="notifications_empty_unread_body">You have no unread notifications.</string>
+    <string name="notifications_load_error">Couldn’t load notifications</string>
+    <string name="notifications_retry">Retry</string>
+    <string name="notifications_load_more">Load more</string>
+    <string name="notifications_open">Open notification</string>
+    <string name="notifications_bell">Open notifications</string>
+    <plurals name="notifications_bell_with_count">
+        <item quantity="one">Open notifications, %d unread</item>
+        <item quantity="other">Open notifications, %d unread</item>
+    </plurals>
+    <string name="notifications_permission_title">Stay up to date</string>
+    <string name="notifications_permission_body">Allow notifications to receive flight assignments when the app is closed.</string>
+    <string name="notifications_permission_allow">Allow</string>
+    <string name="notifications_permission_not_now">Not now</string>
+    <string name="notifications_flight_unavailable">This flight could not be opened. Refresh and try again.</string>
+    <plurals name="notifications_unread_count">
+        <item quantity="one">%d unread notification</item>
+        <item quantity="other">%d unread notifications</item>
+    </plurals>
 </resources>

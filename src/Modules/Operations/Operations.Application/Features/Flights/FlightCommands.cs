@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Auditing;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
@@ -48,6 +49,7 @@ public sealed class ScheduleFlightCommandHandler(
     IFlightTimelineWriter timeline,
     IMobileSyncBroadcaster mobileSync,
     IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<ScheduleFlightCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(ScheduleFlightCommand request, CancellationToken cancellationToken)
@@ -90,6 +92,13 @@ public sealed class ScheduleFlightCommandHandler(
         foreach (var employee in employees.Value)
             await timeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
 
+        FlightAssignmentEvents.Enqueue(
+            db,
+            flight.Value,
+            employees.Value.Select(employee => employee.StaffMemberId),
+            user,
+            auditContext,
+            now);
         MobileFlightSync.EnqueueUpsert(mobileSync, flight.Value);
 
         await db.SaveChangesAsync(cancellationToken);
@@ -131,6 +140,7 @@ public sealed class ScheduleFlightsCommandHandler(
     IFlightTimelineWriter timeline,
     IMobileSyncBroadcaster mobileSync,
     IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<ScheduleFlightsCommand, IReadOnlyList<Guid>>
 {
     public async Task<Result<IReadOnlyList<Guid>>> Handle(ScheduleFlightsCommand request, CancellationToken cancellationToken)
@@ -198,6 +208,13 @@ public sealed class ScheduleFlightsCommandHandler(
             foreach (var employee in flight.AssignedEmployees)
                 await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.Employee.FullName, cancellationToken: cancellationToken);
 
+            FlightAssignmentEvents.Enqueue(
+                db,
+                flight,
+                flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId),
+                user,
+                auditContext,
+                now);
             MobileFlightSync.EnqueueUpsert(mobileSync, flight);
         }
 
@@ -393,6 +410,8 @@ public sealed class AssignEmployeesCommandHandler(
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
     IMobileSyncBroadcaster mobileSync,
+    IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<AssignEmployeesCommand>
 {
     public async Task<Result> Handle(AssignEmployeesCommand request, CancellationToken cancellationToken)
@@ -432,8 +451,17 @@ public sealed class AssignEmployeesCommandHandler(
         if (assign.IsFailure)
             return assign.Error;
 
-        foreach (var employee in employees.Value.Where(e => !alreadyAssigned.Contains(e.StaffMemberId)))
+        var newlyAssigned = employees.Value.Where(e => !alreadyAssigned.Contains(e.StaffMemberId)).ToList();
+        foreach (var employee in newlyAssigned)
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
+
+        FlightAssignmentEvents.Enqueue(
+            db,
+            flight,
+            newlyAssigned.Select(employee => employee.StaffMemberId),
+            user,
+            auditContext,
+            now);
 
         // Current roster gets an upsert; staff removed from the roster get a targeted delete so the
         // flight disappears from their "my flights" cache immediately.
@@ -475,6 +503,8 @@ public sealed class InviteEmployeesToFlightCommandHandler(
     MasterDataResolver resolver,
     IFlightTimelineWriter timeline,
     IMobileSyncBroadcaster mobileSync,
+    IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<InviteEmployeesToFlightCommand>
 {
     public async Task<Result> Handle(InviteEmployeesToFlightCommand request, CancellationToken cancellationToken)
@@ -500,10 +530,10 @@ public sealed class InviteEmployeesToFlightCommandHandler(
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
 
-        var requested = request.StaffMemberIds.Distinct().ToList();
         var alreadyAssigned = flight.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToHashSet();
-        if (requested.Any(alreadyAssigned.Contains))
-            return Error.Conflict("One or more selected employees are already assigned to this flight.", "Operations.Flight.AssignmentAlreadyExists");
+        var requested = request.StaffMemberIds.Distinct().Where(id => !alreadyAssigned.Contains(id)).ToList();
+        if (requested.Count == 0)
+            return Result.Success();
 
         var employees = await resolver.StaffMembersForStationAsync(requested, flight.Station.StationId, cancellationToken);
         if (employees.IsFailure)
@@ -518,6 +548,14 @@ public sealed class InviteEmployeesToFlightCommandHandler(
         foreach (var employee in employees.Value)
             await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
 
+        FlightAssignmentEvents.Enqueue(
+            db,
+            flight,
+            employees.Value.Select(employee => employee.StaffMemberId),
+            user,
+            auditContext,
+            now,
+            global::Operations.Contracts.FlightAssignmentSource.Invite);
         MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         try

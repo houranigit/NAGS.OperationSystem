@@ -32,6 +32,9 @@ import com.nags.operations.ui.sync.SyncCenterViewModel
 import com.nags.operations.ui.workorder.CreateWorkOrderLaunchMode
 import com.nags.operations.ui.workorder.CreateWorkOrderViewModel
 import com.nags.operations.ui.workorder.ReturnToRampViewModel
+import com.nags.operations.ui.notifications.NotificationsScreen
+import com.nags.operations.ui.notifications.NotificationsViewModel
+import com.nags.operations.data.notifications.NotificationOpenRequest
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -43,6 +46,7 @@ private object Routes {
     const val CreateAdHocFlight = "create-ad-hoc-flight"
     const val WorkOrderDraft = "work-order-draft/{draftId}"
     const val InviteEmployees = "invite/{flightId}"
+    const val Notifications = "notifications"
 }
 
 private const val NavAnimMs = 220
@@ -55,6 +59,8 @@ fun OperationsApp() {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
     val accessToken by graph.tokenStore.accessTokenFlow.collectAsStateWithLifecycle(initialValue = null)
+    val pendingNotificationOpen by graph.notificationNavigation.pending
+        .collectAsStateWithLifecycle(initialValue = null)
 
     fun navigateToLogin() {
         if (navController.currentDestination?.route == Routes.Login) return
@@ -69,6 +75,29 @@ fun OperationsApp() {
     LaunchedEffect(accessToken) {
         if (accessToken == null && navController.currentDestination?.route != null) {
             navigateToLogin()
+        }
+    }
+
+    LaunchedEffect(pendingNotificationOpen, accessToken) {
+        val request = pendingNotificationOpen ?: return@LaunchedEffect
+        if (accessToken == null) return@LaunchedEffect
+        val subject = graph.tokenStore.getSessionSubject()
+        if (!request.recipientUserId.isNullOrBlank() &&
+            !request.recipientUserId.equals(subject, ignoreCase = true)
+        ) {
+            graph.notificationNavigation.discardForWrongAccount()
+            return@LaunchedEffect
+        }
+        request.notificationId?.let { id ->
+            graph.appScope.launch { runCatching { graph.notificationsRepository.markRead(id) } }
+        }
+        if (navController.currentDestination?.route != Routes.Main) {
+            if (!navController.popBackStack(Routes.Main, inclusive = false)) {
+                navController.navigate(Routes.Main) {
+                    popUpTo(navController.graph.id) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
         }
     }
 
@@ -88,6 +117,7 @@ fun OperationsApp() {
                 onLoggedIn = {
                     navController.navigate(Routes.Main) {
                         popUpTo(Routes.Login) { inclusive = true }
+                        launchSingleTop = true
                     }
                 },
             )
@@ -99,6 +129,9 @@ fun OperationsApp() {
                 factory = factory,
                 onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) },
                 onOpenCreateAdHocFlight = { navController.navigate(Routes.CreateAdHocFlight) },
+                onOpenNotifications = { navController.navigate(Routes.Notifications) },
+                notificationOpenRequest = pendingNotificationOpen,
+                onNotificationHandled = graph.notificationNavigation::consume,
                 flightSheetCallbacks = FlightSheetCallbacks(
                     onCreateWorkOrder = { flightId ->
                         navController.navigate("create-work-order/$flightId")
@@ -121,6 +154,18 @@ fun OperationsApp() {
                         graph.signOut()
                         navigateToLogin()
                     }
+                },
+            )
+        }
+        composable(Routes.Notifications) {
+            val vm: NotificationsViewModel = viewModel(factory = factory)
+            NotificationsScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenFlight = { notificationId, flightId ->
+                    graph.notificationNavigation.publish(
+                        NotificationOpenRequest(notificationId, flightId),
+                    )
                 },
             )
         }
