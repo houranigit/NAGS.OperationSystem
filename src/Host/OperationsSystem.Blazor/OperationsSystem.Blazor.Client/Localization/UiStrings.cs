@@ -106,10 +106,9 @@ public static class UiStrings
         public static string PasswordTooShort => UiText.Get("Auth.PasswordTooShort", "Use at least 8 characters.");
         public static string GoToSignIn => UiText.Get("Auth.GoToSignIn", "Go to sign in");
         public static string BrandHeadline => UiText.Get("Auth.BrandHeadline", "Operations, under control.");
-        public static string BrandSubtext => UiText.Get("Auth.BrandSubtext", "Manage your people, roles, and access from one secure, bilingual portal.");
+        public static string BrandSubtext => UiText.Get("Auth.BrandSubtext", "Manage your people, roles, and access in one secure portal.");
         public static string BrandPointAccess => UiText.Get("Auth.BrandPointAccess", "Granular role-based access control");
         public static string BrandPointSessions => UiText.Get("Auth.BrandPointSessions", "Live session and device management");
-        public static string BrandPointBilingual => UiText.Get("Auth.BrandPointBilingual", "Full Arabic and English support");
         public static string Copyright => UiText.Get("Auth.Copyright", "(c) 2026 Operations System. All rights reserved.");
     }
 

@@ -91,10 +91,9 @@
   <data name="Auth.PasswordTooShort" xml:space="preserve"><value>استخدم 8 أحرف على الأقل.</value></data>
   <data name="Auth.GoToSignIn" xml:space="preserve"><value>اذهب لتسجيل الدخول</value></data>
   <data name="Auth.BrandHeadline" xml:space="preserve"><value>العمليات تحت السيطرة.</value></data>
-  <data name="Auth.BrandSubtext" xml:space="preserve"><value>قم بإدارة الأشخاص والأدوار وإمكانية الوصول من خلال بوابة واحدة آمنة وثنائية اللغة.</value></data>
+  <data name="Auth.BrandSubtext" xml:space="preserve"><value>قم بإدارة الأشخاص والأدوار وإمكانية الوصول من خلال بوابة آمنة واحدة.</value></data>
   <data name="Auth.BrandPointAccess" xml:space="preserve"><value>التحكم في الوصول على أساس الدور الحبيبي</value></data>
   <data name="Auth.BrandPointSessions" xml:space="preserve"><value>الجلسة المباشرة وإدارة الجهاز</value></data>
-  <data name="Auth.BrandPointBilingual" xml:space="preserve"><value>دعم كامل للغتين العربية والإنجليزية</value></data>
   <data name="Auth.Copyright" xml:space="preserve"><value>© 2026 نظام العمليات. جميع الحقوق محفوظة.</value></data>
   <data name="Nav.Dashboard" xml:space="preserve"><value>لوحة القيادة</value></data>
   <data name="Nav.Users" xml:space="preserve"><value>المستخدمين</value></data>

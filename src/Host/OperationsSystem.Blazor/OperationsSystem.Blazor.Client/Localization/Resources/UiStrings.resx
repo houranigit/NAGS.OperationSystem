@@ -91,10 +91,9 @@
   <data name="Auth.PasswordTooShort" xml:space="preserve"><value>Use at least 8 characters.</value></data>
   <data name="Auth.GoToSignIn" xml:space="preserve"><value>Go to sign in</value></data>
   <data name="Auth.BrandHeadline" xml:space="preserve"><value>Operations, under control.</value></data>
-  <data name="Auth.BrandSubtext" xml:space="preserve"><value>Manage your people, roles, and access from one secure, bilingual portal.</value></data>
+  <data name="Auth.BrandSubtext" xml:space="preserve"><value>Manage your people, roles, and access in one secure portal.</value></data>
   <data name="Auth.BrandPointAccess" xml:space="preserve"><value>Granular role-based access control</value></data>
   <data name="Auth.BrandPointSessions" xml:space="preserve"><value>Live session and device management</value></data>
-  <data name="Auth.BrandPointBilingual" xml:space="preserve"><value>Full Arabic and English support</value></data>
   <data name="Auth.Copyright" xml:space="preserve"><value>© 2026 Operations System. All rights reserved.</value></data>
   <data name="Nav.Dashboard" xml:space="preserve"><value>Dashboard</value></data>
   <data name="Nav.Users" xml:space="preserve"><value>Users</value></data>
