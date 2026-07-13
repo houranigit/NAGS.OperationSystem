@@ -181,6 +181,18 @@ private fun CreateWorkOrderFormContent(
         when (currentStep) {
             WorkOrderWizardStep.Flight -> {
                 FormSectionTitle("Flight details")
+
+        WorkOrderFlightSummaryCard(
+            customerName = flight.customerName,
+            customerIataCode = flight.customerIataCode.orEmpty(),
+            stationCode = flight.stationIata,
+            staIso = flight.sta,
+            stdIso = flight.std,
+            flightNumber = flight.flightNumber,
+            aircraftModel = flight.aircraftTypeModel,
+            operationTypeCode = flight.operationTypeName,
+        )
+
         if (state.isAdHocScratch) {
             val customers = state.catalogCustomers
             val selected: CustomerEntity? =
@@ -205,17 +217,6 @@ private fun CreateWorkOrderFormContent(
                 )
             }
         }
-
-        WorkOrderFlightSummaryCard(
-            customerName = flight.customerName,
-            customerIataCode = flight.customerIataCode.orEmpty(),
-            stationCode = flight.stationIata,
-            staIso = flight.sta,
-            stdIso = flight.std,
-            flightNumber = flight.flightNumber,
-            aircraftModel = flight.aircraftTypeModel,
-            operationTypeCode = flight.operationTypeName,
-        )
 
         OutlinedTextField(
             value = state.form.flightNumber,

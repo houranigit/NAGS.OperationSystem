@@ -99,7 +99,7 @@
                     </nav>
                 </section>
 
-                @if (EffectiveDuplicateFlightId(flight) is { } duplicateId)
+                @if (CanResolveDuplicate(flight) && EffectiveDuplicateFlightId(flight) is { } duplicateId)
                 {
                     <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" ShowIcon="true" AllowClose="false" class="ofd-alert">
                         This flight has a likely duplicate candidate.
@@ -200,7 +200,10 @@
 
                 <RadzenCard class="ofd-card ofd-card--state">
                     <dl class="ofd-metrics ofd-state-metrics">
-                        <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@PotentialDuplicateDisplay(f)</dd></div>
+                        @if (Auth.HasPermission(OperationsPermissions.FlightsMerge))
+                        {
+                            <div class="ofd-metric"><dt>Potential duplicate</dt><dd>@PotentialDuplicateDisplay(f)</dd></div>
+                        }
                         <div class="ofd-metric"><dt>Created Date</dt><dd>@DateTimeDisplay(f.CreatedAtUtc)</dd></div>
                         <div class="ofd-metric"><dt>Updated Date</dt><dd>@DateTimeDisplay(f.UpdatedAtUtc)</dd></div>
                     </dl>
@@ -483,7 +486,9 @@
             var historyTask = LoadHistoryAsync();
             var loadedFlight = await Operations.GetFlightAsync(Id);
             var timelineTask = Operations.GetFlightTimelineAsync(Id);
-            var duplicateTask = LoadDuplicateCandidatesAsync(loadedFlight);
+            var duplicateTask = Auth.HasPermission(OperationsPermissions.FlightsMerge)
+                ? LoadDuplicateCandidatesAsync(loadedFlight)
+                : Task.FromResult<IReadOnlyList<DuplicateCandidate>>([]);
 
             flight = loadedFlight;
             timeline = await timelineTask;
@@ -753,6 +758,9 @@
 
     private async Task OpenMergeAsync(Guid? candidateFlightId)
     {
+        if (flight is not { } currentFlight || !CanResolveDuplicate(currentFlight))
+            return;
+
         var result = await DialogService.OpenAsync<FlightMergeDialog>("Resolve duplicate flights",
             new Dictionary<string, object?>
             {
@@ -804,12 +812,15 @@
     private bool HasHeaderActions(FlightDetail f) =>
         (CanEdit(f) && Auth.HasPermission(OperationsPermissions.FlightsUpdate))
         || (CanInvite(f) && Auth.HasPermission(OperationsPermissions.FlightsInvite))
-        || (CanMerge(f) && Auth.HasPermission(OperationsPermissions.FlightsMerge))
+        || CanResolveDuplicate(f)
         || (CanAuthorWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor))
         || (CanReturnApprovedWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersApprove));
 
+    private bool CanResolveDuplicate(FlightDetail f) =>
+        CanMerge(f) && Auth.HasPermission(OperationsPermissions.FlightsMerge);
+
     private bool HasPotentialDuplicate(FlightDetail f) =>
-        EffectiveDuplicateFlightId(f) is not null;
+        CanResolveDuplicate(f) && EffectiveDuplicateFlightId(f) is not null;
 
     private Guid? EffectiveDuplicateFlightId(FlightDetail f) =>
         PrimaryDuplicateCandidate(f)?.FlightId;
