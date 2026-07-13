@@ -21,6 +21,7 @@ dist/
 .env.*
 !.env.example
 appsettings.*.local.json
+src/Host/OperationsSystem.Api/App_Data/firebase-admin.json
 *.jks
 *.keystore
 *.p12

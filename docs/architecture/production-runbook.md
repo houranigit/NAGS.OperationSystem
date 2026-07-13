@@ -33,21 +33,12 @@ For local developer overrides, use `appsettings.{Environment}.local.json`, .NET 
 environment variables. The `.local.json` pattern is intentionally ignored by Git and has lower
 precedence than user-secrets, environment variables, and command-line arguments.
 
-The Android `google-services.json` is not an Admin credential. To exercise real FCM delivery locally,
-download a Firebase service-account key for the same project and place only this override in the
-ignored `src/Host/OperationsSystem.Api/appsettings.Development.local.json`:
-
-```json
-{
-  "Notifications": {
-    "Fcm": {
-      "Enabled": true,
-      "ProjectId": "nags-operations-system",
-      "ServiceAccountJsonPath": "/absolute/protected/path/firebase-admin.json"
-    }
-  }
-}
-```
+The Android `google-services.json` is not an Admin credential. This repository enables FCM in
+Development and Production and resolves `App_Data/firebase-admin.json` relative to the API content
+root. Provision that ignored file before local startup or publishing. The API publish target fails
+when it is absent and copies it to `App_Data/firebase-admin.json` in the publish output. It is never
+placed under `wwwroot` or exposed as static content. Deployments can still override the path or use
+Application Default Credentials/workload identity.
 
 ## Data Protection
 

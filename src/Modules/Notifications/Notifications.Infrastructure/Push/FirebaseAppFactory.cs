@@ -1,5 +1,6 @@
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -10,14 +11,19 @@ public sealed class FirebaseAppFactory
     private const string AppName = "operations-notifications";
     private readonly Lazy<FirebaseApp?> app;
 
-    public FirebaseAppFactory(IOptions<FcmOptions> options, ILogger<FirebaseAppFactory> logger)
+    public FirebaseAppFactory(
+        IOptions<FcmOptions> options,
+        IHostEnvironment environment,
+        ILogger<FirebaseAppFactory> logger)
     {
-        app = new Lazy<FirebaseApp?>(() => Create(options.Value, logger), LazyThreadSafetyMode.ExecutionAndPublication);
+        app = new Lazy<FirebaseApp?>(
+            () => Create(options.Value, environment.ContentRootPath, logger),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public FirebaseApp? GetApp() => app.Value;
 
-    private static FirebaseApp? Create(FcmOptions options, ILogger logger)
+    private static FirebaseApp? Create(FcmOptions options, string contentRootPath, ILogger logger)
     {
         if (!options.Enabled)
         {
@@ -31,9 +37,14 @@ public sealed class FirebaseAppFactory
                 .FromJson<ServiceAccountCredential>(options.ServiceAccountJson)
                 .ToGoogleCredential();
         else if (!string.IsNullOrWhiteSpace(options.ServiceAccountJsonPath))
+        {
+            var credentialPath = Path.IsPathRooted(options.ServiceAccountJsonPath)
+                ? options.ServiceAccountJsonPath
+                : Path.GetFullPath(options.ServiceAccountJsonPath, contentRootPath);
             credential = CredentialFactory
-                .FromFile<ServiceAccountCredential>(options.ServiceAccountJsonPath)
+                .FromFile<ServiceAccountCredential>(credentialPath)
                 .ToGoogleCredential();
+        }
         else
             credential = GoogleCredential.GetApplicationDefault();
 

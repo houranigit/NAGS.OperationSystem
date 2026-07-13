@@ -4,7 +4,17 @@
     <!-- Development-only connection strings and bootstrap secrets must never ship. -->
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
     <Content Update="appsettings.*.local.json" CopyToPublishDirectory="Never" />
+    <!-- The credential is provisioned locally/CI, never served from wwwroot, and copied beside the app. -->
+    <Content Update="App_Data/firebase-admin.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             TargetPath="App_Data/firebase-admin.json" />
   </ItemGroup>
+
+  <Target Name="ValidateFirebaseAdminCredentialForPublish" BeforeTargets="ComputeFilesToPublish">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)/App_Data/firebase-admin.json')"
+           Text="Firebase Admin credential is missing. Provision App_Data/firebase-admin.json before publishing the API." />
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Api\BuildingBlocks.Api.csproj" />
