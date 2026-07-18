@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.R
 import com.nags.operations.data.notifications.NotificationDto
+import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.theme.BrandRed
@@ -69,7 +70,8 @@ import java.util.Locale
 fun NotificationsScreen(
     viewModel: NotificationsViewModel,
     onBack: () -> Unit,
-    onOpenFlight: (notificationId: String, flightId: String) -> Unit,
+    onOpenFlight: (NotificationOpenRequest) -> Unit,
+    onOpenSchedule: (NotificationOpenRequest) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
@@ -186,7 +188,9 @@ fun NotificationsScreen(
                         items(state.items, key = { it.id }) { notification ->
                             NotificationCard(
                                 notification = notification,
-                                onClick = { viewModel.open(notification, onOpenFlight) },
+                                onClick = {
+                                    viewModel.open(notification, onOpenFlight, onOpenSchedule)
+                                },
                                 onArchive = { viewModel.archive(notification) },
                             )
                         }
@@ -305,4 +309,3 @@ private fun NotificationCard(
         }
     }
 }
-

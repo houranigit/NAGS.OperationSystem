@@ -19,6 +19,7 @@ import com.nags.operations.data.realtime.MobileSyncTables
 import com.nags.operations.data.toAdHocEntity
 import com.nags.operations.data.toFlightEntity
 import com.nags.operations.data.toPerLandingEntity
+import com.nags.operations.data.shouldEnterMobileFlightCache
 import com.nags.operations.data.userMessage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
@@ -261,12 +262,16 @@ class SyncCoordinator(
      * mutation (e.g. inviting teammates) so the inviter's cache reflects the new roster
      * immediately — the server's broadcast targets the invitees, not the inviter.
      */
-    suspend fun refreshMyFlight(flightId: String) {
+    suspend fun refreshMyFlight(flightId: String) =
         cacheMutationMutex.withLock {
             val row = api.flightById(flightId)
-            db.flightDao().upsert(row.toFlightEntity())
+            if (row.shouldEnterMobileFlightCache()) {
+                db.flightDao().upsert(row.toFlightEntity())
+            } else {
+                db.flightDao().deleteById(flightId)
+            }
+            row
         }
-    }
 
     private suspend fun applyRefresh(table: String): Boolean =
         when (table) {
@@ -309,17 +314,31 @@ class SyncCoordinator(
         return when (table) {
             MobileSyncTables.Flights -> {
                 val row = api.flightById(entityId)
-                db.flightDao().upsert(row.toFlightEntity())
+                if (row.shouldEnterMobileFlightCache()) {
+                    db.flightDao().upsert(row.toFlightEntity())
+                } else {
+                    // By-id intentionally serves notification details outside the list window.
+                    // Such a row must not leak into the My Flights cache.
+                    db.flightDao().deleteById(entityId)
+                }
                 true
             }
             MobileSyncTables.FlightsPerLanding -> {
                 val row = api.flightById(entityId)
-                db.perLandingFlightDao().upsert(row.toPerLandingEntity())
+                if (row.shouldEnterMobileFlightCache()) {
+                    db.perLandingFlightDao().upsert(row.toPerLandingEntity())
+                } else {
+                    db.perLandingFlightDao().deleteById(entityId)
+                }
                 true
             }
             MobileSyncTables.FlightsAdHoc -> {
                 val row = api.flightById(entityId)
-                db.adHocFlightDao().upsert(row.toAdHocEntity())
+                if (row.shouldEnterMobileFlightCache()) {
+                    db.adHocFlightDao().upsert(row.toAdHocEntity())
+                } else {
+                    db.adHocFlightDao().deleteById(entityId)
+                }
                 true
             }
             // Catalog tables don't carry per-row payloads — route to a refresh.

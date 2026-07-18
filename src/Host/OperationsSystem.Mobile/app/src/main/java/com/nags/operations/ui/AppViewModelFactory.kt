@@ -26,7 +26,6 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
                 draftsRepository = graph.workOrderDraftsRepository,
                 outboxRepository = graph.workOrderOutboxRepository,
                 coordinator = graph.syncCoordinator,
-                mobileApi = graph.mobileApi,
                 networkMonitor = graph.networkMonitor,
             )
             NotificationsViewModel::class.java -> NotificationsViewModel(

@@ -53,9 +53,16 @@ class SystemNotificationManager(private val context: Context) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(NotificationNavigationCoordinator.EXTRA_NOTIFICATION_ID, payload.id)
+            putExtra(NotificationNavigationCoordinator.EXTRA_KIND, payload.kind)
             payload.flightId?.let { putExtra(NotificationNavigationCoordinator.EXTRA_FLIGHT_ID, it) }
             payload.recipientUserId?.let {
                 putExtra(NotificationNavigationCoordinator.EXTRA_RECIPIENT_USER_ID, it)
+            }
+            payload.scheduledArrivalUtc?.let {
+                putExtra(NotificationNavigationCoordinator.EXTRA_SCHEDULED_ARRIVAL_UTC, it)
+            }
+            payload.leadTimeMinutes?.let {
+                putExtra(NotificationNavigationCoordinator.EXTRA_LEAD_TIME_MINUTES, it.toString())
             }
         }
         val pendingIntent = PendingIntent.getActivity(

@@ -18,7 +18,7 @@ public interface IMobileSyncBroadcaster
 {
     /// <summary>
     /// Append one change envelope to the per-request buffer. <see cref="FlushAsync"/>
-    /// de-duplicates by <c>(Table, EntityId, Op)</c>, keeping the last envelope.
+    /// de-duplicates by <c>(Table, EntityId, Op, Audience)</c>, keeping the last envelope.
     /// </summary>
     public void Enqueue(MobileSyncChange change);
 

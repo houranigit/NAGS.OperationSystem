@@ -38,22 +38,23 @@ internal static class MobileReadEndpoints
             return result.ToOk();
         }).RequireAuthorization();
 
-        // Flight lists feed the client's three cache tables. windowHours clamps to 1-168 (default 12).
-        group.MapGet("/flights/my", async (ISender sender, CancellationToken ct, int windowHours = 12) =>
+        // Flight lists feed the client's three cache tables. The visibility contract is fixed at
+        // twelve hours either side of STA; callers cannot widen it with a query parameter.
+        group.MapGet("/flights/my", async (ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new GetMobileFlightsQuery(MobileFlightList.My, windowHours), ct);
+            var result = await sender.Send(new GetMobileFlightsQuery(MobileFlightList.My), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
-        group.MapGet("/flights/per-landing", async (ISender sender, CancellationToken ct, int windowHours = 12) =>
+        group.MapGet("/flights/per-landing", async (ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new GetMobileFlightsQuery(MobileFlightList.PerLanding, windowHours), ct);
+            var result = await sender.Send(new GetMobileFlightsQuery(MobileFlightList.PerLanding), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
-        group.MapGet("/flights/ad-hoc", async (ISender sender, CancellationToken ct, int windowHours = 12) =>
+        group.MapGet("/flights/ad-hoc", async (ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new GetMobileFlightsQuery(MobileFlightList.AdHoc, windowHours), ct);
+            var result = await sender.Send(new GetMobileFlightsQuery(MobileFlightList.AdHoc), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 

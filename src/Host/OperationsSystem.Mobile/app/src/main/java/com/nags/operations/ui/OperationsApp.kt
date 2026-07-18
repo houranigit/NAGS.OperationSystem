@@ -34,7 +34,6 @@ import com.nags.operations.ui.workorder.CreateWorkOrderViewModel
 import com.nags.operations.ui.workorder.ReturnToRampViewModel
 import com.nags.operations.ui.notifications.NotificationsScreen
 import com.nags.operations.ui.notifications.NotificationsViewModel
-import com.nags.operations.data.notifications.NotificationOpenRequest
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -80,6 +79,15 @@ fun OperationsApp() {
 
     LaunchedEffect(pendingNotificationOpen, accessToken) {
         val request = pendingNotificationOpen ?: return@LaunchedEffect
+        if (request.isExpiredReminder()) {
+            if (accessToken != null) {
+                request.notificationId?.let { id ->
+                    graph.appScope.launch { runCatching { graph.notificationsRepository.markRead(id) } }
+                }
+            }
+            graph.notificationNavigation.consume(request.notificationId)
+            return@LaunchedEffect
+        }
         if (accessToken == null) return@LaunchedEffect
         val subject = graph.tokenStore.getSessionSubject()
         if (!request.recipientUserId.isNullOrBlank() &&
@@ -162,11 +170,8 @@ fun OperationsApp() {
             NotificationsScreen(
                 viewModel = vm,
                 onBack = { navController.popBackStack() },
-                onOpenFlight = { notificationId, flightId ->
-                    graph.notificationNavigation.publish(
-                        NotificationOpenRequest(notificationId, flightId),
-                    )
-                },
+                onOpenFlight = graph.notificationNavigation::publish,
+                onOpenSchedule = graph.notificationNavigation::publish,
             )
         }
         composable(Routes.CreateAdHocFlight) {

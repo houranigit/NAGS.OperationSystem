@@ -4,9 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.FlightStatusKind
 import com.nags.operations.data.MobileFlightDto
+import com.nags.operations.data.MobileFlightWindowPhase
 import com.nags.operations.data.WorkOrderTypeKind
+import com.nags.operations.data.ApiException
+import com.nags.operations.data.asInformationOnlyMobileDetail
+import com.nags.operations.data.evaluateMobileWindow
+import com.nags.operations.data.isLocallyWithinMobileWindow
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
-import com.nags.operations.data.api.MobileApi
+import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.data.userMessage
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.outbox.WorkOrderOutboxRepository
@@ -26,14 +31,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import java.time.Duration
+import java.time.Instant
 
 class MyFlightsViewModel(
     private val repository: FlightsRepository,
     draftsRepository: WorkOrderDraftsRepository,
     private val outboxRepository: WorkOrderOutboxRepository,
     private val coordinator: SyncCoordinator,
-    private val mobileApi: MobileApi,
-    networkMonitor: NetworkMonitor,
+    private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
     enum class QuickFilter {
@@ -56,6 +63,8 @@ class MyFlightsViewModel(
         /** Optimistic outbox state keyed by flight id; null entry = no chip. */
         val pendingByFlightId: Map<String, PendingDisplayItem> = emptyMap(),
         val requestedFlight: MobileFlightDto? = null,
+        /** Exact notification request whose by-id fetch produced [requestedFlight]/error. */
+        val requestedFlightRequest: NotificationOpenRequest? = null,
         val requestedFlightError: String? = null,
         val isOpeningRequestedFlight: Boolean = false,
     )
@@ -66,6 +75,8 @@ class MyFlightsViewModel(
     private var allItems: List<MobileFlightDto> = emptyList()
     private var refreshJob: Job? = null
     private var requestedFlightJob: Job? = null
+    private var windowBoundaryJob: Job? = null
+    private var activeRequestedFlightRequest: NotificationOpenRequest? = null
 
     init {
         viewModelScope.launch {
@@ -95,6 +106,7 @@ class MyFlightsViewModel(
                         error = null,
                     )
                 }
+                scheduleNextWindowBoundary()
             }
         }
     }
@@ -126,31 +138,55 @@ class MyFlightsViewModel(
         }
     }
 
-    fun openRequestedFlight(flightId: String, force: Boolean = false) {
-        if (!force && (_state.value.requestedFlight?.id == flightId ||
-                (_state.value.isOpeningRequestedFlight && requestedFlightJob?.isActive == true))
+    fun openRequestedFlight(request: NotificationOpenRequest, force: Boolean = false) {
+        val flightId = request.flightId ?: return
+        if (!force && activeRequestedFlightRequest == request &&
+            (requestedFlightJob?.isActive == true ||
+                (_state.value.requestedFlightRequest == request &&
+                    (_state.value.requestedFlight != null || _state.value.requestedFlightError != null)))
         ) return
+
+        activeRequestedFlightRequest = request
         requestedFlightJob?.cancel()
         requestedFlightJob = viewModelScope.launch {
             _state.update {
-                it.copy(isOpeningRequestedFlight = true, requestedFlightError = null)
+                it.copy(
+                    requestedFlight = null,
+                    requestedFlightRequest = request,
+                    isOpeningRequestedFlight = true,
+                    requestedFlightError = null,
+                )
             }
+            // Notification details are always network-first. A cached row cannot carry authority:
+            // its STA may be stale and Room intentionally does not persist the server decision.
             val cached = allItems.firstOrNull { it.id.equals(flightId, ignoreCase = true) }
-            val result = cached?.let { Result.success(it) }
-                ?: runCatching { mobileApi.flightById(flightId) }
-            result.onSuccess { flight ->
+            try {
+                val flight = coordinator.refreshMyFlight(flightId)
+                if (activeRequestedFlightRequest != request) return@launch
                 _state.update {
                     it.copy(
                         requestedFlight = flight,
+                        requestedFlightRequest = request,
                         requestedFlightError = null,
                         isOpeningRequestedFlight = false,
                     )
                 }
-            }.onFailure { error ->
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (activeRequestedFlightRequest != request) return@launch
+                val fallback = cached
+                    ?.takeIf {
+                        shouldUseInformationalFlightFallback(
+                            error = error,
+                        )
+                    }
+                    ?.asInformationOnlyMobileDetail()
                 _state.update {
                     it.copy(
-                        requestedFlight = null,
-                        requestedFlightError = error.userMessage(),
+                        requestedFlight = fallback,
+                        requestedFlightRequest = request,
+                        requestedFlightError = if (fallback == null) error.userMessage() else null,
                         isOpeningRequestedFlight = false,
                     )
                 }
@@ -158,8 +194,21 @@ class MyFlightsViewModel(
         }
     }
 
-    fun consumeRequestedFlight() {
-        _state.update { it.copy(requestedFlight = null, requestedFlightError = null) }
+    /** Server-revalidate an information-only notification sheet at the leading boundary. */
+    suspend fun revalidateRequestedFlight(flightId: String): MobileFlightDto =
+        coordinator.refreshMyFlight(flightId)
+
+    fun consumeRequestedFlight(request: NotificationOpenRequest) {
+        if (_state.value.requestedFlightRequest != request) return
+        if (activeRequestedFlightRequest == request) activeRequestedFlightRequest = null
+        _state.update {
+            it.copy(
+                requestedFlight = null,
+                requestedFlightRequest = null,
+                requestedFlightError = null,
+                isOpeningRequestedFlight = false,
+            )
+        }
     }
 
     /**
@@ -206,7 +255,11 @@ class MyFlightsViewModel(
     ): List<MobileFlightDto> {
         if (source.isEmpty()) return source
         val q = state.search.trim()
+        val now = Instant.now()
         return source.asSequence()
+            // Snapshot and realtime paths have different endpoints; fail closed locally so an
+            // out-of-window by-id upsert can never flash on the list.
+            .filter { it.isLocallyWithinMobileWindow(now) }
             .filter { it.isOpenFlight() }
             .filter { f -> state.statusFilter?.let { it.wire == f.status } ?: true }
             .filter { f ->
@@ -219,6 +272,44 @@ class MyFlightsViewModel(
             .filter { it.matchesSearch(q) }
             .toList()
     }
+
+    /** Re-evaluate Room rows exactly when the next inclusive STA boundary changes membership. */
+    private fun scheduleNextWindowBoundary() {
+        windowBoundaryJob?.cancel()
+        val now = Instant.now()
+        val nextBoundary = allItems.asSequence()
+            .mapNotNull { flight ->
+                val window = flight.evaluateMobileWindow(now)
+                when (window.phase) {
+                    MobileFlightWindowPhase.Before -> window.startsAt
+                    // The trailing boundary is inclusive; leave the list one millisecond later.
+                    MobileFlightWindowPhase.Within -> window.endsAt?.plusMillis(1)
+                    MobileFlightWindowPhase.After,
+                    MobileFlightWindowPhase.Unknown -> null
+                }
+            }
+            .filter { it.isAfter(now) }
+            .minOrNull()
+            ?: return
+
+        windowBoundaryJob = viewModelScope.launch {
+            delay(Duration.between(Instant.now(), nextBoundary).toMillis().coerceAtLeast(1))
+            windowBoundaryJob = null
+            _state.update { current ->
+                current.copy(items = applyFilters(allItems, current))
+            }
+            scheduleNextWindowBoundary()
+        }
+    }
+}
+
+/** HTTP authorization/not-found responses must never resurrect cached flight details. */
+internal fun shouldUseInformationalFlightFallback(error: Throwable): Boolean {
+    if (error is ApiException) {
+        return error.statusCode == 408 || error.statusCode == 429 || error.statusCode >= 500
+    }
+    // Transport failures are eligible even before ConnectivityManager publishes its offline edge.
+    return true
 }
 
 /** Scheduled + InProgress only — settled and merged flights leave the actionable lists. */

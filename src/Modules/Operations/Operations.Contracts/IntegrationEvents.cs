@@ -17,6 +17,17 @@ public sealed record FlightEmployeeAssigned : IntegrationEvent
     public FlightAssignmentSource Source { get; init; } = FlightAssignmentSource.Roster;
 }
 
+/// <summary>
+/// Raised once per affected staff member when one scheduler action creates multiple flights.
+/// Consumers should treat this as a schedule-level change rather than linking to one flight.
+/// </summary>
+public sealed record FlightScheduleUpdated : IntegrationEvent
+{
+    public required Guid StaffMemberId { get; init; }
+    public required int FlightCount { get; init; }
+    public Guid? UpdatedByUserId { get; init; }
+}
+
 /// <summary>Describes the user action that added the employee without coupling Operations to notification UI.</summary>
 public enum FlightAssignmentSource
 {

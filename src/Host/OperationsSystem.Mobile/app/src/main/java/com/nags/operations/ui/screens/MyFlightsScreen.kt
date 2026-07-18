@@ -37,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import com.nags.operations.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.data.MobileFlightDto
+import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.FlightCard
@@ -53,10 +54,11 @@ import com.nags.operations.ui.flights.MyFlightsViewModel
 fun MyFlightsTab(
     viewModel: MyFlightsViewModel,
     sheetCallbacks: FlightSheetCallbacks = FlightSheetCallbacks(),
-    requestedFlightId: String? = null,
-    onRequestedFlightOpened: () -> Unit = {},
+    requestedFlightRequest: NotificationOpenRequest? = null,
+    onRequestedFlightOpened: (notificationId: String?) -> Unit = {},
 ) {
     var sheetFlight by remember { mutableStateOf<MobileFlightDto?>(null) }
+    var sheetRequest by remember { mutableStateOf<NotificationOpenRequest?>(null) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val openErrorMessage = stringResource(R.string.notifications_flight_unavailable)
@@ -64,24 +66,59 @@ fun MyFlightsTab(
     LaunchedEffect(Unit) {
         viewModel.refresh(userInitiated = false)
     }
-    LaunchedEffect(requestedFlightId) {
-        requestedFlightId?.let(viewModel::openRequestedFlight)
-    }
-    LaunchedEffect(state.requestedFlight?.id) {
-        state.requestedFlight?.let {
-            sheetFlight = it
-            onRequestedFlightOpened()
+    LaunchedEffect(requestedFlightRequest) {
+        val request = requestedFlightRequest ?: return@LaunchedEffect
+        if (request.flightId != null) {
+            // A newer notification for the same flight is still a distinct authoritative open.
+            sheetFlight = null
+            sheetRequest = null
+            viewModel.openRequestedFlight(request)
+        } else {
+            // A bulk-schedule notification has no row deep link. Refresh even when My Flights was
+            // already composed so a missed realtime envelope cannot leave the old list visible.
+            viewModel.refresh(userInitiated = false)
+            onRequestedFlightOpened(request.notificationId)
         }
     }
-    LaunchedEffect(state.requestedFlightError) {
-        if (state.requestedFlightError != null && requestedFlightId != null) {
-            val result = snackbarHostState.showSnackbar(openErrorMessage, retryLabel)
-            if (result == SnackbarResult.ActionPerformed) {
-                viewModel.openRequestedFlight(requestedFlightId, force = true)
-            } else {
-                onRequestedFlightOpened()
+    LaunchedEffect(
+        state.requestedFlightRequest,
+        state.requestedFlight?.id,
+        requestedFlightRequest,
+    ) {
+        val completedRequest = state.requestedFlightRequest
+        if (completedRequest != null && completedRequest == requestedFlightRequest) {
+            state.requestedFlight?.let {
+                sheetRequest = completedRequest
+                sheetFlight = it
+                onRequestedFlightOpened(completedRequest.notificationId)
             }
         }
+    }
+    LaunchedEffect(
+        state.requestedFlightError,
+        state.requestedFlightRequest,
+        requestedFlightRequest,
+    ) {
+        val failedRequest = state.requestedFlightRequest
+        if (state.requestedFlightError != null &&
+            failedRequest != null &&
+            failedRequest == requestedFlightRequest
+        ) {
+            val result = snackbarHostState.showSnackbar(openErrorMessage, retryLabel)
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.openRequestedFlight(failedRequest, force = true)
+            } else {
+                viewModel.consumeRequestedFlight(failedRequest)
+                onRequestedFlightOpened(failedRequest.notificationId)
+            }
+        }
+    }
+
+    fun closeSheet() {
+        val openedRequest = sheetRequest
+        sheetFlight = null
+        sheetRequest = null
+        if (openedRequest != null) viewModel.consumeRequestedFlight(openedRequest)
     }
 
     val allowedStatusFilters = remember { StandardFlightStatusFilterKinds.toSet() }
@@ -151,7 +188,7 @@ fun MyFlightsTab(
                         title = if (noFiltersActive) "No flights yet" else "No matching flights",
                         message = when {
                             noFiltersActive ->
-                                "You don't have any flights in the next 12 hours. Pull down or tap refresh to check again."
+                                "You don't have any flights in the previous or next 12 hours. Pull down or tap refresh to check again."
                             state.search.isNotBlank() ->
                                 "No flight matches \"${state.search}\". Try a different search or filter."
                             state.quickFilter == MyFlightsViewModel.QuickFilter.Pending ->
@@ -174,7 +211,10 @@ fun MyFlightsTab(
                             flight = flight,
                             pending = state.pendingByFlightId[flight.id],
                             hasLocalDraft = state.draftIdByFlightId.containsKey(flight.id),
-                            onClick = { sheetFlight = flight },
+                            onClick = {
+                                sheetRequest = null
+                                sheetFlight = flight
+                            },
                         )
                     }
                 }
@@ -193,31 +233,33 @@ fun MyFlightsTab(
             localDraftId = state.draftIdByFlightId[f.id],
             isOnline = state.isOnline,
             showInvite = true,
+            onRevalidateFlight = if (sheetRequest != null) {
+                viewModel::revalidateRequestedFlight
+            } else {
+                null
+            },
             callbacks = FlightSheetCallbacks(
                 onCreateWorkOrder = { id ->
-                    sheetFlight = null
+                    closeSheet()
                     sheetCallbacks.onCreateWorkOrder(id)
                 },
                 onCompleteWorkOrderDraft = { draftId ->
-                    sheetFlight = null
+                    closeSheet()
                     sheetCallbacks.onCompleteWorkOrderDraft(draftId)
                 },
                 onReturnToRamp = { id ->
-                    sheetFlight = null
+                    closeSheet()
                     sheetCallbacks.onReturnToRamp(id)
                 },
                 onInviteTeammate = { id ->
-                    sheetFlight = null
+                    closeSheet()
                     sheetCallbacks.onInviteTeammate(id)
                 },
                 onCancelFlight = { id, canceledAtIso, reason, onFinished ->
                     viewModel.cancelFlight(id, canceledAtIso, reason, onFinished)
                 },
             ),
-            onDismiss = {
-                sheetFlight = null
-                viewModel.consumeRequestedFlight()
-            },
+            onDismiss = ::closeSheet,
         )
     }
 }

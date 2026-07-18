@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,13 +38,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import com.nags.operations.data.ApiException
 import com.nags.operations.data.FlightStatusKind
 import com.nags.operations.data.MobileFlightDto
+import com.nags.operations.data.MobileFlightWindowPhase
 import com.nags.operations.data.WorkOrderStatusKind
+import com.nags.operations.data.areMobileActionsAvailable
+import com.nags.operations.data.evaluateMobileWindow
 import com.nags.operations.ui.flights.FlightSummaryActionsDecision
 import com.nags.operations.ui.flights.deriveFlightSummaryActions
 import com.nags.operations.ui.util.formatIsoForDisplay
 import com.nags.operations.ui.util.offsetSameAsFlight
+import java.time.Duration
+import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 data class FlightSheetCallbacks(
     val onCreateWorkOrder: (flightId: String) -> Unit = {},
@@ -74,18 +83,106 @@ fun FlightDetailsActionsSheet(
     localDraftId: String? = null,
     isOnline: Boolean = true,
     showInvite: Boolean = false,
+    /** Re-fetches notification detail before this sheet may transition from information to action. */
+    onRevalidateFlight: (suspend (flightId: String) -> MobileFlightDto?)? = null,
     callbacks: FlightSheetCallbacks,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val decision = deriveFlightSummaryActions(flight)
+    var effectiveFlight by remember(flight.id) { mutableStateOf(flight) }
+    LaunchedEffect(flight) { effectiveFlight = flight }
+    val decision = deriveFlightSummaryActions(effectiveFlight)
     var showCancelDialog by remember(flight.id) { mutableStateOf(false) }
     var cancelSubmitting by remember(flight.id) { mutableStateOf(false) }
     var cancelError by remember(flight.id) { mutableStateOf<String?>(null) }
+    var windowPhase by remember(flight.id) {
+        mutableStateOf(effectiveFlight.evaluateMobileWindow().phase)
+    }
+    var actionsInMobileWindow by remember(flight.id) {
+        mutableStateOf(effectiveFlight.areMobileActionsAvailable())
+    }
     // True when the caller's work order is itself a cancellation: the "update" action edits
     // the cancellation details (dialog) instead of opening the regular work-order form, and
     // return-to-ramp is meaningless for a cancelled flight.
-    val myWorkOrderIsCancellation = flight.myWorkOrder?.type == "Cancellation"
+    val myWorkOrderIsCancellation = effectiveFlight.myWorkOrder?.type == "Cancellation"
+
+    // A notification may be opened before the flight enters the mobile window. That flight is not
+    // cached, so this sheet must stay informational until a fresh open/refresh confirms admission;
+    // enabling from the device clock alone would route to forms that cannot hydrate from Room.
+    // An already-actionable sheet is still disabled after the trailing boundary.
+    LaunchedEffect(
+        flight,
+        isOnline,
+        onRevalidateFlight != null,
+    ) {
+        var evaluatedFlight = effectiveFlight
+        var evaluation = evaluatedFlight.evaluateMobileWindow()
+        windowPhase = evaluation.phase
+        actionsInMobileWindow = evaluatedFlight.areMobileActionsAvailable()
+
+        disabled@ while (!actionsInMobileWindow) {
+            evaluation = evaluatedFlight.evaluateMobileWindow()
+            windowPhase = evaluation.phase
+            when (evaluation.phase) {
+                MobileFlightWindowPhase.Before -> {
+                    val startsAt = evaluation.startsAt ?: break@disabled
+                    delayUntil(startsAt)
+                    // The refresh below may itself return a later rescheduled STA. Looping through
+                    // Before again follows that new authoritative leading boundary.
+                }
+
+                MobileFlightWindowPhase.Within -> {
+                    // Never enable from the device clock alone. Repeatedly fetch the authoritative
+                    // row while this sheet is composed and online. Transient failures and modest
+                    // clock skew retry without requiring the employee to close the sheet.
+                    if (!isOnline || onRevalidateFlight == null) break@disabled
+                    val refreshed = try {
+                        onRevalidateFlight(evaluatedFlight.id)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: ApiException) {
+                        if (error.statusCode in 400..499 &&
+                            error.statusCode != 408 &&
+                            error.statusCode != 429
+                        ) {
+                            break@disabled
+                        }
+                        null
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (refreshed != null) {
+                        evaluatedFlight = refreshed
+                        effectiveFlight = refreshed
+                        evaluation = refreshed.evaluateMobileWindow()
+                        windowPhase = evaluation.phase
+                        actionsInMobileWindow = refreshed.areMobileActionsAvailable()
+                    }
+
+                    if (actionsInMobileWindow) break@disabled
+                    if (evaluation.phase != MobileFlightWindowPhase.Within) continue@disabled
+                    val endsAt = evaluation.endsAt ?: break@disabled
+                    val retryAt = minOf(
+                        Instant.now().plusMillis(WINDOW_REVALIDATION_RETRY_MILLIS),
+                        endsAt.plusMillis(1),
+                    )
+                    delayUntil(retryAt)
+                }
+
+                MobileFlightWindowPhase.After,
+                MobileFlightWindowPhase.Unknown -> break@disabled
+            }
+        }
+
+        if (actionsInMobileWindow) {
+            val endsAt = evaluation.endsAt ?: return@LaunchedEffect
+            // Server policy includes the exact trailing boundary.
+            delayUntil(endsAt.plusMillis(1))
+            windowPhase = MobileFlightWindowPhase.After
+            actionsInMobileWindow = false
+            showCancelDialog = false
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -99,15 +196,23 @@ fun FlightDetailsActionsSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             FlightOverviewBanner(
-                customerIataCode = flight.customerIataCode.orEmpty(),
-                customerName = flight.customerName,
-                stationCode = flight.stationIata,
-                operationTypeCode = flight.operationTypeName,
-                flightNumber = flight.flightNumber.takeIf { it.isNotBlank() },
-                aircraftModel = flight.aircraftTypeModel,
-                staDisplay = formatIsoForDisplay(flight.scheduledArrivalUtc),
-                stdDisplay = formatIsoForDisplay(flight.scheduledDepartureUtc),
+                customerIataCode = effectiveFlight.customerIataCode.orEmpty(),
+                customerName = effectiveFlight.customerName,
+                stationCode = effectiveFlight.stationIata,
+                operationTypeCode = effectiveFlight.operationTypeName,
+                flightNumber = effectiveFlight.flightNumber.takeIf { it.isNotBlank() },
+                aircraftModel = effectiveFlight.aircraftTypeModel,
+                staDisplay = formatIsoForDisplay(effectiveFlight.scheduledArrivalUtc),
+                stdDisplay = formatIsoForDisplay(effectiveFlight.scheduledDepartureUtc),
             )
+
+            if (!actionsInMobileWindow) {
+                SectionHeader(
+                    title = "Flight details only",
+                    subtitle = informationOnlyMessage(effectiveFlight, windowPhase),
+                    icon = Icons.Default.Lock,
+                )
+            }
 
             when {
                 localDraftId != null -> {
@@ -116,6 +221,7 @@ fun FlightDetailsActionsSheet(
                         label = "Complete work order",
                         onClick = { callbacks.onCompleteWorkOrderDraft(localDraftId) },
                         primary = true,
+                        enabled = actionsInMobileWindow,
                     )
                 }
                 decision == FlightSummaryActionsDecision.ReadOnly -> {
@@ -135,15 +241,17 @@ fun FlightDetailsActionsSheet(
                                 showCancelDialog = true
                             },
                             primary = true,
+                            enabled = actionsInMobileWindow,
                         )
                     } else {
                         SheetActionButton(
                             icon = Icons.Default.EditNote,
                             label = "Update work order",
                             onClick = {
-                                callbacks.onCreateWorkOrder(flight.id)
+                                callbacks.onCreateWorkOrder(effectiveFlight.id)
                             },
                             primary = true,
+                            enabled = actionsInMobileWindow,
                         )
                     }
                 }
@@ -152,28 +260,31 @@ fun FlightDetailsActionsSheet(
                         icon = Icons.AutoMirrored.Filled.NoteAdd,
                         label = "Create work order",
                         onClick = {
-                            callbacks.onCreateWorkOrder(flight.id)
+                            callbacks.onCreateWorkOrder(effectiveFlight.id)
                         },
                         primary = true,
+                        enabled = actionsInMobileWindow,
                     )
                 }
             }
-            val flightInProgress = FlightStatusKind.fromWire(flight.status) == FlightStatusKind.InProgress
+            val flightInProgress =
+                FlightStatusKind.fromWire(effectiveFlight.status) == FlightStatusKind.InProgress
             val workOrderEditable =
-                WorkOrderStatusKind.fromWire(flight.myWorkOrder?.status)?.isEditable == true
+                WorkOrderStatusKind.fromWire(effectiveFlight.myWorkOrder?.status)?.isEditable == true
             if (flightInProgress && workOrderEditable && !myWorkOrderIsCancellation) {
                 SheetActionButton(
                     icon = Icons.AutoMirrored.Filled.Undo,
                     label = "Return to ramp",
                     onClick = {
-                        callbacks.onReturnToRamp(flight.id)
+                        callbacks.onReturnToRamp(effectiveFlight.id)
                         onDismiss()
                     },
                     primary = false,
+                    enabled = actionsInMobileWindow,
                 )
             }
 
-            val flightStatus = FlightStatusKind.fromWire(flight.status)
+            val flightStatus = FlightStatusKind.fromWire(effectiveFlight.status)
             val canInvite = showInvite &&
                 decision != FlightSummaryActionsDecision.ReadOnly &&
                 (flightStatus == FlightStatusKind.Scheduled || flightStatus == FlightStatusKind.InProgress)
@@ -182,11 +293,11 @@ fun FlightDetailsActionsSheet(
                     icon = Icons.Default.GroupAdd,
                     label = "Invite teammates",
                     onClick = {
-                        callbacks.onInviteTeammate(flight.id)
+                        callbacks.onInviteTeammate(effectiveFlight.id)
                         onDismiss()
                     },
                     primary = false,
-                    enabled = isOnline,
+                    enabled = actionsInMobileWindow && isOnline,
                 )
                 if (!isOnline) {
                     Row(
@@ -221,6 +332,7 @@ fun FlightDetailsActionsSheet(
                         showCancelDialog = true
                     },
                     primary = false,
+                    enabled = actionsInMobileWindow,
                 )
             }
             Spacer(Modifier.height(4.dp))
@@ -229,10 +341,10 @@ fun FlightDetailsActionsSheet(
 
     if (showCancelDialog) {
         CancelFlightDialog(
-            flightStdIso = flight.scheduledDepartureUtc,
-            flightOffset = offsetSameAsFlight(flight.scheduledDepartureUtc),
-            initialCanceledAtIso = flight.myWorkOrder?.canceledAtUtc,
-            initialReason = flight.myWorkOrder?.cancellationReason,
+            flightStdIso = effectiveFlight.scheduledDepartureUtc,
+            flightOffset = offsetSameAsFlight(effectiveFlight.scheduledDepartureUtc),
+            initialCanceledAtIso = effectiveFlight.myWorkOrder?.canceledAtUtc,
+            initialReason = effectiveFlight.myWorkOrder?.cancellationReason,
             isUpdate = myWorkOrderIsCancellation,
             isSubmitting = cancelSubmitting,
             errorMessage = cancelError,
@@ -245,7 +357,7 @@ fun FlightDetailsActionsSheet(
             onConfirm = { canceledAtIso, reason ->
                 cancelSubmitting = true
                 cancelError = null
-                callbacks.onCancelFlight(flight.id, canceledAtIso, reason) { success, message ->
+                callbacks.onCancelFlight(effectiveFlight.id, canceledAtIso, reason) { success, message ->
                     cancelSubmitting = false
                     if (success) {
                         showCancelDialog = false
@@ -257,6 +369,35 @@ fun FlightDetailsActionsSheet(
             },
         )
     }
+}
+
+private suspend fun delayUntil(target: Instant) {
+    val now = Instant.now()
+    if (target.isAfter(now)) {
+        delay(Duration.between(now, target).toMillis().coerceAtLeast(1))
+    }
+}
+
+private const val WINDOW_REVALIDATION_RETRY_MILLIS = 30_000L
+
+private fun informationOnlyMessage(
+    flight: MobileFlightDto,
+    phase: MobileFlightWindowPhase,
+): String = when (phase) {
+    MobileFlightWindowPhase.Before -> {
+        val availableAt = flight.mobileWindowStartsAtUtc?.let(::formatIsoForDisplay)
+        if (availableAt == null) {
+            "Actions become available when the flight enters the 12-hour mobile window."
+        } else {
+            "Actions become available at $availableAt. Until then, this assignment is for information only."
+        }
+    }
+    MobileFlightWindowPhase.After ->
+        "This flight is outside the 12-hour mobile window. Its details are available for reference only."
+    MobileFlightWindowPhase.Within ->
+        "Actions stay disabled until the latest availability is verified. Reconnect or close and reopen to retry."
+    MobileFlightWindowPhase.Unknown ->
+        "Actions are unavailable because the flight's mobile work window could not be verified."
 }
 
 @Composable

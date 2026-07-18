@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Operations.Contracts.Readers;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
@@ -12,6 +13,7 @@ using Operations.Application.Features.Flights;
 using Operations.Application.Features.WorkOrders;
 using Operations.Infrastructure.BackgroundJobs;
 using Operations.Infrastructure.Persistence;
+using Operations.Infrastructure.Readers;
 
 namespace Operations.Infrastructure;
 
@@ -36,12 +38,15 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IOperationsScope, OperationsScope>();
         services.AddScoped<MasterDataResolver>();
         services.AddScoped<IFlightTimelineWriter, FlightTimelineWriter>();
+        services.AddScoped<IFlightReminderEligibilityReader, FlightReminderEligibilityReader>();
         services.AddScoped<WorkOrderInputBuilder>();
         services.AddScoped<IWorkOrderTimelineWriter, WorkOrderTimelineWriter>();
         services.AddScoped<IWorkOrderNumberAllocator, WorkOrderNumberAllocator>();
         services.AddScoped<FlightDuplicateDetector>();
         services.Configure<AutoWorkOrderOptions>(configuration.GetSection(AutoWorkOrderOptions.SectionName));
         services.AddHostedService<AutoWorkOrderBackgroundService>();
+        services.Configure<FlightReminderOptions>(configuration.GetSection(FlightReminderOptions.SectionName));
+        services.AddHostedService<FlightReminderBackgroundService>();
 
         services.TryAddSingleton(TimeProvider.System);
 

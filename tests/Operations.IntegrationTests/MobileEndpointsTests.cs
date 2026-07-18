@@ -103,6 +103,42 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task Out_of_window_assignment_is_absent_from_list_but_available_by_id_as_information_only()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(14);
+        var flightId = await ScheduleFlightAsync(
+            admin,
+            refs,
+            "MOB150",
+            [staff.StaffId],
+            scheduledArrivalUtc);
+
+        var myFlights = await staff.Client.GetFromJsonAsync<List<MobileFlight>>(
+            $"{MobileBase}/flights/my?windowHours=168");
+        myFlights.ShouldNotBeNull();
+        myFlights!.ShouldNotContain(flight => flight.Id == flightId);
+
+        var byId = await staff.Client.GetFromJsonAsync<MobileFlight>($"{MobileBase}/flights/{flightId}");
+        byId.ShouldNotBeNull();
+        byId!.Id.ShouldBe(flightId);
+        byId.IsWithinMobileWindow.ShouldBeFalse();
+        byId.MobileWindowStartsAtUtc.ShouldBe(scheduledArrivalUtc.AddHours(-12), TimeSpan.FromSeconds(1));
+        byId.MobileWindowEndsAtUtc.ShouldBe(scheduledArrivalUtc.AddHours(12), TimeSpan.FromSeconds(1));
+
+        var action = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId)
+            });
+        action.StatusCode.ShouldBe(HttpStatusCode.Forbidden, await action.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Sync_changes_returns_refresh_envelopes_for_the_requested_tables()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -458,16 +494,21 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     }
 
     private static async Task<Guid> ScheduleFlightAsync(
-        HttpClient client, MasterDataRefs refs, string flightNumber, IReadOnlyList<Guid>? assignedStaffIds = null)
+        HttpClient client,
+        MasterDataRefs refs,
+        string flightNumber,
+        IReadOnlyList<Guid>? assignedStaffIds = null,
+        DateTimeOffset? scheduledArrivalUtc = null)
     {
+        var arrivalUtc = scheduledArrivalUtc ?? DateTimeOffset.UtcNow.AddHours(2);
         var response = await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights", new
         {
             customerId = refs.CustomerId,
             stationId = refs.StationId,
             operationTypeId = refs.OperationTypeId,
             flightNumber,
-            scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
-            scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4),
+            scheduledArrivalUtc = arrivalUtc,
+            scheduledDepartureUtc = arrivalUtc.AddHours(2),
             aircraftTypeId = (Guid?)null,
             plannedServiceIds = new[] { refs.ServiceId },
             assignedStaffMemberIds = assignedStaffIds ?? []
@@ -520,7 +561,8 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     private sealed record MobileFlight(
         Guid Id, string FlightNumber, string Status, bool IsPerLanding, bool IsAdHoc,
         List<PlannedService> PlannedServices, WorkOrderDetail? MyWorkOrder,
-        bool OtherWorkOrdersExist, string RowVersion);
+        bool OtherWorkOrdersExist, string RowVersion,
+        bool IsWithinMobileWindow, DateTimeOffset MobileWindowStartsAtUtc, DateTimeOffset MobileWindowEndsAtUtc);
 
     private sealed record PlannedService(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 

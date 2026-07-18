@@ -208,6 +208,12 @@ public sealed class ScheduleFlightsCommandHandler(
             foreach (var employee in flight.AssignedEmployees)
                 await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.Employee.FullName, cancellationToken: cancellationToken);
 
+        }
+
+        if (flights.Count == 1)
+        {
+            var flight = flights[0];
+            MobileFlightSync.EnqueueUpsert(mobileSync, flight);
             FlightAssignmentEvents.Enqueue(
                 db,
                 flight,
@@ -215,7 +221,23 @@ public sealed class ScheduleFlightsCommandHandler(
                 user,
                 auditContext,
                 now);
-            MobileFlightSync.EnqueueUpsert(mobileSync, flight);
+        }
+        else
+        {
+            MobileFlightSync.EnqueueBulkRefresh(mobileSync, flights, now);
+            foreach (var staffMemberId in flights
+                         .SelectMany(flight => flight.AssignedEmployees)
+                         .Select(employee => employee.Employee.StaffMemberId)
+                         .Distinct())
+            {
+                db.Enqueue(new global::Operations.Contracts.FlightScheduleUpdated
+                {
+                    StaffMemberId = staffMemberId,
+                    FlightCount = flights.Count,
+                    UpdatedByUserId = user.UserId,
+                    OccurredOnUtc = now
+                });
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);

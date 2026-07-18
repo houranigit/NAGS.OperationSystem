@@ -5,4 +5,6 @@ public static class NotificationKind
 {
     public const string StaffAssignedToFlight = "StaffAssignedToFlight";
     public const string EmployeeInvitedToFlight = "EmployeeInvitedToFlight";
+    public const string FlightScheduleUpdated = "FlightScheduleUpdated";
+    public const string FlightReminder = "FlightReminder";
 }

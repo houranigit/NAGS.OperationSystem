@@ -11,7 +11,7 @@ namespace Operations.Api.Mobile;
 /// <remarks>
 /// The audience string picks the fan-out: <c>employee:{guid}</c> and <c>station:{IATA}</c>
 /// map to SignalR groups the hub joins on connect; <c>all-stations</c> maps to
-/// <c>Clients.All</c>. Flush collapses repeat <c>(table, entityId, op)</c> tuples,
+/// <c>Clients.All</c>. Flush collapses repeat <c>(table, entityId, op, audience)</c> tuples,
 /// keeping the last (freshest) envelope.
 /// </remarks>
 public sealed class SignalRMobileSyncBroadcaster(IHubContext<MobileSyncHub> hub) : IMobileSyncBroadcaster
@@ -26,7 +26,7 @@ public sealed class SignalRMobileSyncBroadcaster(IHubContext<MobileSyncHub> hub)
             return;
 
         var collapsed = _buffer
-            .GroupBy(c => (c.Table, c.EntityId, c.Op))
+            .GroupBy(c => (c.Table, c.EntityId, c.Op, c.Audience))
             .Select(g => g.Last())
             .ToList();
 

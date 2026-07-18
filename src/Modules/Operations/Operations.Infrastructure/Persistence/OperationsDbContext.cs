@@ -6,6 +6,7 @@ using Operations.Application.Abstractions;
 using Operations.Domain.Flights;
 using Operations.Domain.Mobile;
 using Operations.Domain.WorkOrders;
+using Operations.Infrastructure.BackgroundJobs;
 
 namespace Operations.Infrastructure.Persistence;
 
@@ -19,6 +20,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<WorkOrderTimelineEntry> WorkOrderTimelineEntries => Set<WorkOrderTimelineEntry>();
     public DbSet<MobileMutation> MobileMutations => Set<MobileMutation>();
+    public DbSet<FlightReminderSchedule> FlightReminderSchedules => Set<FlightReminderSchedule>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();

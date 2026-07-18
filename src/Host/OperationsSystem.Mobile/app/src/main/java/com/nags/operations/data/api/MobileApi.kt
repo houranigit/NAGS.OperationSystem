@@ -58,9 +58,9 @@ class MobileApi(
         client.get(url("api/v1/mobile/flights/ad-hoc")).bodyOrThrow()
 
     /**
-     * Single-flight fetch used by the real-time sync apply path. When the server pushes an
-     * `upsert` envelope the channel calls this to project just that row, then upserts it into
-     * the matching Room table.
+     * Single-flight fetch used by real-time sync and notification deep links. It intentionally
+     * serves accessible flights outside the list window; callers use the returned window metadata
+     * to keep those rows out of Room and render notification details as information-only.
      */
     suspend fun flightById(id: String): MobileFlightDto =
         client.get(url("api/v1/mobile/flights/$id")).bodyOrThrow()

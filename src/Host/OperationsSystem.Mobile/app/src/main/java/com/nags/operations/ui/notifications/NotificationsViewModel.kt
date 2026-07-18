@@ -3,6 +3,10 @@ package com.nags.operations.ui.notifications
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.notifications.NotificationDto
+import com.nags.operations.data.notifications.NotificationKinds
+import com.nags.operations.data.notifications.NotificationOpenRequest
+import com.nags.operations.data.notifications.flightId
+import com.nags.operations.data.notifications.isExpiredReminder
 import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.userMessage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,12 +101,29 @@ class NotificationsViewModel(
         }
     }
 
-    fun open(notification: NotificationDto, onOpenFlight: (String, String) -> Unit) {
-        val flightId = notification.payload["flightId"] ?: return
+    fun open(
+        notification: NotificationDto,
+        onOpenFlight: (NotificationOpenRequest) -> Unit,
+        onOpenSchedule: (NotificationOpenRequest) -> Unit = {},
+    ) {
         if (!notification.isRead) {
             viewModelScope.launch { repository.markRead(notification.id) }
         }
-        onOpenFlight(notification.id, flightId)
+        if (notification.isExpiredReminder()) return
+        val flightId = notification.flightId()
+        if (flightId == null && notification.kind != NotificationKinds.FlightScheduleUpdated) return
+        val request = NotificationOpenRequest(
+            notificationId = notification.id,
+            flightId = flightId,
+            kind = notification.kind,
+            scheduledArrivalUtc = notification.payload["scheduledArrivalUtc"],
+            leadTimeMinutes = notification.payload["leadTimeMinutes"]?.toIntOrNull(),
+        )
+        if (flightId == null) {
+            onOpenSchedule(request)
+        } else {
+            onOpenFlight(request)
+        }
     }
 
     fun archive(notification: NotificationDto) {

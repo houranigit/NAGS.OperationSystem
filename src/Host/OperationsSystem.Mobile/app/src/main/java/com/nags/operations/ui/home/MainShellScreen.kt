@@ -89,6 +89,9 @@ fun MainShellScreen(
                 launchSingleTop = true
             }
         }
+        // MyFlightsTab consumes the request after it has started either the authoritative by-id
+        // open or the schedule-level list refresh. Keeping it pending until then also covers a
+        // missed SignalR refresh while this tab was already composed.
     }
 
     NotificationPermissionPrompt()
@@ -145,10 +148,8 @@ fun MainShellScreen(
                     MyFlightsTab(
                         viewModel = vm,
                         sheetCallbacks = flightSheetCallbacks,
-                        requestedFlightId = notificationOpenRequest?.flightId,
-                        onRequestedFlightOpened = {
-                            onNotificationHandled(notificationOpenRequest?.notificationId)
-                        },
+                        requestedFlightRequest = notificationOpenRequest,
+                        onRequestedFlightOpened = onNotificationHandled,
                     )
                 }
                 composable(BottomNavDestination.PerLanding.route) {

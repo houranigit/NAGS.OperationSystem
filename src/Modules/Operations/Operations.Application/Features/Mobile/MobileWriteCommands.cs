@@ -94,6 +94,34 @@ internal static class MobileMutations
     }
 }
 
+/// <summary>
+/// Enforces the same fixed STA window as the mobile lists and action sheet. The client also gates
+/// its controls, but this server-side check prevents a stale cache or an older app build from
+/// mutating a flight that is currently information-only.
+/// </summary>
+internal static class MobileActionWindow
+{
+    public static async Task<Result> EnsureAvailableAsync(
+        IOperationsDbContext db,
+        Guid flightId,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var scheduledArrivalUtc = await db.Flights.AsNoTracking()
+            .Where(flight => flight.Id == flightId)
+            .Select(flight => (DateTimeOffset?)flight.Schedule.Sta)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (scheduledArrivalUtc is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+
+        return MobileFlightWindow.Evaluate(scheduledArrivalUtc.Value, timeProvider.GetUtcNow()).IsWithinWindow
+            ? Result.Success()
+            : Error.Forbidden(
+                "This flight is outside the mobile action window and is available for information only.",
+                "Operations.Mobile.FlightOutsideActionWindow");
+    }
+}
+
 // --- Submit a work order for an existing flight ---------------------------------------
 
 public sealed record MobileSubmitWorkOrderCommand(
@@ -137,6 +165,11 @@ public sealed class MobileSubmitWorkOrderCommandHandler(
             return replay.Error;
         if (replay.Value is { } prior)
             return await MobileMutations.ReplayAsync(db, prior, cancellationToken);
+
+        var actionWindow = await MobileActionWindow.EnsureAvailableAsync(
+            db, request.FlightId, timeProvider, cancellationToken);
+        if (actionWindow.IsFailure)
+            return actionWindow.Error;
 
         // Pre-generate the work order id and stage the mutation record so the inner command's
         // SaveChanges persists both atomically.
@@ -341,6 +374,11 @@ public sealed class MobileUpdateWorkOrderCommandHandler(
         if (current is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
+        var actionWindow = await MobileActionWindow.EnsureAvailableAsync(
+            db, current.FlightId, timeProvider, cancellationToken);
+        if (actionWindow.IsFailure)
+            return actionWindow.Error;
+
         db.MobileMutations.Add(MobileMutation.Record(
             request.ClientMutationId, userId, mutationKind,
             request.WorkOrderId, current.FlightId, clientFlightId: null, fingerprint, timeProvider.GetUtcNow()));
@@ -417,6 +455,11 @@ public sealed class MobileReturnToRampCommandHandler(
             .FirstOrDefaultAsync(w => w.Id == request.WorkOrderId, cancellationToken);
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var actionWindow = await MobileActionWindow.EnsureAvailableAsync(
+            db, workOrder.FlightId, timeProvider, cancellationToken);
+        if (actionWindow.IsFailure)
+            return actionWindow.Error;
 
         var combinedPayload = new WorkOrderEditableCommandPayload(
             workOrder.ActualFlightNumber.Value,
@@ -515,6 +558,11 @@ public sealed class MobileCancelFlightCommandHandler(
         if (replay.Value is { } prior)
             return await MobileMutations.ReplayAsync(db, prior, cancellationToken);
 
+        var actionWindow = await MobileActionWindow.EnsureAvailableAsync(
+            db, request.FlightId, timeProvider, cancellationToken);
+        if (actionWindow.IsFailure)
+            return actionWindow.Error;
+
         var payload = new WorkOrderEditableCommandPayload(
             ActualFlightNumber: null,
             AircraftTypeId: null,
@@ -560,10 +608,16 @@ public sealed class MobileInviteEmployeesCommandValidator : AbstractValidator<Mo
 
 public sealed class MobileInviteEmployeesCommandHandler(
     IOperationsDbContext db,
-    ISender sender) : ICommandHandler<MobileInviteEmployeesCommand>
+    ISender sender,
+    TimeProvider timeProvider) : ICommandHandler<MobileInviteEmployeesCommand>
 {
     public async Task<Result> Handle(MobileInviteEmployeesCommand request, CancellationToken cancellationToken)
     {
+        var actionWindow = await MobileActionWindow.EnsureAvailableAsync(
+            db, request.FlightId, timeProvider, cancellationToken);
+        if (actionWindow.IsFailure)
+            return actionWindow.Error;
+
         // The mobile client is online for invites but never holds a fresh RowVersion; resolve it
         // server-side. Add-only semantics and scope checks live in the inner command.
         var rowVersion = await db.Flights.AsNoTracking()

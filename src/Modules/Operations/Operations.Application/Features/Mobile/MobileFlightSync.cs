@@ -36,6 +36,56 @@ public static class MobileFlightSync
         EnqueueAll(broadcaster, flight, MobileSyncOps.Delete, originMutationId);
 
     /// <summary>
+    /// A bulk scheduling command can create hundreds of rows for the same audience. One refresh
+    /// envelope per affected cache avoids making every connected device issue one by-id request
+    /// per new flight while preserving the same eventual list state.
+    /// </summary>
+    public static void EnqueueBulkRefresh(
+        IMobileSyncBroadcaster broadcaster,
+        IReadOnlyCollection<Flight> flights,
+        DateTimeOffset version)
+    {
+        foreach (var staffMemberId in flights
+                     .SelectMany(flight => flight.AssignedEmployees)
+                     .Select(assignment => assignment.Employee.StaffMemberId)
+                     .Distinct())
+        {
+            broadcaster.Enqueue(new MobileSyncChange(
+                Table: MobileSyncTables.Flights,
+                Op: MobileSyncOps.Refresh,
+                EntityId: null,
+                Audience: MobileSyncAudience.Employee(staffMemberId),
+                Version: version));
+        }
+
+        foreach (var stationIata in flights
+                     .Where(flight => flight.IsPerLanding)
+                     .Select(flight => flight.Station.IataCode)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            broadcaster.Enqueue(new MobileSyncChange(
+                Table: MobileSyncTables.FlightsPerLanding,
+                Op: MobileSyncOps.Refresh,
+                EntityId: null,
+                Audience: MobileSyncAudience.Station(stationIata),
+                Version: version));
+        }
+
+        foreach (var stationIata in flights
+                     .Where(flight => flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
+                     .Select(flight => flight.Station.IataCode)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            broadcaster.Enqueue(new MobileSyncChange(
+                Table: MobileSyncTables.FlightsAdHoc,
+                Op: MobileSyncOps.Refresh,
+                EntityId: null,
+                Audience: MobileSyncAudience.Station(stationIata),
+                Version: version));
+        }
+    }
+
+    /// <summary>
     /// Emit a per-staff-member <c>flights</c> envelope — used when an assignment change makes the
     /// flight appear on, or disappear from, one person's "my flights" list without affecting the
     /// rest of the roster.

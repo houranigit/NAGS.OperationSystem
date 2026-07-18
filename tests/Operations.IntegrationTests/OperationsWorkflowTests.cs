@@ -95,6 +95,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
+        var (assignedClient, assignedStaffId) = await CreateStaffLoginAsync(admin, refs);
         var selectedDates = new[]
         {
             new DateOnly(2026, 8, 3),
@@ -113,7 +114,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             selectedDates,
             aircraftTypeId = refs.AircraftTypeId,
             plannedServiceIds = new[] { refs.ServiceId },
-            assignedStaffMemberIds = new[] { refs.StaffMemberId }
+            assignedStaffMemberIds = new[] { assignedStaffId }
         });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
@@ -132,8 +133,18 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             flight.ScheduledArrivalUtc.ShouldBe(expectedArrival);
             flight.ScheduledDepartureUtc.ShouldBe(expectedDeparture);
             flight.PlannedServices.ShouldContain(service => service.ServiceId == refs.ServiceId);
-            flight.AssignedEmployees.ShouldContain(employee => employee.StaffMemberId == refs.StaffMemberId);
+            flight.AssignedEmployees.ShouldContain(employee => employee.StaffMemberId == assignedStaffId);
         }
+
+        await factory.DrainOutboxesAsync();
+        var inbox = await assignedClient.GetFromJsonAsync<NotificationPage>(
+            "/api/v1/notifications/me?page=1&pageSize=20");
+        var scheduleNotifications = inbox!.Items
+            .Where(notification => notification.Kind == "FlightScheduleUpdated")
+            .ToList();
+        var scheduleNotification = scheduleNotifications.ShouldHaveSingleItem();
+        scheduleNotification.Payload["flightCount"].ShouldBe(selectedDates.Length.ToString());
+        scheduleNotification.Payload.ContainsKey("flightId").ShouldBeFalse();
     }
 
     [Fact]

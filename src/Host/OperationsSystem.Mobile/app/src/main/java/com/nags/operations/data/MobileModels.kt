@@ -114,4 +114,9 @@ data class MobileFlightDto(
     val otherWorkOrdersExist: Boolean = false,
     val updatedAtUtc: String? = null,
     val rowVersion: String,
+    /** Server-authoritative result of the inclusive STA ±12-hour mobile window check. */
+    val isWithinMobileWindow: Boolean = true,
+    /** Exact server-derived boundaries used for information-only deep links. */
+    val mobileWindowStartsAtUtc: String? = null,
+    val mobileWindowEndsAtUtc: String? = null,
 )

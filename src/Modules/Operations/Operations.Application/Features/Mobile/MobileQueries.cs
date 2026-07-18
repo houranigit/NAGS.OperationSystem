@@ -33,9 +33,6 @@ internal static class MobileScope
                 "The mobile app requires an account linked to an active staff member.",
                 "Operations.Mobile.StaffLinkRequired");
     }
-
-    /// <summary>Clamp the STA window to the legacy-proven 1–168h range (default 12).</summary>
-    public static int ClampWindowHours(int windowHours) => Math.Clamp(windowHours, 1, 168);
 }
 
 // --- Me ----------------------------------------------------------------------
@@ -146,7 +143,7 @@ public enum MobileFlightList
     AdHoc = 2
 }
 
-public sealed record GetMobileFlightsQuery(MobileFlightList List, int WindowHours = 12)
+public sealed record GetMobileFlightsQuery(MobileFlightList List)
     : IQuery<IReadOnlyList<MobileFlightDto>>;
 
 public sealed class GetMobileFlightsQueryHandler(
@@ -167,7 +164,7 @@ public sealed class GetMobileFlightsQueryHandler(
         var context = scopeResult.Value;
 
         var now = timeProvider.GetUtcNow();
-        var window = TimeSpan.FromHours(MobileScope.ClampWindowHours(request.WindowHours));
+        var window = TimeSpan.FromHours(MobileFlightWindow.DefaultHours);
         var fromUtc = now - window;
         var toUtc = now + window;
 
@@ -197,19 +194,25 @@ public sealed class GetMobileFlightsQueryHandler(
             .Take(MaxFlights)
             .ToListAsync(cancellationToken);
 
-        var dtos = await MobileFlightDtoMapper.MapWithWorkOrdersAsync(db, flights, user.UserId, cancellationToken);
+        var dtos = await MobileFlightDtoMapper.MapWithWorkOrdersAsync(
+            db,
+            flights,
+            user.UserId,
+            now,
+            cancellationToken);
         return Result.Success(dtos);
     }
 }
 
-// --- Flight by id (realtime upsert apply path) -------------------------------------
+// --- Flight by id (realtime apply + notification detail; intentionally not window-filtered) ---
 
 public sealed record GetMobileFlightByIdQuery(Guid Id) : IQuery<MobileFlightDto>;
 
 public sealed class GetMobileFlightByIdQueryHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
-    IUserContext user)
+    IUserContext user,
+    TimeProvider timeProvider)
     : IQueryHandler<GetMobileFlightByIdQuery, MobileFlightDto>
 {
     public async Task<Result<MobileFlightDto>> Handle(GetMobileFlightByIdQuery request, CancellationToken cancellationToken)
@@ -229,7 +232,12 @@ public sealed class GetMobileFlightByIdQueryHandler(
         if (access.IsFailure)
             return access.Error;
 
-        var dtos = await MobileFlightDtoMapper.MapWithWorkOrdersAsync(db, [flight], user.UserId, cancellationToken);
+        var dtos = await MobileFlightDtoMapper.MapWithWorkOrdersAsync(
+            db,
+            [flight],
+            user.UserId,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
         return dtos[0];
     }
 }
@@ -278,6 +286,7 @@ internal static class MobileFlightDtoMapper
         IOperationsDbContext db,
         IReadOnlyList<Flight> flights,
         Guid? callerUserId,
+        DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
         if (flights.Count == 0)
@@ -311,12 +320,20 @@ internal static class MobileFlightDtoMapper
             .Select(flight => Map(
                 flight,
                 myWorkOrders.TryGetValue(flight.Id, out var mine) ? mine : null,
-                otherWorkOrderFlightIds.Contains(flight.Id)))
+                otherWorkOrderFlightIds.Contains(flight.Id),
+                nowUtc))
             .ToList();
     }
 
-    private static MobileFlightDto Map(Flight flight, WorkOrder? myWorkOrder, bool otherWorkOrdersExist) =>
-        new(
+    private static MobileFlightDto Map(
+        Flight flight,
+        WorkOrder? myWorkOrder,
+        bool otherWorkOrdersExist,
+        DateTimeOffset nowUtc)
+    {
+        var mobileWindow = MobileFlightWindow.Evaluate(flight.Schedule.Sta, nowUtc);
+
+        return new(
             flight.Id,
             flight.FlightNumber.Value,
             flight.OriginalFlightNumber,
@@ -339,5 +356,9 @@ internal static class MobileFlightDtoMapper
             myWorkOrder is null ? null : WorkOrderDtoMapper.Detail(myWorkOrder),
             otherWorkOrdersExist,
             flight.UpdatedAtUtc,
-            Convert.ToBase64String(flight.RowVersion));
+            Convert.ToBase64String(flight.RowVersion),
+            mobileWindow.IsWithinWindow,
+            mobileWindow.StartsAtUtc,
+            mobileWindow.EndsAtUtc);
+    }
 }

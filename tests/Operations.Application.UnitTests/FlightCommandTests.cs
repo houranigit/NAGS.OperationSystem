@@ -81,17 +81,20 @@ public sealed class FlightCommandTests
     }
 
     [Fact]
-    public async Task ScheduleFlightsCommand_Enqueues_assignment_event_for_each_flight_and_recipient()
+    public async Task ScheduleFlightsCommand_Enqueues_one_schedule_update_event_per_recipient()
     {
         await using var db = NewDb();
         var stationId = Guid.NewGuid();
-        var staff = Staff(Guid.NewGuid(), stationId, "Assigned");
+        var firstStaff = Staff(Guid.NewGuid(), stationId, "First assigned");
+        var secondStaff = Staff(Guid.NewGuid(), stationId, "Second assigned");
+        var mobileSync = new NoopMobileSyncBroadcaster();
         var handler = new ScheduleFlightsCommandHandler(
             db,
             new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
-            new MasterDataResolver(new ThrowingMasterDataReader([StaffRead(staff, stationId)])),
+            new MasterDataResolver(new ThrowingMasterDataReader(
+                [StaffRead(firstStaff, stationId), StaffRead(secondStaff, stationId)])),
             new NoopTimelineWriter(),
-            new NoopMobileSyncBroadcaster(),
+            mobileSync,
             new StaticUserContext(),
             new StaticAuditContext(),
             TimeProvider.System);
@@ -106,11 +109,69 @@ public sealed class FlightCommandTests
             [new DateOnly(2026, 7, 13), new DateOnly(2026, 7, 14)],
             null,
             [Guid.NewGuid()],
+            [firstStaff.StaffMemberId, secondStaff.StaffMemberId]), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var messages = await db.OutboxMessages.ToListAsync();
+        messages.Count.ShouldBe(2);
+        messages.ShouldAllBe(message => message.Type.Contains(nameof(FlightScheduleUpdated), StringComparison.Ordinal));
+
+        var events = messages
+            .Select(message => JsonSerializer.Deserialize<FlightScheduleUpdated>(message.Content)!)
+            .ToList();
+        events.ShouldAllBe(integrationEvent => integrationEvent.FlightCount == 2);
+        events.Select(integrationEvent => integrationEvent.StaffMemberId)
+            .ToHashSet()
+            .SetEquals([firstStaff.StaffMemberId, secondStaff.StaffMemberId])
+            .ShouldBeTrue();
+        mobileSync.Changes.Count.ShouldBe(2);
+        mobileSync.Changes.ShouldAllBe(change =>
+            change.Table == BuildingBlocks.Application.Mobile.MobileSyncTables.Flights &&
+            change.Op == BuildingBlocks.Application.Mobile.MobileSyncOps.Refresh &&
+            change.EntityId == null);
+        mobileSync.Changes.Select(change => change.Audience).ToHashSet().SetEquals(
+            [
+                BuildingBlocks.Application.Mobile.MobileSyncAudience.Employee(firstStaff.StaffMemberId),
+                BuildingBlocks.Application.Mobile.MobileSyncAudience.Employee(secondStaff.StaffMemberId)
+            ]).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ScheduleFlightsCommand_When_dates_collapse_to_one_flight_keeps_detailed_assignment_event()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var staff = Staff(Guid.NewGuid(), stationId, "Assigned");
+        var handler = new ScheduleFlightsCommandHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
+            new MasterDataResolver(new ThrowingMasterDataReader([StaffRead(staff, stationId)])),
+            new NoopTimelineWriter(),
+            new NoopMobileSyncBroadcaster(),
+            new StaticUserContext(),
+            new StaticAuditContext(),
+            TimeProvider.System);
+
+        var selectedDate = new DateOnly(2026, 7, 13);
+        var result = await handler.Handle(new ScheduleFlightsCommand(
+            Guid.NewGuid(),
+            stationId,
+            Guid.NewGuid(),
+            "SV302",
+            new TimeOnly(10, 0),
+            new TimeOnly(11, 0),
+            [selectedDate, selectedDate],
+            null,
+            [Guid.NewGuid()],
             [staff.StaffMemberId]), CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        (await db.OutboxMessages.CountAsync()).ShouldBe(2);
-        (await db.OutboxMessages.Select(message => message.Id).Distinct().CountAsync()).ShouldBe(2);
+        result.Value.Count.ShouldBe(1);
+        var message = await db.OutboxMessages.SingleAsync();
+        message.Type.ShouldContain(nameof(FlightEmployeeAssigned));
+        var integrationEvent = JsonSerializer.Deserialize<FlightEmployeeAssigned>(message.Content)!;
+        integrationEvent.FlightId.ShouldBe(result.Value[0]);
+        integrationEvent.FlightNumber.ShouldBe("SV302");
     }
 
     [Fact]
@@ -254,8 +315,11 @@ public sealed class FlightCommandTests
 
     private sealed class NoopMobileSyncBroadcaster : BuildingBlocks.Application.Mobile.IMobileSyncBroadcaster
     {
+        public List<BuildingBlocks.Application.Mobile.MobileSyncChange> Changes { get; } = [];
+
         public void Enqueue(BuildingBlocks.Application.Mobile.MobileSyncChange change)
         {
+            Changes.Add(change);
         }
 
         public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

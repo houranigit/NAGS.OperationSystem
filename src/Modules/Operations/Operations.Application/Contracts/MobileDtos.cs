@@ -43,6 +43,8 @@ public sealed record MobileCatalogsDto(
 /// the single-flight fetch used by the realtime upsert path, so the client has one apply path.
 /// <see cref="MyWorkOrder"/> embeds the caller's active work order (full detail, for offline form
 /// hydration); <see cref="OtherWorkOrdersExist"/> signals that another user already opened one.
+/// The mobile-window fields let an unrestricted by-id notification deep link remain readable while
+/// clients keep actions disabled and avoid admitting the row into their list cache.
 /// </summary>
 public sealed record MobileFlightDto(
     Guid Id,
@@ -67,4 +69,7 @@ public sealed record MobileFlightDto(
     WorkOrderDetailDto? MyWorkOrder,
     bool OtherWorkOrdersExist,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    bool IsWithinMobileWindow,
+    DateTimeOffset MobileWindowStartsAtUtc,
+    DateTimeOffset MobileWindowEndsAtUtc);
