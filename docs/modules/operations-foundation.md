@@ -1,7 +1,7 @@
 # Operations Module Foundation
 
 Status: **Implemented — living reference (matches the shipped v1.0.0 module)**
-Last updated: 2026-07-04
+Last updated: 2026-07-18
 
 ## 1. Purpose And Authority
 
@@ -29,7 +29,7 @@ The Operations Module manages **customer airline flights and the ground-support 
 | **Performed Service Line** | A service actually delivered, recorded on the work order, tagged `Planned` or `Extra`. |
 | **Task** | A Major/Minor work activity with participating staff, tools, materials, general support, a time window, and attachments. |
 | **Aircraft Per Landing** | A seeded designation meaning the flight was scheduled with **no intended service** (billed per landing). Not a performable service. Grants station-wide visibility. |
-| **On Call** | The seeded service staff add when a Per-Landing flight actually requests service. A normal performable service. |
+| **On Call** | A derived state: a Per-Landing flight with at least one non-merged work order containing at least one performed service line. It is not a catalog service. |
 | **Assigned Employee** | A `StaffMember` assigned to a flight; controls visibility for non-Per-Landing flights. |
 | **Cancellation Work Order** | A work order whose outcome records the customer cancelling the flight; still completes the flight and may be billable. |
 | **Station Work-Order Number** | Human-facing per-station sequence assigned on approval (`{IATA}-{nnnn}`). |
@@ -174,13 +174,16 @@ Cancellation means **the customer cancelled the flight**. Because the customer m
 - Having both a completion and a cancellation work order (or two completions) for one flight is the **duplicate work orders** scenario (§10).
 - **Who can cancel:** station staff (their own station) and admins. **Reopen/return to review:** admins.
 
-## 8. Services, Per-Landing, On-Call
+## 8. Services, Per-Landing, On Call
 
 ### Decided
 
 - **Planned services are mandatory:** a flight cannot be scheduled without at least one planned service. Ad-hoc/work-order-first flights follow the same rule, with a single exception: an ad-hoc flight created together with an explicit **cancellation** work order may carry none.
 - **Aircraft Per Landing** is a planning/billing **designation**, not a performable service. A flight whose planned service is Aircraft Per Landing was scheduled **without intended service** and is billed per landing. Such flights are **visible station-wide** and serviceable by any station employee.
-- **On Call** is a normal performable service, added when a Per-Landing flight actually requests service.
+- **On Call is derived, not selected:** a Per-Landing flight is On Call when any work order whose status is not `Merged` contains at least one performed service line. No special On Call catalog service exists.
+- The qualifying work order may be a Completion or Cancellation work order in any non-merged lifecycle status. Tasks alone and empty work orders do not qualify. Removing the last persisted service line, deleting its work order, or merging that work order away clears On Call unless another qualifying work order remains.
+- Opening a Per-Landing work order starts with **zero prefilled service lines**. Staff add only the real services actually performed; adding the first such line makes the flight On Call. Normal flights continue to prefill planned performable services.
+- Flight service filters are mutually exclusive: `PerLanding` means the Per-Landing designation without a qualifying work order, `OnCall` means that designation with a qualifying work order, and `Other` means no Per-Landing designation.
 - Staff **cannot select Aircraft Per Landing as a performed service line** (excluded from pickers and rejected server-side).
 - **Mixing rule (enforced in Operations now):** if a flight's planned services include Aircraft Per Landing, it must be the **only** planned service. This rule lived in the legacy Contracts module; it is enforced in Operations while service selection is manual, and revisited when the Contracts module exists.
 - **Planned vs Extra:** each performed service line is tagged `Planned` (from the schedule/contract) or `Extra` (added during the work) so future billing can treat them differently.
@@ -293,7 +296,7 @@ Reference `Identity.Contracts` for integration events only — never `Identity.D
 
 ### MasterData (Decided + Open)
 
-Validate and **snapshot** Customer, Station, OperationType, AircraftType, Service, StaffMember, Tool, Material, GeneralSupport by id, and use `WellKnownMasterDataIds.AircraftPerLandingService`, `OnCallService`, and `AdHocOperationType`.
+Validate and **snapshot** Customer, Station, OperationType, AircraftType, Service, StaffMember, Tool, Material, GeneralSupport by id, and use `WellKnownMasterDataIds.AircraftPerLandingService` and `AdHocOperationType`. On Call is calculated from Operations work orders and has no MasterData id.
 
 **Open — cross-module read seam.** MasterData exposes no reader contracts or read snapshots yet. Operations needs a validated read seam (reader interfaces in `MasterData.Contracts`, or internal query handlers) to validate ids and build snapshots. This must be built as part of Operations' foundation.
 
@@ -332,13 +335,13 @@ All previously open questions are now decided; there are no blocking open items.
 2. **Approval outcome and the single-approved invariant** — an approved `Completion` work order sets the flight to `Completed`; an approved `Cancellation` work order sets it to `Canceled`. **Exactly one `Approved` work order per flight**; to approve a competing/cancellation work order while one is already approved, the admin first **returns the approved work order to review** (unlock) or resolves the duplicate, then approves the intended one.
 3. **Auto-generation timeout** — a **single global value in appsettings** (default 60 min); no per-station override.
 4. **Contracts** — **ignored for now**. Planned services remain **manual selection**. A later iteration may query/validate services from contracts; keep only the nullable `ContractId`/`ContractNumber` seam, with no contract logic in this release.
-5. **On Call** — **no special billing treatment**; it is an ordinary performable service.
+5. **On Call** — a derived Per-Landing flight state, not a service or billing line. Billing uses the real performed service lines that caused the state.
 
 ## 20. Decisions Log
 
 - 2026-07-03 — Two aggregates (`Flight` + `WorkOrder`) with one coherent lifecycle; legacy many-work-order attachment model dropped.
 - 2026-07-03 — Cancellation modeled as a `WorkOrder` (`Cancellation` type) that completes and numbers the flight; not a lightweight flag.
-- 2026-07-03 — Aircraft Per Landing = "no intended service" designation with station-wide visibility; On Call = the add-on service; Per-Landing cannot mix with other planned services (enforced in Operations for now).
+- 2026-07-03 — Aircraft Per Landing = "no intended service" designation with station-wide visibility; Per-Landing cannot mix with other planned services (enforced in Operations for now). The original add-on-service interpretation of On Call was superseded on 2026-07-18.
 - 2026-07-03 — Performed service lines tagged Planned/Extra; planned services auto-copied on work-order open.
 - 2026-07-03 — Service lines and task lines both support multiple employees.
 - 2026-07-03 — Duplicate ad-hoc flights via scoring; duplicate work orders deterministic; merge updates survivor in place and soft-archives losers (`Superseded`/`Merged`) with recorded resolutions — never hard-deleted.
@@ -347,7 +350,7 @@ All previously open questions are now decided; there are no blocking open items.
 - 2026-07-03 — Mobile deferred but design kept mobile-ready with reserved client-idempotency seam.
 - 2026-07-03 — Cancellation handled like work-order creation; a cancellation after an approved completion is a duplicate resolved by admin; exactly one approved work order per flight.
 - 2026-07-03 — Auto-generation timeout is a single global appsettings value (no per-station override).
-- 2026-07-03 — Contracts ignored this release; planned services stay manual selection; only nullable contract seam retained. On Call has no special billing treatment.
+- 2026-07-03 — Contracts ignored this release; planned services stay manual selection; only nullable contract seam retained.
 - 2026-07-04 — `PendingReview` flight status removed. Opening a draft work order does not change the flight; the flight moves `Scheduled → InProgress` only on work-order submit and stays `InProgress` until approval.
 - 2026-07-04 — The Flight is the billing-ready source of truth: approval captures an `ApprovedWorkOrderSnapshot` (scalars + `ApprovedWorkOrderId`/`ApprovedWorkOrderNumber` reference) onto the flight; actual service lines/tasks are read from the locked approved work order. Return/revert clears the snapshot, wipes the work-order number, and reverts the flight to `InProgress`; re-approval draws a new number (never reused).
 - 2026-07-04 — Work orders are owner-scoped by StaffMember (`OwnerStaffMemberId` + snapshot). Only the owner (or an admin) edits/submits; multiple staff may each hold their own work order per flight, one active per staff member per flight.
@@ -356,3 +359,4 @@ All previously open questions are now decided; there are no blocking open items.
 - 2026-07-04 — Visibility is enforced server-side on reads and writes: per-landing flights are station-wide; non-per-landing flights are assigned-staff-only (plus admins). Assigned staff may invite others.
 - 2026-07-04 — Per-flight append-only timeline (`FlightTimelineEntry`) written in-transaction by handlers, exposed at `GET /flights/{id}/timeline`, and shown on the flight detail page.
 - 2026-07-04 — Work-order-first portal flow collects flight planning fields AND work-order actual fields in one dialog; the created flight appears on the calendar and list immediately. Portal calendar page added at `/operations/calendar`.
+- 2026-07-18 — Retired the seeded On Call service. On Call is now derived for a Per-Landing flight from any non-merged work order with at least one performed service line; Per-Landing work orders start empty and staff record only services actually performed.

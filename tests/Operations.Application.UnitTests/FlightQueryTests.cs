@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Seeding;
@@ -243,60 +244,261 @@ public sealed class FlightQueryTests
     [InlineData(FlightServiceCategory.PerLanding)]
     [InlineData(FlightServiceCategory.OnCall)]
     [InlineData(FlightServiceCategory.Other)]
-    public async Task GetFlights_FiltersByServiceCategory(FlightServiceCategory category)
+    public async Task GetFlightsAndExport_UseMutuallyExclusiveServiceCategories(FlightServiceCategory category)
     {
         await using var db = NewDb();
         var perLanding = CreateScheduledFlight(
             "PL", "Per Landing", "100", plannedServices: [PerLandingService()]);
-        var onCall = CreateScheduledFlight("OC", "On Call", "200");
+        var onCall = CreateScheduledFlight(
+            "PL", "On Call", "200", plannedServices: [PerLandingService()]);
         var other = CreateScheduledFlight("OT", "Other", "300");
         db.Flights.AddRange(perLanding, onCall, other);
         await db.SaveChangesAsync();
 
-        db.WorkOrders.Add(CreateWorkOrder(
-            onCall,
-            "200",
-            "On Call",
-            new ServiceSnapshot(WellKnownMasterDataIds.OnCallService, "On Call")));
+        db.WorkOrders.AddRange(
+            CreateWorkOrder(onCall, "200", "Performed service"),
+            CreateWorkOrder(other, "300", "Non-Per-Landing performed service"));
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
-        var result = await new GetFlightsQueryHandler(db, scope).Handle(
+        var listResult = await new GetFlightsQueryHandler(db, scope).Handle(
             new GetFlightsQuery(PageSize: 100, ServiceCategories: [category]),
             CancellationToken.None);
+        var exportResult = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(ServiceCategories: [category]),
+            CancellationToken.None);
 
-        result.IsSuccess.ShouldBeTrue();
+        listResult.IsSuccess.ShouldBeTrue();
+        exportResult.IsSuccess.ShouldBeTrue();
         var expectedId = category switch
         {
             FlightServiceCategory.PerLanding => perLanding.Id,
             FlightServiceCategory.OnCall => onCall.Id,
             _ => other.Id
         };
-        result.Value.Items.Select(row => row.Id).ShouldBe([expectedId]);
+        listResult.Value.Items.Select(row => row.Id).ShouldBe([expectedId]);
+        exportResult.Value.Select(row => row.Id).ShouldBe([expectedId]);
+
+        var item = listResult.Value.Items.Single();
+        item.IsPerLanding.ShouldBe(category is not FlightServiceCategory.Other);
+        item.IsOnCall.ShouldBe(category is FlightServiceCategory.OnCall);
     }
 
     [Fact]
-    public async Task GetPerLandingExtraction_ReturnsOnlyInProgressPerLandingWithoutOnCall()
+    public async Task OnCall_IsDerivedConsistentlyForListCalendarAndDetail()
+    {
+        await using var db = NewDb();
+        var onCall = CreateScheduledFlight(
+            "PL", "On Call", "100", plannedServices: [PerLandingService()]);
+        var other = CreateScheduledFlight("OT", "Other", "200");
+        db.Flights.AddRange(onCall, other);
+        await db.SaveChangesAsync();
+
+        db.WorkOrders.AddRange(
+            CreateWorkOrder(onCall, "100", "Arbitrary performed service"),
+            CreateWorkOrder(other, "200", "Arbitrary performed service"));
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var list = await new GetFlightsQueryHandler(db, scope).Handle(
+            new GetFlightsQuery(PageSize: 100),
+            CancellationToken.None);
+        var calendar = await new GetSchedulerCalendarQueryHandler(db, scope).Handle(
+            new GetSchedulerCalendarQuery(Now.AddMinutes(-1), Now.AddMinutes(1)),
+            CancellationToken.None);
+        var onCallDetail = await new GetFlightByIdQueryHandler(db, scope, new StaticUserContext()).Handle(
+            new GetFlightByIdQuery(onCall.Id),
+            CancellationToken.None);
+        var otherDetail = await new GetFlightByIdQueryHandler(db, scope, new StaticUserContext()).Handle(
+            new GetFlightByIdQuery(other.Id),
+            CancellationToken.None);
+
+        list.IsSuccess.ShouldBeTrue();
+        list.Value.Items.Single(row => row.Id == onCall.Id).IsOnCall.ShouldBeTrue();
+        list.Value.Items.Single(row => row.Id == other.Id).IsOnCall.ShouldBeFalse();
+        calendar.IsSuccess.ShouldBeTrue();
+        calendar.Value.Single(row => row.Id == onCall.Id).IsOnCall.ShouldBeTrue();
+        calendar.Value.Single(row => row.Id == other.Id).IsOnCall.ShouldBeFalse();
+        onCallDetail.IsSuccess.ShouldBeTrue();
+        onCallDetail.Value.IsOnCall.ShouldBeTrue();
+        otherDetail.IsSuccess.ShouldBeTrue();
+        otherDetail.Value.IsOnCall.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(WorkOrderStatus.Submitted, WorkOrderType.Completion, false, true)]
+    [InlineData(WorkOrderStatus.Returned, WorkOrderType.Completion, false, true)]
+    [InlineData(WorkOrderStatus.Approved, WorkOrderType.Completion, false, true)]
+    [InlineData(WorkOrderStatus.Submitted, WorkOrderType.Cancellation, false, true)]
+    [InlineData(WorkOrderStatus.Submitted, WorkOrderType.Completion, true, true)]
+    [InlineData(WorkOrderStatus.Merged, WorkOrderType.Completion, false, false)]
+    public async Task GetFlights_OnCallCountsEveryNonMergedStatusTypeAndMergeGeneratedTarget(
+        WorkOrderStatus status,
+        WorkOrderType type,
+        bool mergeGenerated,
+        bool expectedOnCall)
+    {
+        await using var db = NewDb();
+        var flight = CreateScheduledFlight(
+            "PL", "Per Landing", "100", plannedServices: [PerLandingService()]);
+        var workOrder = CreateWorkOrder(
+            flight,
+            "100",
+            "Performed service",
+            type: type,
+            mergeGenerated: mergeGenerated);
+        TransitionWorkOrder(workOrder, status);
+        db.Flights.Add(flight);
+        db.WorkOrders.Add(workOrder);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsQueryHandler(db, scope).Handle(
+            new GetFlightsQuery(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Items.ShouldHaveSingleItem().IsOnCall.ShouldBe(expectedOnCall);
+    }
+
+    [Fact]
+    public async Task GetFlights_EmptyAndTasksOnlyWorkOrdersDoNotSetOnCall()
+    {
+        await using var db = NewDb();
+        var empty = CreateScheduledFlight(
+            "PL", "Empty", "100", plannedServices: [PerLandingService()]);
+        var tasksOnly = CreateScheduledFlight(
+            "PL", "Tasks only", "200", plannedServices: [PerLandingService()]);
+        db.Flights.AddRange(empty, tasksOnly);
+        db.WorkOrders.AddRange(
+            CreateWorkOrder(empty, "100", "Empty", includeService: false),
+            CreateWorkOrder(
+                tasksOnly,
+                "200",
+                "Tasks only",
+                includeService: false,
+                tasks: [TaskInput()]));
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsQueryHandler(db, scope).Handle(
+            new GetFlightsQuery(PageSize: 100),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Items.ShouldAllBe(row => !row.IsOnCall);
+    }
+
+    [Fact]
+    public async Task GetFlights_RemovingLastServiceLineAndDeletingWorkOrderClearOnCall()
+    {
+        await using var db = NewDb();
+        var flight = CreateScheduledFlight(
+            "PL", "Per Landing", "100", plannedServices: [PerLandingService()]);
+        var workOrder = CreateWorkOrder(flight, "100", "Performed service");
+        db.Flights.Add(flight);
+        db.WorkOrders.Add(workOrder);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var handler = new GetFlightsQueryHandler(db, scope);
+        (await handler.Handle(new GetFlightsQuery(), CancellationToken.None))
+            .Value.Items.ShouldHaveSingleItem().IsOnCall.ShouldBeTrue();
+
+        workOrder.UpdateDetails(
+            workOrder.Type,
+            workOrder.ActualFlightNumber,
+            workOrder.AircraftType,
+            workOrder.AircraftTailNumber,
+            workOrder.Actuals,
+            workOrder.Cancellation,
+            workOrder.Remarks,
+            serviceLines: [],
+            tasks: [],
+            Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+        await db.SaveChangesAsync();
+
+        (await handler.Handle(new GetFlightsQuery(), CancellationToken.None))
+            .Value.Items.ShouldHaveSingleItem().IsOnCall.ShouldBeFalse();
+
+        workOrder.UpdateDetails(
+            workOrder.Type,
+            workOrder.ActualFlightNumber,
+            workOrder.AircraftType,
+            workOrder.AircraftTailNumber,
+            workOrder.Actuals,
+            workOrder.Cancellation,
+            workOrder.Remarks,
+            serviceLines: [ServiceLineInput()],
+            tasks: [],
+            Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+        await db.SaveChangesAsync();
+        (await handler.Handle(new GetFlightsQuery(), CancellationToken.None))
+            .Value.Items.ShouldHaveSingleItem().IsOnCall.ShouldBeTrue();
+
+        db.WorkOrders.Remove(workOrder);
+        await db.SaveChangesAsync();
+
+        (await handler.Handle(new GetFlightsQuery(), CancellationToken.None))
+            .Value.Items.ShouldHaveSingleItem().IsOnCall.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GetPerLandingExtraction_ReturnsOnlyInProgressPerLandingWithoutPerformedServices()
     {
         await using var db = NewDb();
         var eligible = CreateScheduledFlight(
             "PL", "Eligible", "100", plannedServices: [PerLandingService()]);
-        var onCall = CreateScheduledFlight(
-            "PL", "On Call", "200", plannedServices: [PerLandingService()]);
+        var tasksOnly = CreateScheduledFlight(
+            "PL", "Tasks only", "200", plannedServices: [PerLandingService()]);
+        var performed = CreateScheduledFlight(
+            "PL", "Performed", "300", plannedServices: [PerLandingService()]);
+        var cancellationPerformed = CreateScheduledFlight(
+            "PL", "Cancellation performed", "400", plannedServices: [PerLandingService()]);
+        var mergedSource = CreateScheduledFlight(
+            "PL", "Merged source", "500", plannedServices: [PerLandingService()]);
         var scheduled = CreateScheduledFlight(
-            "PL", "Scheduled", "300", plannedServices: [PerLandingService()]);
+            "PL", "Scheduled", "600", plannedServices: [PerLandingService()]);
         eligible.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
-        onCall.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
-        db.Flights.AddRange(eligible, onCall, scheduled);
+        tasksOnly.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        performed.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        cancellationPerformed.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        mergedSource.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        db.Flights.AddRange(eligible, tasksOnly, performed, cancellationPerformed, mergedSource, scheduled);
         await db.SaveChangesAsync();
 
-        var eligibleWorkOrder = CreateWorkOrder(eligible, "100", "Per Landing review");
-        var onCallWorkOrder = CreateWorkOrder(
-            onCall,
+        var eligibleWorkOrder = CreateWorkOrder(eligible, "100", "Per Landing review", includeService: false);
+        var tasksOnlyWorkOrder = CreateWorkOrder(
+            tasksOnly,
             "200",
-            "On Call",
-            new ServiceSnapshot(WellKnownMasterDataIds.OnCallService, "On Call"));
-        db.WorkOrders.AddRange(eligibleWorkOrder, onCallWorkOrder);
+            "Tasks only",
+            includeService: false,
+            tasks: [TaskInput()]);
+        var performedReview = CreateWorkOrder(performed, "300", "Review", includeService: false);
+        var performedWorkOrder = CreateWorkOrder(performed, "300", "Performed service");
+        var cancellationReview = CreateWorkOrder(cancellationPerformed, "400", "Review", includeService: false);
+        var cancellationWorkOrder = CreateWorkOrder(
+            cancellationPerformed,
+            "400",
+            "Cancellation performed service",
+            type: WorkOrderType.Cancellation);
+        var mergedGenerated = CreateWorkOrder(
+            mergedSource,
+            "500",
+            "Merged review",
+            includeService: false,
+            mergeGenerated: true);
+        var mergedServiceSource = CreateWorkOrder(mergedSource, "500", "Merged performed service");
+        mergedServiceSource.MarkMergedInto(mergedGenerated.Id, Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+        db.WorkOrders.AddRange(
+            eligibleWorkOrder,
+            tasksOnlyWorkOrder,
+            performedReview,
+            performedWorkOrder,
+            cancellationReview,
+            cancellationWorkOrder,
+            mergedGenerated,
+            mergedServiceSource);
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
@@ -305,9 +507,12 @@ public sealed class FlightQueryTests
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        var item = result.Value.ShouldHaveSingleItem();
-        item.FlightId.ShouldBe(eligible.Id);
-        item.WorkOrderId.ShouldBe(eligibleWorkOrder.Id);
+        result.Value.Select(item => item.FlightId).ShouldBe(
+            [eligible.Id, tasksOnly.Id, mergedSource.Id],
+            ignoreOrder: true);
+        result.Value.Single(item => item.FlightId == eligible.Id).WorkOrderId.ShouldBe(eligibleWorkOrder.Id);
+        result.Value.Single(item => item.FlightId == tasksOnly.Id).WorkOrderId.ShouldBe(tasksOnlyWorkOrder.Id);
+        result.Value.Single(item => item.FlightId == mergedSource.Id).WorkOrderId.ShouldBe(mergedGenerated.Id);
     }
 
     [Theory]
@@ -379,28 +584,71 @@ public sealed class FlightQueryTests
         Flight flight,
         string actualFlightNumber,
         string remarks,
-        ServiceSnapshot? service = null)
+        bool includeService = true,
+        WorkOrderType type = WorkOrderType.Completion,
+        IReadOnlyList<WorkOrderTaskInput>? tasks = null,
+        bool mergeGenerated = false)
     {
         var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1");
-        var workOrder = WorkOrder.SubmitNew(
-            flight,
-            WorkOrderType.Completion,
-            Guid.NewGuid(),
-            employee,
-            FlightNumber.Create(actualFlightNumber).Value,
-            new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A320"),
-            "HZ-ABC",
-            ActualTime.Create(Now.AddMinutes(10), Now.AddHours(1).AddMinutes(15)).Value,
-            null,
-            remarks,
-            [new WorkOrderServiceLineInput(
-                service ?? new ServiceSnapshot(Guid.NewGuid(), "Deicing"),
-                employee,
-                TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
-                null)],
-            [],
-            Now).Value;
-        return workOrder;
+        WorkOrderServiceLineInput[] serviceLines = includeService
+            ? [ServiceLineInput(employee)]
+            : [];
+        var cancellation = type == WorkOrderType.Cancellation
+            ? CancellationDetails.Create(Now.AddMinutes(5), "Customer canceled").Value
+            : null;
+
+        var ownerUserId = Guid.NewGuid();
+        var actualNumber = FlightNumber.Create(actualFlightNumber).Value;
+        var aircraftType = new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A320");
+        var actuals = ActualTime.Create(Now.AddMinutes(10), Now.AddHours(1).AddMinutes(15)).Value;
+        var workOrder = mergeGenerated
+            ? WorkOrder.SubmitMerged(
+                flight, type, ownerUserId, employee, actualNumber, aircraftType, "HZ-ABC", actuals,
+                cancellation, remarks, serviceLines, tasks ?? [], Now)
+            : WorkOrder.SubmitNew(
+                flight, type, ownerUserId, employee, actualNumber, aircraftType, "HZ-ABC", actuals,
+                cancellation, remarks, serviceLines, tasks ?? [], Now);
+
+        return workOrder.Value;
+    }
+
+    private static WorkOrderServiceLineInput ServiceLineInput(StaffMemberSnapshot? employee = null) =>
+        new(
+            new ServiceSnapshot(Guid.NewGuid(), "Deicing"),
+            employee ?? new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1"),
+            TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
+            null);
+
+    private static WorkOrderTaskInput TaskInput() =>
+        new(
+            Id: null,
+            TaskType.Minor,
+            "Task without a service line",
+            TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
+            Employees: [],
+            Tools: [],
+            Materials: [],
+            GeneralSupports: []);
+
+    private static void TransitionWorkOrder(WorkOrder workOrder, WorkOrderStatus status)
+    {
+        switch (status)
+        {
+            case WorkOrderStatus.Submitted:
+                return;
+            case WorkOrderStatus.Returned:
+                workOrder.Approve(1, "DMM-0001", Guid.NewGuid(), Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+                workOrder.Return(Guid.NewGuid(), "Correction required", Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+                return;
+            case WorkOrderStatus.Approved:
+                workOrder.Approve(1, "DMM-0001", Guid.NewGuid(), Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+                return;
+            case WorkOrderStatus.Merged:
+                workOrder.MarkMergedInto(Guid.NewGuid(), Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+                return;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(status), status, null);
+        }
     }
 
     private static ServiceSnapshot PerLandingService() =>
@@ -410,5 +658,15 @@ public sealed class FlightQueryTests
     {
         public Task<Result<OperationsScopeContext>> ResolveAsync(CancellationToken cancellationToken) =>
             Task.FromResult(Result.Success(context));
+    }
+
+    private sealed class StaticUserContext : IUserContext
+    {
+        public bool IsAuthenticated => true;
+        public Guid? UserId { get; } = Guid.NewGuid();
+        public BuildingBlocks.Contracts.Authorization.UserType? UserType =>
+            BuildingBlocks.Contracts.Authorization.UserType.SystemAdministrator;
+        public Guid? ExternalReferenceId => null;
+        public bool HasPermission(string permission) => true;
     }
 }

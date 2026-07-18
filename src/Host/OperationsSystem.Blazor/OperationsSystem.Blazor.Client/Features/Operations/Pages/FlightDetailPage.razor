@@ -6,6 +6,7 @@
 @inject AuthSession Auth
 @inject IJSRuntime JS
 @inject AuditApiClient AuditApi
+@using OperationsSystem.Blazor.Client.Features.Operations
 
 <PageTitle>@(flight is null ? "Flight" : DisplayFlightNumber(flight))</PageTitle>
 
@@ -35,13 +36,9 @@
                                 <span class="os-pill ofd-status-pill ofd-status-pill--@FlightStatusTone(flight.Status)">
                                     @FlightStatusLabel(flight.Status)
                                 </span>
-                                @if (flight.IsPerLanding)
+                                @if (FlightServicePresentation.Badge(flight.IsPerLanding, flight.IsOnCall) is { } serviceBadge)
                                 {
-                                    <StatusBadge Label="Per landing" Tone="warning" />
-                                }
-                                @if (flight.IsOnCall)
-                                {
-                                    <StatusBadge Label="On Call" Tone="info" />
+                                    <StatusBadge Label="@serviceBadge.Label" Tone="@serviceBadge.Tone" />
                                 }
                                 @if (HasPotentialDuplicate(flight))
                                 {

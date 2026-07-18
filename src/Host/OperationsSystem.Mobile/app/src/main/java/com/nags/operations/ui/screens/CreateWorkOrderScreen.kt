@@ -317,7 +317,11 @@ private fun CreateWorkOrderFormContent(
         )
         if (state.form.serviceLines.isEmpty()) {
             Text(
-                text = "No services yet. Services are optional — tap Add service when you need billable service lines.",
+                text = if (flight.isPerLanding) {
+                    "No performed services yet. Add only services actually performed; adding one makes this flight On Call."
+                } else {
+                    "No performed services yet. Add only services actually performed for this flight."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

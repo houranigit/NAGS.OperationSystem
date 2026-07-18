@@ -20,6 +20,18 @@ class WorkOrderFormValidationTest {
     }
 
     @Test
+    fun work_order_without_service_lines_passes_validation() {
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = validForm().copy(serviceLines = emptyList()),
+            dialogAtdIso = null,
+            isAdHocScratch = false,
+            selectedCustomerId = null,
+        )
+
+        assertNull(errors)
+    }
+
+    @Test
     fun required_lengths_task_type_and_quantities_are_rejected() {
         val form = validForm().copy(
             flightNumber = "",

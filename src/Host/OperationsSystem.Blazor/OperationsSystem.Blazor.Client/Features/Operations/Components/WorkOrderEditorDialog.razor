@@ -2,6 +2,7 @@
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
 @inject AuthSession Auth
+@using OperationsSystem.Blazor.Client.Features.Operations
 
 <div class="owo-form">
     @if (isLoading)
@@ -75,7 +76,6 @@
 </div>
 
 @code {
-    private static readonly Guid OnCallServiceId = new("40000000-0000-0000-0000-000000000002");
     [Parameter] public Guid? FlightId { get; set; }
     [Parameter] public Guid? WorkOrderId { get; set; }
     [Parameter] public string Type { get; set; } = "Completion";
@@ -102,6 +102,9 @@
 
     private bool IsCompletion => model.Type == "Completion";
     private bool IsCancellation => model.Type == "Cancellation";
+    private string EmptyServiceLinesText => flight?.IsPerLanding == true
+        ? "No performed services yet. Add only services actually performed; adding one makes this flight On Call."
+        : "No service lines";
     private int LastStep => IsCompletion ? 3 : 0;
     private string SubmitText => WorkOrderId is null ? "Create" : "Update";
 
@@ -292,7 +295,7 @@
 
         @if (model.ServiceLines.Count == 0)
         {
-            <div class="owo-empty-row"><RadzenIcon Icon="checklist" />No service lines</div>
+            <div class="owo-empty-row"><RadzenIcon Icon="checklist" />@EmptyServiceLinesText</div>
         }
         @foreach (var line in model.ServiceLines)
         {
@@ -1106,22 +1109,14 @@
         ActualArrivalUtc = flight.ScheduledArrivalUtc.UtcDateTime,
         ActualDepartureUtc = flight.ScheduledDepartureUtc.UtcDateTime,
         CanceledAtUtc = flight.ScheduledArrivalUtc.UtcDateTime,
-        ServiceLines = flight.IsPerLanding
-            ? [new ServiceLineForm
+        ServiceLines = FlightServicePresentation.ServicesToPrefill(flight.IsPerLanding, flight.PlannedServices)
+            .Select(service => new ServiceLineForm
             {
-                ServiceId = OnCallServiceId,
+                ServiceId = service.ServiceId,
                 FromUtc = flight.ScheduledArrivalUtc.UtcDateTime,
                 ToUtc = flight.ScheduledDepartureUtc.UtcDateTime
-            }]
-            : flight.PlannedServices
-                .Where(service => !service.IsAircraftPerLanding)
-                .Select(service => new ServiceLineForm
-                {
-                    ServiceId = service.ServiceId,
-                    FromUtc = flight.ScheduledArrivalUtc.UtcDateTime,
-                    ToUtc = flight.ScheduledDepartureUtc.UtcDateTime
-                })
-                .ToList()
+            })
+            .ToList()
     };
 
     private static WorkOrderFormModel FromWorkOrder(WorkOrderDetail workOrder) => new()

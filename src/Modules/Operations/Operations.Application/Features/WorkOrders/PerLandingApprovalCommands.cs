@@ -4,7 +4,6 @@ using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
-using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
@@ -88,11 +87,10 @@ public sealed class ApprovePerLandingFlightsCommandHandler(
             db.SetOriginalRowVersion(workOrder, selection.RowVersion);
         }
 
-        var hasOnCall = await db.WorkOrders.AsNoTracking().AnyAsync(w =>
-            flightIds.Contains(w.FlightId) &&
-            w.ServiceLines.Any(line => line.Service.ServiceId == WellKnownMasterDataIds.OnCallService),
-            cancellationToken);
-        if (hasOnCall)
+        var hasPerformedService = await db.WorkOrders.AsNoTracking()
+            .QualifyingForOnCall()
+            .AnyAsync(w => flightIds.Contains(w.FlightId), cancellationToken);
+        if (hasPerformedService)
             return Ineligible();
 
         var alreadyApproved = await db.WorkOrders.AsNoTracking().AnyAsync(w =>

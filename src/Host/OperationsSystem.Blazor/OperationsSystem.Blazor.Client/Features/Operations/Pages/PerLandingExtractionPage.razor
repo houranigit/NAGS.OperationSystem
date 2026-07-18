@@ -8,7 +8,7 @@
 <RequirePermission Permission="@OperationsPermissions.FlightsView">
     <RequirePermission Permission="@OperationsPermissions.WorkOrdersApprove">
         <div class="os-list-page per-landing-extract-page">
-            <PageHeader Title="Extract Per Landing" Description="In Progress Per Landing flights without an On Call work order.">
+            <PageHeader Title="Extract Per Landing" Description="In Progress Per Landing flights without any performed service lines.">
                 <Actions>
                     <RadzenButton Text="@ApproveButtonText" Icon="task_alt" ButtonStyle="ButtonStyle.Primary"
                                   Disabled="@(isLoading || loadError || isApproving || selectedFlightIds.Count == 0)"
@@ -18,7 +18,7 @@
 
             <div class="ple-summary">
                 <RadzenIcon Icon="filter_alt" />
-                <span>The filters from the Flights page are applied to this extraction.</span>
+                <span>Flights with a performed service are On Call and excluded. The Flights page filters are also applied.</span>
             </div>
 
             <DataListCard TItem="PerLandingExtractionItem" Data="@items" Count="@items.Count"

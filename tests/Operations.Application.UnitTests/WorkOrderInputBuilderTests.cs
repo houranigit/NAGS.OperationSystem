@@ -9,6 +9,31 @@ namespace Operations.Application.UnitTests;
 public sealed class WorkOrderInputBuilderTests
 {
     [Fact]
+    public async Task BuildAsync_AllowsCompletionWithoutServiceLinesOrTasks()
+    {
+        var aircraftTypeId = Guid.NewGuid();
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader()));
+        var arrival = DateTimeOffset.UtcNow;
+
+        var result = await builder.BuildAsync(
+            EmptyPayload() with
+            {
+                ActualFlightNumber = "RJ234",
+                AircraftTypeId = aircraftTypeId,
+                ActualArrivalUtc = arrival,
+                ActualDepartureUtc = arrival.AddHours(1)
+            },
+            WorkOrderType.Completion,
+            "RJ234",
+            Guid.NewGuid(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ServiceLines.ShouldBeEmpty();
+        result.Value.Tasks.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task BuildAsync_RejectsCancellationWithoutRequiredDetails()
     {
         var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader()));
@@ -101,7 +126,7 @@ public sealed class WorkOrderInputBuilderTests
             throw new NotImplementedException();
 
         public Task<AircraftTypeReadSnapshot?> GetAircraftTypeAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<AircraftTypeReadSnapshot?>(new(id, "Airbus", "A320", IsActive: true));
 
         public Task<ServiceReadSnapshot?> GetServiceAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();

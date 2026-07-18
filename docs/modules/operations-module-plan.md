@@ -1,7 +1,7 @@
 # Operations Module Plan
 
-Status: **Implemented — phases 0–7 delivered, including the 2026-07-04 corrections**
-Last updated: 2026-07-04
+Status: **Implemented — phases 0–7 delivered, including the 2026-07-18 On Call correction**
+Last updated: 2026-07-18
 
 This is the phased implementation plan for the v1.0.0 `Operations` module. The domain model it implements is in `docs/modules/operations-foundation.md`; read that first. The plan follows the modular-monolith conventions in `docs/architecture/operations-system-v1.md`.
 
@@ -14,6 +14,10 @@ planned services are mandatory (per-landing mixing rule, ad-hoc cancellation exc
 visibility (per-landing station-wide vs assigned-only) is enforced server-side on reads and writes;
 a per-flight timeline is queryable and shown in the portal; and the portal gained a calendar page and a
 full work-order-first dialog (planning + actual fields).
+
+**2026-07-18 correction:** On Call is no longer a seeded MasterData service. It is the derived state of
+a Per-Landing flight that has a non-merged work order with at least one performed service line. Per-Landing
+work orders start empty; staff add only the services actually performed.
 
 ## 1. Goal And Definition Of Done
 
@@ -38,7 +42,7 @@ Contracts module integration (design seams only), Billing module (event stub onl
 
 ## 3. Prerequisites
 
-- **MasterData read seam.** No cross-module readers/snapshots exist yet. Phase 1 must add reader contracts (or internal query handlers) for Customer, Station, OperationType, AircraftType, Service, StaffMember, Tool, Material, GeneralSupport, plus the well-known ids for Aircraft Per Landing, On Call, and Ad Hoc.
+- **MasterData read seam.** No cross-module readers/snapshots exist yet. Phase 1 must add reader contracts (or internal query handlers) for Customer, Station, OperationType, AircraftType, Service, StaffMember, Tool, Material, GeneralSupport, plus the well-known ids for Aircraft Per Landing and Ad Hoc. On Call is derived inside Operations and has no MasterData id.
 - All prior open questions are resolved (`operations-foundation.md` §19). There are **no blocking decisions**; the plan can run all phases end-to-end.
 
 ## 4. Phased Delivery
@@ -50,7 +54,7 @@ Contracts module integration (design seams only), Billing module (event stub onl
 
 ### Phase 1 — MasterData read seam + snapshots
 - Reader contracts/handlers and immutable snapshot value objects for all referenced MasterData records.
-- Well-known id helpers for Aircraft Per Landing, On Call, Ad Hoc.
+- Well-known id helpers for Aircraft Per Landing and Ad Hoc.
 
 ### Phase 2 — Flight aggregate (scheduling)
 - `Flight` aggregate: value objects (`FlightNumber`, `OriginalFlightNumber`, `ScheduledTime`), planned services, assigned employees, statuses, snapshots, domain events.
@@ -60,7 +64,7 @@ Contracts module integration (design seams only), Billing module (event stub onl
 
 ### Phase 3 — Work Order aggregate (completion)
 - `WorkOrder` aggregate: `WorkOrderType` (Completion/Cancellation), `Status`, `ActualTime`, tail, service lines (Planned/Extra, multi-employee), tasks (Major/Minor, multi-employee, tools/materials/general-support with `Quantity`, `TimeWindow`, attachments), optional signature, Return-to-Ramp.
-- Commands: `OpenWorkOrder` (auto-copy planned services except Per-Landing), `UpdateWorkOrder`, `RecordReturnToRamp`, `SubmitWorkOrder`, `WithdrawWorkOrder`.
+- Commands: `OpenWorkOrder` (auto-copy planned services except Per-Landing, which starts empty), `UpdateWorkOrder`, `RecordReturnToRamp`, `SubmitWorkOrder`, `WithdrawWorkOrder`. A Per-Landing flight becomes On Call once any non-merged work order has a performed service line.
 - Minimum-content rules; attachment policy. `StationWorkOrderSequence` + `WorkOrderNumberGenerator`.
 - Work order detail query, EF config + migration, endpoints, domain tests.
 

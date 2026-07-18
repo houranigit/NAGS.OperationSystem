@@ -6,6 +6,7 @@
 @inject NavigationManager Navigation
 @inject GridPreferences GridPrefs
 @inject AuthSession Auth
+@using OperationsSystem.Blazor.Client.Features.Operations
 
 <PageTitle>Flights</PageTitle>
 
@@ -77,13 +78,9 @@
                             <div class="os-role-cell-text">
                                 <div class="os-role-cell-title">
                                     <strong>@DisplayFlightNumber(flight)</strong>
-                                    @if (flight.IsPerLanding)
+                                    @if (FlightServicePresentation.Badge(flight.IsPerLanding, flight.IsOnCall) is { } serviceBadge)
                                     {
-                                        <span class="ofl-per-landing-badge">Per landing</span>
-                                    }
-                                    @if (flight.IsOnCall)
-                                    {
-                                        <span class="ofl-per-landing-badge">On Call</span>
+                                        <span class="ofl-per-landing-badge">@serviceBadge.Label</span>
                                     }
                                 </div>
                                 <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span>
@@ -155,9 +152,9 @@
     ];
     private readonly IReadOnlyList<StatusFilterOption> serviceCategoryOptions =
     [
-        new("Per Landing flights", "PerLanding"),
-        new("On Call", "OnCall"),
-        new("Other (not Per Landing or On Call)", "Other")
+        new("Per Landing (no performed services)", "PerLanding"),
+        new("On Call (performed services)", "OnCall"),
+        new("Other (not Per Landing)", "Other")
     ];
 
     private int ActiveFilterCount =>

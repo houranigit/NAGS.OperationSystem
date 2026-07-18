@@ -245,7 +245,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
     /// <summary>
     /// Approves an eligible Per Landing completion produced for review. The application layer must
-    /// verify that the flight is Per Landing, In Progress, and has no On Call work order.
+    /// verify that the flight is Per Landing, In Progress, and has no non-merged work order with
+    /// a performed service line.
     /// </summary>
     public Result ApprovePerLandingExtraction(int sequence, string approvalNumber, Guid approverUserId, DateTimeOffset now)
         => ApproveInternal(sequence, approvalNumber, approverUserId, now, requireCompletionDetails: false);

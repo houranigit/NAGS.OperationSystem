@@ -4,6 +4,7 @@
 @inject NavigationManager Navigation
 @inject NotificationService Notifications
 @inject AuthSession Auth
+@using OperationsSystem.Blazor.Client.Features.Operations
 
 <PageTitle>Flight calendar</PageTitle>
 
@@ -335,7 +336,7 @@
         var flightNumber = DisplayFlightNumber(flight);
         var start = flight.ScheduledArrivalUtc.UtcDateTime;
         var end = flight.ScheduledDepartureUtc.UtcDateTime;
-        var text = $"{flightNumber} · {StationLine(flight.StationName, flight.IsPerLanding)}";
+        var text = $"{flightNumber} · {StationLine(flight.StationName, flight.IsPerLanding, flight.IsOnCall)}";
         return new CalendarItem(flight.Id, text, flightNumber, flight.CustomerName, flight.StationName, start, end, flight.Status, flight.IsPerLanding, flight.IsOnCall);
     }
 
@@ -349,8 +350,10 @@
             ? customer.Name
             : $"{customer.IataCode.Trim().ToUpperInvariant()} · {customer.Name}";
 
-    private static string StationLine(string stationName, bool isPerLanding) =>
-        isPerLanding ? $"{stationName} · Per Landing" : stationName;
+    private static string StationLine(string stationName, bool isPerLanding, bool isOnCall) =>
+        FlightServicePresentation.Badge(isPerLanding, isOnCall) is { } serviceBadge
+            ? $"{stationName} · {serviceBadge.Label}"
+            : stationName;
 
     private static string TimeDisplay(DateTime value) => value.ToString("h:mm tt");
 
@@ -381,15 +384,10 @@
         <div class="ofc-flight-main">
             <div class="ofc-flight-heading">
                 <strong>@item.FlightNumberDisplay</strong>
-                @if (item.IsPerLanding)
+                @if (FlightServicePresentation.Badge(item.IsPerLanding, item.IsOnCall) is { } serviceBadge)
                 {
                     <span class="ofc-heading-sep">•</span>
-                    <span class="ofc-per-landing">Per Landing</span>
-                }
-                @if (item.IsOnCall)
-                {
-                    <span class="ofc-heading-sep">•</span>
-                    <span class="ofc-per-landing">On Call</span>
+                    <span class="ofc-per-landing">@serviceBadge.Label</span>
                 }
             </div>
             <span class="ofc-station-name">@item.StationName</span>

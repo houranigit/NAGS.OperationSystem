@@ -84,8 +84,11 @@ WELL_KNOWN_OPERATION_TYPE_IDS = {
 
 WELL_KNOWN_SERVICE_IDS = {
     35: "40000000-0000-0000-0000-000000000001",  # Aircraft Per landing Maintenance Service
-    33: "40000000-0000-0000-0000-000000000002",  # On-Call
 }
+
+# On Call is a derived Operations state, not a catalog service. Keeping this explicit prevents a
+# reset/import from recreating the retired legacy service row.
+RETIRED_LEGACY_SERVICE_IDS = {33}
 
 
 def parse_args() -> argparse.Namespace:
@@ -704,7 +707,22 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
         row for row in data["staff_licenses"] if int(row["user_id"]) not in imported_staff_ids
     ]
 
-    services = data["services"]
+    source_services = data["services"]
+    missing_retired_service_ids = RETIRED_LEGACY_SERVICE_IDS - {
+        int(row["id"]) for row in source_services
+    }
+    if missing_retired_service_ids:
+        raise ValueError(
+            "Retired service ids are missing from the legacy source: "
+            f"{sorted(missing_retired_service_ids)}"
+        )
+
+    retired_services = [
+        row for row in source_services if int(row["id"]) in RETIRED_LEGACY_SERVICE_IDS
+    ]
+    services = [
+        row for row in source_services if int(row["id"]) not in RETIRED_LEGACY_SERVICE_IDS
+    ]
     operation_types = data["operation_types"]
     aircraft_types = data["aircraft_types"]
     tools = data["tools"]
@@ -750,6 +768,7 @@ def generate(data: dict[str, list[dict[str, Any]]], *, apply_default: bool = Fal
     add("    * Customer IATA is optional/non-unique; customer ICAO remains optional/unique.")
     add(f"    * {len(excluded_customers)} source customer rows were explicitly rejected after review.")
     add(f"    * {len(excluded_staff)} duplicate-email source employees were explicitly rejected; one selected employee per email remains.")
+    add(f"    * {len(retired_services)} retired On Call service row was intentionally excluded; On Call is derived from performed work-order service lines.")
     add(f"    * Catalog data included: {len(services)} services, {len(operation_types)} operation types, {len(aircraft_types)} aircraft types, {len(tools)} tools, {len(tool_equipments)} tool equipment rows, {len(materials)} materials, {len(general_supports)} general supports.")
     add("    * Legacy customer-license links are intentionally skipped because the current schema has no target table.")
     add("    * Legacy catalog prices, units, duration rules, package/time fields and aircraft-service price links are intentionally skipped.")

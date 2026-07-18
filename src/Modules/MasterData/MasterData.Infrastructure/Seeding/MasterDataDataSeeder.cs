@@ -94,25 +94,6 @@ public sealed class MasterDataDataSeeder(
             }
         }
 
-        if (!await db.Services.AnyAsync(s => s.Id == WellKnownMasterDataIds.OnCallService, cancellationToken))
-        {
-            var result = Service.Create(
-                "On Call",
-                "On-call standby technical support billed per hour.",
-                now,
-                WellKnownMasterDataIds.OnCallService);
-
-            if (result.IsSuccess)
-            {
-                db.Services.Add(result.Value);
-                changed = true;
-            }
-            else
-            {
-                logger.LogWarning("Skipped seeding On Call service: {Error}", result.Error.Description);
-            }
-        }
-
         if (changed)
         {
             await db.SaveChangesAsync(cancellationToken);

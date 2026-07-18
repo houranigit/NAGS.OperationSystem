@@ -208,6 +208,29 @@ sealed interface SubmitOfflineResult {
     data class Failed(val message: String) : SubmitOfflineResult
 }
 
+/**
+ * Builds the service-line defaults for a new work order. Per-Landing flights intentionally start
+ * empty so staff record only services that were actually performed; normal flights retain their
+ * planned-service prefill.
+ */
+internal fun serviceLinesToPrefill(
+    row: WorkOrderFlightRow,
+    nextKey: () -> Long,
+): List<ServiceLineFormRow> {
+    if (row.isPerLanding) return emptyList()
+
+    return row.plannedServices
+        .filterNot { it.isAircraftPerLanding }
+        .map { service ->
+            ServiceLineFormRow(
+                localKey = nextKey(),
+                serviceId = service.serviceId,
+                fromIso = row.sta,
+                toIso = row.std,
+            )
+        }
+}
+
 class CreateWorkOrderViewModel(
     private val launchMode: CreateWorkOrderLaunchMode,
     private val flightsRepository: FlightsRepository,
@@ -343,30 +366,6 @@ class CreateWorkOrderViewModel(
         }
     }
 
-    /** Planned services seeded into the form; Per-Landing flights instead begin with On Call. */
-    private fun seededServiceLines(row: WorkOrderFlightRow): List<ServiceLineFormRow> {
-        if (row.isPerLanding) {
-            return listOf(
-                ServiceLineFormRow(
-                    localKey = allocKey(),
-                    serviceId = ON_CALL_SERVICE_ID,
-                    fromIso = row.sta,
-                    toIso = row.std,
-                ),
-            )
-        }
-        return row.plannedServices
-            .filterNot { it.isAircraftPerLanding }
-            .map { svc ->
-                ServiceLineFormRow(
-                    localKey = allocKey(),
-                    serviceId = svc.serviceId,
-                    fromIso = row.sta,
-                    toIso = row.std,
-                )
-            }
-    }
-
     /**
      * Persists current form + flight snapshot to Room. Subsequent saves reuse [CreateWorkOrderUiState.activeDraftId].
      */
@@ -453,8 +452,8 @@ class CreateWorkOrderViewModel(
                 draftWorkOrderRowVersion = wo.rowVersion,
             )
         } else {
-            // Planned services copied into seeded lines (skip Per-Landing); the user completes
-            // each line's performer or removes it, and may add extra lines.
+            // Normal flights copy planned services into seeded lines. Per-Landing flights start
+            // empty so the user adds only services that were actually performed.
             CreateWorkOrderFormState(
                 flightNumber = row.flightNumber,
                 aircraftTypeId = presetTypeId,
@@ -462,7 +461,7 @@ class CreateWorkOrderViewModel(
                 scheduledDepartureIso = row.std,
                 ataIso = row.sta,
                 atdIso = row.std,
-                serviceLines = seededServiceLines(row),
+                serviceLines = serviceLinesToPrefill(row, ::allocKey),
                 tasks = emptyList(),
                 draftSubmissionMode = WorkOrderDraftSubmissionMode.ForFlight,
             )
@@ -1187,8 +1186,6 @@ class CreateWorkOrderViewModel(
     }
 
     private companion object {
-        const val ON_CALL_SERVICE_ID = "40000000-0000-0000-0000-000000000002"
-
         fun normalizedFormIdentifiers(form: CreateWorkOrderFormState): CreateWorkOrderFormState =
             form.copy(
                 flightNumber = normalizeWorkOrderFlightNumberInput(form.flightNumber),

@@ -1,6 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using MasterData.Contracts.Seeding;
+using MasterData.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 
 namespace MasterData.IntegrationTests;
@@ -8,11 +13,15 @@ namespace MasterData.IntegrationTests;
 public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<MasterDataApiFactory>
 {
     private const string Base = MasterDataApiFactory.Base;
+    private const string PreviousMasterDataMigration = "20260702215825_MasterData_PendingLoginEmail";
+    private const string RetireOnCallMigration = "20260718195623_MasterData_RetireOnCallService";
+    private static readonly Guid RetiredOnCallServiceId = new("40000000-0000-0000-0000-000000000002");
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record CatalogDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
     private sealed record CatalogItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
+    private sealed record ServiceOption(Guid Id, string Name, bool IsAircraftPerLanding);
     private sealed record AircraftTypeDetail(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
     private sealed record AircraftTypeItem(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive);
@@ -27,21 +36,59 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
 
         var adHoc = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/operation-types/{WellKnownMasterDataIds.AdHocOperationType}");
         var aircraftPerLanding = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/services/{WellKnownMasterDataIds.AircraftPerLandingService}");
-        var onCall = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/services/{WellKnownMasterDataIds.OnCallService}");
 
         adHoc!.Name.ShouldBe("Ad Hoc");
         adHoc.IsSystem.ShouldBeTrue();
         aircraftPerLanding!.Name.ShouldBe("Aircraft Per Landing");
         aircraftPerLanding.IsSystem.ShouldBeTrue();
-        onCall!.Name.ShouldBe("On Call");
-        onCall.IsSystem.ShouldBeTrue();
     }
 
     public static IEnumerable<object[]> SeededCatalogRoutes()
     {
         yield return ["operation-types", WellKnownMasterDataIds.AdHocOperationType];
         yield return ["services", WellKnownMasterDataIds.AircraftPerLandingService];
-        yield return ["services", WellKnownMasterDataIds.OnCallService];
+    }
+
+    [Fact]
+    public async Task Retired_on_call_service_is_absent_from_detail_list_and_options()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+
+        var detail = await client.GetAsync($"{Base}/services/{RetiredOnCallServiceId}");
+        detail.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+
+        var list = await client.GetFromJsonAsync<PagedList<CatalogItem>>(
+            $"{Base}/services?page=1&pageSize=100");
+        list.ShouldNotBeNull();
+        list!.Items.ShouldNotContain(service => service.Id == RetiredOnCallServiceId);
+
+        var options = await client.GetFromJsonAsync<List<ServiceOption>>($"{Base}/services/options");
+        options.ShouldNotBeNull();
+        options!.ShouldNotContain(service => service.Id == RetiredOnCallServiceId);
+    }
+
+    [Fact]
+    public async Task Retire_on_call_migration_deletes_the_existing_row_on_upgrade()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterDataDbContext>();
+        var migrator = db.Database.GetService<IMigrator>();
+
+        await migrator.MigrateAsync(PreviousMasterDataMigration);
+        try
+        {
+            (await db.Services.AsNoTracking().AnyAsync(service => service.Id == RetiredOnCallServiceId))
+                .ShouldBeTrue();
+
+            await migrator.MigrateAsync(RetireOnCallMigration);
+
+            (await db.Services.AsNoTracking().AnyAsync(service => service.Id == RetiredOnCallServiceId))
+                .ShouldBeFalse();
+        }
+        finally
+        {
+            await db.Database.MigrateAsync();
+        }
     }
 
     [Theory]

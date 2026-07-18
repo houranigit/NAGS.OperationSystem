@@ -14,6 +14,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     private const string IdentityBase = OperationsApiFactory.IdentityBase;
     private const string MasterDataBase = OperationsApiFactory.MasterDataBase;
     private const string MobileBase = "/api/v1/mobile";
+    private static readonly Guid RetiredOnCallServiceId = new("40000000-0000-0000-0000-000000000002");
 
     private static int _stationCounter;
 
@@ -84,6 +85,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
         var catalogs = await staff.Client.GetFromJsonAsync<MobileCatalogs>($"{MobileBase}/catalogs");
         catalogs!.Services.ShouldContain(s => s.Id == refs.ServiceId);
+        catalogs.Services.ShouldNotContain(s => s.Id == RetiredOnCallServiceId);
         catalogs.Customers.ShouldContain(c => c.Id == refs.CustomerId);
 
         var roster = await staff.Client.GetFromJsonAsync<List<MobileStaffMember>>($"{MobileBase}/employees/at-my-station");
