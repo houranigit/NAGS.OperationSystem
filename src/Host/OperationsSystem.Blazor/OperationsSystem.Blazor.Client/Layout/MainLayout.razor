@@ -82,7 +82,10 @@
                 @{
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
                     var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
-                    var canOperations = canOpsFlights || canOpsWorkOrders;
+                    var canStaffAllocation = Auth.IsSystemAdministrator
+                        && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersView)
+                        && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersUpdate);
+                    var canOperations = canOpsFlights || canOpsWorkOrders || canStaffAllocation;
                     var operationsActive = IsNavGroupActive("operations");
                 }
                 @if (canOperations)
@@ -113,6 +116,13 @@
                                 <NavLink href="/operations/work-orders" class="os-nav-link" title="Work orders" @onclick="CloseNav">
                                     <RadzenIcon Icon="fact_check" />
                                     <span>Work Orders</span>
+                                </NavLink>
+                            }
+                            @if (canStaffAllocation)
+                            {
+                                <NavLink href="/operations/staff-allocation" class="os-nav-link" title="Staff allocation" @onclick="CloseNav">
+                                    <RadzenIcon Icon="group_work" />
+                                    <span>Staff allocation</span>
                                 </NavLink>
                             }
                         </div>

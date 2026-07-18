@@ -47,7 +47,7 @@ class MyFlightsViewModel(
         val isRefreshing: Boolean = false,
         val error: String? = null,
         val search: String = "",
-        val statusFilter: FlightStatusKind? = null,
+        val statusFilter: FlightStatusKind? = FlightStatusKind.Scheduled,
         val quickFilter: QuickFilter? = null,
         val isOnline: Boolean = true,
         val isSyncing: Boolean = false,

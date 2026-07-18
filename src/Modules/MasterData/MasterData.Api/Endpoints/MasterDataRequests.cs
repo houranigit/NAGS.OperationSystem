@@ -112,3 +112,5 @@ public sealed record UpdateStaffMemberRequest(
     EmploymentContractRequest? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
     IReadOnlyList<StaffLicenseRequest>? Licenses);
+
+public sealed record ReassignStaffMemberStationRequest(Guid StationId);

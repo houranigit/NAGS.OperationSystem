@@ -269,6 +269,34 @@ public sealed record StaffMemberOption(
     string StationCode,
     string ManpowerTypeName);
 
+public sealed record StaffAllocationOverview(
+    IReadOnlyList<StaffAllocationStation> Stations,
+    IReadOnlyList<StaffAllocationMember> StaffMembers);
+
+public sealed record StaffAllocationStation(
+    Guid Id,
+    string IataCode,
+    string Name,
+    string? City);
+
+public sealed record StaffAllocationMember(
+    Guid Id,
+    string FullName,
+    string EmployeeId,
+    Guid StationId,
+    Guid ManpowerTypeId,
+    string ManpowerTypeName,
+    string RowVersion,
+    IReadOnlyList<StaffAllocationLicense> Licenses);
+
+public sealed record StaffAllocationLicense(
+    Guid LicenseId,
+    string Code,
+    string Name,
+    string LicenseNumber);
+
+public sealed record ReassignStaffMemberStationRequest(Guid StationId);
+
 public sealed record EmploymentContractModel(DateOnly StartDate, DateOnly? EndDate);
 
 public sealed record StaffMemberLicenseModel(Guid Id, Guid LicenseId, string LicenseCode, string LicenseName, string LicenseNumber);

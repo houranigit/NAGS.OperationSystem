@@ -149,6 +149,23 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
     }
 
     /// <summary>
+    /// Reassigns this staff member to another station without touching profile, schedule,
+    /// manpower, license, or portal-access data.
+    /// </summary>
+    public Result ReassignStation(Guid stationId, DateTimeOffset now)
+    {
+        if (stationId == Guid.Empty)
+            return Error.Validation("A station is required.", "MasterData.StaffMember.StationRequired");
+
+        if (StationId == stationId)
+            return Error.Validation("The staff member is already assigned to this station.", "MasterData.StaffMember.StationUnchanged");
+
+        StationId = stationId;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
+
+    /// <summary>
     /// Reconciles license assignments by stable id: existing assignments are updated, missing ones are
     /// removed, and id-less ones are created. A staff member cannot hold the same License type twice.
     /// </summary>

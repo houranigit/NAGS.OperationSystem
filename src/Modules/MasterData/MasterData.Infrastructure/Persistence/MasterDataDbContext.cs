@@ -1,3 +1,4 @@
+using System.Data;
 using System.Reflection;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Infrastructure.Messaging;
@@ -15,6 +16,7 @@ using MasterData.Domain.StaffMembers;
 using MasterData.Domain.Stations;
 using MasterData.Domain.Tools;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace MasterData.Infrastructure.Persistence;
 
@@ -42,8 +44,21 @@ public sealed class MasterDataDbContext(DbContextOptions<MasterDataDbContext> op
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
 
+    public async Task<IMasterDataTransaction> BeginSerializableTransactionAsync(
+        CancellationToken cancellationToken = default) =>
+        new MasterDataTransaction(
+            await Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken));
+
     public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class =>
         Entry(entity).Property("RowVersion").OriginalValue = rowVersion;
+
+    private sealed class MasterDataTransaction(IDbContextTransaction transaction) : IMasterDataTransaction
+    {
+        public Task CommitAsync(CancellationToken cancellationToken = default) =>
+            transaction.CommitAsync(cancellationToken);
+
+        public ValueTask DisposeAsync() => transaction.DisposeAsync();
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

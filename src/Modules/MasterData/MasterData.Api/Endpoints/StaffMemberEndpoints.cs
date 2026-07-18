@@ -32,6 +32,12 @@ internal static class StaffMemberEndpoints
             return result.ToOk();
         }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.StaffMembers.View);
 
+        staff.MapGet("/allocation", async (ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetStaffAllocationOverviewQuery(), ct);
+            return result.ToOk();
+        }).RequirePermission(MasterDataPermissions.StaffMembers.View);
+
         staff.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetStaffMemberByIdQuery(id), ct);
@@ -54,6 +60,21 @@ internal static class StaffMemberEndpoints
             var result = await sender.Send(new UpdateStaffMemberCommand(
                 id, request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
                 MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses), rowVersion), ct);
+            return result.ToNoContent();
+        }).RequirePermission(MasterDataPermissions.StaffMembers.Update);
+
+        staff.MapPost("/{id:guid}/reassign-station", async (
+            Guid id,
+            ReassignStaffMemberStationRequest request,
+            HttpRequest http,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(
+                new ReassignStaffMemberStationCommand(id, request.StationId, rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.StaffMembers.Update);
 

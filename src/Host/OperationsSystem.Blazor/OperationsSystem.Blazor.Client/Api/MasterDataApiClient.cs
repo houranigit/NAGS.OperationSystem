@@ -371,6 +371,9 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
         return api.GetAsync<IReadOnlyList<StaffMemberOption>>($"/masterdata/staff-members/options{query}", ct);
     }
 
+    public Task<StaffAllocationOverview> GetStaffAllocationAsync(CancellationToken ct = default) =>
+        api.GetAsync<StaffAllocationOverview>("/masterdata/staff-members/allocation", ct);
+
     public Task<StaffMemberDetail> GetStaffMemberAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<StaffMemberDetail>($"/masterdata/staff-members/{id}", ct);
 
@@ -379,6 +382,17 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
 
     public Task UpdateStaffMemberAsync(Guid id, UpdateStaffMemberRequest request, string rowVersion, CancellationToken ct = default) =>
         api.PutAsync($"/masterdata/staff-members/{id}", request, rowVersion, ct);
+
+    public Task ReassignStaffMemberStationAsync(
+        Guid id,
+        Guid stationId,
+        string rowVersion,
+        CancellationToken ct = default) =>
+        api.PostAsync(
+            $"/masterdata/staff-members/{id}/reassign-station",
+            new ReassignStaffMemberStationRequest(stationId),
+            rowVersion,
+            ct);
 
     public Task ActivateStaffMemberAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/masterdata/staff-members/{id}/activate", rowVersion, ct);

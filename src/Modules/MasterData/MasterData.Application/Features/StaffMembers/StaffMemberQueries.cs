@@ -127,6 +127,103 @@ public sealed class GetActiveStaffMemberOptionsQueryHandler(IMasterDataDbContext
     }
 }
 
+// --- Allocation workspace -------------------------------------------------
+
+/// <summary>
+/// Returns the complete active-staff picture needed by the administrator allocation workspace.
+/// Cross-station staffing is an administrator operation, so scoped callers are denied rather
+/// than being shown a misleading one-station subset.
+/// </summary>
+public sealed record GetStaffAllocationOverviewQuery : IQuery<StaffAllocationOverviewDto>;
+
+public sealed class GetStaffAllocationOverviewQueryHandler(IMasterDataDbContext db, IMasterDataScope scope)
+    : IQueryHandler<GetStaffAllocationOverviewQuery, StaffAllocationOverviewDto>
+{
+    public async Task<Result<StaffAllocationOverviewDto>> Handle(
+        GetStaffAllocationOverviewQuery request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        if (!resolved.Value.IsAdministrator)
+            return AllocationForbidden();
+
+        IReadOnlyList<StaffAllocationStationDto> stations = await db.Stations
+            .AsNoTracking()
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.IataCode)
+            .ThenBy(s => s.Id)
+            .Select(s => new StaffAllocationStationDto(s.Id, s.IataCode, s.Name, s.City))
+            .ToListAsync(cancellationToken);
+
+        var staffRows = await db.StaffMembers
+            .AsNoTracking()
+            .Where(s => s.IsActive && db.Stations.Any(st => st.Id == s.StationId && st.IsActive))
+            .OrderBy(s => s.FullName)
+            .ThenBy(s => s.Id)
+            .Select(s => new
+            {
+                s.Id,
+                s.FullName,
+                s.EmployeeId,
+                s.StationId,
+                s.ManpowerTypeId,
+                ManpowerTypeName = db.ManpowerTypes
+                    .Where(m => m.Id == s.ManpowerTypeId)
+                    .Select(m => m.Name)
+                    .FirstOrDefault() ?? string.Empty,
+                s.RowVersion
+            })
+            .ToListAsync(cancellationToken);
+
+        var licenseRows = await (
+            from assignment in db.StaffMemberLicenses.AsNoTracking()
+            join staff in db.StaffMembers.AsNoTracking() on assignment.StaffMemberId equals staff.Id
+            join station in db.Stations.AsNoTracking() on staff.StationId equals station.Id
+            join license in db.Licenses.AsNoTracking() on assignment.LicenseId equals license.Id
+            where staff.IsActive && station.IsActive
+            orderby license.Code
+            select new
+            {
+                assignment.StaffMemberId,
+                assignment.LicenseId,
+                license.Code,
+                license.Name,
+                assignment.LicenseNumber
+            })
+            .ToListAsync(cancellationToken);
+
+        var licensesByStaff = licenseRows
+            .GroupBy(l => l.StaffMemberId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<StaffAllocationLicenseDto>)g
+                    .Select(l => new StaffAllocationLicenseDto(l.LicenseId, l.Code, l.Name, l.LicenseNumber))
+                    .ToList());
+
+        IReadOnlyList<StaffAllocationMemberDto> staffMembers = staffRows
+            .Select(s => new StaffAllocationMemberDto(
+                s.Id,
+                s.FullName,
+                s.EmployeeId,
+                s.StationId,
+                s.ManpowerTypeId,
+                s.ManpowerTypeName,
+                Convert.ToBase64String(s.RowVersion),
+                licensesByStaff.GetValueOrDefault(s.Id, [])))
+            .ToList();
+
+        return new StaffAllocationOverviewDto(stations, staffMembers);
+    }
+
+    private static Error AllocationForbidden() =>
+        Error.Forbidden(
+            "Staff allocation across stations is available only to system administrators.",
+            "MasterData.StaffAllocation.AdministratorRequired");
+}
+
 // --- By id ----------------------------------------------------------------
 
 public sealed record GetStaffMemberByIdQuery(Guid Id) : IQuery<StaffMemberDto>;

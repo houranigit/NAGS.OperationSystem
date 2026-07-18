@@ -230,6 +230,77 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
     }
 }
 
+// --- Station reassignment -------------------------------------------------
+
+/// <summary>
+/// Moves a staff member between stations without resubmitting or mutating the rest of their
+/// profile. Cross-station reassignment is intentionally restricted to system administrators.
+/// </summary>
+public sealed record ReassignStaffMemberStationCommand(
+    Guid Id,
+    Guid StationId,
+    byte[] RowVersion) : ICommand;
+
+public sealed class ReassignStaffMemberStationCommandValidator : AbstractValidator<ReassignStaffMemberStationCommand>
+{
+    public ReassignStaffMemberStationCommandValidator()
+    {
+        RuleFor(x => x.Id).NotEmpty();
+        RuleFor(x => x.StationId).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+    }
+}
+
+public sealed class ReassignStaffMemberStationCommandHandler(
+    IMasterDataDbContext db,
+    IMasterDataScope scope,
+    TimeProvider timeProvider)
+    : ICommandHandler<ReassignStaffMemberStationCommand>
+{
+    public async Task<Result> Handle(ReassignStaffMemberStationCommand request, CancellationToken cancellationToken)
+    {
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        if (!resolved.Value.IsAdministrator)
+            return StaffMemberGuards.AllocationForbidden();
+
+        await using var transaction = await db.BeginSerializableTransactionAsync(cancellationToken);
+
+        var staff = await db.StaffMembers
+            .FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
+        if (staff is null)
+            return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
+        if (!staff.IsActive)
+            return Error.Validation(
+                "Only active staff members can be reassigned.",
+                "MasterData.StaffAllocation.StaffInactive");
+
+        var stationCheck = await StaffMemberGuards.EnsureActiveStationAsync(db, request.StationId, cancellationToken);
+        if (stationCheck.IsFailure)
+            return stationCheck.Error;
+
+        var reassignment = staff.ReassignStation(request.StationId, timeProvider.GetUtcNow());
+        if (reassignment.IsFailure)
+            return reassignment.Error;
+
+        db.SetOriginalRowVersion(staff, request.RowVersion);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return Result.Success();
+    }
+}
+
 // --- Activate / Deactivate ------------------------------------------------
 
 public sealed record ActivateStaffMemberCommand(Guid Id, byte[] RowVersion) : ICommand;
@@ -332,14 +403,29 @@ internal static class StaffMemberGuards
     public static Error ScopeForbidden() =>
         Error.Forbidden("This record is outside your data scope.", "MasterData.Scope.Forbidden");
 
-    public static async Task<Result> EnsureActiveReferencesAsync(
-        IMasterDataDbContext db, Guid stationId, Guid manpowerTypeId, CancellationToken cancellationToken)
+    public static Error AllocationForbidden() =>
+        Error.Forbidden(
+            "Staff allocation across stations is available only to system administrators.",
+            "MasterData.StaffAllocation.AdministratorRequired");
+
+    public static async Task<Result> EnsureActiveStationAsync(
+        IMasterDataDbContext db, Guid stationId, CancellationToken cancellationToken)
     {
         var station = await db.Stations.FirstOrDefaultAsync(s => s.Id == stationId, cancellationToken);
         if (station is null)
             return Error.NotFound("The selected station was not found.", "MasterData.StaffMember.StationNotFound");
         if (!station.IsActive)
             return Error.Validation("The selected station is inactive.", "MasterData.StaffMember.StationInactive");
+
+        return Result.Success();
+    }
+
+    public static async Task<Result> EnsureActiveReferencesAsync(
+        IMasterDataDbContext db, Guid stationId, Guid manpowerTypeId, CancellationToken cancellationToken)
+    {
+        var stationCheck = await EnsureActiveStationAsync(db, stationId, cancellationToken);
+        if (stationCheck.IsFailure)
+            return stationCheck.Error;
 
         var manpowerType = await db.ManpowerTypes.FirstOrDefaultAsync(m => m.Id == manpowerTypeId, cancellationToken);
         if (manpowerType is null)

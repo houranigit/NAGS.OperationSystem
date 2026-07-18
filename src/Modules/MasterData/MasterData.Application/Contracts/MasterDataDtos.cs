@@ -293,6 +293,36 @@ public sealed record StaffMemberOptionDto(
     string StationCode,
     string ManpowerTypeName);
 
+/// <summary>
+/// Administrator workspace projection for comparing station coverage and moving staff.
+/// It intentionally contains only active stations and active staff members.
+/// </summary>
+public sealed record StaffAllocationOverviewDto(
+    IReadOnlyList<StaffAllocationStationDto> Stations,
+    IReadOnlyList<StaffAllocationMemberDto> StaffMembers);
+
+public sealed record StaffAllocationStationDto(
+    Guid Id,
+    string IataCode,
+    string Name,
+    string? City);
+
+public sealed record StaffAllocationMemberDto(
+    Guid Id,
+    string FullName,
+    string EmployeeId,
+    Guid StationId,
+    Guid ManpowerTypeId,
+    string ManpowerTypeName,
+    string RowVersion,
+    IReadOnlyList<StaffAllocationLicenseDto> Licenses);
+
+public sealed record StaffAllocationLicenseDto(
+    Guid LicenseId,
+    string Code,
+    string Name,
+    string LicenseNumber);
+
 public sealed record EmploymentContractDto(DateOnly StartDate, DateOnly? EndDate);
 
 public sealed record StaffMemberLicenseDto(Guid Id, Guid LicenseId, string LicenseCode, string LicenseName, string LicenseNumber);

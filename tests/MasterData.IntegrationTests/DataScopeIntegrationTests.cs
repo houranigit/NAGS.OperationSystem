@@ -80,6 +80,34 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task Station_staff_cannot_use_cross_station_allocation_even_with_staff_view_and_update_permissions()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var sourceStation = await Helpers.CreateStationAsync(admin);
+        var targetStation = await Helpers.CreateStationAsync(admin);
+        var manpower = await Helpers.CreateManpowerTypeAsync(admin);
+        var staff = await Helpers.CreateStaffAsync(admin, sourceStation, manpower);
+        var scoped = await ProvisionScopedStaffClientAsync(admin, staff.Id, staff.Email);
+
+        (await scoped.GetAsync($"{Base}/staff-members/allocation"))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var ownStaff = await scoped.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staff.Id}");
+        var move = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{Base}/staff-members/{staff.Id}/reassign-station")
+        {
+            Content = JsonContent.Create(new { stationId = targetStation })
+        };
+        move.Headers.TryAddWithoutValidation("If-Match", ownStaff!.RowVersion);
+
+        (await scoped.SendAsync(move)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var unchanged = await admin.GetFromJsonAsync<StaffItem>($"{Base}/staff-members/{staff.Id}");
+        unchanged!.StationId.ShouldBe(sourceStation);
+    }
+
+    [Fact]
     public async Task Access_fails_closed_when_the_parent_station_is_deactivated()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();

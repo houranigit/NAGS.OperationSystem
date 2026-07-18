@@ -53,6 +53,18 @@ public interface IMasterDataDbContext : IOutboxDbContext
 
     public DbSet<StaffMemberLicense> StaffMemberLicenses { get; }
 
+    /// <summary>
+    /// Starts a serializable transaction for a workflow whose validation and write must observe
+    /// the same master-data state.
+    /// </summary>
+    public Task<IMasterDataTransaction> BeginSerializableTransactionAsync(
+        CancellationToken cancellationToken = default);
+
     /// <summary>Sets the original concurrency token so a stale update fails with a concurrency conflict.</summary>
     public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class;
+}
+
+public interface IMasterDataTransaction : IAsyncDisposable
+{
+    public Task CommitAsync(CancellationToken cancellationToken = default);
 }

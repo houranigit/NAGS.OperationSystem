@@ -104,6 +104,35 @@ public sealed class StaffMemberTests
     }
 
     [Fact]
+    public void Reassign_station_changes_only_assignment_and_sets_timestamp()
+    {
+        var staff = NewStaff();
+        var destination = Guid.NewGuid();
+        var later = Now.AddHours(2);
+
+        var result = staff.ReassignStation(destination, later);
+
+        result.IsSuccess.ShouldBeTrue();
+        staff.StationId.ShouldBe(destination);
+        staff.FullName.ShouldBe("Jane Technician");
+        staff.EmployeeId.ShouldBe("EMP-100");
+        staff.ManpowerTypeId.ShouldBe(ManpowerTypeId);
+        staff.UpdatedAtUtc.ShouldBe(later);
+    }
+
+    [Fact]
+    public void Reassign_station_rejects_current_station()
+    {
+        var staff = NewStaff();
+
+        var result = staff.ReassignStation(StationId, Now.AddHours(2));
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("MasterData.StaffMember.StationUnchanged");
+        staff.UpdatedAtUtc.ShouldBeNull();
+    }
+
+    [Fact]
     public void Deactivate_then_activate_toggles_state()
     {
         var staff = NewStaff();

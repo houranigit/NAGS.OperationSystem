@@ -22,6 +22,11 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
     private sealed record StaffDetail(Guid Id, string FullName, string EmployeeId, string Email, Guid StationId, string StationCode, string StationName,
         Guid ManpowerTypeId, string ManpowerTypeName, ContractBody? EmploymentContract, List<DayOfWeek>? WorkingDays,
         Guid? LinkedUserId, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, List<LicenseBody> Licenses);
+    private sealed record StaffAllocationOverview(List<StaffAllocationStation> Stations, List<StaffAllocationMember> StaffMembers);
+    private sealed record StaffAllocationStation(Guid Id, string IataCode, string Name, string? City);
+    private sealed record StaffAllocationMember(Guid Id, string FullName, string EmployeeId, Guid StationId,
+        Guid ManpowerTypeId, string ManpowerTypeName, string RowVersion, List<StaffAllocationLicense> Licenses);
+    private sealed record StaffAllocationLicense(Guid LicenseId, string Code, string Name, string LicenseNumber);
     private sealed record CountryItem(Guid Id, string Name, string IsoCode, bool IsActive);
     private sealed record StationItem(Guid Id, string IataCode, string? IcaoCode, string Name, string City, Guid CountryId, string CountryName, bool IsActive);
     private sealed record LicenseItem(Guid Id, string Code, string Name, bool IsActive);
@@ -70,6 +75,129 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
         detail.Licenses.Count.ShouldBe(1);
         detail.Licenses[0].LicenseNumber.ShouldBe("LIC-001");
         detail.IsActive.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Allocation_overview_returns_active_stations_staff_and_license_details()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var activeStationId = await CreateStationAsync(client);
+        var inactiveStationId = await CreateStationAsync(client);
+        var manpowerTypeId = await CreateManpowerTypeAsync(client);
+        var licenseId = await CreateLicenseAsync(client);
+
+        var activeStaffCreate = await client.PostAsJsonAsync($"{Base}/staff-members", new
+        {
+            fullName = "Allocation Engineer",
+            employeeId = $"EMP-{Guid.NewGuid():N}",
+            email = UniqueEmail(),
+            stationId = activeStationId,
+            manpowerTypeId,
+            employmentContract = (object?)null,
+            workingDays = (string[]?)null,
+            licenses = new[] { new { id = (Guid?)null, licenseId, licenseNumber = "easa-101" } }
+        });
+        activeStaffCreate.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var activeStaffId = await activeStaffCreate.Content.ReadFromJsonAsync<Guid>();
+
+        var inactiveStaffCreate = await client.PostAsJsonAsync(
+            $"{Base}/staff-members",
+            StaffPayload(UniqueEmail(), activeStationId, manpowerTypeId, "Inactive Allocation Staff"));
+        inactiveStaffCreate.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var inactiveStaffId = await inactiveStaffCreate.Content.ReadFromJsonAsync<Guid>();
+        var inactiveStaff = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{inactiveStaffId}", Json);
+        var deactivateStaff = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{inactiveStaffId}/deactivate");
+        deactivateStaff.Headers.TryAddWithoutValidation("If-Match", inactiveStaff!.RowVersion);
+        (await client.SendAsync(deactivateStaff)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var inactiveStation = await client.GetFromJsonAsync<StaffStationDetail>($"{Base}/stations/{inactiveStationId}");
+        var deactivateStation = new HttpRequestMessage(HttpMethod.Post, $"{Base}/stations/{inactiveStationId}/deactivate");
+        deactivateStation.Headers.TryAddWithoutValidation("If-Match", inactiveStation!.RowVersion);
+        (await client.SendAsync(deactivateStation)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var expectedStation = await client.GetFromJsonAsync<StationItem>($"{Base}/stations/{activeStationId}");
+        var expectedLicense = await client.GetFromJsonAsync<LicenseItem>($"{Base}/licenses/{licenseId}");
+        var overview = await client.GetFromJsonAsync<StaffAllocationOverview>($"{Base}/staff-members/allocation", Json);
+
+        overview.ShouldNotBeNull();
+        overview.Stations.ShouldContain(station =>
+            station.Id == activeStationId &&
+            station.IataCode == expectedStation!.IataCode &&
+            station.Name == expectedStation.Name &&
+            station.City == expectedStation.City);
+        overview.Stations.ShouldNotContain(station => station.Id == inactiveStationId);
+
+        var member = overview.StaffMembers.Single(staff => staff.Id == activeStaffId);
+        member.FullName.ShouldBe("Allocation Engineer");
+        member.StationId.ShouldBe(activeStationId);
+        member.ManpowerTypeId.ShouldBe(manpowerTypeId);
+        member.ManpowerTypeName.ShouldNotBeNullOrWhiteSpace();
+        member.RowVersion.ShouldNotBeNullOrWhiteSpace();
+        member.Licenses.ShouldContain(license =>
+            license.LicenseId == licenseId &&
+            license.Code == expectedLicense!.Code &&
+            license.Name == expectedLicense.Name &&
+            license.LicenseNumber == "EASA-101");
+        overview.StaffMembers.ShouldNotContain(staff => staff.Id == inactiveStaffId);
+    }
+
+    [Fact]
+    public async Task Reassign_station_moves_only_the_staff_station_and_rejects_a_stale_token()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var sourceStationId = await CreateStationAsync(client);
+        var targetStationId = await CreateStationAsync(client);
+        var manpowerTypeId = await CreateManpowerTypeAsync(client);
+        var licenseId = await CreateLicenseAsync(client);
+        var email = UniqueEmail();
+
+        var create = await client.PostAsJsonAsync($"{Base}/staff-members", new
+        {
+            fullName = "Transfer Engineer",
+            employeeId = $"EMP-{Guid.NewGuid():N}",
+            email,
+            stationId = sourceStationId,
+            manpowerTypeId,
+            employmentContract = new { startDate = "2026-01-01", endDate = "2027-12-31" },
+            workingDays = new[] { "Sunday", "Monday", "Tuesday" },
+            licenses = new[] { new { id = (Guid?)null, licenseId, licenseNumber = "transfer-001" } }
+        });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var id = await create.Content.ReadFromJsonAsync<Guid>();
+        var before = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{id}", Json);
+
+        var reassign = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{id}/reassign-station")
+        {
+            Content = JsonContent.Create(new { stationId = targetStationId })
+        };
+        reassign.Headers.TryAddWithoutValidation("If-Match", before!.RowVersion);
+        (await client.SendAsync(reassign)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var after = await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{id}", Json);
+        after.ShouldNotBeNull();
+        after.StationId.ShouldBe(targetStationId);
+        after.FullName.ShouldBe(before.FullName);
+        after.EmployeeId.ShouldBe(before.EmployeeId);
+        after.Email.ShouldBe(before.Email);
+        after.ManpowerTypeId.ShouldBe(before.ManpowerTypeId);
+        after.ManpowerTypeName.ShouldBe(before.ManpowerTypeName);
+        after.EmploymentContract.ShouldBe(before.EmploymentContract);
+        after.WorkingDays.ShouldBe(before.WorkingDays);
+        after.LinkedUserId.ShouldBe(before.LinkedUserId);
+        after.IsActive.ShouldBe(before.IsActive);
+        after.CreatedAtUtc.ShouldBe(before.CreatedAtUtc);
+        after.Licenses.ShouldBe(before.Licenses);
+        after.RowVersion.ShouldNotBe(before.RowVersion);
+
+        var staleReassign = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{id}/reassign-station")
+        {
+            Content = JsonContent.Create(new { stationId = sourceStationId })
+        };
+        staleReassign.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
+        (await client.SendAsync(staleReassign)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        (await client.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{id}", Json))!
+            .StationId.ShouldBe(targetStationId);
     }
 
     [Fact]
