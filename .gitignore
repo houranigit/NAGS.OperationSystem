@@ -3,6 +3,7 @@ bin/
 obj/
 *.user
 artifacts/
+releases/
 [Tt]est[Rr]esults/
 *.trx
 .vs/
