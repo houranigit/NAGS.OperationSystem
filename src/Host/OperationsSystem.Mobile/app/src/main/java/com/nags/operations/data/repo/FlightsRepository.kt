@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
  * through the sync coordinator's public surface so every refresh shows up in the Sync Center.
  */
 class FlightsRepository(private val db: AppDatabase) {
-    /** Non-Per-Landing flights the signed-in user is rostered on, sorted by STA ascending. */
+    /** Non-Per-Landing, non-Ad-Hoc flights the signed-in user is rostered on, sorted by STA. */
     fun myFlightsFlow(): Flow<List<FlightEntity>> = db.flightDao().observeAll()
 
     /** Reactive single My-Flights row — drives the invite screen's assigned/roster split. */

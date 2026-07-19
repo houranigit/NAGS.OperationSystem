@@ -28,7 +28,7 @@ fun FlightStatusKind?.color(): Color = when (this) {
 
 fun FlightStatusKind?.label(): String = when (this) {
     FlightStatusKind.Scheduled -> "Scheduled"
-    FlightStatusKind.InProgress -> "In progress"
+    FlightStatusKind.InProgress -> "In Progress"
     FlightStatusKind.Completed -> "Completed"
     FlightStatusKind.Canceled -> "Canceled"
     FlightStatusKind.Merged -> "Merged"

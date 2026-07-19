@@ -137,7 +137,7 @@ public sealed class GetMobileStationStaffQueryHandler(IOperationsScope scope, IM
 /// <summary>Which mobile cache table the list feeds.</summary>
 public enum MobileFlightList
 {
-    /// <summary>Non-Per-Landing flights the caller is rostered on (Room: flights_my).</summary>
+    /// <summary>Non-Per-Landing, non-Ad-Hoc flights the caller is rostered on (Room: flights_my).</summary>
     My = 0,
 
     /// <summary>Per-Landing flights at the caller's station, station-wide by nature (Room: flights_per_landing).</summary>
@@ -157,8 +157,6 @@ public sealed class GetMobileFlightsQueryHandler(
     TimeProvider timeProvider)
     : IQueryHandler<GetMobileFlightsQuery, IReadOnlyList<MobileFlightDto>>
 {
-    private const int MaxFlights = 100;
-
     public async Task<Result<IReadOnlyList<MobileFlightDto>>> Handle(
         GetMobileFlightsQuery request, CancellationToken cancellationToken)
     {
@@ -175,7 +173,10 @@ public sealed class GetMobileFlightsQueryHandler(
         var query = db.Flights.AsNoTracking()
             .Include(f => f.PlannedServices)
             .Include(f => f.AssignedEmployees)
-            .Where(f => f.Status != FlightStatus.Merged)
+            .Where(f =>
+                f.Status == FlightStatus.Scheduled ||
+                f.Status == FlightStatus.InProgress ||
+                f.Status == FlightStatus.Completed)
             .Where(f => f.Station.StationId == context.StationId)
             .Where(f => f.Schedule.Sta >= fromUtc && f.Schedule.Sta <= toUtc);
 
@@ -184,18 +185,18 @@ public sealed class GetMobileFlightsQueryHandler(
         {
             MobileFlightList.My => query
                 .Where(f => !f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService))
+                .Where(f => f.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType)
                 .Where(f => f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId)),
             MobileFlightList.PerLanding => query
-                .Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)),
+                .Where(f => f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService))
+                .Where(f => f.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType),
             MobileFlightList.AdHoc => query
-                .Where(f => f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
-                .Where(f => f.Status == FlightStatus.Scheduled || f.Status == FlightStatus.InProgress),
+                .Where(f => f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType),
             _ => query.Where(_ => false)
         };
 
         var flights = await query
             .OrderBy(f => f.Schedule.Sta).ThenBy(f => f.Id)
-            .Take(MaxFlights)
             .ToListAsync(cancellationToken);
 
         var dtos = await MobileFlightDtoMapper.MapWithWorkOrdersAsync(
@@ -232,7 +233,15 @@ public sealed class GetMobileFlightByIdQueryHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var access = scopeResult.Value.EnsureFlightAccess(flight);
+        // Ad Hoc list membership is station-wide, so its realtime station broadcast must be able
+        // to re-fetch the row by id even when the recipient is not assigned. Keep ordinary
+        // non-Per-Landing flights on the existing assigned/station-wide access rule.
+        var isSameStationAdHoc =
+            flight.Station.StationId == scopeResult.Value.StationId &&
+            flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType;
+        var access = isSameStationAdHoc
+            ? Result.Success()
+            : scopeResult.Value.EnsureFlightAccess(flight);
         if (access.IsFailure)
             return access.Error;
 

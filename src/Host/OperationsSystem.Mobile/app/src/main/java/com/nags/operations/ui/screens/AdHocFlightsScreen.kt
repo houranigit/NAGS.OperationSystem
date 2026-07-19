@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.data.MobileFlightDto
+import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.adhoc.AdHocFlightsViewModel
 import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
@@ -47,14 +48,26 @@ import com.nags.operations.ui.components.FlightSheetCallbacks
 fun AdHocFlightsTab(
     viewModel: AdHocFlightsViewModel,
     sheetCallbacks: FlightSheetCallbacks = FlightSheetCallbacks(),
+    requestedFlightRequest: NotificationOpenRequest? = null,
+    requestedFlight: MobileFlightDto? = null,
+    onRequestedFlightOpened: (request: NotificationOpenRequest) -> Unit = {},
 ) {
     var sheetFlight by remember { mutableStateOf<MobileFlightDto?>(null) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) {
         viewModel.refresh(userInitiated = false)
     }
+    LaunchedEffect(requestedFlightRequest, requestedFlight?.id) {
+        val request = requestedFlightRequest ?: return@LaunchedEffect
+        val flight = requestedFlight ?: return@LaunchedEffect
+        if (!request.flightId.equals(flight.id, ignoreCase = true)) return@LaunchedEffect
 
-    val allowedStatusFilters = remember { AdHocFlightStatusFilterKinds.toSet() }
+        sheetFlight = flight
+        // The shell consumes the persisted request only after the destination owns the sheet.
+        onRequestedFlightOpened(request)
+    }
+
+    val allowedStatusFilters = remember { StandardFlightStatusFilterKinds.toSet() }
     LaunchedEffect(state.statusFilter) {
         val s = state.statusFilter ?: return@LaunchedEffect
         if (s !in allowedStatusFilters) viewModel.setStatusFilter(null)
@@ -79,7 +92,6 @@ fun AdHocFlightsTab(
         PerLandingFlightsStatusFilterRow(
             selected = state.statusFilter,
             onStatusSelected = viewModel::setStatusFilter,
-            filterKinds = AdHocFlightStatusFilterKinds,
         )
 
         PullToRefreshBox(

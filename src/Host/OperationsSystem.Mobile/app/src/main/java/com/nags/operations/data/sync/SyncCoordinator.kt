@@ -3,6 +3,7 @@ package com.nags.operations.data.sync
 import android.util.Log
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.MobileCatalogsDto
+import com.nags.operations.data.MobileFlightCache
 import com.nags.operations.data.api.MobileApi
 import com.nags.operations.data.db.AppDatabase
 import com.nags.operations.data.db.entities.AircraftTypeEntity
@@ -192,17 +193,26 @@ class SyncCoordinator(
     }
 
     private suspend fun syncMyFlights(): SyncOutcome = runSync(SyncTable.Flights) {
-        val rows = api.myFlights().map { it.toFlightEntity() }
+        val now = Instant.now()
+        val rows = api.myFlights()
+            .filter { it.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, now) }
+            .map { it.toFlightEntity() }
         db.flightDao().replaceAll(rows)
     }
 
     private suspend fun syncPerLandingFlights(): SyncOutcome = runSync(SyncTable.PerLandingFlights) {
-        val rows = api.perLandingFlights().map { it.toPerLandingEntity() }
+        val now = Instant.now()
+        val rows = api.perLandingFlights()
+            .filter { it.shouldEnterMobileFlightCache(MobileFlightCache.PerLandingFlights, now) }
+            .map { it.toPerLandingEntity() }
         db.perLandingFlightDao().replaceAll(rows)
     }
 
     private suspend fun syncAdHocFlights(): SyncOutcome = runSync(SyncTable.AdHocFlights) {
-        val rows = api.adHocFlights().map { it.toAdHocEntity() }
+        val now = Instant.now()
+        val rows = api.adHocFlights()
+            .filter { it.shouldEnterMobileFlightCache(MobileFlightCache.AdHocFlights, now) }
+            .map { it.toAdHocEntity() }
         db.adHocFlightDao().replaceAll(rows)
     }
 
@@ -278,7 +288,7 @@ class SyncCoordinator(
     suspend fun refreshMyFlight(flightId: String) =
         cacheMutationMutex.withLock {
             val row = api.flightById(flightId)
-            if (row.shouldEnterMobileFlightCache()) {
+            if (row.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights)) {
                 db.flightDao().upsert(row.toFlightEntity())
             } else {
                 db.flightDao().deleteById(flightId)
@@ -327,7 +337,7 @@ class SyncCoordinator(
         return when (table) {
             MobileSyncTables.Flights -> {
                 val row = api.flightById(entityId)
-                if (row.shouldEnterMobileFlightCache()) {
+                if (row.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights)) {
                     db.flightDao().upsert(row.toFlightEntity())
                 } else {
                     // By-id intentionally serves notification details outside the list window.
@@ -338,7 +348,7 @@ class SyncCoordinator(
             }
             MobileSyncTables.FlightsPerLanding -> {
                 val row = api.flightById(entityId)
-                if (row.shouldEnterMobileFlightCache()) {
+                if (row.shouldEnterMobileFlightCache(MobileFlightCache.PerLandingFlights)) {
                     db.perLandingFlightDao().upsert(row.toPerLandingEntity())
                 } else {
                     db.perLandingFlightDao().deleteById(entityId)
@@ -347,7 +357,7 @@ class SyncCoordinator(
             }
             MobileSyncTables.FlightsAdHoc -> {
                 val row = api.flightById(entityId)
-                if (row.shouldEnterMobileFlightCache()) {
+                if (row.shouldEnterMobileFlightCache(MobileFlightCache.AdHocFlights)) {
                     db.adHocFlightDao().upsert(row.toAdHocEntity())
                 } else {
                     db.adHocFlightDao().deleteById(entityId)

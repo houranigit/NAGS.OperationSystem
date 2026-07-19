@@ -12,6 +12,9 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,6 +33,7 @@ import com.nags.operations.ui.components.NotificationPermissionPrompt
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.adhoc.AdHocFlightsViewModel
 import com.nags.operations.ui.perlanding.PerLandingFlightsViewModel
+import com.nags.operations.ui.flights.AdHocFlightNotificationHandoff
 import com.nags.operations.ui.flights.MyFlightsViewModel
 import com.nags.operations.ui.screens.AdHocFlightsTab
 import com.nags.operations.ui.screens.PerLandingFlightsTab
@@ -73,6 +77,9 @@ fun MainShellScreen(
 
     val innerNav = rememberNavController()
     val innerEntry by innerNav.currentBackStackEntryAsState()
+    var adHocNotificationHandoff by remember {
+        mutableStateOf<AdHocFlightNotificationHandoff?>(null)
+    }
     val selectedTab = when (innerEntry?.destination?.route) {
         BottomNavDestination.PerLanding.route -> BottomNavDestination.PerLanding
         BottomNavDestination.AdHoc.route -> BottomNavDestination.AdHoc
@@ -81,6 +88,12 @@ fun MainShellScreen(
     }
 
     LaunchedEffect(notificationOpenRequest?.notificationId, notificationOpenRequest?.flightId) {
+        if (notificationOpenRequest != null &&
+            adHocNotificationHandoff?.request != notificationOpenRequest
+        ) {
+            // A newer request supersedes a handoff that had not reached the destination yet.
+            adHocNotificationHandoff = null
+        }
         if (notificationOpenRequest != null &&
             innerEntry?.destination?.route != BottomNavDestination.MyFlights.route
         ) {
@@ -150,6 +163,20 @@ fun MainShellScreen(
                         sheetCallbacks = flightSheetCallbacks,
                         requestedFlightRequest = notificationOpenRequest,
                         onRequestedFlightOpened = onNotificationHandled,
+                        onRequestedAdHocFlightResolved = { request, flight ->
+                            adHocNotificationHandoff = AdHocFlightNotificationHandoff(
+                                request = request,
+                                flight = flight,
+                            )
+                            innerNav.navigate(BottomNavDestination.AdHoc.route) {
+                                popUpTo(BottomNavDestination.MyFlights.route) {
+                                    inclusive = false
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                     )
                 }
                 composable(BottomNavDestination.PerLanding.route) {
@@ -164,6 +191,16 @@ fun MainShellScreen(
                     AdHocFlightsTab(
                         viewModel = vm,
                         sheetCallbacks = flightSheetCallbacks,
+                        requestedFlightRequest = adHocNotificationHandoff?.request,
+                        requestedFlight = adHocNotificationHandoff?.flight,
+                        onRequestedFlightOpened = { openedRequest ->
+                            if (adHocNotificationHandoff?.request == openedRequest) {
+                                // Keep the durable request until the destination has assigned its
+                                // local sheet state; a process restart before this point retries.
+                                onNotificationHandled(openedRequest.notificationId)
+                                adHocNotificationHandoff = null
+                            }
+                        },
                     )
                 }
                 composable(BottomNavDestination.Drafts.route) {

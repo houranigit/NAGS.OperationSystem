@@ -45,7 +45,7 @@ class MobileApi(
     suspend fun myStationEmployees(): List<MobileStaffMemberDto> =
         client.get(url("api/v1/mobile/employees/at-my-station")).bodyOrThrow()
 
-    /** Non-Per-Landing flights the caller is rostered on (±12-hour STA window, server-filtered). */
+    /** Non-Per-Landing, non-Ad-Hoc flights the caller is rostered on (±12-hour STA window). */
     suspend fun myFlights(): List<MobileFlightDto> =
         client.get(url("api/v1/mobile/flights/my")).bodyOrThrow()
 

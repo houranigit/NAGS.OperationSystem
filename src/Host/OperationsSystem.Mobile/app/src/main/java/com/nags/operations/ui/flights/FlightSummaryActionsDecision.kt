@@ -9,6 +9,8 @@ enum class FlightSummaryActionsDecision {
     CreateOrCancel,
     UpdateOrReturnToRamp,
     CreateOnly,
+    /** Completed flights expose only the future Return-to-ramp entry point. */
+    CompletedReturnToRamp,
     ReadOnly,
 }
 
@@ -17,7 +19,7 @@ fun deriveFlightSummaryActions(summary: MobileFlightDto): FlightSummaryActionsDe
         ?: return FlightSummaryActionsDecision.ReadOnly
     val myWo = WorkOrderStatusKind.fromWire(summary.myWorkOrder?.status)
     return when (flightStatus) {
-        FlightStatusKind.Completed,
+        FlightStatusKind.Completed -> FlightSummaryActionsDecision.CompletedReturnToRamp
         FlightStatusKind.Canceled,
         FlightStatusKind.Merged -> FlightSummaryActionsDecision.ReadOnly
         FlightStatusKind.Scheduled -> FlightSummaryActionsDecision.CreateOrCancel

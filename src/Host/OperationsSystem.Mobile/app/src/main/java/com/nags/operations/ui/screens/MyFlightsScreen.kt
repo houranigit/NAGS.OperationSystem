@@ -43,7 +43,9 @@ import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.components.FlightDetailsActionsSheet
 import com.nags.operations.ui.components.FlightSheetCallbacks
+import com.nags.operations.ui.flights.FlightNotificationTab
 import com.nags.operations.ui.flights.MyFlightsViewModel
+import com.nags.operations.ui.flights.notificationFlightTab
 
 /**
  * My flights tab body — sits under [com.nags.operations.ui.components.AppHeader]
@@ -56,6 +58,10 @@ fun MyFlightsTab(
     sheetCallbacks: FlightSheetCallbacks = FlightSheetCallbacks(),
     requestedFlightRequest: NotificationOpenRequest? = null,
     onRequestedFlightOpened: (notificationId: String?) -> Unit = {},
+    onRequestedAdHocFlightResolved: (
+        request: NotificationOpenRequest,
+        flight: MobileFlightDto,
+    ) -> Unit = { _, _ -> },
 ) {
     var sheetFlight by remember { mutableStateOf<MobileFlightDto?>(null) }
     var sheetRequest by remember { mutableStateOf<NotificationOpenRequest?>(null) }
@@ -87,10 +93,20 @@ fun MyFlightsTab(
     ) {
         val completedRequest = state.requestedFlightRequest
         if (completedRequest != null && completedRequest == requestedFlightRequest) {
-            state.requestedFlight?.let {
-                sheetRequest = completedRequest
-                sheetFlight = it
-                onRequestedFlightOpened(completedRequest.notificationId)
+            state.requestedFlight?.let { resolvedFlight ->
+                when (notificationFlightTab(resolvedFlight)) {
+                    FlightNotificationTab.MyFlights -> {
+                        sheetRequest = completedRequest
+                        sheetFlight = resolvedFlight
+                        onRequestedFlightOpened(completedRequest.notificationId)
+                    }
+                    FlightNotificationTab.AdHoc -> {
+                        // Do not assign My Flights sheet state, even for one frame. The shell
+                        // carries the authoritative DTO to the Ad Hoc destination instead.
+                        viewModel.consumeRequestedFlight(completedRequest)
+                        onRequestedAdHocFlightResolved(completedRequest, resolvedFlight)
+                    }
+                }
             }
         }
     }
@@ -146,9 +162,7 @@ fun MyFlightsTab(
 
         MyFlightsStatusFilterRow(
             selected = state.statusFilter,
-            quickFilter = state.quickFilter,
             onStatusSelected = viewModel::setStatusFilter,
-            onQuickFilterSelected = viewModel::setQuickFilter,
         )
 
         PullToRefreshBox(
@@ -181,8 +195,7 @@ fun MyFlightsTab(
                     contentAlignment = Alignment.Center,
                 ) {
                     val noFiltersActive = state.search.isBlank() &&
-                        state.statusFilter == null &&
-                        state.quickFilter == null
+                        state.statusFilter == null
                     EmptyState(
                         icon = Icons.Default.FlightTakeoff,
                         title = if (noFiltersActive) "No flights yet" else "No matching flights",
@@ -191,8 +204,6 @@ fun MyFlightsTab(
                                 "You don't have any flights in the previous or next 12 hours. Pull down or tap refresh to check again."
                             state.search.isNotBlank() ->
                                 "No flight matches \"${state.search}\". Try a different search or filter."
-                            state.quickFilter == MyFlightsViewModel.QuickFilter.Pending ->
-                                "All your flights have a work order. Tap a chip to clear the filter."
                             else -> "No flights match the selected status. Try clearing the filter."
                         },
                         actionLabel = "Refresh",

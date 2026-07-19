@@ -46,12 +46,57 @@ class MobileFlightWindowTest {
         val inside = flight(sta.toString(), serverWithinWindow = true)
         val serverRejected = flight(sta.toString(), serverWithinWindow = false)
 
-        assertTrue(inside.shouldEnterMobileFlightCache(sta))
-        assertFalse(serverRejected.shouldEnterMobileFlightCache(sta))
-        assertFalse(inside.shouldEnterMobileFlightCache(sta.minusSeconds(13 * 60 * 60)))
+        assertTrue(inside.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, sta))
+        assertFalse(serverRejected.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, sta))
+        assertFalse(
+            inside.shouldEnterMobileFlightCache(
+                MobileFlightCache.MyFlights,
+                sta.minusSeconds(13 * 60 * 60),
+            ),
+        )
         assertTrue(inside.areMobileActionsAvailable(sta))
         assertFalse(serverRejected.areMobileActionsAvailable(sta))
         assertFalse(inside.areMobileActionsAvailable(sta.plusSeconds(13 * 60 * 60)))
+    }
+
+    @Test
+    fun cacheMembershipKeepsAdHocFlightsOutOfEveryOtherList() {
+        val adHoc = flight(sta.toString(), isAdHoc = true)
+
+        assertFalse(adHoc.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, sta))
+        assertFalse(adHoc.shouldEnterMobileFlightCache(MobileFlightCache.PerLandingFlights, sta))
+        assertTrue(adHoc.shouldEnterMobileFlightCache(MobileFlightCache.AdHocFlights, sta))
+    }
+
+    @Test
+    fun cacheMembershipAcceptsOnlyItsOwnListShape() {
+        val assigned = flight(sta.toString())
+        val perLanding = flight(sta.toString(), isPerLanding = true)
+
+        assertTrue(assigned.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, sta))
+        assertFalse(assigned.shouldEnterMobileFlightCache(MobileFlightCache.PerLandingFlights, sta))
+        assertFalse(assigned.shouldEnterMobileFlightCache(MobileFlightCache.AdHocFlights, sta))
+
+        assertFalse(perLanding.shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, sta))
+        assertTrue(perLanding.shouldEnterMobileFlightCache(MobileFlightCache.PerLandingFlights, sta))
+        assertFalse(perLanding.shouldEnterMobileFlightCache(MobileFlightCache.AdHocFlights, sta))
+    }
+
+    @Test
+    fun cacheMembershipRetainsScheduledInProgressAndCompletedOnly() {
+        listOf("Scheduled", "InProgress", "Completed").forEach { status ->
+            assertTrue(
+                flight(sta.toString(), status = status)
+                    .shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, sta),
+            )
+        }
+
+        listOf("Canceled", "Merged", "Unknown").forEach { status ->
+            assertFalse(
+                flight(sta.toString(), status = status)
+                    .shouldEnterMobileFlightCache(MobileFlightCache.MyFlights, sta),
+            )
+        }
     }
 
     @Test
@@ -63,7 +108,13 @@ class MobileFlightWindowTest {
         assertFalse(fallback.areMobileActionsAvailable(sta))
     }
 
-    private fun flight(staIso: String, serverWithinWindow: Boolean) = MobileFlightDto(
+    private fun flight(
+        staIso: String,
+        serverWithinWindow: Boolean = true,
+        status: String = "Scheduled",
+        isPerLanding: Boolean = false,
+        isAdHoc: Boolean = false,
+    ) = MobileFlightDto(
         id = "flight-1",
         flightNumber = "SV100",
         originalFlightNumber = "SV100",
@@ -75,7 +126,9 @@ class MobileFlightWindowTest {
         operationTypeName = "Scheduled",
         scheduledArrivalUtc = staIso,
         scheduledDepartureUtc = sta.plusSeconds(2 * 60 * 60).toString(),
-        status = "Scheduled",
+        status = status,
+        isPerLanding = isPerLanding,
+        isAdHoc = isAdHoc,
         rowVersion = "revision",
         isWithinMobileWindow = serverWithinWindow,
     )

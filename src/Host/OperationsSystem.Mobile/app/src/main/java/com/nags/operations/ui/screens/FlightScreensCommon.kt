@@ -20,15 +20,11 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.data.FlightStatusKind
 import com.nags.operations.ui.common.color
 import com.nags.operations.ui.common.label
-import com.nags.operations.ui.flights.MyFlightsViewModel
+import com.nags.operations.ui.flights.MobileFlightListStatusKinds
 
-/** Status filter chips for My flights and Per Landing — excludes [FlightStatusKind.Completed]. */
+/** Exactly Scheduled, In Progress, and Completed, in the requested chip order. */
 internal val StandardFlightStatusFilterKinds: List<FlightStatusKind> =
-    FlightStatusKind.entries.filter { it != FlightStatusKind.Completed }
-
-/** Ad Hoc tab: same as [StandardFlightStatusFilterKinds] but without [FlightStatusKind.Scheduled]. */
-internal val AdHocFlightStatusFilterKinds: List<FlightStatusKind> =
-    StandardFlightStatusFilterKinds.filter { it != FlightStatusKind.Scheduled }
+    MobileFlightListStatusKinds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,9 +56,7 @@ fun StatusChipFilter(
 @Composable
 fun MyFlightsStatusFilterRow(
     selected: FlightStatusKind?,
-    quickFilter: MyFlightsViewModel.QuickFilter?,
     onStatusSelected: (FlightStatusKind?) -> Unit,
-    onQuickFilterSelected: (MyFlightsViewModel.QuickFilter?) -> Unit,
 ) {
     val scrollState = rememberScrollState()
     Row(
@@ -75,25 +69,9 @@ fun MyFlightsStatusFilterRow(
     ) {
         StatusChipFilter(
             label = "All",
-            selected = selected == null && quickFilter == null,
+            selected = selected == null,
             color = MaterialTheme.colorScheme.primary,
-            onClick = {
-                onStatusSelected(null)
-                onQuickFilterSelected(null)
-            },
-        )
-        StatusChipFilter(
-            label = "Pending",
-            selected = quickFilter == MyFlightsViewModel.QuickFilter.Pending,
-            color = Color(0xFFFFA000),
-            onClick = {
-                if (quickFilter == MyFlightsViewModel.QuickFilter.Pending) {
-                    onQuickFilterSelected(null)
-                } else {
-                    onQuickFilterSelected(MyFlightsViewModel.QuickFilter.Pending)
-                    onStatusSelected(null)
-                }
-            },
+            onClick = { onStatusSelected(null) },
         )
         StandardFlightStatusFilterKinds.forEach { kind ->
             StatusChipFilter(
@@ -112,7 +90,6 @@ fun MyFlightsStatusFilterRow(
 fun PerLandingFlightsStatusFilterRow(
     selected: FlightStatusKind?,
     onStatusSelected: (FlightStatusKind?) -> Unit,
-    filterKinds: List<FlightStatusKind> = StandardFlightStatusFilterKinds,
 ) {
     val scrollState = rememberScrollState()
     Row(
@@ -129,7 +106,7 @@ fun PerLandingFlightsStatusFilterRow(
             color = MaterialTheme.colorScheme.primary,
             onClick = { onStatusSelected(null) },
         )
-        filterKinds.forEach { kind ->
+        StandardFlightStatusFilterKinds.forEach { kind ->
             StatusChipFilter(
                 label = kind.label(),
                 selected = selected == kind,

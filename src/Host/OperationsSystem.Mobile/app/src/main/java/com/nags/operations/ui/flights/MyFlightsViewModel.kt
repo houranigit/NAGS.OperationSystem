@@ -4,12 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.FlightStatusKind
 import com.nags.operations.data.MobileFlightDto
-import com.nags.operations.data.MobileFlightWindowPhase
 import com.nags.operations.data.WorkOrderTypeKind
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.asInformationOnlyMobileDetail
-import com.nags.operations.data.evaluateMobileWindow
-import com.nags.operations.data.isLocallyWithinMobileWindow
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.data.userMessage
@@ -42,12 +39,6 @@ class MyFlightsViewModel(
     private val coordinator: SyncCoordinator,
     private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
-
-    enum class QuickFilter {
-        /** No work order yet and not canceled — needs attention. */
-        Pending,
-    }
-
     data class UiState(
         val items: List<MobileFlightDto> = emptyList(),
         val isLoading: Boolean = false,
@@ -55,7 +46,6 @@ class MyFlightsViewModel(
         val error: String? = null,
         val search: String = "",
         val statusFilter: FlightStatusKind? = FlightStatusKind.Scheduled,
-        val quickFilter: QuickFilter? = null,
         val isOnline: Boolean = true,
         val isSyncing: Boolean = false,
         /** Local Room draft keyed by flight id (latest-only per flight). */
@@ -242,54 +232,26 @@ class MyFlightsViewModel(
         }
     }
 
-    fun setQuickFilter(filter: QuickFilter?) {
-        _state.update {
-            val next = it.copy(quickFilter = filter)
-            next.copy(items = applyFilters(allItems, next))
-        }
-    }
-
     private fun applyFilters(
         source: List<MobileFlightDto>,
         state: UiState,
     ): List<MobileFlightDto> {
-        if (source.isEmpty()) return source
-        val q = state.search.trim()
-        val now = Instant.now()
-        return source.asSequence()
-            // Snapshot and realtime paths have different endpoints; fail closed locally so an
-            // out-of-window by-id upsert can never flash on the list.
-            .filter { it.isLocallyWithinMobileWindow(now) }
-            .filter { it.isOpenFlight() }
-            .filter { f -> state.statusFilter?.let { it.wire == f.status } ?: true }
-            .filter { f ->
-                when (state.quickFilter) {
-                    QuickFilter.Pending -> f.myWorkOrder == null &&
-                        f.status != FlightStatusKind.Canceled.wire
-                    null -> true
-                }
-            }
-            .filter { it.matchesSearch(q) }
-            .toList()
+        return filterMobileFlightList(
+            source = source,
+            statusFilter = state.statusFilter,
+            search = state.search,
+        ) { flight ->
+            // Ad-hoc membership belongs exclusively to the Ad Hoc tab, even when the signed-in
+            // employee created the flight or appears on its invited roster.
+            flight.belongsToMyFlightsList()
+        }
     }
 
     /** Re-evaluate Room rows exactly when the next inclusive STA boundary changes membership. */
     private fun scheduleNextWindowBoundary() {
         windowBoundaryJob?.cancel()
         val now = Instant.now()
-        val nextBoundary = allItems.asSequence()
-            .mapNotNull { flight ->
-                val window = flight.evaluateMobileWindow(now)
-                when (window.phase) {
-                    MobileFlightWindowPhase.Before -> window.startsAt
-                    // The trailing boundary is inclusive; leave the list one millisecond later.
-                    MobileFlightWindowPhase.Within -> window.endsAt?.plusMillis(1)
-                    MobileFlightWindowPhase.After,
-                    MobileFlightWindowPhase.Unknown -> null
-                }
-            }
-            .filter { it.isAfter(now) }
-            .minOrNull()
+        val nextBoundary = nextMobileFlightWindowBoundary(allItems, now)
             ?: return
 
         windowBoundaryJob = viewModelScope.launch {
@@ -310,22 +272,6 @@ internal fun shouldUseInformationalFlightFallback(error: Throwable): Boolean {
     }
     // Transport failures are eligible even before ConnectivityManager publishes its offline edge.
     return true
-}
-
-/** Scheduled + InProgress only — settled and merged flights leave the actionable lists. */
-internal fun MobileFlightDto.isOpenFlight(): Boolean =
-    status == FlightStatusKind.Scheduled.wire || status == FlightStatusKind.InProgress.wire
-
-internal fun MobileFlightDto.matchesSearch(query: String): Boolean {
-    if (query.isBlank()) return true
-    return listOf(
-        flightNumber,
-        customerName,
-        customerIataCode.orEmpty(),
-        stationIata,
-        operationTypeName,
-        aircraftTypeModel.orEmpty(),
-    ).any { it.contains(query, ignoreCase = true) }
 }
 
 /**

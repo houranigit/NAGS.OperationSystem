@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Mobile;
 using MasterData.Contracts.Seeding;
+using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 
 namespace Operations.Application.Features.Mobile;
@@ -9,8 +10,8 @@ namespace Operations.Application.Features.Mobile;
 /// handlers route broadcasts through this class instead of building envelopes inline so the
 /// audience rules stay in one place:
 /// <list type="bullet">
-///   <item>One <c>flights</c> envelope per assigned staff member — the flight may have just
-///         appeared on / disappeared from each of their "my flights" lists.</item>
+///   <item>One <c>flights</c> envelope per assigned staff member — non-Ad-Hoc list members upsert;
+///         Ad Hoc or unsupported-status rows actively delete any stale My Flights entry.</item>
 ///   <item>One <c>flights-per-landing</c> envelope to the station group when the flight is
 ///         Per-Landing — that tab is station-wide by nature.</item>
 ///   <item>One <c>flights-ad-hoc</c> envelope to the station group when the operation type is
@@ -93,7 +94,11 @@ public static class MobileFlightSync
     public static void EnqueueFlightForStaffMember(IMobileSyncBroadcaster broadcaster, Flight flight, Guid staffMemberId, string op) =>
         broadcaster.Enqueue(new MobileSyncChange(
             Table: MobileSyncTables.Flights,
-            Op: op,
+            Op: ListOp(
+                op,
+                IsVisibleStatus(flight.Status) &&
+                !flight.IsPerLanding &&
+                flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType),
             EntityId: flight.Id.ToString(),
             Audience: MobileSyncAudience.Employee(staffMemberId),
             Version: Version(flight)));
@@ -103,11 +108,15 @@ public static class MobileFlightSync
         var flightId = flight.Id.ToString();
         var version = Version(flight);
 
+        var isVisibleStatus = IsVisibleStatus(flight.Status);
+        var isAdHoc = flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType;
+
         foreach (var assignment in flight.AssignedEmployees)
         {
             broadcaster.Enqueue(new MobileSyncChange(
                 Table: MobileSyncTables.Flights,
-                Op: op,
+                // Ad Hoc and non-list statuses must actively purge older My Flights cache rows.
+                Op: ListOp(op, isVisibleStatus && !flight.IsPerLanding && !isAdHoc),
                 EntityId: flightId,
                 Audience: MobileSyncAudience.Employee(assignment.Employee.StaffMemberId),
                 Version: version,
@@ -121,7 +130,7 @@ public static class MobileFlightSync
         {
             broadcaster.Enqueue(new MobileSyncChange(
                 Table: MobileSyncTables.FlightsPerLanding,
-                Op: op,
+                Op: ListOp(op, isVisibleStatus && !isAdHoc),
                 EntityId: flightId,
                 Audience: MobileSyncAudience.Station(flight.Station.IataCode),
                 Version: version,
@@ -129,11 +138,11 @@ public static class MobileFlightSync
                 OriginMutationId: originMutationId));
         }
 
-        if (flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
+        if (isAdHoc)
         {
             broadcaster.Enqueue(new MobileSyncChange(
                 Table: MobileSyncTables.FlightsAdHoc,
-                Op: op,
+                Op: ListOp(op, isVisibleStatus),
                 EntityId: flightId,
                 Audience: MobileSyncAudience.Station(flight.Station.IataCode),
                 Version: version,
@@ -141,6 +150,14 @@ public static class MobileFlightSync
                 OriginMutationId: originMutationId));
         }
     }
+
+    private static string ListOp(string requestedOp, bool isListMember) =>
+        requestedOp == MobileSyncOps.Delete || !isListMember
+            ? MobileSyncOps.Delete
+            : MobileSyncOps.Upsert;
+
+    private static bool IsVisibleStatus(FlightStatus status) =>
+        status is FlightStatus.Scheduled or FlightStatus.InProgress or FlightStatus.Completed;
 
     private static DateTimeOffset Version(Flight flight) => flight.UpdatedAtUtc ?? flight.CreatedAtUtc;
 }

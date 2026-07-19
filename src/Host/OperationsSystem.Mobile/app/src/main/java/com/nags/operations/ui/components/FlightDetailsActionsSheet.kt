@@ -215,6 +215,19 @@ fun FlightDetailsActionsSheet(
             }
 
             when {
+                // This intentionally precedes local-draft handling: even stale local state must
+                // not expose work-order actions once the authoritative flight is Completed.
+                decision == FlightSummaryActionsDecision.CompletedReturnToRamp -> {
+                    SheetActionButton(
+                        icon = Icons.AutoMirrored.Filled.Undo,
+                        label = "Return to ramp",
+                        onClick = {},
+                        primary = false,
+                        // Placeholder only. Its distinct completed-flight workflow will be added
+                        // later; for now the visible button deliberately performs no action.
+                        enabled = true,
+                    )
+                }
                 localDraftId != null -> {
                     SheetActionButton(
                         icon = Icons.Default.EditNote,

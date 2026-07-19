@@ -61,9 +61,36 @@ fun MobileFlightDto.isLocallyWithinMobileWindow(now: Instant = Instant.now()): B
 fun MobileFlightDto.areMobileActionsAvailable(now: Instant = Instant.now()): Boolean =
     isWithinMobileWindow && isLocallyWithinMobileWindow(now)
 
-/** A realtime row enters a list cache only when both server and local boundary checks agree. */
-fun MobileFlightDto.shouldEnterMobileFlightCache(now: Instant = Instant.now()): Boolean =
-    areMobileActionsAvailable(now)
+/** The three Room flight tables have deliberately different membership rules. */
+enum class MobileFlightCache {
+    MyFlights,
+    PerLandingFlights,
+    AdHocFlights,
+}
+
+private val MOBILE_LIST_STATUSES = setOf(
+    FlightStatusKind.Scheduled.wire,
+    FlightStatusKind.InProgress.wire,
+    FlightStatusKind.Completed.wire,
+)
+
+/**
+ * A snapshot or realtime row enters a list cache only when its status, list membership, and both
+ * server/local window checks agree. Keeping this policy at the write boundary prevents a by-id
+ * Ad Hoc upsert (for example, after an invitation) from leaking into My Flights.
+ */
+fun MobileFlightDto.shouldEnterMobileFlightCache(
+    cache: MobileFlightCache,
+    now: Instant = Instant.now(),
+): Boolean {
+    if (status !in MOBILE_LIST_STATUSES || !areMobileActionsAvailable(now)) return false
+
+    return when (cache) {
+        MobileFlightCache.MyFlights -> !isPerLanding && !isAdHoc
+        MobileFlightCache.PerLandingFlights -> isPerLanding && !isAdHoc
+        MobileFlightCache.AdHocFlights -> isAdHoc
+    }
+}
 
 /** A cached deep-link fallback may render details, but can never inherit cached action authority. */
 fun MobileFlightDto.asInformationOnlyMobileDetail(): MobileFlightDto =

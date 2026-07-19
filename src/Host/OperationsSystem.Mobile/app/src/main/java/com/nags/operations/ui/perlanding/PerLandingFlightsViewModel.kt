@@ -15,16 +15,20 @@ import com.nags.operations.data.sync.SyncOutcome
 import com.nags.operations.data.sync.SyncReport
 import com.nags.operations.data.sync.SyncTable
 import com.nags.operations.data.toSummary
+import com.nags.operations.ui.flights.belongsToPerLandingFlightsList
 import com.nags.operations.ui.flights.cancelFlightInternal
-import com.nags.operations.ui.flights.isOpenFlight
-import com.nags.operations.ui.flights.matchesSearch
+import com.nags.operations.ui.flights.filterMobileFlightList
+import com.nags.operations.ui.flights.nextMobileFlightWindowBoundary
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Per-Landing flights at the user's station. Station-wide by nature: the user may not be on
@@ -44,7 +48,7 @@ class PerLandingFlightsViewModel(
         val isRefreshing: Boolean = false,
         val error: String? = null,
         val search: String = "",
-        val statusFilter: FlightStatusKind? = null,
+        val statusFilter: FlightStatusKind? = FlightStatusKind.Scheduled,
         val isOnline: Boolean = true,
         val isSyncing: Boolean = false,
         val draftIdByFlightId: Map<String, String> = emptyMap(),
@@ -57,6 +61,7 @@ class PerLandingFlightsViewModel(
 
     private var allItems: List<MobileFlightDto> = emptyList()
     private var refreshJob: Job? = null
+    private var windowBoundaryJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -86,6 +91,7 @@ class PerLandingFlightsViewModel(
                         error = null,
                     )
                 }
+                scheduleNextWindowBoundary()
             }
         }
     }
@@ -148,13 +154,25 @@ class PerLandingFlightsViewModel(
     private fun applyFilters(
         source: List<MobileFlightDto>,
         state: UiState,
-    ): List<MobileFlightDto> {
-        if (source.isEmpty()) return source
-        val q = state.search.trim()
-        return source.asSequence()
-            .filter { it.isOpenFlight() }
-            .filter { f -> state.statusFilter?.let { it.wire == f.status } ?: true }
-            .filter { it.matchesSearch(q) }
-            .toList()
+    ): List<MobileFlightDto> = filterMobileFlightList(
+        source = source,
+        statusFilter = state.statusFilter,
+        search = state.search,
+        includeFlight = MobileFlightDto::belongsToPerLandingFlightsList,
+    )
+
+    private fun scheduleNextWindowBoundary() {
+        windowBoundaryJob?.cancel()
+        val now = Instant.now()
+        val nextBoundary = nextMobileFlightWindowBoundary(allItems, now) ?: return
+
+        windowBoundaryJob = viewModelScope.launch {
+            delay(Duration.between(Instant.now(), nextBoundary).toMillis().coerceAtLeast(1))
+            windowBoundaryJob = null
+            _state.update { current ->
+                current.copy(items = applyFilters(allItems, current))
+            }
+            scheduleNextWindowBoundary()
+        }
     }
 }
