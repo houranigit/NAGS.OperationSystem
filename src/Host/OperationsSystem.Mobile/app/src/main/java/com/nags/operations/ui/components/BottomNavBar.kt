@@ -195,7 +195,7 @@ private fun BottomNavItem(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 12.sp,
-                        textAlign = TextAlign.Center,
+                        textAlign = TextAlign.Start,
                         letterSpacing = (-0.2).sp,
                         platformStyle = PlatformTextStyle(includeFontPadding = false),
                         lineHeightStyle = LineHeightStyle(
