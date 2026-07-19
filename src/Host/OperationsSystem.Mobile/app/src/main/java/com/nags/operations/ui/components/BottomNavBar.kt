@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.Assignment
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material3.Icon
@@ -225,7 +224,7 @@ enum class BottomNavDestination(
     val label: String,
     val icon: ImageVector,
 ) {
-    MyFlights("flights", "My flights", Icons.Filled.CalendarMonth),
+    MyFlights("flights", "My flights", Icons.Filled.Flight),
     PerLanding("per_landing_flights", "Per Landing", Icons.Filled.Flight),
     /** Center FAB — opens root create flow; not a real inner-nav tab destination. */
     Create("quick_create", "Create", Icons.Filled.Add),
