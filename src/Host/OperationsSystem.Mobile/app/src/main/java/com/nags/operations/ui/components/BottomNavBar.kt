@@ -192,7 +192,7 @@ private fun BottomNavItem(
                     text = "Per\nLanding",
                     color = iconTint,
                     style = TextStyle(
-                        fontSize = 11.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         lineHeight = 12.sp,
                         textAlign = TextAlign.Start,
