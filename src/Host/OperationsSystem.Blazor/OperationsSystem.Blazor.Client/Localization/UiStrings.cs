@@ -97,6 +97,8 @@ public static class UiStrings
         public static string SignInSubtitle => UiText.Get("Auth.SignInSubtitle", "Use your portal account to continue.");
         public static string Email => UiText.Get("Auth.Email", "Email");
         public static string Password => UiText.Get("Auth.Password", "Password");
+        public static string ShowPassword => UiText.Get("Auth.ShowPassword", "Show password");
+        public static string HidePassword => UiText.Get("Auth.HidePassword", "Hide password");
         public static string SignInButton => UiText.Get("Auth.SignInButton", "Sign in");
         public static string CredentialsRequired => UiText.Get("Auth.CredentialsRequired", "Email and password are required.");
         public static string InvalidCredentials => UiText.Get("Auth.InvalidCredentials", "The email or password is incorrect.");

@@ -30,19 +30,34 @@
 
                         <RadzenFormField Text="@UiStrings.Auth.MfaCode" Variant="Variant.Outlined">
                             <RadzenTextBox @bind-Value="model.MfaCode" Name="mfaCode" autofocus Style="width: 100%;"
-                                           Immediate="true" AutoCompleteType="AutoCompleteType.OneTimeCode" />
+                                           AutoCompleteType="AutoCompleteType.OneTimeCode" />
                         </RadzenFormField>
                     }
                     else
                     {
                         <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined">
                             <RadzenTextBox @bind-Value="model.Email" Name="email" autofocus Style="width: 100%;"
-                                           Immediate="true" AutoCompleteType="AutoCompleteType.Username" />
+                                           AutoCompleteType="AutoCompleteType.Username" />
                         </RadzenFormField>
 
-                        <RadzenFormField Text="@UiStrings.Auth.Password" Variant="Variant.Outlined">
-                            <RadzenPassword @bind-Value="model.Password" Name="password" Style="width: 100%;"
-                                            Immediate="true" AutoCompleteType="AutoCompleteType.CurrentPassword" />
+                        <RadzenFormField Text="@UiStrings.Auth.Password" Component="password" Variant="Variant.Outlined">
+                            <ChildContent>
+                                <RadzenTextBox @bind-Value="model.Password"
+                                               Name="password"
+                                               type="@(passwordVisible ? "text" : "password")"
+                                               Style="width: 100%;"
+                                               AutoCompleteType="AutoCompleteType.CurrentPassword" />
+                            </ChildContent>
+                            <End>
+                                <RadzenButton ButtonType="ButtonType.Button"
+                                              ButtonStyle="ButtonStyle.Light"
+                                              Variant="Variant.Text"
+                                              Size="ButtonSize.Small"
+                                              Icon="@(passwordVisible ? "visibility_off" : "visibility")"
+                                              Click="@TogglePasswordVisibility"
+                                              title="@PasswordVisibilityLabel"
+                                              aria-label="@PasswordVisibilityLabel" />
+                            </End>
                         </RadzenFormField>
                     }
 
@@ -88,8 +103,13 @@
     private readonly LoginModel model = new();
     private bool isSubmitting;
     private bool awaitingMfa;
+    private bool passwordVisible;
     private string? mfaToken;
     private string? errorMessage;
+
+    private string PasswordVisibilityLabel => passwordVisible
+        ? UiStrings.Auth.HidePassword
+        : UiStrings.Auth.ShowPassword;
 
     protected override void OnInitialized() => Auth.StateChanged += OnAuthStateChanged;
 
@@ -130,6 +150,7 @@
             if (outcome.MfaRequired)
             {
                 awaitingMfa = true;
+                passwordVisible = false;
                 mfaToken = outcome.MfaToken;
                 model.Password = string.Empty;
                 return;
@@ -187,10 +208,13 @@
     private void ResetMfaChallenge()
     {
         awaitingMfa = false;
+        passwordVisible = false;
         mfaToken = null;
         model.MfaCode = string.Empty;
         errorMessage = null;
     }
+
+    private void TogglePasswordVisibility() => passwordVisible = !passwordVisible;
 
     private void NavigateAfterLogin()
     {

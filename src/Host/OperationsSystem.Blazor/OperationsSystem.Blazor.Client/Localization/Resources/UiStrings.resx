@@ -52,6 +52,8 @@
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>Use your portal account to continue.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>Email</value></data>
   <data name="Auth.Password" xml:space="preserve"><value>Password</value></data>
+  <data name="Auth.ShowPassword" xml:space="preserve"><value>Show password</value></data>
+  <data name="Auth.HidePassword" xml:space="preserve"><value>Hide password</value></data>
   <data name="Auth.SignInButton" xml:space="preserve"><value>Sign in</value></data>
   <data name="Auth.CredentialsRequired" xml:space="preserve"><value>Email and password are required.</value></data>
   <data name="Auth.InvalidCredentials" xml:space="preserve"><value>The email or password is incorrect.</value></data>

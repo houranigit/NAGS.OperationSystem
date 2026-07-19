@@ -52,6 +52,8 @@
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>استخدم حساب البوابة الإلكترونية الخاص بك للمتابعة.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>
   <data name="Auth.Password" xml:space="preserve"><value>كلمة المرور</value></data>
+  <data name="Auth.ShowPassword" xml:space="preserve"><value>إظهار كلمة المرور</value></data>
+  <data name="Auth.HidePassword" xml:space="preserve"><value>إخفاء كلمة المرور</value></data>
   <data name="Auth.SignInButton" xml:space="preserve"><value>تسجيل الدخول</value></data>
   <data name="Auth.CredentialsRequired" xml:space="preserve"><value>البريد الإلكتروني وكلمة المرور مطلوبة.</value></data>
   <data name="Auth.InvalidCredentials" xml:space="preserve"><value>البريد الإلكتروني أو كلمة المرور غير صحيحة.</value></data>
