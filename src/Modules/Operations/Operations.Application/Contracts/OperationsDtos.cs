@@ -204,7 +204,8 @@ public sealed record WorkOrderServiceLineDto(
     string PerformedByName,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    string? Description);
+    string? Description,
+    bool IsReturnToRamp);
 
 public sealed record WorkOrderTaskDto(
     Guid Id,
@@ -216,7 +217,8 @@ public sealed record WorkOrderTaskDto(
     IReadOnlyList<WorkOrderTaskToolDto> Tools,
     IReadOnlyList<WorkOrderTaskMaterialDto> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportDto> GeneralSupports,
-    IReadOnlyList<WorkOrderTaskAttachmentDto> Attachments);
+    IReadOnlyList<WorkOrderTaskAttachmentDto> Attachments,
+    bool IsReturnToRamp);
 
 public sealed record WorkOrderTaskEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);
 

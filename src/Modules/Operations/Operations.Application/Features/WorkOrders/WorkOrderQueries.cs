@@ -259,7 +259,8 @@ internal static class WorkOrderDtoMapper
                 line.PerformedBy.FullName,
                 line.Window.From,
                 line.Window.To,
-                line.Description)).ToList(),
+                line.Description,
+                line.IsReturnToRamp)).ToList(),
             workOrder.Tasks.Select(task => new WorkOrderTaskDto(
                 task.Id,
                 task.TaskType.ToString(),
@@ -270,7 +271,8 @@ internal static class WorkOrderDtoMapper
                 task.Tools.Select(t => new WorkOrderTaskToolDto(t.Tool.ToolId, t.Tool.Name, t.Quantity.Value)).ToList(),
                 task.Materials.Select(m => new WorkOrderTaskMaterialDto(m.Material.MaterialId, m.Material.Name, m.Quantity.Value)).ToList(),
                 task.GeneralSupports.Select(g => new WorkOrderTaskGeneralSupportDto(g.GeneralSupport.GeneralSupportId, g.GeneralSupport.Name, g.Quantity.Value)).ToList(),
-                task.Attachments.Select(a => new WorkOrderTaskAttachmentDto(a.Id, a.Kind.ToString(), a.OriginalFileName, a.ContentType, a.Size)).ToList())).ToList(),
+                task.Attachments.Select(a => new WorkOrderTaskAttachmentDto(a.Id, a.Kind.ToString(), a.OriginalFileName, a.ContentType, a.Size)).ToList(),
+                task.IsReturnToRamp)).ToList(),
             workOrder.CreatedAtUtc,
             workOrder.UpdatedAtUtc,
             Convert.ToBase64String(workOrder.RowVersion));

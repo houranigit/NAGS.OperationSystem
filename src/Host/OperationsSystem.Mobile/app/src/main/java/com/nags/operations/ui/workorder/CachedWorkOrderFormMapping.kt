@@ -12,12 +12,14 @@ internal fun WorkOrderDetailWireDto.toPrefilledCreateFormState(nextKey: () -> Lo
     val lines = serviceLines.map { line ->
         ServiceLineFormRow(
             localKey = nextKey(),
+            serverId = line.id,
             serviceId = line.serviceId,
             serviceName = line.serviceName,
             employeeId = line.performedByStaffMemberId,
             fromIso = line.fromUtc,
             toIso = line.toUtc,
             description = line.description.orEmpty(),
+            returnToRamp = line.isReturnToRamp,
         )
     }
     val taskRows = tasks.map { t ->
@@ -36,6 +38,7 @@ internal fun WorkOrderDetailWireDto.toPrefilledCreateFormState(nextKey: () -> Lo
             fromIso = t.fromUtc,
             toIso = t.toUtc,
             existingAttachmentNames = t.attachments.map { it.originalFileName },
+            returnToRamp = t.isReturnToRamp,
         )
     }
     return CreateWorkOrderFormState(
@@ -51,5 +54,6 @@ internal fun WorkOrderDetailWireDto.toPrefilledCreateFormState(nextKey: () -> Lo
         tasks = taskRows,
         customerSignaturePng = null,
         existingCustomerSignatureName = customerSignature?.fileName,
+        serviceLineIdentityVersion = 1,
     )
 }

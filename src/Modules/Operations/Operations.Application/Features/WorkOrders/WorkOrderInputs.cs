@@ -23,7 +23,9 @@ public sealed record WorkOrderServiceLineCommand(
     Guid PerformedByStaffMemberId,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    string? Description);
+    string? Description,
+    bool IsReturnToRamp = false,
+    Guid? Id = null);
 
 public sealed record WorkOrderTaskCommand(
     Guid? Id,
@@ -35,7 +37,8 @@ public sealed record WorkOrderTaskCommand(
     IReadOnlyList<WorkOrderTaskToolCommand> Tools,
     IReadOnlyList<WorkOrderTaskMaterialCommand> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportCommand> GeneralSupports,
-    IReadOnlyList<WorkOrderTaskAttachmentCommand>? Attachments = null);
+    IReadOnlyList<WorkOrderTaskAttachmentCommand>? Attachments = null,
+    bool IsReturnToRamp = false);
 
 public sealed record WorkOrderTaskToolCommand(Guid ToolId, decimal Quantity);
 
@@ -282,7 +285,12 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             if (window.IsFailure)
                 return window.Error;
 
-            results.Add(new WorkOrderServiceLineInput(service.Value, staff.Value[0], window.Value, line.Description));
+            results.Add(new WorkOrderServiceLineInput(
+                service.Value,
+                staff.Value[0],
+                window.Value,
+                line.Description,
+                line.IsReturnToRamp));
         }
 
         return results;
@@ -324,7 +332,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 employees.Value,
                 tools.Value,
                 materials.Value,
-                supports.Value));
+                supports.Value,
+                task.IsReturnToRamp));
         }
 
         return results;

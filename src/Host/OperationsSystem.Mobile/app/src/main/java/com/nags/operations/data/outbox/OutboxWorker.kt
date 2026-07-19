@@ -263,6 +263,7 @@ class OutboxWorker(
                             clientMutationId = row.clientMutationId,
                             workOrder = payload.requireWorkOrder().toWire(attachmentsDir),
                             baseRowVersion = null,
+                            serviceLineIdentityVersion = payload.requireWorkOrder().serviceLineIdentityVersion,
                         ),
                     )
                     Outcome.Succeeded(response.workOrderId)
@@ -295,6 +296,7 @@ class OutboxWorker(
                             clientMutationId = row.clientMutationId,
                             workOrder = payload.requireWorkOrder().toWire(attachmentsDir),
                             baseRowVersion = payload.baseRowVersion,
+                            serviceLineIdentityVersion = payload.requireWorkOrder().serviceLineIdentityVersion,
                         ),
                     )
                     Outcome.Succeeded(woId)
@@ -307,7 +309,7 @@ class OutboxWorker(
                         workOrderId = woId,
                         body = MobileReturnToRampRequest(
                             clientMutationId = row.clientMutationId,
-                            serviceLines = workOrder.serviceLines.map { it.toWire() },
+                            serviceLines = workOrder.serviceLines.map { it.toWireServiceLine() },
                             tasks = workOrder.tasks.map { it.toWire(attachmentsDir) },
                         ),
                     )
@@ -371,7 +373,7 @@ class OutboxWorker(
         canceledAtUtc = canceledAtIso,
         cancellationReason = cancellationReason,
         remarks = remarks,
-        serviceLines = serviceLines.map { it.toWire() },
+        serviceLines = serviceLines.map { it.toWireServiceLine() },
         tasks = tasks.map { it.toWire(attachmentsDir) },
         customerSignature = customerSignaturePngBase64?.let {
             WorkOrderSignatureInput(
@@ -380,14 +382,6 @@ class OutboxWorker(
                 contentType = "image/png",
             )
         },
-    )
-
-    private fun OutboxPayload.ServiceLineInput.toWire() = WorkOrderServiceLineInput(
-        serviceId = serviceId,
-        performedByStaffMemberId = performedByStaffMemberId,
-        fromUtc = fromIso,
-        toUtc = toIso,
-        description = description,
     )
 
     private fun OutboxPayload.TaskInput.toWire(attachmentsDir: File?) = WorkOrderTaskInput(
@@ -401,6 +395,7 @@ class OutboxWorker(
         materials = materials.map { WorkOrderTaskResourceInput(materialId = it.itemId, quantity = it.quantity) },
         generalSupports = generalSupports.map { WorkOrderTaskResourceInput(generalSupportId = it.itemId, quantity = it.quantity) },
         attachments = attachments.map { it.toWire(attachmentsDir) },
+        isReturnToRamp = isReturnToRamp,
     )
 
     private fun OutboxPayload.AttachmentInput.toWire(attachmentsDir: File?): WorkOrderTaskAttachmentInput {
@@ -483,6 +478,16 @@ class OutboxWorker(
 
     private class MissingQueuedAttachmentException(message: String) : Exception(message)
 }
+
+internal fun OutboxPayload.ServiceLineInput.toWireServiceLine() = WorkOrderServiceLineInput(
+    id = id,
+    serviceId = serviceId,
+    performedByStaffMemberId = performedByStaffMemberId,
+    fromUtc = fromIso,
+    toUtc = toIso,
+    description = description,
+    isReturnToRamp = isReturnToRamp,
+)
 
 internal fun selectEligiblePending(
     pending: List<WorkOrderOutboxEntity>,

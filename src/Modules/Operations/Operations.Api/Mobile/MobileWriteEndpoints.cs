@@ -53,7 +53,8 @@ internal static class MobileWriteEndpoints
                     request.WorkOrder.Type,
                     request.WorkOrder.ToPayload(),
                     request.ClientMutationId,
-                    request.BaseRowVersion ?? string.Empty), ct);
+                    request.BaseRowVersion ?? string.Empty,
+                    request.ServiceLineIdentityVersion), ct);
                 return ToWriteResult(result, created: false);
             }).RequirePermission(OperationsPermissions.WorkOrders.Author);
 
@@ -63,7 +64,12 @@ internal static class MobileWriteEndpoints
                 var result = await sender.Send(new MobileReturnToRampCommand(
                     workOrderId,
                     request.ServiceLines?.Select(l => new Operations.Application.Features.WorkOrders.WorkOrderServiceLineCommand(
-                        l.ServiceId, l.PerformedByStaffMemberId, l.FromUtc, l.ToUtc, l.Description)).ToList() ?? [],
+                        l.ServiceId,
+                        l.PerformedByStaffMemberId,
+                        l.FromUtc,
+                        l.ToUtc,
+                        l.Description,
+                        IsReturnToRamp: true)).ToList() ?? [],
                     request.Tasks?.Select(t => new Operations.Application.Features.WorkOrders.WorkOrderTaskCommand(
                         null,
                         t.TaskType,
@@ -75,7 +81,8 @@ internal static class MobileWriteEndpoints
                         t.Materials?.Select(m => new Operations.Application.Features.WorkOrders.WorkOrderTaskMaterialCommand(m.MaterialId, m.Quantity)).ToList() ?? [],
                         t.GeneralSupports?.Select(g => new Operations.Application.Features.WorkOrders.WorkOrderTaskGeneralSupportCommand(g.GeneralSupportId, g.Quantity)).ToList() ?? [],
                         t.Attachments?.Select(a => new Operations.Application.Features.WorkOrders.WorkOrderTaskAttachmentCommand(
-                            a.Kind, a.Base64Content, a.FileName, a.ContentType)).ToList() ?? [])).ToList() ?? [],
+                            a.Kind, a.Base64Content, a.FileName, a.ContentType)).ToList() ?? [],
+                        IsReturnToRamp: true)).ToList() ?? [],
                     request.ClientMutationId), ct);
                 return ToWriteResult(result, created: false);
             }).RequirePermission(OperationsPermissions.WorkOrders.Author);
@@ -114,7 +121,8 @@ internal static class MobileWriteEndpoints
 public sealed record MobileWorkOrderWriteRequest(
     string ClientMutationId,
     WorkOrderRequest WorkOrder,
-    string? BaseRowVersion = null);
+    string? BaseRowVersion = null,
+    int ServiceLineIdentityVersion = 0);
 
 public sealed record MobileScratchWorkOrderRequest(
     string ClientMutationId,

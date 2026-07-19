@@ -62,6 +62,8 @@ data class OutboxPayload(
         val serviceLines: List<ServiceLineInput>,
         val tasks: List<TaskInput>,
         val customerSignaturePngBase64: String? = null,
+        /** Version 1 means existing service rows carry stable server ids in an update payload. */
+        val serviceLineIdentityVersion: Int = 0,
     )
 
     /** Flight-only fields needed by the scratch endpoint that aren't on the work-order body. */
@@ -84,11 +86,13 @@ data class OutboxPayload(
 
     @Serializable
     data class ServiceLineInput(
+        val id: String? = null,
         val serviceId: String,
         val performedByStaffMemberId: String,
         val fromIso: String,
         val toIso: String,
         val description: String?,
+        val isReturnToRamp: Boolean = false,
     )
 
     @Serializable
@@ -104,6 +108,7 @@ data class OutboxPayload(
         val materials: List<ResourceInput> = emptyList(),
         val generalSupports: List<ResourceInput> = emptyList(),
         val attachments: List<AttachmentInput> = emptyList(),
+        val isReturnToRamp: Boolean = false,
     )
 
     /** One resource row (tool/material/general support) with its quantity. */

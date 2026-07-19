@@ -335,6 +335,13 @@
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc"
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
+                    <div class="owo-rtr-option owo-full @(line.IsReturnToRamp ? "owo-rtr-option-active" : string.Empty)">
+                        <RadzenCheckBox TValue="bool" @bind-Value="line.IsReturnToRamp" Name="@($"owo-rtr-{line.Key}")" Disabled="@ViewOnly" />
+                        <div class="owo-rtr-copy">
+                            <RadzenLabel Text="Return to ramp" Component="@($"owo-rtr-{line.Key}")" />
+                            <span>Mark this performed service as part of a return-to-ramp visit.</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="owo-row-actions">
                     <RadzenTextBox @bind-Value="line.Description" MaxLength="2000" Placeholder="Description" Disabled="@ViewOnly" class="owo-control" />
@@ -1074,7 +1081,9 @@
                     l.PerformedByStaffMemberId!.Value,
                     ToOffset(l.FromUtc)!.Value,
                     ToOffset(l.ToUtc)!.Value,
-                    l.Description)).ToList()
+                    l.Description,
+                    l.IsReturnToRamp,
+                    l.Id)).ToList()
                 : [],
             completion
                 ? model.Tasks.Select(t => new WorkOrderTaskRequestModel(
@@ -1091,7 +1100,8 @@
                         a.Kind,
                         Convert.ToBase64String(a.Content!),
                         a.OriginalFileName,
-                        a.ContentType)).ToList())).ToList()
+                        a.ContentType)).ToList(),
+                    t.IsReturnToRamp)).ToList()
                 : [],
             !completion || model.CustomerSignature is null
                 ? null
@@ -1158,7 +1168,8 @@
             PerformedByStaffMemberId = l.PerformedByStaffMemberId,
             FromUtc = l.FromUtc.UtcDateTime,
             ToUtc = l.ToUtc.UtcDateTime,
-            Description = l.Description
+            Description = l.Description,
+            IsReturnToRamp = l.IsReturnToRamp
         }).ToList(),
         Tasks = workOrder.Tasks.Select(t => new TaskForm
         {
@@ -1171,6 +1182,7 @@
             Tools = t.Tools.Select(x => new ResourceForm { ItemId = x.ToolId, Quantity = x.Quantity }).ToList(),
             Materials = t.Materials.Select(x => new ResourceForm { ItemId = x.MaterialId, Quantity = x.Quantity }).ToList(),
             GeneralSupports = t.GeneralSupports.Select(x => new ResourceForm { ItemId = x.GeneralSupportId, Quantity = x.Quantity }).ToList(),
+            IsReturnToRamp = t.IsReturnToRamp,
             Attachments = t.Attachments.Select(a => new AttachmentForm
             {
                 Id = a.Id,
@@ -1268,6 +1280,7 @@
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
+        public bool IsReturnToRamp { get; set; }
     }
 
     private sealed class TaskForm
@@ -1282,6 +1295,7 @@
         public List<ResourceForm> Tools { get; set; } = [];
         public List<ResourceForm> Materials { get; set; } = [];
         public List<ResourceForm> GeneralSupports { get; set; } = [];
+        public bool IsReturnToRamp { get; set; }
         public List<AttachmentForm> Attachments { get; set; } = [];
     }
 

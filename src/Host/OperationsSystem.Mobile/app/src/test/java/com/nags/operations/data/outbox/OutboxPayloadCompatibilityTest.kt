@@ -2,7 +2,9 @@ package com.nags.operations.data.outbox
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OutboxPayloadCompatibilityTest {
@@ -38,5 +40,74 @@ class OutboxPayloadCompatibilityTest {
         val decoded = json.decodeFromString<OutboxPayload>(json.encodeToString(OutboxPayload.serializer(), payload))
 
         assertEquals("AQID", decoded.baseRowVersion)
+        assertEquals(0, decoded.workOrder?.serviceLineIdentityVersion)
+    }
+
+    @Test
+    fun legacy_service_line_without_return_to_ramp_flag_defaults_to_false() {
+        val line = json.decodeFromString<OutboxPayload.ServiceLineInput>(
+            """{
+                "serviceId":"service-1",
+                "performedByStaffMemberId":"staff-1",
+                "fromIso":"2026-07-11T10:00:00Z",
+                "toIso":"2026-07-11T11:00:00Z",
+                "description":null
+            }""".trimIndent(),
+        )
+
+        assertFalse(line.isReturnToRamp)
+    }
+
+    @Test
+    fun return_to_ramp_service_line_round_trips_through_outbox_json() {
+        val line = OutboxPayload.ServiceLineInput(
+            id = "line-1",
+            serviceId = "service-1",
+            performedByStaffMemberId = "staff-1",
+            fromIso = "2026-07-11T10:00:00Z",
+            toIso = "2026-07-11T11:00:00Z",
+            description = null,
+            isReturnToRamp = true,
+        )
+
+        val decoded = json.decodeFromString<OutboxPayload.ServiceLineInput>(
+            json.encodeToString(OutboxPayload.ServiceLineInput.serializer(), line),
+        )
+
+        assertTrue(decoded.isReturnToRamp)
+        assertEquals("line-1", decoded.id)
+    }
+
+    @Test
+    fun legacy_task_without_return_to_ramp_flag_defaults_to_false() {
+        val task = json.decodeFromString<OutboxPayload.TaskInput>(
+            """{
+                "taskType":"Major",
+                "description":null,
+                "fromIso":"2026-07-11T10:00:00Z",
+                "toIso":"2026-07-11T11:00:00Z",
+                "employeeIds":["staff-1"]
+            }""".trimIndent(),
+        )
+
+        assertFalse(task.isReturnToRamp)
+    }
+
+    @Test
+    fun return_to_ramp_task_round_trips_through_outbox_json() {
+        val task = OutboxPayload.TaskInput(
+            taskType = "Major",
+            description = null,
+            fromIso = "2026-07-11T10:00:00Z",
+            toIso = "2026-07-11T11:00:00Z",
+            employeeIds = listOf("staff-1"),
+            isReturnToRamp = true,
+        )
+
+        val decoded = json.decodeFromString<OutboxPayload.TaskInput>(
+            json.encodeToString(OutboxPayload.TaskInput.serializer(), task),
+        )
+
+        assertTrue(decoded.isReturnToRamp)
     }
 }

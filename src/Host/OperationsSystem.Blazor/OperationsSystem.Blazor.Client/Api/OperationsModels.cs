@@ -176,7 +176,8 @@ public sealed record WorkOrderServiceLineModel(
     string PerformedByName,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    string? Description);
+    string? Description,
+    bool IsReturnToRamp = false);
 
 public sealed record WorkOrderTaskModel(
     Guid Id,
@@ -188,7 +189,8 @@ public sealed record WorkOrderTaskModel(
     IReadOnlyList<WorkOrderTaskToolModel> Tools,
     IReadOnlyList<WorkOrderTaskMaterialModel> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportModel> GeneralSupports,
-    IReadOnlyList<WorkOrderTaskAttachmentModel> Attachments);
+    IReadOnlyList<WorkOrderTaskAttachmentModel> Attachments,
+    bool IsReturnToRamp = false);
 
 public sealed record WorkOrderTaskEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
 
@@ -283,7 +285,9 @@ public sealed record WorkOrderServiceLineRequestModel(
     Guid PerformedByStaffMemberId,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    string? Description);
+    string? Description,
+    bool IsReturnToRamp = false,
+    Guid? Id = null);
 
 public sealed record WorkOrderTaskRequestModel(
     Guid? Id,
@@ -295,7 +299,8 @@ public sealed record WorkOrderTaskRequestModel(
     IReadOnlyList<WorkOrderTaskToolRequestModel> Tools,
     IReadOnlyList<WorkOrderTaskMaterialRequestModel> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportRequestModel> GeneralSupports,
-    IReadOnlyList<WorkOrderTaskAttachmentRequestModel>? Attachments = null);
+    IReadOnlyList<WorkOrderTaskAttachmentRequestModel>? Attachments = null,
+    bool IsReturnToRamp = false);
 
 public sealed record WorkOrderTaskToolRequestModel(Guid ToolId, decimal Quantity);
 

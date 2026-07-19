@@ -440,7 +440,12 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         // Return-to-ramp appends lines onto the author's editable work order.
         var rtrFlightId = await ScheduleFlightAsync(admin, refs, "MOB500", [author.StaffId]);
         var submit = await author.Client.PostAsJsonAsync($"{MobileBase}/flights/{rtrFlightId}/work-orders",
-            new { clientMutationId = Guid.NewGuid().ToString(), workOrder = CompletionWorkOrderBody(refs, author.StaffId) });
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                // A regular mobile create cannot forge RTR provenance; the server owns this flag.
+                workOrder = CompletionWorkOrderBody(refs, author.StaffId, isReturnToRamp: true)
+            });
         submit.StatusCode.ShouldBe(HttpStatusCode.Created, await submit.Content.ReadAsStringAsync());
         var submitted = await submit.Content.ReadFromJsonAsync<MobileWriteResult>();
 
@@ -459,13 +464,98 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
                         description = "Return to ramp"
                     }
                 },
-                tasks = Array.Empty<object>()
+                tasks = new[]
+                {
+                    new
+                    {
+                        id = (Guid?)null,
+                        taskType = "Minor",
+                        description = "Ramp inspection",
+                        fromUtc = DateTimeOffset.UtcNow.AddMinutes(-20),
+                        toUtc = DateTimeOffset.UtcNow.AddMinutes(20),
+                        employeeIds = new[] { author.StaffId },
+                        tools = Array.Empty<object>(),
+                        materials = Array.Empty<object>(),
+                        generalSupports = Array.Empty<object>()
+                    }
+                }
             });
         rtr.StatusCode.ShouldBe(HttpStatusCode.OK, await rtr.Content.ReadAsStringAsync());
 
         var detail = await author.Client.GetFromJsonAsync<WorkOrderDetail>(
             $"{MobileBase}/work-orders/{submitted.WorkOrderId}");
         detail!.ServiceLines.Count.ShouldBe(2);
+        detail.ServiceLines.Count(line => line.IsReturnToRamp).ShouldBe(1);
+        detail.ServiceLines.Single(line => line.Description == "Handled").IsReturnToRamp.ShouldBeFalse();
+        detail.ServiceLines.Single(line => line.Description == "Return to ramp").IsReturnToRamp.ShouldBeTrue();
+        detail.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+
+        // The update screen sends the full line collections back. Echoing each source flag must
+        // keep the RTR service and task distinguishable after the aggregate applies the edit.
+        var update = await author.Client.PutAsJsonAsync(
+            $"{MobileBase}/work-orders/{submitted.WorkOrderId}",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                baseRowVersion = detail.RowVersion,
+                serviceLineIdentityVersion = 1,
+                workOrder = new
+                {
+                    type = "Completion",
+                    actualFlightNumber = "MOB999",
+                    aircraftTypeId = refs.AircraftTypeId,
+                    aircraftTailNumber = "HZ-TEST",
+                    actualArrivalUtc = DateTimeOffset.UtcNow.AddHours(-1),
+                    actualDepartureUtc = DateTimeOffset.UtcNow.AddHours(1),
+                    remarks = "Updated after return to ramp",
+                    serviceLines = detail.ServiceLines.Select(line => new
+                        {
+                            Id = (Guid?)line.Id,
+                            line.ServiceId,
+                            line.PerformedByStaffMemberId,
+                            line.FromUtc,
+                            line.ToUtc,
+                            line.Description,
+                            // The regular update route must ignore attempted reclassification.
+                            IsReturnToRamp = !line.IsReturnToRamp
+                        })
+                        .Concat(
+                        [
+                            new
+                            {
+                                Id = (Guid?)null,
+                                ServiceId = refs.ServiceId,
+                                PerformedByStaffMemberId = author.StaffId,
+                                FromUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
+                                ToUtc = DateTimeOffset.UtcNow.AddMinutes(10),
+                                Description = (string?)"Normal update addition",
+                                IsReturnToRamp = true
+                            }
+                        ]),
+                    tasks = detail.Tasks.Select(task => new
+                    {
+                        task.Id,
+                        task.TaskType,
+                        task.Description,
+                        task.FromUtc,
+                        task.ToUtc,
+                        employeeIds = task.Employees.Select(employee => employee.StaffMemberId),
+                        tools = Array.Empty<object>(),
+                        materials = Array.Empty<object>(),
+                        generalSupports = Array.Empty<object>(),
+                        IsReturnToRamp = false
+                    })
+                }
+            });
+        update.StatusCode.ShouldBe(HttpStatusCode.OK, await update.Content.ReadAsStringAsync());
+
+        var updatedDetail = await author.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{submitted.WorkOrderId}");
+        updatedDetail!.ServiceLines.Count(line => line.IsReturnToRamp).ShouldBe(1);
+        updatedDetail.ServiceLines.Single(line => line.Description == "Return to ramp").IsReturnToRamp.ShouldBeTrue();
+        updatedDetail.ServiceLines.Single(line => line.Description == "Handled").IsReturnToRamp.ShouldBeFalse();
+        updatedDetail.ServiceLines.Single(line => line.Description == "Normal update addition").IsReturnToRamp.ShouldBeFalse();
+        updatedDetail.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
     }
 
     // --- Helpers -------------------------------------------------------------------
@@ -473,7 +563,8 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     private static object CompletionWorkOrderBody(
         MasterDataRefs refs,
         Guid performerId,
-        string remarks = "Mobile submission") => new
+        string remarks = "Mobile submission",
+        bool isReturnToRamp = false) => new
     {
         type = "Completion",
         actualFlightNumber = "MOB999",
@@ -490,7 +581,8 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
                 performedByStaffMemberId = performerId,
                 fromUtc = DateTimeOffset.UtcNow.AddMinutes(-30),
                 toUtc = DateTimeOffset.UtcNow.AddMinutes(30),
-                description = "Handled"
+                description = "Handled",
+                isReturnToRamp
             }
         },
         tasks = Array.Empty<object>()
@@ -667,9 +759,28 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
     private sealed record WorkOrderDetail(
         Guid Id, Guid FlightId, string Type, string Status,
-        string? CancellationReason, string? Remarks, List<ServiceLine> ServiceLines, string RowVersion);
+        string? CancellationReason, string? Remarks, List<ServiceLine> ServiceLines, List<TaskLine> Tasks, string RowVersion);
 
-    private sealed record ServiceLine(Guid Id, Guid ServiceId, string ServiceName);
+    private sealed record ServiceLine(
+        Guid Id,
+        Guid ServiceId,
+        string ServiceName,
+        Guid PerformedByStaffMemberId,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc,
+        string? Description,
+        bool IsReturnToRamp);
+
+    private sealed record TaskLine(
+        Guid Id,
+        string TaskType,
+        string? Description,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc,
+        List<TaskEmployee> Employees,
+        bool IsReturnToRamp);
+
+    private sealed record TaskEmployee(Guid StaffMemberId);
 
     private sealed record SyncChange(string Table, string Op, string? EntityId, string Audience, DateTimeOffset Version);
 

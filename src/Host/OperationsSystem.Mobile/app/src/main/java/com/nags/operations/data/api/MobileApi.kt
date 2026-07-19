@@ -194,11 +194,13 @@ data class WorkOrderWireRequest(
 
 @Serializable
 data class WorkOrderServiceLineInput(
+    val id: String? = null,
     val serviceId: String,
     val performedByStaffMemberId: String,
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
+    val isReturnToRamp: Boolean = false,
 )
 
 @Serializable
@@ -214,6 +216,7 @@ data class WorkOrderTaskInput(
     val materials: List<WorkOrderTaskResourceInput> = emptyList(),
     val generalSupports: List<WorkOrderTaskResourceInput> = emptyList(),
     val attachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
+    val isReturnToRamp: Boolean = false,
 )
 
 /**
@@ -249,6 +252,8 @@ data class MobileWorkOrderWriteRequest(
     val workOrder: WorkOrderWireRequest,
     /** Base64 concurrency token captured with the editable work order; null for creates. */
     val baseRowVersion: String? = null,
+    /** Version 1 means update service rows carry stable server ids. */
+    val serviceLineIdentityVersion: Int = 0,
 )
 
 @Serializable

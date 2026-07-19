@@ -331,6 +331,13 @@
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </div>
+                    <div class="owf-rtr-option owf-full @(line.IsReturnToRamp ? "owf-rtr-option-active" : string.Empty)">
+                        <RadzenCheckBox TValue="bool" @bind-Value="line.IsReturnToRamp" Name="@($"owf-rtr-{line.Key}")" />
+                        <div class="owf-rtr-copy">
+                            <RadzenLabel Text="Return to ramp" Component="@($"owf-rtr-{line.Key}")" />
+                            <span>Mark this performed service as part of a return-to-ramp visit.</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="owf-row-actions">
                     <RadzenTextBox @bind-Value="line.Description" MaxLength="2000" Placeholder="Description" class="owf-control" />
@@ -609,7 +616,8 @@
                     l.PerformedByStaffMemberId!.Value,
                     ToOffset(l.FromUtc)!.Value,
                     ToOffset(l.ToUtc)!.Value,
-                    l.Description)).ToList()
+                    l.Description,
+                    l.IsReturnToRamp)).ToList()
                 : [],
             completion
                 ? model.Tasks.Select(t => new WorkOrderTaskRequestModel(
@@ -1026,6 +1034,7 @@
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
+        public bool IsReturnToRamp { get; set; }
     }
 
     private sealed class TaskForm

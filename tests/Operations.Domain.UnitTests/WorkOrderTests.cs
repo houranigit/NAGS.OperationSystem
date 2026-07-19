@@ -62,6 +62,31 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void SubmitNew_CopiesReturnToRampProvenanceToServiceLines()
+    {
+        var normal = new WorkOrderServiceLineInput(
+            TestData.Service(),
+            TestData.Staff(),
+            TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(15)).Value,
+            "Initial service");
+        var returnToRamp = new WorkOrderServiceLineInput(
+            TestData.Service(),
+            TestData.Staff(),
+            TimeWindow.Create(TestData.Now.AddMinutes(20), TestData.Now.AddMinutes(30)).Value,
+            "Added after return to ramp",
+            IsReturnToRamp: true);
+
+        var result = WorkOrder.SubmitNew(
+            ScheduleFlight(), WorkOrderType.Completion, Guid.NewGuid(), TestData.Staff(), null, null,
+            null, null, null, null, [normal, returnToRamp], [], TestData.Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ServiceLines.Count.ShouldBe(2);
+        result.Value.ServiceLines.Count(line => line.IsReturnToRamp).ShouldBe(1);
+        result.Value.ServiceLines.Single(line => line.IsReturnToRamp).Description.ShouldBe("Added after return to ramp");
+    }
+
+    [Fact]
     public void ReconcileTasks_UpdatesExisting_AddsNew_RemovesMissing_AndRejectsForeignIds()
     {
         var workOrder = SubmitCompletion(ScheduleFlight(), tasks: [TaskInput(null, "Initial")]);
@@ -98,6 +123,32 @@ public sealed class WorkOrderTests
 
         foreign.IsFailure.ShouldBeTrue();
         foreign.Error.Code.ShouldBe("Operations.WorkOrder.TaskIdForeign");
+    }
+
+    [Fact]
+    public void ReconcileTasks_CopiesAndPreservesReturnToRampProvenance()
+    {
+        var workOrder = SubmitCompletion(
+            ScheduleFlight(),
+            tasks: [TaskInput(null, "Initial"), TaskInput(null, "Ramp follow-up", isReturnToRamp: true)]);
+        var returnToRampTask = workOrder.Tasks.Single(task => task.Description == "Ramp follow-up");
+
+        returnToRampTask.IsReturnToRamp.ShouldBeTrue();
+
+        var update = workOrder.UpdateDetails(
+            WorkOrderType.Completion,
+            workOrder.ActualFlightNumber,
+            null,
+            null,
+            null,
+            null,
+            null,
+            [],
+            [TaskInput(returnToRampTask.Id, "Ramp follow-up updated", isReturnToRamp: true)],
+            TestData.Now.AddMinutes(1));
+
+        update.IsSuccess.ShouldBeTrue();
+        workOrder.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
     }
 
     [Fact]
@@ -439,7 +490,7 @@ public sealed class WorkOrderTests
         return workOrder;
     }
 
-    private static WorkOrderTaskInput TaskInput(Guid? id, string description) =>
+    private static WorkOrderTaskInput TaskInput(Guid? id, string description, bool isReturnToRamp = false) =>
         new(
             id,
             TaskType.Major,
@@ -448,5 +499,6 @@ public sealed class WorkOrderTests
             [TestData.Staff(), TestData.Staff()],
             [new WorkOrderTaskToolInput(TestData.Tool(), Quantity.Create(1).Value)],
             [new WorkOrderTaskMaterialInput(TestData.Material(), Quantity.Create(2).Value)],
-            [new WorkOrderTaskGeneralSupportInput(TestData.GeneralSupport(), Quantity.Create(1).Value)]);
+            [new WorkOrderTaskGeneralSupportInput(TestData.GeneralSupport(), Quantity.Create(1).Value)],
+            isReturnToRamp);
 }

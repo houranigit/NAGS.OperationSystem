@@ -361,6 +361,7 @@ class ReturnToRampViewModel(
             remarks = null,
             serviceLines = form.serviceLines.map { row ->
                 OutboxPayload.ServiceLineInput(
+                    id = null,
                     serviceId = row.serviceId
                         ?: error("Service line missing serviceId"),
                     performedByStaffMemberId = row.employeeId
@@ -368,6 +369,7 @@ class ReturnToRampViewModel(
                     fromIso = row.fromIso,
                     toIso = row.toIso,
                     description = row.description.takeIf { it.isNotBlank() },
+                    isReturnToRamp = row.returnToRamp,
                 )
             },
             tasks = form.tasks.map { task ->
@@ -396,6 +398,7 @@ class ReturnToRampViewModel(
                             sizeBytes = task.attachments[idx].sizeBytes,
                         )
                     },
+                    isReturnToRamp = task.returnToRamp,
                 )
             },
             customerSignaturePngBase64 = null,

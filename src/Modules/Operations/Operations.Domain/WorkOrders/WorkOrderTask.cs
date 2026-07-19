@@ -28,6 +28,7 @@ public sealed class WorkOrderTask : Entity<Guid>
     public TaskType TaskType { get; private set; }
     public string? Description { get; private set; }
     public TimeWindow Window { get; private set; } = null!;
+    public bool IsReturnToRamp { get; private set; }
 
     public IReadOnlyList<WorkOrderTaskEmployee> Employees => _employees.AsReadOnly();
     public IReadOnlyList<WorkOrderTaskTool> Tools => _tools.AsReadOnly();
@@ -82,6 +83,7 @@ public sealed class WorkOrderTask : Entity<Guid>
         TaskType = input.TaskType;
         Description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
         Window = input.Window;
+        IsReturnToRamp = input.IsReturnToRamp;
 
         _employees.Clear();
         foreach (var employee in input.Employees.GroupBy(e => e.StaffMemberId).Select(g => g.First()))

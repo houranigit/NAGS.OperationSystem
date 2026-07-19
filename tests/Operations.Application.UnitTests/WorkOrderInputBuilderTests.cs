@@ -101,6 +101,60 @@ public sealed class WorkOrderInputBuilderTests
         result.Error.Failures.Keys.ShouldContain("Tasks[0].Tools[0].ItemId");
     }
 
+    [Fact]
+    public async Task BuildAsync_CopiesReturnToRampProvenanceToDomainInput()
+    {
+        var stationId = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        var aircraftTypeId = Guid.NewGuid();
+        var arrival = DateTimeOffset.UtcNow;
+        var reader = new FakeMasterDataReader(stationId);
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(reader));
+
+        var result = await builder.BuildAsync(
+            EmptyPayload() with
+            {
+                ActualFlightNumber = "RJ234",
+                AircraftTypeId = aircraftTypeId,
+                ActualArrivalUtc = arrival,
+                ActualDepartureUtc = arrival.AddHours(1),
+                ServiceLines =
+                [
+                    new WorkOrderServiceLineCommand(
+                        serviceId,
+                        staffId,
+                        arrival.AddMinutes(5),
+                        arrival.AddMinutes(20),
+                        "Return to ramp",
+                        IsReturnToRamp: true)
+                ],
+                Tasks =
+                [
+                    new WorkOrderTaskCommand(
+                        Id: null,
+                        TaskType.Minor,
+                        "Ramp inspection",
+                        arrival.AddMinutes(5),
+                        arrival.AddMinutes(20),
+                        EmployeeIds: [staffId],
+                        Tools: [],
+                        Materials: [],
+                        GeneralSupports: [],
+                        Attachments: null,
+                        IsReturnToRamp: true)
+                ]
+            },
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ServiceLines.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        result.Value.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+    }
+
     private static WorkOrderEditableCommandPayload EmptyPayload() =>
         new(
             ActualFlightNumber: null,
@@ -114,7 +168,7 @@ public sealed class WorkOrderInputBuilderTests
             ServiceLines: [],
             Tasks: []);
 
-    private sealed class FakeMasterDataReader : IMasterDataReader
+    private sealed class FakeMasterDataReader(Guid? stationId = null) : IMasterDataReader
     {
         public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
@@ -129,7 +183,7 @@ public sealed class WorkOrderInputBuilderTests
             Task.FromResult<AircraftTypeReadSnapshot?>(new(id, "Airbus", "A320", IsActive: true));
 
         public Task<ServiceReadSnapshot?> GetServiceAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<ServiceReadSnapshot?>(new(id, "Marshalling", IsActive: true));
 
         public Task<IReadOnlyList<ServiceReadSnapshot>> GetServicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
@@ -138,7 +192,15 @@ public sealed class WorkOrderInputBuilderTests
             throw new NotImplementedException();
 
         public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetStaffMembersAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<IReadOnlyList<StaffMemberReadSnapshot>>(ids
+                .Select(id => new StaffMemberReadSnapshot(
+                    id,
+                    "Ramp Agent",
+                    "EMP-1",
+                    stationId ?? Guid.Empty,
+                    Guid.NewGuid(),
+                    IsActive: true))
+                .ToList());
 
         public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken cancellationToken) =>
             throw new NotImplementedException();

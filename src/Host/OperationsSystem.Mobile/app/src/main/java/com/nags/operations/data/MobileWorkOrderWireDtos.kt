@@ -57,6 +57,7 @@ data class WorkOrderServiceLineWireDto(
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
+    val isReturnToRamp: Boolean = false,
 )
 
 /** Mirrors server `WorkOrderTaskDto`. Task ids are stable — resend them to keep attachments. */
@@ -72,6 +73,7 @@ data class WorkOrderTaskWireDto(
     val materials: List<WorkOrderTaskResourceWireDto> = emptyList(),
     val generalSupports: List<WorkOrderTaskResourceWireDto> = emptyList(),
     val attachments: List<WorkOrderTaskAttachmentWireDto> = emptyList(),
+    val isReturnToRamp: Boolean = false,
 )
 
 @Serializable

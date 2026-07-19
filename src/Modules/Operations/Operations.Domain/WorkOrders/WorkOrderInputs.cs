@@ -7,7 +7,8 @@ public sealed record WorkOrderServiceLineInput(
     ServiceSnapshot Service,
     StaffMemberSnapshot PerformedBy,
     TimeWindow Window,
-    string? Description);
+    string? Description,
+    bool IsReturnToRamp = false);
 
 public sealed record WorkOrderTaskInput(
     Guid? Id,
@@ -17,7 +18,8 @@ public sealed record WorkOrderTaskInput(
     IReadOnlyList<StaffMemberSnapshot> Employees,
     IReadOnlyList<WorkOrderTaskToolInput> Tools,
     IReadOnlyList<WorkOrderTaskMaterialInput> Materials,
-    IReadOnlyList<WorkOrderTaskGeneralSupportInput> GeneralSupports);
+    IReadOnlyList<WorkOrderTaskGeneralSupportInput> GeneralSupports,
+    bool IsReturnToRamp = false);
 
 public sealed record WorkOrderTaskToolInput(ToolSnapshot Tool, Quantity Quantity);
 

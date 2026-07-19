@@ -57,6 +57,8 @@ sealed interface CreateWorkOrderLaunchMode {
 @Serializable
 data class ServiceLineFormRow(
     val localKey: Long,
+    /** Stable server identity used to preserve server-owned provenance during an update. */
+    val serverId: String? = null,
     val serviceId: String? = null,
     /** Preserves the display name when a saved service is later inactive or no longer allowed. */
     val serviceName: String? = null,
@@ -65,7 +67,7 @@ data class ServiceLineFormRow(
     val fromIso: String = "",
     val toIso: String = "",
     val description: String = "",
-    /** True when the line was added on the RTR screen (client-side tag only). */
+    /** True when the line originated from a return-to-ramp submission. */
     val returnToRamp: Boolean = false,
 )
 
@@ -96,6 +98,7 @@ data class TaskFormRow(
     val attachments: List<TaskAttachmentDraft> = emptyList(),
     /** Read-only names of attachments already uploaded on the server (edit mode). */
     val existingAttachmentNames: List<String> = emptyList(),
+    /** True when the task originated from a return-to-ramp submission. */
     val returnToRamp: Boolean = false,
 )
 
@@ -122,6 +125,8 @@ data class CreateWorkOrderFormState(
     val draftCustomerId: String? = null,
     val draftWorkOrderId: String? = null,
     val draftWorkOrderRowVersion: String? = null,
+    /** Persisted with drafts; zero identifies legacy forms that discarded service-line ids. */
+    val serviceLineIdentityVersion: Int = 0,
 )
 
 /** Populated after a failed submit — cleared when the form edits ([updateForm]) or reapplied on next submit. */
@@ -1053,6 +1058,7 @@ class CreateWorkOrderViewModel(
             remarks = form.remarks.takeIf { it.isNotBlank() },
             serviceLines = form.serviceLines.map { row ->
                 OutboxPayload.ServiceLineInput(
+                    id = row.serverId,
                     serviceId = row.serviceId
                         ?: error("Service line missing serviceId — validation should have caught this"),
                     performedByStaffMemberId = row.employeeId
@@ -1060,6 +1066,7 @@ class CreateWorkOrderViewModel(
                     fromIso = row.fromIso,
                     toIso = row.toIso,
                     description = row.description.takeIf { it.isNotBlank() },
+                    isReturnToRamp = row.returnToRamp,
                 )
             },
             // attachments inside each task are replaced by the outbox repository with
@@ -1093,9 +1100,11 @@ class CreateWorkOrderViewModel(
                             sizeBytes = task.attachments[idx].sizeBytes,
                         )
                     },
+                    isReturnToRamp = task.returnToRamp,
                 )
             },
             customerSignaturePngBase64 = form.customerSignaturePng,
+            serviceLineIdentityVersion = if (isUpdateExisting) form.serviceLineIdentityVersion else 0,
         )
 
         val scratch = if (isScratch) {

@@ -446,7 +446,8 @@
                 item.Line.PerformedByStaffMemberId,
                 item.Line.FromUtc,
                 item.Line.ToUtc,
-                item.Line.Description)).ToList() : [],
+                item.Line.Description,
+                item.Line.IsReturnToRamp)).ToList() : [],
             completion ? selectedTasks.Select(item => new WorkOrderTaskRequestModel(
                 null,
                 item.Task.TaskType,
@@ -456,7 +457,9 @@
                 item.Task.Employees.Select(employee => employee.StaffMemberId).ToList(),
                 item.Task.Tools.Select(tool => new WorkOrderTaskToolRequestModel(tool.ToolId, tool.Quantity)).ToList(),
                 item.Task.Materials.Select(material => new WorkOrderTaskMaterialRequestModel(material.MaterialId, material.Quantity)).ToList(),
-                item.Task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportRequestModel(support.GeneralSupportId, support.Quantity)).ToList())).ToList() : []);
+                item.Task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportRequestModel(support.GeneralSupportId, support.Quantity)).ToList(),
+                Attachments: null,
+                IsReturnToRamp: item.Task.IsReturnToRamp)).ToList() : []);
     }
 
     private WorkOrderDetail? SourceOrNull(Guid? id) =>

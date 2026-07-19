@@ -13,6 +13,7 @@ using Operations.Domain.Mobile;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Operations.Application.Features.Mobile;
 
@@ -30,14 +31,59 @@ public sealed record MobileWriteResultDto(Guid WorkOrderId, Guid FlightId, bool 
 /// </summary>
 internal static class MobileMutations
 {
+    private static readonly JsonSerializerOptions PreReturnToRampFingerprintOptions =
+        CreatePreReturnToRampFingerprintOptions();
+
     public static bool IsCanonicalClientMutationId(string? value) =>
         Guid.TryParseExact(value, "D", out var parsed) &&
         string.Equals(parsed.ToString(), value, StringComparison.Ordinal);
 
-    public static string Fingerprint<T>(T request)
+    public static string Fingerprint<T>(T request) => Fingerprint(request, options: null);
+
+    /// <summary>
+    /// Reproduces fingerprints written before service-line identity and return-to-ramp provenance
+    /// were added to the mobile command models. Deployment-spanning retries can therefore match
+    /// their existing mutation record while all newly stored fingerprints retain the full schema.
+    /// </summary>
+    public static string PreReturnToRampFingerprint<T>(T request) =>
+        Fingerprint(request, PreReturnToRampFingerprintOptions);
+
+    private static string Fingerprint<T>(T request, JsonSerializerOptions? options)
     {
-        var json = JsonSerializer.Serialize(request);
+        var json = JsonSerializer.Serialize(request, options);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+    }
+
+    private static JsonSerializerOptions CreatePreReturnToRampFingerprintOptions()
+    {
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(static typeInfo =>
+        {
+            // The identity-awareness marker was added to the update fingerprint envelope with the
+            // line ids. It did not exist in mutation records written by the previous deployment.
+            RemoveProperty(typeInfo, "ServiceLineIdentityVersion");
+
+            if (typeInfo.Type == typeof(WorkOrderServiceLineCommand))
+            {
+                RemoveProperty(typeInfo, "Id");
+                RemoveProperty(typeInfo, nameof(WorkOrderServiceLineCommand.IsReturnToRamp));
+            }
+            else if (typeInfo.Type == typeof(WorkOrderTaskCommand))
+            {
+                RemoveProperty(typeInfo, nameof(WorkOrderTaskCommand.IsReturnToRamp));
+            }
+        });
+
+        return new JsonSerializerOptions { TypeInfoResolver = resolver };
+    }
+
+    private static void RemoveProperty(JsonTypeInfo typeInfo, string propertyName)
+    {
+        for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
+        {
+            if (string.Equals(typeInfo.Properties[index].Name, propertyName, StringComparison.Ordinal))
+                typeInfo.Properties.RemoveAt(index);
+        }
     }
 
     public static async Task<Result<MobileMutation?>> FindReplayAsync(
@@ -49,7 +95,8 @@ internal static class MobileMutations
         Guid? expectedWorkOrderId,
         Guid? expectedFlightId,
         Guid? expectedClientFlightId,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? compatibleRequestFingerprint = null)
     {
         var mutation = await db.MobileMutations.AsNoTracking()
             .FirstOrDefaultAsync(m => m.ClientMutationId == clientMutationId, ct);
@@ -61,7 +108,8 @@ internal static class MobileMutations
             (expectedFlightId is not null && mutation.FlightId != expectedFlightId) ||
             (expectedClientFlightId is not null && mutation.ClientFlightId != expectedClientFlightId);
         var fingerprintMismatch = !string.IsNullOrWhiteSpace(mutation.RequestFingerprint) &&
-            !string.Equals(mutation.RequestFingerprint, requestFingerprint, StringComparison.Ordinal);
+            !string.Equals(mutation.RequestFingerprint, requestFingerprint, StringComparison.Ordinal) &&
+            !string.Equals(mutation.RequestFingerprint, compatibleRequestFingerprint, StringComparison.Ordinal);
 
         if (mutation.OwnerUserId != ownerUserId ||
             !string.Equals(mutation.Kind, expectedKind, StringComparison.Ordinal) ||
@@ -156,11 +204,13 @@ public sealed class MobileSubmitWorkOrderCommandHandler(
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
         const string mutationKind = "submit-work-order";
-        var fingerprint = MobileMutations.Fingerprint(new { request.FlightId, request.Type, request.Payload });
+        var fingerprintInput = new { request.FlightId, request.Type, request.Payload };
+        var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
+        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: null, expectedFlightId: request.FlightId, expectedClientFlightId: null,
-            cancellationToken);
+            cancellationToken, preReturnToRampFingerprint);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -179,7 +229,12 @@ public sealed class MobileSubmitWorkOrderCommandHandler(
             workOrderId, request.FlightId, clientFlightId: null, fingerprint, timeProvider.GetUtcNow()));
 
         var result = await sender.Send(
-            new SubmitWorkOrderCommand(request.FlightId, request.Type, request.Payload, request.ClientMutationId, workOrderId),
+            new SubmitWorkOrderCommand(
+                request.FlightId,
+                request.Type,
+                MobileReturnToRampProvenance.ProtectNew(request.Payload),
+                request.ClientMutationId,
+                workOrderId),
             cancellationToken);
 
         if (result.IsFailure)
@@ -232,7 +287,7 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
         const string mutationKind = "scratch-work-order";
-        var fingerprint = MobileMutations.Fingerprint(new
+        var fingerprintInput = new
         {
             request.CustomerId,
             request.FlightNumber,
@@ -243,11 +298,13 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
             request.Type,
             request.Payload,
             request.ClientFlightId
-        });
+        };
+        var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
+        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: null, expectedFlightId: null, expectedClientFlightId: request.ClientFlightId,
-            cancellationToken);
+            cancellationToken, preReturnToRampFingerprint);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -283,7 +340,7 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
                 request.PlannedServiceIds,
                 AssignedStaffMemberIds: [],
                 request.Type,
-                request.Payload,
+                MobileReturnToRampProvenance.ProtectNew(request.Payload),
                 request.ClientMutationId,
                 flightId,
                 workOrderId),
@@ -303,7 +360,8 @@ public sealed record MobileUpdateWorkOrderCommand(
     WorkOrderType Type,
     WorkOrderEditableCommandPayload Payload,
     string ClientMutationId,
-    string BaseRowVersion) : ICommand<MobileWriteResultDto>;
+    string BaseRowVersion,
+    int ServiceLineIdentityVersion = 0) : ICommand<MobileWriteResultDto>;
 
 public sealed class MobileUpdateWorkOrderCommandValidator : AbstractValidator<MobileUpdateWorkOrderCommand>
 {
@@ -331,17 +389,20 @@ public sealed class MobileUpdateWorkOrderCommandHandler(
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
         const string mutationKind = "update-work-order";
-        var fingerprint = MobileMutations.Fingerprint(new
+        var fingerprintInput = new
         {
             request.WorkOrderId,
             request.Type,
             request.Payload,
-            request.BaseRowVersion
-        });
+            request.BaseRowVersion,
+            request.ServiceLineIdentityVersion
+        };
+        var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
+        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: request.WorkOrderId, expectedFlightId: null, expectedClientFlightId: null,
-            cancellationToken);
+            cancellationToken, preReturnToRampFingerprint);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -364,15 +425,21 @@ public sealed class MobileUpdateWorkOrderCommandHandler(
             return Error.Validation("The base row version is invalid.", "Operations.Mobile.InvalidBaseRowVersion");
         }
 
-        // The cached base revision is part of the queued mutation. If the portal or another device
-        // changed this work order while the client was offline, the inner command returns 409
-        // instead of applying a stale full replacement over newer data.
-        var current = await db.WorkOrders.AsNoTracking()
-            .Where(w => w.Id == request.WorkOrderId)
-            .Select(w => new { w.FlightId })
-            .FirstOrDefaultAsync(cancellationToken);
+        // Load the server-owned row identities and provenance before accepting a mobile full
+        // replacement. Normal mobile updates may preserve an existing RTR row, but only the
+        // dedicated return-to-ramp command is allowed to create one.
+        var current = await WorkOrderLoader.ForMutation(db.WorkOrders.AsNoTracking())
+            .FirstOrDefaultAsync(w => w.Id == request.WorkOrderId, cancellationToken);
         if (current is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var protectedPayload = MobileReturnToRampProvenance.ProtectUpdate(
+            request.Payload,
+            current.ServiceLines.ToDictionary(line => line.Id, line => line.IsReturnToRamp),
+            current.Tasks.ToDictionary(task => task.Id, task => task.IsReturnToRamp),
+            request.ServiceLineIdentityVersion);
+        if (protectedPayload.IsFailure)
+            return protectedPayload.Error;
 
         var actionWindow = await MobileActionWindow.EnsureAvailableAsync(
             db, current.FlightId, timeProvider, cancellationToken);
@@ -384,7 +451,12 @@ public sealed class MobileUpdateWorkOrderCommandHandler(
             request.WorkOrderId, current.FlightId, clientFlightId: null, fingerprint, timeProvider.GetUtcNow()));
 
         var result = await sender.Send(
-            new UpdateWorkOrderCommand(request.WorkOrderId, baseRowVersion, request.Type, request.Payload, request.ClientMutationId),
+            new UpdateWorkOrderCommand(
+                request.WorkOrderId,
+                baseRowVersion,
+                request.Type,
+                protectedPayload.Value,
+                request.ClientMutationId),
             cancellationToken);
 
         if (result.IsFailure)
@@ -436,16 +508,18 @@ public sealed class MobileReturnToRampCommandHandler(
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
         const string mutationKind = "return-to-ramp";
-        var fingerprint = MobileMutations.Fingerprint(new
+        var fingerprintInput = new
         {
             request.WorkOrderId,
             request.ServiceLines,
             request.Tasks
-        });
+        };
+        var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
+        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: request.WorkOrderId, expectedFlightId: null, expectedClientFlightId: null,
-            cancellationToken);
+            cancellationToken, preReturnToRampFingerprint);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -476,8 +550,9 @@ public sealed class MobileReturnToRampCommandHandler(
                     line.PerformedBy.StaffMemberId,
                     line.Window.From,
                     line.Window.To,
-                    line.Description))
-                .Concat(request.ServiceLines ?? [])
+                    line.Description,
+                    line.IsReturnToRamp))
+                .Concat((request.ServiceLines ?? []).Select(line => line with { IsReturnToRamp = true }))
                 .ToList(),
             workOrder.Tasks
                 .Select(task => new WorkOrderTaskCommand(
@@ -489,8 +564,10 @@ public sealed class MobileReturnToRampCommandHandler(
                     task.Employees.Select(e => e.Employee.StaffMemberId).ToList(),
                     task.Tools.Select(t => new WorkOrderTaskToolCommand(t.Tool.ToolId, t.Quantity.Value)).ToList(),
                     task.Materials.Select(m => new WorkOrderTaskMaterialCommand(m.Material.MaterialId, m.Quantity.Value)).ToList(),
-                    task.GeneralSupports.Select(g => new WorkOrderTaskGeneralSupportCommand(g.GeneralSupport.GeneralSupportId, g.Quantity.Value)).ToList()))
-                .Concat((request.Tasks ?? []).Select(task => task with { Id = null }))
+                    task.GeneralSupports.Select(g => new WorkOrderTaskGeneralSupportCommand(g.GeneralSupport.GeneralSupportId, g.Quantity.Value)).ToList(),
+                    Attachments: null,
+                    IsReturnToRamp: task.IsReturnToRamp))
+                .Concat((request.Tasks ?? []).Select(task => task with { Id = null, IsReturnToRamp = true }))
                 .ToList());
 
         db.MobileMutations.Add(MobileMutation.Record(

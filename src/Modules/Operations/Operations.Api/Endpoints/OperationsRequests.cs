@@ -103,7 +103,9 @@ public sealed record WorkOrderRequest(
                 l.PerformedByStaffMemberId,
                 l.FromUtc,
                 l.ToUtc,
-                l.Description)).ToList() ?? [],
+                l.Description,
+                l.IsReturnToRamp,
+                l.Id)).ToList() ?? [],
             Tasks?.Select(t => new WorkOrderTaskCommand(
                 t.Id,
                 t.TaskType,
@@ -118,7 +120,8 @@ public sealed record WorkOrderRequest(
                     attachment.Kind,
                     attachment.Base64Content,
                     attachment.FileName,
-                    attachment.ContentType)).ToList() ?? [])).ToList() ?? [],
+                    attachment.ContentType)).ToList() ?? [],
+                t.IsReturnToRamp)).ToList() ?? [],
             CustomerSignature is null
                 ? null
                 : new WorkOrderSignatureCommand(
@@ -146,7 +149,9 @@ public sealed record WorkOrderServiceLineRequest(
     Guid PerformedByStaffMemberId,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    string? Description);
+    string? Description,
+    bool IsReturnToRamp = false,
+    Guid? Id = null);
 
 public sealed record WorkOrderTaskRequest(
     Guid? Id,
@@ -158,7 +163,8 @@ public sealed record WorkOrderTaskRequest(
     IReadOnlyList<WorkOrderTaskToolRequest>? Tools,
     IReadOnlyList<WorkOrderTaskMaterialRequest>? Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportRequest>? GeneralSupports,
-    IReadOnlyList<WorkOrderTaskAttachmentRequest>? Attachments = null);
+    IReadOnlyList<WorkOrderTaskAttachmentRequest>? Attachments = null,
+    bool IsReturnToRamp = false);
 
 public sealed record WorkOrderTaskToolRequest(Guid ToolId, decimal Quantity);
 

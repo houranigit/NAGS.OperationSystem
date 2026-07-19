@@ -112,6 +112,7 @@ public sealed class WorkOrderServiceLineConfiguration : IEntityTypeConfiguration
         builder.Property(l => l.Id).ValueGeneratedNever();
         builder.Property(l => l.WorkOrderId).IsRequired();
         builder.Property(l => l.Description).HasMaxLength(2000);
+        builder.Property(l => l.IsReturnToRamp).IsRequired();
 
         builder.OwnsOne(l => l.Service, s =>
         {
@@ -147,6 +148,7 @@ public sealed class WorkOrderTaskConfiguration : IEntityTypeConfiguration<WorkOr
         builder.Property(t => t.WorkOrderId).IsRequired();
         builder.Property(t => t.TaskType).HasConversion<int>();
         builder.Property(t => t.Description).HasMaxLength(2000);
+        builder.Property(t => t.IsReturnToRamp).IsRequired();
 
         builder.OwnsOne(t => t.Window, w =>
         {

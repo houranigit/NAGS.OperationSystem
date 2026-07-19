@@ -16,6 +16,7 @@ public sealed class WorkOrderServiceLine : Entity<Guid>
         PerformedBy = input.PerformedBy;
         Window = input.Window;
         Description = NormalizeDescription(input.Description);
+        IsReturnToRamp = input.IsReturnToRamp;
     }
 
     public Guid WorkOrderId { get; private set; }
@@ -23,6 +24,7 @@ public sealed class WorkOrderServiceLine : Entity<Guid>
     public StaffMemberSnapshot PerformedBy { get; private set; } = null!;
     public TimeWindow Window { get; private set; } = null!;
     public string? Description { get; private set; }
+    public bool IsReturnToRamp { get; private set; }
 
     public bool IsAircraftPerLanding => Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService;
 
