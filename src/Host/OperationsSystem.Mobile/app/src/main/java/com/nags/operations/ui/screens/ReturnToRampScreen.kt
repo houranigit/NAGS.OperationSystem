@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nags.operations.data.db.entities.allowedPerformedServiceIds
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.WorkOrderFlightSummaryCard
 import com.nags.operations.ui.util.offsetSameAsFlight
@@ -130,8 +131,15 @@ fun ReturnToRampScreen(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
+                    state.existingAllowanceError?.let { msg ->
+                        Text(
+                            msg,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     ServiceLinesSectionHeading(
-                        catalogsMissingServices = state.catalogServices.isEmpty(),
+                        performedServicesUnavailable = state.catalogServices.allowedPerformedServiceIds().isEmpty(),
                         catalogsMissingEmployees = state.catalogEmployees.isEmpty(),
                     )
                     if (state.form.serviceLines.isEmpty()) {
@@ -158,6 +166,7 @@ fun ReturnToRampScreen(
                     }
                     Button(
                         onClick = { viewModel.addServiceLine() },
+                        enabled = state.catalogServices.allowedPerformedServiceIds().isNotEmpty(),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
@@ -227,7 +236,7 @@ fun ReturnToRampScreen(
                             .fillMaxWidth()
                             .padding(top = 8.dp),
                         shape = RoundedCornerShape(14.dp),
-                        enabled = !state.isSubmitting,
+                        enabled = !state.isSubmitting && state.existingAllowanceError == null,
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
                     ) {
                         Text("Submit")

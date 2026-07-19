@@ -15,8 +15,13 @@ internal static class FlightServicePresentation
 
     internal static IReadOnlyList<PlannedServiceModel> ServicesToPrefill(
         bool isPerLanding,
-        IReadOnlyList<PlannedServiceModel> plannedServices) =>
+        IReadOnlyList<PlannedServiceModel> plannedServices,
+        IReadOnlySet<Guid> allowedPerformedServiceIds) =>
         isPerLanding
             ? []
-            : plannedServices.Where(service => !service.IsAircraftPerLanding).ToList();
+            : plannedServices
+                .Where(service =>
+                    !service.IsAircraftPerLanding &&
+                    allowedPerformedServiceIds.Contains(service.ServiceId))
+                .ToList();
 }

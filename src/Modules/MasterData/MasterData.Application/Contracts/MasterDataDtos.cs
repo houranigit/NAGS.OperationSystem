@@ -41,6 +41,8 @@ public sealed record ManpowerTypeDto(
 
 public sealed record ManpowerTypeOptionDto(Guid Id, string Name);
 
+public sealed record ServiceAllowanceDto(Guid ServiceId, string Name, bool IsActive, bool IsAllowed);
+
 // --- Licenses --------------------------------------------------------------
 
 public sealed record LicenseListItemDto(
@@ -82,6 +84,8 @@ public sealed record ServiceDto(
     string RowVersion);
 
 public sealed record ServiceOptionDto(Guid Id, string Name, bool IsAircraftPerLanding);
+
+public sealed record ManpowerTypeAllowanceDto(Guid ManpowerTypeId, string Name, bool IsActive, bool IsAllowed);
 
 // --- OperationTypes --------------------------------------------------------
 

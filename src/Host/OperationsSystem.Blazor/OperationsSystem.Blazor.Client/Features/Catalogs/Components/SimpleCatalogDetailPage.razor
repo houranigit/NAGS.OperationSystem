@@ -80,6 +80,7 @@
             <div class="md-tab-body" role="tabpanel">
                 @(activeTab switch
                 {
+                    SimpleCatalogTab.AllowedManpowerTypes => AllowedManpowerTypesTab(),
                     SimpleCatalogTab.History => HistoryTab(catalog),
                     _ => OverviewTab(catalog)
                 })
@@ -164,6 +165,17 @@
         </RadzenCard>
     </text>;
 
+    private RenderFragment AllowedManpowerTypesTab() =>@<text>
+        <RadzenCard class="md-card">
+            <AllowanceChecklist Title="Allowed manpower types"
+                                Description="Only staff members with these manpower types can select this service as performed work."
+                                Items="@manpowerTypeAllowances.Select(option => new AllowanceOption(option.ManpowerTypeId, option.Name, option.IsActive, option.IsAllowed)).ToList()"
+                                CanEdit="@Auth.HasPermission(UpdatePermission)"
+                                IsSaving="@isSavingAllowances"
+                                OnSave="@SaveManpowerTypeAllowancesAsync" />
+        </RadzenCard>
+    </text>;
+
     private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
         @if (history.Count == 0)
         {
@@ -210,15 +222,17 @@
     [Parameter] public Guid Id { get; set; }
 
     private SimpleCatalogDetail? item;
+    private IReadOnlyList<ManpowerTypeAllowance> manpowerTypeAllowances = [];
     private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
+    private bool isSavingAllowances;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private SimpleCatalogTab activeTab = SimpleCatalogTab.Overview;
 
     private const int OverviewHistoryPreviewCount = 4;
 
-    private enum SimpleCatalogTab { Overview, History }
+    private enum SimpleCatalogTab { Overview, AllowedManpowerTypes, History }
 
     private sealed record TabDef(SimpleCatalogTab Key, string Label, string Icon);
 
@@ -235,6 +249,8 @@
     private IEnumerable<TabDef> Tabs()
     {
         yield return new TabDef(SimpleCatalogTab.Overview, UiStrings.Common.Overview, "dashboard");
+        if (Kind == SimpleCatalogKind.Services && item?.IsSystem == false)
+            yield return new TabDef(SimpleCatalogTab.AllowedManpowerTypes, "Allowed manpower types", "groups");
         if (CanViewAudit)
             yield return new TabDef(SimpleCatalogTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
@@ -252,6 +268,9 @@
         try
         {
             item = await LoadDetailAsync();
+            manpowerTypeAllowances = Kind == SimpleCatalogKind.Services && !item.IsSystem
+                ? await MasterData.GetManpowerTypeAllowancesAsync(Id)
+                : [];
             history = await historyTask;
         }
         catch (ApiException ex)
@@ -263,6 +282,28 @@
         {
             isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task SaveManpowerTypeAllowancesAsync(IReadOnlyList<Guid> manpowerTypeIds)
+    {
+        if (item is not { } catalog || Kind != SimpleCatalogKind.Services || catalog.IsSystem)
+            return;
+
+        isSavingAllowances = true;
+        try
+        {
+            await MasterData.UpdateManpowerTypeAllowancesAsync(Id, manpowerTypeIds, catalog.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Allowed manpower types updated.");
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage("Could not update allowed manpower types."));
+        }
+        finally
+        {
+            isSavingAllowances = false;
         }
     }
 

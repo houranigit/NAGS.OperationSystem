@@ -56,6 +56,12 @@ public interface IMasterDataReader
 
     public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Returns active performed-service ids explicitly allowed for an active manpower type.
+    /// An unknown or inactive manpower type returns an empty set.
+    /// </summary>
+    public Task<IReadOnlySet<Guid>> GetAllowedActiveServiceIdsAsync(Guid manpowerTypeId, CancellationToken cancellationToken);
+
     // Active catalog listings for the mobile offline cache (small, low-volatility lists that the
     // mobile client mirrors into its local database on each catalog refresh).
 

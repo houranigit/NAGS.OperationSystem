@@ -85,6 +85,7 @@
             <div class="mt-tab-body" role="tabpanel">
                 @(activeTab switch
                 {
+                    ManpowerTypeTab.AllowedServices => AllowedServicesTab(),
                     ManpowerTypeTab.History => HistoryTab(m),
                     _ => OverviewTab(m)
                 })
@@ -169,6 +170,17 @@
         </RadzenCard>
     </text>;
 
+    private RenderFragment AllowedServicesTab() =>@<text>
+        <RadzenCard class="mt-card">
+            <AllowanceChecklist Title="Allowed performed services"
+                                Description="Staff members with this manpower type can select only these services on work orders."
+                                Items="@serviceAllowances.Select(item => new AllowanceOption(item.ServiceId, item.Name, item.IsActive, item.IsAllowed)).ToList()"
+                                CanEdit="@Auth.HasPermission(MasterDataPermissions.ManpowerTypesUpdate)"
+                                IsSaving="@isSavingAllowances"
+                                OnSave="@SaveServiceAllowancesAsync" />
+        </RadzenCard>
+    </text>;
+
     private RenderFragment HistoryTimeline(int? maxItems = null) =>@<text>
         @if (history.Count == 0)
         {
@@ -214,15 +226,17 @@
     [Parameter] public Guid Id { get; set; }
 
     private ManpowerTypeDetail? item;
+    private IReadOnlyList<ServiceAllowance> serviceAllowances = [];
     private IReadOnlyList<AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
+    private bool isSavingAllowances;
     private string errorMessage = UiStrings.Errors.LoadFailed;
     private ManpowerTypeTab activeTab = ManpowerTypeTab.Overview;
 
     private const int OverviewHistoryPreviewCount = 4;
 
-    private enum ManpowerTypeTab { Overview, History }
+    private enum ManpowerTypeTab { Overview, AllowedServices, History }
 
     private sealed record TabDef(ManpowerTypeTab Key, string Label, string Icon);
 
@@ -231,6 +245,7 @@
     private IEnumerable<TabDef> Tabs()
     {
         yield return new TabDef(ManpowerTypeTab.Overview, UiStrings.Common.Overview, "dashboard");
+        yield return new TabDef(ManpowerTypeTab.AllowedServices, "Allowed services", "checklist");
         if (CanViewAudit)
             yield return new TabDef(ManpowerTypeTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
@@ -247,7 +262,11 @@
 
         try
         {
-            item = await MasterData.GetManpowerTypeAsync(Id);
+            var itemTask = MasterData.GetManpowerTypeAsync(Id);
+            var allowancesTask = MasterData.GetServiceAllowancesAsync(Id);
+            await Task.WhenAll(itemTask, allowancesTask, historyTask);
+            item = await itemTask;
+            serviceAllowances = await allowancesTask;
             history = await historyTask;
         }
         catch (ApiException ex)
@@ -259,6 +278,28 @@
         {
             isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task SaveServiceAllowancesAsync(IReadOnlyList<Guid> serviceIds)
+    {
+        if (item is not { } manpowerType)
+            return;
+
+        isSavingAllowances = true;
+        try
+        {
+            await MasterData.UpdateServiceAllowancesAsync(Id, serviceIds, manpowerType.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Allowed services updated.");
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage("Could not update allowed services."));
+        }
+        finally
+        {
+            isSavingAllowances = false;
         }
     }
 

@@ -14,6 +14,7 @@ class WorkOrderFormValidationTest {
             dialogAtdIso = null,
             isAdHocScratch = true,
             selectedCustomerId = "customer-1",
+            allowedPerformedServiceIds = setOf("service-1"),
         )
 
         assertNull(errors)
@@ -26,6 +27,7 @@ class WorkOrderFormValidationTest {
             dialogAtdIso = null,
             isAdHocScratch = false,
             selectedCustomerId = null,
+            allowedPerformedServiceIds = setOf("service-1"),
         )
 
         assertNull(errors)
@@ -51,6 +53,7 @@ class WorkOrderFormValidationTest {
             dialogAtdIso = null,
             isAdHocScratch = false,
             selectedCustomerId = null,
+            allowedPerformedServiceIds = setOf("service-1"),
         )
 
         assertNotNull(errors)
@@ -72,6 +75,7 @@ class WorkOrderFormValidationTest {
             dialogAtdIso = null,
             isAdHocScratch = true,
             selectedCustomerId = "customer-1",
+            allowedPerformedServiceIds = setOf("service-1"),
         )
 
         assertNotNull(errors?.scheduledDeparture)
@@ -98,6 +102,7 @@ class WorkOrderFormValidationTest {
             dialogAtdIso = null,
             isAdHocScratch = false,
             selectedCustomerId = null,
+            allowedPerformedServiceIds = setOf("service-1"),
         )
 
         assertNotNull(errors?.tasksByKey?.get(2L)?.attachments)
@@ -128,6 +133,7 @@ class WorkOrderFormValidationTest {
                 dialogAtdIso = null,
                 isAdHocScratch = false,
                 selectedCustomerId = null,
+                allowedPerformedServiceIds = setOf("service-1"),
             ),
         )
 
@@ -150,6 +156,28 @@ class WorkOrderFormValidationTest {
         assertNotNull(taskErrors.tasksByKey[2L]?.performers)
         assertNull(submitErrorsForWizardStep(allErrors, WorkOrderWizardStep.Signature))
         assertEquals(WorkOrderWizardStep.Flight, firstWizardStepWithErrors(allErrors))
+    }
+
+    @Test
+    fun revoked_service_line_is_visible_but_blocks_resubmission() {
+        val form = validForm().copy(
+            serviceLines = listOf(
+                validForm().serviceLines.single().copy(serviceName = "Revoked service"),
+            ),
+        )
+
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = form,
+            dialogAtdIso = null,
+            isAdHocScratch = false,
+            selectedCustomerId = null,
+            allowedPerformedServiceIds = emptySet(),
+        )
+
+        val message = errors?.serviceLinesByKey?.get(1L)?.serviceType
+        assertNotNull(message)
+        assertEquals(true, message!!.contains("no longer allowed"))
+        assertEquals("Revoked service", form.serviceLines.single().serviceName)
     }
 
     private fun validForm(): CreateWorkOrderFormState = CreateWorkOrderFormState(

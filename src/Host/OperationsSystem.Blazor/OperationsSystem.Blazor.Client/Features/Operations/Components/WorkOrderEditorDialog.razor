@@ -130,11 +130,14 @@
             else if (FlightId is { } flightId)
             {
                 flight = await Operations.GetFlightAsync(flightId);
-                model = NewModel(flight, Type);
             }
 
             if (flight is not null)
+            {
                 await LoadOptionsAsync(flight.StationId);
+                if (WorkOrderId is null)
+                    model = NewModel(flight, Type, serviceOptions.Select(service => service.Id).ToHashSet());
+            }
         }
         catch (ApiException ex)
         {
@@ -148,7 +151,7 @@
 
     private async Task LoadOptionsAsync(Guid stationId)
     {
-        var servicesTask = MasterData.GetServiceOptionsAsync();
+        var servicesTask = MasterData.GetPerformedServiceOptionsAsync();
         var aircraftTask = MasterData.GetAircraftTypeOptionsAsync();
         var staffTask = MasterData.GetStaffMemberOptionsAsync(stationId);
         var toolsTask = MasterData.GetToolOptionsAsync();
@@ -157,7 +160,7 @@
 
         await Task.WhenAll(servicesTask, aircraftTask, staffTask, toolsTask, materialsTask, supportsTask);
 
-        serviceOptions = servicesTask.Result.Where(s => !s.IsAircraftPerLanding).ToList();
+        serviceOptions = servicesTask.Result;
         aircraftTypes = aircraftTask.Result;
         staffOptions = staffTask.Result;
         toolOptions = toolsTask.Result;
@@ -300,6 +303,13 @@
         @foreach (var line in model.ServiceLines)
         {
             <div @key="line.Key" class="owo-row-panel">
+                @if (!IsServiceLineAllowed(line))
+                {
+                    <div class="owo-allowance-warning" role="alert">
+                        <RadzenIcon Icon="warning_amber" />
+                        <span>@(line.ServiceName ?? "This saved service") is no longer allowed for your manpower type. Remove or replace it before submitting.</span>
+                    </div>
+                }
                 <div class="owo-grid-2">
                     <div class="owo-field-block">
                         <label class="owo-label">Service <span class="owo-required">*</span></label>
@@ -591,6 +601,8 @@
 
     private void AddServiceLine() => model.ServiceLines.Add(new ServiceLineForm { FromUtc = DefaultWindowStart, ToUtc = DefaultWindowEnd });
     private void RemoveServiceLine(ServiceLineForm line) => model.ServiceLines.Remove(line);
+    private bool IsServiceLineAllowed(ServiceLineForm line) =>
+        line.ServiceId is null || serviceOptions.Any(option => option.Id == line.ServiceId.Value);
 
     private void AddTask() => model.Tasks.Add(new TaskForm { FromUtc = DefaultWindowStart, ToUtc = DefaultWindowEnd });
     private void RemoveTask(TaskForm task) => model.Tasks.Remove(task);
@@ -992,6 +1004,8 @@
         var messages = new List<string>();
         if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
             messages.Add("Every service line needs a service, performer, From, and To time.");
+        if (model.ServiceLines.Any(line => !IsServiceLineAllowed(line)))
+            messages.Add("Remove or replace services that are no longer allowed for your manpower type.");
         if (model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && !IsMissing(l.ToUtc) && l.ToUtc!.Value < l.FromUtc!.Value))
             messages.Add("Service line To time cannot be before From time.");
         if (model.ActualArrivalUtc is { } ata && model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && l.FromUtc!.Value < ata))
@@ -1101,7 +1115,10 @@
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is null ? null : new DateTimeOffset(DateTime.SpecifyKind(value.Value, DateTimeKind.Utc));
 
-    private static WorkOrderFormModel NewModel(FlightDetail flight, string type) => new()
+    private static WorkOrderFormModel NewModel(
+        FlightDetail flight,
+        string type,
+        IReadOnlySet<Guid> allowedPerformedServiceIds) => new()
     {
         Type = string.IsNullOrWhiteSpace(type) ? "Completion" : type,
         ActualFlightNumber = flight.FlightNumber,
@@ -1109,7 +1126,10 @@
         ActualArrivalUtc = flight.ScheduledArrivalUtc.UtcDateTime,
         ActualDepartureUtc = flight.ScheduledDepartureUtc.UtcDateTime,
         CanceledAtUtc = flight.ScheduledArrivalUtc.UtcDateTime,
-        ServiceLines = FlightServicePresentation.ServicesToPrefill(flight.IsPerLanding, flight.PlannedServices)
+        ServiceLines = FlightServicePresentation.ServicesToPrefill(
+                flight.IsPerLanding,
+                flight.PlannedServices,
+                allowedPerformedServiceIds)
             .Select(service => new ServiceLineForm
             {
                 ServiceId = service.ServiceId,
@@ -1134,6 +1154,7 @@
         {
             Id = l.Id,
             ServiceId = l.ServiceId,
+            ServiceName = l.ServiceName,
             PerformedByStaffMemberId = l.PerformedByStaffMemberId,
             FromUtc = l.FromUtc.UtcDateTime,
             ToUtc = l.ToUtc.UtcDateTime,
@@ -1242,6 +1263,7 @@
         public Guid Key { get; } = Guid.NewGuid();
         public Guid? Id { get; set; }
         public Guid? ServiceId { get; set; }
+        public string? ServiceName { get; set; }
         public Guid? PerformedByStaffMemberId { get; set; }
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }

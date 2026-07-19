@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
  */
 class CatalogsRepository(private val db: AppDatabase) {
     fun servicesFlow(): Flow<List<ServiceEntity>> = db.serviceDao().observeAll()
+    suspend fun servicesSnapshot(): List<ServiceEntity> = db.serviceDao().snapshot()
     fun toolsFlow(): Flow<List<ToolEntity>> = db.toolDao().observeAll()
     fun materialsFlow(): Flow<List<MaterialEntity>> = db.materialDao().observeAll()
     fun generalSupportsFlow(): Flow<List<GeneralSupportEntity>> = db.generalSupportDao().observeAll()

@@ -22,7 +22,8 @@ public sealed record OperationsScopeContext(
     Guid? StaffMemberId,
     bool CanViewStationWide = false,
     bool CanViewWorkOrdersStationWide = false,
-    Guid? UserId = null)
+    Guid? UserId = null,
+    Guid? ManpowerTypeId = null)
 {
     public bool IsAdministrator => UserType == UserType.SystemAdministrator;
 
@@ -123,7 +124,7 @@ public sealed class OperationsScope(IUserContext user, IMasterDataReader masterD
                 var canViewWorkOrdersStationWide = user.HasPermission(OperationsPermissions.WorkOrders.ViewOthers);
 
                 return new OperationsScopeContext(
-                    userType, staff.StationId, staffId, canViewStationWide, canViewWorkOrdersStationWide, user.UserId);
+                    userType, staff.StationId, staffId, canViewStationWide, canViewWorkOrdersStationWide, user.UserId, staff.ManpowerTypeId);
             }
 
             default:

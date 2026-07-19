@@ -2,6 +2,7 @@ package com.nags.operations.data.sync
 
 import android.util.Log
 import com.nags.operations.data.TokenStore
+import com.nags.operations.data.MobileCatalogsDto
 import com.nags.operations.data.api.MobileApi
 import com.nags.operations.data.db.AppDatabase
 import com.nags.operations.data.db.entities.AircraftTypeEntity
@@ -32,6 +33,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.OffsetDateTime
+
+internal fun MobileCatalogsDto.toServiceEntities(): List<ServiceEntity> {
+    val allowedIds = allowedPerformedServiceIds.toHashSet()
+    return services.map {
+        ServiceEntity(
+            serviceId = it.id,
+            name = it.name,
+            isAircraftPerLanding = it.isAircraftPerLanding,
+            isAllowedPerformedService = !it.isAircraftPerLanding && it.id in allowedIds,
+        )
+    }
+}
 
 /**
  * The bridge between the server and the local Room cache. Every screen reads from Room; only
@@ -103,7 +116,7 @@ class SyncCoordinator(
         return try {
             val payload = api.catalogs()
             timeAndRecord(SyncTable.Services) {
-                db.serviceDao().replaceAll(payload.services.map { ServiceEntity(it.id, it.name, it.isAircraftPerLanding) })
+                db.serviceDao().replaceAll(payload.toServiceEntities())
             }
             timeAndRecord(SyncTable.Tools) {
                 db.toolDao().replaceAll(payload.tools.map { ToolEntity(it.id, it.name) })

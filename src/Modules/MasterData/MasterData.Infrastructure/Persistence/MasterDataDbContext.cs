@@ -29,6 +29,7 @@ public sealed class MasterDataDbContext(DbContextOptions<MasterDataDbContext> op
     public DbSet<ManpowerType> ManpowerTypes => Set<ManpowerType>();
     public DbSet<License> Licenses => Set<License>();
     public DbSet<Service> Services => Set<Service>();
+    public DbSet<ManpowerTypeAllowedService> ManpowerTypeAllowedServices => Set<ManpowerTypeAllowedService>();
     public DbSet<OperationType> OperationTypes => Set<OperationType>();
     public DbSet<AircraftType> AircraftTypes => Set<AircraftType>();
     public DbSet<Tool> Tools => Set<Tool>();

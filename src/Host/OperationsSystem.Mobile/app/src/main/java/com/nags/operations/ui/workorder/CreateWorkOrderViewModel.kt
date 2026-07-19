@@ -10,6 +10,7 @@ import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
 import com.nags.operations.data.db.entities.ServiceEntity
+import com.nags.operations.data.db.entities.allowedPerformedServiceIds
 import com.nags.operations.data.db.entities.ToolEntity
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
@@ -57,6 +58,8 @@ sealed interface CreateWorkOrderLaunchMode {
 data class ServiceLineFormRow(
     val localKey: Long,
     val serviceId: String? = null,
+    /** Preserves the display name when a saved service is later inactive or no longer allowed. */
+    val serviceName: String? = null,
     /** StaffMember id of the performer. */
     val employeeId: String? = null,
     val fromIso: String = "",
@@ -215,16 +218,18 @@ sealed interface SubmitOfflineResult {
  */
 internal fun serviceLinesToPrefill(
     row: WorkOrderFlightRow,
+    allowedPerformedServiceIds: Set<String>,
     nextKey: () -> Long,
 ): List<ServiceLineFormRow> {
     if (row.isPerLanding) return emptyList()
 
     return row.plannedServices
-        .filterNot { it.isAircraftPerLanding }
+        .filter { !it.isAircraftPerLanding && it.serviceId in allowedPerformedServiceIds }
         .map { service ->
             ServiceLineFormRow(
                 localKey = nextKey(),
                 serviceId = service.serviceId,
+                serviceName = service.name,
                 fromIso = row.sta,
                 toIso = row.std,
             )
@@ -242,7 +247,7 @@ class CreateWorkOrderViewModel(
      * [viewModelScope] is cancelled when this screen pops; disk + Room work must not be.
      */
     private val applicationScope: CoroutineScope,
-    catalogsRepository: CatalogsRepository,
+    private val catalogsRepository: CatalogsRepository,
     private val employeesRepository: EmployeesRepository,
 ) : ViewModel() {
 
@@ -442,6 +447,7 @@ class CreateWorkOrderViewModel(
             wo != null && WorkOrderStatusKind.fromWire(wo.status)?.isEditable == true
 
         val presetTypeId = row.aircraftTypeId
+        val allowedPerformedServiceIds = catalogsRepository.servicesSnapshot().allowedPerformedServiceIds()
 
         val formBase = if (underReview) {
             wo!!.toPrefilledCreateFormState(::allocKey).copy(
@@ -461,7 +467,7 @@ class CreateWorkOrderViewModel(
                 scheduledDepartureIso = row.std,
                 ataIso = row.sta,
                 atdIso = row.std,
-                serviceLines = serviceLinesToPrefill(row, ::allocKey),
+                serviceLines = serviceLinesToPrefill(row, allowedPerformedServiceIds, ::allocKey),
                 tasks = emptyList(),
                 draftSubmissionMode = WorkOrderDraftSubmissionMode.ForFlight,
             )
@@ -893,6 +899,7 @@ class CreateWorkOrderViewModel(
             atdIso,
             isAdHocScratch = snap.isAdHocScratch,
             selectedCustomerId = snap.selectedCustomerId,
+            allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         if (errors == null) {
             val confirmedAtd = atdIso?.trim()?.takeIf { it.isNotEmpty() } ?: f.atdIso
@@ -932,6 +939,18 @@ class CreateWorkOrderViewModel(
         val flight = snapshot.flight
         if (flight == null || snapshot.flightLoad != WorkOrderFlightLoadState.Ready) {
             onFinished(SubmitOfflineResult.Failed("Finish loading the flight before submitting."))
+            return
+        }
+        val currentErrors = computeCreateWorkOrderSubmitErrors(
+            form = normalizedFormIdentifiers(snapshot.form),
+            dialogAtdIso = snapshot.form.atdIso,
+            isAdHocScratch = snapshot.isAdHocScratch,
+            selectedCustomerId = snapshot.selectedCustomerId,
+            allowedPerformedServiceIds = snapshot.catalogServices.allowedPerformedServiceIds(),
+        )
+        if (currentErrors != null) {
+            _state.update { it.copy(submitFieldErrors = currentErrors, submitValidationResult = null) }
+            onFinished(SubmitOfflineResult.Failed("Fix the highlighted fields before submitting."))
             return
         }
 
@@ -1145,6 +1164,7 @@ class CreateWorkOrderViewModel(
             dialogAtdIso = null,
             isAdHocScratch = snap.isAdHocScratch,
             selectedCustomerId = snap.selectedCustomerId,
+            allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         val stepErrors = submitErrorsForWizardStep(allErrors, step)
         _state.update {
@@ -1175,6 +1195,7 @@ class CreateWorkOrderViewModel(
             dialogAtdIso = null,
             isAdHocScratch = snap.isAdHocScratch,
             selectedCustomerId = snap.selectedCustomerId,
+            allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         val hasProblems = errors != null
         _state.update {

@@ -102,6 +102,27 @@ public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
             .Select(m => new ManpowerTypeReadSnapshot(m.Id, m.Name, m.IsActive))
             .FirstOrDefaultAsync(cancellationToken);
 
+    public async Task<IReadOnlySet<Guid>> GetAllowedActiveServiceIdsAsync(
+        Guid manpowerTypeId,
+        CancellationToken cancellationToken)
+    {
+        var manpowerTypeActive = await db.ManpowerTypes.AsNoTracking()
+            .AnyAsync(type => type.Id == manpowerTypeId && type.IsActive, cancellationToken);
+        if (!manpowerTypeActive)
+            return new HashSet<Guid>();
+
+        var serviceIds = await db.ManpowerTypeAllowedServices.AsNoTracking()
+            .Where(allowance => allowance.ManpowerTypeId == manpowerTypeId)
+            .Where(allowance => db.Services.Any(service =>
+                service.Id == allowance.ServiceId &&
+                service.IsActive &&
+                service.Id != MasterData.Contracts.Seeding.WellKnownMasterDataIds.AircraftPerLandingService))
+            .Select(allowance => allowance.ServiceId)
+            .ToListAsync(cancellationToken);
+
+        return serviceIds.ToHashSet();
+    }
+
     public async Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken) =>
         await db.Services.AsNoTracking()
             .Where(s => s.IsActive)

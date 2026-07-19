@@ -15,6 +15,7 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     private const string Base = MasterDataApiFactory.Base;
     private const string PreviousMasterDataMigration = "20260702215825_MasterData_PendingLoginEmail";
     private const string RetireOnCallMigration = "20260718195623_MasterData_RetireOnCallService";
+    private const string AllowedServicesMigration = "20260718220554_MasterData_ManpowerTypeAllowedServices";
     private static readonly Guid RetiredOnCallServiceId = new("40000000-0000-0000-0000-000000000002");
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
@@ -84,6 +85,41 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
 
             (await db.Services.AsNoTracking().AnyAsync(service => service.Id == RetiredOnCallServiceId))
                 .ShouldBeFalse();
+        }
+        finally
+        {
+            await db.Database.MigrateAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Allowed_services_migration_backfills_existing_non_system_pairs()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterDataDbContext>();
+        var migrator = db.Database.GetService<IMigrator>();
+        var manpowerTypeId = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+
+        await migrator.MigrateAsync(RetireOnCallMigration);
+        try
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($$"""
+                INSERT INTO [masterdata].[manpower_types]
+                    ([Id], [Name], [Description], [IsActive], [CreatedAtUtc], [UpdatedAtUtc])
+                VALUES
+                    ({{manpowerTypeId}}, {{"Backfill Type " + manpowerTypeId.ToString("N")}}, NULL, 1, SYSUTCDATETIME(), NULL);
+
+                INSERT INTO [masterdata].[services]
+                    ([Id], [Name], [Description], [IsActive], [CreatedAtUtc], [UpdatedAtUtc])
+                VALUES
+                    ({{serviceId}}, {{"Backfill Service " + serviceId.ToString("N")}}, NULL, 1, SYSUTCDATETIME(), NULL);
+                """);
+
+            await migrator.MigrateAsync(AllowedServicesMigration);
+
+            (await db.ManpowerTypeAllowedServices.AsNoTracking().AnyAsync(allowance =>
+                allowance.ManpowerTypeId == manpowerTypeId && allowance.ServiceId == serviceId)).ShouldBeTrue();
         }
         finally
         {

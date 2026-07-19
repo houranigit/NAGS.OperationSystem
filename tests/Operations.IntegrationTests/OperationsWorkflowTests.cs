@@ -334,6 +334,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             new { manufacturer = "Airbus", model = $"A320-{suffix}", notes = (string?)null });
         var manpowerTypeId = await PostForIdAsync(admin, $"{MasterDataBase}/manpower-types",
             new { name = $"Manpower {suffix}", description = (string?)null });
+        await AllowServiceAsync(admin, manpowerTypeId, serviceId);
         var staffMemberId = await PostForIdAsync(admin, $"{MasterDataBase}/staff-members", new
         {
             fullName = $"Ops Staff {suffix}",
@@ -357,6 +358,19 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         return new MasterDataRefs(countryId, stationId, customerId, operationTypeId, serviceId, aircraftTypeId,
             manpowerTypeId, staffMemberId, staffRoleId);
     }
+
+    private static async Task AllowServiceAsync(HttpClient admin, Guid manpowerTypeId, Guid serviceId)
+    {
+        var detail = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/manpower-types/{manpowerTypeId}");
+        var request = new HttpRequestMessage(HttpMethod.Put, $"{MasterDataBase}/manpower-types/{manpowerTypeId}/service-allowances")
+        {
+            Content = JsonContent.Create(new { serviceIds = new[] { serviceId } })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", detail!.RowVersion);
+        (await admin.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
+    private sealed record ConcurrencyDetail(string RowVersion);
 
     private async Task<(HttpClient Client, Guid StaffId)> CreateStaffLoginAsync(HttpClient admin, MasterDataRefs refs) =>
         await CreateStaffLoginAsync(admin, refs, refs.StaffRoleId);

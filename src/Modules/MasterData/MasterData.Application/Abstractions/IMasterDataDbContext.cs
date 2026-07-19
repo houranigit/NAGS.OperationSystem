@@ -31,6 +31,8 @@ public interface IMasterDataDbContext : IOutboxDbContext
 
     public DbSet<Service> Services { get; }
 
+    public DbSet<ManpowerTypeAllowedService> ManpowerTypeAllowedServices { get; }
+
     public DbSet<OperationType> OperationTypes { get; }
 
     public DbSet<AircraftType> AircraftTypes { get; }

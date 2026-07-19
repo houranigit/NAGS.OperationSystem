@@ -13,6 +13,7 @@ class WorkOrderServiceLineDefaultsTest {
 
         val result = serviceLinesToPrefill(
             flight(isPerLanding = true),
+            allowedPerformedServiceIds = setOf("service-1"),
             nextKey = { (++allocatedKeys).toLong() },
         )
 
@@ -24,6 +25,7 @@ class WorkOrderServiceLineDefaultsTest {
     fun normal_work_order_keeps_real_planned_service_prefill() {
         val result = serviceLinesToPrefill(
             flight(isPerLanding = false),
+            allowedPerformedServiceIds = setOf("service-1"),
             nextKey = { 7L },
         )
 
@@ -32,6 +34,20 @@ class WorkOrderServiceLineDefaultsTest {
         assertEquals("service-1", line.serviceId)
         assertEquals("2026-07-18T10:00:00Z", line.fromIso)
         assertEquals("2026-07-18T12:00:00Z", line.toIso)
+    }
+
+    @Test
+    fun normal_work_order_omits_planned_services_not_allowed_for_the_author() {
+        var allocatedKeys = 0
+
+        val result = serviceLinesToPrefill(
+            flight(isPerLanding = false),
+            allowedPerformedServiceIds = emptySet(),
+            nextKey = { (++allocatedKeys).toLong() },
+        )
+
+        assertTrue(result.isEmpty())
+        assertEquals(0, allocatedKeys)
     }
 
     private fun flight(isPerLanding: Boolean) = WorkOrderFlightRow(

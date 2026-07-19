@@ -30,6 +30,35 @@ internal static class ServiceEndpoints
             return result.ToOk();
         }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Services.View);
 
+        services.MapGet("/performed-options", async (ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetPerformedServiceOptionsQuery(), ct);
+            return result.ToOk();
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Services.View);
+
+        services.MapGet("/{id:guid}/manpower-type-allowances", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetManpowerTypeAllowancesForServiceQuery(id), ct);
+            return result.ToOk();
+        }).RequirePermission(MasterDataPermissions.Services.View);
+
+        services.MapPut("/{id:guid}/manpower-type-allowances", async (
+            Guid id,
+            UpdateManpowerTypeAllowancesRequest request,
+            HttpRequest http,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new UpdateManpowerTypeAllowancesForServiceCommand(
+                id,
+                request.ManpowerTypeIds ?? [],
+                rowVersion), ct);
+            return result.ToNoContent();
+        }).RequirePermission(MasterDataPermissions.Services.Update);
+
         services.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetServiceByIdQuery(id), ct);

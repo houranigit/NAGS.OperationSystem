@@ -72,6 +72,14 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         if (stationCheck.IsFailure)
             return stationCheck.Error;
 
+        var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
+            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            scopeResult.Value.ManpowerTypeId,
+            scopeResult.Value.IsAdministrator,
+            cancellationToken);
+        if (serviceAccess.IsFailure)
+            return serviceAccess.Error;
+
         const bool allowEmptyPlannedServices = true;
 
         var flightInput = await FlightBuildHelpers.BuildAsync(

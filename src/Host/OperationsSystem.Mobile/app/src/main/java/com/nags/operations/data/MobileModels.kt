@@ -57,6 +57,8 @@ data class MobileAircraftTypeDto(
 @Serializable
 data class MobileCatalogsDto(
     val services: List<MobileServiceCatalogItemDto> = emptyList(),
+    /** Services the signed-in staff member may select as performed services. */
+    val allowedPerformedServiceIds: List<String> = emptyList(),
     val tools: List<MobileCatalogItemDto> = emptyList(),
     val materials: List<MobileCatalogItemDto> = emptyList(),
     val generalSupports: List<MobileCatalogItemDto> = emptyList(),

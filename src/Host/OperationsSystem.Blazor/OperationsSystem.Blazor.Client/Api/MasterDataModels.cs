@@ -40,6 +40,7 @@ public sealed record ManpowerTypeDetail(
     string RowVersion);
 
 public sealed record ManpowerTypeOption(Guid Id, string Name);
+public sealed record ServiceAllowance(Guid ServiceId, string Name, bool IsActive, bool IsAllowed);
 
 public sealed record CreateManpowerTypeRequest(string Name, string? Description);
 public sealed record UpdateManpowerTypeRequest(string Name, string? Description);
@@ -73,8 +74,11 @@ public sealed record UpdateLicenseRequest(string Name, string? Description);
 public sealed record ServiceListItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
 public sealed record ServiceDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
 public sealed record ServiceOption(Guid Id, string Name, bool IsAircraftPerLanding);
+public sealed record ManpowerTypeAllowance(Guid ManpowerTypeId, string Name, bool IsActive, bool IsAllowed);
 public sealed record CreateServiceRequest(string Name, string? Description);
 public sealed record UpdateServiceRequest(string Name, string? Description);
+public sealed record UpdateServiceAllowancesRequest(IReadOnlyList<Guid> ServiceIds);
+public sealed record UpdateManpowerTypeAllowancesRequest(IReadOnlyList<Guid> ManpowerTypeIds);
 
 // --- OperationTypes --------------------------------------------------------
 

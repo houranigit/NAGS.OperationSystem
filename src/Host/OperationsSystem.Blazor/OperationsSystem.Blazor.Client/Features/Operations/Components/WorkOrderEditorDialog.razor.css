@@ -55,6 +55,18 @@
 .owo-summary-dot--warning { background: var(--os-color-warning); }
 .owo-summary-dot--danger { background: var(--os-color-danger); }
 
+.owo-allowance-warning {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-warning);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-warning-bg);
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+}
+
 .owo-summary-main {
     min-width: 0;
 }

@@ -127,7 +127,7 @@
             var customersTask = MasterData.GetCustomerOptionsAsync();
             var stationsTask = MasterData.GetStationOptionsAsync();
             var aircraftTask = MasterData.GetAircraftTypeOptionsAsync();
-            var servicesTask = MasterData.GetServiceOptionsAsync();
+            var servicesTask = MasterData.GetPerformedServiceOptionsAsync();
             var toolsTask = MasterData.GetToolOptionsAsync();
             var materialsTask = MasterData.GetMaterialOptionsAsync();
             var supportsTask = MasterData.GetGeneralSupportOptionsAsync();
@@ -137,7 +137,7 @@
             customers = customersTask.Result;
             stations = stationsTask.Result;
             aircraftTypes = aircraftTask.Result;
-            actualServices = servicesTask.Result.Where(s => !s.IsAircraftPerLanding).ToList();
+            actualServices = servicesTask.Result;
             toolOptions = toolsTask.Result;
             materialOptions = materialsTask.Result;
             supportOptions = supportsTask.Result;

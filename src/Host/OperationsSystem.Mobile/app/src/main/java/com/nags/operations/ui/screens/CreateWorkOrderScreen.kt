@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.data.db.entities.CustomerEntity
+import com.nags.operations.data.db.entities.allowedPerformedServiceIds
 import com.nags.operations.ui.components.InlineSearchableDropdownField
 import com.nags.operations.ui.components.AircraftTypePicker
 import com.nags.operations.ui.components.ErrorState
@@ -312,7 +313,7 @@ private fun CreateWorkOrderFormContent(
 
             WorkOrderWizardStep.ServiceLines -> {
         ServiceLinesSectionHeading(
-            catalogsMissingServices = state.catalogServices.isEmpty(),
+            performedServicesUnavailable = state.catalogServices.allowedPerformedServiceIds().isEmpty(),
             catalogsMissingEmployees = state.catalogEmployees.isEmpty(),
         )
         if (state.form.serviceLines.isEmpty()) {
@@ -343,6 +344,7 @@ private fun CreateWorkOrderFormContent(
         }
         Button(
             onClick = { viewModel.addServiceLine() },
+            enabled = state.catalogServices.allowedPerformedServiceIds().isNotEmpty(),
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),

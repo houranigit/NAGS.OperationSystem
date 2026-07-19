@@ -102,9 +102,23 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
             new { name = $"Marshalling {suffix}", description = (string?)null });
         var manpowerTypeId = await PostForIdAsync(admin, $"{MasterDataBase}/manpower-types",
             new { name = $"Manpower {suffix}", description = (string?)null });
+        await AllowServiceAsync(admin, manpowerTypeId, serviceId);
 
         return new MasterDataRefs(countryId, stationId, customerId, operationTypeId, serviceId, manpowerTypeId);
     }
+
+    private static async Task AllowServiceAsync(HttpClient admin, Guid manpowerTypeId, Guid serviceId)
+    {
+        var detail = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/manpower-types/{manpowerTypeId}");
+        var request = new HttpRequestMessage(HttpMethod.Put, $"{MasterDataBase}/manpower-types/{manpowerTypeId}/service-allowances")
+        {
+            Content = JsonContent.Create(new { serviceIds = new[] { serviceId } })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", detail!.RowVersion);
+        (await admin.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
+    private sealed record ConcurrencyDetail(string RowVersion);
 
     private static async Task<Guid> CreateStationAsync(HttpClient admin, Guid countryId)
     {

@@ -47,9 +47,45 @@ public sealed class MasterDataResolverTests
         result.Value.Single().StaffMemberId.ShouldBe(staffId);
     }
 
+    [Fact]
+    public async Task EnsurePerformedServicesAllowedAsync_RejectsServicesOutsideTheStaffManpowerType()
+    {
+        var manpowerTypeId = Guid.NewGuid();
+        var allowedServiceId = Guid.NewGuid();
+        var disallowedServiceId = Guid.NewGuid();
+        var reader = new FakeMasterDataReader();
+        reader.AllowedServiceIds.Add(allowedServiceId);
+        var resolver = new MasterDataResolver(reader);
+
+        var result = await resolver.EnsurePerformedServicesAllowedAsync(
+            [allowedServiceId, disallowedServiceId],
+            manpowerTypeId,
+            isAdministrator: false,
+            CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.WorkOrder.ServiceNotAllowed");
+    }
+
+    [Fact]
+    public async Task EnsurePerformedServicesAllowedAsync_AllowsMappedServicesAndAdministratorBypass()
+    {
+        var manpowerTypeId = Guid.NewGuid();
+        var allowedServiceId = Guid.NewGuid();
+        var reader = new FakeMasterDataReader();
+        reader.AllowedServiceIds.Add(allowedServiceId);
+        var resolver = new MasterDataResolver(reader);
+
+        (await resolver.EnsurePerformedServicesAllowedAsync(
+            [allowedServiceId], manpowerTypeId, isAdministrator: false, CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        (await resolver.EnsurePerformedServicesAllowedAsync(
+            [Guid.NewGuid()], manpowerTypeId: null, isAdministrator: true, CancellationToken.None)).IsSuccess.ShouldBeTrue();
+    }
+
     private sealed class FakeMasterDataReader : IMasterDataReader
     {
         public Dictionary<Guid, StaffMemberReadSnapshot> StaffMembers { get; } = [];
+        public HashSet<Guid> AllowedServiceIds { get; } = [];
 
         public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
@@ -95,6 +131,9 @@ public sealed class MasterDataResolverTests
 
         public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
+
+        public Task<IReadOnlySet<Guid>> GetAllowedActiveServiceIdsAsync(Guid manpowerTypeId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlySet<Guid>>(AllowedServiceIds);
 
         public Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken) =>
             throw new NotImplementedException();

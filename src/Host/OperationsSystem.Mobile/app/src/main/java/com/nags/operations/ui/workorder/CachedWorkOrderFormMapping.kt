@@ -13,6 +13,7 @@ internal fun WorkOrderDetailWireDto.toPrefilledCreateFormState(nextKey: () -> Lo
         ServiceLineFormRow(
             localKey = nextKey(),
             serviceId = line.serviceId,
+            serviceName = line.serviceName,
             employeeId = line.performedByStaffMemberId,
             fromIso = line.fromUtc,
             toIso = line.toUtc,

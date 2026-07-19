@@ -42,6 +42,7 @@ import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
 import com.nags.operations.data.db.entities.ServiceEntity
+import com.nags.operations.data.db.entities.isAllowedPerformedOption
 import com.nags.operations.data.db.entities.ToolEntity
 import com.nags.operations.data.db.entities.workOrderPickerDisplayLine
 import com.nags.operations.ui.components.DocumentAttachmentButton
@@ -56,7 +57,7 @@ import com.nags.operations.ui.components.formatMultiSelectSummary
 import java.time.ZoneOffset
 
 private fun resolvedServiceName(row: ServiceLineFormRow, services: List<ServiceEntity>): String? =
-    services.firstOrNull { it.serviceId == row.serviceId }?.name
+    services.firstOrNull { it.serviceId == row.serviceId }?.name ?: row.serviceName
 
 private fun serviceRecapChipText(row: ServiceLineFormRow, services: List<ServiceEntity>): String =
     resolvedServiceName(row, services) ?: "Needs service"
@@ -118,7 +119,7 @@ fun TasksSectionHeading(
 
 @Composable
 fun ServiceLinesSectionHeading(
-    catalogsMissingServices: Boolean,
+    performedServicesUnavailable: Boolean,
     catalogsMissingEmployees: Boolean,
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -128,12 +129,12 @@ fun ServiceLinesSectionHeading(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 8.dp),
         )
-        if (catalogsMissingServices || catalogsMissingEmployees) {
+        if (performedServicesUnavailable || catalogsMissingEmployees) {
             val hint = when {
-                catalogsMissingServices && catalogsMissingEmployees ->
-                    "Service and employee catalogs are empty — sync from the flight list or Sync Center."
-                catalogsMissingServices ->
-                    "Services catalog is empty — sync before you can tag a service type."
+                performedServicesUnavailable && catalogsMissingEmployees ->
+                    "No allowed performed services or employees are available — sync from the flight list or Sync Center."
+                performedServicesUnavailable ->
+                    "No performed services are allowed for your manpower type. Sync if your access was recently changed."
                 else ->
                     "Employees catalog is empty — sync before you can choose who performed services."
             }
@@ -223,7 +224,10 @@ fun ServiceLineCard(
     canRemove: Boolean,
 ) {
     val hasServiceSelected = resolvedServiceName(row, services) != null
-    val chipLabel = remember(row.serviceId, services) {
+    val selectedService = services.firstOrNull { it.serviceId == row.serviceId }
+    val selectedServiceIsAllowed = row.serviceId == null ||
+        selectedService?.isAllowedPerformedOption() == true
+    val chipLabel = remember(row.serviceId, row.serviceName, services) {
         serviceRecapChipText(row, services)
     }
 
@@ -283,14 +287,22 @@ fun ServiceLineCard(
 
                 WorkOrderServicePicker(
                     selectedId = row.serviceId,
+                    selectedNameFallback = row.serviceName,
                     options = services,
                     onSelected = { svc ->
-                        onChange(row.copy(serviceId = svc.serviceId))
+                        onChange(row.copy(serviceId = svc.serviceId, serviceName = svc.name))
                     },
-                    onCleared = { onChange(row.copy(serviceId = null)) },
-                    isError = lineErrors?.serviceType != null,
+                    onCleared = { onChange(row.copy(serviceId = null, serviceName = null)) },
+                    isError = lineErrors?.serviceType != null || !selectedServiceIsAllowed,
                     supportingText = fieldErrorSupportingText(lineErrors?.serviceType),
                 )
+                if (!selectedServiceIsAllowed) {
+                    Text(
+                        "This service is no longer allowed for your manpower type. Remove or replace it before submitting.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 WorkOrderEmployeePicker(
                     selectedId = row.employeeId,
                     options = employees,

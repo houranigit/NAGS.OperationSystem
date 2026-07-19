@@ -76,6 +76,9 @@ public sealed class ManpowerType : AggregateRoot<Guid>
         return Result.Success();
     }
 
+    /// <summary>Advances optimistic concurrency when an allowance involving this manpower type changes.</summary>
+    public void Touch(DateTimeOffset now) => UpdatedAtUtc = now;
+
     private static Result<string> ValidateName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))

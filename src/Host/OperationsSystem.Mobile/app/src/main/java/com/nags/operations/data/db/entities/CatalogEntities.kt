@@ -1,6 +1,7 @@
 package com.nags.operations.data.db.entities
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
 
 /**
@@ -19,7 +20,21 @@ data class ServiceEntity(
     val name: String,
     /** The well-known Aircraft Per Landing designation — excluded from work-order pickers. */
     val isAircraftPerLanding: Boolean,
+    /** Personalized allowance for the signed-in staff member's active manpower type. */
+    @ColumnInfo(defaultValue = "0")
+    val isAllowedPerformedService: Boolean = false,
 )
+
+fun ServiceEntity.isAllowedPerformedOption(): Boolean =
+    isAllowedPerformedService && !isAircraftPerLanding
+
+fun List<ServiceEntity>.allowedPerformedServiceOptions(): List<ServiceEntity> =
+    filter(ServiceEntity::isAllowedPerformedOption)
+
+fun Iterable<ServiceEntity>.allowedPerformedServiceIds(): Set<String> =
+    asSequence()
+        .filter(ServiceEntity::isAllowedPerformedOption)
+        .mapTo(linkedSetOf(), ServiceEntity::serviceId)
 
 @Entity(tableName = "tools")
 data class ToolEntity(

@@ -20,6 +20,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
     private static readonly string[] MobileStaffPermissions =
     [
+        "masterdata.reference.view-options",
         "operations.flights.view",
         "operations.work-orders.view",
         "operations.work-orders.author",
@@ -85,6 +86,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
         var catalogs = await staff.Client.GetFromJsonAsync<MobileCatalogs>($"{MobileBase}/catalogs");
         catalogs!.Services.ShouldContain(s => s.Id == refs.ServiceId);
+        catalogs.AllowedPerformedServiceIds.ShouldContain(refs.ServiceId);
         catalogs.Services.ShouldNotContain(s => s.Id == RetiredOnCallServiceId);
         catalogs.Customers.ShouldContain(c => c.Id == refs.CustomerId);
 
@@ -102,6 +104,88 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
         var byId = await staff.Client.GetFromJsonAsync<MobileFlight>($"{MobileBase}/flights/{flightId}");
         byId!.Id.ShouldBe(flightId);
+    }
+
+    [Fact]
+    public async Task Mobile_catalog_and_work_order_writes_enforce_the_staff_manpower_type_allowances()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+
+        var existingFlightId = await ScheduleFlightAsync(admin, refs, "MOB109", [staff.StaffId]);
+        var existingSubmit = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{existingFlightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId)
+            });
+        existingSubmit.StatusCode.ShouldBe(HttpStatusCode.Created, await existingSubmit.Content.ReadAsStringAsync());
+        var existingWorkOrder = await existingSubmit.Content.ReadFromJsonAsync<MobileWriteResult>();
+
+        var manpowerType = await admin.GetFromJsonAsync<ConcurrencyDetail>(
+            $"{MasterDataBase}/manpower-types/{refs.ManpowerTypeId}");
+        var clear = new HttpRequestMessage(
+            HttpMethod.Put,
+            $"{MasterDataBase}/manpower-types/{refs.ManpowerTypeId}/service-allowances")
+        {
+            Content = JsonContent.Create(new { serviceIds = Array.Empty<Guid>() })
+        };
+        clear.Headers.TryAddWithoutValidation("If-Match", manpowerType!.RowVersion);
+        (await admin.SendAsync(clear)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var catalogs = await staff.Client.GetFromJsonAsync<MobileCatalogs>($"{MobileBase}/catalogs");
+        catalogs!.Services.ShouldContain(service => service.Id == refs.ServiceId);
+        catalogs.AllowedPerformedServiceIds.ShouldNotContain(refs.ServiceId);
+
+        var generalOptions = await staff.Client.GetFromJsonAsync<List<CatalogService>>(
+            $"{MasterDataBase}/services/options");
+        var performedOptions = await staff.Client.GetFromJsonAsync<List<CatalogService>>(
+            $"{MasterDataBase}/services/performed-options");
+        generalOptions!.ShouldContain(service => service.Id == refs.ServiceId);
+        performedOptions!.ShouldNotContain(service => service.Id == refs.ServiceId);
+
+        var flightId = await ScheduleFlightAsync(admin, refs, "MOB110", [staff.StaffId]);
+        var submit = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId)
+            });
+
+        submit.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await submit.Content.ReadAsStringAsync());
+        (await submit.Content.ReadAsStringAsync()).ShouldContain("Operations.WorkOrder.ServiceNotAllowed");
+
+        var returnToRamp = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/{existingWorkOrder!.WorkOrderId}/return-to-ramp",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                serviceLines = Array.Empty<object>(),
+                tasks = new[]
+                {
+                    new
+                    {
+                        id = (Guid?)null,
+                        taskType = "Major",
+                        description = "Ramp inspection",
+                        fromUtc = DateTimeOffset.UtcNow.AddMinutes(-20),
+                        toUtc = DateTimeOffset.UtcNow.AddMinutes(20),
+                        employeeIds = new[] { staff.StaffId },
+                        tools = Array.Empty<object>(),
+                        materials = Array.Empty<object>(),
+                        generalSupports = Array.Empty<object>()
+                    }
+                }
+            });
+        returnToRamp.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await returnToRamp.Content.ReadAsStringAsync());
+        (await returnToRamp.Content.ReadAsStringAsync()).ShouldContain("Operations.WorkOrder.ServiceNotAllowed");
+
+        var historical = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{existingWorkOrder.WorkOrderId}");
+        historical!.ServiceLines.ShouldContain(line => line.ServiceId == refs.ServiceId);
     }
 
     [Fact]
@@ -445,6 +529,17 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         var aircraftTypeId = await PostForIdAsync(admin, $"{MasterDataBase}/aircraft-types",
             new { manufacturer = "Airbus", model = $"A320-{suffix}", notes = (string?)null });
 
+        var manpowerType = await admin.GetFromJsonAsync<ConcurrencyDetail>(
+            $"{MasterDataBase}/manpower-types/{manpowerTypeId}");
+        var allowanceRequest = new HttpRequestMessage(
+            HttpMethod.Put,
+            $"{MasterDataBase}/manpower-types/{manpowerTypeId}/service-allowances")
+        {
+            Content = JsonContent.Create(new { serviceIds = new[] { serviceId } })
+        };
+        allowanceRequest.Headers.TryAddWithoutValidation("If-Match", manpowerType!.RowVersion);
+        (await admin.SendAsync(allowanceRequest)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
         return new MasterDataRefs(countryId, stationId, customerId, operationTypeId, serviceId, manpowerTypeId, aircraftTypeId);
     }
 
@@ -549,11 +644,13 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         Guid ManpowerTypeId, string? ManpowerTypeName);
 
     private sealed record MobileCatalogs(
-        List<CatalogService> Services, List<CatalogItem> Tools, List<CatalogItem> Materials,
+        List<CatalogService> Services, List<Guid> AllowedPerformedServiceIds,
+        List<CatalogItem> Tools, List<CatalogItem> Materials,
         List<CatalogItem> GeneralSupports, List<CatalogCustomer> Customers, List<CatalogAircraftType> AircraftTypes,
         DateTimeOffset GeneratedAtUtc);
 
     private sealed record CatalogService(Guid Id, string Name, bool IsAircraftPerLanding);
+    private sealed record ConcurrencyDetail(string RowVersion);
     private sealed record CatalogItem(Guid Id, string Name);
     private sealed record CatalogCustomer(Guid Id, string? IataCode, string Name);
     private sealed record CatalogAircraftType(Guid Id, string Manufacturer, string Model);

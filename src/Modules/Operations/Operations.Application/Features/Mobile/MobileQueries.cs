@@ -87,6 +87,9 @@ public sealed class GetMobileCatalogsQueryHandler(
             return scopeResult.Error;
 
         var services = await masterData.GetActiveServicesAsync(cancellationToken);
+        var allowedPerformedServiceIds = await masterData.GetAllowedActiveServiceIdsAsync(
+            scopeResult.Value.ManpowerTypeId!.Value,
+            cancellationToken);
         var tools = await masterData.GetActiveToolsAsync(cancellationToken);
         var materials = await masterData.GetActiveMaterialsAsync(cancellationToken);
         var generalSupports = await masterData.GetActiveGeneralSupportsAsync(cancellationToken);
@@ -96,6 +99,7 @@ public sealed class GetMobileCatalogsQueryHandler(
         return new MobileCatalogsDto(
             services.Select(s => new MobileServiceCatalogItemDto(
                 s.Id, s.Name, s.Id == WellKnownMasterDataIds.AircraftPerLandingService)).ToList(),
+            allowedPerformedServiceIds.OrderBy(id => id).ToList(),
             tools.Select(t => new MobileCatalogItemDto(t.Id, t.Name)).ToList(),
             materials.Select(m => new MobileCatalogItemDto(m.Id, m.Name)).ToList(),
             generalSupports.Select(g => new MobileCatalogItemDto(g.Id, g.Name)).ToList(),

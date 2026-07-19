@@ -46,6 +46,7 @@ public sealed class MasterDataApiFactory : WebApplicationFactory<Program>, IAsyn
         builder.UseSetting("ConnectionStrings:Default", connectionString);
         builder.UseSetting("Identity:DemoData:Enabled", "false");
         builder.UseSetting("Messaging:OutboxDispatchEnabled", "false");
+        builder.UseSetting("Notifications:Fcm:Enabled", "false");
         // Tests share a client IP and authenticate frequently; relax the anonymous auth rate limit.
         builder.UseSetting("Security:RateLimit:AnonymousAuthPermitLimit", "1000000");
 
@@ -62,6 +63,7 @@ public sealed class MasterDataApiFactory : WebApplicationFactory<Program>, IAsyn
                 ["Identity:Admin:Password"] = AdminPassword,
                 ["Identity:DemoData:Enabled"] = "false",
                 ["Messaging:OutboxDispatchEnabled"] = "false",
+                ["Notifications:Fcm:Enabled"] = "false",
                 // Tests share a client IP and authenticate frequently; relax the anonymous auth limit.
                 ["Security:RateLimit:AnonymousAuthPermitLimit"] = "1000000"
             });

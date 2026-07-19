@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.ServiceEntity
+import com.nags.operations.data.db.entities.allowedPerformedServiceOptions
 import com.nags.operations.data.db.entities.workOrderPickerDisplayLine
 import com.nags.operations.ui.util.formatIsoForDisplay
 import com.nags.operations.ui.util.parseOffsetDateTime
@@ -279,6 +280,7 @@ fun AircraftTypePicker(
 @Composable
 fun WorkOrderServicePicker(
     selectedId: String?,
+    selectedNameFallback: String? = null,
     options: List<ServiceEntity>,
     onSelected: (ServiceEntity) -> Unit,
     onCleared: () -> Unit,
@@ -287,11 +289,11 @@ fun WorkOrderServicePicker(
     isError: Boolean = false,
     supportingText: @Composable (() -> Unit)? = null,
 ) {
-    val selectableOptions = options.filterNot { it.isAircraftPerLanding }
-    val selected = selectableOptions.firstOrNull { it.serviceId == selectedId }
+    val selectableOptions = options.allowedPerformedServiceOptions()
+    val selected = options.firstOrNull { it.serviceId == selectedId }
     InlineSearchableDropdownField(
         label = "Service type",
-        selectedText = selected?.name.orEmpty(),
+        selectedText = selected?.name ?: selectedNameFallback.orEmpty(),
         placeholder = "Type to search services",
         options = selectableOptions,
         renderOption = { it.name },

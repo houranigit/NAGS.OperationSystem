@@ -1,0 +1,100 @@
+<div class="allowance-editor">
+    <div class="allowance-toolbar">
+        <div>
+            <h3>@Title</h3>
+            <p class="os-muted">@Description</p>
+        </div>
+        <StatusBadge Label="@($"{selectedIds.Count} selected")" Tone="info" />
+    </div>
+
+    <div class="allowance-controls">
+        <RadzenTextBox @bind-Value="searchText" Immediate="true" Placeholder="Search" class="allowance-search" />
+        @if (CanEdit)
+        {
+            <RadzenButton Text="Select active" Icon="done_all" ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@SelectActive" Disabled="@IsSaving" />
+            <RadzenButton Text="Clear" Icon="clear_all" ButtonStyle="ButtonStyle.Light"
+                          Size="ButtonSize.Small" ButtonType="ButtonType.Button" Click="@Clear" Disabled="@IsSaving" />
+        }
+    </div>
+
+    @if (Items.Count == 0)
+    {
+        <div class="allowance-empty">No records are available.</div>
+    }
+    else if (FilteredItems.Count == 0)
+    {
+        <div class="allowance-empty">No records match your search.</div>
+    }
+    else
+    {
+        <div class="allowance-list">
+            @foreach (var item in FilteredItems)
+            {
+                <label class="allowance-row" @key="item.Id">
+                    <input type="checkbox"
+                           checked="@selectedIds.Contains(item.Id)"
+                           disabled="@(!CanEdit || IsSaving)"
+                           @onchange="@(args => Toggle(item.Id, args.Value is true))" />
+                    <span class="allowance-name">@item.Name</span>
+                    <StatusBadge Label="@(item.IsActive ? "Active" : "Inactive")"
+                                 Tone="@(item.IsActive ? "success" : "neutral")" />
+                </label>
+            }
+        </div>
+    }
+
+    @if (CanEdit)
+    {
+        <div class="allowance-actions">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button"
+                          Click="@Cancel" Disabled="@IsSaving" />
+            <RadzenButton Text="Save allowances" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                          ButtonType="ButtonType.Button" Click="@SaveAsync" Disabled="@IsSaving" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Description { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public IReadOnlyList<AllowanceOption> Items { get; set; } = [];
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool IsSaving { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Guid>> OnSave { get; set; }
+
+    private HashSet<Guid> selectedIds = [];
+    private HashSet<Guid> originalIds = [];
+    private string searchText = string.Empty;
+
+    private IReadOnlyList<AllowanceOption> FilteredItems => Items
+        .Where(item => string.IsNullOrWhiteSpace(searchText)
+            || item.Name.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    protected override void OnParametersSet()
+    {
+        originalIds = Items.Where(item => item.IsAllowed).Select(item => item.Id).ToHashSet();
+        selectedIds = originalIds.ToHashSet();
+    }
+
+    private void Toggle(Guid id, bool selected)
+    {
+        if (selected)
+            selectedIds.Add(id);
+        else
+            selectedIds.Remove(id);
+    }
+
+    private void SelectActive()
+    {
+        foreach (var item in Items.Where(item => item.IsActive))
+            selectedIds.Add(item.Id);
+    }
+
+    private void Clear() => selectedIds.Clear();
+    private void Cancel() => selectedIds = originalIds.ToHashSet();
+
+    private async Task SaveAsync() =>
+        await OnSave.InvokeAsync(selectedIds.OrderBy(id => id).ToList());
+}

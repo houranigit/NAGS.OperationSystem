@@ -10,6 +10,29 @@ namespace Operations.Application.Common;
 /// </summary>
 public sealed class MasterDataResolver(IMasterDataReader reader)
 {
+    public async Task<Result> EnsurePerformedServicesAllowedAsync(
+        IReadOnlyCollection<Guid> serviceIds,
+        Guid? manpowerTypeId,
+        bool isAdministrator,
+        CancellationToken ct)
+    {
+        if (isAdministrator || serviceIds.Count == 0)
+            return Result.Success();
+
+        if (manpowerTypeId is null)
+            return Error.Forbidden(
+                "Your linked staff member does not have an active manpower type.",
+                "Operations.WorkOrder.ManpowerTypeRequired");
+
+        var allowedIds = await reader.GetAllowedActiveServiceIdsAsync(manpowerTypeId.Value, ct);
+        if (serviceIds.Distinct().All(allowedIds.Contains))
+            return Result.Success();
+
+        return Error.Validation(
+            "One or more performed services are not allowed for your manpower type.",
+            "Operations.WorkOrder.ServiceNotAllowed");
+    }
+
     public async Task<Result<CustomerSnapshot>> CustomerAsync(Guid id, CancellationToken ct)
     {
         var c = await reader.GetCustomerAsync(id, ct);

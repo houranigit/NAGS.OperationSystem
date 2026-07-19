@@ -65,6 +65,14 @@ public sealed class SubmitWorkOrderCommandHandler(
         if (flightAccess.IsFailure)
             return flightAccess.Error;
 
+        var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
+            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            scopeResult.Value.ManpowerTypeId,
+            scopeResult.Value.IsAdministrator,
+            cancellationToken);
+        if (serviceAccess.IsFailure)
+            return serviceAccess.Error;
+
         var alreadyActive = await db.WorkOrders.AsNoTracking().AnyAsync(w =>
             w.FlightId == flight.Id &&
             w.OwnerUserId == ownerUserId &&
@@ -158,6 +166,7 @@ public sealed class UpdateWorkOrderCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     WorkOrderInputBuilder inputBuilder,
+    MasterDataResolver resolver,
     IFileStorage storage,
     IWorkOrderTimelineWriter timeline,
     IMobileSyncBroadcaster mobileSync,
@@ -180,6 +189,14 @@ public sealed class UpdateWorkOrderCommandHandler(
         var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
         if (author.IsFailure)
             return author.Error;
+
+        var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
+            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            scopeResult.Value.ManpowerTypeId,
+            scopeResult.Value.IsAdministrator,
+            cancellationToken);
+        if (serviceAccess.IsFailure)
+            return serviceAccess.Error;
 
         var previousType = workOrder.Type;
         var input = await inputBuilder.BuildAsync(request.Payload, request.Type, workOrder.ActualFlightNumber.Value, workOrder.Station.StationId, cancellationToken);
@@ -543,6 +560,14 @@ public sealed class MergeWorkOrdersCommandHandler(
         var station = scopeResult.Value.EnsureStation(flight.Station.StationId);
         if (station.IsFailure)
             return station.Error;
+
+        var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
+            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            scopeResult.Value.ManpowerTypeId,
+            scopeResult.Value.IsAdministrator,
+            cancellationToken);
+        if (serviceAccess.IsFailure)
+            return serviceAccess.Error;
 
         var sourceIds = request.SourceWorkOrderIds.ToList();
         var sources = await WorkOrderLoader.ForMutation(db.WorkOrders)

@@ -9,6 +9,7 @@ public sealed record UpdateCountryRequest(string Name, string IsoCode);
 // ManpowerTypes
 public sealed record CreateManpowerTypeRequest(string Name, string? Description);
 public sealed record UpdateManpowerTypeRequest(string Name, string? Description);
+public sealed record UpdateServiceAllowancesRequest(IReadOnlyList<Guid>? ServiceIds);
 
 // Licenses
 public sealed record CreateLicenseRequest(string Code, string Name, string? Description);
@@ -17,6 +18,7 @@ public sealed record UpdateLicenseRequest(string Name, string? Description);
 // Services
 public sealed record CreateServiceRequest(string Name, string? Description);
 public sealed record UpdateServiceRequest(string Name, string? Description);
+public sealed record UpdateManpowerTypeAllowancesRequest(IReadOnlyList<Guid>? ManpowerTypeIds);
 
 // OperationTypes
 public sealed record CreateOperationTypeRequest(string Name, string? Description);

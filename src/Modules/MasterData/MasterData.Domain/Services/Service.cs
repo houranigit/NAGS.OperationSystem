@@ -71,6 +71,9 @@ public sealed class Service : AggregateRoot<Guid>
         return Result.Success();
     }
 
+    /// <summary>Advances optimistic concurrency when an allowance involving this service changes.</summary>
+    public void Touch(DateTimeOffset now) => UpdatedAtUtc = now;
+
     private static Result<string> ValidateName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))

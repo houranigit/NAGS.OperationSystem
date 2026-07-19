@@ -3,6 +3,7 @@ using BuildingBlocks.Api.Concurrency;
 using BuildingBlocks.Api.Results;
 using BuildingBlocks.Application.Persistence;
 using MasterData.Application.Features.ManpowerTypes;
+using MasterData.Application.Features.Services;
 using MasterData.Domain.Authorization;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
@@ -29,6 +30,29 @@ internal static class ManpowerTypeEndpoints
             var result = await sender.Send(new GetActiveManpowerTypeOptionsQuery(), ct);
             return result.ToOk();
         }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.ManpowerTypes.View);
+
+        manpowerTypes.MapGet("/{id:guid}/service-allowances", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetServiceAllowancesForManpowerTypeQuery(id), ct);
+            return result.ToOk();
+        }).RequirePermission(MasterDataPermissions.ManpowerTypes.View);
+
+        manpowerTypes.MapPut("/{id:guid}/service-allowances", async (
+            Guid id,
+            UpdateServiceAllowancesRequest request,
+            HttpRequest http,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new UpdateServiceAllowancesForManpowerTypeCommand(
+                id,
+                request.ServiceIds ?? [],
+                rowVersion), ct);
+            return result.ToNoContent();
+        }).RequirePermission(MasterDataPermissions.ManpowerTypes.Update);
 
         manpowerTypes.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

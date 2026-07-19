@@ -51,13 +51,19 @@ internal fun computeWorkOrderLineErrors(
     form: CreateWorkOrderFormState,
     ataIso: String?,
     atdIso: String?,
+    allowedPerformedServiceIds: Set<String>,
 ): WorkOrderLineValidation {
     val ataDt = safeParseOffset(ataIso)
     val atdDt = safeParseOffset(atdIso)
 
     val serviceMap = LinkedHashMap<Long, ServiceLineSubmitFieldErrors>()
     form.serviceLines.forEach { row ->
-        val service = if (row.serviceId.isNullOrBlank()) "Service type is required." else null
+        val service = when {
+            row.serviceId.isNullOrBlank() -> "Service type is required."
+            row.serviceId !in allowedPerformedServiceIds ->
+                "This service is no longer allowed for your manpower type. Remove or replace it."
+            else -> null
+        }
         val performer = if (row.employeeId.isNullOrBlank()) "Performed by is required." else null
         var from = if (row.fromIso.isBlank()) "From date and time is required." else null
         var to = if (row.toIso.isBlank()) "To date and time is required." else null
@@ -156,6 +162,7 @@ internal fun computeCreateWorkOrderSubmitErrors(
     dialogAtdIso: String?,
     isAdHocScratch: Boolean,
     selectedCustomerId: String?,
+    allowedPerformedServiceIds: Set<String>,
 ): CreateWorkOrderSubmitFieldErrors? {
     val customer = if (isAdHocScratch && selectedCustomerId.isNullOrBlank()) "Customer is required." else null
     val normalizedFlightNumber = form.flightNumber.trim()
@@ -203,7 +210,12 @@ internal fun computeCreateWorkOrderSubmitErrors(
         atd = "Departure (ATD) can't be before arrival (ATA)."
     }
 
-    val lineErrors = computeWorkOrderLineErrors(form, form.ataIso, rawAtd)
+    val lineErrors = computeWorkOrderLineErrors(
+        form,
+        form.ataIso,
+        rawAtd,
+        allowedPerformedServiceIds,
+    )
     if (ataDt != null) {
         form.serviceLines.mapNotNull { safeParseOffset(it.fromIso) }.filter { ataDt.isAfter(it) }.forEach {
             ata = mergeValidationMessage(ata, "Can't be after a service line start time.")

@@ -8,6 +8,7 @@ import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
 import com.nags.operations.data.db.entities.ServiceEntity
+import com.nags.operations.data.db.entities.allowedPerformedServiceIds
 import com.nags.operations.data.db.entities.ToolEntity
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
 import com.nags.operations.data.outbox.EnqueueAttachment
@@ -40,9 +41,21 @@ data class ReturnToRampUiState(
     val form: CreateWorkOrderFormState = CreateWorkOrderFormState(),
     val submitFieldErrors: CreateWorkOrderSubmitFieldErrors? = null,
     val formLevelError: String? = null,
+    /** Existing saved lines revoked since the work order was last submitted must be corrected in Edit Work Order. */
+    val existingAllowanceError: String? = null,
     val loggedInEmployeeId: String? = null,
     val isSubmitting: Boolean = false,
 )
+
+internal fun existingWorkOrderAllowanceError(
+    existingServiceIds: Collection<String>,
+    allowedPerformedServiceIds: Set<String>,
+): String? = if (existingServiceIds.any { it !in allowedPerformedServiceIds }) {
+    "This work order contains a service no longer allowed for your manpower type. " +
+        "Open Edit Work Order and remove or replace it before recording Return to Ramp."
+} else {
+    null
+}
 
 /**
  * Minimal work-order editor for append-only return-to-ramp lines (services + tasks only).
@@ -73,6 +86,7 @@ class ReturnToRampViewModel(
         viewModelScope.launch {
             catalogsRepository.servicesFlow().collect { list ->
                 _state.update { it.copy(catalogServices = list.filterNot(ServiceEntity::isAircraftPerLanding)) }
+                refreshExistingAllowanceError()
             }
         }
         viewModelScope.launch {
@@ -135,9 +149,23 @@ class ReturnToRampViewModel(
                 form = CreateWorkOrderFormState(),
                 submitFieldErrors = null,
                 formLevelError = null,
+                existingAllowanceError = null,
             )
         }
+        refreshExistingAllowanceError()
         applyDefaultPerformers(_state.value)
+    }
+
+    private fun refreshExistingAllowanceError() {
+        _state.update { snapshot ->
+            val existingServiceIds = snapshot.flight?.cachedMyWorkOrder?.serviceLines
+                ?.map { it.serviceId }
+                .orEmpty()
+            val allowedIds = snapshot.catalogServices.allowedPerformedServiceIds()
+            snapshot.copy(
+                existingAllowanceError = existingWorkOrderAllowanceError(existingServiceIds, allowedIds),
+            )
+        }
     }
 
     private fun applyDefaultPerformers(snapshot: ReturnToRampUiState) {
@@ -252,6 +280,10 @@ class ReturnToRampViewModel(
             onFinished(SubmitOfflineResult.Failed("Missing work order on this flight."))
             return
         }
+        snapshot.existingAllowanceError?.let { message ->
+            onFinished(SubmitOfflineResult.Failed(message))
+            return
+        }
         val form = normalizedFormIdentifiersPublic(snapshot.form)
         if (form.serviceLines.isEmpty() && form.tasks.isEmpty()) {
             _state.update {
@@ -263,7 +295,12 @@ class ReturnToRampViewModel(
             onFinished(SubmitOfflineResult.Failed("Add at least one service line or task."))
             return
         }
-        val errors = validateLines(form, wo.actualArrivalUtc, wo.actualDepartureUtc)
+        val errors = validateLines(
+            form,
+            wo.actualArrivalUtc,
+            wo.actualDepartureUtc,
+            snapshot.catalogServices.allowedPerformedServiceIds(),
+        )
         if (errors != null) {
             _state.update { it.copy(submitFieldErrors = errors, formLevelError = null) }
             onFinished(SubmitOfflineResult.Failed("Fix the highlighted fields."))
@@ -388,8 +425,9 @@ class ReturnToRampViewModel(
         form: CreateWorkOrderFormState,
         woAta: String?,
         woAtd: String?,
+        allowedPerformedServiceIds: Set<String>,
     ): CreateWorkOrderSubmitFieldErrors? {
-        val errors = computeWorkOrderLineErrors(form, woAta, woAtd)
+        val errors = computeWorkOrderLineErrors(form, woAta, woAtd, allowedPerformedServiceIds)
         return if (errors.services.isEmpty() && errors.tasks.isEmpty()) null
         else CreateWorkOrderSubmitFieldErrors(
             serviceLinesByKey = errors.services,

@@ -23,3 +23,27 @@ public sealed class ServiceConfiguration : IEntityTypeConfiguration<Service>
         builder.Ignore(s => s.DomainEvents);
     }
 }
+
+public sealed class ManpowerTypeAllowedServiceConfiguration : IEntityTypeConfiguration<ManpowerTypeAllowedService>
+{
+    public void Configure(EntityTypeBuilder<ManpowerTypeAllowedService> builder)
+    {
+        builder.ToTable("manpower_type_allowed_services");
+        builder.HasKey(x => new { x.ManpowerTypeId, x.ServiceId });
+
+        builder.Property(x => x.ManpowerTypeId).IsRequired();
+        builder.Property(x => x.ServiceId).IsRequired();
+
+        builder.HasOne<MasterData.Domain.ManpowerTypes.ManpowerType>()
+            .WithMany()
+            .HasForeignKey(x => x.ManpowerTypeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Service>()
+            .WithMany()
+            .HasForeignKey(x => x.ServiceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(x => x.ServiceId);
+    }
+}

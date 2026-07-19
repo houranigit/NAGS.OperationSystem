@@ -31,6 +31,7 @@ public sealed record MobileAircraftTypeDto(Guid Id, string Manufacturer, string 
 /// <summary>All shared catalogs in one payload so the client refreshes its cache with a single call.</summary>
 public sealed record MobileCatalogsDto(
     IReadOnlyList<MobileServiceCatalogItemDto> Services,
+    IReadOnlyList<Guid> AllowedPerformedServiceIds,
     IReadOnlyList<MobileCatalogItemDto> Tools,
     IReadOnlyList<MobileCatalogItemDto> Materials,
     IReadOnlyList<MobileCatalogItemDto> GeneralSupports,

@@ -28,7 +28,10 @@ public sealed class FlightServicePresentationTests
             new PlannedServiceModel(Guid.NewGuid(), "Baggage", false)
         };
 
-        FlightServicePresentation.ServicesToPrefill(isPerLanding: true, plannedServices)
+        FlightServicePresentation.ServicesToPrefill(
+                isPerLanding: true,
+                plannedServices,
+                plannedServices.Select(service => service.ServiceId).ToHashSet())
             .ShouldBeEmpty();
     }
 
@@ -40,7 +43,21 @@ public sealed class FlightServicePresentationTests
 
         FlightServicePresentation.ServicesToPrefill(
                 isPerLanding: false,
-                new[] { perLanding, baggage })
+                new[] { perLanding, baggage },
+                new HashSet<Guid> { baggage.ServiceId })
             .ShouldBe(new[] { baggage });
+    }
+
+    [Fact]
+    public void Normal_work_orders_omit_planned_services_not_allowed_for_the_staff_manpower_type()
+    {
+        var allowed = new PlannedServiceModel(Guid.NewGuid(), "Allowed", false);
+        var disallowed = new PlannedServiceModel(Guid.NewGuid(), "Disallowed", false);
+
+        FlightServicePresentation.ServicesToPrefill(
+                isPerLanding: false,
+                new[] { allowed, disallowed },
+                new HashSet<Guid> { allowed.ServiceId })
+            .ShouldBe(new[] { allowed });
     }
 }

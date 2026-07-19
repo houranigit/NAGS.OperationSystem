@@ -63,6 +63,20 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
     public Task<ManpowerTypeDetail> GetManpowerTypeAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<ManpowerTypeDetail>($"/masterdata/manpower-types/{id}", ct);
 
+    public Task<IReadOnlyList<ServiceAllowance>> GetServiceAllowancesAsync(Guid manpowerTypeId, CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<ServiceAllowance>>($"/masterdata/manpower-types/{manpowerTypeId}/service-allowances", ct);
+
+    public Task UpdateServiceAllowancesAsync(
+        Guid manpowerTypeId,
+        IReadOnlyList<Guid> serviceIds,
+        string rowVersion,
+        CancellationToken ct = default) =>
+        api.PutAsync(
+            $"/masterdata/manpower-types/{manpowerTypeId}/service-allowances",
+            new UpdateServiceAllowancesRequest(serviceIds),
+            rowVersion,
+            ct);
+
     public Task<Guid> CreateManpowerTypeAsync(CreateManpowerTypeRequest request, CancellationToken ct = default) =>
         api.PostAsync<CreateManpowerTypeRequest, Guid>("/masterdata/manpower-types", request, ct);
 
@@ -118,8 +132,25 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
     public Task<IReadOnlyList<ServiceOption>> GetServiceOptionsAsync(CancellationToken ct = default) =>
         api.GetAsync<IReadOnlyList<ServiceOption>>("/masterdata/services/options", ct);
 
+    public Task<IReadOnlyList<ServiceOption>> GetPerformedServiceOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<ServiceOption>>("/masterdata/services/performed-options", ct);
+
     public Task<ServiceDetail> GetServiceAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<ServiceDetail>($"/masterdata/services/{id}", ct);
+
+    public Task<IReadOnlyList<ManpowerTypeAllowance>> GetManpowerTypeAllowancesAsync(Guid serviceId, CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<ManpowerTypeAllowance>>($"/masterdata/services/{serviceId}/manpower-type-allowances", ct);
+
+    public Task UpdateManpowerTypeAllowancesAsync(
+        Guid serviceId,
+        IReadOnlyList<Guid> manpowerTypeIds,
+        string rowVersion,
+        CancellationToken ct = default) =>
+        api.PutAsync(
+            $"/masterdata/services/{serviceId}/manpower-type-allowances",
+            new UpdateManpowerTypeAllowancesRequest(manpowerTypeIds),
+            rowVersion,
+            ct);
 
     public Task<Guid> CreateServiceAsync(CreateServiceRequest request, CancellationToken ct = default) =>
         api.PostAsync<CreateServiceRequest, Guid>("/masterdata/services", request, ct);

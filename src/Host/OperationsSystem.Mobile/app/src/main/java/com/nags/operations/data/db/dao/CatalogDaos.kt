@@ -28,6 +28,9 @@ interface ServiceDao {
     @Query("SELECT * FROM services ORDER BY name COLLATE NOCASE")
     fun observeAll(): Flow<List<ServiceEntity>>
 
+    @Query("SELECT * FROM services ORDER BY name COLLATE NOCASE")
+    suspend fun snapshot(): List<ServiceEntity>
+
     @Query("SELECT COUNT(*) FROM services")
     suspend fun count(): Int
 

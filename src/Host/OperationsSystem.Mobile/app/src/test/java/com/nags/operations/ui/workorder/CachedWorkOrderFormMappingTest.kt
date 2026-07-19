@@ -5,6 +5,7 @@ import com.nags.operations.data.WorkOrderTaskResourceWireDto
 import com.nags.operations.data.WorkOrderTaskWireDto
 import com.nags.operations.data.WorkOrderSignatureWireDto
 import com.nags.operations.data.WorkOrderTaskAttachmentWireDto
+import com.nags.operations.data.WorkOrderServiceLineWireDto
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -30,6 +31,17 @@ class CachedWorkOrderFormMappingTest {
             actualFlightNumber = "MOB100",
             actualArrivalUtc = "2026-07-11T10:05:00Z",
             actualDepartureUtc = "2026-07-11T11:55:00Z",
+            serviceLines = listOf(
+                WorkOrderServiceLineWireDto(
+                    id = "line-1",
+                    serviceId = "service-1",
+                    serviceName = "Revoked service",
+                    performedByStaffMemberId = "staff-1",
+                    performedByName = "Staff One",
+                    fromUtc = "2026-07-11T10:10:00Z",
+                    toUtc = "2026-07-11T11:00:00Z",
+                ),
+            ),
             tasks = listOf(
                 WorkOrderTaskWireDto(
                     id = "task-1",
@@ -73,6 +85,7 @@ class CachedWorkOrderFormMappingTest {
 
         assertEquals(workOrder.actualDepartureUtc, form.atdIso)
         assertEquals(workOrder.scheduledArrivalUtc, form.scheduledArrivalIso)
+        assertEquals("Revoked service", form.serviceLines.single().serviceName)
         assertEquals(2.5, form.tasks.single().toolQuantities.getValue("tool-1"), 0.0)
         assertEquals(3.0, form.tasks.single().materialQuantities.getValue("material-1"), 0.0)
         assertEquals(listOf("existing.pdf"), form.tasks.single().existingAttachmentNames)
