@@ -6,9 +6,14 @@ using OperationsSystem.Blazor.Components;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents()
-    .AddInteractiveWebAssemblyComponents();
+var razorComponents = builder.Services.AddRazorComponents();
+
+// Interactive Auto starts on the server, where browser API responses return through SignalR.
+// Staff allocation is currently about 67 KB, so keep a bounded limit with room for growth.
+razorComponents.AddInteractiveServerComponents()
+    .AddHubOptions(options => options.MaximumReceiveMessageSize = 256 * 1024);
+
+razorComponents.AddInteractiveWebAssemblyComponents();
 
 builder.Services.AddApiProxyHttpClient();
 builder.Services.AddSingleton<IValidateOptions<ApiProxyOptions>, ApiProxyOptionsValidator>();

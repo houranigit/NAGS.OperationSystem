@@ -129,6 +129,15 @@ a {
     color: var(--os-color-text-muted);
 }
 
+.login-password-toggle.rz-button {
+    color: var(--os-color-text-muted);
+}
+
+.login-password-toggle.rz-button:hover,
+.login-password-toggle.rz-button:focus-visible {
+    color: var(--os-color-text);
+}
+
 .os-mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     font-size: var(--os-text-sm);
