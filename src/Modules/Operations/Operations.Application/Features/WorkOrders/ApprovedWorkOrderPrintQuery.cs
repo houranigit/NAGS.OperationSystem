@@ -1,11 +1,13 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Readers;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Contracts;
 using Operations.Domain.Enumerations;
+using Operations.Domain.WorkOrders;
 
 namespace Operations.Application.Features.WorkOrders;
 
@@ -15,7 +17,8 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     IUserContext user,
-    IFileStorage storage) : IQueryHandler<GetApprovedWorkOrderPrintQuery, ApprovedWorkOrderPrintDto>
+    IFileStorage storage,
+    IMasterDataReader masterData) : IQueryHandler<GetApprovedWorkOrderPrintQuery, ApprovedWorkOrderPrintDto>
 {
     public async Task<Result<ApprovedWorkOrderPrintDto>> Handle(
         GetApprovedWorkOrderPrintQuery request,
@@ -43,7 +46,6 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
         }
 
         var flight = await db.Flights.AsNoTracking()
-            .Include(f => f.PlannedServices)
             .SingleOrDefaultAsync(f =>
                 f.Id == request.FlightId &&
                 f.Status == FlightStatus.Completed,
@@ -55,28 +57,66 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
                 "Operations.WorkOrder.ApprovedCompletionNotFound");
         }
 
-        var isPerLanding = flight.IsPerLanding;
-        var isOnCall = isPerLanding && await db.WorkOrders.AsNoTracking()
-            .QualifyingForOnCall()
-            .AnyAsync(w => w.FlightId == flight.Id, cancellationToken);
         var signatureContent = await LoadOptionalSignatureAsync(workOrder.CustomerSignatureReference, cancellationToken);
+        var staff = await LoadStaffAsync(workOrder, cancellationToken);
         var detail = NormalizeForPrint(WorkOrderDtoMapper.Detail(workOrder));
 
         return new ApprovedWorkOrderPrintDto(
             detail,
             workOrder.AircraftType?.Manufacturer,
             flight.ContractNumber,
-            flight.PlannedServices
-                .Select(service => service.Service.Name)
-                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(name => name, StringComparer.Ordinal)
-                .ToList(),
-            isPerLanding,
-            isOnCall,
+            staff,
             signatureContent,
             signatureContent is null
                 ? null
                 : workOrder.CustomerSignatureContentType ?? "image/png");
+    }
+
+    private async Task<IReadOnlyList<WorkOrderPrintStaffDto>> LoadStaffAsync(
+        WorkOrder workOrder,
+        CancellationToken cancellationToken)
+    {
+        var snapshots = workOrder.ServiceLines
+            .Select(line => line.PerformedBy)
+            .Concat(workOrder.Tasks.SelectMany(task => task.Employees.Select(employee => employee.Employee)))
+            .GroupBy(employee => employee.StaffMemberId)
+            .Select(group => group.First())
+            .OrderBy(employee => employee.FullName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(employee => employee.EmployeeId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(employee => employee.StaffMemberId)
+            .ToList();
+        if (snapshots.Count == 0)
+            return [];
+
+        var currentStaff = await masterData.GetStaffMembersAsync(
+            snapshots.Select(employee => employee.StaffMemberId).ToList(),
+            cancellationToken);
+        var manpowerTypeIdByStaff = currentStaff
+            .Where(employee => employee.StationId == workOrder.Station.StationId)
+            .GroupBy(employee => employee.Id)
+            .ToDictionary(group => group.Key, group => group.First().ManpowerTypeId);
+
+        var manpowerTypeNames = new Dictionary<Guid, string>();
+        foreach (var manpowerTypeId in manpowerTypeIdByStaff.Values.Distinct().OrderBy(id => id))
+        {
+            var manpowerType = await masterData.GetManpowerTypeAsync(manpowerTypeId, cancellationToken);
+            if (manpowerType is not null && !string.IsNullOrWhiteSpace(manpowerType.Name))
+                manpowerTypeNames[manpowerTypeId] = manpowerType.Name.Trim();
+        }
+
+        return snapshots.Select(employee =>
+        {
+            string? manpowerTypeName = null;
+            if (manpowerTypeIdByStaff.TryGetValue(employee.StaffMemberId, out var manpowerTypeId) &&
+                manpowerTypeNames.TryGetValue(manpowerTypeId, out var resolvedName))
+            {
+                manpowerTypeName = resolvedName;
+            }
+
+            return new WorkOrderPrintStaffDto(
+                employee.StaffMemberId,
+                manpowerTypeName);
+        }).ToList();
     }
 
     private static WorkOrderDetailDto NormalizeForPrint(WorkOrderDetailDto detail) =>

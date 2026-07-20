@@ -15,10 +15,12 @@ internal sealed record WorkOrderPrintFile(byte[] Content, string FileName);
 internal static class WorkOrderPrintDocumentFactory
 {
     private const string TemplateResource = "Operations.Api.Assets.WorkOrderTemplate.pdf";
+    private const string LogoResource = "Operations.Api.Assets.NagsLogo.png";
     private const string FontFamily = PdfDocumentAssets.FontFamily;
 
     private static readonly XColor TextColor = XColor.FromArgb(0x23, 0x1F, 0x20);
     private static readonly XColor AccentRed = XColor.FromArgb(0xED, 0x1C, 0x24);
+    private static readonly XColor HeaderFill = XColor.FromArgb(0xE8, 0xE6, 0xE6);
 
     public static WorkOrderPrintFile Create(ApprovedWorkOrderPrintDto source)
     {
@@ -53,7 +55,8 @@ internal static class WorkOrderPrintDocumentFactory
     {
         var workOrder = source.WorkOrder;
         var regular = new XFont(FontFamily, 7.2, XFontStyleEx.Regular);
-        var bold = new XFont(FontFamily, 7.2, XFontStyleEx.Bold);
+
+        DrawSystemLogo(graphics);
 
         // The historical blank contains a literal red "001". Cover only the sample value, leaving
         // the vector label and cell rules intact, then draw the actual approval number.
@@ -73,38 +76,113 @@ internal static class WorkOrderPrintDocumentFactory
             XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
         DrawSingleLine(graphics, DisplayFlightNumber(workOrder), new XRect(352, 90, 84, 19), 7.2,
             XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
+        DrawHeaderMovementTimes(graphics, workOrder);
 
-        DrawRequestedServiceChecks(graphics, source);
+        DrawRemarks(graphics, workOrder, regular);
+        DrawRequestedServices(graphics, workOrder);
         DrawFlightTypeCheck(graphics, workOrder.OperationTypeName);
         DrawReturnToRamp(graphics, workOrder);
         DrawFlightTimes(graphics, workOrder);
         DrawCorrectiveAction(graphics, workOrder, regular);
+        DrawCorrectiveActionHeader(graphics, workOrder);
 
-        if (workOrder.Tasks.Any(task => task.TaskType.Equals("Major", StringComparison.OrdinalIgnoreCase)))
-            DrawCheck(graphics, 171.0, 364.3, 12.1);
-        if (workOrder.Tasks.Any(task => task.TaskType.Equals("Minor", StringComparison.OrdinalIgnoreCase)))
-            DrawCheck(graphics, 170.7, 382.0, 12.1);
-
-        DrawTechnicians(graphics, workOrder, bold);
+        DrawStaff(graphics, source);
         DrawMaterials(graphics, workOrder);
         DrawCustomerAcceptance(graphics, source);
     }
 
-    private static void DrawRequestedServiceChecks(XGraphics graphics, ApprovedWorkOrderPrintDto source)
+    private static void DrawSystemLogo(XGraphics graphics)
     {
-        var values = source.PlannedServiceNames.Select(Normalize).ToList();
-        var matched = false;
+        graphics.DrawRectangle(XBrushes.White, 32.5, 21.7, 118.5, 49.8);
+        using var logoStream = PdfDocumentAssets.OpenEmbeddedResource(LogoResource);
+        using var logo = XImage.FromStream(logoStream);
+        var bounds = new XRect(68.5, 22.8, 46, 48.5);
+        var scale = Math.Min(bounds.Width / logo.PointWidth, bounds.Height / logo.PointHeight);
+        var width = logo.PointWidth * scale;
+        var height = logo.PointHeight * scale;
+        graphics.DrawImage(
+            logo,
+            bounds.X + (bounds.Width - width) / 2,
+            bounds.Y + (bounds.Height - height) / 2,
+            width,
+            height);
+    }
 
-        matched |= DrawCheckWhen(graphics, values.Any(value => value.Contains("headset", StringComparison.Ordinal)), 415.2, 133.2);
-        matched |= DrawCheckWhen(graphics, values.Any(value => value.Contains("transit", StringComparison.Ordinal)), 415.2, 151.8);
-        matched |= DrawCheckWhen(graphics, values.Any(value => value.Contains("daily", StringComparison.Ordinal)), 415.2, 170.4);
-        matched |= DrawCheckWhen(graphics, values.Any(value => value.Contains("weekly", StringComparison.Ordinal)), 415.2, 189.0);
+    private static void DrawHeaderMovementTimes(XGraphics graphics, WorkOrderDetailDto workOrder)
+    {
+        DrawSingleLine(graphics, FormatCompactDateTime(workOrder.ActualArrivalUtc),
+            new XRect(437.5, 90, 63, 19), 5.5, XFontStyleEx.Bold,
+            XBrushes.Black, XStringFormats.Center, minimumSize: 4.5);
+        DrawSingleLine(graphics, FormatCompactDateTime(ResolveHeaderTo(workOrder)),
+            new XRect(501.5, 90, 62.5, 19), 5.5, XFontStyleEx.Bold,
+            XBrushes.Black, XStringFormats.Center, minimumSize: 4.5);
+    }
 
-        var onCall = source.IsOnCall || values.Any(value => value.Contains("oncall", StringComparison.Ordinal));
-        matched |= DrawCheckWhen(graphics, onCall, 356.2, 207.3);
+    internal static DateTimeOffset? ResolveHeaderTo(WorkOrderDetailDto workOrder)
+    {
+        var returnToRampEnd = workOrder.ServiceLines
+            .Where(line => line.IsReturnToRamp)
+            .Select(line => (DateTimeOffset?)line.ToUtc)
+            .Concat(workOrder.Tasks
+                .Where(task => task.IsReturnToRamp)
+                .Select(task => (DateTimeOffset?)task.ToUtc))
+            .Max();
+        return returnToRampEnd ?? workOrder.ActualDepartureUtc;
+    }
 
-        if (!matched && values.Count > 0)
-            DrawCheck(graphics, 415.2, 207.3, 12.1);
+    private static void DrawRemarks(XGraphics graphics, WorkOrderDetailDto workOrder, XFont font)
+    {
+        graphics.DrawRectangle(XBrushes.White, 34.5, 112.0, 108.0, 27.5);
+        DrawSingleLine(graphics, "Remarks:", new XRect(38, 112, 100, 27), 8,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft);
+
+        if (!string.IsNullOrWhiteSpace(workOrder.Remarks))
+        {
+            DrawOnRuledLines(graphics, [workOrder.Remarks],
+                new XRect(35, 143.7, 272, 214.5), font, 19.42, 11);
+        }
+    }
+
+    private static void DrawRequestedServices(XGraphics graphics, WorkOrderDetailDto workOrder)
+    {
+        var rows = BuildRequestedServiceRows(workOrder);
+        var rowBounds = new[]
+        {
+            (Top: 130.0, Bottom: 148.2),
+            (Top: 148.5, Bottom: 167.0),
+            (Top: 167.3, Bottom: 185.7),
+            (Top: 186.0, Bottom: 204.3),
+            (Top: 204.6, Bottom: 221.8)
+        };
+
+        for (var index = 0; index < rowBounds.Length; index++)
+        {
+            var bounds = rowBounds[index];
+            graphics.DrawRectangle(XBrushes.White, 313.4, bounds.Top + 0.7, 120.7,
+                bounds.Bottom - bounds.Top - 1.4);
+            if (index < rows.Count)
+            {
+                DrawSingleLine(graphics, rows[index],
+                    new XRect(317, bounds.Top, 113.5, bounds.Bottom - bounds.Top),
+                    7.0, XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft,
+                    minimumSize: 5.2);
+            }
+        }
+    }
+
+    internal static IReadOnlyList<string> BuildRequestedServiceRows(WorkOrderDetailDto workOrder)
+    {
+        var serviceNames = workOrder.ServiceLines
+            .Select(line => Clean(line.ServiceName))
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (serviceNames.Count <= 5)
+            return serviceNames;
+
+        return serviceNames.Take(4)
+            .Append($"More {serviceNames.Count - 4} Services")
+            .ToList();
     }
 
     private static void DrawFlightTypeCheck(XGraphics graphics, string operationTypeName)
@@ -126,6 +204,10 @@ internal static class WorkOrderPrintDocumentFactory
 
     private static void DrawReturnToRamp(XGraphics graphics, WorkOrderDetailDto workOrder)
     {
+        graphics.DrawRectangle(new XSolidBrush(HeaderFill), 313.5, 225.0, 248.5, 17.2);
+        DrawSingleLine(graphics, "Return to Ramp:", new XRect(318, 225, 120, 17.2), 7.8,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft);
+
         var windows = workOrder.ServiceLines
             .Where(line => line.IsReturnToRamp)
             .Select(line => (line.FromUtc, line.ToUtc))
@@ -136,8 +218,6 @@ internal static class WorkOrderPrintDocumentFactory
         if (windows.Count == 0)
             return;
 
-        // The domain records that the work returned to ramp, but it does not distinguish Taxi from
-        // Flight. Leave both subtype boxes blank instead of asserting a fact that was not captured.
         var from = windows.Min(window => window.FromUtc);
         var to = windows.Max(window => window.ToUtc);
         DrawSingleLine(graphics, FormatDateTime(from), new XRect(441, 244, 120, 16), 6.6,
@@ -170,76 +250,173 @@ internal static class WorkOrderPrintDocumentFactory
 
     private static void DrawCorrectiveAction(XGraphics graphics, WorkOrderDetailDto workOrder, XFont font)
     {
-        var entries = new List<string>();
-        foreach (var line in workOrder.ServiceLines.OrderBy(line => line.FromUtc).ThenBy(line => line.Id))
-        {
-            entries.Add(string.IsNullOrWhiteSpace(line.Description)
-                ? line.ServiceName
-                : $"{line.ServiceName}: {line.Description}");
-        }
-
-        foreach (var task in workOrder.Tasks.OrderBy(task => task.FromUtc).ThenBy(task => task.Id))
-        {
-            var title = task.TaskType.Equals("Minor", StringComparison.OrdinalIgnoreCase) ||
-                        task.TaskType.Equals("Major", StringComparison.OrdinalIgnoreCase)
-                ? task.TaskType
-                : "Task";
-            entries.Add(string.IsNullOrWhiteSpace(task.Description) ? title : $"{title}: {task.Description}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(workOrder.Remarks))
-            entries.Add($"Remarks: {workOrder.Remarks}");
-
-        DrawOnRuledLines(graphics, entries, new XRect(35, 398.2, 272, 289.5), font, 19.42, 15);
+        DrawOnRuledLines(graphics, BuildCorrectiveActionRows(workOrder),
+            new XRect(35, 398.2, 272, 289.5), font, 19.42, 15);
     }
 
-    private static void DrawTechnicians(XGraphics graphics, WorkOrderDetailDto workOrder, XFont font)
+    private static void DrawCorrectiveActionHeader(XGraphics graphics, WorkOrderDetailDto workOrder)
     {
+        var pen = new XPen(XColors.Black, 0.65);
+        graphics.DrawRectangle(new XSolidBrush(HeaderFill), 125.3, 362.0, 183.5, 34.8);
+        graphics.DrawLine(pen, 125.0, 379.5, 309.0, 379.5);
+
+        DrawSingleLine(graphics, "Major", new XRect(132, 362, 37, 17.5), 7.8,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft);
+        DrawSingleLine(graphics, "Minor", new XRect(132, 379.5, 37, 17.5), 7.8,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft);
+        DrawCheckbox(graphics, 171.0, 364.3, 12.1,
+            workOrder.Tasks.Any(task => task.TaskType.Equals("Major", StringComparison.OrdinalIgnoreCase)));
+        DrawCheckbox(graphics, 170.7, 382.0, 12.1,
+            workOrder.Tasks.Any(task => task.TaskType.Equals("Minor", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    internal static IReadOnlyList<string> BuildCorrectiveActionRows(WorkOrderDetailDto workOrder) =>
+        workOrder.Tasks
+            .OrderBy(task => task.FromUtc)
+            .ThenBy(task => task.Id)
+            .Select(task =>
+            {
+                var type = task.TaskType.Equals("Major", StringComparison.OrdinalIgnoreCase)
+                    ? "Major"
+                    : task.TaskType.Equals("Minor", StringComparison.OrdinalIgnoreCase)
+                        ? "Minor"
+                        : Clean(task.TaskType);
+                var label = type.Length == 0 || type.Equals("Task", StringComparison.OrdinalIgnoreCase)
+                    ? "Task"
+                    : $"{type} Task";
+                var staffNames = task.Employees
+                    .Select(employee => Clean(employee.FullName))
+                    .Where(name => name.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (staffNames.Count > 0)
+                    label += $" By {string.Join(", ", staffNames)}";
+                if (!string.IsNullOrWhiteSpace(task.Description))
+                    label += $", {Clean(task.Description)}";
+                return label;
+            })
+            .ToList();
+
+    private static void DrawStaff(XGraphics graphics, ApprovedWorkOrderPrintDto source)
+    {
+        var workOrder = source.WorkOrder;
+        var manpowerByStaffId = source.Staff
+            .GroupBy(staff => staff.StaffMemberId)
+            .ToDictionary(group => group.Key, group => group.First().ManpowerTypeName ?? string.Empty);
         var windows = MergeWorkerWindows(workOrder.ServiceLines
-            .Select(line => new WorkerWindow(line.PerformedByName, line.FromUtc, line.ToUtc))
+            .Select(line => new WorkerWindow(
+                line.PerformedByStaffMemberId,
+                line.PerformedByName,
+                manpowerByStaffId.GetValueOrDefault(line.PerformedByStaffMemberId, string.Empty),
+                line.FromUtc,
+                line.ToUtc))
             .Concat(workOrder.Tasks.SelectMany(task => task.Employees.Select(employee =>
-                new WorkerWindow(employee.FullName, task.FromUtc, task.ToUtc))))
+                new WorkerWindow(
+                    employee.StaffMemberId,
+                    employee.FullName,
+                    manpowerByStaffId.GetValueOrDefault(employee.StaffMemberId, string.Empty),
+                    task.FromUtc,
+                    task.ToUtc))))
             .Where(window => !string.IsNullOrWhiteSpace(window.Name))
             .ToList())
             .OrderBy(window => window.FromUtc)
             .ThenBy(window => window.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var rowBounds = new[] { (Top: 397.1, Bottom: 453.3), (Top: 454.0, Bottom: 513.3) };
-        for (var index = 0; index < Math.Min(windows.Count, rowBounds.Length); index++)
-        {
-            var window = windows[index];
-            var name = index == rowBounds.Length - 1 && windows.Count > rowBounds.Length
-                ? $"{window.Name} (+{windows.Count - rowBounds.Length})"
-                : window.Name;
-            var bounds = rowBounds[index];
+        var staffRows = windows
+            .Select(window => new StaffRow(
+                window.Name,
+                window.ManpowerTypeName,
+                window.FromUtc,
+                window.ToUtc))
+            .ToList();
 
-            DrawSingleLine(graphics, name, new XRect(315, bounds.Top, 101, bounds.Bottom - bounds.Top), 6.8,
-                XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center, minimumSize: 5.2);
-            DrawSingleLine(graphics, window.FromUtc.UtcDateTime.ToString("dd/MM/yy", CultureInfo.InvariantCulture),
-                new XRect(418, bounds.Top, 48, bounds.Bottom - bounds.Top), 6.2, XFontStyleEx.Bold,
-                XBrushes.Black, XStringFormats.Center, minimumSize: 5.2);
-            DrawSingleLine(graphics, window.FromUtc.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture),
-                new XRect(467, bounds.Top, 49, bounds.Bottom - bounds.Top), 6.6, XFontStyleEx.Bold,
-                XBrushes.Black, XStringFormats.Center);
-            DrawSingleLine(graphics, window.ToUtc.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture),
-                new XRect(517, bounds.Top, 45, bounds.Bottom - bounds.Top), 6.6, XFontStyleEx.Bold,
-                XBrushes.Black, XStringFormats.Center);
+        var rowSlots = Math.Max(6, staffRows.Count);
+        var rowHeight = 270.0 / rowSlots;
+        DrawStaffTableGrid(graphics, rowSlots, rowHeight);
+        for (var index = 0; index < staffRows.Count; index++)
+        {
+            var row = staffRows[index];
+            var top = 397.0 + index * rowHeight;
+            if (rowHeight >= 20)
+            {
+                var nameFontSize = Math.Clamp(rowHeight * 0.19, 4.0, 6.3);
+                var typeFontSize = Math.Clamp(rowHeight * 0.16, 3.5, 5.5);
+                DrawSingleLine(graphics, row.Name, new XRect(317, top + rowHeight * 0.08, 96, rowHeight * 0.42), nameFontSize,
+                    XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft, minimumSize: 3.8);
+                DrawSingleLine(graphics,
+                    string.IsNullOrWhiteSpace(row.ManpowerTypeName) ? "Manpower: Not available" : row.ManpowerTypeName,
+                    new XRect(317, top + rowHeight * 0.50, 96, rowHeight * 0.38), typeFontSize, XFontStyleEx.Regular,
+                    XBrushes.Black, XStringFormats.CenterLeft, minimumSize: 3.3);
+            }
+            else
+            {
+                var identity = string.IsNullOrWhiteSpace(row.ManpowerTypeName)
+                    ? row.Name
+                    : $"{row.Name} ({row.ManpowerTypeName})";
+                var compactFontSize = Math.Clamp(rowHeight * 0.26, 3.8, 5.8);
+                DrawSingleLine(graphics, identity, new XRect(317, top, 96, rowHeight), compactFontSize,
+                    XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft, minimumSize: 3.5);
+            }
+
+            var valueFontSize = Math.Clamp(rowHeight * 0.16, 4.0, 6.2);
+            DrawSingleLine(graphics, row.FromUtc.UtcDateTime.ToString("dd/MM/yy", CultureInfo.InvariantCulture),
+                new XRect(418, top, 48, rowHeight), valueFontSize, XFontStyleEx.Bold,
+                XBrushes.Black, XStringFormats.Center, minimumSize: 3.8);
+            DrawSingleLine(graphics, row.FromUtc.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+                new XRect(468, top, 48, rowHeight), valueFontSize, XFontStyleEx.Bold,
+                XBrushes.Black, XStringFormats.Center, minimumSize: 3.8);
+            DrawSingleLine(graphics, row.ToUtc.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+                new XRect(518, top, 44, rowHeight), valueFontSize, XFontStyleEx.Bold,
+                XBrushes.Black, XStringFormats.Center, minimumSize: 3.8);
         }
 
         var total = windows.Aggregate(TimeSpan.Zero, (sum, window) =>
             sum + (window.ToUtc >= window.FromUtc ? window.ToUtc - window.FromUtc : TimeSpan.Zero));
-        if (total > TimeSpan.Zero)
+        DrawSingleLine(graphics, total > TimeSpan.Zero ? FormatDuration(total) : "0m",
+            new XRect(444, 667.0, 118, 21.0), 7,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
+    }
+
+    private static void DrawStaffTableGrid(XGraphics graphics, int rowSlots, double rowHeight)
+    {
+        var fill = new XSolidBrush(HeaderFill);
+        var pen = new XPen(XColors.Black, 0.65);
+        graphics.DrawRectangle(XBrushes.White, 313.7, 361.7, 248.6, 326.4);
+        graphics.DrawRectangle(fill, 313.7, 361.7, 248.6, 19.3);
+        graphics.DrawRectangle(fill, 313.7, 381.0, 248.6, 16.0);
+        graphics.DrawRectangle(fill, 313.7, 667.0, 248.6, 21.1);
+
+        graphics.DrawRectangle(pen, 313.0, 361.0, 250.0, 328.0);
+        graphics.DrawLine(pen, 313.0, 381.0, 563.0, 381.0);
+        graphics.DrawLine(pen, 313.0, 397.0, 563.0, 397.0);
+        for (var index = 1; index <= rowSlots; index++)
         {
-            DrawSingleLine(graphics, FormatDuration(total), new XRect(444, 667.5, 118, 20.5), 7,
-                XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
+            var y = Math.Min(667.0, 397.0 + index * rowHeight);
+            graphics.DrawLine(pen, 313.0, y, 563.0, y);
         }
+        foreach (var x in new[] { 417.0, 467.0, 517.0 })
+            graphics.DrawLine(pen, x, 381.0, x, 667.0);
+        graphics.DrawLine(pen, 444.0, 667.0, 444.0, 689.0);
+
+        DrawSingleLine(graphics, "Staff", new XRect(313, 361, 250, 20), 8,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
+        DrawSingleLine(graphics, "Name / Manpower Type", new XRect(313, 381, 104, 16), 6.2,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center, minimumSize: 4.9);
+        DrawSingleLine(graphics, "Date", new XRect(417, 381, 50, 16), 6.5,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
+        DrawSingleLine(graphics, "From", new XRect(467, 381, 50, 16), 6.5,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
+        DrawSingleLine(graphics, "To", new XRect(517, 381, 46, 16), 6.5,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.Center);
+        DrawSingleLine(graphics, "Total Staff Hours", new XRect(316, 667, 126, 21), 7,
+            XFontStyleEx.Bold, XBrushes.Black, XStringFormats.CenterLeft);
     }
 
     internal static IReadOnlyList<WorkerWindow> MergeWorkerWindows(IReadOnlyList<WorkerWindow> source)
     {
         var merged = new List<WorkerWindow>();
-        foreach (var group in source.GroupBy(window => window.Name.Trim(), StringComparer.OrdinalIgnoreCase))
+        foreach (var group in source.GroupBy(window => window.StaffMemberId))
         {
             var ordered = group
                 .OrderBy(window => window.FromUtc)
@@ -250,6 +427,7 @@ internal static class WorkOrderPrintDocumentFactory
 
             var from = ordered[0].FromUtc;
             var to = ordered[0].ToUtc;
+            var identity = ordered[0];
             foreach (var window in ordered.Skip(1))
             {
                 if (window.FromUtc <= to)
@@ -259,12 +437,22 @@ internal static class WorkOrderPrintDocumentFactory
                     continue;
                 }
 
-                merged.Add(new WorkerWindow(group.Key, from, to));
+                merged.Add(new WorkerWindow(
+                    identity.StaffMemberId,
+                    identity.Name,
+                    identity.ManpowerTypeName,
+                    from,
+                    to));
                 from = window.FromUtc;
                 to = window.ToUtc;
             }
 
-            merged.Add(new WorkerWindow(group.Key, from, to));
+            merged.Add(new WorkerWindow(
+                identity.StaffMemberId,
+                identity.Name,
+                identity.ManpowerTypeName,
+                from,
+                to));
         }
 
         return merged;
@@ -339,22 +527,57 @@ internal static class WorkOrderPrintDocumentFactory
         double lineHeight,
         int maximumLines)
     {
-        var lines = new List<string>();
-        foreach (var entry in entries)
+        var wrappedEntries = entries
+            .Select(entry => Wrap(graphics, Clean(entry), font, bounds.Width))
+            .Where(lines => lines.Count > 0)
+            .ToList();
+        if (wrappedEntries.Count == 0)
+            return;
+
+        if (wrappedEntries.Count > maximumLines)
         {
-            foreach (var line in Wrap(graphics, Clean(entry), font, bounds.Width))
+            var compactLineHeight = bounds.Height / wrappedEntries.Count;
+            var compactFontSize = Math.Clamp(compactLineHeight * 0.42, 3.5, font.Size);
+            var compactState = graphics.Save();
+            graphics.IntersectClip(bounds);
+            for (var index = 0; index < wrappedEntries.Count; index++)
             {
-                if (lines.Count == maximumLines)
-                    break;
-                lines.Add(line);
+                DrawSingleLine(graphics, string.Join(' ', wrappedEntries[index]),
+                    new XRect(bounds.X, bounds.Y + index * compactLineHeight, bounds.Width, compactLineHeight),
+                    compactFontSize, XFontStyleEx.Regular, new XSolidBrush(TextColor),
+                    XStringFormats.CenterLeft, minimumSize: 3.2);
+            }
+            graphics.Restore(compactState);
+            return;
+        }
+
+        var allocations = Enumerable.Repeat(1, wrappedEntries.Count).ToArray();
+        var remainingLines = maximumLines - wrappedEntries.Count;
+        while (remainingLines > 0)
+        {
+            var allocatedAny = false;
+            for (var index = 0; index < wrappedEntries.Count && remainingLines > 0; index++)
+            {
+                if (allocations[index] >= wrappedEntries[index].Count)
+                    continue;
+                allocations[index]++;
+                remainingLines--;
+                allocatedAny = true;
             }
 
-            if (lines.Count == maximumLines)
+            if (!allocatedAny)
                 break;
         }
 
-        if (lines.Count == maximumLines && entries.Count > 0)
-            lines[^1] = Ellipsize(graphics, lines[^1], font, bounds.Width);
+        var lines = new List<string>();
+        for (var index = 0; index < wrappedEntries.Count; index++)
+        {
+            var wrapped = wrappedEntries[index];
+            var allocated = allocations[index];
+            lines.AddRange(wrapped.Take(allocated));
+            if (allocated < wrapped.Count)
+                lines[^1] = Ellipsize(graphics, lines[^1], font, bounds.Width);
+        }
 
         var state = graphics.Save();
         graphics.IntersectClip(bounds);
@@ -475,18 +698,18 @@ internal static class WorkOrderPrintDocumentFactory
         graphics.DrawString(text, font, brush, bounds, format);
     }
 
-    private static bool DrawCheckWhen(XGraphics graphics, bool condition, double x, double y)
-    {
-        if (condition)
-            DrawCheck(graphics, x, y, 12.1);
-        return condition;
-    }
-
     private static void DrawCheck(XGraphics graphics, double x, double y, double size)
     {
         var pen = new XPen(AccentRed, 1.5);
         graphics.DrawLine(pen, x + 2.4, y + size * 0.52, x + size * 0.43, y + size - 2.1);
         graphics.DrawLine(pen, x + size * 0.43, y + size - 2.1, x + size - 1.9, y + 2.0);
+    }
+
+    private static void DrawCheckbox(XGraphics graphics, double x, double y, double size, bool isChecked)
+    {
+        graphics.DrawRectangle(new XPen(AccentRed, 0.8), x, y, size, size);
+        if (isChecked)
+            DrawCheck(graphics, x, y, size);
     }
 
     private static string DisplayFlightNumber(WorkOrderDetailDto workOrder) =>
@@ -496,6 +719,9 @@ internal static class WorkOrderPrintDocumentFactory
 
     private static string FormatDateTime(DateTimeOffset value) =>
         value.UtcDateTime.ToString("dd/MM/yyyy HH:mm 'UTC'", CultureInfo.InvariantCulture);
+
+    private static string? FormatCompactDateTime(DateTimeOffset? value) =>
+        value?.UtcDateTime.ToString("dd/MM/yy HH:mm", CultureInfo.InvariantCulture);
 
     private static string FormatDuration(TimeSpan value)
     {
@@ -531,6 +757,18 @@ internal static class WorkOrderPrintDocumentFactory
         return $"work-order-{safeNumber}.pdf";
     }
 
-    internal sealed record WorkerWindow(string Name, DateTimeOffset FromUtc, DateTimeOffset ToUtc);
+    internal sealed record WorkerWindow(
+        Guid StaffMemberId,
+        string Name,
+        string ManpowerTypeName,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc);
+
+    private sealed record StaffRow(
+        string Name,
+        string ManpowerTypeName,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc);
+
     private sealed record MaterialRow(string Name, decimal Quantity);
 }

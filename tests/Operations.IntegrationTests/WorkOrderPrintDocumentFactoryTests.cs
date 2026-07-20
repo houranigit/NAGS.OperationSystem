@@ -54,24 +54,109 @@ public sealed class WorkOrderPrintDocumentFactoryTests
     public void MergeWorkerWindows_PreservesGapsAndCoalescesOverlaps()
     {
         var start = new DateTimeOffset(2026, 7, 20, 10, 0, 0, TimeSpan.Zero);
+        var alexId = Guid.NewGuid();
+        var secondAlexId = Guid.NewGuid();
         var source = new[]
         {
-            new WorkOrderPrintDocumentFactory.WorkerWindow("Alex", start, start.AddMinutes(15)),
-            new WorkOrderPrintDocumentFactory.WorkerWindow("Alex", start.AddHours(1), start.AddHours(1).AddMinutes(15)),
-            new WorkOrderPrintDocumentFactory.WorkerWindow("Alex", start.AddHours(1).AddMinutes(10), start.AddHours(1).AddMinutes(30))
+            new WorkOrderPrintDocumentFactory.WorkerWindow(alexId, "Alex", "Technician", start, start.AddMinutes(15)),
+            new WorkOrderPrintDocumentFactory.WorkerWindow(alexId, "Alex", "Technician", start.AddHours(1), start.AddHours(1).AddMinutes(15)),
+            new WorkOrderPrintDocumentFactory.WorkerWindow(alexId, "Alex", "Technician", start.AddHours(1).AddMinutes(10), start.AddHours(1).AddMinutes(30)),
+            new WorkOrderPrintDocumentFactory.WorkerWindow(secondAlexId, "Alex", "Engineer", start, start.AddMinutes(10))
         };
 
         var merged = WorkOrderPrintDocumentFactory.MergeWorkerWindows(source);
 
-        merged.Count.ShouldBe(2);
+        merged.Count.ShouldBe(3);
+        merged.Select(window => window.StaffMemberId).Distinct().Count().ShouldBe(2);
         merged.Aggregate(TimeSpan.Zero, (total, window) => total + (window.ToUtc - window.FromUtc))
-            .ShouldBe(TimeSpan.FromMinutes(45));
+            .ShouldBe(TimeSpan.FromMinutes(55));
+    }
+
+    [Fact]
+    public void PrintableRows_UseWorkOrderServicesReturnEndAndTaskStaffWording()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var serviceLines = Enumerable.Range(1, 7)
+            .Select(index => new WorkOrderServiceLineDto(
+                Guid.NewGuid(), Guid.NewGuid(), $"Service {index}", Guid.NewGuid(), $"Staff {index}",
+                now.AddMinutes(index), now.AddMinutes(index + 10), null, index == 7))
+            .ToList();
+        var workOrder = baseline.WorkOrder with { ServiceLines = serviceLines };
+
+        WorkOrderPrintDocumentFactory.BuildRequestedServiceRows(workOrder)
+            .ShouldBe(["Service 1", "Service 2", "Service 3", "Service 4", "More 3 Services"]);
+        WorkOrderPrintDocumentFactory.BuildRequestedServiceRows(workOrder with
+            {
+                ServiceLines = serviceLines.Take(5).ToList()
+            })
+            .ShouldBe(["Service 1", "Service 2", "Service 3", "Service 4", "Service 5"]);
+        WorkOrderPrintDocumentFactory.ResolveHeaderTo(workOrder)
+            .ShouldBe(now.AddMinutes(17));
+        WorkOrderPrintDocumentFactory.BuildCorrectiveActionRows(workOrder)
+            .ShouldBe([
+                "Major Task By Alex Technician, Completed inspection",
+                "Minor Task By Dana Engineer, Sam Technician, Completed follow-up"
+            ]);
+
+        var returnTask = workOrder.Tasks[0] with
+        {
+            FromUtc = now.AddMinutes(120),
+            ToUtc = now.AddMinutes(130),
+            IsReturnToRamp = true
+        };
+        WorkOrderPrintDocumentFactory.ResolveHeaderTo(workOrder with
+            {
+                Tasks = [returnTask]
+            })
+            .ShouldBe(now.AddMinutes(130));
+
+        WorkOrderPrintDocumentFactory.ResolveHeaderTo(workOrder with
+            {
+                ServiceLines = serviceLines.Select(line => line with { IsReturnToRamp = false }).ToList(),
+                Tasks = workOrder.Tasks.Select(task => task with { IsReturnToRamp = false }).ToList()
+            })
+            .ShouldBe(workOrder.ActualDepartureUtc);
+    }
+
+    [Fact]
+    public void Create_HandlesMoreStaffAndTasksThanTheOriginalStaticRows()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var additionalStaff = Enumerable.Range(1, 8)
+            .Select(index => new WorkOrderPrintStaffDto(Guid.NewGuid(), $"Manpower Type {index}"))
+            .ToList();
+        var serviceLines = additionalStaff.Select((staff, index) => new WorkOrderServiceLineDto(
+                Guid.NewGuid(), Guid.NewGuid(), $"Overflow Service {index + 1}", staff.StaffMemberId,
+                $"Overflow Staff Member {index + 1}", now.AddMinutes(index), now.AddMinutes(index + 10),
+                null, false))
+            .ToList();
+        var tasks = Enumerable.Range(0, 16)
+            .Select(index => baseline.WorkOrder.Tasks[index % baseline.WorkOrder.Tasks.Count] with
+            {
+                Id = Guid.NewGuid(),
+                Description = $"Task {index + 1} with a description that must not hide later tasks"
+            })
+            .ToList();
+        var source = baseline with
+        {
+            WorkOrder = baseline.WorkOrder with { ServiceLines = serviceLines, Tasks = tasks },
+            Staff = baseline.Staff.Concat(additionalStaff).ToList()
+        };
+
+        WorkOrderPrintDocumentFactory.BuildCorrectiveActionRows(source.WorkOrder).Count.ShouldBe(16);
+        var file = WorkOrderPrintDocumentFactory.Create(source);
+
+        Encoding.ASCII.GetString(file.Content, 0, 4).ShouldBe("%PDF");
     }
 
     private static ApprovedWorkOrderPrintDto CreateSource(bool includeCompletionDetails)
     {
         var now = new DateTimeOffset(2026, 7, 20, 18, 0, 0, TimeSpan.Zero);
         var staffId = Guid.NewGuid();
+        var secondStaffId = Guid.NewGuid();
+        var thirdStaffId = Guid.NewGuid();
         var signature = includeCompletionDetails
             ? Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
             : null;
@@ -89,15 +174,40 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             signature is null ? null : new WorkOrderSignatureDto("customer.png", "image/png", signature.Length, now.AddHours(2)),
             42, "HOF-0042", Guid.NewGuid(), now.AddHours(2),
             includeCompletionDetails
-                ? [new WorkOrderServiceLineDto(
-                    Guid.NewGuid(), Guid.NewGuid(), "Headset", staffId, "Alex Technician",
-                    now.AddMinutes(5), now.AddMinutes(35), "Pushback support", false)]
+                ? [
+                    new WorkOrderServiceLineDto(
+                        Guid.NewGuid(), Guid.NewGuid(), "Headset", staffId, "Alex Technician",
+                        now.AddMinutes(5), now.AddMinutes(35), "Pushback support", false),
+                    new WorkOrderServiceLineDto(
+                        Guid.NewGuid(), Guid.NewGuid(), "Transit", secondStaffId, "Sam Technician",
+                        now.AddMinutes(15), now.AddMinutes(45), null, false),
+                    new WorkOrderServiceLineDto(
+                        Guid.NewGuid(), Guid.NewGuid(), "Daily", thirdStaffId, "Dana Engineer",
+                        now.AddMinutes(20), now.AddMinutes(50), null, false),
+                    new WorkOrderServiceLineDto(
+                        Guid.NewGuid(), Guid.NewGuid(), "Weekly", staffId, "Alex Technician",
+                        now.AddMinutes(40), now.AddMinutes(70), null, false),
+                    new WorkOrderServiceLineDto(
+                        Guid.NewGuid(), Guid.NewGuid(), "On Call", secondStaffId, "Sam Technician",
+                        now.AddMinutes(60), now.AddMinutes(90), null, false),
+                    new WorkOrderServiceLineDto(
+                        Guid.NewGuid(), Guid.NewGuid(), "Return Ramp", thirdStaffId, "Dana Engineer",
+                        now.AddMinutes(80), now.AddMinutes(100), null, true)
+                ]
                 : [],
             includeCompletionDetails
-                ? [new WorkOrderTaskDto(
-                    Guid.NewGuid(), "Major", "Completed inspection", now.AddMinutes(10), now.AddMinutes(50),
-                    [new WorkOrderTaskEmployeeDto(staffId, "Alex Technician", "EMP-100")], [],
-                    [new WorkOrderTaskMaterialDto(Guid.NewGuid(), "Hydraulic fluid", 2)], [], [], false)]
+                ? [
+                    new WorkOrderTaskDto(
+                        Guid.NewGuid(), "Major", "Completed inspection", now.AddMinutes(10), now.AddMinutes(50),
+                        [new WorkOrderTaskEmployeeDto(staffId, "Alex Technician", "EMP-100")], [],
+                        [new WorkOrderTaskMaterialDto(Guid.NewGuid(), "Hydraulic fluid", 2)], [], [], false),
+                    new WorkOrderTaskDto(
+                        Guid.NewGuid(), "Minor", "Completed follow-up", now.AddMinutes(55), now.AddMinutes(95),
+                        [
+                            new WorkOrderTaskEmployeeDto(thirdStaffId, "Dana Engineer", "EMP-300"),
+                            new WorkOrderTaskEmployeeDto(secondStaffId, "Sam Technician", "EMP-200")
+                        ], [], [], [], [], false)
+                ]
                 : [],
             now.AddHours(-1), now.AddHours(2), Convert.ToBase64String([1, 2, 3]));
 
@@ -105,9 +215,13 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             workOrder,
             includeCompletionDetails ? "Airbus" : null,
             "C-7788",
-            ["Headset"],
-            IsPerLanding: !includeCompletionDetails,
-            IsOnCall: false,
+            Staff: includeCompletionDetails
+                ? [
+                    new WorkOrderPrintStaffDto(staffId, "Technician"),
+                    new WorkOrderPrintStaffDto(secondStaffId, "Technician"),
+                    new WorkOrderPrintStaffDto(thirdStaffId, "Engineer")
+                ]
+                : [],
             signature,
             signature is null ? null : "image/png");
     }

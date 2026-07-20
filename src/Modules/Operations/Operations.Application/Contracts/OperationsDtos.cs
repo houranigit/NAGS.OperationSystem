@@ -200,11 +200,13 @@ public sealed record ApprovedWorkOrderPrintDto(
     WorkOrderDetailDto WorkOrder,
     string? AircraftManufacturer,
     string? ContractNumber,
-    IReadOnlyList<string> PlannedServiceNames,
-    bool IsPerLanding,
-    bool IsOnCall,
+    IReadOnlyList<WorkOrderPrintStaffDto> Staff,
     byte[]? CustomerSignatureContent,
     string? CustomerSignatureContentType);
+
+public sealed record WorkOrderPrintStaffDto(
+    Guid StaffMemberId,
+    string? ManpowerTypeName);
 
 public sealed record WorkOrderServiceLineDto(
     Guid Id,

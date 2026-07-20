@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Readers;
 using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Authorization;
@@ -43,20 +44,29 @@ public sealed class ApprovedWorkOrderPrintQueryTests
 
         byte[] signature = [0x89, 0x50, 0x4E, 0x47];
         var storage = new TestFileStorage(signature);
+        var performedBy = workOrder.ServiceLines.Single().PerformedBy;
+        var manpowerTypeId = Guid.NewGuid();
+        var masterData = new TestMasterDataReader(
+            [new StaffMemberReadSnapshot(
+                performedBy.StaffMemberId,
+                "Current catalog name",
+                performedBy.EmployeeId,
+                flight.Station.StationId,
+                manpowerTypeId,
+                IsActive: false)],
+            [new ManpowerTypeReadSnapshot(manpowerTypeId, "Technician", IsActive: false)]);
         var handler = new GetApprovedWorkOrderPrintQueryHandler(
             db,
             OwnerScope(flight, ownerUserId),
             new TestUserContext(ownerUserId),
-            storage);
+            storage,
+            masterData);
 
         var result = await handler.Handle(new GetApprovedWorkOrderPrintQuery(flight.Id), CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.AircraftManufacturer.ShouldBe("Airbus");
         result.Value.ContractNumber.ShouldBe("CTR-2017");
-        result.Value.PlannedServiceNames.ShouldBe(["Aircraft Per Landing"]);
-        result.Value.IsPerLanding.ShouldBeTrue();
-        result.Value.IsOnCall.ShouldBeTrue();
         result.Value.CustomerSignatureContent.ShouldBe(signature);
         result.Value.CustomerSignatureContentType.ShouldBe("image/png");
         storage.OpenedStorageKey.ShouldBe("signatures/customer.png");
@@ -70,17 +80,45 @@ public sealed class ApprovedWorkOrderPrintQueryTests
         task.Materials.ShouldHaveSingleItem().Name.ShouldBe("Hydraulic fluid");
         task.GeneralSupports.ShouldHaveSingleItem().Name.ShouldBe("GPU");
         task.Attachments.ShouldHaveSingleItem().OriginalFileName.ShouldBe("report.pdf");
+        var staff = result.Value.Staff.ShouldHaveSingleItem();
+        staff.StaffMemberId.ShouldBe(performedBy.StaffMemberId);
+        staff.ManpowerTypeName.ShouldBe("Technician");
+        masterData.RequestedStaffIds.ShouldBe([performedBy.StaffMemberId]);
+        masterData.RequestedManpowerTypeIds.ShouldBe([manpowerTypeId]);
 
         var missingSignatureResult = await new GetApprovedWorkOrderPrintQueryHandler(
                 db,
                 OwnerScope(flight, ownerUserId),
                 new TestUserContext(ownerUserId),
-                new TestFileStorage(content: null))
+                new TestFileStorage(content: null),
+                new TestMasterDataReader())
             .Handle(new GetApprovedWorkOrderPrintQuery(flight.Id), CancellationToken.None);
 
         missingSignatureResult.IsSuccess.ShouldBeTrue();
         missingSignatureResult.Value.CustomerSignatureContent.ShouldBeNull();
         missingSignatureResult.Value.CustomerSignatureContentType.ShouldBeNull();
+        missingSignatureResult.Value.Staff.ShouldHaveSingleItem().ManpowerTypeName.ShouldBeNull();
+
+        var transferredMasterData = new TestMasterDataReader(
+            [new StaffMemberReadSnapshot(
+                performedBy.StaffMemberId,
+                performedBy.FullName,
+                performedBy.EmployeeId,
+                Guid.NewGuid(),
+                manpowerTypeId,
+                IsActive: true)],
+            [new ManpowerTypeReadSnapshot(manpowerTypeId, "Transferred role", IsActive: true)]);
+        var transferredResult = await new GetApprovedWorkOrderPrintQueryHandler(
+                db,
+                OwnerScope(flight, ownerUserId),
+                new TestUserContext(ownerUserId),
+                new TestFileStorage(content: null),
+                transferredMasterData)
+            .Handle(new GetApprovedWorkOrderPrintQuery(flight.Id), CancellationToken.None);
+
+        transferredResult.IsSuccess.ShouldBeTrue();
+        transferredResult.Value.Staff.ShouldHaveSingleItem().ManpowerTypeName.ShouldBeNull();
+        transferredMasterData.RequestedManpowerTypeIds.ShouldBeEmpty();
     }
 
     [Fact]
@@ -143,7 +181,8 @@ public sealed class ApprovedWorkOrderPrintQueryTests
                     Guid.NewGuid(),
                     CanViewWorkOrdersStationWide: false)),
                 caller,
-                new TestFileStorage(null))
+                new TestFileStorage(null),
+                new TestMasterDataReader())
             .Handle(new GetApprovedWorkOrderPrintQuery(flight.Id), CancellationToken.None);
 
         denied.IsFailure.ShouldBeTrue();
@@ -157,7 +196,8 @@ public sealed class ApprovedWorkOrderPrintQueryTests
                     Guid.NewGuid(),
                     CanViewWorkOrdersStationWide: true)),
                 caller,
-                new TestFileStorage(null))
+                new TestFileStorage(null),
+                new TestMasterDataReader())
             .Handle(new GetApprovedWorkOrderPrintQuery(flight.Id), CancellationToken.None);
 
         stationWide.IsSuccess.ShouldBeTrue();
@@ -178,7 +218,8 @@ public sealed class ApprovedWorkOrderPrintQueryTests
                     Guid.NewGuid(),
                     CanViewWorkOrdersStationWide: true)),
                 caller,
-                new TestFileStorage(null))
+                new TestFileStorage(null),
+                new TestMasterDataReader())
             .Handle(new GetApprovedWorkOrderPrintQuery(flight.Id), CancellationToken.None);
 
         otherStation.IsFailure.ShouldBeTrue();
@@ -195,7 +236,8 @@ public sealed class ApprovedWorkOrderPrintQueryTests
             db,
             new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)),
             new TestUserContext(Guid.NewGuid(), UserType.SystemAdministrator),
-            new TestFileStorage(null));
+            new TestFileStorage(null),
+            new TestMasterDataReader());
 
     private static IOperationsScope OwnerScope(Flight flight, Guid userId) =>
         new StaticScope(new OperationsScopeContext(
@@ -340,6 +382,79 @@ public sealed class ApprovedWorkOrderPrintQueryTests
         }
 
         public Task DeleteAsync(string storageKey, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class TestMasterDataReader(
+        IReadOnlyList<StaffMemberReadSnapshot>? staff = null,
+        IReadOnlyList<ManpowerTypeReadSnapshot>? manpowerTypes = null) : IMasterDataReader
+    {
+        private readonly IReadOnlyDictionary<Guid, StaffMemberReadSnapshot> staffById =
+            (staff ?? []).ToDictionary(item => item.Id);
+        private readonly IReadOnlyDictionary<Guid, ManpowerTypeReadSnapshot> manpowerTypesById =
+            (manpowerTypes ?? []).ToDictionary(item => item.Id);
+
+        public List<Guid> RequestedStaffIds { get; } = [];
+        public List<Guid> RequestedManpowerTypeIds { get; } = [];
+
+        public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetStaffMembersAsync(
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken cancellationToken)
+        {
+            RequestedStaffIds.AddRange(ids);
+            IReadOnlyList<StaffMemberReadSnapshot> result = ids
+                .Where(staffById.ContainsKey)
+                .Select(id => staffById[id])
+                .ToList();
+            return Task.FromResult(result);
+        }
+
+        public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(
+            Guid id,
+            CancellationToken cancellationToken)
+        {
+            RequestedManpowerTypeIds.Add(id);
+            return Task.FromResult(manpowerTypesById.GetValueOrDefault(id));
+        }
+
+        public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<OperationTypeReadSnapshot?> GetOperationTypeAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<AircraftTypeReadSnapshot?> GetAircraftTypeAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<ServiceReadSnapshot?> GetServiceAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<ServiceReadSnapshot>> GetServicesAsync(
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<StaffMemberReadSnapshot?> GetStaffMemberAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(
+            Guid stationId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlySet<Guid>> GetAllowedActiveServiceIdsAsync(
+            Guid manpowerTypeId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<ToolReadSnapshot>> GetActiveToolsAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<MaterialReadSnapshot>> GetActiveMaterialsAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<GeneralSupportReadSnapshot>> GetActiveGeneralSupportsAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<CustomerReadSnapshot>> GetActiveCustomersAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<AircraftTypeReadSnapshot>> GetActiveAircraftTypesAsync(CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 }
