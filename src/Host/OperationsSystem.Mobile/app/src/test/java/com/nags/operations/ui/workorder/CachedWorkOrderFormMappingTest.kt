@@ -6,6 +6,7 @@ import com.nags.operations.data.WorkOrderTaskWireDto
 import com.nags.operations.data.WorkOrderSignatureWireDto
 import com.nags.operations.data.WorkOrderTaskAttachmentWireDto
 import com.nags.operations.data.WorkOrderServiceLineWireDto
+import com.nags.operations.data.WorkOrderServiceLinePerformerWireDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,8 +38,10 @@ class CachedWorkOrderFormMappingTest {
                     id = "line-1",
                     serviceId = "service-1",
                     serviceName = "Revoked service",
-                    performedByStaffMemberId = "staff-1",
-                    performedByName = "Staff One",
+                    performedBy = listOf(
+                        WorkOrderServiceLinePerformerWireDto("staff-1", "Staff One", "E001"),
+                        WorkOrderServiceLinePerformerWireDto("staff-2", "Staff Two", "E002"),
+                    ),
                     fromUtc = "2026-07-11T10:10:00Z",
                     toUtc = "2026-07-11T11:00:00Z",
                     isReturnToRamp = true,
@@ -90,6 +93,7 @@ class CachedWorkOrderFormMappingTest {
         assertEquals(workOrder.scheduledArrivalUtc, form.scheduledArrivalIso)
         assertEquals("Revoked service", form.serviceLines.single().serviceName)
         assertEquals("line-1", form.serviceLines.single().serverId)
+        assertEquals(listOf("staff-1", "staff-2"), form.serviceLines.single().employeeIds)
         assertEquals(1, form.serviceLineIdentityVersion)
         assertTrue(form.serviceLines.single().returnToRamp)
         assertTrue(form.tasks.single().returnToRamp)

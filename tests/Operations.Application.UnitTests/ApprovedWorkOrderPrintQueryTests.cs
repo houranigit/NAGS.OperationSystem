@@ -44,7 +44,7 @@ public sealed class ApprovedWorkOrderPrintQueryTests
 
         byte[] signature = [0x89, 0x50, 0x4E, 0x47];
         var storage = new TestFileStorage(signature);
-        var performedBy = workOrder.ServiceLines.Single().PerformedBy;
+        var performedBy = workOrder.ServiceLines.Single().PerformedBy.Single().StaffMember;
         var manpowerTypeId = Guid.NewGuid();
         var masterData = new TestMasterDataReader(
             [new StaffMemberReadSnapshot(
@@ -73,7 +73,9 @@ public sealed class ApprovedWorkOrderPrintQueryTests
         result.Value.WorkOrder.Id.ShouldBe(workOrder.Id);
         result.Value.WorkOrder.Type.ShouldBe(nameof(WorkOrderType.Completion));
         result.Value.WorkOrder.Status.ShouldBe(nameof(WorkOrderStatus.Approved));
-        result.Value.WorkOrder.ServiceLines.ShouldHaveSingleItem().ServiceName.ShouldBe("Deicing");
+        var serviceLine = result.Value.WorkOrder.ServiceLines.ShouldHaveSingleItem();
+        serviceLine.ServiceName.ShouldBe("Deicing");
+        serviceLine.PerformedBy.ShouldHaveSingleItem().FullName.ShouldBe("Ramp Agent");
         var task = result.Value.WorkOrder.Tasks.ShouldHaveSingleItem();
         task.Employees.ShouldHaveSingleItem().FullName.ShouldBe("Ramp Agent");
         task.Tools.ShouldHaveSingleItem().Name.ShouldBe("Towbar");
@@ -289,7 +291,7 @@ public sealed class ApprovedWorkOrderPrintQueryTests
             [
                 new WorkOrderServiceLineInput(
                     new ServiceSnapshot(Guid.NewGuid(), "Deicing"),
-                    employee,
+                    [employee],
                     TimeWindow.Create(Now, Now.AddMinutes(20)).Value,
                     "Deiced wings")
             ],

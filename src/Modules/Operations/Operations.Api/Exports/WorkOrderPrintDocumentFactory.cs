@@ -304,12 +304,12 @@ internal static class WorkOrderPrintDocumentFactory
             .GroupBy(staff => staff.StaffMemberId)
             .ToDictionary(group => group.Key, group => group.First().ManpowerTypeName ?? string.Empty);
         var windows = MergeWorkerWindows(workOrder.ServiceLines
-            .Select(line => new WorkerWindow(
-                line.PerformedByStaffMemberId,
-                line.PerformedByName,
-                manpowerByStaffId.GetValueOrDefault(line.PerformedByStaffMemberId, string.Empty),
+            .SelectMany(line => line.PerformedBy.Select(performer => new WorkerWindow(
+                performer.StaffMemberId,
+                performer.FullName,
+                manpowerByStaffId.GetValueOrDefault(performer.StaffMemberId, string.Empty),
                 line.FromUtc,
-                line.ToUtc))
+                line.ToUtc)))
             .Concat(workOrder.Tasks.SelectMany(task => task.Employees.Select(employee =>
                 new WorkerWindow(
                     employee.StaffMemberId,

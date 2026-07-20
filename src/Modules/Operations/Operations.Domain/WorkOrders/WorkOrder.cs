@@ -478,6 +478,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         {
             if (line.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
                 return Error.Validation("Aircraft Per Landing cannot be selected as a work order service line.", "Operations.WorkOrder.PerLandingLineNotAllowed");
+            if (line.PerformedBy is not { Count: > 0 })
+                return Error.Validation("Every service line requires at least one performer.", "Operations.WorkOrder.ServiceLinePerformerRequired");
             if (string.IsNullOrWhiteSpace(line.Description) is false && line.Description.Trim().Length > 2000)
                 return Error.Validation("Service line description must be at most 2000 characters.", "Operations.WorkOrder.ServiceLineDescriptionTooLong");
         }

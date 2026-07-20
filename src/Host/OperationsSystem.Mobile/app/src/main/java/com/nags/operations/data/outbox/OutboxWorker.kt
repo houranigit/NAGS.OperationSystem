@@ -248,7 +248,7 @@ class OutboxWorker(
         outboxRepository.markSending(row)
 
         val payload = runCatching {
-            json.decodeFromString(OutboxPayload.serializer(), row.payloadJson)
+            decodeOutboxPayload(json, row.payloadJson)
         }.getOrElse { e ->
             return Outcome.Failed("Could not decode queued submission: ${e.message}")
         }
@@ -482,7 +482,7 @@ class OutboxWorker(
 internal fun OutboxPayload.ServiceLineInput.toWireServiceLine() = WorkOrderServiceLineInput(
     id = id,
     serviceId = serviceId,
-    performedByStaffMemberId = performedByStaffMemberId,
+    performedByStaffMemberIds = performedByStaffMemberIds,
     fromUtc = fromIso,
     toUtc = toIso,
     description = description,

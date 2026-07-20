@@ -443,7 +443,7 @@
             completion ? remarksSource.Remarks : null,
             completion ? selectedLines.Select(item => new WorkOrderServiceLineRequestModel(
                 item.Line.ServiceId,
-                item.Line.PerformedByStaffMemberId,
+                item.Line.PerformedBy.Select(performer => performer.StaffMemberId).ToList(),
                 item.Line.FromUtc,
                 item.Line.ToUtc,
                 item.Line.Description,

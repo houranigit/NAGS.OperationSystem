@@ -65,7 +65,7 @@ internal static class MobileWriteEndpoints
                     workOrderId,
                     request.ServiceLines?.Select(l => new Operations.Application.Features.WorkOrders.WorkOrderServiceLineCommand(
                         l.ServiceId,
-                        l.PerformedByStaffMemberId,
+                        l.ResolvePerformedByStaffMemberIds(),
                         l.FromUtc,
                         l.ToUtc,
                         l.Description,

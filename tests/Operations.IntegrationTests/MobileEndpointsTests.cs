@@ -189,6 +189,37 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task Mobile_work_order_round_trips_multiple_service_performers()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var author = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var coworker = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var flightId = await ScheduleFlightAsync(
+            admin,
+            refs,
+            "MOB111",
+            [author.StaffId, coworker.StaffId]);
+
+        var submit = await author.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = CompletionWorkOrderBody(refs, [author.StaffId, coworker.StaffId])
+            });
+
+        submit.StatusCode.ShouldBe(HttpStatusCode.Created, await submit.Content.ReadAsStringAsync());
+        var write = await submit.Content.ReadFromJsonAsync<MobileWriteResult>();
+        var detail = await author.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{write!.WorkOrderId}");
+
+        var performers = detail!.ServiceLines.ShouldHaveSingleItem().PerformedBy;
+        performers.Select(performer => performer.StaffMemberId)
+            .ShouldBe([author.StaffId, coworker.StaffId], ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task Out_of_window_assignment_is_absent_from_list_but_available_by_id_as_information_only()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -458,7 +489,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
                     new
                     {
                         serviceId = refs.ServiceId,
-                        performedByStaffMemberId = author.StaffId,
+                        performedByStaffMemberIds = new[] { author.StaffId },
                         fromUtc = DateTimeOffset.UtcNow.AddMinutes(-30),
                         toUtc = DateTimeOffset.UtcNow.AddMinutes(30),
                         description = "Return to ramp"
@@ -512,7 +543,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
                         {
                             Id = (Guid?)line.Id,
                             line.ServiceId,
-                            line.PerformedByStaffMemberId,
+                            PerformedByStaffMemberIds = line.PerformedBy.Select(performer => performer.StaffMemberId).ToArray(),
                             line.FromUtc,
                             line.ToUtc,
                             line.Description,
@@ -525,7 +556,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
                             {
                                 Id = (Guid?)null,
                                 ServiceId = refs.ServiceId,
-                                PerformedByStaffMemberId = author.StaffId,
+                                PerformedByStaffMemberIds = new[] { author.StaffId },
                                 FromUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
                                 ToUtc = DateTimeOffset.UtcNow.AddMinutes(10),
                                 Description = (string?)"Normal update addition",
@@ -564,6 +595,13 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         MasterDataRefs refs,
         Guid performerId,
         string remarks = "Mobile submission",
+        bool isReturnToRamp = false) =>
+        CompletionWorkOrderBody(refs, [performerId], remarks, isReturnToRamp);
+
+    private static object CompletionWorkOrderBody(
+        MasterDataRefs refs,
+        IReadOnlyList<Guid> performerIds,
+        string remarks = "Mobile submission",
         bool isReturnToRamp = false) => new
     {
         type = "Completion",
@@ -578,7 +616,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
             new
             {
                 serviceId = refs.ServiceId,
-                performedByStaffMemberId = performerId,
+                performedByStaffMemberIds = performerIds,
                 fromUtc = DateTimeOffset.UtcNow.AddMinutes(-30),
                 toUtc = DateTimeOffset.UtcNow.AddMinutes(30),
                 description = "Handled",
@@ -765,11 +803,16 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         Guid Id,
         Guid ServiceId,
         string ServiceName,
-        Guid PerformedByStaffMemberId,
+        List<WorkOrderServiceLinePerformer> PerformedBy,
         DateTimeOffset FromUtc,
         DateTimeOffset ToUtc,
         string? Description,
         bool IsReturnToRamp);
+
+    private sealed record WorkOrderServiceLinePerformer(
+        Guid StaffMemberId,
+        string FullName,
+        string EmployeeId);
 
     private sealed record TaskLine(
         Guid Id,

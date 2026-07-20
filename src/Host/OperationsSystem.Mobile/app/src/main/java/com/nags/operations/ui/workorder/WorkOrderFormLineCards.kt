@@ -51,7 +51,6 @@ import com.nags.operations.ui.components.PhotoAttachmentButton
 import com.nags.operations.ui.components.TaskAttachmentRow
 import com.nags.operations.ui.components.VoiceAttachmentButton
 import com.nags.operations.ui.components.WorkOrderDateTimePickerField
-import com.nags.operations.ui.components.WorkOrderEmployeePicker
 import com.nags.operations.ui.components.WorkOrderServicePicker
 import com.nags.operations.ui.components.formatMultiSelectSummary
 import java.time.ZoneOffset
@@ -303,16 +302,34 @@ fun ServiceLineCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                WorkOrderEmployeePicker(
-                    selectedId = row.employeeId,
+                val employeeOrderedIds = remember(employees) { employees.map { it.staffMemberId } }
+                MultiSelectDropdownField(
+                    label = "Performed by",
+                    selectedSummary = formatMultiSelectSummary(
+                        row.employeeIds.mapNotNull { id ->
+                            employees.find { it.staffMemberId == id }?.workOrderPickerDisplayLine()
+                        },
+                    ),
+                    placeholder = "Tap to choose one or more",
                     options = employees,
-                    onSelected = { emp ->
-                        onChange(row.copy(employeeId = emp.staffMemberId))
-                    },
-                    onCleared = { onChange(row.copy(employeeId = null)) },
+                    selectedKeys = row.employeeIds.toSet(),
+                    optionKey = { it.staffMemberId },
+                    renderOption = { it.workOrderPickerDisplayLine() },
+                    secondaryLine = { emp -> emp.employeeNumber.takeIf { it.isNotBlank() } },
+                    readOnly = employees.isEmpty(),
                     isError = lineErrors?.performer != null,
                     supportingText = fieldErrorSupportingText(lineErrors?.performer),
+                    onSelectionChange = { keys ->
+                        onChange(row.copy(employeeIds = idsPreservingCatalogOrder(keys, employeeOrderedIds)))
+                    },
                 )
+                if (employees.isEmpty()) {
+                    Text(
+                        text = "No station employees in cache. Pull to refresh or open Sync Center.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

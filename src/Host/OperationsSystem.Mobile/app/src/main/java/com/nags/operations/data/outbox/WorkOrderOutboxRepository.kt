@@ -488,7 +488,7 @@ class WorkOrderOutboxRepository(
     private fun WorkOrderOutboxEntity.toPendingAdHoc(json: Json): PendingAdHocFlight? {
         val syntheticFlightId = clientFlightId ?: return null
         val payload = runCatching {
-            json.decodeFromString(OutboxPayload.serializer(), payloadJson)
+            decodeOutboxPayload(json, payloadJson)
         }.getOrNull() ?: return null
         val scratch = payload.scratchFlight ?: return null
         return PendingAdHocFlight(

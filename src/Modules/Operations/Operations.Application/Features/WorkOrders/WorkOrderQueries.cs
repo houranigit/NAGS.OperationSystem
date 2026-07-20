@@ -255,8 +255,10 @@ internal static class WorkOrderDtoMapper
                 line.Id,
                 line.Service.ServiceId,
                 line.Service.Name,
-                line.PerformedBy.StaffMemberId,
-                line.PerformedBy.FullName,
+                line.PerformedBy.Select(performer => new WorkOrderServiceLinePerformerDto(
+                    performer.StaffMember.StaffMemberId,
+                    performer.StaffMember.FullName,
+                    performer.StaffMember.EmployeeId)).ToList(),
                 line.Window.From,
                 line.Window.To,
                 line.Description,

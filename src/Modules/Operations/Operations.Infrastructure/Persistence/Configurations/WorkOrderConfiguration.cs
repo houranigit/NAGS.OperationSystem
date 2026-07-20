@@ -120,21 +120,37 @@ public sealed class WorkOrderServiceLineConfiguration : IEntityTypeConfiguration
             s.Property(p => p.Name).HasColumnName("ServiceName").HasMaxLength(200).IsRequired();
         });
 
-        builder.OwnsOne(l => l.PerformedBy, s =>
-        {
-            s.Property(p => p.StaffMemberId).HasColumnName("PerformedByStaffMemberId").IsRequired();
-            s.Property(p => p.FullName).HasColumnName("PerformedByFullName").HasMaxLength(200).IsRequired();
-            s.Property(p => p.EmployeeId).HasColumnName("PerformedByEmployeeId").HasMaxLength(50).IsRequired();
-        });
-
         builder.OwnsOne(l => l.Window, w =>
         {
             w.Property(p => p.From).HasColumnName("FromUtc").IsRequired();
             w.Property(p => p.To).HasColumnName("ToUtc").IsRequired();
         });
 
+        builder.HasMany(l => l.PerformedBy).WithOne().HasForeignKey(p => p.WorkOrderServiceLineId).OnDelete(DeleteBehavior.Cascade);
+
         builder.HasIndex(l => l.WorkOrderId);
         builder.Ignore(l => l.IsAircraftPerLanding);
+    }
+}
+
+public sealed class WorkOrderServiceLinePerformerConfiguration : IEntityTypeConfiguration<WorkOrderServiceLinePerformer>
+{
+    public void Configure(EntityTypeBuilder<WorkOrderServiceLinePerformer> builder)
+    {
+        builder.ToTable("work_order_service_line_performers");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.Id).ValueGeneratedNever();
+        builder.Property(p => p.WorkOrderId).IsRequired();
+        builder.Property(p => p.WorkOrderServiceLineId).IsRequired();
+
+        builder.OwnsOne(p => p.StaffMember, s =>
+        {
+            s.Property(p => p.StaffMemberId).HasColumnName("StaffMemberId").IsRequired();
+            s.Property(p => p.FullName).HasColumnName("StaffFullName").HasMaxLength(200).IsRequired();
+            s.Property(p => p.EmployeeId).HasColumnName("StaffEmployeeId").HasMaxLength(50).IsRequired();
+        });
+
+        builder.HasIndex(p => p.WorkOrderServiceLineId);
     }
 }
 

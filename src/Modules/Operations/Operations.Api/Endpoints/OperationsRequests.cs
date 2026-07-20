@@ -100,7 +100,7 @@ public sealed record WorkOrderRequest(
             Remarks,
             ServiceLines?.Select(l => new WorkOrderServiceLineCommand(
                 l.ServiceId,
-                l.PerformedByStaffMemberId,
+                l.ResolvePerformedByStaffMemberIds(),
                 l.FromUtc,
                 l.ToUtc,
                 l.Description,
@@ -146,12 +146,21 @@ public sealed record MergeWorkOrdersRequest(
 
 public sealed record WorkOrderServiceLineRequest(
     Guid ServiceId,
-    Guid PerformedByStaffMemberId,
+    IReadOnlyList<Guid>? PerformedByStaffMemberIds,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,
     bool IsReturnToRamp = false,
-    Guid? Id = null);
+    Guid? Id = null,
+    Guid? PerformedByStaffMemberId = null)
+{
+    public IReadOnlyList<Guid> ResolvePerformedByStaffMemberIds() =>
+        PerformedByStaffMemberIds is { Count: > 0 }
+            ? PerformedByStaffMemberIds
+            : PerformedByStaffMemberId is { } legacyPerformerId
+                ? [legacyPerformerId]
+                : [];
+}
 
 public sealed record WorkOrderTaskRequest(
     Guid? Id,

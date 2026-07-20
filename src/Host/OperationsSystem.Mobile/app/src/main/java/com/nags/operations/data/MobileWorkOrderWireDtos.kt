@@ -1,5 +1,8 @@
 package com.nags.operations.data
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -47,17 +50,50 @@ data class WorkOrderDetailWireDto(
 )
 
 /** Mirrors server `WorkOrderServiceLineDto`. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class WorkOrderServiceLineWireDto(
     val id: String,
     val serviceId: String,
     val serviceName: String,
-    val performedByStaffMemberId: String,
-    val performedByName: String,
+    val performedBy: List<WorkOrderServiceLinePerformerWireDto> = emptyList(),
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
     val isReturnToRamp: Boolean = false,
+    /** Rolling-deploy fallback for responses from the pre-multi-performer backend. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @SerialName("performedByStaffMemberId")
+    private val legacyPerformedByStaffMemberId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @SerialName("performedByName")
+    private val legacyPerformedByName: String? = null,
+) {
+    /** Current performer list, or the legacy single performer when talking to an older server. */
+    val effectivePerformedBy: List<WorkOrderServiceLinePerformerWireDto>
+        get() = performedBy.ifEmpty {
+            legacyPerformedByStaffMemberId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { staffMemberId ->
+                    listOf(
+                        WorkOrderServiceLinePerformerWireDto(
+                            staffMemberId = staffMemberId,
+                            fullName = legacyPerformedByName.orEmpty(),
+                            // The legacy response did not include the employee number.
+                            employeeId = "",
+                        ),
+                    )
+                }
+                .orEmpty()
+        }
+}
+
+/** One employee credited with performing a service line. */
+@Serializable
+data class WorkOrderServiceLinePerformerWireDto(
+    val staffMemberId: String,
+    val fullName: String,
+    val employeeId: String,
 )
 
 /** Mirrors server `WorkOrderTaskDto`. Task ids are stable — resend them to keep attachments. */

@@ -64,7 +64,9 @@ internal fun computeWorkOrderLineErrors(
                 "This service is no longer allowed for your manpower type. Remove or replace it."
             else -> null
         }
-        val performer = if (row.employeeId.isNullOrBlank()) "Performed by is required." else null
+        val performer = if (row.employeeIds.isEmpty() || row.employeeIds.any { it.isBlank() }) {
+            "Choose at least one person."
+        } else null
         var from = if (row.fromIso.isBlank()) "From date and time is required." else null
         var to = if (row.toIso.isBlank()) "To date and time is required." else null
         val description = if (row.description.trim().length > WorkOrderFormLimits.LineDescription) {

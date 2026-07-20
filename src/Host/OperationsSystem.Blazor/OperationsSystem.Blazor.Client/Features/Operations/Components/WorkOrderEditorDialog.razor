@@ -319,8 +319,8 @@
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">Performed by <span class="owo-required">*</span></label>
-                        <RadzenDropDown TValue="Guid?" @bind-Value="line.PerformedByStaffMemberId" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                         Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
@@ -1009,8 +1009,8 @@
     private List<string> ValidateServiceLinesStep()
     {
         var messages = new List<string>();
-        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
-            messages.Add("Every service line needs a service, performer, From, and To time.");
+        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberIds is null || !l.PerformedByStaffMemberIds.Any() || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
+            messages.Add("Every service line needs a service, at least one performer, From, and To time.");
         if (model.ServiceLines.Any(line => !IsServiceLineAllowed(line)))
             messages.Add("Remove or replace services that are no longer allowed for your manpower type.");
         if (model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && !IsMissing(l.ToUtc) && l.ToUtc!.Value < l.FromUtc!.Value))
@@ -1078,7 +1078,7 @@
             completion
                 ? model.ServiceLines.Select(l => new WorkOrderServiceLineRequestModel(
                     l.ServiceId!.Value,
-                    l.PerformedByStaffMemberId!.Value,
+                    l.PerformedByStaffMemberIds.ToList(),
                     ToOffset(l.FromUtc)!.Value,
                     ToOffset(l.ToUtc)!.Value,
                     l.Description,
@@ -1165,7 +1165,7 @@
             Id = l.Id,
             ServiceId = l.ServiceId,
             ServiceName = l.ServiceName,
-            PerformedByStaffMemberId = l.PerformedByStaffMemberId,
+            PerformedByStaffMemberIds = l.PerformedBy.Select(performer => performer.StaffMemberId).ToList(),
             FromUtc = l.FromUtc.UtcDateTime,
             ToUtc = l.ToUtc.UtcDateTime,
             Description = l.Description,
@@ -1276,7 +1276,7 @@
         public Guid? Id { get; set; }
         public Guid? ServiceId { get; set; }
         public string? ServiceName { get; set; }
-        public Guid? PerformedByStaffMemberId { get; set; }
+        public IEnumerable<Guid> PerformedByStaffMemberIds { get; set; } = [];
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }

@@ -10,7 +10,7 @@ class ServiceLineWireMappingTest {
         val wire = OutboxPayload.ServiceLineInput(
             id = "line-1",
             serviceId = "service-1",
-            performedByStaffMemberId = "staff-1",
+            performedByStaffMemberIds = listOf("staff-1", "staff-2"),
             fromIso = "2026-07-11T10:00:00Z",
             toIso = "2026-07-11T11:00:00Z",
             description = null,
@@ -19,5 +19,6 @@ class ServiceLineWireMappingTest {
 
         assertTrue(wire.isReturnToRamp)
         assertEquals("line-1", wire.id)
+        assertEquals(listOf("staff-1", "staff-2"), wire.performedByStaffMemberIds)
     }
 }

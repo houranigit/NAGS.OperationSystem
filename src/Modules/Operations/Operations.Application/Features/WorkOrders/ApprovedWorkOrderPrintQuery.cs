@@ -77,7 +77,7 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
         CancellationToken cancellationToken)
     {
         var snapshots = workOrder.ServiceLines
-            .Select(line => line.PerformedBy)
+            .SelectMany(line => line.PerformedBy.Select(performer => performer.StaffMember))
             .Concat(workOrder.Tasks.SelectMany(task => task.Employees.Select(employee => employee.Employee)))
             .GroupBy(employee => employee.StaffMemberId)
             .Select(group => group.First())
@@ -127,6 +127,13 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
                 .ThenBy(line => line.ToUtc)
                 .ThenBy(line => line.ServiceName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(line => line.Id)
+                .Select(line => line with
+                {
+                    PerformedBy = line.PerformedBy
+                        .OrderBy(performer => performer.FullName, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(performer => performer.StaffMemberId)
+                        .ToList()
+                })
                 .ToList(),
             Tasks = detail.Tasks
                 .OrderBy(task => task.FromUtc)

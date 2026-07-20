@@ -172,12 +172,13 @@ public sealed record WorkOrderServiceLineModel(
     Guid Id,
     Guid ServiceId,
     string ServiceName,
-    Guid PerformedByStaffMemberId,
-    string PerformedByName,
+    IReadOnlyList<WorkOrderServiceLinePerformerModel> PerformedBy,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,
     bool IsReturnToRamp = false);
+
+public sealed record WorkOrderServiceLinePerformerModel(Guid StaffMemberId, string FullName, string EmployeeId);
 
 public sealed record WorkOrderTaskModel(
     Guid Id,
@@ -282,7 +283,7 @@ public sealed record MergeWorkOrdersRequestModel(
 
 public sealed record WorkOrderServiceLineRequestModel(
     Guid ServiceId,
-    Guid PerformedByStaffMemberId,
+    IReadOnlyList<Guid> PerformedByStaffMemberIds,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,

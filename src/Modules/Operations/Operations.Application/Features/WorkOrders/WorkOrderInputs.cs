@@ -20,7 +20,7 @@ public sealed record WorkOrderEditableCommandPayload(
 
 public sealed record WorkOrderServiceLineCommand(
     Guid ServiceId,
-    Guid PerformedByStaffMemberId,
+    IReadOnlyList<Guid> PerformedByStaffMemberIds,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,
@@ -170,8 +170,10 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             var prefix = $"{nameof(payload.ServiceLines)}[{i}]";
             if (line.ServiceId == Guid.Empty)
                 Add($"{prefix}.{nameof(line.ServiceId)}", "Every service line needs a service.");
-            if (line.PerformedByStaffMemberId == Guid.Empty)
-                Add($"{prefix}.{nameof(line.PerformedByStaffMemberId)}", "Every service line needs a performer.");
+            if (line.PerformedByStaffMemberIds is not { Count: > 0 })
+                Add($"{prefix}.{nameof(line.PerformedByStaffMemberIds)}", "Every service line needs at least one performer.");
+            else if (line.PerformedByStaffMemberIds.Any(id => id == Guid.Empty))
+                Add($"{prefix}.{nameof(line.PerformedByStaffMemberIds)}", "Service line performers must be selected.");
             if (IsMissing(line.FromUtc))
                 Add($"{prefix}.{nameof(line.FromUtc)}", "Every service line needs a From time.");
             if (IsMissing(line.ToUtc))
@@ -277,7 +279,7 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             if (service.IsFailure)
                 return service.Error;
 
-            var staff = await resolver.StaffMembersForStationAsync([line.PerformedByStaffMemberId], stationId, cancellationToken);
+            var staff = await resolver.StaffMembersForStationAsync(line.PerformedByStaffMemberIds ?? [], stationId, cancellationToken);
             if (staff.IsFailure)
                 return staff.Error;
 
@@ -287,7 +289,7 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
 
             results.Add(new WorkOrderServiceLineInput(
                 service.Value,
-                staff.Value[0],
+                staff.Value,
                 window.Value,
                 line.Description,
                 line.IsReturnToRamp));

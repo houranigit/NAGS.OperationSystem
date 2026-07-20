@@ -174,7 +174,7 @@ class ReturnToRampViewModel(
         if (employees.none { it.staffMemberId == empId }) return
         val form = snapshot.form
         val nextLines = form.serviceLines.map { line ->
-            if (line.employeeId.isNullOrBlank()) line.copy(employeeId = empId) else line
+            if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(empId)) else line
         }
         val nextTasks = form.tasks.map { task ->
             if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(empId)) else task
@@ -194,7 +194,7 @@ class ReturnToRampViewModel(
     }
 
     fun addServiceLine() {
-        val preset = _state.value.loggedInEmployeeId
+        val preset = _state.value.loggedInEmployeeId?.let(::listOf).orEmpty()
         val flight = _state.value.flight
         val from = flight?.cachedMyWorkOrder?.actualArrivalUtc ?: flight?.sta.orEmpty()
         val to = flight?.cachedMyWorkOrder?.actualDepartureUtc ?: flight?.std.orEmpty()
@@ -202,7 +202,7 @@ class ReturnToRampViewModel(
             it.copy(
                 serviceLines = it.serviceLines + ServiceLineFormRow(
                     localKey = allocKey(),
-                    employeeId = preset,
+                    employeeIds = preset,
                     fromIso = from,
                     toIso = to,
                     returnToRamp = true,
@@ -364,8 +364,7 @@ class ReturnToRampViewModel(
                     id = null,
                     serviceId = row.serviceId
                         ?: error("Service line missing serviceId"),
-                    performedByStaffMemberId = row.employeeId
-                        ?: error("Service line missing performer"),
+                    performedByStaffMemberIds = row.employeeIds,
                     fromIso = row.fromIso,
                     toIso = row.toIso,
                     description = row.description.takeIf { it.isNotBlank() },

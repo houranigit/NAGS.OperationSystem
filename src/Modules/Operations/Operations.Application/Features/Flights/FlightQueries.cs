@@ -148,6 +148,7 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
                 ScheduledArrivalUtc = f.Schedule.Sta,
                 ScheduledDepartureUtc = f.Schedule.Std,
                 Status = f.Status.ToString(),
+                LifecycleStatus = f.Status,
                 IsPerLanding = f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
                 PlannedServiceNames = f.PlannedServices.Select(p => p.Service.Name).ToList(),
                 AssignedEmployeeNames = f.AssignedEmployees.Select(e => e.Employee.FullName).ToList()
@@ -155,11 +156,17 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
             .ToListAsync(cancellationToken);
 
         var flightIds = flightRows.Select(f => f.Id).ToList();
-        var approvedWorkOrders = await db.WorkOrders.AsNoTracking()
-            .Where(w => flightIds.Contains(w.FlightId) && w.Status == WorkOrderStatus.Approved)
+        var exportWorkOrders = await db.WorkOrders.AsNoTracking()
+            .Where(w => flightIds.Contains(w.FlightId) &&
+                (w.Status == WorkOrderStatus.Submitted ||
+                    w.Status == WorkOrderStatus.Returned ||
+                    w.Status == WorkOrderStatus.Approved))
+            .OrderByDescending(w => w.CreatedAtUtc)
+            .ThenByDescending(w => w.Id)
             .Select(w => new
             {
                 w.FlightId,
+                w.Status,
                 WorkOrder = new ApprovedWorkOrderExportDto(
                     w.ApprovalNumber,
                     w.ActualFlightNumber.Value,
@@ -171,24 +178,39 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
                     w.ServiceLines.Select(line => line.Service.Name).ToList(),
                     w.Remarks)
             })
-            .ToDictionaryAsync(w => w.FlightId, w => w.WorkOrder, cancellationToken);
+            .ToListAsync(cancellationToken);
 
-        IReadOnlyList<FlightExportRowDto> items = flightRows.Select(f => new FlightExportRowDto(
-            f.Id,
-            f.FlightNumber,
-            f.OriginalFlightNumber,
-            f.CustomerIataCode,
-            f.CustomerName,
-            f.StationIata,
-            f.StationName,
-            f.OperationTypeName,
-            f.ScheduledArrivalUtc,
-            f.ScheduledDepartureUtc,
-            f.Status,
-            f.IsPerLanding,
-            f.PlannedServiceNames,
-            f.AssignedEmployeeNames,
-            approvedWorkOrders.GetValueOrDefault(f.Id))).ToList();
+        var workOrdersByFlight = exportWorkOrders.ToLookup(w => w.FlightId);
+
+        IReadOnlyList<FlightExportRowDto> items = flightRows.Select(f =>
+        {
+            var workOrders = workOrdersByFlight[f.Id];
+            var workOrder = f.LifecycleStatus switch
+            {
+                FlightStatus.InProgress => workOrders.FirstOrDefault(w =>
+                    w.Status is WorkOrderStatus.Submitted or WorkOrderStatus.Returned)?.WorkOrder,
+                FlightStatus.Completed or FlightStatus.Canceled => workOrders
+                    .FirstOrDefault(w => w.Status == WorkOrderStatus.Approved)?.WorkOrder,
+                _ => null
+            };
+
+            return new FlightExportRowDto(
+                f.Id,
+                f.FlightNumber,
+                f.OriginalFlightNumber,
+                f.CustomerIataCode,
+                f.CustomerName,
+                f.StationIata,
+                f.StationName,
+                f.OperationTypeName,
+                f.ScheduledArrivalUtc,
+                f.ScheduledDepartureUtc,
+                f.Status,
+                f.IsPerLanding,
+                f.PlannedServiceNames,
+                f.AssignedEmployeeNames,
+                workOrder);
+        }).ToList();
 
         return Result.Success(items);
     }

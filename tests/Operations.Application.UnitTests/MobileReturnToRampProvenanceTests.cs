@@ -106,7 +106,7 @@ public sealed class MobileReturnToRampProvenanceTests
     private static WorkOrderServiceLineCommand ServiceLine(Guid? id, bool isReturnToRamp = false) =>
         new(
             Guid.NewGuid(),
-            Guid.NewGuid(),
+            [Guid.NewGuid()],
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddMinutes(10),
             Description: null,

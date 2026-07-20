@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 /**
  * Flight row unified from any cached flights table for the create-work-order form header and
  * the planned-service seeding rule: every non-Per-Landing planned service becomes a seeded
- * service line the user completes (picks a performer) or removes; Per-Landing flights start
+ * service line the user completes (picks one or more performers) or removes; Per-Landing flights start
  * with zero seeded lines.
  */
 @Serializable

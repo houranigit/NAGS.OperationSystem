@@ -165,7 +165,7 @@ public sealed class PerLandingApprovalCommandTests
         WorkOrderServiceLineInput[] serviceLines = includeService
             ? [new WorkOrderServiceLineInput(
                 new ServiceSnapshot(Guid.NewGuid(), "Marshalling"),
-                employee,
+                [employee],
                 TimeWindow.Create(Now, Now.AddMinutes(15)).Value,
                 null)]
             : [];

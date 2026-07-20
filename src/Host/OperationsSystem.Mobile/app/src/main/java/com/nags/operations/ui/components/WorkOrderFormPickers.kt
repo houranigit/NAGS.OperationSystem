@@ -40,10 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nags.operations.data.db.entities.AircraftTypeEntity
-import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.ServiceEntity
 import com.nags.operations.data.db.entities.allowedPerformedServiceOptions
-import com.nags.operations.data.db.entities.workOrderPickerDisplayLine
 import com.nags.operations.ui.util.formatIsoForDisplay
 import com.nags.operations.ui.util.parseOffsetDateTime
 import java.time.Instant
@@ -301,35 +299,6 @@ fun WorkOrderServicePicker(
         onClearSelection = onCleared,
         hasSelection = selectedId != null,
         readOnly = readOnly || selectableOptions.isEmpty(),
-        modifier = modifier,
-        isError = isError,
-        supportingText = supportingText,
-    )
-}
-
-@Composable
-fun WorkOrderEmployeePicker(
-    selectedId: String?,
-    options: List<EmployeeEntity>,
-    onSelected: (EmployeeEntity) -> Unit,
-    onCleared: () -> Unit,
-    readOnly: Boolean = false,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false,
-    supportingText: @Composable (() -> Unit)? = null,
-) {
-    val selected = options.firstOrNull { it.staffMemberId == selectedId }
-    InlineSearchableDropdownField(
-        label = "Performed by",
-        selectedText = selected?.workOrderPickerDisplayLine().orEmpty(),
-        placeholder = "Type to search crew",
-        options = options,
-        renderOption = { it.workOrderPickerDisplayLine() },
-        secondaryLine = { emp -> emp.employeeNumber.takeIf { s -> s.isNotBlank() } },
-        onSelect = onSelected,
-        onClearSelection = onCleared,
-        hasSelection = selectedId != null,
-        readOnly = readOnly || options.isEmpty(),
         modifier = modifier,
         isError = isError,
         supportingText = supportingText,

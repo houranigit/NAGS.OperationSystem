@@ -63,7 +63,7 @@ public sealed class WorkOrderInputBuilderTests
             [
                 new WorkOrderServiceLineCommand(
                     Guid.Empty,
-                    Guid.Empty,
+                    [Guid.Empty],
                     default,
                     default,
                     Description: null)
@@ -97,6 +97,7 @@ public sealed class WorkOrderInputBuilderTests
         result.Error.Failures!.Keys.ShouldContain(nameof(WorkOrderEditableCommandPayload.ActualArrivalUtc));
         result.Error.Failures.Keys.ShouldContain(nameof(WorkOrderEditableCommandPayload.ActualDepartureUtc));
         result.Error.Failures.Keys.ShouldContain("ServiceLines[0].ServiceId");
+        result.Error.Failures.Keys.ShouldContain("ServiceLines[0].PerformedByStaffMemberIds");
         result.Error.Failures.Keys.ShouldContain("Tasks[0].EmployeeIds");
         result.Error.Failures.Keys.ShouldContain("Tasks[0].Tools[0].ItemId");
     }
@@ -107,6 +108,7 @@ public sealed class WorkOrderInputBuilderTests
         var stationId = Guid.NewGuid();
         var serviceId = Guid.NewGuid();
         var staffId = Guid.NewGuid();
+        var secondStaffId = Guid.NewGuid();
         var aircraftTypeId = Guid.NewGuid();
         var arrival = DateTimeOffset.UtcNow;
         var reader = new FakeMasterDataReader(stationId);
@@ -123,7 +125,7 @@ public sealed class WorkOrderInputBuilderTests
                 [
                     new WorkOrderServiceLineCommand(
                         serviceId,
-                        staffId,
+                        [staffId, secondStaffId, staffId],
                         arrival.AddMinutes(5),
                         arrival.AddMinutes(20),
                         "Return to ramp",
@@ -151,7 +153,10 @@ public sealed class WorkOrderInputBuilderTests
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        result.Value.ServiceLines.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        var serviceLine = result.Value.ServiceLines.ShouldHaveSingleItem();
+        serviceLine.IsReturnToRamp.ShouldBeTrue();
+        serviceLine.PerformedBy.Select(performer => performer.StaffMemberId)
+            .ShouldBe([staffId, secondStaffId]);
         result.Value.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
     }
 

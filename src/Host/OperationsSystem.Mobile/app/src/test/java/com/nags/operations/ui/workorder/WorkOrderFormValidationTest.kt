@@ -34,6 +34,23 @@ class WorkOrderFormValidationTest {
     }
 
     @Test
+    fun service_line_requires_at_least_one_performer() {
+        val form = validForm().copy(
+            serviceLines = listOf(validForm().serviceLines.single().copy(employeeIds = emptyList())),
+        )
+
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = form,
+            dialogAtdIso = null,
+            isAdHocScratch = false,
+            selectedCustomerId = null,
+            allowedPerformedServiceIds = setOf("service-1"),
+        )
+
+        assertNotNull(errors?.serviceLinesByKey?.get(1L)?.performer)
+    }
+
+    @Test
     fun required_lengths_task_type_and_quantities_are_rejected() {
         val form = validForm().copy(
             flightNumber = "",
@@ -192,7 +209,7 @@ class WorkOrderFormValidationTest {
             ServiceLineFormRow(
                 localKey = 1L,
                 serviceId = "service-1",
-                employeeId = "employee-1",
+                employeeIds = listOf("employee-1", "employee-2"),
                 fromIso = "2026-07-11T10:00:00Z",
                 toIso = "2026-07-11T11:00:00Z",
             ),

@@ -50,7 +50,7 @@ public sealed class WorkOrderTests
     public void SubmitNew_RejectsPerLandingServiceLine()
     {
         var line = new WorkOrderServiceLineInput(
-            TestData.PerLandingService(), TestData.Staff(),
+            TestData.PerLandingService(), [TestData.Staff()],
             TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(30)).Value, null);
 
         var result = WorkOrder.SubmitNew(
@@ -66,12 +66,12 @@ public sealed class WorkOrderTests
     {
         var normal = new WorkOrderServiceLineInput(
             TestData.Service(),
-            TestData.Staff(),
+            [TestData.Staff()],
             TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(15)).Value,
             "Initial service");
         var returnToRamp = new WorkOrderServiceLineInput(
             TestData.Service(),
-            TestData.Staff(),
+            [TestData.Staff()],
             TimeWindow.Create(TestData.Now.AddMinutes(20), TestData.Now.AddMinutes(30)).Value,
             "Added after return to ramp",
             IsReturnToRamp: true);
@@ -84,6 +84,47 @@ public sealed class WorkOrderTests
         result.Value.ServiceLines.Count.ShouldBe(2);
         result.Value.ServiceLines.Count(line => line.IsReturnToRamp).ShouldBe(1);
         result.Value.ServiceLines.Single(line => line.IsReturnToRamp).Description.ShouldBe("Added after return to ramp");
+    }
+
+    [Fact]
+    public void SubmitNew_RequiresAtLeastOneServicePerformer()
+    {
+        var line = new WorkOrderServiceLineInput(
+            TestData.Service(),
+            [],
+            TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(15)).Value,
+            null);
+
+        var result = WorkOrder.SubmitNew(
+            ScheduleFlight(), WorkOrderType.Completion, Guid.NewGuid(), TestData.Staff(), null, null,
+            null, null, null, null, [line], [], TestData.Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.WorkOrder.ServiceLinePerformerRequired");
+    }
+
+    [Fact]
+    public void SubmitNew_KeepsMultipleServicePerformersAndDeduplicatesByStaffMember()
+    {
+        var first = TestData.Staff();
+        var second = new StaffMemberSnapshot(Guid.NewGuid(), "Second Agent", "EMP-2");
+        var duplicateFirst = new StaffMemberSnapshot(first.StaffMemberId, "Duplicate Snapshot", "DUP-1");
+        var line = new WorkOrderServiceLineInput(
+            TestData.Service(),
+            [first, second, duplicateFirst],
+            TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(15)).Value,
+            null);
+
+        var result = WorkOrder.SubmitNew(
+            ScheduleFlight(), WorkOrderType.Completion, Guid.NewGuid(), TestData.Staff(), null, null,
+            null, null, null, null, [line], [], TestData.Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        var performers = result.Value.ServiceLines.ShouldHaveSingleItem().PerformedBy;
+        performers.Count.ShouldBe(2);
+        performers.Select(performer => performer.StaffMember.StaffMemberId)
+            .ShouldBe([first.StaffMemberId, second.StaffMemberId]);
+        performers[0].StaffMember.FullName.ShouldBe(first.FullName);
     }
 
     [Fact]

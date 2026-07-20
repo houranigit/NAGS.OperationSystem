@@ -13,6 +13,11 @@ class WorkOrderDraftJsonTest {
               "flightNumber":"MOB100",
               "aircraftTypeId":"aircraft-1",
               "ataIso":"2026-07-11T10:00:00Z",
+              "serviceLines":[{
+                "localKey":2,
+                "serviceId":"service-1",
+                "employeeId":"staff-1"
+              }],
               "tasks":[{
                 "localKey":1,
                 "taskType":"Major",
@@ -26,5 +31,6 @@ class WorkOrderDraftJsonTest {
         assertEquals("", form.atdIso)
         assertEquals(WorkOrderDraftSubmissionMode.Unknown, form.draftSubmissionMode)
         assertTrue(form.tasks.single().toolQuantities.isEmpty())
+        assertEquals(listOf("staff-1"), form.serviceLines.single().employeeIds)
     }
 }

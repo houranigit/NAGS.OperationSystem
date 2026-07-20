@@ -212,12 +212,19 @@ public sealed record WorkOrderServiceLineDto(
     Guid Id,
     Guid ServiceId,
     string ServiceName,
-    Guid PerformedByStaffMemberId,
-    string PerformedByName,
+    IReadOnlyList<WorkOrderServiceLinePerformerDto> PerformedBy,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,
-    bool IsReturnToRamp);
+    bool IsReturnToRamp)
+{
+    // Rolling-deployment aliases for installed clients that predate multi-performer services.
+    // PerformedBy is authoritative; these can be removed after those clients are retired.
+    public Guid PerformedByStaffMemberId => PerformedBy.FirstOrDefault()?.StaffMemberId ?? Guid.Empty;
+    public string PerformedByName => PerformedBy.FirstOrDefault()?.FullName ?? string.Empty;
+}
+
+public sealed record WorkOrderServiceLinePerformerDto(Guid StaffMemberId, string FullName, string EmployeeId);
 
 public sealed record WorkOrderTaskDto(
     Guid Id,

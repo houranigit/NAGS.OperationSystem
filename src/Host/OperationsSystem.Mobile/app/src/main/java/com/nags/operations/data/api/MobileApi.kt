@@ -196,7 +196,7 @@ data class WorkOrderWireRequest(
 data class WorkOrderServiceLineInput(
     val id: String? = null,
     val serviceId: String,
-    val performedByStaffMemberId: String,
+    val performedByStaffMemberIds: List<String> = emptyList(),
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,

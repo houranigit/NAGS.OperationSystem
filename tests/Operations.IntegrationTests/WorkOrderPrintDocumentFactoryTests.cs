@@ -79,7 +79,7 @@ public sealed class WorkOrderPrintDocumentFactoryTests
         var now = baseline.WorkOrder.ScheduledArrivalUtc;
         var serviceLines = Enumerable.Range(1, 7)
             .Select(index => new WorkOrderServiceLineDto(
-                Guid.NewGuid(), Guid.NewGuid(), $"Service {index}", Guid.NewGuid(), $"Staff {index}",
+                Guid.NewGuid(), Guid.NewGuid(), $"Service {index}", PerformedBy(Guid.NewGuid(), $"Staff {index}"),
                 now.AddMinutes(index), now.AddMinutes(index + 10), null, index == 7))
             .ToList();
         var workOrder = baseline.WorkOrder with { ServiceLines = serviceLines };
@@ -128,8 +128,9 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             .Select(index => new WorkOrderPrintStaffDto(Guid.NewGuid(), $"Manpower Type {index}"))
             .ToList();
         var serviceLines = additionalStaff.Select((staff, index) => new WorkOrderServiceLineDto(
-                Guid.NewGuid(), Guid.NewGuid(), $"Overflow Service {index + 1}", staff.StaffMemberId,
-                $"Overflow Staff Member {index + 1}", now.AddMinutes(index), now.AddMinutes(index + 10),
+                Guid.NewGuid(), Guid.NewGuid(), $"Overflow Service {index + 1}",
+                PerformedBy(staff.StaffMemberId, $"Overflow Staff Member {index + 1}"),
+                now.AddMinutes(index), now.AddMinutes(index + 10),
                 null, false))
             .ToList();
         var tasks = Enumerable.Range(0, 16)
@@ -176,22 +177,22 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             includeCompletionDetails
                 ? [
                     new WorkOrderServiceLineDto(
-                        Guid.NewGuid(), Guid.NewGuid(), "Headset", staffId, "Alex Technician",
+                        Guid.NewGuid(), Guid.NewGuid(), "Headset", PerformedBy(staffId, "Alex Technician", "EMP-100"),
                         now.AddMinutes(5), now.AddMinutes(35), "Pushback support", false),
                     new WorkOrderServiceLineDto(
-                        Guid.NewGuid(), Guid.NewGuid(), "Transit", secondStaffId, "Sam Technician",
+                        Guid.NewGuid(), Guid.NewGuid(), "Transit", PerformedBy(secondStaffId, "Sam Technician", "EMP-200"),
                         now.AddMinutes(15), now.AddMinutes(45), null, false),
                     new WorkOrderServiceLineDto(
-                        Guid.NewGuid(), Guid.NewGuid(), "Daily", thirdStaffId, "Dana Engineer",
+                        Guid.NewGuid(), Guid.NewGuid(), "Daily", PerformedBy(thirdStaffId, "Dana Engineer", "EMP-300"),
                         now.AddMinutes(20), now.AddMinutes(50), null, false),
                     new WorkOrderServiceLineDto(
-                        Guid.NewGuid(), Guid.NewGuid(), "Weekly", staffId, "Alex Technician",
+                        Guid.NewGuid(), Guid.NewGuid(), "Weekly", PerformedBy(staffId, "Alex Technician", "EMP-100"),
                         now.AddMinutes(40), now.AddMinutes(70), null, false),
                     new WorkOrderServiceLineDto(
-                        Guid.NewGuid(), Guid.NewGuid(), "On Call", secondStaffId, "Sam Technician",
+                        Guid.NewGuid(), Guid.NewGuid(), "On Call", PerformedBy(secondStaffId, "Sam Technician", "EMP-200"),
                         now.AddMinutes(60), now.AddMinutes(90), null, false),
                     new WorkOrderServiceLineDto(
-                        Guid.NewGuid(), Guid.NewGuid(), "Return Ramp", thirdStaffId, "Dana Engineer",
+                        Guid.NewGuid(), Guid.NewGuid(), "Return Ramp", PerformedBy(thirdStaffId, "Dana Engineer", "EMP-300"),
                         now.AddMinutes(80), now.AddMinutes(100), null, true)
                 ]
                 : [],
@@ -225,4 +226,10 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             signature,
             signature is null ? null : "image/png");
     }
+
+    private static IReadOnlyList<WorkOrderServiceLinePerformerDto> PerformedBy(
+        Guid staffMemberId,
+        string fullName,
+        string employeeId = "EMP") =>
+        [new WorkOrderServiceLinePerformerDto(staffMemberId, fullName, employeeId)];
 }

@@ -185,18 +185,23 @@ public sealed class FlightQueryTests
     }
 
     [Fact]
-    public async Task GetFlightsExport_UsesOnlyApprovedWorkOrderValues()
+    public async Task GetFlightsExport_CompletedFlightUsesApprovedWorkOrderValues()
     {
         await using var db = NewDb();
-        var approvedFlight = CreateScheduledFlight("RJ", "Royal Jordanian", "100");
-        var submittedFlight = CreateScheduledFlight("SV", "Saudia", "200");
-        db.Flights.AddRange(approvedFlight, submittedFlight);
-        await db.SaveChangesAsync();
+        var completedFlight = CreateScheduledFlight("RJ", "Royal Jordanian", "100");
 
-        var approved = CreateWorkOrder(approvedFlight, "101", "Approved remarks");
+        var approved = CreateWorkOrder(completedFlight, "101", "Approved remarks");
+        var laterSubmitted = CreateWorkOrder(
+            completedFlight,
+            "102",
+            "Later submitted remarks",
+            submittedAt: Now.AddMinutes(1));
         approved.Approve(1, "DMM-0001", Guid.NewGuid(), Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
-        var submitted = CreateWorkOrder(submittedFlight, "201", "Submitted remarks");
-        db.WorkOrders.AddRange(approved, submitted);
+        completedFlight.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        completedFlight.SettleCompleted(Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
+
+        db.Flights.Add(completedFlight);
+        db.WorkOrders.AddRange(approved, laterSubmitted);
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
@@ -205,7 +210,7 @@ public sealed class FlightQueryTests
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        var approvedRow = result.Value.Single(row => row.Id == approvedFlight.Id);
+        var approvedRow = result.Value.ShouldHaveSingleItem();
         approvedRow.ApprovedWorkOrder.ShouldNotBeNull();
         approvedRow.ApprovedWorkOrder!.ApprovalNumber.ShouldBe("DMM-0001");
         approvedRow.ApprovedWorkOrder.ActualFlightNumber.ShouldBe("101");
@@ -214,7 +219,109 @@ public sealed class FlightQueryTests
         approvedRow.ApprovedWorkOrder.AircraftTailNumber.ShouldBe("HZ-ABC");
         approvedRow.ApprovedWorkOrder.ServiceNames.ShouldBe(["Deicing"]);
         approvedRow.ApprovedWorkOrder.Remarks.ShouldBe("Approved remarks");
-        result.Value.Single(row => row.Id == submittedFlight.Id).ApprovedWorkOrder.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetFlightsExport_InProgressFlightUsesNewestSubmittedWorkOrderWithDeterministicTieBreak()
+    {
+        await using var db = NewDb();
+        var flight = CreateScheduledFlight("RJ", "Royal Jordanian", "200");
+        flight.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+
+        var older = CreateWorkOrder(
+            flight,
+            "201",
+            "Older submitted remarks",
+            submittedAt: Now);
+        var lowerIdAtNewestTime = CreateWorkOrder(
+            flight,
+            "202",
+            "Lower id submitted remarks",
+            submittedAt: Now.AddMinutes(1),
+            id: Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        var higherIdAtNewestTime = CreateWorkOrder(
+            flight,
+            "203",
+            "Higher id submitted remarks",
+            submittedAt: Now.AddMinutes(1),
+            id: Guid.Parse("00000000-0000-0000-0000-000000000002"));
+        var newerApproved = CreateWorkOrder(
+            flight,
+            "204",
+            "Approved values must not leak into an in-progress row",
+            submittedAt: Now.AddMinutes(2));
+        newerApproved.Approve(1, "DMM-0002", Guid.NewGuid(), Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
+
+        db.Flights.Add(flight);
+        db.WorkOrders.AddRange(older, lowerIdAtNewestTime, higherIdAtNewestTime, newerApproved);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var exportedWorkOrder = result.Value.ShouldHaveSingleItem().ApprovedWorkOrder;
+        exportedWorkOrder.ShouldNotBeNull();
+        exportedWorkOrder!.ActualFlightNumber.ShouldBe("203");
+        exportedWorkOrder.Remarks.ShouldBe("Higher id submitted remarks");
+        exportedWorkOrder.ApprovalNumber.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetFlightsExport_InProgressFlightIncludesReturnedWorkOrderValues()
+    {
+        await using var db = NewDb();
+        var flight = CreateScheduledFlight("RJ", "Royal Jordanian", "300");
+        var returned = CreateWorkOrder(flight, "301", "Returned remarks");
+        flight.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        returned.Approve(1, "DMM-0003", Guid.NewGuid(), Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+        flight.SettleCompleted(Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+        returned.Return(Guid.NewGuid(), "Correct the work order", Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+        flight.ReopenToInProgress(Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+
+        db.Flights.Add(flight);
+        db.WorkOrders.Add(returned);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var exportedWorkOrder = result.Value.ShouldHaveSingleItem().ApprovedWorkOrder;
+        exportedWorkOrder.ShouldNotBeNull();
+        exportedWorkOrder!.ActualFlightNumber.ShouldBe("301");
+        exportedWorkOrder.Remarks.ShouldBe("Returned remarks");
+        exportedWorkOrder.ApprovalNumber.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetFlightsExport_ScheduledFlightKeepsWorkOrderValuesEmpty()
+    {
+        await using var db = NewDb();
+        var flight = CreateScheduledFlight("RJ", "Royal Jordanian", "400");
+        var submitted = CreateWorkOrder(flight, "401", "Submitted remarks");
+        var approved = CreateWorkOrder(
+            flight,
+            "402",
+            "Approved values must not leak into a scheduled row",
+            submittedAt: Now.AddMinutes(1));
+        approved.Approve(1, "DMM-0004", Guid.NewGuid(), Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+
+        db.Flights.Add(flight);
+        db.WorkOrders.AddRange(submitted, approved);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldHaveSingleItem().ApprovedWorkOrder.ShouldBeNull();
     }
 
     [Fact]
@@ -587,8 +694,11 @@ public sealed class FlightQueryTests
         bool includeService = true,
         WorkOrderType type = WorkOrderType.Completion,
         IReadOnlyList<WorkOrderTaskInput>? tasks = null,
-        bool mergeGenerated = false)
+        bool mergeGenerated = false,
+        DateTimeOffset? submittedAt = null,
+        Guid? id = null)
     {
+        var now = submittedAt ?? Now;
         var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1");
         WorkOrderServiceLineInput[] serviceLines = includeService
             ? [ServiceLineInput(employee)]
@@ -604,10 +714,10 @@ public sealed class FlightQueryTests
         var workOrder = mergeGenerated
             ? WorkOrder.SubmitMerged(
                 flight, type, ownerUserId, employee, actualNumber, aircraftType, "HZ-ABC", actuals,
-                cancellation, remarks, serviceLines, tasks ?? [], Now)
+                cancellation, remarks, serviceLines, tasks ?? [], now, id)
             : WorkOrder.SubmitNew(
                 flight, type, ownerUserId, employee, actualNumber, aircraftType, "HZ-ABC", actuals,
-                cancellation, remarks, serviceLines, tasks ?? [], Now);
+                cancellation, remarks, serviceLines, tasks ?? [], now, id);
 
         return workOrder.Value;
     }
@@ -615,7 +725,7 @@ public sealed class FlightQueryTests
     private static WorkOrderServiceLineInput ServiceLineInput(StaffMemberSnapshot? employee = null) =>
         new(
             new ServiceSnapshot(Guid.NewGuid(), "Deicing"),
-            employee ?? new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1"),
+            [employee ?? new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1")],
             TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
             null);
 

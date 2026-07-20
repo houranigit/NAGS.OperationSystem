@@ -44,18 +44,34 @@ class OutboxPayloadCompatibilityTest {
     }
 
     @Test
-    fun legacy_service_line_without_return_to_ramp_flag_defaults_to_false() {
-        val line = json.decodeFromString<OutboxPayload.ServiceLineInput>(
+    fun legacy_service_line_migrates_single_performer_and_defaults_return_to_ramp_to_false() {
+        val payload = decodeOutboxPayload(
+            json,
             """{
-                "serviceId":"service-1",
-                "performedByStaffMemberId":"staff-1",
-                "fromIso":"2026-07-11T10:00:00Z",
-                "toIso":"2026-07-11T11:00:00Z",
-                "description":null
+                "kind":"ForFlight",
+                "workOrder":{
+                  "type":"Completion",
+                  "actualFlightNumber":"MOB100",
+                  "aircraftTypeId":null,
+                  "aircraftTailNumber":null,
+                  "ataIso":null,
+                  "atdIso":null,
+                  "remarks":null,
+                  "serviceLines":[{
+                    "serviceId":"service-1",
+                    "performedByStaffMemberId":"staff-1",
+                    "fromIso":"2026-07-11T10:00:00Z",
+                    "toIso":"2026-07-11T11:00:00Z",
+                    "description":null
+                  }],
+                  "tasks":[]
+                }
             }""".trimIndent(),
         )
+        val line = payload.workOrder!!.serviceLines.single()
 
         assertFalse(line.isReturnToRamp)
+        assertEquals(listOf("staff-1"), line.performedByStaffMemberIds)
     }
 
     @Test
@@ -63,7 +79,7 @@ class OutboxPayloadCompatibilityTest {
         val line = OutboxPayload.ServiceLineInput(
             id = "line-1",
             serviceId = "service-1",
-            performedByStaffMemberId = "staff-1",
+            performedByStaffMemberIds = listOf("staff-1", "staff-2"),
             fromIso = "2026-07-11T10:00:00Z",
             toIso = "2026-07-11T11:00:00Z",
             description = null,
@@ -76,6 +92,7 @@ class OutboxPayloadCompatibilityTest {
 
         assertTrue(decoded.isReturnToRamp)
         assertEquals("line-1", decoded.id)
+        assertEquals(listOf("staff-1", "staff-2"), decoded.performedByStaffMemberIds)
     }
 
     @Test

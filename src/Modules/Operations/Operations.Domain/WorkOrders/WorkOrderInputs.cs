@@ -5,7 +5,7 @@ namespace Operations.Domain.WorkOrders;
 
 public sealed record WorkOrderServiceLineInput(
     ServiceSnapshot Service,
-    StaffMemberSnapshot PerformedBy,
+    IReadOnlyList<StaffMemberSnapshot> PerformedBy,
     TimeWindow Window,
     string? Description,
     bool IsReturnToRamp = false);

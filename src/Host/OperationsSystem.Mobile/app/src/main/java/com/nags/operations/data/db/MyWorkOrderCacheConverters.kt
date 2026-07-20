@@ -2,7 +2,8 @@ package com.nags.operations.data.db
 
 import androidx.room.TypeConverter
 import com.nags.operations.data.WorkOrderDetailWireDto
-import kotlinx.serialization.decodeFromString
+import com.nags.operations.data.migrateLegacyWorkOrderServiceLinePerformers
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -18,7 +19,11 @@ class MyWorkOrderCacheConverters {
     @TypeConverter
     fun fromJson(raw: String?): WorkOrderDetailWireDto? {
         if (raw.isNullOrBlank()) return null
-        return runCatching { json.decodeFromString<WorkOrderDetailWireDto>(raw) }.getOrNull()
+        return runCatching {
+            json.decodeFromJsonElement<WorkOrderDetailWireDto>(
+                migrateLegacyWorkOrderServiceLinePerformers(json.parseToJsonElement(raw)),
+            )
+        }.getOrNull()
     }
 
     companion object {

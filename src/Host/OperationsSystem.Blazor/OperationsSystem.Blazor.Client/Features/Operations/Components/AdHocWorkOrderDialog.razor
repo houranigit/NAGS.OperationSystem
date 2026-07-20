@@ -318,8 +318,8 @@
                     </div>
                     <div class="owf-field-block">
                         <label class="owf-label">Performed by <span class="owf-required">*</span></label>
-                        <RadzenDropDown TValue="Guid?" @bind-Value="line.PerformedByStaffMemberId" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     </div>
                     <div class="owf-field-block">
                         <label class="owf-label">From (UTC) <span class="owf-required">*</span></label>
@@ -613,7 +613,7 @@
             completion
                 ? model.ServiceLines.Select(l => new WorkOrderServiceLineRequestModel(
                     l.ServiceId!.Value,
-                    l.PerformedByStaffMemberId!.Value,
+                    l.PerformedByStaffMemberIds.ToList(),
                     ToOffset(l.FromUtc)!.Value,
                     ToOffset(l.ToUtc)!.Value,
                     l.Description,
@@ -704,8 +704,8 @@
     private List<string> ValidateServiceLines()
     {
         var messages = new List<string>();
-        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberId is null || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
-            messages.Add("Every service line needs a service, performer, From, and To time.");
+        if (model.ServiceLines.Any(l => l.ServiceId is null || l.PerformedByStaffMemberIds is null || !l.PerformedByStaffMemberIds.Any() || IsMissing(l.FromUtc) || IsMissing(l.ToUtc)))
+            messages.Add("Every service line needs a service, at least one performer, From, and To time.");
         if (model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && !IsMissing(l.ToUtc) && l.ToUtc!.Value < l.FromUtc!.Value))
             messages.Add("Service line To time cannot be before From time.");
         if (model.ActualArrivalUtc is { } ata && model.ServiceLines.Any(l => !IsMissing(l.FromUtc) && l.FromUtc!.Value < ata))
@@ -1030,7 +1030,7 @@
     {
         public Guid Key { get; } = Guid.NewGuid();
         public Guid? ServiceId { get; set; }
-        public Guid? PerformedByStaffMemberId { get; set; }
+        public IEnumerable<Guid> PerformedByStaffMemberIds { get; set; } = [];
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }

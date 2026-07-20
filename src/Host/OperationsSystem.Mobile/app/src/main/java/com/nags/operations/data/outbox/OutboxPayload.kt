@@ -1,6 +1,13 @@
 package com.nags.operations.data.outbox
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
  * Persisted form of a queued work-order submission. Lives inside
@@ -88,7 +95,7 @@ data class OutboxPayload(
     data class ServiceLineInput(
         val id: String? = null,
         val serviceId: String,
-        val performedByStaffMemberId: String,
+        val performedByStaffMemberIds: List<String> = emptyList(),
         val fromIso: String,
         val toIso: String,
         val description: String?,
@@ -132,5 +139,43 @@ data class OutboxPayload(
         val fileName: String,
         val capturedAtIso: String,
         val sizeBytes: Long,
+    )
+}
+
+/**
+ * Decodes queued payloads while upgrading the pre-multi-performer service-line field in memory.
+ * This keeps submissions saved by an older app version deliverable after an app upgrade.
+ */
+internal fun decodeOutboxPayload(json: Json, payloadJson: String): OutboxPayload {
+    val root = json.parseToJsonElement(payloadJson)
+    val migrated = migrateLegacyOutboxServiceLinePerformers(root)
+    return json.decodeFromJsonElement(OutboxPayload.serializer(), migrated)
+}
+
+private fun migrateLegacyOutboxServiceLinePerformers(root: JsonElement): JsonElement {
+    val rootObject = root as? JsonObject ?: return root
+    val workOrder = rootObject["workOrder"] as? JsonObject ?: return root
+    val serviceLines = workOrder["serviceLines"] as? JsonArray ?: return root
+    var changed = false
+    val migratedLines = JsonArray(
+        serviceLines.map { element ->
+            val line = element as? JsonObject ?: return@map element
+            if ("performedByStaffMemberIds" in line) return@map line
+            val legacyId = (line["performedByStaffMemberId"] as? JsonPrimitive)
+                ?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+                ?: return@map line
+            changed = true
+            JsonObject(
+                line.toMutableMap().apply {
+                    remove("performedByStaffMemberId")
+                    put("performedByStaffMemberIds", JsonArray(listOf(JsonPrimitive(legacyId))))
+                },
+            )
+        },
+    )
+    if (!changed) return root
+    return JsonObject(
+        rootObject + ("workOrder" to JsonObject(workOrder + ("serviceLines" to migratedLines))),
     )
 }

@@ -245,7 +245,7 @@ A background job creates an **empty work order** (placed into the review queue) 
 ### Entities
 
 - Within `Flight`: `FlightAssignedEmployee`, `PlannedService`.
-- Within `WorkOrder`: `WorkOrderServiceLine`, `WorkOrderTask`, `WorkOrderTaskEmployee`, `WorkOrderTaskTool`, `WorkOrderTaskMaterial`, `WorkOrderTaskGeneralSupport`, `WorkOrderTaskAttachment`.
+- Within `WorkOrder`: `WorkOrderServiceLine`, `WorkOrderServiceLinePerformer`, `WorkOrderTask`, `WorkOrderTaskEmployee`, `WorkOrderTaskTool`, `WorkOrderTaskMaterial`, `WorkOrderTaskGeneralSupport`, `WorkOrderTaskAttachment`.
 - Standalone (append-only): `FlightTimelineEntry` — the per-flight portal-visible history (§6b).
 
 Service lines and task lines **both support multiple employees**.
@@ -281,6 +281,9 @@ Service lines and task lines **both support multiple employees**.
 
 - Scheduler calendar (period, station- and assignment-scoped; portal page at `/operations/calendar` shows scheduled and ad-hoc flights).
 - Flights list (paged; filters: status/station/customer/date; scope- and assignment-aware).
+- Flight export (Excel/PDF/CSV; `Completed`/`Canceled` rows use the approved work order,
+  `InProgress` rows use the newest submitted or returned work order, and `Scheduled` rows keep
+  work-order columns empty).
 - Flight detail (schedule, crew, planned services, work orders with owners, captured approved work-order values, lifecycle timeline).
 - Flight timeline (`GET /flights/{id}/timeline`).
 - Work order review/detail (services, tasks, resources, actuals, owner, signature) — access-scoped.
@@ -360,3 +363,4 @@ All previously open questions are now decided; there are no blocking open items.
 - 2026-07-04 — Per-flight append-only timeline (`FlightTimelineEntry`) written in-transaction by handlers, exposed at `GET /flights/{id}/timeline`, and shown on the flight detail page.
 - 2026-07-04 — Work-order-first portal flow collects flight planning fields AND work-order actual fields in one dialog; the created flight appears on the calendar and list immediately. Portal calendar page added at `/operations/calendar`.
 - 2026-07-18 — Retired the seeded On Call service. On Call is now derived for a Per-Landing flight from any non-merged work order with at least one performed service line; Per-Landing work orders start empty and staff record only services actually performed.
+- 2026-07-20 — Performed service lines now persist and expose multiple employees, matching task employee selection across the portal and mobile app. Flight exports keep their existing columns and formatting while sourcing work-order values for `InProgress` rows from the latest submitted/returned work order; `Scheduled` rows remain empty.

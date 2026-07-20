@@ -62,8 +62,8 @@ data class ServiceLineFormRow(
     val serviceId: String? = null,
     /** Preserves the display name when a saved service is later inactive or no longer allowed. */
     val serviceName: String? = null,
-    /** StaffMember id of the performer. */
-    val employeeId: String? = null,
+    /** StaffMember ids of everyone credited with performing this service. */
+    val employeeIds: List<String> = emptyList(),
     val fromIso: String = "",
     val toIso: String = "",
     val description: String = "",
@@ -706,7 +706,7 @@ class CreateWorkOrderViewModel(
 
     /**
      * When `/me` and the synced roster agree:
-     * - Service lines still on a single performer get that default once (null employeeId only).
+     * - Service lines with no performers get a one-person default (`employeeIds` empty only).
      * - Tasks with no performers yet get a one-person default (`employeeIds` empty only).
      * Never overwrites explicit user edits.
      */
@@ -714,7 +714,7 @@ class CreateWorkOrderViewModel(
         val presetId = resolvedDefaultPerformingEmployeeId(snapshot) ?: return
         _state.update { s ->
             val newLines = s.form.serviceLines.map { line ->
-                if (line.employeeId == null) line.copy(employeeId = presetId) else line
+                if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId)) else line
             }
             val newTasks = s.form.tasks.map { task ->
                 if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId)) else task
@@ -736,10 +736,8 @@ class CreateWorkOrderViewModel(
     }
 
     /** Same performer defaulting as `/me` plus synced catalog — used when adding rows. */
-    private fun defaultSingleEmployeeIdFromState(): String? = resolvedDefaultPerformingEmployeeId(_state.value)
-
     private fun defaultEmployeeIdsFromState(): List<String> =
-        defaultSingleEmployeeIdFromState()?.let { listOf(it) } ?: emptyList()
+        resolvedDefaultPerformingEmployeeId(_state.value)?.let { listOf(it) } ?: emptyList()
 
     fun updateForm(transform: (CreateWorkOrderFormState) -> CreateWorkOrderFormState) {
         _state.update { s ->
@@ -809,7 +807,7 @@ class CreateWorkOrderViewModel(
     }
 
     fun addServiceLine() {
-        val preset = defaultSingleEmployeeIdFromState()
+        val presetEmployees = defaultEmployeeIdsFromState()
         val form = _state.value.form
         val flight = _state.value.flight
         val from = form.ataIso.ifBlank { flight?.sta.orEmpty() }
@@ -818,7 +816,7 @@ class CreateWorkOrderViewModel(
             it.copy(
                 serviceLines = it.serviceLines + ServiceLineFormRow(
                     localKey = allocKey(),
-                    employeeId = preset,
+                    employeeIds = presetEmployees,
                     fromIso = from,
                     toIso = to,
                 ),
@@ -1061,8 +1059,7 @@ class CreateWorkOrderViewModel(
                     id = row.serverId,
                     serviceId = row.serviceId
                         ?: error("Service line missing serviceId — validation should have caught this"),
-                    performedByStaffMemberId = row.employeeId
-                        ?: error("Service line missing performer — validation should have caught this"),
+                    performedByStaffMemberIds = row.employeeIds,
                     fromIso = row.fromIso,
                     toIso = row.toIso,
                     description = row.description.takeIf { it.isNotBlank() },

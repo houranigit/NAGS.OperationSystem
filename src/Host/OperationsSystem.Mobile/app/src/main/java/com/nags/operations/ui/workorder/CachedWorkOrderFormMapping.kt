@@ -15,7 +15,7 @@ internal fun WorkOrderDetailWireDto.toPrefilledCreateFormState(nextKey: () -> Lo
             serverId = line.id,
             serviceId = line.serviceId,
             serviceName = line.serviceName,
-            employeeId = line.performedByStaffMemberId,
+            employeeIds = line.effectivePerformedBy.map { it.staffMemberId },
             fromIso = line.fromUtc,
             toIso = line.toUtc,
             description = line.description.orEmpty(),

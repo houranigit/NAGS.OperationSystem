@@ -122,11 +122,12 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         if (ids.Count == 0)
             return Result.Success<IReadOnlyList<StaffMemberSnapshot>>([]);
 
-        var found = await reader.GetStaffMembersAsync(ids, ct);
+        var distinctIds = ids.Distinct().ToList();
+        var found = await reader.GetStaffMembersAsync(distinctIds, ct);
         var byId = found.ToDictionary(s => s.Id);
 
         var snapshots = new List<StaffMemberSnapshot>();
-        foreach (var id in ids.Distinct())
+        foreach (var id in distinctIds)
         {
             if (!byId.TryGetValue(id, out var s))
                 return Error.Validation($"Staff member '{id}' was not found.", "Operations.Ref.StaffNotFound");
@@ -146,11 +147,12 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         if (ids.Count == 0)
             return Result.Success<IReadOnlyList<StaffMemberSnapshot>>([]);
 
-        var found = await reader.GetStaffMembersAsync(ids, ct);
+        var distinctIds = ids.Distinct().ToList();
+        var found = await reader.GetStaffMembersAsync(distinctIds, ct);
         var byId = found.ToDictionary(s => s.Id);
 
         var snapshots = new List<StaffMemberSnapshot>();
-        foreach (var id in ids.Distinct())
+        foreach (var id in distinctIds)
         {
             if (!byId.TryGetValue(id, out var s))
                 return Error.Validation($"Staff member '{id}' was not found.", "Operations.Ref.StaffNotFound");

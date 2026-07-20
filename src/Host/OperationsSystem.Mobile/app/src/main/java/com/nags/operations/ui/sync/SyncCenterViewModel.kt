@@ -9,6 +9,7 @@ import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.outbox.OutboxPayload
 import com.nags.operations.data.outbox.OutboxWorker
 import com.nags.operations.data.outbox.WorkOrderOutboxRepository
+import com.nags.operations.data.outbox.decodeOutboxPayload
 import com.nags.operations.data.realtime.RealtimeChannel
 import com.nags.operations.data.realtime.RealtimeChannelState
 import com.nags.operations.data.sync.SyncCoordinator
@@ -280,7 +281,7 @@ internal fun mapOutboxRow(
     flightNumberById: Map<String, String>,
 ): OutboxRowState {
     val payload = runCatching {
-        outboxJson.decodeFromString(OutboxPayload.serializer(), entity.payloadJson)
+        decodeOutboxPayload(outboxJson, entity.payloadJson)
     }.getOrNull()
 
     val kindLabel = when (payload?.kind) {

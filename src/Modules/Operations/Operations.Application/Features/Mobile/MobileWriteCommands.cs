@@ -13,6 +13,7 @@ using Operations.Domain.Mobile;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 namespace Operations.Application.Features.Mobile;
@@ -33,6 +34,10 @@ internal static class MobileMutations
 {
     private static readonly JsonSerializerOptions PreReturnToRampFingerprintOptions =
         CreatePreReturnToRampFingerprintOptions();
+    private static readonly JsonSerializerOptions LegacySinglePerformerFingerprintOptions =
+        CreateLegacySinglePerformerFingerprintOptions(removeProvenance: false);
+    private static readonly JsonSerializerOptions LegacyPreReturnToRampFingerprintOptions =
+        CreateLegacySinglePerformerFingerprintOptions(removeProvenance: true);
 
     public static bool IsCanonicalClientMutationId(string? value) =>
         Guid.TryParseExact(value, "D", out var parsed) &&
@@ -48,10 +53,54 @@ internal static class MobileMutations
     public static string PreReturnToRampFingerprint<T>(T request) =>
         Fingerprint(request, PreReturnToRampFingerprintOptions);
 
+    /// <summary>
+    /// Produces every fingerprint shape that the immediately preceding mobile contracts could
+    /// have persisted. In addition to the provenance-free shape, single-performer service lines
+    /// are projected back to the former singular property so an in-flight retry remains
+    /// idempotent across the performer-collection deployment.
+    /// </summary>
+    public static IReadOnlyList<string> CompatibleFingerprints<T>(T request)
+    {
+        var fingerprints = new HashSet<string>(StringComparer.Ordinal)
+        {
+            PreReturnToRampFingerprint(request)
+        };
+
+        AddLegacySinglePerformerFingerprint(
+            request,
+            LegacySinglePerformerFingerprintOptions,
+            fingerprints);
+        AddLegacySinglePerformerFingerprint(
+            request,
+            LegacyPreReturnToRampFingerprintOptions,
+            fingerprints);
+
+        return fingerprints.ToList();
+    }
+
     private static string Fingerprint<T>(T request, JsonSerializerOptions? options)
     {
         var json = JsonSerializer.Serialize(request, options);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+        return FingerprintJson(json);
+    }
+
+    private static string FingerprintJson(string json) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+
+    private static void AddLegacySinglePerformerFingerprint<T>(
+        T request,
+        JsonSerializerOptions options,
+        ISet<string> fingerprints)
+    {
+        try
+        {
+            fingerprints.Add(Fingerprint(request, options));
+        }
+        catch (JsonException)
+        {
+            // A legacy request could only represent one performer. A line containing zero or
+            // multiple performers therefore has no truthful singular-contract fingerprint.
+        }
     }
 
     private static JsonSerializerOptions CreatePreReturnToRampFingerprintOptions()
@@ -77,6 +126,56 @@ internal static class MobileMutations
         return new JsonSerializerOptions { TypeInfoResolver = resolver };
     }
 
+    private static JsonSerializerOptions CreateLegacySinglePerformerFingerprintOptions(
+        bool removeProvenance)
+    {
+        var options = removeProvenance
+            ? CreatePreReturnToRampFingerprintOptions()
+            : new JsonSerializerOptions();
+        options.Converters.Add(new LegacySinglePerformerCommandConverter(removeProvenance));
+        return options;
+    }
+
+    private sealed class LegacySinglePerformerCommandConverter(bool removeProvenance)
+        : JsonConverter<WorkOrderServiceLineCommand>
+    {
+        public override WorkOrderServiceLineCommand Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            WorkOrderServiceLineCommand value,
+            JsonSerializerOptions options)
+        {
+            if (value.PerformedByStaffMemberIds is not { Count: 1 })
+                throw new JsonException("The singular performer contract requires exactly one performer.");
+
+            writer.WriteStartObject();
+            writer.WriteString(nameof(value.ServiceId), value.ServiceId);
+            writer.WriteString("PerformedByStaffMemberId", value.PerformedByStaffMemberIds[0]);
+            writer.WriteString(nameof(value.FromUtc), value.FromUtc);
+            writer.WriteString(nameof(value.ToUtc), value.ToUtc);
+            if (value.Description is null)
+                writer.WriteNull(nameof(value.Description));
+            else
+                writer.WriteString(nameof(value.Description), value.Description);
+
+            if (!removeProvenance)
+            {
+                writer.WriteBoolean(nameof(value.IsReturnToRamp), value.IsReturnToRamp);
+                if (value.Id is { } id)
+                    writer.WriteString(nameof(value.Id), id);
+                else
+                    writer.WriteNull(nameof(value.Id));
+            }
+
+            writer.WriteEndObject();
+        }
+    }
+
     private static void RemoveProperty(JsonTypeInfo typeInfo, string propertyName)
     {
         for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
@@ -96,7 +195,7 @@ internal static class MobileMutations
         Guid? expectedFlightId,
         Guid? expectedClientFlightId,
         CancellationToken ct,
-        string? compatibleRequestFingerprint = null)
+        IReadOnlyCollection<string>? compatibleRequestFingerprints = null)
     {
         var mutation = await db.MobileMutations.AsNoTracking()
             .FirstOrDefaultAsync(m => m.ClientMutationId == clientMutationId, ct);
@@ -109,7 +208,7 @@ internal static class MobileMutations
             (expectedClientFlightId is not null && mutation.ClientFlightId != expectedClientFlightId);
         var fingerprintMismatch = !string.IsNullOrWhiteSpace(mutation.RequestFingerprint) &&
             !string.Equals(mutation.RequestFingerprint, requestFingerprint, StringComparison.Ordinal) &&
-            !string.Equals(mutation.RequestFingerprint, compatibleRequestFingerprint, StringComparison.Ordinal);
+            !(compatibleRequestFingerprints?.Contains(mutation.RequestFingerprint, StringComparer.Ordinal) ?? false);
 
         if (mutation.OwnerUserId != ownerUserId ||
             !string.Equals(mutation.Kind, expectedKind, StringComparison.Ordinal) ||
@@ -206,11 +305,11 @@ public sealed class MobileSubmitWorkOrderCommandHandler(
         const string mutationKind = "submit-work-order";
         var fingerprintInput = new { request.FlightId, request.Type, request.Payload };
         var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
-        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
+        var compatibleFingerprints = MobileMutations.CompatibleFingerprints(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: null, expectedFlightId: request.FlightId, expectedClientFlightId: null,
-            cancellationToken, preReturnToRampFingerprint);
+            cancellationToken, compatibleFingerprints);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -300,11 +399,11 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
             request.ClientFlightId
         };
         var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
-        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
+        var compatibleFingerprints = MobileMutations.CompatibleFingerprints(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: null, expectedFlightId: null, expectedClientFlightId: request.ClientFlightId,
-            cancellationToken, preReturnToRampFingerprint);
+            cancellationToken, compatibleFingerprints);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -398,11 +497,11 @@ public sealed class MobileUpdateWorkOrderCommandHandler(
             request.ServiceLineIdentityVersion
         };
         var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
-        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
+        var compatibleFingerprints = MobileMutations.CompatibleFingerprints(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: request.WorkOrderId, expectedFlightId: null, expectedClientFlightId: null,
-            cancellationToken, preReturnToRampFingerprint);
+            cancellationToken, compatibleFingerprints);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -515,11 +614,11 @@ public sealed class MobileReturnToRampCommandHandler(
             request.Tasks
         };
         var fingerprint = MobileMutations.Fingerprint(fingerprintInput);
-        var preReturnToRampFingerprint = MobileMutations.PreReturnToRampFingerprint(fingerprintInput);
+        var compatibleFingerprints = MobileMutations.CompatibleFingerprints(fingerprintInput);
         var replay = await MobileMutations.FindReplayAsync(
             db, request.ClientMutationId, userId, mutationKind, fingerprint,
             expectedWorkOrderId: request.WorkOrderId, expectedFlightId: null, expectedClientFlightId: null,
-            cancellationToken, preReturnToRampFingerprint);
+            cancellationToken, compatibleFingerprints);
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)
@@ -547,7 +646,7 @@ public sealed class MobileReturnToRampCommandHandler(
             workOrder.ServiceLines
                 .Select(line => new WorkOrderServiceLineCommand(
                     line.Service.ServiceId,
-                    line.PerformedBy.StaffMemberId,
+                    line.PerformedBy.Select(performer => performer.StaffMember.StaffMemberId).ToList(),
                     line.Window.From,
                     line.Window.To,
                     line.Description,
