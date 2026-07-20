@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using System.Text;
 using ClosedXML.Excel;
 using MigraDoc.DocumentObjectModel;
@@ -7,7 +6,6 @@ using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using Operations.Application.Contracts;
 using Operations.Domain.Enumerations;
-using PdfSharp.Fonts;
 
 namespace Operations.Api.Exports;
 
@@ -42,7 +40,7 @@ internal static class FlightExportDocumentFactory
     private const string WorkbookContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private const string CsvContentType = "text/csv; charset=utf-8";
     private const string PdfContentType = "application/pdf";
-    private const string FontFamily = "Open Sans";
+    private const string FontFamily = PdfDocumentAssets.FontFamily;
 
     private const string BrandColor = "#7A3038";
     private const string BrandDarkColor = "#562128";
@@ -53,8 +51,6 @@ internal static class FlightExportDocumentFactory
     private const string AlternateRowColor = "#F6F8FB";
     private const string PerLandingRowColor = "#FFF3BF";
     private const string CanceledRowColor = "#FADADD";
-
-    private static readonly object FontResolverLock = new();
 
     private static readonly string[] CsvHeaders =
     [
@@ -332,7 +328,7 @@ internal static class FlightExportDocumentFactory
         FlightExportCriteria criteria,
         DateTimeOffset generatedAtUtc)
     {
-        EnsurePdfFontResolver();
+        PdfDocumentAssets.EnsureFontResolver();
 
         var document = new Document();
         document.Info.Title = ReportTitle;
@@ -753,39 +749,4 @@ internal static class FlightExportDocumentFactory
     private static string FormatPdfTimestamp(DateTimeOffset value) =>
         value.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
-    private static void EnsurePdfFontResolver()
-    {
-        lock (FontResolverLock)
-        {
-            GlobalFontSettings.FontResolver ??= new OpenSansFontResolver();
-        }
-    }
-
-    private sealed class OpenSansFontResolver : IFontResolver
-    {
-        private const string RegularFace = "OperationsOpenSansRegular";
-        private const string BoldFace = "OperationsOpenSansBold";
-
-        private static readonly Lazy<byte[]> RegularFont = new(() => LoadFont("Operations.Api.Fonts.OpenSans-Regular.ttf"));
-        private static readonly Lazy<byte[]> BoldFont = new(() => LoadFont("Operations.Api.Fonts.OpenSans-Bold.ttf"));
-
-        public FontResolverInfo ResolveTypeface(string familyName, bool isBold, bool isItalic) =>
-            new(isBold ? BoldFace : RegularFace, mustSimulateBold: false, mustSimulateItalic: isItalic);
-
-        public byte[]? GetFont(string faceName) => faceName switch
-        {
-            RegularFace => RegularFont.Value,
-            BoldFace => BoldFont.Value,
-            _ => null
-        };
-
-        private static byte[] LoadFont(string resourceName)
-        {
-            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName)
-                ?? throw new InvalidOperationException($"Embedded PDF font '{resourceName}' was not found.");
-            using var memory = new MemoryStream();
-            stream.CopyTo(memory);
-            return memory.ToArray();
-        }
-    }
 }

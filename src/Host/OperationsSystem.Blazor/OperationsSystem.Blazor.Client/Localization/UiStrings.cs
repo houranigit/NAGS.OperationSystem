@@ -59,6 +59,11 @@ public static class UiStrings
         public static string ExportReadyDetail => UiText.Get("Flights.ExportReadyDetail", "{0} has been downloaded.");
         public static string ExportFailed => UiText.Get("Flights.ExportFailed", "Export failed");
         public static string ExportFailedDetail => UiText.Get("Flights.ExportFailedDetail", "The export could not be generated. Please try again.");
+        public static string PrintWorkOrder => UiText.Get("Flights.PrintWorkOrder", "Print WO");
+        public static string WorkOrderDownloadReady => UiText.Get("Flights.WorkOrderDownloadReady", "Work order ready");
+        public static string WorkOrderDownloadReadyDetail => UiText.Get("Flights.WorkOrderDownloadReadyDetail", "The approved work order has been downloaded.");
+        public static string WorkOrderDownloadFailed => UiText.Get("Flights.WorkOrderDownloadFailed", "Work order download failed");
+        public static string WorkOrderDownloadFailedDetail => UiText.Get("Flights.WorkOrderDownloadFailedDetail", "The approved work order could not be generated. Please try again.");
     }
 
     public static class Notifications

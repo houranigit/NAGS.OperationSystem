@@ -17,11 +17,19 @@
                       LogicalName="Operations.Api.Fonts.OpenSans-Bold.ttf" />
     <EmbeddedResource Include="../../../Host/OperationsSystem.Mobile/app/src/main/res/drawable-nodpi/nags_logo.png"
                       LogicalName="Operations.Api.Assets.NagsLogo.png" />
+    <EmbeddedResource Include="Assets/WorkOrderTemplate.pdf"
+                      LogicalName="Operations.Api.Assets.WorkOrderTemplate.pdf" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Operations.Application\Operations.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Api\BuildingBlocks.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Operations.IntegrationTests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <PropertyGroup>

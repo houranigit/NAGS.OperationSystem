@@ -196,6 +196,16 @@ public sealed record WorkOrderDetailDto(
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion);
 
+public sealed record ApprovedWorkOrderPrintDto(
+    WorkOrderDetailDto WorkOrder,
+    string? AircraftManufacturer,
+    string? ContractNumber,
+    IReadOnlyList<string> PlannedServiceNames,
+    bool IsPerLanding,
+    bool IsOnCall,
+    byte[]? CustomerSignatureContent,
+    string? CustomerSignatureContentType);
+
 public sealed record WorkOrderServiceLineDto(
     Guid Id,
     Guid ServiceId,

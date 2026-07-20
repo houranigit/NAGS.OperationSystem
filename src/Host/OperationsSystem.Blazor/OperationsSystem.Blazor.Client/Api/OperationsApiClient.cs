@@ -166,6 +166,12 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<WorkOrderSummaryModel?> GetMyWorkOrderForFlightAsync(Guid flightId, CancellationToken ct = default) =>
         api.GetAsync<WorkOrderSummaryModel?>($"/operations/flights/{flightId}/work-orders/mine", ct);
 
+    public Task DownloadApprovedWorkOrderAsync(Guid flightId, CancellationToken ct = default) =>
+        api.DownloadFileAsync(
+            $"/operations/flights/{flightId}/work-orders/approved/pdf",
+            fallbackFileName: "approved-work-order.pdf",
+            cancellationToken: ct);
+
     public Task<PagedResult<WorkOrderListItem>> GetWorkOrdersAsync(
         int page,
         int pageSize,

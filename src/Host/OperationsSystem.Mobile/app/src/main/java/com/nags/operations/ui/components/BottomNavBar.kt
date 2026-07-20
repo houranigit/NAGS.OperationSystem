@@ -24,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -33,19 +32,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.PlatformTextStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.nags.operations.R
 
 /**
  * Floating icon-only bottom bar matching OperationsApplication styling.
@@ -180,32 +174,15 @@ private fun BottomNavItem(
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
                 .background(pillBg)
-                .padding(
-                    horizontal = if (destination == BottomNavDestination.PerLanding) 10.dp else 18.dp,
-                    vertical = if (destination == BottomNavDestination.PerLanding) 8.dp else 12.dp,
-                ),
+                .padding(horizontal = 18.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (destination == BottomNavDestination.PerLanding) {
-                // Wordmark stands in for an icon; parent exposes the accessible label.
-                Text(
-                    text = "Per\nLanding",
-                    color = iconTint,
-                    style = TextStyle(
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        lineHeight = 12.sp,
-                        textAlign = TextAlign.Start,
-                        letterSpacing = (-0.2).sp,
-                        platformStyle = PlatformTextStyle(includeFontPadding = false),
-                        lineHeightStyle = LineHeightStyle(
-                            alignment = LineHeightStyle.Alignment.Center,
-                            trim = LineHeightStyle.Trim.Both,
-                        ),
-                    ),
-                    maxLines = 2,
-                    softWrap = false,
-                    modifier = Modifier.clearAndSetSemantics { },
+                Icon(
+                    painter = painterResource(R.drawable.ic_per_landing_nav),
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(30.dp),
                 )
             } else {
                 Icon(

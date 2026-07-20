@@ -48,6 +48,11 @@
   <data name="Flights.ExportReadyDetail" xml:space="preserve"><value>تم تنزيل {0}.</value></data>
   <data name="Flights.ExportFailed" xml:space="preserve"><value>تعذر التصدير</value></data>
   <data name="Flights.ExportFailedDetail" xml:space="preserve"><value>تعذر إنشاء ملف التصدير. يرجى المحاولة مرة أخرى.</value></data>
+  <data name="Flights.PrintWorkOrder" xml:space="preserve"><value>طباعة أمر العمل</value></data>
+  <data name="Flights.WorkOrderDownloadReady" xml:space="preserve"><value>أمر العمل جاهز</value></data>
+  <data name="Flights.WorkOrderDownloadReadyDetail" xml:space="preserve"><value>تم تنزيل أمر العمل المعتمد.</value></data>
+  <data name="Flights.WorkOrderDownloadFailed" xml:space="preserve"><value>تعذر تنزيل أمر العمل</value></data>
+  <data name="Flights.WorkOrderDownloadFailedDetail" xml:space="preserve"><value>تعذر إنشاء أمر العمل المعتمد. يرجى المحاولة مرة أخرى.</value></data>
   <data name="Auth.SignInTitle" xml:space="preserve"><value>تسجيل الدخول</value></data>
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>استخدم حساب البوابة الإلكترونية الخاص بك للمتابعة.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>بريد إلكتروني</value></data>

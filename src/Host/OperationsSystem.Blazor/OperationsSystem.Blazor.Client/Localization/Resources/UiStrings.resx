@@ -48,6 +48,11 @@
   <data name="Flights.ExportReadyDetail" xml:space="preserve"><value>{0} has been downloaded.</value></data>
   <data name="Flights.ExportFailed" xml:space="preserve"><value>Export failed</value></data>
   <data name="Flights.ExportFailedDetail" xml:space="preserve"><value>The export could not be generated. Please try again.</value></data>
+  <data name="Flights.PrintWorkOrder" xml:space="preserve"><value>Print WO</value></data>
+  <data name="Flights.WorkOrderDownloadReady" xml:space="preserve"><value>Work order ready</value></data>
+  <data name="Flights.WorkOrderDownloadReadyDetail" xml:space="preserve"><value>The approved work order has been downloaded.</value></data>
+  <data name="Flights.WorkOrderDownloadFailed" xml:space="preserve"><value>Work order download failed</value></data>
+  <data name="Flights.WorkOrderDownloadFailedDetail" xml:space="preserve"><value>The approved work order could not be generated. Please try again.</value></data>
   <data name="Auth.SignInTitle" xml:space="preserve"><value>Sign in</value></data>
   <data name="Auth.SignInSubtitle" xml:space="preserve"><value>Use your portal account to continue.</value></data>
   <data name="Auth.Email" xml:space="preserve"><value>Email</value></data>

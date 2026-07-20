@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Operations.Application.Features.WorkOrders;
+using Operations.Api.Exports;
 using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
 
@@ -31,6 +32,25 @@ internal static class WorkOrderEndpoints
             var result = await sender.Send(new GetMyWorkOrderForFlightQuery(flightId), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.WorkOrders.View).WithTags("Operations.WorkOrders");
+
+        group.MapGet("/flights/{flightId:guid}/work-orders/approved/pdf", async (
+            Guid flightId,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetApprovedWorkOrderPrintQuery(flightId), ct);
+            if (result.IsFailure)
+                return ApiResults.Problem(result.Error);
+
+            var file = WorkOrderPrintDocumentFactory.Create(result.Value);
+            return Results.File(
+                file.Content,
+                "application/pdf",
+                file.FileName,
+                enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.WorkOrders.View)
+            .WithTags("Operations.WorkOrders")
+            .WithName("DownloadApprovedWorkOrder");
 
         group.MapPost("/flights/{flightId:guid}/work-orders/merge", async (Guid flightId, MergeWorkOrdersRequest request, ISender sender, CancellationToken ct) =>
         {

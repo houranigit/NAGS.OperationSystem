@@ -111,6 +111,8 @@
                                Visible="@CanAuthorWorkOrder(flight)" OnClick="@(() => OpenCompletionWorkOrderAsync(flight))" />
                     <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@(() => OpenCancellationWorkOrderAsync(flight))" />
+                    <RowAction Text="@UiStrings.Flights.PrintWorkOrder" Icon="print" Permission="@OperationsPermissions.WorkOrdersView"
+                               Visible="@CanPrintWorkOrder(flight)" OnClick="@(() => PrintWorkOrderAsync(flight))" />
                     <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
                                Visible="@CanReturnApprovedWorkOrder(flight)" OnClick="@(() => ReturnApprovedWorkOrderAsync(flight))" />
                 </RowActionMenu>
@@ -129,6 +131,7 @@
     private bool isLoading;
     private bool loadError;
     private bool isExporting;
+    private bool isPrintingWorkOrder;
     private string searchTerm = string.Empty;
     private IReadOnlyList<string> statusFilters = [];
     private IReadOnlyList<string> serviceCategoryFilters = [];
@@ -405,6 +408,7 @@
     private static bool CanInviteFlight(FlightListItem flight) => flight.Status is "Scheduled" && !flight.IsPerLanding;
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
     private static bool CanAuthorWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
+    private static bool CanPrintWorkOrder(FlightListItem flight) => flight.Status is "Completed";
     private static bool CanReturnApprovedWorkOrder(FlightListItem flight) => flight.Status is "Completed" or "Canceled";
 
     private Task OpenCompletionWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Completion");
@@ -514,6 +518,40 @@
         catch (ApiException ex)
         {
             Notifications.Notify(NotificationSeverity.Error, "Return unavailable", ex.ToDisplayMessage("Could not load the approved work order."));
+        }
+    }
+
+    private async Task PrintWorkOrderAsync(FlightListItem flight)
+    {
+        if (isPrintingWorkOrder || !CanPrintWorkOrder(flight))
+            return;
+
+        isPrintingWorkOrder = true;
+        try
+        {
+            await Operations.DownloadApprovedWorkOrderAsync(flight.Id);
+            Notifications.Notify(
+                NotificationSeverity.Success,
+                UiStrings.Flights.WorkOrderDownloadReady,
+                UiStrings.Flights.WorkOrderDownloadReadyDetail);
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(
+                NotificationSeverity.Error,
+                UiStrings.Flights.WorkOrderDownloadFailed,
+                ex.ToDisplayMessage(UiStrings.Flights.WorkOrderDownloadFailedDetail));
+        }
+        catch (JSException)
+        {
+            Notifications.Notify(
+                NotificationSeverity.Error,
+                UiStrings.Flights.WorkOrderDownloadFailed,
+                UiStrings.Flights.WorkOrderDownloadFailedDetail);
+        }
+        finally
+        {
+            isPrintingWorkOrder = false;
         }
     }
 
