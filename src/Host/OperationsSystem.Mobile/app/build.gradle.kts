@@ -196,6 +196,19 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    applicationVariants.all {
+        val apkAppName = "Operations"
+        val buildLabel = buildType.name.replaceFirstChar { it.uppercaseChar() }
+        val apkVersion = requireNotNull(versionName) {
+            "versionName must be configured before building an APK."
+        }
+
+        outputs.all {
+            val apkOutput = this as com.android.build.gradle.api.ApkVariantOutput
+            apkOutput.outputFileName = "$apkAppName-$buildLabel-v$apkVersion.apk"
+        }
+    }
 }
 
 kotlin {
