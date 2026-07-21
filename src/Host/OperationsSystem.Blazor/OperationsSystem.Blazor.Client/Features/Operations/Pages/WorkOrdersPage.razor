@@ -4,6 +4,7 @@
 @inject DialogService DialogService
 @inject NotificationService Notifications
 @inject GridPreferences GridPrefs
+@inject AuthSession Auth
 
 <PageTitle>Work orders</PageTitle>
 
@@ -316,11 +317,20 @@
         }
     }
 
-    private static bool CanEdit(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
+    private bool CanEdit(WorkOrderListItem workOrder) =>
+        workOrder.Status is "Submitted" or "Returned"
+        && CanManage(workOrder);
     private static bool CanApprove(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanReturn(WorkOrderListItem workOrder) => workOrder.Status is "Approved";
     private static bool CanMerge(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
-    private static bool CanDelete(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
+    private bool CanDelete(WorkOrderListItem workOrder) =>
+        workOrder.Status is "Submitted" or "Returned"
+        && (IsOwner(workOrder) || Auth.HasPermission(OperationsPermissions.WorkOrdersDeleteOthers));
+
+    private bool CanManage(WorkOrderListItem workOrder) =>
+        IsOwner(workOrder) || Auth.HasPermission(OperationsPermissions.WorkOrdersManageOthers);
+
+    private bool IsOwner(WorkOrderListItem workOrder) => Auth.User?.Id == workOrder.OwnerUserId;
 
     private static bool IsWorkOrderDialogSuccess(object? result) => result is true or "approved" or "returned";
 

@@ -23,7 +23,7 @@ public partial class StaffAllocationPage
     private bool loadError;
     private bool isMoving;
 
-    private bool CanMoveStaff => Auth.HasPermission(MasterDataPermissions.StaffMembersUpdate);
+    private bool CanReassignStaff => Auth.HasPermission(MasterDataPermissions.StaffAllocationReassign);
     private bool HasFilters => manpowerFilter is not null || licenseFilter is not null || !string.IsNullOrWhiteSpace(searchTerm);
 
     private int TotalManpowerTypes => overview?.StaffMembers
@@ -105,7 +105,7 @@ public partial class StaffAllocationPage
 
     protected override async Task OnInitializedAsync()
     {
-        if (Auth.IsSystemAdministrator && CanMoveStaff)
+        if (Auth.IsSystemAdministrator)
             await LoadAsync();
         else
             isLoading = false;
@@ -243,6 +243,7 @@ public partial class StaffAllocationPage
         if (SelectedMember is not { } member
             || SelectedStation is not { } source
             || SelectedDestination is not { } destination
+            || !CanReassignStaff
             || isMoving)
         {
             return;

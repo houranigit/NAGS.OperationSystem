@@ -37,6 +37,7 @@ public static class OperationsPermissions
         public const string View = "operations.work-orders.view";
         public const string ViewOthers = "operations.work-orders.view-others";
         public const string Author = "operations.work-orders.author";
+        public const string ManageOthers = "operations.work-orders.manage-others";
         public const string Approve = "operations.work-orders.approve";
         public const string DeleteOthers = "operations.work-orders.delete-others";
         public const string Merge = "operations.work-orders.merge";

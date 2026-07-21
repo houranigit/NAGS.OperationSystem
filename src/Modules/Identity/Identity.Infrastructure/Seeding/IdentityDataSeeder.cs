@@ -68,9 +68,52 @@ public sealed class IdentityDataSeeder(
             }
         }
 
+        await RemoveRetiredPermissionsFromCustomRolesAsync(now, cancellationToken);
+
         await SeedBootstrapAdminAsync(adminRole.Id, now, cancellationToken);
 
         await SeedDemoDataAsync(cancellationToken);
+    }
+
+    private async Task RemoveRetiredPermissionsFromCustomRolesAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var customRoles = await db.Roles
+            .Where(role => !role.IsSystem)
+            .ToListAsync(cancellationToken);
+        var changedRoleCount = 0;
+        var retiredPermissionCount = 0;
+
+        foreach (var role in customRoles)
+        {
+            var retained = role.Permissions.Where(permissionRegistry.IsKnown).ToList();
+            var removedCount = role.Permissions.Count - retained.Count;
+            if (removedCount == 0)
+                continue;
+
+            var result = role.SetPermissions(retained, now);
+            if (result.IsFailure)
+            {
+                logger.LogWarning(
+                    "Could not remove retired permissions from role {RoleId}: {Error}",
+                    role.Id,
+                    result.Error.Description);
+                continue;
+            }
+
+            changedRoleCount++;
+            retiredPermissionCount += removedCount;
+        }
+
+        if (changedRoleCount == 0)
+            return;
+
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "Removed {PermissionCount} retired permission assignments from {RoleCount} custom roles.",
+            retiredPermissionCount,
+            changedRoleCount);
     }
 
     private async Task SeedBootstrapAdminAsync(Guid adminRoleId, DateTimeOffset now, CancellationToken cancellationToken)

@@ -58,7 +58,7 @@ public sealed class UploadWorkOrderTaskAttachmentCommandHandler(
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
         if (access.IsFailure)
             return access.Error;
-        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        var author = WorkOrderAuthorization.EnsureManageAccess(workOrder, user);
         if (author.IsFailure)
             return author.Error;
 
@@ -140,7 +140,7 @@ public sealed class DeleteWorkOrderTaskAttachmentCommandHandler(
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
         if (access.IsFailure)
             return access.Error;
-        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        var author = WorkOrderAuthorization.EnsureManageAccess(workOrder, user);
         if (author.IsFailure)
             return author.Error;
 

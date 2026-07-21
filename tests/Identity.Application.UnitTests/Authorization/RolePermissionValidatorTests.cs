@@ -22,7 +22,7 @@ public sealed class RolePermissionValidatorTests
         stationPermissions.ShouldContain(MasterDataPermissions.StaffMembers.View);
         stationPermissions.ShouldContain(MasterDataPermissions.Reference.ViewOptions);
         stationPermissions.ShouldNotContain(IdentityPermissions.Roles.View);
-        stationPermissions.ShouldNotContain(MasterDataPermissions.CustomerContacts.View);
+        stationPermissions.ShouldNotContain(MasterDataPermissions.CustomerContacts.Update);
         stationPermissions.ShouldNotContain(MasterDataPermissions.StaffMembers.GrantAccess);
         stationPermissions.ShouldNotContain(MasterDataPermissions.Stations.Activate);
         stationPermissions.ShouldNotContain(MasterDataPermissions.Stations.Deactivate);
@@ -49,7 +49,7 @@ public sealed class RolePermissionValidatorTests
 
     [Theory]
     [InlineData(MasterDataPermissions.StaffMembers.GrantAccess)]
-    [InlineData(MasterDataPermissions.CustomerContacts.View)]
+    [InlineData(MasterDataPermissions.CustomerContacts.Update)]
     [InlineData(IdentityPermissions.Roles.View)]
     public void Role_validation_rejects_known_permissions_incompatible_with_role_user_type(string permission)
     {

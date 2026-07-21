@@ -10,7 +10,6 @@ public static class IdentityPermissions
     public static class Users
     {
         public const string View = "identity.users.view";
-        public const string Create = "identity.users.create";
         public const string Update = "identity.users.update";
         public const string Invite = "identity.users.invite";
         public const string Deactivate = "identity.users.deactivate";
@@ -40,7 +39,7 @@ public static class IdentityPermissions
     /// <summary>Every permission defined by the Identity module.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
-        Users.View, Users.Create, Users.Update, Users.Invite,
+        Users.View, Users.Update, Users.Invite,
         Users.Deactivate, Users.Lock, Users.Unlock, Users.AssignRole,
         Users.Suspend, Users.RestoreAccess, Users.ResetMfa,
         Roles.View, Roles.Create, Roles.Update, Roles.Delete, Roles.ManagePermissions,

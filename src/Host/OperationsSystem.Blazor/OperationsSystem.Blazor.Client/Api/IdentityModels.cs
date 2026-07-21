@@ -42,6 +42,7 @@ public sealed record PermissionGroup(string Resource, IReadOnlyList<string> Perm
 public sealed record CreateRoleRequest(string Name, string? Description, string CompatibleUserType, IReadOnlyList<string> Permissions);
 public sealed record UpdateRoleRequest(string Name, string? Description);
 public sealed record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);
+public sealed record UpdateRoleAndPermissionsRequest(string Name, string? Description, IReadOnlyList<string> Permissions);
 
 // --- Users -----------------------------------------------------------------
 

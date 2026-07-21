@@ -1,8 +1,10 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Identity.Application.Contracts;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -30,6 +32,7 @@ public sealed class InviteUserCommandValidator : AbstractValidator<InviteUserCom
 
 public sealed class InviteUserCommandHandler(
     IIdentityDbContext db,
+    IUserContext userContext,
     IInvitationNotifier invitationNotifier,
     ITokenService tokenService,
     TimeProvider timeProvider,
@@ -41,6 +44,13 @@ public sealed class InviteUserCommandHandler(
 
     public async Task<Result<InvitedUserDto>> Handle(InviteUserCommand request, CancellationToken cancellationToken)
     {
+        // Inviting a user always assigns a role. The endpoint's invite permission is therefore not
+        // sufficient on its own, even when the caller omits RoleId and the protected system role is
+        // selected as the compatibility default.
+        var roleAssignmentAccess = RoleAssignmentAuthorization.EnsureCanAssignRole(userContext);
+        if (roleAssignmentAccess.IsFailure)
+            return roleAssignmentAccess.Error;
+
         var emailResult = Email.Create(request.Email);
         if (emailResult.IsFailure)
             return emailResult.Error;
@@ -69,6 +79,13 @@ public sealed class InviteUserCommandHandler(
                 $"Role '{role.Name}' is not compatible with direct administrator invitations.",
                 "Identity.User.IncompatibleRole");
         }
+
+        // Prevent permission escalation through delegation: holding assign-role allows the caller
+        // to delegate only permissions they already possess. Apply the ceiling to the effective
+        // role, including the legacy default selected when RoleId is omitted.
+        var delegationAccess = RoleAssignmentAuthorization.EnsureWithinPermissionCeiling(userContext, role);
+        if (delegationAccess.IsFailure)
+            return delegationAccess.Error;
 
         var now = timeProvider.GetUtcNow();
         var token = tokenService.CreateSecureToken();

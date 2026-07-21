@@ -45,11 +45,15 @@
 
     protected override async Task OnInitializedAsync()
     {
-        model = new AssignModel { RoleId = CurrentRoleId };
-
         try
         {
-            roles = await Identity.GetRoleOptionsAsync(CompatibleUserType);
+            roles = await Identity.GetRoleOptionsAsync(CompatibleUserType, assignableOnly: true);
+            model = new AssignModel
+            {
+                RoleId = roles.Any(role => role.Id == CurrentRoleId)
+                    ? CurrentRoleId
+                    : roles.FirstOrDefault()?.Id ?? Guid.Empty
+            };
         }
         catch (ApiException)
         {

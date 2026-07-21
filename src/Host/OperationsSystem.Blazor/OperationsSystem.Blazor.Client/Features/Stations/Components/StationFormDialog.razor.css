@@ -28,6 +28,10 @@
     padding-bottom: 0.75rem;
 }
 
+.stf-stepper-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .stf-step {
     position: relative;
     display: flex;

@@ -5,6 +5,7 @@ using BuildingBlocks.Contracts.Email;
 using Identity.Application;
 using Identity.Application.Abstractions;
 using Identity.Domain.Authorization;
+using Identity.Domain.Roles;
 using Identity.Domain.Users;
 using Identity.Infrastructure.Notifications;
 using Identity.Infrastructure.Persistence;
@@ -105,6 +106,38 @@ public sealed class IdentityDataSeederTests
         role.Permissions.ShouldBe([IdentityPermissions.Users.View, IdentityPermissions.Roles.View], ignoreOrder: true);
         (await verification.Users.CountAsync()).ShouldBe(1);
         (await verification.Roles.CountAsync()).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Seed_removes_retired_permissions_from_custom_roles()
+    {
+        var databaseName = $"identity-seed-{Guid.NewGuid():N}";
+        await using (var db = CreateDb(databaseName))
+        {
+            var role = Role.Create(
+                "Legacy custom role",
+                description: null,
+                [IdentityPermissions.Roles.View, "identity.users.create"],
+                UserType.SystemAdministrator,
+                DateTimeOffset.UtcNow).Value;
+            db.Roles.Add(role);
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = CreateDb(databaseName))
+        {
+            var seeder = CreateSeeder(
+                db,
+                new TestPermissionRegistry([IdentityPermissions.Roles.View]),
+                new NoopInvitationNotifier(),
+                adminPassword: "Admin#12345");
+
+            await seeder.SeedAsync();
+        }
+
+        await using var verification = CreateDb(databaseName);
+        var customRole = await verification.Roles.SingleAsync(role => !role.IsSystem);
+        customRole.Permissions.ShouldBe([IdentityPermissions.Roles.View]);
     }
 
     private static IdentityDbContext CreateDb(string databaseName) =>

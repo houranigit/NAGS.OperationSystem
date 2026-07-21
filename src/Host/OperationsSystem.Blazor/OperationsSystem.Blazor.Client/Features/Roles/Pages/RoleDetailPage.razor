@@ -148,7 +148,7 @@
                         </div>
                         <div class="rl-metric">
                             <dt>@UiStrings.Roles.CompatibleUserType</dt>
-                            <dd>@r.CompatibleUserType</dd>
+                            <dd>@UserTypeLabel(r.CompatibleUserType)</dd>
                         </div>
                     </dl>
                     <button type="button" class="rl-card-link" @onclick="@(() => activeTab = RoleTab.Permissions)">
@@ -162,7 +162,7 @@
                     <dl class="rl-metrics rl-metrics--tall">
                         <div class="rl-metric">
                             <dt>@UiStrings.Roles.CompatibleUserType</dt>
-                            <dd>@r.CompatibleUserType</dd>
+                            <dd>@UserTypeLabel(r.CompatibleUserType)</dd>
                         </div>
                         <div class="rl-metric">
                             <dt>@UiStrings.Users.AccessScope</dt>
@@ -198,13 +198,21 @@
     @* ============================================================== Permissions *@
     private RenderFragment PermissionsTab(RoleDetail r) =>@<text>
         @{
-            var canManage = !r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesManagePermissions);
+            var isOwnRole = Auth.User?.RoleId == r.Id;
+            var canManage = !r.IsSystem && !isOwnRole && Auth.HasPermission(IdentityPermissions.RolesManagePermissions);
         }
         <div class="rl-stack">
             @if (r.IsSystem)
             {
                 <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
                     @UiStrings.Roles.SystemRoleLocked
+                </RadzenAlert>
+            }
+
+            @if (isOwnRole)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                    @UiStrings.Roles.OwnRolePermissionsLockedHint
                 </RadzenAlert>
             }
 
@@ -215,6 +223,13 @@
                 </RadzenAlert>
             }
 
+            @if (NeedsRoleOptionsHint)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                    @UiStrings.Roles.RoleOptionsHint
+                </RadzenAlert>
+            }
+
             <RadzenCard class="rl-card">
                 <div class="rl-card-head">
                     <RadzenIcon Icon="key" /><h3>@UiStrings.Roles.Permissions</h3>
@@ -222,29 +237,13 @@
                     {
                         <span class="rl-count"></span>
                         <RadzenButton Text="@UiStrings.Common.Save" Icon="save" ButtonStyle="ButtonStyle.Primary"
-                                      Size="ButtonSize.Small" Disabled="@isSaving" Click="@SavePermissionsAsync" />
+                                      Size="ButtonSize.Small" Disabled="@(isSaving || !PermissionsChanged)" Click="@SavePermissionsAsync" />
                     }
                 </div>
                 <p class="os-muted rl-perm-intro">@UiStrings.Roles.PermissionsDescription</p>
 
-                <div class="rl-perm-groups">
-                    @foreach (var group in catalog)
-                    {
-                        <div class="rl-perm-group">
-                            <strong>@group.Resource</strong>
-                            <div class="rl-perm-list">
-                                @foreach (var permission in group.Permissions)
-                                {
-                                    <label class="rl-perm-item">
-                                        <RadzenCheckBox TValue="bool" Value="@selected.Contains(permission)" Disabled="@(!canManage)"
-                                                        Change="@(value => TogglePermission(permission, value))" />
-                                        <span>@ActionLabel(permission)</span>
-                                    </label>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
+                <PermissionTree Catalog="@catalog" SelectedPermissions="@selected.ToList()"
+                                SelectedPermissionsChanged="@OnPermissionsChangedAsync" Disabled="@(!canManage || isSaving)" />
             </RadzenCard>
         </div>
     </text>;
@@ -305,6 +304,7 @@
     private RoleDetail? role;
     private IReadOnlyList<PermissionGroup> catalog = [];
     private HashSet<string> selected = [];
+    private HashSet<string> originalPermissions = [];
     private IReadOnlyList<OperationsSystem.Blazor.Client.Api.AuditTrailListItem> history = [];
     private bool isLoading = true;
     private bool loadError;
@@ -319,6 +319,7 @@
     private sealed record TabDef(RoleTab Key, string Label, string Icon);
 
     private int CatalogPermissionCount => catalog.Sum(g => g.Permissions.Count);
+    private bool PermissionsChanged => !originalPermissions.SetEquals(selected);
 
     /// <summary>
     /// True when the role grants flight permissions without the reference view-options permission its
@@ -328,6 +329,13 @@
         !selected.Contains(MasterDataPermissions.ReferenceViewOptions) &&
         catalog.Any(g => g.Permissions.Contains(MasterDataPermissions.ReferenceViewOptions)) &&
         selected.Any(p => p.StartsWith("operations.flights.", StringComparison.Ordinal));
+    private bool NeedsRoleOptionsHint =>
+        !selected.Contains(IdentityPermissions.RolesView) &&
+        selected.Any(permission => permission is
+            IdentityPermissions.UsersInvite or
+            IdentityPermissions.UsersAssignRole or
+            MasterDataPermissions.StaffMembersGrantAccess or
+            MasterDataPermissions.CustomerContactsGrantAccess);
 
     private IEnumerable<TabDef> Tabs()
     {
@@ -355,6 +363,7 @@
             role = await Identity.GetRoleAsync(Id);
             catalog = await Identity.GetPermissionCatalogAsync(role.CompatibleUserType);
             selected = [.. role.Permissions];
+            originalPermissions = [.. role.Permissions];
             history = await historyTask;
         }
         catch (ApiException ex)
@@ -385,21 +394,27 @@
         }
     }
 
-    private void TogglePermission(string permission, bool isChecked)
+    private Task OnPermissionsChangedAsync(IReadOnlyList<string> permissions)
     {
-        if (isChecked)
-            selected.Add(permission);
-        else
-            selected.Remove(permission);
+        if (isSaving)
+            return Task.CompletedTask;
+
+        selected = permissions.ToHashSet(StringComparer.Ordinal);
+        return Task.CompletedTask;
     }
 
     private async Task SavePermissionsAsync()
     {
+        if (isSaving || !PermissionsChanged)
+            return;
+
         isSaving = true;
 
         try
         {
-            await Identity.UpdateRolePermissionsAsync(Id, new UpdateRolePermissionsRequest([.. selected]));
+            await Identity.UpdateRolePermissionsAsync(
+                Id,
+                new UpdateRolePermissionsRequest(selected.OrderBy(permission => permission, StringComparer.Ordinal).ToList()));
             Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.PermissionsSaved);
             await LoadAsync();
         }
@@ -421,10 +436,9 @@
         var result = await DialogService.OpenAsync<RoleFormDialog>(UiStrings.Roles.EditTitle,
             new Dictionary<string, object?>
             {
-                [nameof(RoleFormDialog.RoleId)] = role.Id,
-                [nameof(RoleFormDialog.Name)] = role.Name,
-                [nameof(RoleFormDialog.Description)] = role.Description
-            });
+                [nameof(RoleFormDialog.RoleId)] = role.Id
+            },
+            new DialogOptions { Width = "920px" });
 
         if (result is true)
             await LoadAsync();
@@ -528,12 +542,6 @@
         if (a.Contains("updat") || a.Contains("edit"))
             return ("edit", "neutral");
         return ("history", "neutral");
-    }
-
-    private static string ActionLabel(string permission)
-    {
-        var lastDot = permission.LastIndexOf('.');
-        return lastDot >= 0 && lastDot < permission.Length - 1 ? permission[(lastDot + 1)..] : permission;
     }
 
     private static string UserTypeLabel(string userType) => userType switch

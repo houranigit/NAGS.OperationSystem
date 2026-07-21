@@ -83,7 +83,7 @@ else
     {
         try
         {
-            roles = await Identity.GetRoleOptionsAsync(UserTypes.SystemAdministrator);
+            roles = await Identity.GetRoleOptionsAsync(UserTypes.SystemAdministrator, assignableOnly: true);
             model.RoleId = roles.FirstOrDefault()?.Id;
         }
         catch (ApiException ex)

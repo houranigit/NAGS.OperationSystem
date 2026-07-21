@@ -1,6 +1,7 @@
 @inject OperationsApiClient Operations
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
+@inject AuthSession Auth
 
 <RadzenTemplateForm TItem="FlightFormModel" Data="@model" Submit="@SubmitAsync">
     <div class="opf-form">
@@ -137,7 +138,8 @@
     ];
 
     private bool IsBulkCreate => BulkMode && FlightId is null;
-    private int LastStep => IsBulkCreate ? 3 : 2;
+    private bool CanAssignStaff => Auth.HasPermission(OperationsPermissions.FlightsAssign);
+    private int LastStep => (IsBulkCreate ? 3 : 2) - (CanAssignStaff ? 0 : 1);
     private string SubmitButtonText => FlightId is null
         ? (IsBulkCreate ? "Schedule flights" : "Schedule flight")
         : "Save changes";
@@ -359,6 +361,14 @@
                 </div>
             }
         </div>
+        @if (!CanAssignStaff)
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Staff assignment is not included">
+                <p>@(FlightId is null
+                    ? "You can schedule this flight now. A user with flight assignment permission can assign staff later."
+                    : "You can update the flight details and services, but its existing staff assignments will remain unchanged.")</p>
+            </DismissibleDialogMessage>
+        }
     </section>;
 
     private RenderFragment StaffStep() => @<section class="opf-step-content">
@@ -470,7 +480,7 @@
         if (errorMessage is not null)
             return;
 
-        if (step == 0)
+        if (CanAssignStaff && step == 0)
         {
             await LoadStaffForSelectedStationAsync();
             if (errorMessage is not null)
@@ -539,7 +549,7 @@
                 }
             }
 
-            if (model.StationId != Guid.Empty)
+            if (CanAssignStaff && model.StationId != Guid.Empty)
                 await LoadStaffForSelectedStationAsync();
 
             SyncPerLandingAssignmentState();
@@ -671,7 +681,7 @@
 
     private void ToggleStaff(StaffMemberOption member)
     {
-        if (member.StationId != model.StationId)
+        if (!CanAssignStaff || member.StationId != model.StationId)
             return;
 
         Toggle(model.AssignedStaffMemberIds, member.Id);
@@ -699,6 +709,9 @@
 
     private void ToggleAllStaff()
     {
+        if (!CanAssignStaff)
+            return;
+
         var ids = AvailableStaff().Select(member => member.Id).ToList();
         if (ids.Count == 0)
             return;
@@ -715,7 +728,7 @@
 
     private void SyncPerLandingAssignmentState()
     {
-        if (!IsPerLandingSelected)
+        if (!CanAssignStaff || !IsPerLandingSelected)
             return;
 
         model.AssignedStaffMemberIds.Clear();
@@ -748,6 +761,9 @@
 
     private async Task LoadStaffForSelectedStationAsync()
     {
+        if (!CanAssignStaff)
+            return;
+
         if (model.StationId == Guid.Empty)
         {
             staff = [];
@@ -917,7 +933,7 @@
             model.PlannedServiceIds.ToList()), version);
 
         var assignmentIds = AssignmentIdsForSave();
-        if (AssignmentsChanged(assignmentIds))
+        if (CanAssignStaff && AssignmentsChanged(assignmentIds))
         {
             var refreshed = await Operations.GetFlightAsync(id);
             await Operations.AssignEmployeesAsync(id, new AssignEmployeesRequestModel(assignmentIds), refreshed.RowVersion);
@@ -925,7 +941,7 @@
     }
 
     private IReadOnlyList<Guid> AssignmentIdsForSave() =>
-        IsPerLandingSelected ? [] : model.AssignedStaffMemberIds.ToList();
+        !CanAssignStaff || IsPerLandingSelected ? [] : model.AssignedStaffMemberIds.ToList();
 
     private bool AssignmentsChanged(IReadOnlyList<Guid> next)
     {
@@ -999,6 +1015,9 @@
 
     private string? ValidateAssignments()
     {
+        if (!CanAssignStaff)
+            return null;
+
         if (IsPerLandingSelected || model.AssignedStaffMemberIds.Count == 0)
             return null;
 

@@ -296,6 +296,10 @@
     font-size: 1.1rem;
 }
 
+[dir="rtl"] .rl-card-link ::deep .rz-icon {
+    transform: rotate(180deg);
+}
+
 /* --- Lead block (card highlight) ---------------------------------------- */
 .rl-lead {
     display: flex;

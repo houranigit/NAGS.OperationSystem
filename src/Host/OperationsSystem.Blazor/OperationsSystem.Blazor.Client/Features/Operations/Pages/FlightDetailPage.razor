@@ -840,7 +840,10 @@
 
     private static bool CanMerge(FlightDetail f) => f.Status is not "Completed" and not "Canceled" and not "Merged";
     private static bool CanAuthorWorkOrder(FlightDetail f) => f.Status is "Scheduled" or "InProgress";
-    private static bool CanEditWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
+    private bool CanEditWorkOrder(WorkOrderSummaryModel workOrder) =>
+        workOrder.Status is "Submitted" or "Returned"
+        && (Auth.User?.Id == workOrder.OwnerUserId
+            || Auth.HasPermission(OperationsPermissions.WorkOrdersManageOthers));
     private static bool CanApproveWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Submitted" or "Returned";
     private static bool CanReturnWorkOrder(WorkOrderSummaryModel workOrder) => workOrder.Status is "Approved";
     private static bool CanReturnApprovedWorkOrder(FlightDetail f) =>

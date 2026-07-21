@@ -39,6 +39,7 @@
   <data name="Common.MinutesAgo" xml:space="preserve"><value>منذ {0} د</value></data>
   <data name="Common.HoursAgo" xml:space="preserve"><value>منذ {0} س</value></data>
   <data name="Common.DaysAgo" xml:space="preserve"><value>منذ {0} ي</value></data>
+  <data name="Common.Clear" xml:space="preserve"><value>مسح</value></data>
   <data name="Flights.Export" xml:space="preserve"><value>تصدير</value></data>
   <data name="Flights.Exporting" xml:space="preserve"><value>جارٍ التصدير...</value></data>
   <data name="Flights.ExcelWorkbook" xml:space="preserve"><value>مصنف Excel (.xlsx)</value></data>
@@ -346,6 +347,104 @@
   <data name="Roles.Created" xml:space="preserve"><value>تم إنشاء الدور.</value></data>
   <data name="Roles.Updated" xml:space="preserve"><value>تم تحديث الدور.</value></data>
   <data name="Roles.Deleted" xml:space="preserve"><value>تم حذف الدور.</value></data>
+  <data name="Roles.EditPermissions" xml:space="preserve"><value>تعديل الأذونات</value></data>
+  <data name="Roles.StepDetails" xml:space="preserve"><value>تفاصيل الدور</value></data>
+  <data name="Roles.StepPermissions" xml:space="preserve"><value>الأذونات</value></data>
+  <data name="Roles.RoleEditorSteps" xml:space="preserve"><value>خطوات إعداد الدور</value></data>
+  <data name="Roles.RoleDetails" xml:space="preserve"><value>تفاصيل الدور</value></data>
+  <data name="Roles.Previous" xml:space="preserve"><value>رجوع</value></data>
+  <data name="Roles.Next" xml:space="preserve"><value>التالي</value></data>
+  <data name="Roles.SaveChanges" xml:space="preserve"><value>حفظ التغييرات</value></data>
+  <data name="Roles.LoadingRoleEditor" xml:space="preserve"><value>جارٍ تحميل إعدادات الدور</value></data>
+  <data name="Roles.LoadingRoleEditorHint" xml:space="preserve"><value>جارٍ تجهيز ملف الدور ودليل الأذونات المتوافقة.</value></data>
+  <data name="Roles.LoadingPermissions" xml:space="preserve"><value>جارٍ تحميل الأذونات...</value></data>
+  <data name="Roles.PermissionsLoadFailed" xml:space="preserve"><value>تعذّر تحميل دليل الأذونات.</value></data>
+  <data name="Roles.NameRequired" xml:space="preserve"><value>أدخل اسمًا للدور للمتابعة.</value></data>
+  <data name="Roles.NameTooLong" xml:space="preserve"><value>يجب ألا يتجاوز اسم الدور 100 حرف.</value></data>
+  <data name="Roles.DescriptionTooLong" xml:space="preserve"><value>يجب ألا يتجاوز الوصف 500 حرف.</value></data>
+  <data name="Roles.AccountTypeHint" xml:space="preserve"><value>يحدد نوع الحساب الأذونات المتوافقة مع هذا الدور.</value></data>
+  <data name="Roles.DetailsReadOnly" xml:space="preserve"><value>تفاصيل الدور للقراءة فقط</value></data>
+  <data name="Roles.DetailsReadOnlyHint" xml:space="preserve"><value>يمكن لحسابك إدارة أذونات هذا الدور، لكنه لا يملك صلاحية إعادة تسميته أو تعديل وصفه.</value></data>
+  <data name="Roles.ConfigurePermissions" xml:space="preserve"><value>إعداد الوصول</value></data>
+  <data name="Roles.ConfigurePermissionsHint" xml:space="preserve"><value>اختر الميزات والإجراءات المتاحة لحسابات {0}.</value></data>
+  <data name="Roles.OwnRolePermissionsLocked" xml:space="preserve"><value>أذونات دورك محمية</value></data>
+  <data name="Roles.OwnRolePermissionsLockedHint" xml:space="preserve"><value>لتجنّب فقدان الوصول عن طريق الخطأ، يجب أن يغيّر مسؤول آخر أذونات هذا الدور.</value></data>
+  <data name="Roles.PermissionsReadOnly" xml:space="preserve"><value>الأذونات للقراءة فقط</value></data>
+  <data name="Roles.PermissionsReadOnlyHint" xml:space="preserve"><value>تتطلب عملية تعديل منح الوصول هذا صلاحية إدارة الأذونات.</value></data>
+  <data name="Roles.PermissionChangeSecurityTitle" xml:space="preserve"><value>تحديث الوصول النشط بأمان</value></data>
+  <data name="Roles.PermissionChangeSecurityHint" xml:space="preserve"><value>يؤدي حفظ تغييرات الأذونات إلى تسجيل خروج المستخدمين النشطين المعيّنين لهذا الدور، لتطبيق صلاحيات الوصول الجديدة فورًا.</value></data>
+  <data name="Roles.DependentPermission" xml:space="preserve"><value>إذن داعم موصى به</value></data>
+  <data name="Roles.RoleOptionsHint" xml:space="preserve"><value>تحتاج أدوات تعيين الأدوار ومنح وصول البوابة أيضاً إلى إذن «عرض» ضمن الهوية والوصول &gt; الأدوار. أضفه ليتمكن المسؤولون من تحميل الأدوار المؤهلة.</value></data>
+  <data name="Roles.PermissionAccess" xml:space="preserve"><value>أذونات الوصول</value></data>
+  <data name="Roles.PermissionSelectionSummary" xml:space="preserve"><value>تم تحديد {0} من أصل {1} إذنًا</value></data>
+  <data name="Roles.SearchPermissions" xml:space="preserve"><value>البحث في الأذونات أو الإجراءات</value></data>
+  <data name="Roles.ExpandAll" xml:space="preserve"><value>توسيع الكل</value></data>
+  <data name="Roles.CollapseAll" xml:space="preserve"><value>طيّ الكل</value></data>
+  <data name="Roles.SelectAll" xml:space="preserve"><value>تحديد الكل</value></data>
+  <data name="Roles.ClearAll" xml:space="preserve"><value>إلغاء تحديد الكل</value></data>
+  <data name="Roles.NoCompatiblePermissions" xml:space="preserve"><value>لا توجد أذونات متوافقة</value></data>
+  <data name="Roles.NoCompatiblePermissionsHint" xml:space="preserve"><value>لا تتوفر أذونات لنوع الحساب هذا.</value></data>
+  <data name="Roles.NoPermissionResults" xml:space="preserve"><value>لم يتم العثور على أذونات</value></data>
+  <data name="Roles.NoPermissionResultsHint" xml:space="preserve"><value>جرّب اسمًا آخر لميزة أو مورد أو إجراء.</value></data>
+  <data name="Roles.ResourceCount" xml:space="preserve"><value>مجموعات الميزات: {0}</value></data>
+  <data name="Roles.SelectGroup" xml:space="preserve"><value>تحديد جميع الأذونات ضمن {0}</value></data>
+  <data name="Roles.ClearGroup" xml:space="preserve"><value>إلغاء تحديد جميع الأذونات ضمن {0}</value></data>
+  <data name="Roles.ModuleIdentity" xml:space="preserve"><value>الهوية وإدارة الوصول</value></data>
+  <data name="Roles.ModuleOperations" xml:space="preserve"><value>العمليات</value></data>
+  <data name="Roles.ModuleMasterData" xml:space="preserve"><value>البيانات الأساسية</value></data>
+  <data name="Roles.ModuleAudit" xml:space="preserve"><value>التدقيق والامتثال</value></data>
+  <data name="Roles.ModuleNotifications" xml:space="preserve"><value>الإشعارات</value></data>
+  <data name="Roles.ActionResetMfa" xml:space="preserve"><value>إعادة تعيين المصادقة متعددة العوامل</value></data>
+  <data name="Roles.ActionViewOptions" xml:space="preserve"><value>عرض خيارات النماذج</value></data>
+  <data name="Roles.ActionViewStation" xml:space="preserve"><value>عرض رحلات المحطة</value></data>
+  <data name="Roles.ActionViewOthers" xml:space="preserve"><value>عرض سجلات الآخرين</value></data>
+  <data name="Roles.ActionManageOthers" xml:space="preserve"><value>إدارة سجلات الآخرين</value></data>
+  <data name="Roles.ActionDeleteOthers" xml:space="preserve"><value>حذف سجلات الآخرين</value></data>
+  <data name="Roles.ActionAssignRole" xml:space="preserve"><value>تعيين الأدوار</value></data>
+  <data name="Roles.ActionManagePermissions" xml:space="preserve"><value>إدارة الأذونات</value></data>
+  <data name="Roles.ActionGrantAccess" xml:space="preserve"><value>منح الوصول إلى البوابة</value></data>
+  <data name="Roles.ActionRestoreAccess" xml:space="preserve"><value>استعادة الوصول</value></data>
+  <data name="Roles.Resource.users" xml:space="preserve"><value>المستخدمون</value></data>
+  <data name="Roles.Resource.roles" xml:space="preserve"><value>الأدوار</value></data>
+  <data name="Roles.Resource.sessions" xml:space="preserve"><value>الجلسات</value></data>
+  <data name="Roles.Resource.dashboard" xml:space="preserve"><value>لوحة المعلومات</value></data>
+  <data name="Roles.Resource.flights" xml:space="preserve"><value>الرحلات</value></data>
+  <data name="Roles.Resource.work-orders" xml:space="preserve"><value>أوامر العمل</value></data>
+  <data name="Roles.Resource.staff-allocation" xml:space="preserve"><value>توزيع الموظفين</value></data>
+  <data name="Roles.Resource.staff-members" xml:space="preserve"><value>الموظفون</value></data>
+  <data name="Roles.Resource.stations" xml:space="preserve"><value>المحطات</value></data>
+  <data name="Roles.Resource.countries" xml:space="preserve"><value>الدول</value></data>
+  <data name="Roles.Resource.customers" xml:space="preserve"><value>العملاء</value></data>
+  <data name="Roles.Resource.customer-contacts" xml:space="preserve"><value>جهات اتصال العملاء</value></data>
+  <data name="Roles.Resource.aircraft-types" xml:space="preserve"><value>أنواع الطائرات</value></data>
+  <data name="Roles.Resource.manpower-types" xml:space="preserve"><value>أنواع القوى العاملة</value></data>
+  <data name="Roles.Resource.licenses" xml:space="preserve"><value>التراخيص</value></data>
+  <data name="Roles.Resource.services" xml:space="preserve"><value>الخدمات</value></data>
+  <data name="Roles.Resource.operation-types" xml:space="preserve"><value>أنواع العمليات</value></data>
+  <data name="Roles.Resource.tools" xml:space="preserve"><value>الأدوات</value></data>
+  <data name="Roles.Resource.materials" xml:space="preserve"><value>المواد</value></data>
+  <data name="Roles.Resource.general-supports" xml:space="preserve"><value>الدعم العام</value></data>
+  <data name="Roles.Resource.reference" xml:space="preserve"><value>البيانات المرجعية</value></data>
+  <data name="Roles.Resource.trails" xml:space="preserve"><value>سجلات التدقيق</value></data>
+  <data name="Roles.Action.activate" xml:space="preserve"><value>تفعيل</value></data>
+  <data name="Roles.Action.approve" xml:space="preserve"><value>اعتماد</value></data>
+  <data name="Roles.Action.assign" xml:space="preserve"><value>تعيين</value></data>
+  <data name="Roles.Action.author" xml:space="preserve"><value>إنشاء</value></data>
+  <data name="Roles.Action.create" xml:space="preserve"><value>إنشاء</value></data>
+  <data name="Roles.Action.deactivate" xml:space="preserve"><value>إلغاء التفعيل</value></data>
+  <data name="Roles.Action.delete" xml:space="preserve"><value>حذف</value></data>
+  <data name="Roles.Action.export" xml:space="preserve"><value>تصدير</value></data>
+  <data name="Roles.Action.invite" xml:space="preserve"><value>دعوة</value></data>
+  <data name="Roles.Action.lock" xml:space="preserve"><value>قفل</value></data>
+  <data name="Roles.Action.merge" xml:space="preserve"><value>دمج</value></data>
+  <data name="Roles.Action.reassign" xml:space="preserve"><value>إعادة تعيين</value></data>
+  <data name="Roles.Action.remove" xml:space="preserve"><value>إزالة</value></data>
+  <data name="Roles.Action.revoke" xml:space="preserve"><value>إبطال</value></data>
+  <data name="Roles.Action.schedule" xml:space="preserve"><value>جدولة</value></data>
+  <data name="Roles.Action.suspend" xml:space="preserve"><value>تعليق</value></data>
+  <data name="Roles.Action.unlock" xml:space="preserve"><value>إلغاء القفل</value></data>
+  <data name="Roles.Action.update" xml:space="preserve"><value>تحديث</value></data>
+  <data name="Roles.Action.view" xml:space="preserve"><value>عرض</value></data>
   <data name="Sessions.Title" xml:space="preserve"><value>الجلسات</value></data>
   <data name="Sessions.Created" xml:space="preserve"><value>تم تسجيل الدخول</value></data>
   <data name="Sessions.Expires" xml:space="preserve"><value>تنتهي</value></data>

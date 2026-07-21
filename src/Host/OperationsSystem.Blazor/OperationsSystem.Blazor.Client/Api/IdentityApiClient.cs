@@ -114,10 +114,16 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task<RoleDetail> GetRoleAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<RoleDetail>($"/identity/roles/{id}", ct);
 
-    /// <summary>Role options, optionally compatible with a given user type, for filters and assignment pickers.</summary>
-    public Task<IReadOnlyList<RoleOption>> GetRoleOptionsAsync(string? userType = null, CancellationToken ct = default)
+    /// <summary>Role options, optionally limited to roles the current user may delegate.</summary>
+    public Task<IReadOnlyList<RoleOption>> GetRoleOptionsAsync(
+        string? userType = null,
+        bool assignableOnly = false,
+        CancellationToken ct = default)
     {
-        var query = string.IsNullOrWhiteSpace(userType) ? string.Empty : $"?userType={Uri.EscapeDataString(userType)}";
+        var query = new QueryBuilder()
+            .Add("userType", userType)
+            .Add("assignableOnly", assignableOnly ? "true" : null)
+            .Build();
         return api.GetAsync<IReadOnlyList<RoleOption>>($"/identity/roles/options{query}", ct);
     }
 
@@ -129,6 +135,9 @@ public sealed class IdentityApiClient(BrowserApiClient api)
 
     public Task UpdateRolePermissionsAsync(Guid id, UpdateRolePermissionsRequest request, CancellationToken ct = default) =>
         api.PutAsync($"/identity/roles/{id}/permissions", request, ct);
+
+    public Task UpdateRoleAndPermissionsAsync(Guid id, UpdateRoleAndPermissionsRequest request, CancellationToken ct = default) =>
+        api.PutAsync($"/identity/roles/{id}/editor", request, ct);
 
     public Task DeleteRoleAsync(Guid id, CancellationToken ct = default) =>
         api.DeleteAsync($"/identity/roles/{id}", ct);

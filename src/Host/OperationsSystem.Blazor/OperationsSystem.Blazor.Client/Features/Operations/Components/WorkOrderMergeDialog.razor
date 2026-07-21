@@ -1,5 +1,6 @@
 @inject OperationsApiClient Operations
 @inject DialogService DialogService
+@inject AuthSession Auth
 
 <div class="owm-form">
     @if (isLoading)
@@ -83,10 +84,23 @@
                     {
                         @ValueSourceField("Cancellation", "event_busy", cancellationSourceId, id => cancellationSourceId = id, CancellationValue)
                     }
-                    <label class="owm-toggle-row">
-                        <RadzenCheckBox TValue="bool" @bind-Value="approveImmediately" />
-                        <span>Approve immediately</span>
-                    </label>
+                    @if (CanApproveImmediately)
+                    {
+                        <label class="owm-toggle-row">
+                            <RadzenCheckBox TValue="bool" @bind-Value="approveImmediately" />
+                            <span>Approve immediately</span>
+                        </label>
+                    }
+                    else
+                    {
+                        <div class="owm-approval-locked">
+                            <RadzenIcon Icon="lock" />
+                            <span>
+                                <strong>Approval remains separate</strong>
+                                <small>You can merge these work orders, but immediate approval requires work-order approval permission.</small>
+                            </span>
+                        </div>
+                    }
                 </div>
 
                 @if (TypeSource is { } typeSource)
@@ -194,6 +208,8 @@
     private bool isLoading = true;
     private bool isSubmitting;
     private string? errorMessage;
+
+    private bool CanApproveImmediately => Auth.HasPermission(OperationsPermissions.WorkOrdersApprove);
 
     private WorkOrderDetail? TypeSource =>
         SelectedSources.FirstOrDefault();
@@ -405,7 +421,7 @@
             var request = new MergeWorkOrdersRequestModel(
                 selectedSourceIds.ToList(),
                 BuildMergedWorkOrder(typeSource),
-                approveImmediately);
+                CanApproveImmediately && approveImmediately);
             await Operations.MergeWorkOrdersAsync(flight.Id, request);
             DialogService.Close(true);
         }

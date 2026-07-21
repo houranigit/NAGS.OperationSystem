@@ -96,6 +96,10 @@ public sealed class MasterDataPermissionCatalog : IPermissionCatalog
         new(MasterDataPermissions.StaffMembers.Deactivate, AdminAndStation),
         new(MasterDataPermissions.StaffMembers.GrantAccess, AdminOnly),
 
+        // Cross-station allocation is administrator-only and separates read-only planning from moves.
+        new(MasterDataPermissions.StaffAllocation.View, AdminOnly),
+        new(MasterDataPermissions.StaffAllocation.Reassign, AdminOnly),
+
         // Customers: customer contacts may view/update their customer; admin creates/lifecycle.
         new(MasterDataPermissions.Customers.View, AdminAndCustomer),
         new(MasterDataPermissions.Customers.Update, AdminAndCustomer),
@@ -104,7 +108,6 @@ public sealed class MasterDataPermissionCatalog : IPermissionCatalog
         new(MasterDataPermissions.Customers.Deactivate, AdminOnly),
 
         // CustomerContacts: customer contacts may manage within their customer; grant-access admin-only.
-        new(MasterDataPermissions.CustomerContacts.View, AdminAndCustomer),
         new(MasterDataPermissions.CustomerContacts.Create, AdminAndCustomer),
         new(MasterDataPermissions.CustomerContacts.Update, AdminAndCustomer),
         new(MasterDataPermissions.CustomerContacts.Remove, AdminAndCustomer),

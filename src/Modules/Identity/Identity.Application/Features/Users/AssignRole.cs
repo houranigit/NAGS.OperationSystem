@@ -1,7 +1,9 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Application.Features.Users;
@@ -17,12 +19,16 @@ public sealed class AssignRoleCommandValidator : AbstractValidator<AssignRoleCom
     }
 }
 
-public sealed class AssignRoleCommandHandler(IIdentityDbContext db, ICurrentUser currentUser, TimeProvider timeProvider)
+public sealed class AssignRoleCommandHandler(IIdentityDbContext db, IUserContext userContext, TimeProvider timeProvider)
     : ICommandHandler<AssignRoleCommand>
 {
     public async Task<Result> Handle(AssignRoleCommand request, CancellationToken cancellationToken)
     {
-        if (currentUser.UserId == request.UserId)
+        var roleAssignmentAccess = RoleAssignmentAuthorization.EnsureCanAssignRole(userContext);
+        if (roleAssignmentAccess.IsFailure)
+            return roleAssignmentAccess.Error;
+
+        if (userContext.UserId == request.UserId)
             return Error.Conflict("You cannot change your own role.", "Identity.User.CannotAssignRoleSelf");
 
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == request.UserId, cancellationToken);
@@ -37,6 +43,10 @@ public sealed class AssignRoleCommandHandler(IIdentityDbContext db, ICurrentUser
             return Error.Conflict(
                 $"Role '{role.Name}' is not compatible with this account's type ({user.UserType}).",
                 "Identity.User.IncompatibleRole");
+
+        var delegationAccess = RoleAssignmentAuthorization.EnsureWithinPermissionCeiling(userContext, role);
+        if (delegationAccess.IsFailure)
+            return delegationAccess.Error;
 
         var now = timeProvider.GetUtcNow();
         var result = user.AssignRole(request.RoleId, now);

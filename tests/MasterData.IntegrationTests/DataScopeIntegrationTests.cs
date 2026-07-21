@@ -458,7 +458,7 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
         var roleId = await Helpers.CreateRoleAsync(admin, "CustomerContact",
             "masterdata.countries.view",
             "masterdata.customers.view", "masterdata.customers.update",
-            "masterdata.customer-contacts.view", "masterdata.customer-contacts.create",
+            "masterdata.customer-contacts.create",
             "masterdata.customer-contacts.update", "masterdata.customer-contacts.remove");
 
         var customer = await admin.GetFromJsonAsync<CustomerDetail>($"{Base}/customers/{customerId}");

@@ -119,7 +119,7 @@
         {
             try
             {
-                portalRoles = await Identity.GetRoleOptionsAsync("CustomerContact");
+                portalRoles = await Identity.GetRoleOptionsAsync("CustomerContact", assignableOnly: true);
             }
             catch (ApiException ex)
             {

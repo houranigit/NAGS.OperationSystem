@@ -1,0 +1,167 @@
+<section class="@RootClass">
+    @if (IsLoading)
+    {
+        <div class="pt-state">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+            <span>@UiStrings.Roles.LoadingPermissions</span>
+        </div>
+    }
+    else if (Catalog.Count == 0)
+    {
+        <div class="pt-state pt-state--empty">
+            <span class="pt-state-icon"><RadzenIcon Icon="key_off" /></span>
+            <div>
+                <strong>@UiStrings.Roles.NoCompatiblePermissions</strong>
+                <p>@UiStrings.Roles.NoCompatiblePermissionsHint</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="pt-summary">
+            <div class="pt-summary-copy">
+                <span class="pt-summary-icon"><RadzenIcon Icon="admin_panel_settings" /></span>
+                <div>
+                    <strong>@UiStrings.Roles.PermissionAccess</strong>
+                    <span>@string.Format(UiStrings.Roles.PermissionSelectionSummary, SelectedKnownCount, PermissionCount)</span>
+                </div>
+            </div>
+            <progress class="pt-progress" max="100" value="@SelectionPercentage" aria-hidden="true"></progress>
+        </div>
+
+        <div class="pt-toolbar">
+            <label class="pt-search">
+                <RadzenIcon Icon="search" />
+                <input type="search" @bind="searchTerm" @bind:event="oninput"
+                       aria-label="@UiStrings.Roles.SearchPermissions"
+                       placeholder="@UiStrings.Roles.SearchPermissions" />
+                @if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    <button type="button" class="pt-search-clear" title="@UiStrings.Common.Clear"
+                            aria-label="@UiStrings.Common.Clear"
+                            @onclick="ClearSearch">
+                        <RadzenIcon Icon="close" />
+                    </button>
+                }
+            </label>
+
+            <div class="pt-toolbar-actions">
+                <button type="button" class="pt-tool-button" disabled="@(!string.IsNullOrWhiteSpace(searchTerm))" @onclick="ExpandAll">
+                    <RadzenIcon Icon="unfold_more" />
+                    <span>@UiStrings.Roles.ExpandAll</span>
+                </button>
+                <button type="button" class="pt-tool-button" disabled="@(!string.IsNullOrWhiteSpace(searchTerm))" @onclick="CollapseAll">
+                    <RadzenIcon Icon="unfold_less" />
+                    <span>@UiStrings.Roles.CollapseAll</span>
+                </button>
+                @if (!Disabled)
+                {
+                    <span class="pt-toolbar-divider"></span>
+                    <button type="button" class="pt-tool-button" disabled="@(SelectedKnownCount == PermissionCount)"
+                            @onclick="SelectAllAsync">
+                        <RadzenIcon Icon="select_all" />
+                        <span>@UiStrings.Roles.SelectAll</span>
+                    </button>
+                    <button type="button" class="pt-tool-button" disabled="@(SelectedKnownCount == 0)"
+                            @onclick="ClearAllAsync">
+                        <RadzenIcon Icon="deselect" />
+                        <span>@UiStrings.Roles.ClearAll</span>
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (VisibleModules.Count == 0)
+        {
+            <div class="pt-no-results">
+                <RadzenIcon Icon="search_off" />
+                <strong>@UiStrings.Roles.NoPermissionResults</strong>
+                <span>@UiStrings.Roles.NoPermissionResultsHint</span>
+            </div>
+        }
+        else
+        {
+            <div class="pt-tree" role="tree" aria-label="@UiStrings.Roles.Permissions">
+                @foreach (var module in VisibleModules)
+                {
+                    var moduleExpanded = IsModuleExpanded(module.Key);
+                    <article class="@ModuleClass(module)" role="treeitem" aria-expanded="@moduleExpanded" @key="module.Key">
+                        <div class="pt-module-head">
+                            <button type="button" class="@CheckboxClass(module.Permissions)" role="checkbox"
+                                    aria-checked="@SelectionAria(module.Permissions)" disabled="@Disabled"
+                                    aria-label="@ToggleTitle(module.Label, module.Permissions)"
+                                    title="@ToggleTitle(module.Label, module.Permissions)"
+                                    @onclick="@(() => ToggleGroupAsync(module.Permissions))">
+                                <span class="pt-checkbox-box">@SelectionIcon(module.Permissions)</span>
+                            </button>
+                            <button type="button" class="pt-module-toggle" @onclick="@(() => ToggleModule(module.Key))">
+                                <span class="pt-node-icon"><RadzenIcon Icon="@module.Icon" /></span>
+                                <span class="pt-node-copy">
+                                    <strong>@module.Label</strong>
+                                    <small>@string.Format(UiStrings.Roles.ResourceCount, module.Resources.Count)</small>
+                                </span>
+                                <span class="pt-node-count">@SelectedCount(module.Permissions) / @module.Permissions.Count</span>
+                                <RadzenIcon Icon="@(moduleExpanded ? "expand_less" : "expand_more")" class="pt-chevron" />
+                            </button>
+                        </div>
+
+                        @if (moduleExpanded)
+                        {
+                            <div class="pt-resources" role="group">
+                                @foreach (var resource in module.Resources)
+                                {
+                                    var resourceExpanded = IsResourceExpanded(resource.Key);
+                                    <div class="@ResourceClass(resource)" role="treeitem" aria-expanded="@resourceExpanded" @key="resource.Key">
+                                        <div class="pt-resource-head">
+                                            <span class="pt-branch" aria-hidden="true"></span>
+                                            <button type="button" class="@CheckboxClass(resource.Permissions)" role="checkbox"
+                                                    aria-checked="@SelectionAria(resource.Permissions)" disabled="@Disabled"
+                                                    aria-label="@ToggleTitle(resource.Label, resource.Permissions)"
+                                                    title="@ToggleTitle(resource.Label, resource.Permissions)"
+                                                    @onclick="@(() => ToggleGroupAsync(resource.Permissions))">
+                                                <span class="pt-checkbox-box">@SelectionIcon(resource.Permissions)</span>
+                                            </button>
+                                            <button type="button" class="pt-resource-toggle" @onclick="@(() => ToggleResource(resource.Key))">
+                                                <span class="pt-resource-icon"><RadzenIcon Icon="@resource.Icon" /></span>
+                                                <span class="pt-node-copy">
+                                                    <strong>@resource.Label</strong>
+                                                    <small>@resource.Key</small>
+                                                </span>
+                                                <span class="pt-node-count">@SelectedCount(resource.Permissions) / @resource.Permissions.Count</span>
+                                                <RadzenIcon Icon="@(resourceExpanded ? "expand_less" : "expand_more")" class="pt-chevron" />
+                                            </button>
+                                        </div>
+
+                                        @if (resourceExpanded)
+                                        {
+                                            <div class="pt-permissions" role="group">
+                                                @foreach (var permission in resource.Permissions)
+                                                {
+                                                    <button type="button" class="@PermissionClass(permission)" role="checkbox"
+                                                            aria-checked="@selected.Contains(permission)" disabled="@Disabled"
+                                                            @onclick="@(() => TogglePermissionAsync(permission))" @key="permission">
+                                                        <span class="pt-leaf-line" aria-hidden="true"></span>
+                                                        <span class="pt-checkbox-box">
+                                                            @if (selected.Contains(permission))
+                                                            {
+                                                                <RadzenIcon Icon="check" />
+                                                            }
+                                                        </span>
+                                                        <span class="pt-permission-copy">
+                                                            <strong>@ActionLabel(permission)</strong>
+                                                            <small>@permission</small>
+                                                        </span>
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    }
+</section>

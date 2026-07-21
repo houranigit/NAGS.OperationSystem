@@ -110,9 +110,10 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
 /// Returns role options, optionally compatible with a given <paramref name="UserType"/>, so
 /// dialogs and filters avoid paging the first 100 roles client-side.
 /// </summary>
-public sealed record GetRoleOptionsQuery(UserType? UserType = null) : IQuery<IReadOnlyList<RoleOptionDto>>;
+public sealed record GetRoleOptionsQuery(UserType? UserType = null, bool AssignableOnly = false)
+    : IQuery<IReadOnlyList<RoleOptionDto>>;
 
-public sealed class GetRoleOptionsQueryHandler(IIdentityDbContext db)
+public sealed class GetRoleOptionsQueryHandler(IIdentityDbContext db, IUserContext userContext)
     : IQueryHandler<GetRoleOptionsQuery, IReadOnlyList<RoleOptionDto>>
 {
     public async Task<Result<IReadOnlyList<RoleOptionDto>>> Handle(GetRoleOptionsQuery request, CancellationToken cancellationToken)
@@ -122,11 +123,15 @@ public sealed class GetRoleOptionsQueryHandler(IIdentityDbContext db)
         if (request.UserType is { } userType)
             query = query.Where(r => r.CompatibleUserType == userType);
 
-        IReadOnlyList<RoleOptionDto> options = await query
+        var roles = await query
             .OrderBy(r => r.Name)
             .ThenBy(r => r.Id)
-            .Select(r => new RoleOptionDto(r.Id, r.Name, r.CompatibleUserType.ToString()))
             .ToListAsync(cancellationToken);
+
+        IReadOnlyList<RoleOptionDto> options = roles
+            .Where(role => !request.AssignableOnly || role.Permissions.All(userContext.HasPermission))
+            .Select(role => new RoleOptionDto(role.Id, role.Name, role.CompatibleUserType.ToString()))
+            .ToList();
 
         return Result.Success(options);
     }

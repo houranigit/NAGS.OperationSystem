@@ -11,8 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Audit\Audit.Application\Audit.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\Audit.Domain\Audit.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Identity\Identity.Application\Identity.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\MasterData\MasterData.Application\MasterData.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Operations\Operations.Application\Operations.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Operations\Operations.Domain\Operations.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>

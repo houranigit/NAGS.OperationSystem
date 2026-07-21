@@ -70,7 +70,8 @@
                         {
                             <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
                                 <RowAction Text="@UiStrings.Users.AssignRole" Icon="badge"
-                                           Permission="@IdentityPermissions.UsersAssignRole" OnClick="@OpenAssignRoleAsync" />
+                                           Permission="@IdentityPermissions.UsersAssignRole"
+                                           Visible="@Auth.HasPermission(IdentityPermissions.RolesView)" OnClick="@OpenAssignRoleAsync" />
                                 <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail"
                                            Permission="@IdentityPermissions.UsersInvite"
                                            Visible="@(u.Status == "Invited")" OnClick="@ResendInvitationAsync" />
@@ -444,7 +445,8 @@
     }
 
     private bool HasMoreActions(UserDetail u) =>
-        Auth.HasPermission(IdentityPermissions.UsersAssignRole)
+        (Auth.HasPermission(IdentityPermissions.UsersAssignRole)
+            && Auth.HasPermission(IdentityPermissions.RolesView))
         || (u.Status == "Invited" && Auth.HasPermission(IdentityPermissions.UsersInvite))
         || (u.IsLockedOut && Auth.HasPermission(IdentityPermissions.UsersUnlock))
         || (u.Status == "Suspended" && Auth.HasPermission(IdentityPermissions.UsersRestoreAccess))

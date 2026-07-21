@@ -29,9 +29,13 @@ internal static class RoleEndpoints
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Roles.View);
 
-        roles.MapGet("/options", async (ISender sender, CancellationToken ct, BuildingBlocks.Contracts.Authorization.UserType? userType = null) =>
+        roles.MapGet("/options", async (
+            ISender sender,
+            CancellationToken ct,
+            BuildingBlocks.Contracts.Authorization.UserType? userType = null,
+            bool assignableOnly = false) =>
         {
-            var result = await sender.Send(new GetRoleOptionsQuery(userType), ct);
+            var result = await sender.Send(new GetRoleOptionsQuery(userType, assignableOnly), ct);
             return result.ToOk();
         }).RequirePermission(IdentityPermissions.Roles.View);
 
@@ -48,7 +52,8 @@ internal static class RoleEndpoints
 
             var result = await sender.Send(new CreateRoleCommand(request.Name, request.Description, compatibleUserType, request.Permissions), ct);
             return result.ToCreated(id => $"/api/v1/identity/roles/{id}");
-        }).RequirePermission(IdentityPermissions.Roles.Create);
+        }).RequirePermission(IdentityPermissions.Roles.Create)
+            .RequirePermission(IdentityPermissions.Roles.ManagePermissions);
 
         roles.MapPut("/{id:guid}", async (Guid id, UpdateRoleRequest request, ISender sender, CancellationToken ct) =>
         {
@@ -61,6 +66,14 @@ internal static class RoleEndpoints
             var result = await sender.Send(new UpdateRolePermissionsCommand(id, request.Permissions), ct);
             return result.ToNoContent();
         }).RequirePermission(IdentityPermissions.Roles.ManagePermissions);
+
+        roles.MapPut("/{id:guid}/editor", async (Guid id, UpdateRoleAndPermissionsRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(
+                new UpdateRoleAndPermissionsCommand(id, request.Name, request.Description, request.Permissions), ct);
+            return result.ToNoContent();
+        }).RequirePermission(IdentityPermissions.Roles.Update)
+            .RequirePermission(IdentityPermissions.Roles.ManagePermissions);
 
         roles.MapDelete("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {

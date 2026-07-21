@@ -32,6 +32,7 @@ public sealed class OperationsPermissionCatalog : IPermissionCatalog
         new(OperationsPermissions.WorkOrders.View, AdminAndStation),
         new(OperationsPermissions.WorkOrders.ViewOthers, AdminAndStation),
         new(OperationsPermissions.WorkOrders.Author, AdminAndStation),
+        new(OperationsPermissions.WorkOrders.ManageOthers, AdminAndStation),
         new(OperationsPermissions.WorkOrders.Approve, AdminAndStation),
         new(OperationsPermissions.WorkOrders.DeleteOthers, AdminAndStation),
         new(OperationsPermissions.WorkOrders.Merge, AdminOnly),

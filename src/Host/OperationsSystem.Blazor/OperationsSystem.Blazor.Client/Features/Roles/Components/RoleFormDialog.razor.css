@@ -1,38 +1,182 @@
-/* ==========================================================================
-   Role form dialog — polished create/edit form. Token-driven, RTL-safe.
-   Mirrors the Staff Member form design language.
-   ========================================================================== */
-
 .rlf-form {
     display: flex;
     flex-direction: column;
     gap: var(--os-space-4);
+    width: min(840px, calc(100vw - 3rem));
+    max-width: 840px;
+    margin-inline: auto;
+    color: var(--os-color-text);
 }
 
-.rlf-intro {
-    margin: 0;
-    font-size: var(--os-text-sm);
+.rlf-wizard-body { min-height: 0; }
+
+.rlf-stepper {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: clamp(var(--os-space-3), 8vw, 6rem);
+    padding-block-end: .75rem;
+    border-block-end: 1px solid var(--os-color-border);
 }
 
-.rlf-section {
+.rlf-step-item { position: relative; display: flex; justify-content: center; min-width: 0; }
+.rlf-step-item:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset-block-start: 20px;
+    inset-inline-start: calc(50% + 25px);
+    width: calc(100% - 50px);
+    height: 2px;
+    background: var(--os-color-border);
+}
+.rlf-step-complete:not(:last-child)::after { background: var(--os-color-primary); }
+.rlf-step-button {
+    position: relative;
+    z-index: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     gap: var(--os-space-2);
-    margin-block: var(--os-space-1) 0;
-}
-
-.rlf-section h4 {
-    margin: 0;
-    font-size: var(--os-text-lg);
-    font-weight: 600;
-}
-
-.rlf-section .rz-icon {
-    color: var(--os-color-primary);
-    font-size: 1.2rem;
-}
-
-.rlf-form ::deep .rz-form-field-start .rz-icon {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: var(--os-color-text-muted);
-    font-size: 1.1rem;
+    font: inherit;
+    text-align: center;
+}
+.rlf-step-button:not(:disabled) { cursor: pointer; }
+.rlf-step-node {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 2px solid var(--os-color-border);
+    border-radius: 999px;
+    background: var(--os-color-surface);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+    box-shadow: 0 0 0 5px var(--os-color-surface);
+}
+.rlf-step-active .rlf-step-node,
+.rlf-step-complete .rlf-step-node { border-color: var(--os-color-primary); background: var(--os-color-primary); color: white; }
+.rlf-step-label { overflow-wrap: anywhere; font-size: var(--os-text-sm); font-weight: 800; }
+.rlf-step-active .rlf-step-label,
+.rlf-step-complete .rlf-step-label { color: var(--os-color-primary); }
+
+.rlf-step-content { display: flex; flex-direction: column; gap: var(--os-space-4); }
+.rlf-step-intro {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-3);
+    padding: var(--os-space-3) var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+.rlf-step-intro--permissions { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
+.rlf-intro-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 auto;
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+.rlf-intro-icon ::deep .rz-icon { font-size: 1.4rem; }
+.rlf-step-intro h3 { margin: 0; font-size: var(--os-text-lg); font-weight: 800; }
+.rlf-step-intro p { margin: .15rem 0 0; color: var(--os-color-text-muted); font-size: var(--os-text-sm); }
+.rlf-account-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    padding: .35rem .65rem;
+    border-radius: 999px;
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+    font-size: var(--os-text-xs);
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.rlf-field-block { position: relative; display: flex; flex-direction: column; gap: var(--os-space-1); min-width: 0; }
+.rlf-label { display: inline-flex; align-items: center; gap: var(--os-space-1); font-size: var(--os-text-sm); font-weight: 800; }
+.rlf-required { color: var(--os-color-danger); }
+.rlf-input-wrap { position: relative; }
+.rlf-form ::deep .rlf-control { width: 100%; }
+.rlf-input-wrap ::deep .rlf-field-icon {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 50%;
+    inset-inline-start: var(--os-space-4);
+    transform: translateY(-50%);
+    color: var(--os-color-text-muted);
+    font-size: 1.2rem;
+    pointer-events: none;
+}
+.rlf-input-wrap ::deep .rlf-field-icon--top { inset-block-start: 1rem; transform: none; }
+.rlf-form ::deep .rlf-control-icon input,
+.rlf-form ::deep input.rlf-control-icon,
+.rlf-form ::deep textarea.rlf-control-icon,
+.rlf-form ::deep .rlf-control-icon .rz-dropdown-label { padding-inline-start: 3.25rem; }
+.rlf-field-meta { align-self: flex-end; color: var(--os-color-text-subtle); font-size: var(--os-text-xs); }
+.rlf-field-help { color: var(--os-color-text-muted); font-size: var(--os-text-xs); }
+
+.rlf-callout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: var(--os-space-3);
+    padding: var(--os-space-3) var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-muted);
+}
+.rlf-callout > ::deep .rz-icon { margin-block-start: .1rem; font-size: 1.25rem; }
+.rlf-callout strong { display: block; color: var(--os-color-text); font-size: var(--os-text-sm); font-weight: 800; }
+.rlf-callout p { margin: .15rem 0 0; font-size: var(--os-text-xs); line-height: 1.5; }
+.rlf-callout--info { border-color: color-mix(in srgb, var(--os-color-info) 28%, var(--os-color-border)); background: var(--os-color-info-bg); color: var(--os-color-info); }
+.rlf-callout--warning { border-color: color-mix(in srgb, var(--os-color-warning) 28%, var(--os-color-border)); background: var(--os-color-warning-bg); color: var(--os-color-warning); }
+
+.rlf-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--os-space-3); padding-block-start: var(--os-space-1); }
+.rlf-actions-end { display: flex; align-items: center; gap: var(--os-space-2); margin-inline-start: auto; }
+
+.rlf-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--os-space-2);
+    min-height: 22rem;
+    color: var(--os-color-text-muted);
+    text-align: center;
+}
+.rlf-loading strong { color: var(--os-color-text); }
+.rlf-loading span { font-size: var(--os-text-sm); }
+.rlf-loading--error { min-height: 18rem; }
+.rlf-load-error-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-danger-bg);
+    color: var(--os-color-danger);
+}
+.rlf-load-error-icon ::deep .rz-icon { font-size: 1.5rem; }
+.rlf-load-error-actions { display: flex; align-items: center; gap: var(--os-space-2); margin-block-start: var(--os-space-2); }
+
+@media (max-width: 720px) {
+    .rlf-form { min-width: 0; }
+    .rlf-stepper { padding-inline: var(--os-space-2); }
+    .rlf-step-intro--permissions { grid-template-columns: auto minmax(0, 1fr); }
+    .rlf-account-badge { grid-column: 1 / -1; justify-self: start; }
+    .rlf-step-label { font-size: var(--os-text-xs); }
+    .rlf-actions { align-items: flex-end; }
+    .rlf-actions-end { flex-wrap: wrap; justify-content: flex-end; }
 }

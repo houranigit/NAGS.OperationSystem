@@ -20,6 +20,17 @@ internal static class PortalAccessAuthorization
             "Granting portal access requires administrator grant-access permission.",
             "MasterData.PortalAccess.Forbidden");
 
+    /// <summary>
+    /// Captures the authenticated Identity user that initiated a portal-role delegation. The
+    /// consumer uses this stable id to re-evaluate the initiator's live role and permission ceiling.
+    /// </summary>
+    public static Result<Guid> ResolveInitiatingUserId(IUserContext userContext) =>
+        userContext.IsAuthenticated && userContext.UserId is { } userId && userId != Guid.Empty
+            ? userId
+            : Error.Unauthorized(
+                "An authenticated Identity user is required to grant portal access.",
+                "MasterData.PortalAccess.InitiatorRequired");
+
     public static Error ReleaseEmailForbidden() =>
         Error.Forbidden(
             "Releasing a portal login email requires administrator grant-access permission.",

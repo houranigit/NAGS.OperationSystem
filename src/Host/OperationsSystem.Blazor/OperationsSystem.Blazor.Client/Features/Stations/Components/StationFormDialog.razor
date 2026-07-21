@@ -13,7 +13,7 @@
             {
                 @DetailsFields()
             }
-            else if (step == 1)
+            else if (CanCreateStaff && step == 1)
             {
                 @StaffStep()
             }
@@ -40,7 +40,7 @@
                 {
                     <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
                 }
-                @if (step < 2)
+                @if (step < ReviewStepIndex)
                 {
                     <RadzenButton Text="@UiStrings.Stations.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" Click="@NextAsync" />
                 }
@@ -81,6 +81,10 @@
     private bool isSubmitting;
     private string? errorMessage;
 
+    private bool CanCreateStaff => Auth.HasPermission(MasterDataPermissions.StaffMembersCreate);
+    private int ReviewStepIndex => CanCreateStaff ? 2 : 1;
+    private int StepCount => ReviewStepIndex + 1;
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -100,10 +104,12 @@
             }
             else
             {
-                canGrantPortal = Auth.CanGrantStaffPortalAccess;
-                var manpowerTypesTask = MasterData.GetManpowerTypeOptionsAsync();
+                canGrantPortal = CanCreateStaff && Auth.CanGrantStaffPortalAccess;
+                var manpowerTypesTask = CanCreateStaff
+                    ? MasterData.GetManpowerTypeOptionsAsync()
+                    : Task.FromResult<IReadOnlyList<ManpowerTypeOption>>([]);
                 var stationRolesTask = canGrantPortal
-                    ? Identity.GetRoleOptionsAsync("StationStaff")
+                    ? Identity.GetRoleOptionsAsync("StationStaff", assignableOnly: true)
                     : Task.FromResult<IReadOnlyList<RoleOption>>([]);
 
                 await Task.WhenAll(countriesTask, manpowerTypesTask, stationRolesTask);
@@ -127,7 +133,7 @@
     private string StepLabel(int index) => index switch
     {
         0 => UiStrings.Stations.StepDetails,
-        1 => UiStrings.Stations.StepStaff,
+        1 when CanCreateStaff => UiStrings.Stations.StepStaff,
         _ => UiStrings.Stations.StepReview
     };
 
@@ -161,8 +167,8 @@
     private string RoleName(Guid? id) =>
         id is { } roleId ? stationRoles.FirstOrDefault(r => r.Id == roleId)?.Name ?? UiStrings.Stations.PortalRole : UiStrings.Stations.PortalRole;
 
-    private RenderFragment WizardStepper() =>@<div class="stf-stepper">
-        @for (var i = 0; i < 3; i++)
+    private RenderFragment WizardStepper() =>@<div class="@($"stf-stepper stf-stepper-{StepCount}")">
+        @for (var i = 0; i < StepCount; i++)
         {
             var index = i;
             <div class="@StepClass(index)">
@@ -361,46 +367,55 @@
             </div>
         </div>
 
-        <div class="stf-review-card">
-            <div class="stf-review-card-head">
-                <h4>@UiStrings.Stations.StaffAssignments (@staff.Count)</h4>
-                <button type="button" class="stf-edit-step" @onclick="@(() => step = 1)">
-                    <RadzenIcon Icon="edit" />
-                    <span>@UiStrings.Common.Edit</span>
-                </button>
-            </div>
-
-            @if (staff.Count == 0)
-            {
-                <p class="stf-review-empty">@UiStrings.Stations.StaffMembersEmpty</p>
-            }
-            else
-            {
-                <div class="stf-review-staff">
-                    <div class="stf-review-staff-head">
-                        <span>@UiStrings.Stations.StaffName</span>
-                        <span>@UiStrings.StaffMembers.EmployeeId</span>
-                        <span>@UiStrings.Stations.StaffEmail</span>
-                        <span>@UiStrings.Stations.ManpowerType</span>
-                    </div>
-                    @foreach (var row in staff)
-                    {
-                        <div class="stf-review-staff-row" @key="row.Key">
-                            <strong>@row.FullName</strong>
-                            <span>@row.EmployeeId</span>
-                            <span>@row.Email</span>
-                            <span>
-                                @ManpowerTypeName(row.ManpowerTypeId)
-                                @if (row.GrantPortal)
-                                {
-                                    <span class="stf-portal-badge">@RoleName(row.PortalRoleId)</span>
-                                }
-                            </span>
-                        </div>
-                    }
+        @if (CanCreateStaff)
+        {
+            <div class="stf-review-card">
+                <div class="stf-review-card-head">
+                    <h4>@UiStrings.Stations.StaffAssignments (@staff.Count)</h4>
+                    <button type="button" class="stf-edit-step" @onclick="@(() => step = 1)">
+                        <RadzenIcon Icon="edit" />
+                        <span>@UiStrings.Common.Edit</span>
+                    </button>
                 </div>
-            }
-        </div>
+
+                @if (staff.Count == 0)
+                {
+                    <p class="stf-review-empty">@UiStrings.Stations.StaffMembersEmpty</p>
+                }
+                else
+                {
+                    <div class="stf-review-staff">
+                        <div class="stf-review-staff-head">
+                            <span>@UiStrings.Stations.StaffName</span>
+                            <span>@UiStrings.StaffMembers.EmployeeId</span>
+                            <span>@UiStrings.Stations.StaffEmail</span>
+                            <span>@UiStrings.Stations.ManpowerType</span>
+                        </div>
+                        @foreach (var row in staff)
+                        {
+                            <div class="stf-review-staff-row" @key="row.Key">
+                                <strong>@row.FullName</strong>
+                                <span>@row.EmployeeId</span>
+                                <span>@row.Email</span>
+                                <span>
+                                    @ManpowerTypeName(row.ManpowerTypeId)
+                                    @if (row.GrantPortal)
+                                    {
+                                        <span class="stf-portal-badge">@RoleName(row.PortalRoleId)</span>
+                                    }
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Staff setup is not included">
+                <p>This station will be created without staff. A user with permission to create staff members can add them from the station later.</p>
+            </DismissibleDialogMessage>
+        }
 
         <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock">
             @UiStrings.Stations.ReviewNote
@@ -425,12 +440,12 @@
             if (!ValidateDetails())
                 return;
         }
-        else if (step == 1)
+        else if (CanCreateStaff && step == 1)
         {
             if (!ValidateStaff())
                 return;
         }
-        step = Math.Min(2, step + 1);
+        step = Math.Min(ReviewStepIndex, step + 1);
         await Task.CompletedTask;
     }
 
@@ -464,7 +479,7 @@
     private async Task SubmitAsync()
     {
         errorMessage = null;
-        if (!ValidateDetails() || !ValidateStaff())
+        if (!ValidateDetails() || (CanCreateStaff && !ValidateStaff()))
             return;
 
         isSubmitting = true;
@@ -481,9 +496,11 @@
             }
             else
             {
-                var staffRequests = staff.Select(r => new NewStationStaffRequest(
-                    r.FullName.Trim(), r.EmployeeId.Trim(), r.Email.Trim(), r.ManpowerTypeId, null, null, null,
-                    r.GrantPortal ? r.PortalRoleId : null)).ToList();
+                IReadOnlyList<NewStationStaffRequest> staffRequests = CanCreateStaff
+                    ? staff.Select(r => new NewStationStaffRequest(
+                        r.FullName.Trim(), r.EmployeeId.Trim(), r.Email.Trim(), r.ManpowerTypeId, null, null, null,
+                        r.GrantPortal ? r.PortalRoleId : null)).ToList()
+                    : [];
                 await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId, staffRequests));
             }
 

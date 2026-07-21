@@ -7,7 +7,6 @@ namespace OperationsSystem.Blazor.Client.Auth;
 public static class IdentityPermissions
 {
     public const string UsersView = "identity.users.view";
-    public const string UsersCreate = "identity.users.create";
     public const string UsersUpdate = "identity.users.update";
     public const string UsersInvite = "identity.users.invite";
     public const string UsersDeactivate = "identity.users.deactivate";

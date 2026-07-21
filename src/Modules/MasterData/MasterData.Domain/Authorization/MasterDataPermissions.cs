@@ -116,6 +116,16 @@ public static class MasterDataPermissions
         public const string GrantAccess = "masterdata.staff-members.grant-access";
     }
 
+    /// <summary>
+    /// Cross-station workforce planning. These permissions are separate from ordinary staff record
+    /// maintenance so an administrator can review coverage without being allowed to move employees.
+    /// </summary>
+    public static class StaffAllocation
+    {
+        public const string View = "masterdata.staff-allocation.view";
+        public const string Reassign = "masterdata.staff-allocation.reassign";
+    }
+
     public static class Customers
     {
         public const string View = "masterdata.customers.view";
@@ -127,7 +137,6 @@ public static class MasterDataPermissions
 
     public static class CustomerContacts
     {
-        public const string View = "masterdata.customer-contacts.view";
         public const string Create = "masterdata.customer-contacts.create";
         public const string Update = "masterdata.customer-contacts.update";
         public const string Remove = "masterdata.customer-contacts.remove";

@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject GridPreferences GridPrefs
+@inject AuthSession Auth
 
 <PageTitle>@UiStrings.Users.Title</PageTitle>
 
@@ -12,7 +13,9 @@
         <PageHeader Title="@UiStrings.Users.Title" Description="@UiStrings.Users.Description">
             <Actions>
                 <AuthorizeView Context="invite">
-                    @if (invite.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersInvite))
+                    @if (invite.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersInvite)
+                         && invite.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersAssignRole)
+                         && invite.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesView))
                     {
                         <RadzenButton Text="@UiStrings.Users.Invite" Icon="person_add" ButtonStyle="ButtonStyle.Primary" Click="@OpenInviteAsync" />
                     }
@@ -76,6 +79,7 @@
                     <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@IdentityPermissions.UsersUpdate"
                                OnClick="@(() => OpenEditAsync(user))" />
                     <RowAction Text="@UiStrings.Users.AssignRole" Icon="badge" Permission="@IdentityPermissions.UsersAssignRole"
+                               Visible="@Auth.HasPermission(IdentityPermissions.RolesView)"
                                OnClick="@(() => OpenAssignRoleAsync(user))" />
                     <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail" Permission="@IdentityPermissions.UsersInvite"
                                Visible="@(user.Status == "Invited")" OnClick="@(() => ResendInvitationAsync(user))" />

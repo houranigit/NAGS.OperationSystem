@@ -36,7 +36,7 @@ internal static class StaffMemberEndpoints
         {
             var result = await sender.Send(new GetStaffAllocationOverviewQuery(), ct);
             return result.ToOk();
-        }).RequirePermission(MasterDataPermissions.StaffMembers.View);
+        }).RequirePermission(MasterDataPermissions.StaffAllocation.View);
 
         staff.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
@@ -76,7 +76,7 @@ internal static class StaffMemberEndpoints
             var result = await sender.Send(
                 new ReassignStaffMemberStationCommand(id, request.StationId, rowVersion), ct);
             return result.ToNoContent();
-        }).RequirePermission(MasterDataPermissions.StaffMembers.Update);
+        }).RequirePermission(MasterDataPermissions.StaffAllocation.Reassign);
 
         staff.MapPost("/{id:guid}/activate", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {

@@ -186,7 +186,7 @@ public sealed class UpdateWorkOrderCommandHandler(
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
         if (access.IsFailure)
             return access.Error;
-        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        var author = WorkOrderAuthorization.EnsureManageAccess(workOrder, user);
         if (author.IsFailure)
             return author.Error;
 
@@ -300,7 +300,7 @@ public sealed class DeleteWorkOrderCommandHandler(
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
         if (access.IsFailure)
             return access.Error;
-        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        var author = WorkOrderAuthorization.EnsureDeleteAccess(workOrder, user);
         if (author.IsFailure)
             return author.Error;
 
@@ -542,6 +542,13 @@ public sealed class MergeWorkOrdersCommandHandler(
         if (user.UserId is not { } ownerUserId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
+        if (request.ApproveImmediately && !user.HasPermission(OperationsPermissions.WorkOrders.Approve))
+        {
+            return Error.Forbidden(
+                "Approving a merged work order requires work-order approval permission.",
+                "Operations.WorkOrder.ApproveForbidden");
+        }
+
         if (request.SourceWorkOrderIds is not { Count: >= 2 })
             return Error.Validation("At least two source work orders are required.", "Operations.WorkOrder.MergeSourceCount");
         if (request.SourceWorkOrderIds.Distinct().Count() != request.SourceWorkOrderIds.Count)
@@ -706,13 +713,14 @@ internal static class WorkOrderLoader
 
 internal static class WorkOrderAuthorization
 {
-    public static Result EnsureAuthorAccess(WorkOrder workOrder, IUserContext user)
-    {
-        if (user.UserId is { } userId && workOrder.OwnerUserId == userId)
-            return Result.Success();
+    public static Result EnsureManageAccess(WorkOrder workOrder, IUserContext user) =>
+        EnsureOwnerOrPermission(workOrder, user, OperationsPermissions.WorkOrders.ManageOthers);
 
-        return user.HasPermission(OperationsPermissions.WorkOrders.DeleteOthers)
+    public static Result EnsureDeleteAccess(WorkOrder workOrder, IUserContext user) =>
+        EnsureOwnerOrPermission(workOrder, user, OperationsPermissions.WorkOrders.DeleteOthers);
+
+    private static Result EnsureOwnerOrPermission(WorkOrder workOrder, IUserContext user, string permission) =>
+        (user.UserId is { } userId && workOrder.OwnerUserId == userId) || user.HasPermission(permission)
             ? Result.Success()
             : Error.Forbidden("You can only modify your own work orders.", "Operations.WorkOrder.NotOwner");
-    }
 }

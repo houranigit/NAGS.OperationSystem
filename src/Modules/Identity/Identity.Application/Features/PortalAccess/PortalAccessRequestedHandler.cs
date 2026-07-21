@@ -35,7 +35,9 @@ public sealed class PortalAccessRequestedHandler(
             return;
 
         // Idempotency: a live account already exists for this MasterData record. Re-announce the link
-        // in case the original reply was lost, then stop. Never create a second user for one record.
+        // in case the original reply was lost, then stop. This path intentionally precedes delegation
+        // validation: a delayed/retried acknowledgement must remain harmless if the original actor was
+        // deactivated or had permissions reduced after the account was already provisioned.
         var existing = await db.Users.FirstOrDefaultAsync(
             u => u.UserType == integrationEvent.UserType &&
                 u.ExternalReferenceId == integrationEvent.ExternalReferenceId &&
@@ -56,20 +58,36 @@ public sealed class PortalAccessRequestedHandler(
             return;
         }
 
-        var emailResult = Email.Create(integrationEvent.Email);
-        if (emailResult.IsFailure)
+        // MasterData records the authenticated Identity actor rather than a caller-supplied value.
+        // Re-resolve both the user and role here so delayed outbox delivery observes the actor's
+        // current status and permissions, not the permissions held when the request was accepted.
+        if (integrationEvent.InitiatedByUserId == Guid.Empty)
         {
-            await GiveUpAsync(integrationEvent, $"invalid email '{integrationEvent.Email}'", cancellationToken);
+            await GiveUpAsync(integrationEvent, "the initiating user id is missing", cancellationToken);
             return;
         }
 
-        var email = emailResult.Value;
-        var emailValue = email.Value;
-
-        var emailTaken = await db.Users.AnyAsync(u => u.Email.Value == emailValue && !u.LoginEmailReleased, cancellationToken);
-        if (emailTaken)
+        var initiatingUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(
+            user => user.Id == integrationEvent.InitiatedByUserId,
+            cancellationToken);
+        if (initiatingUser is null || initiatingUser.Status != UserStatus.Active)
         {
-            await GiveUpAsync(integrationEvent, $"the login email '{emailValue}' is already in use", cancellationToken);
+            await GiveUpAsync(
+                integrationEvent,
+                $"initiating user '{integrationEvent.InitiatedByUserId}' does not exist or is not active",
+                cancellationToken);
+            return;
+        }
+
+        var initiatingRole = await db.Roles.AsNoTracking().FirstOrDefaultAsync(
+            role => role.Id == initiatingUser.RoleId,
+            cancellationToken);
+        if (initiatingRole is null)
+        {
+            await GiveUpAsync(
+                integrationEvent,
+                $"initiating user '{integrationEvent.InitiatedByUserId}' has no current role",
+                cancellationToken);
             return;
         }
 
@@ -84,6 +102,33 @@ public sealed class PortalAccessRequestedHandler(
         {
             await GiveUpAsync(integrationEvent,
                 $"role '{integrationEvent.RoleId}' is not compatible with user type '{integrationEvent.UserType}'", cancellationToken);
+            return;
+        }
+
+        var initiatingPermissions = initiatingRole.Permissions.ToHashSet(StringComparer.Ordinal);
+        if (role.Permissions.Any(permission => !initiatingPermissions.Contains(permission)))
+        {
+            await GiveUpAsync(
+                integrationEvent,
+                $"role '{integrationEvent.RoleId}' grants permissions outside initiating user '{integrationEvent.InitiatedByUserId}'s current permission ceiling",
+                cancellationToken);
+            return;
+        }
+
+        var emailResult = Email.Create(integrationEvent.Email);
+        if (emailResult.IsFailure)
+        {
+            await GiveUpAsync(integrationEvent, $"invalid email '{integrationEvent.Email}'", cancellationToken);
+            return;
+        }
+
+        var email = emailResult.Value;
+        var emailValue = email.Value;
+
+        var emailTaken = await db.Users.AnyAsync(u => u.Email.Value == emailValue && !u.LoginEmailReleased, cancellationToken);
+        if (emailTaken)
+        {
+            await GiveUpAsync(integrationEvent, $"the login email '{emailValue}' is already in use", cancellationToken);
             return;
         }
 

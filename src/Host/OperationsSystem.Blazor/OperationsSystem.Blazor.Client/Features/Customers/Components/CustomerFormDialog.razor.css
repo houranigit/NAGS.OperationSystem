@@ -1,6 +1,7 @@
 .cuf-form { display: flex; flex-direction: column; gap: var(--os-space-4); width: min(688px, calc(100vw - 3rem)); max-width: 688px; margin-inline: auto; color: var(--os-color-text); }
 .cuf-wizard-body { min-height: 0; }
 .cuf-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-inline: var(--os-space-3); padding-block-end: .75rem; border-block-end: 1px solid #80808036; }
+.cuf-stepper-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .cuf-step-item { position: relative; display: flex; justify-content: center; min-width: 0; }
 .cuf-step-item:not(:last-child)::after { content: ""; position: absolute; z-index: 0; inset-block-start: 16px; inset-inline-start: calc(50% + 25px); width: calc(100% - 50px); height: 2px; background: var(--os-color-border); }
 .cuf-step-complete:not(:last-child)::after { background: var(--os-color-primary); }

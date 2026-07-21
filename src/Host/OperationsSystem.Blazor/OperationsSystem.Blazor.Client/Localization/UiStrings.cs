@@ -46,6 +46,7 @@ public static class UiStrings
         public static string HoursAgo => UiText.Get("Common.HoursAgo", "{0}h ago");
         public static string DaysAgo => UiText.Get("Common.DaysAgo", "{0}d ago");
         public static string None => UiText.Get("Common.None", "-");
+        public static string Clear => UiText.Get("Common.Clear", "Clear");
     }
 
     public static class Flights
@@ -408,6 +409,67 @@ public static class UiStrings
         public static string Created => UiText.Get("Roles.Created", "Role created.");
         public static string Updated => UiText.Get("Roles.Updated", "Role updated.");
         public static string Deleted => UiText.Get("Roles.Deleted", "Role deleted.");
+        public static string EditPermissions => UiText.Get("Roles.EditPermissions", "Edit permissions");
+        public static string StepDetails => UiText.Get("Roles.StepDetails", "Role details");
+        public static string StepPermissions => UiText.Get("Roles.StepPermissions", "Permissions");
+        public static string RoleEditorSteps => UiText.Get("Roles.RoleEditorSteps", "Role editor steps");
+        public static string RoleDetails => UiText.Get("Roles.RoleDetails", "Role details");
+        public static string Previous => UiText.Get("Roles.Previous", "Back");
+        public static string Next => UiText.Get("Roles.Next", "Next");
+        public static string SaveChanges => UiText.Get("Roles.SaveChanges", "Save changes");
+        public static string LoadingRoleEditor => UiText.Get("Roles.LoadingRoleEditor", "Loading role editor");
+        public static string LoadingRoleEditorHint => UiText.Get("Roles.LoadingRoleEditorHint", "Preparing the role profile and compatible permission catalog.");
+        public static string LoadingPermissions => UiText.Get("Roles.LoadingPermissions", "Loading permissions...");
+        public static string PermissionsLoadFailed => UiText.Get("Roles.PermissionsLoadFailed", "The permission catalog could not be loaded.");
+        public static string NameRequired => UiText.Get("Roles.NameRequired", "Enter a role name to continue.");
+        public static string NameTooLong => UiText.Get("Roles.NameTooLong", "Role name must be 100 characters or fewer.");
+        public static string DescriptionTooLong => UiText.Get("Roles.DescriptionTooLong", "Description must be 500 characters or fewer.");
+        public static string AccountTypeHint => UiText.Get("Roles.AccountTypeHint", "The account type controls which permissions are compatible with this role.");
+        public static string DetailsReadOnly => UiText.Get("Roles.DetailsReadOnly", "Role details are read-only");
+        public static string DetailsReadOnlyHint => UiText.Get("Roles.DetailsReadOnlyHint", "Your account can manage this role's permissions but cannot rename or describe it.");
+        public static string ConfigurePermissions => UiText.Get("Roles.ConfigurePermissions", "Configure access");
+        public static string ConfigurePermissionsHint => UiText.Get("Roles.ConfigurePermissionsHint", "Choose the features and actions available to {0} accounts.");
+        public static string OwnRolePermissionsLocked => UiText.Get("Roles.OwnRolePermissionsLocked", "Your own role is protected");
+        public static string OwnRolePermissionsLockedHint => UiText.Get("Roles.OwnRolePermissionsLockedHint", "To prevent accidental lockout, another administrator must change this role's permissions.");
+        public static string PermissionsReadOnly => UiText.Get("Roles.PermissionsReadOnly", "Permissions are read-only");
+        public static string PermissionsReadOnlyHint => UiText.Get("Roles.PermissionsReadOnlyHint", "The manage permissions capability is required to change this access grant.");
+        public static string PermissionChangeSecurityTitle => UiText.Get("Roles.PermissionChangeSecurityTitle", "Active access is refreshed securely");
+        public static string PermissionChangeSecurityHint => UiText.Get("Roles.PermissionChangeSecurityHint", "Saving permission changes signs out active users assigned to this role so the new access takes effect immediately.");
+        public static string DependentPermission => UiText.Get("Roles.DependentPermission", "Recommended supporting permission");
+        public static string RoleOptionsHint => UiText.Get("Roles.RoleOptionsHint", "Role assignment and portal-access pickers also need View under Identity & access > Roles. Add it so administrators can load eligible roles.");
+        public static string PermissionAccess => UiText.Get("Roles.PermissionAccess", "Permission access");
+        public static string PermissionSelectionSummary => UiText.Get("Roles.PermissionSelectionSummary", "{0} of {1} permissions selected");
+        public static string SearchPermissions => UiText.Get("Roles.SearchPermissions", "Search permissions or actions");
+        public static string ExpandAll => UiText.Get("Roles.ExpandAll", "Expand all");
+        public static string CollapseAll => UiText.Get("Roles.CollapseAll", "Collapse all");
+        public static string SelectAll => UiText.Get("Roles.SelectAll", "Select all");
+        public static string ClearAll => UiText.Get("Roles.ClearAll", "Clear all");
+        public static string NoCompatiblePermissions => UiText.Get("Roles.NoCompatiblePermissions", "No compatible permissions");
+        public static string NoCompatiblePermissionsHint => UiText.Get("Roles.NoCompatiblePermissionsHint", "There are no permissions available for this account type.");
+        public static string NoPermissionResults => UiText.Get("Roles.NoPermissionResults", "No permissions found");
+        public static string NoPermissionResultsHint => UiText.Get("Roles.NoPermissionResultsHint", "Try a different feature, resource, or action name.");
+        public static string ResourceCount => UiText.Get("Roles.ResourceCount", "{0} feature groups");
+        public static string SelectGroup => UiText.Get("Roles.SelectGroup", "Select all permissions in {0}");
+        public static string ClearGroup => UiText.Get("Roles.ClearGroup", "Clear all permissions in {0}");
+        public static string ModuleIdentity => UiText.Get("Roles.ModuleIdentity", "Identity & access");
+        public static string ModuleOperations => UiText.Get("Roles.ModuleOperations", "Operations");
+        public static string ModuleMasterData => UiText.Get("Roles.ModuleMasterData", "Master data");
+        public static string ModuleAudit => UiText.Get("Roles.ModuleAudit", "Audit & compliance");
+        public static string ModuleNotifications => UiText.Get("Roles.ModuleNotifications", "Notifications");
+        public static string ActionResetMfa => UiText.Get("Roles.ActionResetMfa", "Reset MFA");
+        public static string ActionViewOptions => UiText.Get("Roles.ActionViewOptions", "View form options");
+        public static string ActionViewStation => UiText.Get("Roles.ActionViewStation", "View station flights");
+        public static string ActionViewOthers => UiText.Get("Roles.ActionViewOthers", "View others' records");
+        public static string ActionManageOthers => UiText.Get("Roles.ActionManageOthers", "Manage others' records");
+        public static string ActionDeleteOthers => UiText.Get("Roles.ActionDeleteOthers", "Delete others' records");
+        public static string ActionAssignRole => UiText.Get("Roles.ActionAssignRole", "Assign roles");
+        public static string ActionManagePermissions => UiText.Get("Roles.ActionManagePermissions", "Manage permissions");
+        public static string ActionGrantAccess => UiText.Get("Roles.ActionGrantAccess", "Grant portal access");
+        public static string ActionRestoreAccess => UiText.Get("Roles.ActionRestoreAccess", "Restore access");
+        public static string ResourceLabel(string resource, string fallback) =>
+            UiText.Get($"Roles.Resource.{resource}", fallback);
+        public static string ActionLabel(string action, string fallback) =>
+            UiText.Get($"Roles.Action.{action}", fallback);
     }
 
     public static class Sessions

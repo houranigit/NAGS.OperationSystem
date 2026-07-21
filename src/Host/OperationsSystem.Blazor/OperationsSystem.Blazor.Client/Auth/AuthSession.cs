@@ -35,10 +35,14 @@ public sealed class AuthSession
     public bool IsSystemAdministrator => User?.UserType == UserTypes.SystemAdministrator;
 
     public bool CanGrantStaffPortalAccess =>
-        IsSystemAdministrator && HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
+        IsSystemAdministrator
+        && HasPermission(IdentityPermissions.RolesView)
+        && HasPermission(MasterDataPermissions.StaffMembersGrantAccess);
 
     public bool CanGrantCustomerContactPortalAccess =>
-        IsSystemAdministrator && HasPermission(MasterDataPermissions.CustomerContactsGrantAccess);
+        IsSystemAdministrator
+        && HasPermission(IdentityPermissions.RolesView)
+        && HasPermission(MasterDataPermissions.CustomerContactsGrantAccess);
 
     private void OnRefreshFailed()
     {

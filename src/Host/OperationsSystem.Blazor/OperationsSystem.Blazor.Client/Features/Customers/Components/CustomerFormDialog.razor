@@ -1,12 +1,19 @@
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
+@inject AuthSession Auth
 
 <div class="cuf-form">
     @if (IsCreate)
     {
         @WizardStepper()
         <div class="cuf-wizard-body">
-            @(step switch { 0 => DetailsSection(), 1 => AddressSection(), 2 => ContactsSection(), _ => ReviewSection() })
+            @(step switch
+            {
+                0 => DetailsSection(),
+                1 => AddressSection(),
+                2 when CanCreateContacts => ContactsSection(),
+                _ => ReviewSection()
+            })
         </div>
 
         @ErrorBanner()
@@ -25,7 +32,7 @@
                 {
                     <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
                 }
-                @if (step < 3)
+                @if (step < ReviewStepIndex)
                 {
                     <RadzenButton Text="@UiStrings.Customers.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" Click="@NextAsync" />
                 }
@@ -67,9 +74,13 @@
     private Guid? savedCustomerId;
 
     private bool IsCreate => CustomerId is null;
+    private bool CanCreateContacts => Auth.HasPermission(MasterDataPermissions.CustomerContactsCreate);
+    private bool CanManageLogo => Auth.HasPermission(MasterDataPermissions.CustomersUpdate);
+    private int ReviewStepIndex => CanCreateContacts ? 3 : 2;
+    private int StepCount => ReviewStepIndex + 1;
 
-    private RenderFragment WizardStepper() =>@<div class="cuf-stepper">
-        @for (var i = 0; i < 4; i++)
+    private RenderFragment WizardStepper() =>@<div class="@($"cuf-stepper cuf-stepper-{StepCount}")">
+        @for (var i = 0; i < StepCount; i++)
         {
             var index = i;
             <div class="@StepClass(index)">
@@ -88,7 +99,7 @@
     {
         0 => UiStrings.Customers.StepDetails,
         1 => UiStrings.Customers.StepAddress,
-        2 => UiStrings.Customers.StepContacts,
+        2 when CanCreateContacts => UiStrings.Customers.StepContacts,
         _ => UiStrings.Customers.StepReview
     };
 
@@ -98,21 +109,30 @@
 
     private RenderFragment DetailsSection() =>@<section class="cuf-step-content">
         <div class="cuf-section-line"><RadzenIcon Icon="business" /><span>@UiStrings.Common.Details</span></div>
-        <div class="cuf-logo-editor">
-            <div class="cuf-logo-preview">
-                @if (!string.IsNullOrWhiteSpace(logoPreviewUrl)) { <img src="@logoPreviewUrl" alt="Customer logo preview" /> }
-                else { <RadzenIcon Icon="image" /> }
-            </div>
-            <div class="cuf-logo-copy">
-                <strong>Customer logo</strong>
-                <p>PNG, JPEG, WEBP or GIF. Maximum file size 2 MB.</p>
-                <div class="cuf-logo-actions">
-                    <label class="cuf-logo-button"><RadzenIcon Icon="upload" /><span>@(logoContent is null && existingLogoPreviewUrl is null ? "Choose logo" : "Replace logo")</span><InputFile OnChange="@SelectLogoAsync" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
-                    @if (logoContent is not null) { <button type="button" class="cuf-logo-remove" @onclick="ClearSelectedLogo"><RadzenIcon Icon="close" /><span>Clear selection</span></button> }
+        @if (CanManageLogo)
+        {
+            <div class="cuf-logo-editor">
+                <div class="cuf-logo-preview">
+                    @if (!string.IsNullOrWhiteSpace(logoPreviewUrl)) { <img src="@logoPreviewUrl" alt="Customer logo preview" /> }
+                    else { <RadzenIcon Icon="image" /> }
                 </div>
-                @if (!string.IsNullOrWhiteSpace(logoFileName)) { <span class="cuf-logo-file"><RadzenIcon Icon="check_circle" />@logoFileName (@FormatFileSize(logoContent?.LongLength ?? 0))</span> }
+                <div class="cuf-logo-copy">
+                    <strong>Customer logo</strong>
+                    <p>PNG, JPEG, WEBP or GIF. Maximum file size 2 MB.</p>
+                    <div class="cuf-logo-actions">
+                        <label class="cuf-logo-button"><RadzenIcon Icon="upload" /><span>@(logoContent is null && existingLogoPreviewUrl is null ? "Choose logo" : "Replace logo")</span><InputFile OnChange="@SelectLogoAsync" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
+                        @if (logoContent is not null) { <button type="button" class="cuf-logo-remove" @onclick="ClearSelectedLogo"><RadzenIcon Icon="close" /><span>Clear selection</span></button> }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(logoFileName)) { <span class="cuf-logo-file"><RadzenIcon Icon="check_circle" />@logoFileName (@FormatFileSize(logoContent?.LongLength ?? 0))</span> }
+                </div>
             </div>
-        </div>
+        }
+        else if (IsCreate)
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Logo setup is not included">
+                <p>This customer will be created without a logo. A user with permission to update customers can add one later.</p>
+            </DismissibleDialogMessage>
+        }
         <div class="cuf-grid-2">
             <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IataCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IataCode" class="cuf-control cuf-control-icon" MaxLength="2" Placeholder="e.g. SV" /></div></div>
             <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IcaoCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IcaoCode" class="cuf-control cuf-control-icon" MaxLength="3" Placeholder="e.g. SVA" /></div></div>
@@ -177,6 +197,12 @@
         <div class="cuf-review-card"><div class="cuf-review-head"><h4>@UiStrings.Customers.Address</h4><button type="button" @onclick="@(() => step = 1)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
             <dl class="cuf-review-grid"><div><dt>@UiStrings.Customers.AddressLine1</dt><dd>@Display(model.AddressLine1)</dd></div><div><dt>@UiStrings.Customers.City</dt><dd>@Display(model.AddressCity)</dd></div><div><dt>@UiStrings.Customers.Region</dt><dd>@Display(model.AddressRegion)</dd></div><div><dt>@UiStrings.Customers.PostalCode</dt><dd>@Display(model.AddressPostalCode)</dd></div></dl>
         </div>
+        @if (!CanCreateContacts)
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Contacts are not included">
+                <p>This customer will be created without contacts. A user with permission to create customer contacts can add them later.</p>
+            </DismissibleDialogMessage>
+        }
         <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock">
             @UiStrings.Customers.StepReview
         </DismissibleDialogMessage>
@@ -253,6 +279,9 @@
 
     private async Task SelectLogoAsync(InputFileChangeEventArgs args)
     {
+        if (!CanManageLogo)
+            return;
+
         errorMessage = null;
         var file = args.File;
         if (file.ContentType is not ("image/png" or "image/jpeg" or "image/webp" or "image/gif"))
@@ -298,9 +327,9 @@
             return;
         if (step == 1 && !ValidateAddress())
             return;
-        if (step == 2 && !ValidateContacts())
+        if (CanCreateContacts && step == 2 && !ValidateContacts())
             return;
-        step = Math.Min(3, step + 1);
+        step = Math.Min(ReviewStepIndex, step + 1);
     }
 
     private bool ValidateDetails()
@@ -331,7 +360,7 @@
         errorMessage = null;
         if (!ValidateDetails()) { step = 0; return; }
         if (!ValidateAddress()) { step = 1; return; }
-        if (!ValidateContacts()) { step = 2; return; }
+        if (CanCreateContacts && !ValidateContacts()) { step = 2; return; }
 
         isSubmitting = true;
         try
@@ -364,16 +393,18 @@
                 }
                 else
                 {
-                    var contactRequests = activeContacts
-                        .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone), null))
-                        .ToList();
+                    IReadOnlyList<CustomerContactRequest> contactRequests = CanCreateContacts
+                        ? activeContacts
+                            .Select(c => new CustomerContactRequest(c.Id, c.Name!.Trim(), Trim(c.JobTitle), c.Email!.Trim(), Trim(c.Phone), null))
+                            .ToList()
+                        : [];
                     targetId = await MasterData.CreateCustomerAsync(
                         new CreateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests));
                     savedCustomerId = targetId;
                 }
             }
 
-            if (logoContent is not null && logoFileName is not null && logoContentType is not null)
+            if (CanManageLogo && logoContent is not null && logoFileName is not null && logoContentType is not null)
             {
                 var refreshed = await MasterData.GetCustomerAsync(targetId);
                 rowVersion = refreshed.RowVersion;

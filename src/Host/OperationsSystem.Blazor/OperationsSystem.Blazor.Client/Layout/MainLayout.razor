@@ -83,8 +83,7 @@
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
                     var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
                     var canStaffAllocation = Auth.IsSystemAdministrator
-                        && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersView)
-                        && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersUpdate);
+                        && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffAllocationView);
                     var canOperations = canOpsFlights || canOpsWorkOrders || canStaffAllocation;
                     var operationsActive = IsNavGroupActive("operations");
                 }

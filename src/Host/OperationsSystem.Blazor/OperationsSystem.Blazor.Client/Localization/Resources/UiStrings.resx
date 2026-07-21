@@ -39,6 +39,7 @@
   <data name="Common.MinutesAgo" xml:space="preserve"><value>{0}m ago</value></data>
   <data name="Common.HoursAgo" xml:space="preserve"><value>{0}h ago</value></data>
   <data name="Common.DaysAgo" xml:space="preserve"><value>{0}d ago</value></data>
+  <data name="Common.Clear" xml:space="preserve"><value>Clear</value></data>
   <data name="Flights.Export" xml:space="preserve"><value>Export</value></data>
   <data name="Flights.Exporting" xml:space="preserve"><value>Exporting...</value></data>
   <data name="Flights.ExcelWorkbook" xml:space="preserve"><value>Excel workbook (.xlsx)</value></data>
@@ -346,6 +347,104 @@
   <data name="Roles.Created" xml:space="preserve"><value>Role created.</value></data>
   <data name="Roles.Updated" xml:space="preserve"><value>Role updated.</value></data>
   <data name="Roles.Deleted" xml:space="preserve"><value>Role deleted.</value></data>
+  <data name="Roles.EditPermissions" xml:space="preserve"><value>Edit permissions</value></data>
+  <data name="Roles.StepDetails" xml:space="preserve"><value>Role details</value></data>
+  <data name="Roles.StepPermissions" xml:space="preserve"><value>Permissions</value></data>
+  <data name="Roles.RoleEditorSteps" xml:space="preserve"><value>Role editor steps</value></data>
+  <data name="Roles.RoleDetails" xml:space="preserve"><value>Role details</value></data>
+  <data name="Roles.Previous" xml:space="preserve"><value>Back</value></data>
+  <data name="Roles.Next" xml:space="preserve"><value>Next</value></data>
+  <data name="Roles.SaveChanges" xml:space="preserve"><value>Save changes</value></data>
+  <data name="Roles.LoadingRoleEditor" xml:space="preserve"><value>Loading role editor</value></data>
+  <data name="Roles.LoadingRoleEditorHint" xml:space="preserve"><value>Preparing the role profile and compatible permission catalog.</value></data>
+  <data name="Roles.LoadingPermissions" xml:space="preserve"><value>Loading permissions...</value></data>
+  <data name="Roles.PermissionsLoadFailed" xml:space="preserve"><value>The permission catalog could not be loaded.</value></data>
+  <data name="Roles.NameRequired" xml:space="preserve"><value>Enter a role name to continue.</value></data>
+  <data name="Roles.NameTooLong" xml:space="preserve"><value>Role name must be 100 characters or fewer.</value></data>
+  <data name="Roles.DescriptionTooLong" xml:space="preserve"><value>Description must be 500 characters or fewer.</value></data>
+  <data name="Roles.AccountTypeHint" xml:space="preserve"><value>The account type controls which permissions are compatible with this role.</value></data>
+  <data name="Roles.DetailsReadOnly" xml:space="preserve"><value>Role details are read-only</value></data>
+  <data name="Roles.DetailsReadOnlyHint" xml:space="preserve"><value>Your account can manage this role's permissions but cannot rename or describe it.</value></data>
+  <data name="Roles.ConfigurePermissions" xml:space="preserve"><value>Configure access</value></data>
+  <data name="Roles.ConfigurePermissionsHint" xml:space="preserve"><value>Choose the features and actions available to {0} accounts.</value></data>
+  <data name="Roles.OwnRolePermissionsLocked" xml:space="preserve"><value>Your own role is protected</value></data>
+  <data name="Roles.OwnRolePermissionsLockedHint" xml:space="preserve"><value>To prevent accidental lockout, another administrator must change this role's permissions.</value></data>
+  <data name="Roles.PermissionsReadOnly" xml:space="preserve"><value>Permissions are read-only</value></data>
+  <data name="Roles.PermissionsReadOnlyHint" xml:space="preserve"><value>The manage permissions capability is required to change this access grant.</value></data>
+  <data name="Roles.PermissionChangeSecurityTitle" xml:space="preserve"><value>Active access is refreshed securely</value></data>
+  <data name="Roles.PermissionChangeSecurityHint" xml:space="preserve"><value>Saving permission changes signs out active users assigned to this role so the new access takes effect immediately.</value></data>
+  <data name="Roles.DependentPermission" xml:space="preserve"><value>Recommended supporting permission</value></data>
+  <data name="Roles.RoleOptionsHint" xml:space="preserve"><value>Role assignment and portal-access pickers also need View under Identity &amp; access &gt; Roles. Add it so administrators can load eligible roles.</value></data>
+  <data name="Roles.PermissionAccess" xml:space="preserve"><value>Permission access</value></data>
+  <data name="Roles.PermissionSelectionSummary" xml:space="preserve"><value>{0} of {1} permissions selected</value></data>
+  <data name="Roles.SearchPermissions" xml:space="preserve"><value>Search permissions or actions</value></data>
+  <data name="Roles.ExpandAll" xml:space="preserve"><value>Expand all</value></data>
+  <data name="Roles.CollapseAll" xml:space="preserve"><value>Collapse all</value></data>
+  <data name="Roles.SelectAll" xml:space="preserve"><value>Select all</value></data>
+  <data name="Roles.ClearAll" xml:space="preserve"><value>Clear all</value></data>
+  <data name="Roles.NoCompatiblePermissions" xml:space="preserve"><value>No compatible permissions</value></data>
+  <data name="Roles.NoCompatiblePermissionsHint" xml:space="preserve"><value>There are no permissions available for this account type.</value></data>
+  <data name="Roles.NoPermissionResults" xml:space="preserve"><value>No permissions found</value></data>
+  <data name="Roles.NoPermissionResultsHint" xml:space="preserve"><value>Try a different feature, resource, or action name.</value></data>
+  <data name="Roles.ResourceCount" xml:space="preserve"><value>{0} feature groups</value></data>
+  <data name="Roles.SelectGroup" xml:space="preserve"><value>Select all permissions in {0}</value></data>
+  <data name="Roles.ClearGroup" xml:space="preserve"><value>Clear all permissions in {0}</value></data>
+  <data name="Roles.ModuleIdentity" xml:space="preserve"><value>Identity &amp; access</value></data>
+  <data name="Roles.ModuleOperations" xml:space="preserve"><value>Operations</value></data>
+  <data name="Roles.ModuleMasterData" xml:space="preserve"><value>Master data</value></data>
+  <data name="Roles.ModuleAudit" xml:space="preserve"><value>Audit &amp; compliance</value></data>
+  <data name="Roles.ModuleNotifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="Roles.ActionResetMfa" xml:space="preserve"><value>Reset MFA</value></data>
+  <data name="Roles.ActionViewOptions" xml:space="preserve"><value>View form options</value></data>
+  <data name="Roles.ActionViewStation" xml:space="preserve"><value>View station flights</value></data>
+  <data name="Roles.ActionViewOthers" xml:space="preserve"><value>View others' records</value></data>
+  <data name="Roles.ActionManageOthers" xml:space="preserve"><value>Manage others' records</value></data>
+  <data name="Roles.ActionDeleteOthers" xml:space="preserve"><value>Delete others' records</value></data>
+  <data name="Roles.ActionAssignRole" xml:space="preserve"><value>Assign roles</value></data>
+  <data name="Roles.ActionManagePermissions" xml:space="preserve"><value>Manage permissions</value></data>
+  <data name="Roles.ActionGrantAccess" xml:space="preserve"><value>Grant portal access</value></data>
+  <data name="Roles.ActionRestoreAccess" xml:space="preserve"><value>Restore access</value></data>
+  <data name="Roles.Resource.users" xml:space="preserve"><value>Users</value></data>
+  <data name="Roles.Resource.roles" xml:space="preserve"><value>Roles</value></data>
+  <data name="Roles.Resource.sessions" xml:space="preserve"><value>Sessions</value></data>
+  <data name="Roles.Resource.dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Roles.Resource.flights" xml:space="preserve"><value>Flights</value></data>
+  <data name="Roles.Resource.work-orders" xml:space="preserve"><value>Work orders</value></data>
+  <data name="Roles.Resource.staff-allocation" xml:space="preserve"><value>Staff allocation</value></data>
+  <data name="Roles.Resource.staff-members" xml:space="preserve"><value>Staff members</value></data>
+  <data name="Roles.Resource.stations" xml:space="preserve"><value>Stations</value></data>
+  <data name="Roles.Resource.countries" xml:space="preserve"><value>Countries</value></data>
+  <data name="Roles.Resource.customers" xml:space="preserve"><value>Customers</value></data>
+  <data name="Roles.Resource.customer-contacts" xml:space="preserve"><value>Customer contacts</value></data>
+  <data name="Roles.Resource.aircraft-types" xml:space="preserve"><value>Aircraft types</value></data>
+  <data name="Roles.Resource.manpower-types" xml:space="preserve"><value>Manpower types</value></data>
+  <data name="Roles.Resource.licenses" xml:space="preserve"><value>Licenses</value></data>
+  <data name="Roles.Resource.services" xml:space="preserve"><value>Services</value></data>
+  <data name="Roles.Resource.operation-types" xml:space="preserve"><value>Operation types</value></data>
+  <data name="Roles.Resource.tools" xml:space="preserve"><value>Tools</value></data>
+  <data name="Roles.Resource.materials" xml:space="preserve"><value>Materials</value></data>
+  <data name="Roles.Resource.general-supports" xml:space="preserve"><value>General supports</value></data>
+  <data name="Roles.Resource.reference" xml:space="preserve"><value>Reference data</value></data>
+  <data name="Roles.Resource.trails" xml:space="preserve"><value>Audit trails</value></data>
+  <data name="Roles.Action.activate" xml:space="preserve"><value>Activate</value></data>
+  <data name="Roles.Action.approve" xml:space="preserve"><value>Approve</value></data>
+  <data name="Roles.Action.assign" xml:space="preserve"><value>Assign</value></data>
+  <data name="Roles.Action.author" xml:space="preserve"><value>Author</value></data>
+  <data name="Roles.Action.create" xml:space="preserve"><value>Create</value></data>
+  <data name="Roles.Action.deactivate" xml:space="preserve"><value>Deactivate</value></data>
+  <data name="Roles.Action.delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Roles.Action.export" xml:space="preserve"><value>Export</value></data>
+  <data name="Roles.Action.invite" xml:space="preserve"><value>Invite</value></data>
+  <data name="Roles.Action.lock" xml:space="preserve"><value>Lock</value></data>
+  <data name="Roles.Action.merge" xml:space="preserve"><value>Merge</value></data>
+  <data name="Roles.Action.reassign" xml:space="preserve"><value>Reassign</value></data>
+  <data name="Roles.Action.remove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Roles.Action.revoke" xml:space="preserve"><value>Revoke</value></data>
+  <data name="Roles.Action.schedule" xml:space="preserve"><value>Schedule</value></data>
+  <data name="Roles.Action.suspend" xml:space="preserve"><value>Suspend</value></data>
+  <data name="Roles.Action.unlock" xml:space="preserve"><value>Unlock</value></data>
+  <data name="Roles.Action.update" xml:space="preserve"><value>Update</value></data>
+  <data name="Roles.Action.view" xml:space="preserve"><value>View</value></data>
   <data name="Sessions.Title" xml:space="preserve"><value>Sessions</value></data>
   <data name="Sessions.Created" xml:space="preserve"><value>Signed in</value></data>
   <data name="Sessions.Expires" xml:space="preserve"><value>Expires</value></data>

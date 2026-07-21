@@ -19,6 +19,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     private sealed record InvitedResponse(Guid Id, string Email, string DeliveryStatus);
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record RoleItem(Guid Id, string Name);
+    private sealed record RoleDetailItem(Guid Id, string Name, string? Description, List<string> Permissions);
     private sealed record UserDetailItem(Guid Id, Guid RoleId, string UserType);
 
     [Fact]
@@ -64,6 +65,40 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
 
         var list = await client.GetFromJsonAsync<PagedList<RoleItem>>($"{Base}/roles?pageSize=100");
         list!.Items.ShouldContain(r => r.Name == roleName);
+    }
+
+    [Fact]
+    public async Task Admin_can_atomically_update_role_details_and_permissions()
+    {
+        var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+
+        var originalName = $"RoleEditor-{Guid.NewGuid():N}";
+        var create = await client.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = originalName,
+                description = "before",
+                compatibleUserType = "SystemAdministrator",
+                permissions = new[] { "identity.roles.view" }
+            });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var roleId = await create.Content.ReadFromJsonAsync<Guid>();
+
+        var updatedName = $"RoleEditorUpdated-{Guid.NewGuid():N}";
+        var update = await client.PutAsJsonAsync($"{Base}/roles/{roleId}/editor",
+            new
+            {
+                name = updatedName,
+                description = "after",
+                permissions = new[] { "identity.roles.view", "identity.users.view" }
+            });
+
+        update.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var detail = await client.GetFromJsonAsync<RoleDetailItem>($"{Base}/roles/{roleId}");
+        detail.ShouldNotBeNull();
+        detail!.Name.ShouldBe(updatedName);
+        detail.Description.ShouldBe("after");
+        detail.Permissions.ShouldBe(["identity.roles.view", "identity.users.view"], ignoreOrder: true);
     }
 
     [Fact]

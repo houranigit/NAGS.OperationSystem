@@ -10,6 +10,13 @@ namespace MasterData.Contracts;
 /// </summary>
 public sealed record PortalAccessRequested : IntegrationEvent
 {
+    /// <summary>
+    /// The authenticated Identity user who initiated this delegation. Identity resolves this user
+    /// again when processing the event so role permissions changed after the request cannot bypass
+    /// the live permission ceiling.
+    /// </summary>
+    public required Guid InitiatedByUserId { get; init; }
+
     public required Guid ExternalReferenceId { get; init; }
     public required UserType UserType { get; init; }
     public required Guid RoleId { get; init; }

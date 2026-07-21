@@ -11,6 +11,7 @@ using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Features.Mobile;
+using Operations.Domain.Authorization;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
@@ -54,6 +55,14 @@ public sealed class ScheduleFlightCommandHandler(
 {
     public async Task<Result<Guid>> Handle(ScheduleFlightCommand request, CancellationToken cancellationToken)
     {
+        if (request.AssignedStaffMemberIds is { Count: > 0 } &&
+            !user.HasPermission(OperationsPermissions.Flights.Assign))
+        {
+            return Error.Forbidden(
+                "Scheduling a flight with assigned staff requires flight assignment permission.",
+                "Operations.Flight.AssignForbidden");
+        }
+
         var scopeResult = await scope.ResolveAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
@@ -145,6 +154,14 @@ public sealed class ScheduleFlightsCommandHandler(
 {
     public async Task<Result<IReadOnlyList<Guid>>> Handle(ScheduleFlightsCommand request, CancellationToken cancellationToken)
     {
+        if (request.AssignedStaffMemberIds is { Count: > 0 } &&
+            !user.HasPermission(OperationsPermissions.Flights.Assign))
+        {
+            return Error.Forbidden(
+                "Scheduling flights with assigned staff requires flight assignment permission.",
+                "Operations.Flight.AssignForbidden");
+        }
+
         var scopeResult = await scope.ResolveAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;

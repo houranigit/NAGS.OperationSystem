@@ -99,11 +99,16 @@ public sealed class CreateStaffMemberCommandHandler(
 
         if (request.PortalAccessRoleId is { } roleId)
         {
+            var initiatingUser = PortalAccessAuthorization.ResolveInitiatingUserId(userContext);
+            if (initiatingUser.IsFailure)
+                return initiatingUser.Error;
+
             var correlationId = Guid.NewGuid();
             staff.RequestPortalAccess(correlationId, now);
 
             db.Enqueue(new PortalAccessRequested
             {
+                InitiatedByUserId = initiatingUser.Value,
                 ExternalReferenceId = staff.Id,
                 UserType = UserType.StationStaff,
                 RoleId = roleId,

@@ -2,7 +2,7 @@
 
 <PageTitle>Staff allocation</PageTitle>
 
-<RequirePermission Permission="@MasterDataPermissions.StaffMembersView">
+<RequirePermission Permission="@MasterDataPermissions.StaffAllocationView">
     <div class="os-list-page sa-page">
         <PageHeader Eyebrow="Resource planning"
                     Title="Staff allocation"
@@ -17,10 +17,6 @@
         {
             <ErrorState Message="Staff allocation across stations is available only to system administrators." />
         }
-        else if (!CanMoveStaff)
-        {
-            <ErrorState Message="Your role needs both staff view and update permissions to use staff allocation." />
-        }
         else if (isLoading && overview is null)
         {
             <LoadingCard Message="Loading station coverage and staff qualifications..." />
@@ -31,6 +27,14 @@
         }
         else if (overview is { } allocation)
         {
+            @if (!CanReassignStaff)
+            {
+                <div class="sa-inline-alert sa-inline-alert--info">
+                    <RadzenIcon Icon="visibility" />
+                    <span>You have read-only allocation access. The reassign permission is required to move an employee.</span>
+                </div>
+            }
+
             @if (loadError)
             {
                 <div class="sa-inline-alert sa-inline-alert--danger">
@@ -352,22 +356,32 @@
                                 </div>
                             }
 
-                            <button type="button" class="sa-primary-action"
-                                    disabled="@(SelectedDestination is null || isMoving)"
-                                    @onclick="ReviewAndMoveAsync">
-                                @if (isMoving)
-                                {
-                                    <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate"
-                                                               Size="ProgressBarCircularSize.Small" />
-                                    <span>Moving employee...</span>
-                                }
-                                else
-                                {
-                                    <RadzenIcon Icon="swap_horiz" />
-                                    <span>Review reassignment</span>
-                                }
-                            </button>
-                            <p class="sa-action-note">This updates the employee's primary station. Their manpower type, licenses, schedule, and account remain unchanged.</p>
+                            @if (CanReassignStaff)
+                            {
+                                <button type="button" class="sa-primary-action"
+                                        disabled="@(SelectedDestination is null || isMoving)"
+                                        @onclick="ReviewAndMoveAsync">
+                                    @if (isMoving)
+                                    {
+                                        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate"
+                                                                   Size="ProgressBarCircularSize.Small" />
+                                        <span>Moving employee...</span>
+                                    }
+                                    else
+                                    {
+                                        <RadzenIcon Icon="swap_horiz" />
+                                        <span>Review reassignment</span>
+                                    }
+                                </button>
+                                <p class="sa-action-note">This updates the employee's primary station. Their manpower type, licenses, schedule, and account remain unchanged.</p>
+                            }
+                            else
+                            {
+                                <div class="sa-readonly-note">
+                                    <RadzenIcon Icon="lock" />
+                                    <span>Reassignment is locked for this role.</span>
+                                </div>
+                            }
                         }
                     </aside>
                 </section>

@@ -228,7 +228,7 @@
             var manpowerTypesTask = MasterData.GetManpowerTypeOptionsAsync();
             var licensesTask = MasterData.GetLicenseOptionsAsync();
             var portalRolesTask = StaffMemberId is null && Auth.CanGrantStaffPortalAccess
-                ? Identity.GetRoleOptionsAsync("StationStaff")
+                ? Identity.GetRoleOptionsAsync("StationStaff", assignableOnly: true)
                 : Task.FromResult<IReadOnlyList<RoleOption>>([]);
             Task<StaffMemberDetail?> detailTask = StaffMemberId is { } id
                 ? GetStaffMemberForEditAsync(id)

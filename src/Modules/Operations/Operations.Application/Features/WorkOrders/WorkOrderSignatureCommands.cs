@@ -54,7 +54,7 @@ public sealed class UploadWorkOrderSignatureCommandHandler(
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
         if (access.IsFailure)
             return access.Error;
-        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        var author = WorkOrderAuthorization.EnsureManageAccess(workOrder, user);
         if (author.IsFailure)
             return author.Error;
 
@@ -122,7 +122,7 @@ public sealed class DeleteWorkOrderSignatureCommandHandler(
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
         if (access.IsFailure)
             return access.Error;
-        var author = WorkOrderAuthorization.EnsureAuthorAccess(workOrder, user);
+        var author = WorkOrderAuthorization.EnsureManageAccess(workOrder, user);
         if (author.IsFailure)
             return author.Error;
 

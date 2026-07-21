@@ -458,8 +458,9 @@ The initial MasterData permission resources/actions are:
 | GeneralSupports | `view`, `create`, `update`, `activate`, `deactivate` |
 | Stations | `view`, `create`, `update`, `activate`, `deactivate` |
 | StaffMembers | `view`, `create`, `update`, `activate`, `deactivate`, `grant-access` |
+| StaffAllocation | `view`, `reassign` |
 | Customers | `view`, `create`, `update`, `activate`, `deactivate` |
-| CustomerContacts | `view`, `create`, `update`, `remove`, `grant-access` |
+| CustomerContacts | `create`, `update`, `remove`, `grant-access` |
 
 Codes follow `masterdata.resource.action`, for example `masterdata.stations.view`. Each future module adds its own permissions when it is designed; Operations permissions do not need to be guessed during MasterData implementation.
 
@@ -488,21 +489,20 @@ Compatibility is the maximum permission set from which a Role for that UserType 
 - `masterdata.staff-members.activate`
 - `masterdata.staff-members.deactivate`
 
-All StationStaff access is restricted to the linked Station. StationStaff cannot create, activate, or deactivate Stations; change global catalogs; manage Customers; grant portal access; or assign Roles.
+All StationStaff access is restricted to the linked Station. StationStaff cannot create, activate, or deactivate Stations; use the cross-station staff-allocation workspace; change global catalogs; manage Customers; grant portal access; or assign Roles.
 
 `CustomerContact` Roles may contain the following MasterData permissions:
 
 - `masterdata.countries.view`
 - `masterdata.customers.view`
 - `masterdata.customers.update`
-- `masterdata.customer-contacts.view`
 - `masterdata.customer-contacts.create`
 - `masterdata.customer-contacts.update`
 - `masterdata.customer-contacts.remove`
 
 All CustomerContact access is restricted to the linked Customer. CustomerContacts cannot create, activate, or deactivate Customers; manage Stations/StaffMembers/global catalogs; grant portal access; or assign Roles.
 
-The `grant-access` permissions are SystemAdministrator-compatible only. This preserves the decision that an administrator chooses the compatible Role before an account is invited and prevents delegated users from escalating privileges.
+Customer-contact visibility is intentionally covered by `masterdata.customers.view`, because contacts are part of the customer aggregate returned by the customer detail endpoint. The `grant-access` and `staff-allocation` permissions are SystemAdministrator-compatible only. Allocation separates read-only workforce coverage (`view`) from permanent moves (`reassign`). Portal role pickers also require `identity.roles.view`, and show only roles whose permissions are a subset of the initiating administrator's current permissions. Identity revalidates that live delegation ceiling when it consumes the provisioning request, so delayed events cannot grant authority the initiator no longer holds. Direct invitations and role assignments apply the same ceiling.
 
 Each future module defines its own permission actions and UserType compatibility. For example, Operations may later allow StationStaff work-order permissions and CustomerContact flight-view permissions without changing this MasterData catalog.
 

@@ -8,6 +8,7 @@ using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Application.Features.StaffMembers;
 using MasterData.Contracts;
+using MasterData.Domain.Authorization;
 using MasterData.Domain.StaffMembers;
 using MasterData.Domain.Stations;
 using Microsoft.EntityFrameworkCore;
@@ -55,6 +56,14 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
 {
     public async Task<Result<Guid>> Handle(CreateStationCommand request, CancellationToken cancellationToken)
     {
+        if (request.Staff is { Count: > 0 } &&
+            !userContext.HasPermission(MasterDataPermissions.StaffMembers.Create))
+        {
+            return Error.Forbidden(
+                "Creating staff members with a station requires staff-member create permission.",
+                "MasterData.StaffMember.CreateForbidden");
+        }
+
         var now = timeProvider.GetUtcNow();
 
         var countryCheck = await StationGuards.EnsureActiveCountryAsync(db, request.CountryId, cancellationToken);
@@ -91,11 +100,16 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
                 if (!PortalAccessAuthorization.CanGrantStaffAccess(userContext))
                     return PortalAccessAuthorization.GrantForbidden();
 
+                var initiatingUser = PortalAccessAuthorization.ResolveInitiatingUserId(userContext);
+                if (initiatingUser.IsFailure)
+                    return initiatingUser.Error;
+
                 var correlationId = Guid.NewGuid();
                 staffResult.Value.RequestPortalAccess(correlationId, now);
 
                 db.Enqueue(new PortalAccessRequested
                 {
+                    InitiatedByUserId = initiatingUser.Value,
                     ExternalReferenceId = staffResult.Value.Id,
                     UserType = UserType.StationStaff,
                     RoleId = roleId,

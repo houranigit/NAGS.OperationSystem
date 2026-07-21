@@ -7,6 +7,7 @@ using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Contracts;
+using MasterData.Domain.Authorization;
 using MasterData.Domain.Customers;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,10 +49,28 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserC
 {
     public async Task<Result<Guid>> Handle(CreateCustomerCommand request, CancellationToken cancellationToken)
     {
+        if (request.Contacts is { Count: > 0 } &&
+            !userContext.HasPermission(MasterDataPermissions.CustomerContacts.Create))
+        {
+            return Error.Forbidden(
+                "Creating contacts with a customer requires customer-contact create permission.",
+                "MasterData.CustomerContact.CreateForbidden");
+        }
+
+        Guid? portalAccessInitiatorId = null;
         if (request.Contacts.Any(c => c.PortalAccessRoleId is { }) &&
             !PortalAccessAuthorization.CanGrantCustomerContactAccess(userContext))
         {
             return PortalAccessAuthorization.GrantForbidden();
+        }
+
+        if (request.Contacts.Any(c => c.PortalAccessRoleId is { }))
+        {
+            var initiatingUser = PortalAccessAuthorization.ResolveInitiatingUserId(userContext);
+            if (initiatingUser.IsFailure)
+                return initiatingUser.Error;
+
+            portalAccessInitiatorId = initiatingUser.Value;
         }
 
         var countryCheck = await CustomerGuards.EnsureActiveCountryAsync(db, request.CountryId, cancellationToken);
@@ -80,7 +99,11 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserC
         if (reconcile.IsFailure)
             return reconcile.Error;
 
-        var portalAccess = EnqueueInitialContactPortalAccess(customer, request.Contacts, now);
+        var portalAccess = EnqueueInitialContactPortalAccess(
+            customer,
+            request.Contacts,
+            portalAccessInitiatorId,
+            now);
         if (portalAccess.IsFailure)
             return portalAccess.Error;
 
@@ -94,7 +117,11 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserC
             ? []
             : contacts.Select(c => new ContactReconciliationItem(c.Id, c.Name, c.JobTitle, c.Email, c.Phone)).ToList();
 
-    private Result EnqueueInitialContactPortalAccess(Customer customer, IReadOnlyList<CustomerContactInput> contacts, DateTimeOffset now)
+    private Result EnqueueInitialContactPortalAccess(
+        Customer customer,
+        IReadOnlyList<CustomerContactInput> contacts,
+        Guid? initiatedByUserId,
+        DateTimeOffset now)
     {
         foreach (var input in contacts.Where(c => c.PortalAccessRoleId is { }))
         {
@@ -112,6 +139,7 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserC
 
             db.Enqueue(new PortalAccessRequested
             {
+                InitiatedByUserId = initiatedByUserId!.Value,
                 ExternalReferenceId = contact.Id,
                 UserType = UserType.CustomerContact,
                 RoleId = input.PortalAccessRoleId!.Value,
@@ -254,12 +282,17 @@ public sealed class AddCustomerContactCommandHandler(
 
         if (request.PortalAccessRoleId is { } roleId)
         {
+            var initiatingUser = PortalAccessAuthorization.ResolveInitiatingUserId(userContext);
+            if (initiatingUser.IsFailure)
+                return initiatingUser.Error;
+
             var now = timeProvider.GetUtcNow();
             var correlationId = Guid.NewGuid();
             added.Value.RequestPortalAccess(correlationId, now);
 
             db.Enqueue(new PortalAccessRequested
             {
+                InitiatedByUserId = initiatingUser.Value,
                 ExternalReferenceId = added.Value.Id,
                 UserType = UserType.CustomerContact,
                 RoleId = roleId,

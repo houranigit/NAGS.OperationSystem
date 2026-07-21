@@ -1,35 +1,38 @@
 @inject IdentityApiClient Identity
+@inject AuthSession Auth
 @inject DialogService DialogService
+@inject NotificationService Notifications
 
-<RadzenTemplateForm TItem="RoleModel" Data="@model" Submit="@SubmitAsync">
-    <div class="rlf-form">
-        <p class="rlf-intro os-muted">@UiStrings.Roles.FormIntro</p>
+<div class="rlf-form">
+    @if (isLoading)
+    {
+        <div class="rlf-loading">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <strong>@UiStrings.Roles.LoadingRoleEditor</strong>
+            <span>@UiStrings.Roles.LoadingRoleEditorHint</span>
+        </div>
+    }
+    else if (editorLoadFailed)
+    {
+        <div class="rlf-loading rlf-loading--error">
+            <span class="rlf-load-error-icon"><RadzenIcon Icon="error_outline" /></span>
+            <strong>@UiStrings.Errors.LoadFailed</strong>
+            <span>@errorMessage</span>
+            <div class="rlf-load-error-actions">
+                <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => DialogService.Close(false))" />
+                <RadzenButton Text="@UiStrings.Common.Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Primary"
+                              Click="@LoadEditorAsync" />
+            </div>
+        </div>
+    }
+    else
+    {
+        @WizardStepper()
 
-        <div class="rlf-section"><RadzenIcon Icon="shield" /><h4>@UiStrings.Common.Details</h4></div>
-
-        <RadzenFormField Text="@UiStrings.Roles.Name" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="badge" /></Start>
-            <ChildContent>
-                <RadzenTextBox @bind-Value="model.Name" Name="name" Style="width: 100%;" />
-            </ChildContent>
-        </RadzenFormField>
-
-        <RadzenFormField Text="@UiStrings.Roles.RoleDescription" Variant="Variant.Outlined" Style="width: 100%;">
-            <Start><RadzenIcon Icon="notes" /></Start>
-            <ChildContent>
-                <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="3" Style="width: 100%;" />
-            </ChildContent>
-        </RadzenFormField>
-
-        @if (RoleId is null)
-        {
-            <RadzenFormField Text="@UiStrings.Roles.CompatibleUserType" Variant="Variant.Outlined" Style="width: 100%;">
-                <Start><RadzenIcon Icon="account_circle" /></Start>
-                <ChildContent>
-                    <RadzenDropDown @bind-Value="model.CompatibleUserType" Data="@UserTypes.All" Name="compatibleUserType" Style="width: 100%;" />
-                </ChildContent>
-            </RadzenFormField>
-        }
+        <div class="rlf-wizard-body">
+            @(step == 0 ? DetailsStep() : PermissionsStep())
+        </div>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
@@ -39,46 +42,431 @@
             </DismissibleDialogMessage>
         }
 
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
-            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton ButtonType="ButtonType.Submit" Text="@(RoleId is null ? UiStrings.Common.Create : UiStrings.Common.Save)"
-                          ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
-        </RadzenStack>
-    </div>
-</RadzenTemplateForm>
+        <div class="rlf-actions">
+            @if (step == 0)
+            {
+                <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light"
+                              Disabled="@isSubmitting"
+                              Click="@(() => DialogService.Close(false))" />
+            }
+            else
+            {
+                <RadzenButton Text="@UiStrings.Roles.Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                              Disabled="@isSubmitting"
+                              Click="@Previous" />
+            }
+
+            <div class="rlf-actions-end">
+                @if (step > 0)
+                {
+                    <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light"
+                                  Disabled="@isSubmitting"
+                                  Click="@(() => DialogService.Close(false))" />
+                }
+
+                @if (!catalogLoaded && !isCatalogLoading)
+                {
+                    <RadzenButton Text="@UiStrings.Common.Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                                  Disabled="@isSubmitting" Click="@RetryCatalogAsync" />
+                }
+
+                @if (step == 0)
+                {
+                    <RadzenButton Text="@UiStrings.Roles.Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(isSubmitting || isCatalogLoading || (IsCreate && !catalogLoaded))" Click="@NextAsync" />
+                }
+                else
+                {
+                    <RadzenButton Text="@(IsCreate ? UiStrings.Common.Create : UiStrings.Roles.SaveChanges)"
+                                  Icon="check" ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(!CanSubmit || isSubmitting || isCatalogLoading)" Click="@SubmitAsync" />
+                }
+            </div>
+        </div>
+    }
+</div>
 
 @code {
     [Parameter] public Guid? RoleId { get; set; }
     [Parameter] public string Name { get; set; } = string.Empty;
     [Parameter] public string? Description { get; set; }
+    [Parameter] public bool StartAtPermissions { get; set; }
 
     private RoleModel model = new();
+    private RoleDetail? role;
+    private IReadOnlyList<PermissionGroup> catalog = [];
+    private HashSet<string> selectedPermissions = new(StringComparer.Ordinal);
+    private HashSet<string> originalPermissions = new(StringComparer.Ordinal);
+    private string originalName = string.Empty;
+    private string? originalDescription;
+    private int step;
+    private bool isLoading = true;
+    private bool isCatalogLoading;
+    private bool catalogLoaded;
+    private bool editorLoadFailed;
     private bool isSubmitting;
     private string? errorMessage;
 
-    protected override void OnInitialized() =>
-        model = new RoleModel { Name = Name, Description = Description };
+    private bool IsCreate => RoleId is null;
+    private bool IsOwnRole => RoleId is { } id && Auth.User?.RoleId == id;
+    private bool CanEditDetails => IsCreate
+        ? Auth.HasPermission(IdentityPermissions.RolesCreate)
+        : Auth.HasPermission(IdentityPermissions.RolesUpdate);
+    private bool CanEditPermissions => Auth.HasPermission(IdentityPermissions.RolesManagePermissions) && !IsOwnRole;
+    private bool DetailsChanged =>
+        !string.Equals(originalName, model.Name?.Trim() ?? string.Empty, StringComparison.Ordinal) ||
+        !string.Equals(NormalizeDescription(originalDescription), NormalizeDescription(model.Description), StringComparison.Ordinal);
+    private bool PermissionsChanged => !originalPermissions.SetEquals(selectedPermissions);
+    private bool CanSubmit => !editorLoadFailed && (IsCreate
+        ? catalogLoaded && CanEditDetails && CanEditPermissions
+        : (CanEditDetails && DetailsChanged) || (catalogLoaded && CanEditPermissions && PermissionsChanged));
+    private bool NeedsReferenceOptionsHint =>
+        !selectedPermissions.Contains(MasterDataPermissions.ReferenceViewOptions) &&
+        catalog.Any(group => group.Permissions.Contains(MasterDataPermissions.ReferenceViewOptions)) &&
+        selectedPermissions.Any(permission => permission.StartsWith("operations.flights.", StringComparison.Ordinal));
+    private bool NeedsRoleOptionsHint =>
+        !selectedPermissions.Contains(IdentityPermissions.RolesView) &&
+        selectedPermissions.Any(permission => permission is
+            IdentityPermissions.UsersInvite or
+            IdentityPermissions.UsersAssignRole or
+            MasterDataPermissions.StaffMembersGrantAccess or
+            MasterDataPermissions.CustomerContactsGrantAccess);
+
+    protected override async Task OnInitializedAsync() => await LoadEditorAsync();
+
+    private async Task LoadEditorAsync()
+    {
+        step = StartAtPermissions ? 1 : 0;
+        isLoading = true;
+        editorLoadFailed = false;
+        catalogLoaded = false;
+        errorMessage = null;
+
+        try
+        {
+            if (RoleId is { } id)
+            {
+                role = await Identity.GetRoleAsync(id);
+                model = new RoleModel
+                {
+                    Name = role.Name,
+                    Description = role.Description,
+                    CompatibleUserType = role.CompatibleUserType
+                };
+                selectedPermissions = role.Permissions.ToHashSet(StringComparer.Ordinal);
+            }
+            else
+            {
+                model = new RoleModel
+                {
+                    Name = Name,
+                    Description = Description,
+                    CompatibleUserType = UserTypes.SystemAdministrator
+                };
+            }
+
+            originalName = model.Name?.Trim() ?? string.Empty;
+            originalDescription = NormalizeDescription(model.Description);
+            originalPermissions = selectedPermissions.ToHashSet(StringComparer.Ordinal);
+            await LoadCatalogAsync(model.CompatibleUserType, trimSelection: false);
+        }
+        catch (ApiException ex)
+        {
+            editorLoadFailed = true;
+            errorMessage = ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private RenderFragment WizardStepper() => @<div class="rlf-stepper" aria-label="@UiStrings.Roles.RoleEditorSteps">
+        @for (var i = 0; i < 2; i++)
+        {
+            var index = i;
+            <div class="@StepClass(index)">
+                <button type="button" class="rlf-step-button" disabled="@(isSubmitting || index > step)"
+                        aria-current="@(index == step ? "step" : null)" @onclick="@(() => MoveToStep(index))">
+                    <span class="rlf-step-node">
+                        @if (index < step)
+                        {
+                            <RadzenIcon Icon="check" />
+                        }
+                        else
+                        {
+                            @((index + 1).ToString())
+                        }
+                    </span>
+                    <span class="rlf-step-label">@(index == 0 ? UiStrings.Roles.StepDetails : UiStrings.Roles.StepPermissions)</span>
+                </button>
+            </div>
+        }
+    </div>;
+
+    private RenderFragment DetailsStep() => @<section class="rlf-step-content">
+        <div class="rlf-step-intro">
+            <span class="rlf-intro-icon"><RadzenIcon Icon="shield" /></span>
+            <div>
+                <h3>@UiStrings.Roles.RoleDetails</h3>
+                <p>@UiStrings.Roles.FormIntro</p>
+            </div>
+        </div>
+
+        @if (!CanEditDetails)
+        {
+            <div class="rlf-callout rlf-callout--neutral">
+                <RadzenIcon Icon="lock" />
+                <div><strong>@UiStrings.Roles.DetailsReadOnly</strong><p>@UiStrings.Roles.DetailsReadOnlyHint</p></div>
+            </div>
+        }
+
+        <div class="rlf-field-block">
+            <label class="rlf-label" for="name">@UiStrings.Roles.Name <span class="rlf-required">*</span></label>
+            <div class="rlf-input-wrap">
+                <RadzenIcon Icon="badge" class="rlf-field-icon" />
+                <RadzenTextBox @bind-Value="model.Name" Name="name" MaxLength="100" Immediate="true" class="rlf-control rlf-control-icon"
+                               Disabled="@(!CanEditDetails)" />
+            </div>
+            <span class="rlf-field-meta">@(model.Name?.Length ?? 0) / 100</span>
+        </div>
+
+        <div class="rlf-field-block">
+            <label class="rlf-label" for="description">@UiStrings.Roles.RoleDescription</label>
+            <div class="rlf-input-wrap">
+                <RadzenIcon Icon="notes" class="rlf-field-icon rlf-field-icon--top" />
+                <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" MaxLength="500" Immediate="true"
+                                class="rlf-control rlf-control-icon" Disabled="@(!CanEditDetails)" />
+            </div>
+            <span class="rlf-field-meta">@(model.Description?.Length ?? 0) / 500</span>
+        </div>
+
+        <div class="rlf-field-block">
+            <label class="rlf-label" for="compatibleUserType">@UiStrings.Roles.CompatibleUserType <span class="rlf-required">*</span></label>
+            <div class="rlf-input-wrap">
+                <RadzenIcon Icon="account_circle" class="rlf-field-icon" />
+                @if (IsCreate)
+                {
+                    <RadzenDropDown TValue="string" Value="@model.CompatibleUserType"
+                                    Change="@((object? value) => OnUserTypeChangedAsync(value?.ToString()))"
+                                    Data="@UserTypeOptions" TextProperty="Label" ValueProperty="Value"
+                                    Name="compatibleUserType" class="rlf-control rlf-control-icon"
+                                    Disabled="@(!CanEditDetails || isCatalogLoading)" />
+                }
+                else
+                {
+                    <RadzenTextBox Value="@UserTypeLabel(model.CompatibleUserType)" Name="compatibleUserType"
+                                   class="rlf-control rlf-control-icon" Disabled="true" />
+                }
+            </div>
+            <span class="rlf-field-help">@UiStrings.Roles.AccountTypeHint</span>
+        </div>
+    </section>;
+
+    private RenderFragment PermissionsStep() => @<section class="rlf-step-content rlf-permissions-step">
+        <div class="rlf-step-intro rlf-step-intro--permissions">
+            <span class="rlf-intro-icon"><RadzenIcon Icon="key" /></span>
+            <div>
+                <h3>@UiStrings.Roles.ConfigurePermissions</h3>
+                <p>@string.Format(UiStrings.Roles.ConfigurePermissionsHint, UserTypeLabel(model.CompatibleUserType))</p>
+            </div>
+            <span class="rlf-account-badge"><RadzenIcon Icon="account_circle" />@UserTypeLabel(model.CompatibleUserType)</span>
+        </div>
+
+        @if (IsOwnRole)
+        {
+            <div class="rlf-callout rlf-callout--warning">
+                <RadzenIcon Icon="security" />
+                <div><strong>@UiStrings.Roles.OwnRolePermissionsLocked</strong><p>@UiStrings.Roles.OwnRolePermissionsLockedHint</p></div>
+            </div>
+        }
+        else if (!CanEditPermissions)
+        {
+            <div class="rlf-callout rlf-callout--neutral">
+                <RadzenIcon Icon="lock" />
+                <div><strong>@UiStrings.Roles.PermissionsReadOnly</strong><p>@UiStrings.Roles.PermissionsReadOnlyHint</p></div>
+            </div>
+        }
+        else if (!IsCreate)
+        {
+            <div class="rlf-callout rlf-callout--info">
+                <RadzenIcon Icon="logout" />
+                <div><strong>@UiStrings.Roles.PermissionChangeSecurityTitle</strong><p>@UiStrings.Roles.PermissionChangeSecurityHint</p></div>
+            </div>
+        }
+
+        @if (NeedsReferenceOptionsHint)
+        {
+            <div class="rlf-callout rlf-callout--warning">
+                <RadzenIcon Icon="warning_amber" />
+                <div><strong>@UiStrings.Roles.DependentPermission</strong><p>@UiStrings.Roles.ReferenceOptionsHint</p></div>
+            </div>
+        }
+
+        @if (NeedsRoleOptionsHint)
+        {
+            <div class="rlf-callout rlf-callout--warning">
+                <RadzenIcon Icon="warning_amber" />
+                <div><strong>@UiStrings.Roles.DependentPermission</strong><p>@UiStrings.Roles.RoleOptionsHint</p></div>
+            </div>
+        }
+
+        <PermissionTree Catalog="@catalog" SelectedPermissions="@selectedPermissions.ToList()"
+                        SelectedPermissionsChanged="@OnPermissionsChangedAsync"
+                        Disabled="@(!CanEditPermissions || isSubmitting)" IsLoading="@isCatalogLoading" Compact="true" />
+    </section>;
+
+    private string StepClass(int index) => $"rlf-step-item rlf-step-{(index < step ? "complete" : index == step ? "active" : "pending")}";
+
+    private void MoveToStep(int index)
+    {
+        if (isSubmitting || index > step)
+            return;
+
+        errorMessage = null;
+        step = index;
+    }
+
+    private void Previous()
+    {
+        if (isSubmitting)
+            return;
+
+        errorMessage = null;
+        step = Math.Max(0, step - 1);
+    }
+
+    private Task OnPermissionsChangedAsync(IReadOnlyList<string> permissions)
+    {
+        if (isSubmitting)
+            return Task.CompletedTask;
+
+        selectedPermissions = permissions.ToHashSet(StringComparer.Ordinal);
+        return Task.CompletedTask;
+    }
+
+    private async Task OnUserTypeChangedAsync(string? value)
+    {
+        if (isSubmitting || isCatalogLoading || string.IsNullOrWhiteSpace(value) ||
+            string.Equals(model.CompatibleUserType, value, StringComparison.Ordinal))
+            return;
+
+        var previousUserType = model.CompatibleUserType;
+        var previousCatalog = catalog;
+        var previousSelection = selectedPermissions.ToHashSet(StringComparer.Ordinal);
+        var previousCatalogLoaded = catalogLoaded;
+        model.CompatibleUserType = value;
+        if (!await LoadCatalogAsync(value, trimSelection: true))
+        {
+            model.CompatibleUserType = previousUserType;
+            catalog = previousCatalog;
+            selectedPermissions = previousSelection;
+            catalogLoaded = previousCatalogLoaded;
+        }
+    }
+
+    private async Task<bool> LoadCatalogAsync(string userType, bool trimSelection)
+    {
+        isCatalogLoading = true;
+        catalogLoaded = false;
+        errorMessage = null;
+
+        try
+        {
+            catalog = await Identity.GetPermissionCatalogAsync(userType);
+            if (trimSelection)
+            {
+                var compatible = catalog.SelectMany(group => group.Permissions).ToHashSet(StringComparer.Ordinal);
+                selectedPermissions.IntersectWith(compatible);
+            }
+
+            catalogLoaded = true;
+            return true;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(UiStrings.Roles.PermissionsLoadFailed);
+            catalog = [];
+            return false;
+        }
+        finally
+        {
+            isCatalogLoading = false;
+        }
+    }
+
+    private async Task RetryCatalogAsync() =>
+        await LoadCatalogAsync(model.CompatibleUserType, trimSelection: false);
+
+    private Task NextAsync()
+    {
+        if (isSubmitting || (IsCreate && !catalogLoaded) || !ValidateDetails())
+            return Task.CompletedTask;
+
+        errorMessage = null;
+        step = 1;
+        return Task.CompletedTask;
+    }
+
+    private bool ValidateDetails()
+    {
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            errorMessage = UiStrings.Roles.NameRequired;
+            return false;
+        }
+
+        if (model.Name.Trim().Length > 100)
+        {
+            errorMessage = UiStrings.Roles.NameTooLong;
+            return false;
+        }
+
+        if (model.Description?.Trim().Length > 500)
+        {
+            errorMessage = UiStrings.Roles.DescriptionTooLong;
+            return false;
+        }
+
+        return true;
+    }
 
     private async Task SubmitAsync()
     {
-        errorMessage = null;
-
-        if (string.IsNullOrWhiteSpace(model.Name))
-        {
-            errorMessage = UiStrings.Roles.Name;
+        if (isSubmitting || !ValidateDetails() || !CanSubmit)
             return;
-        }
 
+        errorMessage = null;
         isSubmitting = true;
 
         try
         {
-            var description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+            var name = model.Name.Trim();
+            var description = NormalizeDescription(model.Description);
+            var permissions = selectedPermissions.OrderBy(permission => permission, StringComparer.Ordinal).ToList();
 
-            if (RoleId is { } id)
-                await Identity.UpdateRoleAsync(id, new UpdateRoleRequest(model.Name.Trim(), description));
-            else
-                await Identity.CreateRoleAsync(new CreateRoleRequest(model.Name.Trim(), description, model.CompatibleUserType, []));
+            if (RoleId is not { } id)
+            {
+                await Identity.CreateRoleAsync(new CreateRoleRequest(name, description, model.CompatibleUserType, permissions));
+                Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.Created);
+            }
+            else if (catalogLoaded && DetailsChanged && PermissionsChanged && CanEditDetails && CanEditPermissions)
+            {
+                await Identity.UpdateRoleAndPermissionsAsync(
+                    id,
+                    new UpdateRoleAndPermissionsRequest(name, description, permissions));
+                Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.Updated);
+            }
+            else if (DetailsChanged && CanEditDetails)
+            {
+                await Identity.UpdateRoleAsync(id, new UpdateRoleRequest(name, description));
+                Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.Updated);
+            }
+            else if (PermissionsChanged && CanEditPermissions)
+            {
+                await Identity.UpdateRolePermissionsAsync(id, new UpdateRolePermissionsRequest(permissions));
+                Notifications.Notify(NotificationSeverity.Success, UiStrings.Roles.PermissionsSaved);
+            }
 
             DialogService.Close(true);
         }
@@ -91,6 +479,22 @@
             isSubmitting = false;
         }
     }
+
+    private static string? NormalizeDescription(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string UserTypeLabel(string userType) => userType switch
+    {
+        UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.StationStaff => UiStrings.Users.TypeStationStaff,
+        UserTypes.CustomerContact => UiStrings.Users.TypeCustomerContact,
+        _ => userType
+    };
+
+    private static IReadOnlyList<UserTypeOption> UserTypeOptions =>
+        UserTypes.All.Select(value => new UserTypeOption(value, UserTypeLabel(value))).ToArray();
+
+    private sealed record UserTypeOption(string Value, string Label);
 
     private sealed class RoleModel
     {

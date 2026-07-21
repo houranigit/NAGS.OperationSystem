@@ -71,7 +71,7 @@
     {
         try
         {
-            roles.AddRange(await Identity.GetRoleOptionsAsync(CompatibleUserType));
+            roles.AddRange(await Identity.GetRoleOptionsAsync(CompatibleUserType, assignableOnly: true));
             selectedRoleId = roles.FirstOrDefault()?.Id;
         }
         catch (ApiException ex)

@@ -26,6 +26,7 @@ public sealed record MobileLogoutRequest(string? RefreshToken);
 public sealed record CreateRoleRequest(string Name, string? Description, BuildingBlocks.Contracts.Authorization.UserType? CompatibleUserType, IReadOnlyList<string> Permissions);
 public sealed record UpdateRoleRequest(string Name, string? Description);
 public sealed record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);
+public sealed record UpdateRoleAndPermissionsRequest(string Name, string? Description, IReadOnlyList<string> Permissions);
 
 // Users
 public sealed record InviteUserRequest(string Email, string DisplayName, Guid? RoleId = null);

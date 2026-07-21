@@ -67,6 +67,12 @@
     color: var(--os-color-danger);
 }
 
+.sa-inline-alert--info {
+    border-color: var(--sa-info-border);
+    background: var(--sa-info-soft);
+    color: var(--os-color-info);
+}
+
 /* --- Summary KPI cards -------------------------------------------------- */
 .sa-summary-grid {
     display: grid;
@@ -1242,6 +1248,21 @@
     font-size: var(--os-text-xs);
     line-height: 1.45;
     text-align: center;
+}
+
+.sa-readonly-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--os-space-2);
+    min-block-size: 2.85rem;
+    padding-inline: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-neutral-bg);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
 }
 
 /* --- RTL directional icons --------------------------------------------- */

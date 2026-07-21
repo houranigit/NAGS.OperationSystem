@@ -86,4 +86,7 @@ public static class MasterDataPermissions
     public const string StaffMembersActivate = "masterdata.staff-members.activate";
     public const string StaffMembersDeactivate = "masterdata.staff-members.deactivate";
     public const string StaffMembersGrantAccess = "masterdata.staff-members.grant-access";
+
+    public const string StaffAllocationView = "masterdata.staff-allocation.view";
+    public const string StaffAllocationReassign = "masterdata.staff-allocation.reassign";
 }

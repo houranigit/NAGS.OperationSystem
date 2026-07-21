@@ -42,6 +42,10 @@ public sealed class GrantStaffPortalAccessCommandHandler(
         if (!resolved.Value.IsAdministrator || !PortalAccessAuthorization.CanGrantStaffAccess(userContext))
             return PortalAccessAuthorization.GrantForbidden();
 
+        var initiatingUser = PortalAccessAuthorization.ResolveInitiatingUserId(userContext);
+        if (initiatingUser.IsFailure)
+            return initiatingUser.Error;
+
         var staff = await db.StaffMembers.FirstOrDefaultAsync(s => s.Id == request.StaffMemberId, cancellationToken);
         if (staff is null)
             return Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound");
@@ -61,6 +65,7 @@ public sealed class GrantStaffPortalAccessCommandHandler(
 
         db.Enqueue(new PortalAccessRequested
         {
+            InitiatedByUserId = initiatingUser.Value,
             ExternalReferenceId = staff.Id,
             UserType = UserType.StationStaff,
             RoleId = request.RoleId,
@@ -115,6 +120,10 @@ public sealed class GrantContactPortalAccessCommandHandler(
         if (!resolved.Value.IsAdministrator || !PortalAccessAuthorization.CanGrantCustomerContactAccess(userContext))
             return PortalAccessAuthorization.GrantForbidden();
 
+        var initiatingUser = PortalAccessAuthorization.ResolveInitiatingUserId(userContext);
+        if (initiatingUser.IsFailure)
+            return initiatingUser.Error;
+
         var customer = await db.Customers
             .Include(c => c.Contacts)
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
@@ -131,6 +140,7 @@ public sealed class GrantContactPortalAccessCommandHandler(
 
         db.Enqueue(new PortalAccessRequested
         {
+            InitiatedByUserId = initiatingUser.Value,
             ExternalReferenceId = requested.Value.Id,
             UserType = UserType.CustomerContact,
             RoleId = request.RoleId,

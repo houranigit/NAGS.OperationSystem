@@ -95,7 +95,7 @@
                 @(activeTab switch
                 {
                     StationTab.Overview => OverviewTab(s),
-                    StationTab.Staff => StaffTab(s),
+                    StationTab.Staff when CanViewStaff => StaffTab(s),
                     StationTab.History => HistoryTab(s),
                     _ => OverviewTab(s)
                 })
@@ -161,32 +161,35 @@
                     </dl>
                 </RadzenCard>
 
-                @* --- Staff summary --- *@
-                <RadzenCard class="st-card">
-                    <div class="st-card-head"><RadzenIcon Icon="groups" /><h3>@UiStrings.Stations.StaffMembers</h3></div>
-                    <div class="st-lead">
-                        <span class="st-lead-icon st-lead-icon--blue"><RadzenIcon Icon="groups" /></span>
-                        <div>
-                            <p class="st-lead-title">@string.Format(UiStrings.Stations.StaffCountFormat, stationStaff.Count)</p>
-                            <p class="os-muted st-lead-desc">@(stationStaff.Count == 0
-                                ? UiStrings.Stations.StaffMembersEmpty
-                                : string.Format("{0}: {1}", UiStrings.Stations.StatActiveStaff, stationStaff.Count(x => x.IsActive)))</p>
+                @if (CanViewStaff)
+                {
+                    @* --- Staff summary --- *@
+                    <RadzenCard class="st-card">
+                        <div class="st-card-head"><RadzenIcon Icon="groups" /><h3>@UiStrings.Stations.StaffMembers</h3></div>
+                        <div class="st-lead">
+                            <span class="st-lead-icon st-lead-icon--blue"><RadzenIcon Icon="groups" /></span>
+                            <div>
+                                <p class="st-lead-title">@string.Format(UiStrings.Stations.StaffCountFormat, stationStaff.Count)</p>
+                                <p class="os-muted st-lead-desc">@(stationStaff.Count == 0
+                                    ? UiStrings.Stations.StaffMembersEmpty
+                                    : string.Format("{0}: {1}", UiStrings.Stations.StatActiveStaff, stationStaff.Count(x => x.IsActive)))</p>
+                            </div>
                         </div>
-                    </div>
-                    <dl class="st-metrics">
-                        <div class="st-metric">
-                            <dt>@UiStrings.Stations.StatStaff</dt>
-                            <dd>@stationStaff.Count</dd>
-                        </div>
-                        <div class="st-metric">
-                            <dt>@UiStrings.Stations.StatActiveStaff</dt>
-                            <dd>@stationStaff.Count(x => x.IsActive)</dd>
-                        </div>
-                    </dl>
-                    <button type="button" class="st-card-link" @onclick="@(() => activeTab = StationTab.Staff)">
-                        @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
-                    </button>
-                </RadzenCard>
+                        <dl class="st-metrics">
+                            <div class="st-metric">
+                                <dt>@UiStrings.Stations.StatStaff</dt>
+                                <dd>@stationStaff.Count</dd>
+                            </div>
+                            <div class="st-metric">
+                                <dt>@UiStrings.Stations.StatActiveStaff</dt>
+                                <dd>@stationStaff.Count(x => x.IsActive)</dd>
+                            </div>
+                        </dl>
+                        <button type="button" class="st-card-link" @onclick="@(() => activeTab = StationTab.Staff)">
+                            @UiStrings.Common.Open<RadzenIcon Icon="chevron_right" />
+                        </button>
+                    </RadzenCard>
+                }
             </div>
 
             @if (CanViewAudit)
@@ -324,11 +327,13 @@
     private sealed record TabDef(StationTab Key, string Label, string Icon);
 
     private bool CanViewAudit => Auth.HasPermission(AuditPermissions.TrailsView);
+    private bool CanViewStaff => Auth.HasPermission(MasterDataPermissions.StaffMembersView);
 
     private IEnumerable<TabDef> Tabs()
     {
         yield return new TabDef(StationTab.Overview, UiStrings.Common.Overview, "dashboard");
-        yield return new TabDef(StationTab.Staff, UiStrings.Stations.StaffMembers, "groups");
+        if (CanViewStaff)
+            yield return new TabDef(StationTab.Staff, UiStrings.Stations.StaffMembers, "groups");
         if (CanViewAudit)
             yield return new TabDef(StationTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
@@ -342,11 +347,15 @@
     private async Task LoadAsync()
     {
         isLoading = true;
-        staffLoading = true;
+        staffLoading = CanViewStaff;
         loadError = false;
+        if (!CanViewStaff && activeTab == StationTab.Staff)
+            activeTab = StationTab.Overview;
         StateHasChanged();
 
-        var staffTask = LoadStationStaffAsync();
+        var staffTask = CanViewStaff
+            ? LoadStationStaffAsync()
+            : Task.FromResult<IReadOnlyList<StaffMemberListItem>>([]);
         var historyTask = LoadHistoryAsync();
 
         try
@@ -373,6 +382,13 @@
 
     private async Task LoadStaffAsync()
     {
+        if (!CanViewStaff)
+        {
+            stationStaff = [];
+            staffLoading = false;
+            return;
+        }
+
         staffLoading = true;
         StateHasChanged();
 
@@ -383,6 +399,9 @@
 
     private async Task<IReadOnlyList<StaffMemberListItem>> LoadStationStaffAsync()
     {
+        if (!CanViewStaff)
+            return [];
+
         try
         {
             var page = await MasterData.GetStaffMembersAsync(1, 100, null, stationId: Id);
@@ -412,6 +431,9 @@
 
     private async Task OpenAddStaffAsync()
     {
+        if (!CanViewStaff || !Auth.HasPermission(MasterDataPermissions.StaffMembersCreate))
+            return;
+
         var result = await DialogService.OpenAsync<StaffMemberFormDialog>(UiStrings.StaffMembers.CreateTitle,
             new Dictionary<string, object?> { [nameof(StaffMemberFormDialog.PreselectedStationId)] = Id },
             new DialogOptions { Width = "760px" });
@@ -420,7 +442,11 @@
             await LoadStaffAsync();
     }
 
-    private void NavigateToStaff(Guid staffId) => Navigation.NavigateTo($"/master-data/staff-members/{staffId}");
+    private void NavigateToStaff(Guid staffId)
+    {
+        if (CanViewStaff)
+            Navigation.NavigateTo($"/master-data/staff-members/{staffId}");
+    }
 
     private async Task OpenEditAsync()
     {

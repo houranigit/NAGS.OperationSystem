@@ -4,6 +4,7 @@
 @inject NotificationService Notifications
 @inject NavigationManager Navigation
 @inject GridPreferences GridPrefs
+@inject AuthSession Auth
 
 <PageTitle>@UiStrings.Roles.Title</PageTitle>
 
@@ -12,7 +13,8 @@
         <PageHeader Title="@UiStrings.Roles.Title" Description="@UiStrings.Roles.Description">
             <Actions>
                 <AuthorizeView Context="create">
-                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesCreate))
+                    @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesCreate)
+                         && create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesManagePermissions))
                     {
                         <RadzenButton Text="@UiStrings.Roles.Create" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenCreateAsync" />
                     }
@@ -68,6 +70,10 @@
                     <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => OpenRole(role.Id))" />
                     <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@IdentityPermissions.RolesUpdate"
                                Visible="@(!role.IsSystem)" OnClick="@(() => OpenEditAsync(role))" />
+                    <RowAction Text="@UiStrings.Roles.EditPermissions" Icon="admin_panel_settings"
+                               Permission="@IdentityPermissions.RolesManagePermissions"
+                               Visible="@(!role.IsSystem && Auth.User?.RoleId != role.Id)"
+                               OnClick="@(() => OpenPermissionsAsync(role))" />
                     <RowAction Separator="true" />
                     <RowAction Text="@UiStrings.Common.Delete" Icon="delete" Danger="true"
                                Permission="@IdentityPermissions.RolesDelete"
@@ -162,7 +168,10 @@
 
     private async Task OpenCreateAsync()
     {
-        var result = await DialogService.OpenAsync<RoleFormDialog>(UiStrings.Roles.CreateTitle);
+        var result = await DialogService.OpenAsync<RoleFormDialog>(
+            UiStrings.Roles.CreateTitle,
+            null,
+            new DialogOptions { Width = "920px" });
         if (result is true)
             await ReloadAsync();
     }
@@ -174,10 +183,23 @@
         var result = await DialogService.OpenAsync<RoleFormDialog>(UiStrings.Roles.EditTitle,
             new Dictionary<string, object?>
             {
+                [nameof(RoleFormDialog.RoleId)] = role.Id
+            },
+            new DialogOptions { Width = "920px" });
+
+        if (result is true)
+            await ReloadAsync();
+    }
+
+    private async Task OpenPermissionsAsync(RoleListItem role)
+    {
+        var result = await DialogService.OpenAsync<RoleFormDialog>(UiStrings.Roles.EditPermissions,
+            new Dictionary<string, object?>
+            {
                 [nameof(RoleFormDialog.RoleId)] = role.Id,
-                [nameof(RoleFormDialog.Name)] = role.Name,
-                [nameof(RoleFormDialog.Description)] = role.Description
-            });
+                [nameof(RoleFormDialog.StartAtPermissions)] = true
+            },
+            new DialogOptions { Width = "920px" });
 
         if (result is true)
             await ReloadAsync();
