@@ -24,11 +24,13 @@ public partial class PermissionTree
     private int PermissionCount => modules.Sum(module => module.Permissions.Count);
     private int SelectedKnownCount => modules.SelectMany(module => module.Permissions).Count(selected.Contains);
     private int SelectionPercentage => PermissionCount == 0 ? 0 : (int)Math.Round(SelectedKnownCount * 100d / PermissionCount);
+    private bool IsFiltering => !string.IsNullOrWhiteSpace(searchTerm);
 
     private IReadOnlyList<ModuleNode> VisibleModules => FilterModules();
 
     protected override void OnParametersSet()
     {
+        var incoming = SelectedPermissions.ToHashSet(StringComparer.Ordinal);
         var nextSignature = string.Join('|', Catalog.SelectMany(group => group.Permissions).OrderBy(code => code, StringComparer.Ordinal));
         if (!string.Equals(catalogSignature, nextSignature, StringComparison.Ordinal))
         {
@@ -36,15 +38,9 @@ public partial class PermissionTree
             modules = BuildModules(Catalog);
             expandedModules.Clear();
             expandedResources.Clear();
-            foreach (var module in modules)
-            {
-                expandedModules.Add(module.Key);
-                foreach (var resource in module.Resources)
-                    expandedResources.Add(resource.Key);
-            }
+            ExpandInitialPath(incoming);
         }
 
-        var incoming = SelectedPermissions.ToHashSet(StringComparer.Ordinal);
         if (!selected.SetEquals(incoming))
         {
             selected.Clear();
@@ -86,17 +82,37 @@ public partial class PermissionTree
         return filtered;
     }
 
-    private bool IsModuleExpanded(string key) => searchTerm.Trim().Length > 0 || expandedModules.Contains(key);
-    private bool IsResourceExpanded(string key) => searchTerm.Trim().Length > 0 || expandedResources.Contains(key);
+    private bool IsModuleExpanded(string key) => IsFiltering || expandedModules.Contains(key);
+    private bool IsResourceExpanded(string key) => IsFiltering || expandedResources.Contains(key);
+
+    private void ExpandInitialPath(HashSet<string> incoming)
+    {
+        var module = modules.FirstOrDefault(candidate => candidate.Permissions.Any(incoming.Contains))
+                     ?? modules.FirstOrDefault();
+        if (module is null)
+            return;
+
+        expandedModules.Add(module.Key);
+        var resource = module.Resources.FirstOrDefault(candidate => candidate.Permissions.Any(incoming.Contains))
+                       ?? module.Resources.FirstOrDefault();
+        if (resource is not null)
+            expandedResources.Add(resource.Key);
+    }
 
     private void ToggleModule(string key)
     {
+        if (IsFiltering)
+            return;
+
         if (!expandedModules.Add(key))
             expandedModules.Remove(key);
     }
 
     private void ToggleResource(string key)
     {
+        if (IsFiltering)
+            return;
+
         if (!expandedResources.Add(key))
             expandedResources.Remove(key);
     }
@@ -183,23 +199,6 @@ public partial class PermissionTree
         SelectionState.All => "true",
         SelectionState.Partial => "mixed",
         _ => "false"
-    };
-
-    private RenderFragment SelectionIcon(IReadOnlyList<string> permissions) => builder =>
-    {
-        var icon = State(permissions) switch
-        {
-            SelectionState.All => "check",
-            SelectionState.Partial => "remove",
-            _ => null
-        };
-
-        if (icon is not null)
-        {
-            builder.OpenComponent<Radzen.Blazor.RadzenIcon>(0);
-            builder.AddAttribute(1, "Icon", icon);
-            builder.CloseComponent();
-        }
     };
 
     private string ToggleTitle(string label, IReadOnlyList<string> permissions) =>

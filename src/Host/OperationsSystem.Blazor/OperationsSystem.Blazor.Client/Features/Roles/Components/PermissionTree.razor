@@ -21,7 +21,7 @@
         <div class="pt-summary">
             <div class="pt-summary-copy">
                 <span class="pt-summary-icon"><RadzenIcon Icon="admin_panel_settings" /></span>
-                <div>
+                <div class="pt-summary-text">
                     <strong>@UiStrings.Roles.PermissionAccess</strong>
                     <span>@string.Format(UiStrings.Roles.PermissionSelectionSummary, SelectedKnownCount, PermissionCount)</span>
                 </div>
@@ -46,11 +46,11 @@
             </label>
 
             <div class="pt-toolbar-actions">
-                <button type="button" class="pt-tool-button" disabled="@(!string.IsNullOrWhiteSpace(searchTerm))" @onclick="ExpandAll">
+                <button type="button" class="pt-tool-button" disabled="@IsFiltering" @onclick="ExpandAll">
                     <RadzenIcon Icon="unfold_more" />
                     <span>@UiStrings.Roles.ExpandAll</span>
                 </button>
-                <button type="button" class="pt-tool-button" disabled="@(!string.IsNullOrWhiteSpace(searchTerm))" @onclick="CollapseAll">
+                <button type="button" class="pt-tool-button" disabled="@IsFiltering" @onclick="CollapseAll">
                     <RadzenIcon Icon="unfold_less" />
                     <span>@UiStrings.Roles.CollapseAll</span>
                 </button>
@@ -92,9 +92,10 @@
                                     aria-label="@ToggleTitle(module.Label, module.Permissions)"
                                     title="@ToggleTitle(module.Label, module.Permissions)"
                                     @onclick="@(() => ToggleGroupAsync(module.Permissions))">
-                                <span class="pt-checkbox-box">@SelectionIcon(module.Permissions)</span>
+                                <span class="pt-checkbox-box" aria-hidden="true"></span>
                             </button>
-                            <button type="button" class="pt-module-toggle" @onclick="@(() => ToggleModule(module.Key))">
+                            <button type="button" class="pt-module-toggle" disabled="@IsFiltering"
+                                    aria-expanded="@moduleExpanded" @onclick="@(() => ToggleModule(module.Key))">
                                 <span class="pt-node-icon"><RadzenIcon Icon="@module.Icon" /></span>
                                 <span class="pt-node-copy">
                                     <strong>@module.Label</strong>
@@ -119,9 +120,10 @@
                                                     aria-label="@ToggleTitle(resource.Label, resource.Permissions)"
                                                     title="@ToggleTitle(resource.Label, resource.Permissions)"
                                                     @onclick="@(() => ToggleGroupAsync(resource.Permissions))">
-                                                <span class="pt-checkbox-box">@SelectionIcon(resource.Permissions)</span>
+                                                <span class="pt-checkbox-box" aria-hidden="true"></span>
                                             </button>
-                                            <button type="button" class="pt-resource-toggle" @onclick="@(() => ToggleResource(resource.Key))">
+                                            <button type="button" class="pt-resource-toggle" disabled="@IsFiltering"
+                                                    aria-expanded="@resourceExpanded" @onclick="@(() => ToggleResource(resource.Key))">
                                                 <span class="pt-resource-icon"><RadzenIcon Icon="@resource.Icon" /></span>
                                                 <span class="pt-node-copy">
                                                     <strong>@resource.Label</strong>
@@ -141,12 +143,7 @@
                                                             aria-checked="@selected.Contains(permission)" disabled="@Disabled"
                                                             @onclick="@(() => TogglePermissionAsync(permission))" @key="permission">
                                                         <span class="pt-leaf-line" aria-hidden="true"></span>
-                                                        <span class="pt-checkbox-box">
-                                                            @if (selected.Contains(permission))
-                                                            {
-                                                                <RadzenIcon Icon="check" />
-                                                            }
-                                                        </span>
+                                                        <span class="pt-checkbox-box" aria-hidden="true"></span>
                                                         <span class="pt-permission-copy">
                                                             <strong>@ActionLabel(permission)</strong>
                                                             <small>@permission</small>
