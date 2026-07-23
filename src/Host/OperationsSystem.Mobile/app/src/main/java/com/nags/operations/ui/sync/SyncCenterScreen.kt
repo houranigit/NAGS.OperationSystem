@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nags.operations.BuildConfig
 import com.nags.operations.data.realtime.RealtimeChannelState
 import com.nags.operations.ui.theme.BrandRed
 import com.nags.operations.ui.theme.BrandRedDark
@@ -147,6 +148,12 @@ fun SyncCenterScreen(
             items(rows, key = { it.table.storageKey }) { row ->
                 SyncRowCard(row)
             }
+            item(key = "app-version") {
+                AppVersionFooter(
+                    versionName = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE,
+                )
+            }
         }
     }
 
@@ -174,6 +181,34 @@ fun SyncCenterScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun AppVersionFooter(
+    versionName: String,
+    versionCode: Int,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = "Version $versionName · Build $versionCode",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
