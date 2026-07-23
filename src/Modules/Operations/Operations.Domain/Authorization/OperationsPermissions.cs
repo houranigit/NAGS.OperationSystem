@@ -30,6 +30,7 @@ public static class OperationsPermissions
     public static class Dashboard
     {
         public const string View = "operations.dashboard.view";
+        public const string ViewAnalytics = "operations.dashboard.view-analytics";
     }
 
     public static class WorkOrders

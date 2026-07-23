@@ -28,6 +28,7 @@ public sealed class OperationsPermissionCatalog : IPermissionCatalog
         new(OperationsPermissions.Flights.Merge, AdminOnly),
 
         new(OperationsPermissions.Dashboard.View, AdminAndStation),
+        new(OperationsPermissions.Dashboard.ViewAnalytics, AdminAndStation),
 
         new(OperationsPermissions.WorkOrders.View, AdminAndStation),
         new(OperationsPermissions.WorkOrders.ViewOthers, AdminAndStation),

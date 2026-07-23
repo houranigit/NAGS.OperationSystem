@@ -1,0 +1,72 @@
+<article class="dtc-card">
+    <header class="dtc-header">
+        <span class="dtc-icon" aria-hidden="true">
+            <RadzenIcon Icon="@icon" />
+        </span>
+        <div class="dtc-heading">
+            <h3 id="@titleId">@title</h3>
+            <p id="@descriptionId">@description</p>
+        </div>
+    </header>
+
+    @if (!hasData)
+    {
+        <div class="dtc-empty">
+            <span class="dtc-empty-icon" aria-hidden="true">
+                <RadzenIcon Icon="@icon" />
+            </span>
+            <p>@emptyText</p>
+        </div>
+    }
+    else
+    {
+        <div class="dtc-viewport">
+            <svg class="@SvgClass"
+                 viewBox="@ViewBox"
+                 preserveAspectRatio="xMidYMid meet"
+                 role="img"
+                 aria-labelledby="@($"{titleId} {descriptionId}")">
+                <title>@ChartTooltip</title>
+
+                <g class="dtc-grid">
+                    @foreach (var gridLine in gridLines)
+                    {
+                        <g @key="gridLine.Key">
+                            <line class="@gridLine.CssClass"
+                                  x1="@SvgNumber(PlotLeft)"
+                                  x2="@SvgNumber(plotRight)"
+                                  y1="@SvgNumber(gridLine.Y)"
+                                  y2="@SvgNumber(gridLine.Y)"
+                                  vector-effect="non-scaling-stroke" />
+                            <text class="dtc-axis-label dtc-axis-label--y"
+                                  x="@SvgNumber(YLabelX)"
+                                  y="@SvgNumber(gridLine.Y)"
+                                  text-anchor="end"
+                                  dominant-baseline="middle">@gridLine.Label</text>
+                        </g>
+                    }
+                </g>
+
+                <g class="dtc-columns">
+                    @foreach (var bar in bars)
+                    {
+                        <g class="dtc-column" @key="bar.Key">
+                            <title>@BarTooltip(bar.Point)</title>
+                            <rect class="dtc-bar"
+                                  x="@SvgNumber(bar.X)"
+                                  y="@SvgNumber(bar.Y)"
+                                  width="@SvgNumber(bar.Width)"
+                                  height="@SvgNumber(bar.Height)"
+                                  rx="3"
+                                  ry="3" />
+                            <text class="dtc-axis-label dtc-axis-label--x"
+                                  x="@SvgNumber(bar.LabelX)"
+                                  y="@SvgNumber(XLabelY)"
+                                  text-anchor="middle">@(bar.ShowLabel ? bar.Point.Label : string.Empty)</text>
+                        </g>
+                    }
+                </g>
+            </svg>
+        </div>
+    }
+</article>

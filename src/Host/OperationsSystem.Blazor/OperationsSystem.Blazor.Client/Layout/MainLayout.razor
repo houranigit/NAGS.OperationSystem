@@ -80,11 +80,12 @@
 
             <AuthorizeView Context="operations">
                 @{
+                    var canOpsDashboard = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.DashboardAnalyticsView);
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
                     var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
                     var canStaffAllocation = Auth.IsSystemAdministrator
                         && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffAllocationView);
-                    var canOperations = canOpsFlights || canOpsWorkOrders || canStaffAllocation;
+                    var canOperations = canOpsDashboard || canOpsFlights || canOpsWorkOrders || canStaffAllocation;
                     var operationsActive = IsNavGroupActive("operations");
                 }
                 @if (canOperations)
@@ -99,6 +100,13 @@
                         </button>
                         <div id="os-nav-operations" class="os-nav-children">
                             <span class="os-nav-flyout-title">Operations</span>
+                            @if (canOpsDashboard)
+                            {
+                                <NavLink href="/operations/dashboard" class="os-nav-link" title="@UiStrings.OperationsDashboard.Title" @onclick="CloseNav">
+                                    <RadzenIcon Icon="monitoring" />
+                                    <span>@UiStrings.OperationsDashboard.NavLabel</span>
+                                </NavLink>
+                            }
                             @if (canOpsFlights)
                             {
                                 <NavLink href="/operations/calendar" class="os-nav-link" title="Flight calendar" @onclick="CloseNav">

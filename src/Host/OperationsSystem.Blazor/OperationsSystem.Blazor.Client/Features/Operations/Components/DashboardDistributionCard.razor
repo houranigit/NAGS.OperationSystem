@@ -1,0 +1,124 @@
+<article class="odc-card">
+    <header class="odc-header">
+        <div class="odc-title-group">
+            <span class="odc-icon" aria-hidden="true">
+                <RadzenIcon Icon="@Icon" />
+            </span>
+            <div class="odc-heading">
+                <h3>@Title</h3>
+                <p>@Description</p>
+            </div>
+        </div>
+
+        @if (HasData)
+        {
+            <div class="odc-total" aria-label="@ChartAriaLabel">
+                <strong class="odc-number">@FormatCount(displayedTotal)</strong>
+                <span>@TotalLabel</span>
+            </div>
+        }
+    </header>
+
+    @if (!HasData)
+    {
+        <div class="odc-empty">
+            <span class="odc-empty-icon" aria-hidden="true">
+                <RadzenIcon Icon="@Icon" />
+            </span>
+            <strong>@EmptyTitle</strong>
+            <p>@EmptyText</p>
+        </div>
+    }
+    else
+    {
+        @if (UseBars)
+        {
+            <div class="odc-service-list" role="list" aria-label="@ChartAriaLabel">
+                @foreach (var entry in entries)
+                {
+                    <div class="odc-service-row" role="listitem" @key="entry.Key">
+                        <div class="odc-service-copy">
+                            <strong title="@entry.Label">@entry.Label</strong>
+                            <span class="odc-number">@FormatCount(entry.FlightCount)</span>
+                            <small class="odc-number">@FormatPercentage(entry.Percentage)</small>
+                        </div>
+                        <svg class="odc-meter"
+                             viewBox="0 0 100 5"
+                             preserveAspectRatio="none"
+                             role="img"
+                             aria-label="@($"{entry.Label}: {FormatCount(entry.FlightCount)} {FlightsLabel}, {FormatPercentage(entry.Percentage)}")">
+                            <rect class="odc-meter-track" x="0" y="0" width="100" height="5" rx="1.25"></rect>
+                            <rect class="@($"odc-meter-fill {entry.PaletteClass}")"
+                                  x="0"
+                                  y="0"
+                                  width="@SvgNumber(entry.Percentage)"
+                                  height="5"
+                                  rx="1.25"></rect>
+                        </svg>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="odc-chart-layout">
+                <div class="odc-chart" role="img" aria-label="@ChartAriaLabel">
+                    <RadzenChart class="odc-radzen-chart"
+                                 Width="100%"
+                                 Height="250px"
+                                 Animate="true"
+                                 AnimateDataUpdates="true"
+                                 AnimationDuration="400"
+                                 MarginTop="18"
+                                 MarginBottom="18"
+                                 MarginLeft="54"
+                                 MarginRight="54">
+                        <RadzenPieSeries TItem="DistributionEntry"
+                                         Data="@entries"
+                                         CategoryProperty="@nameof(DistributionEntry.Label)"
+                                         ValueProperty="@nameof(DistributionEntry.FlightCount)"
+                                         Fills="@chartFills"
+                                         Strokes="@chartStrokes"
+                                         StrokeWidth="2"
+                                         CornerRadius="2"
+                                         SegmentGap="2"
+                                         ExplodeOffset="4"
+                                         FillMode="FillMode.Solid">
+                            <ChildContent>
+                                <RadzenSeriesDataLabels Visible="true"
+                                                        Position="DataLabelPosition.Auto"
+                                                        Appearance="DataLabelAppearance.Outline"
+                                                        AllowOverlap="false"
+                                                        Formatter="@FormatChartLabel" />
+                            </ChildContent>
+                            <TooltipTemplate Context="entry">
+                                <div class="odc-tooltip">
+                                    <strong>@entry.Label</strong>
+                                    <div>
+                                        <span class="odc-number">@FormatCount(entry.FlightCount) @FlightsLabel</span>
+                                        <span class="odc-number">@FormatPercentage(entry.Percentage)</span>
+                                    </div>
+                                </div>
+                            </TooltipTemplate>
+                        </RadzenPieSeries>
+                        <RadzenChartTooltipOptions Visible="true" HighlightDataPoint="true" />
+                        <RadzenLegend Visible="false" />
+                    </RadzenChart>
+                </div>
+
+                <div class="odc-legend" role="list" aria-label="@($"{Title} breakdown")">
+                    @foreach (var entry in entries)
+                    {
+                        <div class="odc-legend-item"
+                             role="listitem"
+                             title="@entry.Label"
+                             @key="entry.Key">
+                            <span class="@($"odc-legend-dot {entry.PaletteClass}")" aria-hidden="true"></span>
+                            <span class="odc-legend-name">@entry.Label</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</article>

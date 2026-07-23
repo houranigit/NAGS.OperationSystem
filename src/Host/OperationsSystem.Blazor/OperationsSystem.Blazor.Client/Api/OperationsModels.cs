@@ -3,10 +3,61 @@ namespace OperationsSystem.Blazor.Client.Api;
 // Client-side mirrors of Operations API contracts (the backend stays authoritative).
 
 public sealed record OperationsDashboard(
-    int ScheduledFlights,
-    int InProgressFlights,
-    int CompletedFlights,
-    int CanceledFlights);
+    DateTimeOffset GeneratedAtUtc,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc,
+    long TotalFlights,
+    long FlightsWithPerformedServices,
+    IReadOnlyList<DashboardStatusItem> Statuses,
+    IReadOnlyList<DashboardBreakdownItem> Stations,
+    IReadOnlyList<DashboardBreakdownItem> Customers,
+    IReadOnlyList<DashboardBreakdownItem> Services,
+    IReadOnlyList<DashboardTrendPoint> Hourly,
+    IReadOnlyList<DashboardTrendPoint> Monthly,
+    IReadOnlyList<DashboardTrendPoint> Yearly,
+    IReadOnlyList<DashboardFilterOption> StationOptions,
+    IReadOnlyList<DashboardFilterOption> CustomerOptions,
+    IReadOnlyList<DashboardFilterOption> ServiceOptions)
+{
+    // Compatibility properties keep the personalized home dashboard decoupled from the richer
+    // analytics payload used by the dedicated Operations dashboard.
+    public long ScheduledFlights => StatusCount("Scheduled");
+    public long InProgressFlights => StatusCount("InProgress");
+    public long CompletedFlights => StatusCount("Completed");
+    public long CanceledFlights => StatusCount("Canceled");
+
+    private long StatusCount(string status) =>
+        Statuses.FirstOrDefault(item => string.Equals(item.Status, status, StringComparison.Ordinal))?.FlightCount ?? 0;
+}
+
+public sealed record DashboardStatusItem(string Status, long FlightCount, double Percentage);
+
+public sealed record DashboardBreakdownItem(
+    Guid? Id,
+    string Label,
+    string? Code,
+    long FlightCount,
+    double Percentage,
+    bool IsOther,
+    int GroupedItemCount);
+
+public sealed record DashboardTrendPoint(string Key, string Label, int SortOrder, long FlightCount);
+
+public sealed record DashboardFilterOption(Guid Id, string Label, string? Code);
+
+public sealed record DashboardFlightRow(
+    Guid Id,
+    string FlightNumber,
+    string? CustomerIataCode,
+    string CustomerName,
+    Guid StationId,
+    string StationIata,
+    string StationName,
+    string OperationTypeName,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    string Status,
+    IReadOnlyList<string> PerformedServiceNames);
 
 public sealed record FlightListItem(
     Guid Id,

@@ -18,6 +18,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public DbSet<Flight> Flights => Set<Flight>();
     public DbSet<FlightTimelineEntry> FlightTimelineEntries => Set<FlightTimelineEntry>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
+    public DbSet<WorkOrderServiceLine> WorkOrderServiceLines => Set<WorkOrderServiceLine>();
     public DbSet<WorkOrderTimelineEntry> WorkOrderTimelineEntries => Set<WorkOrderTimelineEntry>();
     public DbSet<MobileMutation> MobileMutations => Set<MobileMutation>();
     public DbSet<FlightReminderSchedule> FlightReminderSchedules => Set<FlightReminderSchedule>();

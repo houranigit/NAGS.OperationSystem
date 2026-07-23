@@ -1,0 +1,180 @@
+.dtc-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    height: 100%;
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-lg);
+    background: var(--os-color-surface);
+    box-shadow: var(--os-shadow-sm);
+}
+
+.dtc-header {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-bottom: var(--os-space-3);
+}
+
+.dtc-icon,
+.dtc-empty-icon {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.dtc-icon {
+    width: 2.125rem;
+    height: 2.125rem;
+    font-size: 1rem;
+}
+
+.dtc-heading {
+    min-width: 0;
+}
+
+.dtc-heading h3,
+.dtc-heading p {
+    margin: 0;
+}
+
+.dtc-heading h3 {
+    color: var(--os-color-text);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.dtc-heading p {
+    margin-top: 0.125rem;
+    color: var(--os-color-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.dtc-viewport {
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: var(--os-radius-sm);
+    direction: ltr;
+    scrollbar-color: var(--os-color-border-strong) var(--os-color-surface-muted);
+    scrollbar-width: thin;
+}
+
+.dtc-chart {
+    display: block;
+    width: 100%;
+    min-width: 24rem;
+    height: auto;
+    overflow: visible;
+    font-family: var(--os-font-sans);
+}
+
+.dtc-chart--dense {
+    min-width: 62rem;
+}
+
+.dtc-grid-line {
+    stroke: color-mix(in srgb, var(--os-color-border) 78%, transparent);
+    stroke-width: 1;
+    stroke-dasharray: 3 5;
+}
+
+.dtc-grid-line--baseline {
+    stroke: var(--os-color-border-strong);
+    stroke-dasharray: none;
+}
+
+.dtc-axis-label {
+    fill: var(--os-color-text-muted);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+.dtc-axis-label--y {
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.dtc-axis-label--x {
+    fill: var(--os-color-text-subtle);
+    font-size: 9.5px;
+    font-weight: 600;
+}
+
+.dtc-bar {
+    fill: var(--os-color-primary);
+    opacity: 0.9;
+    transition: fill var(--os-transition), opacity var(--os-transition);
+}
+
+.dtc-column:hover .dtc-bar {
+    fill: var(--os-color-primary-accent);
+    opacity: 1;
+}
+
+.dtc-empty {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    min-height: 10rem;
+    padding: var(--os-space-4);
+    border: 1px dashed var(--os-color-border-strong);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-muted);
+    text-align: center;
+}
+
+.dtc-empty-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-bottom: var(--os-space-2);
+    font-size: 1.125rem;
+}
+
+.dtc-empty p {
+    max-width: 22rem;
+    margin: 0;
+    font-size: var(--os-text-sm);
+    line-height: 1.5;
+}
+
+[dir="rtl"] .dtc-card {
+    text-align: start;
+}
+
+[dir="rtl"] .dtc-viewport {
+    direction: ltr;
+}
+
+@media (max-width: 680px) {
+    .dtc-card {
+        padding: var(--os-space-3);
+    }
+
+    .dtc-chart {
+        min-width: 24rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .dtc-header {
+        margin-bottom: var(--os-space-2);
+    }
+
+    .dtc-empty {
+        min-height: 9rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dtc-bar {
+        transition: none;
+    }
+}

@@ -1,3 +1,5 @@
+using Operations.Domain.Enumerations;
+
 namespace Operations.Application.Contracts;
 
 public sealed record FlightListItemDto(
@@ -131,10 +133,70 @@ public sealed record DuplicateCandidateDto(
     int Score);
 
 public sealed record OperationsDashboardDto(
-    int ScheduledFlights,
-    int InProgressFlights,
-    int CompletedFlights,
-    int CanceledFlights);
+    DateTimeOffset GeneratedAtUtc,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc,
+    long TotalFlights,
+    long FlightsWithPerformedServices,
+    IReadOnlyList<DashboardStatusItemDto> Statuses,
+    IReadOnlyList<DashboardBreakdownItemDto> Stations,
+    IReadOnlyList<DashboardBreakdownItemDto> Customers,
+    IReadOnlyList<DashboardBreakdownItemDto> Services,
+    IReadOnlyList<DashboardTrendPointDto> Hourly,
+    IReadOnlyList<DashboardTrendPointDto> Monthly,
+    IReadOnlyList<DashboardTrendPointDto> Yearly,
+    IReadOnlyList<DashboardFilterOptionDto> StationOptions,
+    IReadOnlyList<DashboardFilterOptionDto> CustomerOptions,
+    IReadOnlyList<DashboardFilterOptionDto> ServiceOptions)
+{
+    // Retained for parameterless callers of the original dashboard contract.
+    public long ScheduledFlights => StatusCount(nameof(FlightStatus.Scheduled));
+    public long InProgressFlights => StatusCount(nameof(FlightStatus.InProgress));
+    public long CompletedFlights => StatusCount(nameof(FlightStatus.Completed));
+    public long CanceledFlights => StatusCount(nameof(FlightStatus.Canceled));
+
+    private long StatusCount(string status) =>
+        Statuses.FirstOrDefault(item => string.Equals(item.Status, status, StringComparison.Ordinal))?.FlightCount ?? 0;
+}
+
+public sealed record DashboardStatusItemDto(
+    string Status,
+    long FlightCount,
+    double Percentage);
+
+public sealed record DashboardBreakdownItemDto(
+    Guid? Id,
+    string Label,
+    string? Code,
+    long FlightCount,
+    double Percentage,
+    bool IsOther,
+    int GroupedItemCount);
+
+public sealed record DashboardTrendPointDto(
+    string Key,
+    string Label,
+    int SortOrder,
+    long FlightCount);
+
+public sealed record DashboardFilterOptionDto(
+    Guid Id,
+    string Label,
+    string? Code);
+
+public sealed record DashboardFlightRowDto(
+    Guid Id,
+    string FlightNumber,
+    string? CustomerIataCode,
+    string CustomerName,
+    Guid StationId,
+    string StationIata,
+    string StationName,
+    string OperationTypeName,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    string Status,
+    IReadOnlyList<string> PerformedServiceNames);
 
 public sealed record WorkOrderListItemDto(
     Guid Id,

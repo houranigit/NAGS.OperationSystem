@@ -1,0 +1,307 @@
+.odc-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    height: 100%;
+    padding: 1.25rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface);
+    box-shadow: var(--os-shadow-sm);
+}
+
+.odc-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--os-space-3);
+    min-width: 0;
+    padding-bottom: var(--os-space-3);
+    border-bottom: 1px solid var(--os-color-border);
+}
+
+.odc-title-group {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--os-space-3);
+    min-width: 0;
+}
+
+.odc-icon,
+.odc-empty-icon {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.odc-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.15rem;
+}
+
+.odc-heading {
+    min-width: 0;
+}
+
+.odc-heading h3,
+.odc-heading p {
+    margin: 0;
+}
+
+.odc-heading h3 {
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+    line-height: 1.35;
+}
+
+.odc-heading p {
+    display: -webkit-box;
+    margin-top: 0.15rem;
+    overflow: hidden;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.odc-total {
+    display: grid;
+    flex: 0 0 auto;
+    justify-items: end;
+    padding-inline-start: var(--os-space-2);
+    text-align: end;
+}
+
+.odc-total strong {
+    color: var(--os-color-primary);
+    font-size: var(--os-text-xl);
+    line-height: 1;
+}
+
+.odc-total span {
+    max-width: 6.5rem;
+    margin-top: var(--os-space-1);
+    color: var(--os-color-text-muted);
+    font-size: 0.675rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-transform: uppercase;
+}
+
+.odc-empty {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    min-height: 17rem;
+    padding: var(--os-space-6) var(--os-space-4);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface-muted);
+    text-align: center;
+}
+
+.odc-empty-icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-bottom: var(--os-space-3);
+    font-size: 1.25rem;
+}
+
+.odc-empty strong {
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+}
+
+.odc-empty p {
+    max-width: 21rem;
+    margin: var(--os-space-1) 0 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    line-height: 1.5;
+}
+
+.odc-chart-layout {
+    display: grid;
+    grid-template-rows: minmax(0, auto) auto;
+    min-width: 0;
+}
+
+.odc-service-list {
+    display: grid;
+    align-content: center;
+    gap: var(--os-space-4);
+    min-height: 19rem;
+    padding-block: var(--os-space-4);
+}
+
+.odc-service-row {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.odc-service-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: var(--os-space-3);
+}
+
+.odc-service-copy strong {
+    overflow: hidden;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.odc-service-copy span {
+    color: var(--os-color-text);
+    font-size: var(--os-text-xs);
+    font-weight: 800;
+}
+
+.odc-service-copy small {
+    min-width: 2.8rem;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    text-align: end;
+}
+
+.odc-meter {
+    display: block;
+    width: 100%;
+    height: 0.38rem;
+}
+
+.odc-meter-track {
+    fill: var(--os-color-surface-hover);
+}
+
+.odc-meter-fill {
+    fill: var(--odc-palette);
+}
+
+.odc-chart {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.odc-chart ::deep .odc-radzen-chart {
+    display: block;
+    max-width: 100%;
+    margin-inline: auto;
+}
+
+.odc-chart ::deep .rz-series-data-label {
+    fill: var(--os-color-text);
+    font-family: var(--os-font-sans);
+    font-size: 0.7rem;
+    font-weight: 750;
+}
+
+.odc-chart ::deep .rz-series-data-label-outline {
+    paint-order: stroke;
+    stroke: var(--os-color-surface);
+    stroke-linejoin: round;
+    stroke-width: 3px;
+}
+
+.odc-tooltip {
+    display: grid;
+    min-width: 9rem;
+    gap: var(--os-space-2);
+}
+
+.odc-tooltip > strong {
+    max-width: 15rem;
+    overflow: hidden;
+    color: inherit;
+    font-size: var(--os-text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.odc-tooltip > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--os-space-4);
+    font-size: var(--os-text-xs);
+}
+
+.odc-legend {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--os-space-2) var(--os-space-4);
+    min-width: 0;
+    padding-top: var(--os-space-3);
+    border-top: 1px solid var(--os-color-border);
+}
+
+.odc-legend-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--os-space-2);
+    min-width: 0;
+    padding-block: 0.15rem;
+}
+
+.odc-legend-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--odc-palette);
+}
+
+.odc-legend-name {
+    overflow: hidden;
+    color: var(--os-color-text);
+    font-size: var(--os-text-xs);
+    font-weight: 650;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.odc-number {
+    direction: ltr;
+    font-variant-numeric: tabular-nums;
+    unicode-bidi: isolate;
+}
+
+.odc-palette-0 { --odc-palette: var(--os-color-primary); }
+.odc-palette-1 { --odc-palette: var(--os-color-info); }
+.odc-palette-2 { --odc-palette: var(--os-color-success); }
+.odc-palette-3 { --odc-palette: var(--os-color-warning); }
+.odc-palette-4 { --odc-palette: var(--os-color-danger); }
+.odc-palette-5 { --odc-palette: var(--os-color-text-muted); }
+
+@media (max-width: 420px) {
+    .odc-card {
+        padding: var(--os-space-4);
+    }
+
+    .odc-header {
+        align-items: center;
+    }
+
+    .odc-heading p {
+        display: none;
+    }
+
+    .odc-legend {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .odc-chart ::deep .rz-chart {
+        animation: none;
+        transition: none;
+    }
+}

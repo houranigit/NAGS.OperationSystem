@@ -254,11 +254,133 @@ internal static class FlightEndpoints
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Merge);
 
+        // Keep the lightweight home-page summary behind its existing permission. The detailed
+        // analytics page has a separate permission because it exposes flight-level records/export.
         group.MapGet("/dashboard", async (ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new GetOperationsDashboardQuery(), ct);
+            var result = await sender.Send(new GetOperationsDashboardQuery(
+                IncludeAnalytics: false,
+                IncludeOptions: false), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Dashboard.View).WithTags("Operations.Dashboard");
+
+        group.MapGet("/analytics-dashboard", async (
+            ISender sender,
+            CancellationToken ct,
+            DateTimeOffset? fromUtc = null,
+            DateTimeOffset? toUtc = null,
+            string? stationIds = null,
+            string? customerIds = null,
+            string? serviceIds = null,
+            int topCount = 5,
+            bool includeAnalytics = true,
+            bool includeOptions = true) =>
+        {
+            if (!TryParseDashboardIds(stationIds, out var parsedStationIds))
+                return ApiResults.Problem(InvalidDashboardIds("stationIds"));
+            if (!TryParseDashboardIds(customerIds, out var parsedCustomerIds))
+                return ApiResults.Problem(InvalidDashboardIds("customerIds"));
+            if (!TryParseDashboardIds(serviceIds, out var parsedServiceIds))
+                return ApiResults.Problem(InvalidDashboardIds("serviceIds"));
+
+            var result = await sender.Send(new GetOperationsDashboardQuery(
+                fromUtc,
+                toUtc,
+                parsedStationIds,
+                parsedCustomerIds,
+                parsedServiceIds,
+                topCount,
+                includeAnalytics,
+                includeOptions), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics).WithTags("Operations.Dashboard");
+
+        group.MapGet("/analytics-dashboard/flights", async (
+            ISender sender,
+            CancellationToken ct,
+            int page = 1,
+            int pageSize = 20,
+            DateTimeOffset? fromUtc = null,
+            DateTimeOffset? toUtc = null,
+            string? stationIds = null,
+            string? customerIds = null,
+            string? serviceIds = null,
+            string? sort = null) =>
+        {
+            if (!TryParseDashboardIds(stationIds, out var parsedStationIds))
+                return ApiResults.Problem(InvalidDashboardIds("stationIds"));
+            if (!TryParseDashboardIds(customerIds, out var parsedCustomerIds))
+                return ApiResults.Problem(InvalidDashboardIds("customerIds"));
+            if (!TryParseDashboardIds(serviceIds, out var parsedServiceIds))
+                return ApiResults.Problem(InvalidDashboardIds("serviceIds"));
+
+            var result = await sender.Send(new GetDashboardFlightsQuery(
+                page,
+                pageSize,
+                fromUtc,
+                toUtc,
+                parsedStationIds,
+                parsedCustomerIds,
+                parsedServiceIds,
+                sort), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics)
+            .WithTags("Operations.Dashboard")
+            .WithName("GetDashboardFlights");
+
+        group.MapGet("/analytics-dashboard/flights/export", async (
+            string format,
+            ISender sender,
+            TimeProvider timeProvider,
+            CancellationToken ct,
+            DateTimeOffset? fromUtc = null,
+            DateTimeOffset? toUtc = null,
+            string? stationIds = null,
+            string? customerIds = null,
+            string? serviceIds = null,
+            string? sort = null) =>
+        {
+            if (!DashboardFlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    new Dictionary<string, string[]>
+                    {
+                        ["format"] = ["Format must be one of: xlsx, csv, or pdf."]
+                    },
+                    code: "Operations.Dashboard.ExportFormatInvalid"));
+            }
+
+            if (!TryParseDashboardIds(stationIds, out var parsedStationIds))
+                return ApiResults.Problem(InvalidDashboardIds("stationIds"));
+            if (!TryParseDashboardIds(customerIds, out var parsedCustomerIds))
+                return ApiResults.Problem(InvalidDashboardIds("customerIds"));
+            if (!TryParseDashboardIds(serviceIds, out var parsedServiceIds))
+                return ApiResults.Problem(InvalidDashboardIds("serviceIds"));
+
+            var result = await sender.Send(new GetDashboardFlightsExportQuery(
+                fromUtc,
+                toUtc,
+                parsedStationIds,
+                parsedCustomerIds,
+                parsedServiceIds,
+                sort), ct);
+            if (result.IsFailure)
+                return ApiResults.Problem(result.Error);
+
+            var file = DashboardFlightExportDocumentFactory.Create(
+                exportFormat,
+                result.Value,
+                new DashboardFlightExportCriteria(
+                    fromUtc,
+                    toUtc,
+                    parsedStationIds,
+                    parsedCustomerIds,
+                    parsedServiceIds),
+                timeProvider.GetUtcNow());
+            return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics)
+            .WithTags("Operations.Dashboard")
+            .WithName("ExportDashboardFlights");
     }
 
     private static IReadOnlyList<FlightStatus>? ParseStatuses(string? value)
@@ -292,4 +414,43 @@ internal static class FlightEndpoints
         }
         return categories;
     }
+
+    private static bool TryParseDashboardIds(string? value, out IReadOnlyList<Guid> ids)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            ids = [];
+            return true;
+        }
+
+        var parsed = new List<Guid>();
+        foreach (var item in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Guid.TryParse(item, out var id) || id == Guid.Empty)
+            {
+                ids = [];
+                return false;
+            }
+
+            if (!parsed.Contains(id))
+                parsed.Add(id);
+        }
+
+        if (parsed.Count == 0)
+        {
+            ids = [];
+            return false;
+        }
+
+        ids = parsed;
+        return true;
+    }
+
+    private static Error InvalidDashboardIds(string field) =>
+        Error.Validation(
+            new Dictionary<string, string[]>
+            {
+                [field] = [$"{field} must be a comma-separated list of non-empty GUID values."]
+            },
+            code: "Operations.Dashboard.FilterIdsInvalid");
 }

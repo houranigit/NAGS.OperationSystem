@@ -1,0 +1,393 @@
+@page "/operations/dashboard"
+
+<PageTitle>@UiStrings.OperationsDashboard.Title</PageTitle>
+
+<RequirePermission Permission="@OperationsPermissions.DashboardAnalyticsView">
+    <main class="od-page">
+        <header class="od-hero">
+            <div class="od-hero-main">
+                <div class="od-eyebrow">
+                    <span><RadzenIcon Icon="monitoring" /> @UiStrings.OperationsDashboard.ControlCenter</span>
+                </div>
+
+                <div class="od-title-row">
+                    <h1>@UiStrings.OperationsDashboard.Title</h1>
+                    <button type="button"
+                            class="@(IsLiveEnabled ? "od-live-switch is-active" : "od-live-switch")"
+                            role="switch"
+                            aria-checked="@IsLiveEnabled"
+                            disabled="@isRefreshing"
+                            @onclick="ToggleLiveAsync">
+                        <span><i></i></span>
+                        <strong>@UiStrings.OperationsDashboard.Live</strong>
+                    </button>
+                </div>
+
+                <p>@UiStrings.OperationsDashboard.Description</p>
+
+                <div class="od-hero-meta">
+                    <span><RadzenIcon Icon="date_range" /> @RangeSummary</span>
+                    <span><RadzenIcon Icon="schedule" /> @UiStrings.OperationsDashboard.UtcReporting</span>
+                    @if (dashboard is not null)
+                    {
+                        <span><RadzenIcon Icon="sync" /> @LastUpdatedLabel</span>
+                    }
+                    <button type="button" class="od-refresh" title="@UiStrings.OperationsDashboard.Refresh"
+                            disabled="@isRefreshing" @onclick="RefreshEverythingAsync">
+                        <RadzenIcon Icon="refresh" />
+                    </button>
+                </div>
+
+                <div class="od-hero-filters">
+                    <label class="od-hero-filter">
+                        <span><RadzenIcon Icon="connecting_airports" /> @UiStrings.OperationsDashboard.Stations</span>
+                        <RadzenDropDown TValue="IEnumerable<Guid>"
+                                        Value="@selectedStationIds"
+                                        ValueChanged="@OnStationSelectionChangedAsync"
+                                        Data="@stationOptions"
+                                        TextProperty="Label"
+                                        ValueProperty="Id"
+                                        Multiple="true"
+                                        Chips="false"
+                                        MaxSelectedLabels="2"
+                                        SelectedItemsText="@UiStrings.OperationsDashboard.ItemsSelected"
+                                        AllowClear="true"
+                                        AllowFiltering="true"
+                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        Placeholder="@UiStrings.OperationsDashboard.AllStations"
+                                        aria-label="@UiStrings.OperationsDashboard.Stations"
+                                        class="od-hero-select" />
+                    </label>
+
+                    <label class="od-hero-filter">
+                        <span><RadzenIcon Icon="airlines" /> @UiStrings.OperationsDashboard.Customers</span>
+                        <RadzenDropDown TValue="IEnumerable<Guid>"
+                                        Value="@selectedCustomerIds"
+                                        ValueChanged="@OnCustomerSelectionChangedAsync"
+                                        Data="@customerOptions"
+                                        TextProperty="Label"
+                                        ValueProperty="Id"
+                                        Multiple="true"
+                                        Chips="false"
+                                        MaxSelectedLabels="2"
+                                        SelectedItemsText="@UiStrings.OperationsDashboard.ItemsSelected"
+                                        AllowClear="true"
+                                        AllowFiltering="true"
+                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        Placeholder="@UiStrings.OperationsDashboard.AllCustomers"
+                                        aria-label="@UiStrings.OperationsDashboard.Customers"
+                                        class="od-hero-select" />
+                    </label>
+
+                    <label class="od-hero-filter">
+                        <span><RadzenIcon Icon="engineering" /> @UiStrings.OperationsDashboard.PerformedServices</span>
+                        <RadzenDropDown TValue="IEnumerable<Guid>"
+                                        Value="@selectedServiceIds"
+                                        ValueChanged="@OnServiceSelectionChangedAsync"
+                                        Data="@serviceOptions"
+                                        TextProperty="Label"
+                                        ValueProperty="Id"
+                                        Multiple="true"
+                                        Chips="false"
+                                        MaxSelectedLabels="2"
+                                        SelectedItemsText="@UiStrings.OperationsDashboard.ItemsSelected"
+                                        AllowClear="true"
+                                        AllowFiltering="true"
+                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        Placeholder="@UiStrings.OperationsDashboard.AllServices"
+                                        aria-label="@UiStrings.OperationsDashboard.PerformedServices"
+                                        class="od-hero-select" />
+                    </label>
+                </div>
+            </div>
+
+            <aside class="@(IsLiveEnabled ? "od-calendar-panel is-live" : "od-calendar-panel")"
+                   aria-label="@UiStrings.OperationsDashboard.CalendarTitle">
+                <div class="od-calendar-heading">
+                    <div>
+                        <span><RadzenIcon Icon="calendar_month" /></span>
+                        <div>
+                            <strong>@UiStrings.OperationsDashboard.CalendarTitle</strong>
+                            <small>@CalendarSelectionSummary</small>
+                        </div>
+                    </div>
+
+                    @if (!IsLiveEnabled)
+                    {
+                        <div class="od-calendar-modes" role="group" aria-label="@UiStrings.OperationsDashboard.DateMode">
+                            <button type="button"
+                                    class="@CalendarModeClass(DashboardRangeMode.SingleDay)"
+                                    aria-pressed="@(selectedRangeMode == DashboardRangeMode.SingleDay)"
+                                    @onclick="() => SelectCalendarModeAsync(DashboardRangeMode.SingleDay)">
+                                @UiStrings.OperationsDashboard.Day
+                            </button>
+                            <button type="button"
+                                    class="@CalendarModeClass(DashboardRangeMode.Period)"
+                                    aria-pressed="@(selectedRangeMode == DashboardRangeMode.Period)"
+                                    @onclick="() => SelectCalendarModeAsync(DashboardRangeMode.Period)">
+                                @UiStrings.OperationsDashboard.Range
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                <div class="od-calendar-body">
+                    <RadzenDatePicker TValue="DateTime?"
+                                      Value="@calendarSelection"
+                                      Change="@OnCalendarDateChangedAsync"
+                                      DateRender="@RenderCalendarDate"
+                                      InitialViewDate="@(calendarSelection ?? selectedFromDate ?? UtcToday)"
+                                      Max="@UtcToday"
+                                      Inline="true"
+                                      ShowTime="false"
+                                      AllowClear="false"
+                                      Disabled="@IsLiveEnabled"
+                                      aria-label="@UiStrings.OperationsDashboard.CalendarTitle"
+                                      class="od-inline-calendar" />
+                </div>
+
+                <div class="od-calendar-footer">
+                    <RadzenIcon Icon="@(IsLiveEnabled ? "sensors" : selectedRangeMode == DashboardRangeMode.Period ? "date_range" : "today")" />
+                    <span>@CalendarHint</span>
+                </div>
+            </aside>
+        </header>
+
+        @if (isInitialLoading)
+        {
+            <div class="od-loading" aria-label="@UiStrings.Common.Loading">
+                <div class="od-loading-panels">
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                </div>
+            </div>
+        }
+        else if (dashboard is null)
+        {
+            <ErrorState Message="@UiStrings.OperationsDashboard.DataUnavailable" OnRetry="@RefreshEverythingAsync" />
+        }
+        else
+        {
+            @if (dashboardLoadError)
+            {
+                <div class="od-stale-warning" role="status">
+                    <RadzenIcon Icon="cloud_off" />
+                    <span>@UiStrings.OperationsDashboard.StaleWarning</span>
+                    <button type="button" @onclick="RefreshEverythingAsync">@UiStrings.OperationsDashboard.Retry</button>
+                </div>
+            }
+
+            <section class="od-status-section" aria-labelledby="flight-status-title">
+                <article class="od-status-mix">
+                    <div class="od-status-mix-heading">
+                        <span class="od-status-mix-icon"><RadzenIcon Icon="flight_takeoff" /></span>
+                        <div>
+                            <h2 id="flight-status-title">@UiStrings.OperationsDashboard.Flights</h2>
+                            <p>
+                                <strong>@FormatCount(dashboard.TotalFlights)</strong>
+                                @UiStrings.OperationsDashboard.TotalFlights
+                            </p>
+                        </div>
+                    </div>
+
+                    @if (dashboard.TotalFlights == 0)
+                    {
+                        <div class="od-status-mix-empty">@UiStrings.OperationsDashboard.NoFlights</div>
+                    }
+                    else
+                    {
+                        <div class="od-status-mix-chart">
+                            <svg viewBox="0 0 100 10" preserveAspectRatio="none"
+                                 role="img" aria-label="@UiStrings.OperationsDashboard.Flights">
+                                @foreach (var segment in StatusSegments)
+                                {
+                                    <rect @key="segment.Status"
+                                          class="@($"od-status-segment od-status-segment--{segment.Tone}")"
+                                          x="@SvgNumber(segment.Offset)"
+                                          y="0"
+                                          width="@SvgNumber(segment.Percentage)"
+                                          height="10">
+                                        <title>@($"{segment.Label}: {FormatCount(segment.Count)} ({FormatPercentage(segment.Percentage)})")</title>
+                                    </rect>
+                                }
+                            </svg>
+                            <div class="od-status-mix-legend">
+                                @foreach (var segment in StatusSegments)
+                                {
+                                    <span @key="segment.Status">
+                                        <i class="@($"od-status-dot od-status-dot--{segment.Tone}")"></i>
+                                        @segment.Label
+                                        <strong>@FormatCount(segment.Count)</strong>
+                                        <small>@FormatPercentage(segment.Percentage)</small>
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </article>
+            </section>
+
+            <section class="od-analytics-section" aria-labelledby="distribution-title">
+                <div class="od-section-heading">
+                    <div>
+                        <p class="od-section-kicker">@UiStrings.OperationsDashboard.Distribution</p>
+                        <h2 id="distribution-title">@UiStrings.OperationsDashboard.FlightDistribution</h2>
+                        <p>@UiStrings.OperationsDashboard.FlightDistributionDescription</p>
+                    </div>
+                </div>
+
+                <div class="od-distribution-grid">
+                    <DashboardDistributionCard Title="@UiStrings.OperationsDashboard.TopStations"
+                                               Description="@UiStrings.OperationsDashboard.TopStationsDescription"
+                                               Icon="connecting_airports"
+                                               Items="@dashboard.Stations"
+                                               Total="@dashboard.TotalFlights"
+                                               EmptyTitle="@UiStrings.OperationsDashboard.NoFlightData"
+                                               EmptyText="@UiStrings.OperationsDashboard.NoMatchingActivity"
+                                               TotalLabel="@UiStrings.OperationsDashboard.TotalFlights"
+                                               OtherLabel="@UiStrings.OperationsDashboard.Other"
+                                               GroupedLabelFormat="@UiStrings.OperationsDashboard.GroupedFormat"
+                                               FlightsLabel="@UiStrings.OperationsDashboard.Flights" />
+                    <DashboardDistributionCard Title="@UiStrings.OperationsDashboard.TopCustomers"
+                                               Description="@UiStrings.OperationsDashboard.TopCustomersDescription"
+                                               Icon="airlines"
+                                               Items="@dashboard.Customers"
+                                               Total="@dashboard.TotalFlights"
+                                               EmptyTitle="@UiStrings.OperationsDashboard.NoFlightData"
+                                               EmptyText="@UiStrings.OperationsDashboard.NoMatchingActivity"
+                                               TotalLabel="@UiStrings.OperationsDashboard.TotalFlights"
+                                               OtherLabel="@UiStrings.OperationsDashboard.Other"
+                                               GroupedLabelFormat="@UiStrings.OperationsDashboard.GroupedFormat"
+                                               FlightsLabel="@UiStrings.OperationsDashboard.Flights" />
+                    <DashboardDistributionCard Title="@UiStrings.OperationsDashboard.PerformedServices"
+                                               Description="@UiStrings.OperationsDashboard.PerformedServicesDescription"
+                                               Icon="engineering"
+                                               Items="@dashboard.Services"
+                                               Total="@dashboard.Services.Sum(item => item.FlightCount)"
+                                               UseBars="true"
+                                               EmptyTitle="@UiStrings.OperationsDashboard.NoFlightData"
+                                               EmptyText="@UiStrings.OperationsDashboard.NoMatchingActivity"
+                                               TotalLabel="@UiStrings.OperationsDashboard.TotalServiceUses"
+                                               OtherLabel="@UiStrings.OperationsDashboard.Other"
+                                               GroupedLabelFormat="@UiStrings.OperationsDashboard.GroupedFormat"
+                                               FlightsLabel="@UiStrings.OperationsDashboard.Flights" />
+                </div>
+            </section>
+
+            <section class="od-trend-section" aria-labelledby="trend-title">
+                <div class="od-section-heading od-section-heading--compact">
+                    <div>
+                        <h2 id="trend-title">@UiStrings.OperationsDashboard.FlightTrends</h2>
+                        <p>@UiStrings.OperationsDashboard.FlightTrendsDescription</p>
+                    </div>
+                </div>
+
+                <div class="od-trend-grid">
+                    <DashboardTrendChart Title="@UiStrings.OperationsDashboard.FlightsByHour"
+                                         Description="@UiStrings.OperationsDashboard.FlightsByHourDescription"
+                                         Icon="schedule"
+                                         Points="@dashboard.Hourly"
+                                         EmptyText="@UiStrings.OperationsDashboard.NoTrendData"
+                                         FlightsLabel="@UiStrings.OperationsDashboard.Flights" />
+                    <DashboardTrendChart Title="@UiStrings.OperationsDashboard.FlightsByMonth"
+                                         Description="@UiStrings.OperationsDashboard.FlightsByMonthDescription"
+                                         Icon="calendar_month"
+                                         Points="@LocalizedMonthlyPoints"
+                                         EmptyText="@UiStrings.OperationsDashboard.NoTrendData"
+                                         FlightsLabel="@UiStrings.OperationsDashboard.Flights" />
+                </div>
+            </section>
+
+            <section class="od-table-section" aria-labelledby="flight-table-title">
+                <div class="od-section-heading od-section-heading--table">
+                    <div>
+                        <p class="od-section-kicker">@UiStrings.OperationsDashboard.FlightRegister</p>
+                        <h2 id="flight-table-title">@UiStrings.OperationsDashboard.FlightsTable</h2>
+                        <p>@UiStrings.OperationsDashboard.FlightsTableDescription</p>
+                    </div>
+                </div>
+
+                <DataListCard @ref="flightList" TItem="DashboardFlightRow"
+                              Data="@flightRows" Count="@FlightTotalCount"
+                              IsLoading="@isTableLoading" HasError="@tableLoadError"
+                              ErrorMessage="@UiStrings.OperationsDashboard.TableUnavailable"
+                              OnRetry="@ReloadFlightsAsync" LoadData="@LoadFlightsAsync"
+                              PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                              ShowSearch="false" CountLabel="@UiStrings.OperationsDashboard.Flights"
+                              EmptyText="@UiStrings.OperationsDashboard.NoFlights">
+                    <Toolbar>
+                        <RowActionMenu Label="@UiStrings.OperationsDashboard.Export"
+                                       BusyLabel="@UiStrings.OperationsDashboard.Exporting"
+                                       ShowLabel="true" TriggerIcon="download" EndIcon="expand_more"
+                                       Disabled="@(isTableLoading || tableLoadError || flightTotalCount <= 0)"
+                                       Busy="@isExporting">
+                            <RowAction Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view"
+                                       OnClick="@(() => ExportAsync("xlsx"))" />
+                            <RowAction Text="@UiStrings.Flights.CsvFile" Icon="csv"
+                                       OnClick="@(() => ExportAsync("csv"))" />
+                            <RowAction Text="@UiStrings.Flights.PdfReport" Icon="picture_as_pdf"
+                                       OnClick="@(() => ExportAsync("pdf"))" />
+                        </RowActionMenu>
+                    </Toolbar>
+                    <Columns>
+                        <RadzenDataGridColumn TItem="DashboardFlightRow" Property="FlightNumber"
+                                              Title="@UiStrings.OperationsDashboard.FlightNumber" Width="230px">
+                            <Template Context="flight">
+                                <div class="od-flight-cell">
+                                    <span><RadzenIcon Icon="flight" /></span>
+                                    <div>
+                                        <strong>@DisplayFlightNumber(flight)</strong>
+                                        <small>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</small>
+                                    </div>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="DashboardFlightRow" Property="CustomerName"
+                                              Title="@UiStrings.OperationsDashboard.Customer" Width="120px">
+                            <Template Context="flight">
+                                <strong class="od-code-cell">@DisplayCode(flight.CustomerIataCode)</strong>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="DashboardFlightRow" Property="StationIata"
+                                              Title="@UiStrings.OperationsDashboard.Station" Width="115px">
+                            <Template Context="flight">
+                                <strong class="od-code-cell">@flight.StationIata</strong>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="DashboardFlightRow" Property="OperationTypeName"
+                                              Title="@UiStrings.OperationsDashboard.OperationType" Width="150px" />
+                        <RadzenDataGridColumn TItem="DashboardFlightRow"
+                                              Title="@UiStrings.OperationsDashboard.Services" Sortable="false" Width="230px">
+                            <Template Context="flight">
+                                @if (flight.PerformedServiceNames.Count == 0)
+                                {
+                                    <span class="od-no-services">@UiStrings.OperationsDashboard.NoPerformedServices</span>
+                                }
+                                else
+                                {
+                                    <div class="od-service-chips">
+                                        @foreach (var service in flight.PerformedServiceNames.Take(2))
+                                        {
+                                            <span @key="service">@service</span>
+                                        }
+                                        @if (flight.PerformedServiceNames.Count > 2)
+                                        {
+                                            <span>+@(flight.PerformedServiceNames.Count - 2)</span>
+                                        }
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="DashboardFlightRow" Property="Status"
+                                              Title="@UiStrings.OperationsDashboard.Status" Width="145px">
+                            <Template Context="flight">
+                                <StatusBadge Label="@StatusLabel(flight.Status)" Tone="@StatusTone(flight.Status)" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </DataListCard>
+            </section>
+        }
+    </main>
+</RequirePermission>

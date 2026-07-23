@@ -11,6 +11,75 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<OperationsDashboard> GetDashboardAsync(CancellationToken ct = default) =>
         api.GetAsync<OperationsDashboard>("/operations/dashboard", ct);
 
+    public Task<OperationsDashboard> GetOperationsDashboardAsync(
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        IReadOnlyList<Guid>? stationIds = null,
+        IReadOnlyList<Guid>? customerIds = null,
+        IReadOnlyList<Guid>? serviceIds = null,
+        bool includeOptions = true,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("stationIds", stationIds)
+            .Add("customerIds", customerIds)
+            .Add("serviceIds", serviceIds)
+            .Add("includeOptions", includeOptions)
+            .Build();
+        return api.GetAsync<OperationsDashboard>($"/operations/analytics-dashboard{query}", ct);
+    }
+
+    public Task<PagedResult<DashboardFlightRow>> GetOperationsDashboardFlightsAsync(
+        int page,
+        int pageSize,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        IReadOnlyList<Guid>? stationIds = null,
+        IReadOnlyList<Guid>? customerIds = null,
+        IReadOnlyList<Guid>? serviceIds = null,
+        string? sort = null,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page)
+            .Add("pageSize", pageSize)
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("stationIds", stationIds)
+            .Add("customerIds", customerIds)
+            .Add("serviceIds", serviceIds)
+            .Add("sort", sort)
+            .Build();
+        return api.GetAsync<PagedResult<DashboardFlightRow>>($"/operations/analytics-dashboard/flights{query}", ct);
+    }
+
+    public Task ExportOperationsDashboardFlightsAsync(
+        string format,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        IReadOnlyList<Guid>? stationIds = null,
+        IReadOnlyList<Guid>? customerIds = null,
+        IReadOnlyList<Guid>? serviceIds = null,
+        string? sort = null,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("format", format)
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("stationIds", stationIds)
+            .Add("customerIds", customerIds)
+            .Add("serviceIds", serviceIds)
+            .Add("sort", sort)
+            .Build();
+        return api.DownloadFileAsync(
+            $"/operations/analytics-dashboard/flights/export{query}",
+            fallbackFileName: $"operations-dashboard.{format}",
+            cancellationToken: ct);
+    }
+
     public Task<PagedResult<FlightListItem>> GetFlightsAsync(
         int page, int pageSize, string? search = null, Guid? stationId = null, Guid? customerId = null,
         Guid? operationTypeId = null, IReadOnlyList<string>? statuses = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null,
@@ -262,6 +331,12 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             return this;
         }
 
+        public QueryBuilder Add(string key, bool value)
+        {
+            _parts.Add($"{key}={value.ToString(CultureInfo.InvariantCulture).ToLowerInvariant()}");
+            return this;
+        }
+
         public QueryBuilder Add(string key, string? value)
         {
             if (!string.IsNullOrWhiteSpace(value))
@@ -273,6 +348,13 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         {
             if (value is { } v)
                 _parts.Add($"{key}={v}");
+            return this;
+        }
+
+        public QueryBuilder Add(string key, IReadOnlyList<Guid>? values)
+        {
+            if (values is { Count: > 0 })
+                _parts.Add($"{key}={string.Join(',', values)}");
             return this;
         }
 
