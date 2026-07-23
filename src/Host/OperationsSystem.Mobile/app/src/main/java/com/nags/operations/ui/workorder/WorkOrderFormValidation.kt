@@ -25,11 +25,16 @@ internal object WorkOrderDraftSubmissionMode {
 }
 
 /** Mirrors the portal's completion work-order wizard progression. */
-internal enum class WorkOrderWizardStep {
+enum class WorkOrderWizardStep {
     Flight,
     ServiceLines,
     Tasks,
     Signature,
+}
+
+internal enum class WorkOrderValidationPhase {
+    BeforeAtd,
+    Submission,
 }
 
 internal fun resourceQuantity(quantities: Map<String, Double>, itemId: String): Double =
@@ -162,6 +167,7 @@ internal fun computeWorkOrderLineErrors(
 internal fun computeCreateWorkOrderSubmitErrors(
     form: CreateWorkOrderFormState,
     dialogAtdIso: String?,
+    validationPhase: WorkOrderValidationPhase,
     isAdHocScratch: Boolean,
     selectedCustomerId: String?,
     allowedPerformedServiceIds: Set<String>,
@@ -205,19 +211,38 @@ internal fun computeCreateWorkOrderSubmitErrors(
     if (ata == null && ataDt == null) ata = "Invalid ATA date or time."
 
     val rawAtd = (dialogAtdIso ?: form.atdIso).trim()
-    var atd = if (rawAtd.isBlank()) "ATD is required." else null
-    val atdDt = safeParseOffset(rawAtd)
-    if (atd == null && atdDt == null) atd = "Invalid ATD date or time."
-    if (atd == null && ataDt != null && atdDt != null && atdDt.isBefore(ataDt)) {
-        atd = "Departure (ATD) can't be before arrival (ATA)."
+    var atd: String? = null
+    val atdDt = if (validationPhase == WorkOrderValidationPhase.Submission) {
+        safeParseOffset(rawAtd)
+    } else {
+        null
+    }
+    if (validationPhase == WorkOrderValidationPhase.Submission) {
+        atd = when {
+            rawAtd.isBlank() -> "ATD is required."
+            atdDt == null -> "Invalid ATD date or time."
+            ataDt != null && !atdDt.isAfter(ataDt) ->
+                "Departure (ATD) must be after arrival (ATA)."
+            else -> null
+        }
     }
 
     val lineErrors = computeWorkOrderLineErrors(
-        form,
-        form.ataIso,
-        rawAtd,
-        allowedPerformedServiceIds,
+        form = form,
+        ataIso = form.ataIso,
+        atdIso = if (validationPhase == WorkOrderValidationPhase.Submission) rawAtd else null,
+        allowedPerformedServiceIds = allowedPerformedServiceIds,
     )
+    val hasLineEndingAfterAtd = atdDt?.let { departure ->
+        form.serviceLines.any { row -> safeParseOffset(row.toIso)?.isAfter(departure) == true } ||
+            form.tasks.any { row -> safeParseOffset(row.toIso)?.isAfter(departure) == true }
+    } == true
+    if (validationPhase == WorkOrderValidationPhase.Submission && hasLineEndingAfterAtd) {
+        atd = mergeValidationMessage(
+            atd,
+            "Departure (ATD) can't be before a service or task end time.",
+        )
+    }
     if (ataDt != null) {
         form.serviceLines.mapNotNull { safeParseOffset(it.fromIso) }.filter { ataDt.isAfter(it) }.forEach {
             ata = mergeValidationMessage(ata, "Can't be after a service line start time.")

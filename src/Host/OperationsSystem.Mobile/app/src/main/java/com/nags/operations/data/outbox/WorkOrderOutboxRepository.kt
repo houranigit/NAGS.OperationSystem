@@ -3,6 +3,7 @@ package com.nags.operations.data.outbox
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import androidx.room.withTransaction
 import com.nags.operations.data.db.AppDatabase
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
 import com.nags.operations.data.sync.OutboxOpStatus
@@ -136,11 +137,13 @@ class WorkOrderOutboxRepository(
     suspend fun pendingFifo(): List<WorkOrderOutboxEntity> = dao.listPendingFifo()
 
     /**
-     * Atomic single-row insert: writes every attachment from its in-memory
+     * Atomic queue transition: writes every attachment from its in-memory
      * base64 to a per-mutation directory under `filesDir/outbox/{id}/`, then
-     * inserts the metadata row referencing those paths. If the disk write
-     * fails we surface that to the caller and don't leave a half-formed row
-     * behind.
+     * inserts the metadata row referencing those paths. When
+     * [EnqueueRequest.draftIdToDelete] is present, the row insert and draft
+     * deletion share one Room transaction. If a disk write or transaction
+     * fails we surface that to the caller and don't leave a half-formed
+     * attachment directory behind.
      *
      * @return the inserted row so the ViewModel can stash anything else it
      *         needs (currently just used for the snackbar text path).
@@ -221,12 +224,26 @@ class WorkOrderOutboxRepository(
                     updatedAtEpochMs = now,
                     serverWorkOrderId = request.knownServerWorkOrderId,
                 )
-                dao.upsert(entity)
+                db.withTransaction {
+                    dao.upsert(entity)
+                    request.draftIdToDelete?.let { draftId ->
+                        db.workOrderDraftDao().deleteById(draftId)
+                    }
+                }
                 entity
             } catch (e: Exception) {
                 // A file failure or Room failure must not leave a half-formed directory that a
                 // later worker could mistake for a durable submission.
-                attachmentDir?.deleteRecursively()
+                val cleanupFailed = attachmentDir?.let { dir ->
+                    dir.exists() && !dir.deleteRecursively() && dir.exists()
+                } == true
+                if (cleanupFailed) {
+                    throw IOException(
+                        "Could not clean up the failed attachment staging directory.",
+                    ).apply {
+                        addSuppressed(e)
+                    }
+                }
                 throw e
             }
         }
@@ -552,6 +569,9 @@ private fun Int.toOutboxOpStatus(): OutboxOpStatus = when (this) {
  * @param attachmentsToPersist The base64 attachments in the order the ViewModel
  *                             holds them; the repository writes each to disk
  *                             and re-stitches them back onto the right tasks.
+ * @param draftIdToDelete Optional active draft to delete atomically with the
+ *                        outbox insert. `null` preserves the draft and keeps
+ *                        enqueue behavior unchanged for non-wizard flows.
  */
 data class EnqueueRequest(
     val clientMutationId: String,
@@ -565,6 +585,7 @@ data class EnqueueRequest(
      * targets PUT `/work-orders/{id}` and the row survives retries with a stable id.
      */
     val knownServerWorkOrderId: String? = null,
+    val draftIdToDelete: String? = null,
 )
 
 /**

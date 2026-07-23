@@ -4,6 +4,7 @@ import com.nags.operations.data.TaskTypeKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WorkOrderFormValidationTest {
@@ -12,6 +13,7 @@ class WorkOrderFormValidationTest {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = validForm(),
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = true,
             selectedCustomerId = "customer-1",
             allowedPerformedServiceIds = setOf("service-1"),
@@ -25,6 +27,7 @@ class WorkOrderFormValidationTest {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = validForm().copy(serviceLines = emptyList()),
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = false,
             selectedCustomerId = null,
             allowedPerformedServiceIds = setOf("service-1"),
@@ -42,6 +45,7 @@ class WorkOrderFormValidationTest {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = form,
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = false,
             selectedCustomerId = null,
             allowedPerformedServiceIds = setOf("service-1"),
@@ -68,6 +72,7 @@ class WorkOrderFormValidationTest {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = form,
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = false,
             selectedCustomerId = null,
             allowedPerformedServiceIds = setOf("service-1"),
@@ -90,6 +95,7 @@ class WorkOrderFormValidationTest {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = form,
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = true,
             selectedCustomerId = "customer-1",
             allowedPerformedServiceIds = setOf("service-1"),
@@ -117,6 +123,7 @@ class WorkOrderFormValidationTest {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = validForm().copy(tasks = listOf(task)),
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = false,
             selectedCustomerId = null,
             allowedPerformedServiceIds = setOf("service-1"),
@@ -148,6 +155,7 @@ class WorkOrderFormValidationTest {
             computeCreateWorkOrderSubmitErrors(
                 form = form,
                 dialogAtdIso = null,
+                validationPhase = WorkOrderValidationPhase.Submission,
                 isAdHocScratch = false,
                 selectedCustomerId = null,
                 allowedPerformedServiceIds = setOf("service-1"),
@@ -186,6 +194,7 @@ class WorkOrderFormValidationTest {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = form,
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = false,
             selectedCustomerId = null,
             allowedPerformedServiceIds = emptySet(),
@@ -196,6 +205,254 @@ class WorkOrderFormValidationTest {
         assertEquals(true, message!!.contains("no longer allowed"))
         assertEquals("Revoked service", form.serviceLines.single().serviceName)
     }
+
+    @Test
+    fun before_atd_validation_ignores_missing_or_invalid_atd_and_atd_line_bounds() {
+        listOf("", "not-a-date").forEach { atdIso ->
+            val form = validForm().copy(
+                atdIso = atdIso,
+                serviceLines = listOf(
+                    validForm().serviceLines.single().copy(toIso = "2026-07-11T13:00:00Z"),
+                ),
+                tasks = listOf(
+                    validForm().tasks.single().copy(toIso = "2026-07-11T13:30:00Z"),
+                ),
+            )
+
+            assertNull(
+                validationErrors(
+                    form = form,
+                    phase = WorkOrderValidationPhase.BeforeAtd,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun before_atd_ignores_stale_atd_but_still_rejects_intrinsic_line_dates() {
+        val form = validForm().copy(
+            atdIso = "2026-07-11T10:01:00Z",
+            serviceLines = listOf(
+                validForm().serviceLines.single().copy(
+                    fromIso = "2026-07-11T09:59:00Z",
+                    toIso = "2026-07-11T09:58:00Z",
+                ),
+            ),
+        )
+
+        val errors = requireNotNull(
+            validationErrors(
+                form = form,
+                phase = WorkOrderValidationPhase.BeforeAtd,
+            ),
+        )
+
+        assertNull(errors.atd)
+        assertTrue(errors.serviceLinesByKey.getValue(1L).from.orEmpty().contains("before actual arrival"))
+        assertTrue(errors.serviceLinesByKey.getValue(1L).to.orEmpty().contains("on or after From"))
+    }
+
+    @Test
+    fun submission_validation_requires_atd() {
+        val errors = validationErrors(validForm().copy(atdIso = ""))
+
+        assertEquals("ATD is required.", errors?.atd)
+    }
+
+    @Test
+    fun submission_rejects_malformed_atd() {
+        assertEquals(
+            "Invalid ATD date or time.",
+            validationErrors(validForm().copy(atdIso = "not-a-date"))?.atd,
+        )
+    }
+
+    @Test
+    fun dialog_atd_overrides_the_stored_form_value() {
+        val withoutLines = validForm().copy(
+            serviceLines = emptyList(),
+            tasks = emptyList(),
+        )
+
+        assertNull(
+            validationErrors(
+                form = withoutLines.copy(atdIso = "not-a-date"),
+                dialogAtdIso = "2026-07-11T10:01:00Z",
+            ),
+        )
+        assertEquals(
+            "Departure (ATD) must be after arrival (ATA).",
+            validationErrors(
+                form = withoutLines.copy(atdIso = "2026-07-11T12:00:00Z"),
+                dialogAtdIso = "2026-07-11T10:00:00Z",
+            )?.atd,
+        )
+    }
+
+    @Test
+    fun submission_requires_atd_to_be_strictly_after_ata() {
+        val formWithoutLines = validForm().copy(
+            serviceLines = emptyList(),
+            tasks = emptyList(),
+        )
+
+        val beforeErrors = validationErrors(
+            formWithoutLines.copy(atdIso = "2026-07-11T09:59:00Z"),
+        )
+        val equalErrors = validationErrors(
+            formWithoutLines.copy(atdIso = "2026-07-11T10:00:00Z"),
+        )
+        val afterErrors = validationErrors(
+            formWithoutLines.copy(atdIso = "2026-07-11T10:01:00Z"),
+        )
+
+        assertEquals(
+            "Departure (ATD) must be after arrival (ATA).",
+            beforeErrors?.atd,
+        )
+        assertEquals(
+            "Departure (ATD) must be after arrival (ATA).",
+            equalErrors?.atd,
+        )
+        assertNull(afterErrors)
+    }
+
+    @Test
+    fun service_and_task_from_may_equal_but_cannot_precede_ata() {
+        val equalForm = validForm().copy(
+            serviceLines = listOf(
+                validForm().serviceLines.single().copy(fromIso = "2026-07-11T10:00:00Z"),
+            ),
+            tasks = listOf(
+                validForm().tasks.single().copy(fromIso = "2026-07-11T10:00:00Z"),
+            ),
+        )
+        assertNull(validationErrors(equalForm))
+
+        val beforeForm = equalForm.copy(
+            serviceLines = listOf(
+                equalForm.serviceLines.single().copy(fromIso = "2026-07-11T09:59:00Z"),
+            ),
+            tasks = listOf(
+                equalForm.tasks.single().copy(fromIso = "2026-07-11T09:59:00Z"),
+            ),
+        )
+        val errors = validationErrors(beforeForm)
+
+        assertNotNull(errors?.serviceLinesByKey?.get(1L)?.from)
+        assertNotNull(errors?.tasksByKey?.get(2L)?.from)
+    }
+
+    @Test
+    fun service_and_task_to_may_equal_but_cannot_precede_from() {
+        val equalForm = validForm().copy(
+            serviceLines = listOf(
+                validForm().serviceLines.single().copy(
+                    toIso = validForm().serviceLines.single().fromIso,
+                ),
+            ),
+            tasks = listOf(
+                validForm().tasks.single().copy(
+                    toIso = validForm().tasks.single().fromIso,
+                ),
+            ),
+        )
+        assertNull(validationErrors(equalForm))
+
+        val beforeForm = equalForm.copy(
+            serviceLines = listOf(
+                equalForm.serviceLines.single().copy(toIso = "2026-07-11T09:59:00Z"),
+            ),
+            tasks = listOf(
+                equalForm.tasks.single().copy(toIso = "2026-07-11T09:59:00Z"),
+            ),
+        )
+        val errors = validationErrors(beforeForm)
+
+        assertTrue(errors?.serviceLinesByKey?.get(1L)?.to.orEmpty().contains("on or after From"))
+        assertTrue(errors?.tasksByKey?.get(2L)?.to.orEmpty().contains("on or after From"))
+    }
+
+    @Test
+    fun dialog_atd_before_line_ends_sets_atd_and_row_errors() {
+        val form = validForm().copy(
+            serviceLines = listOf(
+                validForm().serviceLines.single().copy(toIso = "2026-07-11T11:01:00Z"),
+            ),
+            tasks = listOf(
+                validForm().tasks.single().copy(toIso = "2026-07-11T11:30:00Z"),
+            ),
+        )
+
+        val errors = requireNotNull(
+            validationErrors(
+                form = form,
+                dialogAtdIso = "2026-07-11T11:00:00Z",
+            ),
+        )
+
+        assertTrue(errors.atd.orEmpty().contains("service or task end time"))
+        assertTrue(errors.serviceLinesByKey.getValue(1L).to.orEmpty().contains("after departure"))
+        assertTrue(errors.tasksByKey.getValue(2L).to.orEmpty().contains("after departure"))
+    }
+
+    @Test
+    fun date_time_boundaries_compare_instants_across_offsets() {
+        val equalAtaAndAtd = validForm().copy(
+            ataIso = "2026-07-11T10:00:00Z",
+            atdIso = "2026-07-11T05:00:00-05:00",
+            serviceLines = emptyList(),
+            tasks = emptyList(),
+        )
+        assertEquals(
+            "Departure (ATD) must be after arrival (ATA).",
+            validationErrors(equalAtaAndAtd)?.atd,
+        )
+
+        val validOffsetBoundaries = validForm().copy(
+            ataIso = "2026-07-11T10:00:00Z",
+            atdIso = "2026-07-11T07:00:00-05:00",
+            serviceLines = listOf(
+                validForm().serviceLines.single().copy(
+                    fromIso = "2026-07-11T05:00:00-05:00",
+                    toIso = "2026-07-11T07:00:00-05:00",
+                ),
+            ),
+            tasks = emptyList(),
+        )
+        assertNull(validationErrors(validOffsetBoundaries))
+    }
+
+    @Test
+    fun task_boundaries_compare_instants_across_offsets() {
+        val form = validForm().copy(
+            serviceLines = emptyList(),
+            tasks = listOf(
+                validForm().tasks.single().copy(
+                    fromIso = "2026-07-11T04:59:00-05:00",
+                    toIso = "2026-07-11T07:01:00-05:00",
+                ),
+            ),
+        )
+
+        val errors = requireNotNull(validationErrors(form))
+
+        assertTrue(errors.tasksByKey.getValue(2L).from.orEmpty().contains("before actual arrival"))
+        assertTrue(errors.tasksByKey.getValue(2L).to.orEmpty().contains("after departure"))
+    }
+
+    private fun validationErrors(
+        form: CreateWorkOrderFormState,
+        phase: WorkOrderValidationPhase = WorkOrderValidationPhase.Submission,
+        dialogAtdIso: String? = null,
+    ): CreateWorkOrderSubmitFieldErrors? = computeCreateWorkOrderSubmitErrors(
+        form = form,
+        dialogAtdIso = dialogAtdIso,
+        validationPhase = phase,
+        isAdHocScratch = false,
+        selectedCustomerId = null,
+        allowedPerformedServiceIds = setOf("service-1"),
+    )
 
     private fun validForm(): CreateWorkOrderFormState = CreateWorkOrderFormState(
         flightNumber = "MOB100",

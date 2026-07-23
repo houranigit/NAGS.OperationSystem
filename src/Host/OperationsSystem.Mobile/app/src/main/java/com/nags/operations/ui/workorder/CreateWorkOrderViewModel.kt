@@ -28,8 +28,10 @@ import com.nags.operations.data.db.entities.WorkOrderDraftEntity
 import com.nags.operations.ui.util.normalizeWorkOrderAircraftTailInput
 import com.nags.operations.ui.util.normalizeWorkOrderFlightNumberInput
 import com.nags.operations.ui.util.parseOffsetDateTime
+import java.time.Clock
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -165,6 +167,38 @@ data class CreateWorkOrderSubmitFieldErrors(
     val tasksByKey: Map<Long, TaskLineSubmitFieldErrors> = emptyMap(),
 )
 
+data class WorkOrderEditState(
+    val revision: Long = 0L,
+    val lastSavedRevision: Long = 0L,
+) {
+    val hasUnsavedChanges: Boolean
+        get() = revision != lastSavedRevision
+
+    internal fun afterEdit(): WorkOrderEditState = copy(revision = revision + 1L)
+
+    /**
+     * Marks only the snapshot that actually reached Room as saved. If the employee edited while
+     * that write was in flight, [revision] stays ahead and the form remains dirty.
+     */
+    internal fun afterSuccessfulSave(snapshotRevision: Long): WorkOrderEditState =
+        copy(lastSavedRevision = maxOf(lastSavedRevision, snapshotRevision))
+}
+
+enum class WorkOrderPersistenceState {
+    Idle,
+    SavingDraft,
+    Submitting,
+}
+
+internal fun WorkOrderPersistenceState.canStartWrite(): Boolean =
+    this == WorkOrderPersistenceState.Idle
+
+internal fun stableDraftId(
+    activeDraftId: String?,
+    sessionDraftId: String?,
+    createId: () -> String,
+): String = activeDraftId ?: sessionDraftId ?: createId()
+
 data class CreateWorkOrderUiState(
     val flightLoad: WorkOrderFlightLoadState = WorkOrderFlightLoadState.Loading,
     val flight: WorkOrderFlightRow? = null,
@@ -196,11 +230,35 @@ data class CreateWorkOrderUiState(
     val submitFieldErrors: CreateWorkOrderSubmitFieldErrors? = null,
     /** Set when Submit validation passes (dry-run only for now); cleared after snackbar. */
     val submitValidationResult: SubmitValidationResult? = null,
-    val isSubmitting: Boolean = false,
-)
+    val editState: WorkOrderEditState = WorkOrderEditState(),
+    val persistenceState: WorkOrderPersistenceState = WorkOrderPersistenceState.Idle,
+    val wizardStep: WorkOrderWizardStep = WorkOrderWizardStep.Flight,
+    val isAtdDialogVisible: Boolean = false,
+) {
+    val hasUnsavedChanges: Boolean
+        get() = editState.hasUnsavedChanges
+
+    val isSavingDraft: Boolean
+        get() = persistenceState == WorkOrderPersistenceState.SavingDraft
+
+    val isSubmitting: Boolean
+        get() = persistenceState == WorkOrderPersistenceState.Submitting
+}
 
 sealed interface SubmitValidationResult {
     data object Passed : SubmitValidationResult
+}
+
+sealed interface DraftSaveResult {
+    val message: String
+
+    data class Saved(
+        override val message: String,
+        /** False when a newer edit arrived after the saved snapshot was captured. */
+        val isCurrent: Boolean,
+    ) : DraftSaveResult
+
+    data class Failed(override val message: String) : DraftSaveResult
 }
 
 /**
@@ -235,11 +293,81 @@ internal fun serviceLinesToPrefill(
                 localKey = nextKey(),
                 serviceId = service.serviceId,
                 serviceName = service.name,
-                fromIso = row.sta,
-                toIso = row.std,
             )
         }
 }
+
+internal fun currentWorkOrderTimestamp(clock: Clock, flightAnchorIso: String?): String {
+    val offset = flightAnchorIso
+        ?.let { runCatching { parseOffsetDateTime(it).offset }.getOrNull() }
+        ?: ZoneOffset.UTC
+    return OffsetDateTime.now(clock)
+        .withOffsetSameInstant(offset)
+        .truncatedTo(ChronoUnit.MINUTES)
+        .toString()
+}
+
+internal fun initializeBlankFromTimes(
+    form: CreateWorkOrderFormState,
+    step: WorkOrderWizardStep,
+    timestampIso: String,
+): CreateWorkOrderFormState = when (step) {
+    WorkOrderWizardStep.ServiceLines -> form.copy(
+        serviceLines = form.serviceLines.map { row ->
+            if (row.fromIso.isBlank()) row.copy(fromIso = timestampIso) else row
+        },
+    )
+    WorkOrderWizardStep.Tasks -> form.copy(
+        tasks = form.tasks.map { row ->
+            if (row.fromIso.isBlank()) row.copy(fromIso = timestampIso) else row
+        },
+    )
+    WorkOrderWizardStep.Flight,
+    WorkOrderWizardStep.Signature,
+    -> form
+}
+
+internal fun finalizeBlankToTimes(
+    form: CreateWorkOrderFormState,
+    step: WorkOrderWizardStep,
+    timestampIso: String,
+): CreateWorkOrderFormState = when (step) {
+    WorkOrderWizardStep.ServiceLines -> form.copy(
+        serviceLines = form.serviceLines.map { row ->
+            if (row.toIso.isBlank()) row.copy(toIso = timestampIso) else row
+        },
+    )
+    WorkOrderWizardStep.Tasks -> form.copy(
+        tasks = form.tasks.map { row ->
+            if (row.toIso.isBlank()) row.copy(toIso = timestampIso) else row
+        },
+    )
+    WorkOrderWizardStep.Flight,
+    WorkOrderWizardStep.Signature,
+    -> form
+}
+
+internal fun newServiceLineAt(
+    localKey: Long,
+    employeeIds: List<String>,
+    timestampIso: String,
+): ServiceLineFormRow = ServiceLineFormRow(
+    localKey = localKey,
+    employeeIds = employeeIds,
+    fromIso = timestampIso,
+    toIso = "",
+)
+
+internal fun newTaskAt(
+    localKey: Long,
+    employeeIds: List<String>,
+    timestampIso: String,
+): TaskFormRow = TaskFormRow(
+    localKey = localKey,
+    employeeIds = employeeIds,
+    fromIso = timestampIso,
+    toIso = "",
+)
 
 class CreateWorkOrderViewModel(
     private val launchMode: CreateWorkOrderLaunchMode,
@@ -254,6 +382,7 @@ class CreateWorkOrderViewModel(
     private val applicationScope: CoroutineScope,
     private val catalogsRepository: CatalogsRepository,
     private val employeesRepository: EmployeesRepository,
+    private val clock: Clock = Clock.systemUTC(),
 ) : ViewModel() {
 
     /** Stable local id for draft + future “create ad hoc flight” API; not a server flight id yet. */
@@ -263,8 +392,148 @@ class CreateWorkOrderViewModel(
     val state: StateFlow<CreateWorkOrderUiState> = _state.asStateFlow()
 
     private var nextLocalKey = 1L
+    private var workflowGeneration = 0L
+    private var sessionDraftId: String? = null
+    private val initializedFromSteps = mutableSetOf<WorkOrderWizardStep>()
 
     private fun allocKey(): Long = nextLocalKey++
+
+    private fun currentTimestamp(): String =
+        currentWorkOrderTimestamp(clock, _state.value.flight?.std)
+
+    private fun resetEditBaseline(activeDraftId: String?) {
+        workflowGeneration += 1
+        sessionDraftId = activeDraftId
+        initializedFromSteps.clear()
+        _state.update {
+            it.copy(
+                activeDraftId = activeDraftId,
+                editState = WorkOrderEditState(),
+                persistenceState = WorkOrderPersistenceState.Idle,
+                wizardStep = WorkOrderWizardStep.Flight,
+                isAtdDialogVisible = false,
+            )
+        }
+    }
+
+    private fun updateEditedState(
+        transform: (CreateWorkOrderUiState) -> CreateWorkOrderUiState,
+    ) {
+        _state.update { current ->
+            if (current.isSubmitting) return@update current
+            val next = transform(current)
+            if (next == current) {
+                current
+            } else {
+                next.copy(
+                    editState = current.editState.afterEdit(),
+                    submitFieldErrors = null,
+                    submitValidationResult = null,
+                )
+            }
+        }
+    }
+
+    internal fun onWizardStepEntered(step: WorkOrderWizardStep) {
+        val timestamp = currentTimestamp()
+        updateForm { initializeBlankFromTimes(it, step, timestamp) }
+    }
+
+    fun selectCompletedWizardStep(step: WorkOrderWizardStep) {
+        _state.update { current ->
+            if (
+                current.persistenceState.canStartWrite() &&
+                !current.isAtdDialogVisible &&
+                step.ordinal < current.wizardStep.ordinal
+            ) {
+                current.copy(wizardStep = step)
+            } else {
+                current
+            }
+        }
+    }
+
+    fun moveToPreviousWizardStep() {
+        _state.update { current ->
+            if (
+                current.persistenceState.canStartWrite() &&
+                !current.isAtdDialogVisible &&
+                current.wizardStep != WorkOrderWizardStep.Flight
+            ) {
+                current.copy(
+                    wizardStep = WorkOrderWizardStep.entries[current.wizardStep.ordinal - 1],
+                )
+            } else {
+                current
+            }
+        }
+    }
+
+    fun advanceWizardStepAfterCheckpoint(fromStep: WorkOrderWizardStep) {
+        if (fromStep == WorkOrderWizardStep.Signature) return
+        val nextStep = WorkOrderWizardStep.entries[fromStep.ordinal + 1]
+        var advanced = false
+        _state.update { current ->
+            if (
+                current.persistenceState.canStartWrite() &&
+                current.wizardStep == fromStep &&
+                !current.isAtdDialogVisible
+            ) {
+                advanced = true
+                current.copy(wizardStep = nextStep)
+            } else {
+                current
+            }
+        }
+        if (
+            advanced &&
+            (nextStep == WorkOrderWizardStep.ServiceLines || nextStep == WorkOrderWizardStep.Tasks) &&
+            initializedFromSteps.add(nextStep)
+        ) {
+            onWizardStepEntered(nextStep)
+        }
+    }
+
+    fun showAtdDialog() {
+        _state.update { current ->
+            if (
+                current.persistenceState.canStartWrite() &&
+                current.wizardStep == WorkOrderWizardStep.Signature
+            ) {
+                current.copy(isAtdDialogVisible = true)
+            } else {
+                current
+            }
+        }
+    }
+
+    fun dismissAtdDialog() {
+        _state.update { current ->
+            if (current.persistenceState.canStartWrite()) {
+                current.copy(isAtdDialogVisible = false)
+            } else {
+                current
+            }
+        }
+    }
+
+    fun routeToFirstWizardError(errors: CreateWorkOrderSubmitFieldErrors) {
+        _state.update {
+            it.copy(
+                wizardStep = firstWizardStepWithErrors(errors),
+                isAtdDialogVisible = false,
+            )
+        }
+    }
+
+    /**
+     * Applies the automatic end-time fallback before the current step is validated and checkpointed.
+     */
+    internal fun prepareWizardStepForNext(step: WorkOrderWizardStep): Boolean {
+        val timestamp = currentTimestamp()
+        updateForm { finalizeBlankToTimes(it, step, timestamp) }
+        return validateWizardStep(step)
+    }
 
     init {
         viewModelScope.launch {
@@ -338,24 +607,22 @@ class CreateWorkOrderViewModel(
 
     fun selectCustomer(customerId: String?) {
         if (customerId == null) {
-            _state.update { state ->
+            updateEditedState { state ->
                 state.copy(
                     selectedCustomerId = null,
                     flight = state.flight?.copy(customerName = "", customerIataCode = null),
                     form = state.form.copy(draftCustomerId = null),
-                    submitFieldErrors = null,
                 )
             }
             return
         }
         val customer = _state.value.catalogCustomers.firstOrNull { it.customerId == customerId } ?: return
-        _state.update { s ->
-            val f = s.flight ?: return@update s
+        updateEditedState { s ->
+            val f = s.flight ?: return@updateEditedState s
             s.copy(
                 selectedCustomerId = customerId,
                 flight = f.copy(customerName = customer.name, customerIataCode = customer.iataCode),
                 form = s.form.copy(draftCustomerId = customerId),
-                submitFieldErrors = null,
             )
         }
     }
@@ -379,26 +646,38 @@ class CreateWorkOrderViewModel(
     /**
      * Persists current form + flight snapshot to Room. Subsequent saves reuse [CreateWorkOrderUiState.activeDraftId].
      */
-    fun saveDraft(onFinished: (success: Boolean, message: String) -> Unit) {
+    fun saveDraft(onFinished: (DraftSaveResult) -> Unit) {
+        val initial = _state.value
+        if (!initial.persistenceState.canStartWrite()) {
+            onFinished(DraftSaveResult.Failed("A save or submission is already in progress."))
+            return
+        }
+        val flight = initial.flight
+        if (flight == null || initial.flightLoad != WorkOrderFlightLoadState.Ready) {
+            onFinished(DraftSaveResult.Failed("Finish loading before saving a draft."))
+            return
+        }
+        val draftId = stableDraftId(
+            activeDraftId = initial.activeDraftId,
+            sessionDraftId = sessionDraftId,
+            createId = { UUID.randomUUID().toString() },
+        ).also { sessionDraftId = it }
+        val capturedRevision = initial.editState.revision
+        val capturedGeneration = workflowGeneration
+        _state.update { it.copy(persistenceState = WorkOrderPersistenceState.SavingDraft) }
+
         viewModelScope.launch {
-            val snapshot = _state.value
-            val flight = snapshot.flight
-            if (flight == null || snapshot.flightLoad != WorkOrderFlightLoadState.Ready) {
-                onFinished(false, "Finish loading before saving a draft.")
-                return@launch
-            }
             try {
-                val draftId = snapshot.activeDraftId ?: UUID.randomUUID().toString()
                 val normalizedForm = normalizedFormIdentifiers(
-                    snapshot.form.copy(
+                    initial.form.copy(
                         draftSubmissionMode = when {
-                            snapshot.isAdHocScratch -> WorkOrderDraftSubmissionMode.ScratchAdHoc
-                            snapshot.isUpdatingCachedUnderReviewWorkOrder -> WorkOrderDraftSubmissionMode.UpdateExisting
+                            initial.isAdHocScratch -> WorkOrderDraftSubmissionMode.ScratchAdHoc
+                            initial.isUpdatingCachedUnderReviewWorkOrder -> WorkOrderDraftSubmissionMode.UpdateExisting
                             else -> WorkOrderDraftSubmissionMode.ForFlight
                         },
-                        draftCustomerId = snapshot.selectedCustomerId,
-                        draftWorkOrderId = snapshot.updatingWorkOrderId,
-                        draftWorkOrderRowVersion = snapshot.updatingWorkOrderRowVersion,
+                        draftCustomerId = initial.selectedCustomerId,
+                        draftWorkOrderId = initial.updatingWorkOrderId,
+                        draftWorkOrderRowVersion = initial.updatingWorkOrderRowVersion,
                     ),
                 )
                 val normalizedFn = normalizeWorkOrderFlightNumberInput(normalizedForm.flightNumber)
@@ -415,12 +694,47 @@ class CreateWorkOrderViewModel(
                     updatedAtEpochMs = System.currentTimeMillis(),
                 )
                 draftsRepository.upsertDraft(entity)
-                _state.update { it.copy(activeDraftId = draftId, form = normalizedForm) }
-                onFinished(true, if (snapshot.activeDraftId == null) "Draft saved locally." else "Draft updated.")
+                if (workflowGeneration != capturedGeneration) return@launch
+                var saveIsCurrent = false
+                _state.update { current ->
+                    val nextEditState = current.editState.afterSuccessfulSave(capturedRevision)
+                    saveIsCurrent = !nextEditState.hasUnsavedChanges
+                    current.copy(
+                        activeDraftId = draftId,
+                        editState = nextEditState,
+                        persistenceState = WorkOrderPersistenceState.Idle,
+                    )
+                }
+                val baseMessage = if (initial.activeDraftId == null) {
+                    "Draft saved locally."
+                } else {
+                    "Draft updated."
+                }
+                onFinished(
+                    DraftSaveResult.Saved(
+                        message = if (saveIsCurrent) {
+                            baseMessage
+                        } else {
+                            "$baseMessage Newer changes are still unsaved."
+                        },
+                        isCurrent = saveIsCurrent,
+                    ),
+                )
             } catch (_: Exception) {
-                onFinished(false, "Could not save draft.")
+                if (workflowGeneration == capturedGeneration) {
+                    _state.update { it.copy(persistenceState = WorkOrderPersistenceState.Idle) }
+                }
+                onFinished(DraftSaveResult.Failed("Could not save draft."))
             }
         }
+    }
+
+    fun saveDraftWithAtd(
+        atdIso: String,
+        onFinished: (DraftSaveResult) -> Unit,
+    ) {
+        updateForm { it.copy(atdIso = atdIso.trim()) }
+        saveDraft(onFinished)
     }
 
     private suspend fun loadFlight(flightId: String) {
@@ -434,6 +748,8 @@ class CreateWorkOrderViewModel(
                 updatingWorkOrderId = null,
                 updatingWorkOrderRowVersion = null,
                 selectedCustomerId = null,
+                editState = WorkOrderEditState(),
+                persistenceState = WorkOrderPersistenceState.Idle,
             )
         }
         val row = flightsRepository.findWorkOrderFlight(flightId)
@@ -471,7 +787,7 @@ class CreateWorkOrderViewModel(
                 scheduledArrivalIso = row.sta,
                 scheduledDepartureIso = row.std,
                 ataIso = row.sta,
-                atdIso = row.std,
+                atdIso = "",
                 serviceLines = serviceLinesToPrefill(row, allowedPerformedServiceIds, ::allocKey),
                 tasks = emptyList(),
                 draftSubmissionMode = WorkOrderDraftSubmissionMode.ForFlight,
@@ -498,13 +814,15 @@ class CreateWorkOrderViewModel(
             )
         }
         applyDefaultPerformersAcrossForm(_state.value)
+        resetEditBaseline(activeDraftId = null)
     }
 
     private suspend fun loadAdHocScratch() {
         val employees = employeesRepository.snapshot()
         val employeeId = tokenStore.getEmployeeId()
         val stationCode = tokenStore.getStationCode()?.trim().orEmpty()
-        val scheduledArrival = OffsetDateTime.now(ZoneOffset.UTC)
+        val scheduledArrival = OffsetDateTime.now(clock)
+            .withOffsetSameInstant(ZoneOffset.UTC)
             .withMinute(0)
             .withSecond(0)
             .withNano(0)
@@ -546,7 +864,7 @@ class CreateWorkOrderViewModel(
                         scheduledArrivalIso = sta,
                         scheduledDepartureIso = std,
                         ataIso = sta,
-                        atdIso = std,
+                        atdIso = "",
                         serviceLines = emptyList(),
                         tasks = emptyList(),
                         draftSubmissionMode = WorkOrderDraftSubmissionMode.ScratchAdHoc,
@@ -557,6 +875,7 @@ class CreateWorkOrderViewModel(
             )
         }
         applyDefaultPerformersAcrossForm(_state.value)
+        resetEditBaseline(activeDraftId = null)
     }
 
     private suspend fun hydrateLoggedInEmployeeFromCache() {
@@ -587,6 +906,8 @@ class CreateWorkOrderViewModel(
                 updatingWorkOrderId = null,
                 updatingWorkOrderRowVersion = null,
                 selectedCustomerId = null,
+                editState = WorkOrderEditState(),
+                persistenceState = WorkOrderPersistenceState.Idle,
             )
         }
         val entity = draftsRepository.getDraft(draftId)
@@ -654,7 +975,7 @@ class CreateWorkOrderViewModel(
                 scheduledArrivalIso = schedule.first,
                 scheduledDepartureIso = schedule.second,
                 ataIso = form.ataIso.ifBlank { schedule.first },
-                atdIso = form.atdIso.ifBlank { schedule.second },
+                atdIso = form.atdIso,
                 draftSubmissionMode = inferredMode,
                 draftCustomerId = form.draftCustomerId,
                 draftWorkOrderId = updateWorkOrderId,
@@ -681,6 +1002,7 @@ class CreateWorkOrderViewModel(
         }
         restoreLegacyScratchCustomer(_state.value.catalogCustomers)
         applyDefaultPerformersAcrossForm(_state.value)
+        resetEditBaseline(activeDraftId = draftId)
     }
 
     private fun normalizedSchedule(
@@ -740,24 +1062,21 @@ class CreateWorkOrderViewModel(
         resolvedDefaultPerformingEmployeeId(_state.value)?.let { listOf(it) } ?: emptyList()
 
     fun updateForm(transform: (CreateWorkOrderFormState) -> CreateWorkOrderFormState) {
-        _state.update { s ->
+        updateEditedState { s ->
             val next = transform(s.form)
-            if (next == s.form) s
-            else {
-                s.copy(form = next, submitFieldErrors = null)
-            }
+            if (next == s.form) s else s.copy(form = next)
         }
     }
 
     fun updateFlightNumber(raw: String) {
         val normalized = normalizeWorkOrderFlightNumberInput(raw).take(WorkOrderFormLimits.FlightNumber)
-        _state.update { s ->
+        updateEditedState { s ->
             val nextForm = s.form.copy(flightNumber = normalized)
             if (nextForm == s.form && (!s.isAdHocScratch || s.flight?.flightNumber == normalized)) {
-                return@update s
+                return@updateEditedState s
             }
             val nextFlight = if (s.isAdHocScratch) s.flight?.copy(flightNumber = normalized) else s.flight
-            s.copy(form = nextForm, flight = nextFlight, submitFieldErrors = null)
+            s.copy(form = nextForm, flight = nextFlight)
         }
     }
 
@@ -775,8 +1094,8 @@ class CreateWorkOrderViewModel(
     }
 
     fun updateScratchScheduledArrival(iso: String) {
-        _state.update { s ->
-            if (!s.isAdHocScratch) return@update s
+        updateEditedState { s ->
+            if (!s.isAdHocScratch) return@updateEditedState s
             val previous = s.form.scheduledArrivalIso
             val nextForm = s.form.copy(
                 scheduledArrivalIso = iso,
@@ -785,40 +1104,30 @@ class CreateWorkOrderViewModel(
             s.copy(
                 flight = s.flight?.copy(sta = iso),
                 form = nextForm,
-                submitFieldErrors = null,
             )
         }
     }
 
     fun updateScratchScheduledDeparture(iso: String) {
-        _state.update { s ->
-            if (!s.isAdHocScratch) return@update s
-            val previous = s.form.scheduledDepartureIso
-            val nextForm = s.form.copy(
-                scheduledDepartureIso = iso,
-                atdIso = if (s.form.atdIso.isBlank() || s.form.atdIso == previous) iso else s.form.atdIso,
-            )
+        updateEditedState { s ->
+            if (!s.isAdHocScratch) return@updateEditedState s
+            val nextForm = s.form.copy(scheduledDepartureIso = iso)
             s.copy(
                 flight = s.flight?.copy(std = iso),
                 form = nextForm,
-                submitFieldErrors = null,
             )
         }
     }
 
     fun addServiceLine() {
         val presetEmployees = defaultEmployeeIdsFromState()
-        val form = _state.value.form
-        val flight = _state.value.flight
-        val from = form.ataIso.ifBlank { flight?.sta.orEmpty() }
-        val to = form.atdIso.ifBlank { flight?.std.orEmpty() }
+        val from = currentTimestamp()
         updateForm {
             it.copy(
-                serviceLines = it.serviceLines + ServiceLineFormRow(
+                serviceLines = it.serviceLines + newServiceLineAt(
                     localKey = allocKey(),
                     employeeIds = presetEmployees,
-                    fromIso = from,
-                    toIso = to,
+                    timestampIso = from,
                 ),
             )
         }
@@ -838,17 +1147,13 @@ class CreateWorkOrderViewModel(
 
     fun addTask() {
         val presetEmployees = defaultEmployeeIdsFromState()
-        val form = _state.value.form
-        val flight = _state.value.flight
-        val from = form.ataIso.ifBlank { flight?.sta.orEmpty() }
-        val to = form.atdIso.ifBlank { flight?.std.orEmpty() }
+        val from = currentTimestamp()
         updateForm {
             it.copy(
-                tasks = it.tasks + TaskFormRow(
+                tasks = it.tasks + newTaskAt(
                     localKey = allocKey(),
                     employeeIds = presetEmployees,
-                    fromIso = from,
-                    toIso = to,
+                    timestampIso = from,
                 ),
             )
         }
@@ -894,23 +1199,42 @@ class CreateWorkOrderViewModel(
      * brief gap between "validated" and "enqueued" is fine because the form
      * is frozen for the duration of the modal.
      */
-    fun confirmSubmitWithAtd(atdIso: String?): CreateWorkOrderSubmitFieldErrors? {
+    fun validateBeforeAtdDialog(): CreateWorkOrderSubmitFieldErrors? {
+        val f = normalizedFormIdentifiers(_state.value.form)
+        val snap = _state.value
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = f,
+            dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.BeforeAtd,
+            isAdHocScratch = snap.isAdHocScratch,
+            selectedCustomerId = snap.selectedCustomerId,
+            allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
+        )
+        _state.update {
+            it.copy(
+                form = f,
+                submitFieldErrors = errors,
+                submitValidationResult = null,
+            )
+        }
+        return errors
+    }
+
+    fun confirmSubmitWithAtd(atdIso: String): CreateWorkOrderSubmitFieldErrors? {
         val f = normalizedFormIdentifiers(_state.value.form)
         val snap = _state.value
         val errors = computeCreateWorkOrderSubmitErrors(
             f,
             atdIso,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = snap.isAdHocScratch,
             selectedCustomerId = snap.selectedCustomerId,
             allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         if (errors == null) {
-            val confirmedAtd = atdIso?.trim()?.takeIf { it.isNotEmpty() } ?: f.atdIso
-            _state.update {
-                it.copy(
-                    form = f.copy(atdIso = confirmedAtd),
-                    submitFieldErrors = null,
-                )
+            val confirmedAtd = atdIso.trim()
+            updateForm { current ->
+                normalizedFormIdentifiers(current).copy(atdIso = confirmedAtd)
             }
             return null
         }
@@ -939,6 +1263,10 @@ class CreateWorkOrderViewModel(
         onFinished: (SubmitOfflineResult) -> Unit,
     ) {
         val snapshot = _state.value
+        if (!snapshot.persistenceState.canStartWrite()) {
+            onFinished(SubmitOfflineResult.Failed("A save or submission is already in progress."))
+            return
+        }
         val flight = snapshot.flight
         if (flight == null || snapshot.flightLoad != WorkOrderFlightLoadState.Ready) {
             onFinished(SubmitOfflineResult.Failed("Finish loading the flight before submitting."))
@@ -947,6 +1275,7 @@ class CreateWorkOrderViewModel(
         val currentErrors = computeCreateWorkOrderSubmitErrors(
             form = normalizedFormIdentifiers(snapshot.form),
             dialogAtdIso = snapshot.form.atdIso,
+            validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = snapshot.isAdHocScratch,
             selectedCustomerId = snapshot.selectedCustomerId,
             allowedPerformedServiceIds = snapshot.catalogServices.allowedPerformedServiceIds(),
@@ -999,22 +1328,22 @@ class CreateWorkOrderViewModel(
             payload = payload,
             attachmentsToPersist = attachmentsToPersist,
             knownServerWorkOrderId = knownServerWorkOrderId,
+            draftIdToDelete = snapshot.activeDraftId,
         )
-        val draftId = snapshot.activeDraftId
-        _state.update { it.copy(isSubmitting = true) }
+        workflowGeneration += 1
+        _state.update { it.copy(persistenceState = WorkOrderPersistenceState.Submitting) }
 
         applicationScope.launch(Dispatchers.IO) {
             try {
                 outboxRepository.enqueue(request)
-                draftId?.let { id -> runCatching { draftsRepository.deleteDraft(id) } }
                 withContext(Dispatchers.Main.immediate) {
-                    _state.update { it.copy(isSubmitting = false) }
+                    _state.update { it.copy(persistenceState = WorkOrderPersistenceState.Idle) }
                     onEnqueuedNavigate()
                     onFinished(SubmitOfflineResult.Enqueued(clientMutationId = mutationId))
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main.immediate) {
-                    _state.update { it.copy(isSubmitting = false) }
+                    _state.update { it.copy(persistenceState = WorkOrderPersistenceState.Idle) }
                     onFinished(
                         SubmitOfflineResult.Failed(
                             "Could not save your submission: ${e.message ?: e.javaClass.simpleName}",
@@ -1168,6 +1497,7 @@ class CreateWorkOrderViewModel(
         val allErrors = computeCreateWorkOrderSubmitErrors(
             form = snap.form,
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.BeforeAtd,
             isAdHocScratch = snap.isAdHocScratch,
             selectedCustomerId = snap.selectedCustomerId,
             allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
@@ -1199,6 +1529,7 @@ class CreateWorkOrderViewModel(
         val errors = computeCreateWorkOrderSubmitErrors(
             f,
             dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.BeforeAtd,
             isAdHocScratch = snap.isAdHocScratch,
             selectedCustomerId = snap.selectedCustomerId,
             allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
