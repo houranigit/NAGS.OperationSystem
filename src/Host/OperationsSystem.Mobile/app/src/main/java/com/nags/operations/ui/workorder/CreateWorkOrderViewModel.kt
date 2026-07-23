@@ -69,6 +69,9 @@ data class ServiceLineFormRow(
     val fromIso: String = "",
     val toIso: String = "",
     val description: String = "",
+    val attachments: List<TaskAttachmentDraft> = emptyList(),
+    /** Read-only names of attachments already uploaded on the server (edit mode). */
+    val existingAttachmentNames: List<String> = emptyList(),
     /** True when the line originated from a return-to-ramp submission. */
     val returnToRamp: Boolean = false,
 )
@@ -138,6 +141,7 @@ data class ServiceLineSubmitFieldErrors(
     val from: String? = null,
     val to: String? = null,
     val description: String? = null,
+    val attachments: String? = null,
 )
 
 data class TaskLineSubmitFieldErrors(
@@ -1141,8 +1145,26 @@ class CreateWorkOrderViewModel(
 
     fun replaceServiceLine(row: ServiceLineFormRow) {
         updateForm { f ->
-            f.copy(serviceLines = f.serviceLines.map { if (it.localKey == row.localKey) row else it })
+            f.copy(
+                serviceLines = f.serviceLines.map { current ->
+                    if (current.localKey == row.localKey) {
+                        // Attachment capture completes asynchronously; retain the freshest
+                        // attachment lists when a field callback was composed from stale state.
+                        current.mergeNonAttachmentEdit(row)
+                    } else {
+                        current
+                    }
+                },
+            )
         }
+    }
+
+    fun addServiceLineAttachment(localKey: Long, attachment: TaskAttachmentDraft) {
+        updateForm { f -> f.withServiceLineAttachmentAdded(localKey, attachment) }
+    }
+
+    fun removeServiceLineAttachment(localKey: Long, attachment: TaskAttachmentDraft) {
+        updateForm { f -> f.withServiceLineAttachmentRemoved(localKey, attachment) }
     }
 
     fun addTask() {
@@ -1319,7 +1341,7 @@ class CreateWorkOrderViewModel(
             onFinished(SubmitOfflineResult.Failed(e.message ?: "Could not prepare submission."))
             return
         }
-        val attachmentsToPersist = collectAttachmentsInTaskOrder(snapshot.form)
+        val attachmentsToPersist = collectAttachmentsInServiceThenTaskOrder(snapshot.form)
         val request = EnqueueRequest(
             clientMutationId = mutationId,
             flightId = flight.id,
@@ -1392,6 +1414,10 @@ class CreateWorkOrderViewModel(
                     fromIso = row.fromIso,
                     toIso = row.toIso,
                     description = row.description.takeIf { it.isNotBlank() },
+                    // The repository replaces these slots with durable file-path references.
+                    attachments = row.attachments.map { attachment ->
+                        attachment.toOutboxPlaceholder()
+                    },
                     isReturnToRamp = row.returnToRamp,
                 )
             },
@@ -1416,15 +1442,8 @@ class CreateWorkOrderViewModel(
                     },
                     // Each task carries `task.attachments.size` slots; the repository
                     // re-stitches them after writing the durable copies to disk.
-                    attachments = List(task.attachments.size) { idx ->
-                        OutboxPayload.AttachmentInput(
-                            relativePath = "",
-                            kind = task.attachments[idx].kind,
-                            contentType = task.attachments[idx].contentType,
-                            fileName = task.attachments[idx].fileName,
-                            capturedAtIso = task.attachments[idx].capturedAtIso,
-                            sizeBytes = task.attachments[idx].sizeBytes,
-                        )
+                    attachments = task.attachments.map { attachment ->
+                        attachment.toOutboxPlaceholder()
                     },
                     isReturnToRamp = task.returnToRamp,
                 )
@@ -1461,19 +1480,9 @@ class CreateWorkOrderViewModel(
         )
     }
 
-    private fun collectAttachmentsInTaskOrder(form: CreateWorkOrderFormState): List<EnqueueAttachment> =
-        form.tasks.flatMap { task ->
-            task.attachments.map { a ->
-                EnqueueAttachment(
-                    base64 = a.base64,
-                    kind = a.kind,
-                    contentType = a.contentType,
-                    fileName = a.fileName,
-                    capturedAtIso = a.capturedAtIso,
-                    sizeBytes = a.sizeBytes,
-                )
-            }
-        }
+    private fun collectAttachmentsInServiceThenTaskOrder(
+        form: CreateWorkOrderFormState,
+    ): List<EnqueueAttachment> = collectAttachmentsForOutbox(form)
 
     fun clearAtdSubmitError() {
         _state.update { s ->

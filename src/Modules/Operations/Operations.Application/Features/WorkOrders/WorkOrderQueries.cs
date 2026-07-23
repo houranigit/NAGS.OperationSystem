@@ -262,7 +262,13 @@ internal static class WorkOrderDtoMapper
                 line.Window.From,
                 line.Window.To,
                 line.Description,
-                line.IsReturnToRamp)).ToList(),
+                line.IsReturnToRamp,
+                line.Attachments.Select(a => new WorkOrderServiceLineAttachmentDto(
+                    a.Id,
+                    a.Kind.ToString(),
+                    a.OriginalFileName,
+                    a.ContentType,
+                    a.Size)).ToList())).ToList(),
             workOrder.Tasks.Select(task => new WorkOrderTaskDto(
                 task.Id,
                 task.TaskType.ToString(),

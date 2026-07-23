@@ -278,7 +278,8 @@ public sealed record WorkOrderServiceLineDto(
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,
-    bool IsReturnToRamp)
+    bool IsReturnToRamp,
+    IReadOnlyList<WorkOrderServiceLineAttachmentDto>? Attachments = null)
 {
     // Rolling-deployment aliases for installed clients that predate multi-performer services.
     // PerformedBy is authoritative; these can be removed after those clients are retired.
@@ -287,6 +288,13 @@ public sealed record WorkOrderServiceLineDto(
 }
 
 public sealed record WorkOrderServiceLinePerformerDto(Guid StaffMemberId, string FullName, string EmployeeId);
+
+public sealed record WorkOrderServiceLineAttachmentDto(
+    Guid Id,
+    string Kind,
+    string OriginalFileName,
+    string ContentType,
+    long Size);
 
 public sealed record WorkOrderTaskDto(
     Guid Id,

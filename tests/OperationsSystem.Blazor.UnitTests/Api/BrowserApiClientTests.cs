@@ -33,6 +33,68 @@ public sealed class BrowserApiClientTests
         runtime.Arguments[1].ShouldBe("approved-work-order.pdf");
     }
 
+    [Fact]
+    public async Task Service_line_attachment_upload_uses_service_line_route()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var workOrderId = Guid.NewGuid();
+        var serviceLineId = Guid.NewGuid();
+
+        await operations.UploadWorkOrderServiceLineAttachmentAsync(
+            workOrderId,
+            serviceLineId,
+            "Image",
+            [1, 2, 3],
+            "service.jpg",
+            "image/jpeg",
+            "row-version");
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.uploadFile");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments");
+        runtime.Arguments[6].ShouldBe("row-version");
+        ((IReadOnlyDictionary<string, string>)runtime.Arguments[7]!)["kind"].ShouldBe("Image");
+    }
+
+    [Fact]
+    public async Task Service_line_attachment_download_uses_service_line_route()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var workOrderId = Guid.NewGuid();
+        var serviceLineId = Guid.NewGuid();
+        var attachmentId = Guid.NewGuid();
+
+        await operations.DownloadWorkOrderServiceLineAttachmentAsync(workOrderId, serviceLineId, attachmentId);
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.requestFile");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments/{attachmentId}");
+    }
+
+    [Fact]
+    public async Task Service_line_attachment_delete_uses_service_line_route_and_row_version()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var workOrderId = Guid.NewGuid();
+        var serviceLineId = Guid.NewGuid();
+        var attachmentId = Guid.NewGuid();
+
+        await operations.DeleteWorkOrderServiceLineAttachmentAsync(
+            workOrderId,
+            serviceLineId,
+            attachmentId,
+            "row-version");
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.request");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe("DELETE");
+        runtime.Arguments[1].ShouldBe($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments/{attachmentId}");
+        runtime.Arguments[5].ShouldBe("row-version");
+    }
+
     private static BrowserApiClient NewClient(IJSRuntime jsRuntime)
     {
         var tokenStore = new AuthTokenStore();

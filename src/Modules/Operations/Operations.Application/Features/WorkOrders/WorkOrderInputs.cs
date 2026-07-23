@@ -25,7 +25,8 @@ public sealed record WorkOrderServiceLineCommand(
     DateTimeOffset ToUtc,
     string? Description,
     bool IsReturnToRamp = false,
-    Guid? Id = null);
+    Guid? Id = null,
+    IReadOnlyList<WorkOrderServiceLineAttachmentCommand>? Attachments = null);
 
 public sealed record WorkOrderTaskCommand(
     Guid? Id,
@@ -47,6 +48,12 @@ public sealed record WorkOrderTaskMaterialCommand(Guid MaterialId, decimal Quant
 public sealed record WorkOrderTaskGeneralSupportCommand(Guid GeneralSupportId, decimal Quantity);
 
 public sealed record WorkOrderTaskAttachmentCommand(
+    TaskAttachmentKind Kind,
+    string Base64Content,
+    string FileName,
+    string ContentType);
+
+public sealed record WorkOrderServiceLineAttachmentCommand(
     TaskAttachmentKind Kind,
     string Base64Content,
     string FileName,
@@ -292,7 +299,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 staff.Value,
                 window.Value,
                 line.Description,
-                line.IsReturnToRamp));
+                line.IsReturnToRamp,
+                line.Id));
         }
 
         return results;

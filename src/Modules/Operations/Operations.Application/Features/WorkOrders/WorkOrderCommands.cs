@@ -704,6 +704,7 @@ internal static class WorkOrderLoader
     public static IQueryable<WorkOrder> ForMutation(IQueryable<WorkOrder> query) =>
         query
             .Include(w => w.ServiceLines).ThenInclude(line => line.PerformedBy)
+            .Include(w => w.ServiceLines).ThenInclude(line => line.Attachments)
             .Include(w => w.Tasks).ThenInclude(t => t.Employees)
             .Include(w => w.Tasks).ThenInclude(t => t.Tools)
             .Include(w => w.Tasks).ThenInclude(t => t.Materials)

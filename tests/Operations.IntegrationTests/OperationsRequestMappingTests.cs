@@ -57,6 +57,51 @@ public sealed class OperationsRequestMappingTests
     }
 
     [Fact]
+    public void WorkOrderRequest_MapsServiceLineIdentityAndInlineAttachments()
+    {
+        var serviceLineId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var request = new WorkOrderRequest(
+            WorkOrderType.Completion,
+            ActualFlightNumber: "MOB100",
+            AircraftTypeId: null,
+            AircraftTailNumber: null,
+            ActualArrivalUtc: now,
+            ActualDepartureUtc: now.AddHours(1),
+            CanceledAtUtc: null,
+            CancellationReason: null,
+            Remarks: null,
+            ServiceLines:
+            [
+                new WorkOrderServiceLineRequest(
+                    Guid.NewGuid(),
+                    [Guid.NewGuid()],
+                    now,
+                    now.AddMinutes(30),
+                    Description: "Attached service",
+                    Id: serviceLineId,
+                    Attachments:
+                    [
+                        new WorkOrderServiceLineAttachmentRequest(
+                            TaskAttachmentKind.Document,
+                            "JVBERi0x",
+                            "service-report.pdf",
+                            "application/pdf")
+                    ])
+            ],
+            Tasks: null);
+
+        var line = request.ToPayload().ServiceLines.ShouldHaveSingleItem();
+
+        line.Id.ShouldBe(serviceLineId);
+        var attachment = line.Attachments.ShouldHaveSingleItem();
+        attachment.Kind.ShouldBe(TaskAttachmentKind.Document);
+        attachment.Base64Content.ShouldBe("JVBERi0x");
+        attachment.FileName.ShouldBe("service-report.pdf");
+        attachment.ContentType.ShouldBe("application/pdf");
+    }
+
+    [Fact]
     public void WorkOrderServiceLineDto_SerializesCurrentCollectionAndLegacyFirstPerformerAliases()
     {
         var first = new WorkOrderServiceLinePerformerDto(Guid.NewGuid(), "First Agent", "EMP-1");
@@ -70,7 +115,16 @@ public sealed class OperationsRequestMappingTests
             now,
             now.AddMinutes(30),
             Description: null,
-            IsReturnToRamp: false);
+            IsReturnToRamp: false,
+            Attachments:
+            [
+                new WorkOrderServiceLineAttachmentDto(
+                    Guid.NewGuid(),
+                    nameof(TaskAttachmentKind.Document),
+                    "service-report.pdf",
+                    "application/pdf",
+                    128)
+            ]);
 
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(
             dto,
@@ -80,5 +134,10 @@ public sealed class OperationsRequestMappingTests
         root.GetProperty("performedBy").GetArrayLength().ShouldBe(2);
         root.GetProperty("performedByStaffMemberId").GetGuid().ShouldBe(first.StaffMemberId);
         root.GetProperty("performedByName").GetString().ShouldBe(first.FullName);
+        var attachment = root.GetProperty("attachments")[0];
+        attachment.GetProperty("kind").GetString().ShouldBe(nameof(TaskAttachmentKind.Document));
+        attachment.GetProperty("originalFileName").GetString().ShouldBe("service-report.pdf");
+        attachment.GetProperty("contentType").GetString().ShouldBe("application/pdf");
+        attachment.GetProperty("size").GetInt64().ShouldBe(128);
     }
 }

@@ -44,6 +44,14 @@ class CachedWorkOrderFormMappingTest {
                     ),
                     fromUtc = "2026-07-11T10:10:00Z",
                     toUtc = "2026-07-11T11:00:00Z",
+                    attachments = listOf(
+                        WorkOrderTaskAttachmentWireDto(
+                            id = "service-attachment-1",
+                            kind = "Image",
+                            originalFileName = "existing-service.jpg",
+                            contentType = "image/jpeg",
+                        ),
+                    ),
                     isReturnToRamp = true,
                 ),
             ),
@@ -94,6 +102,10 @@ class CachedWorkOrderFormMappingTest {
         assertEquals("Revoked service", form.serviceLines.single().serviceName)
         assertEquals("line-1", form.serviceLines.single().serverId)
         assertEquals(listOf("staff-1", "staff-2"), form.serviceLines.single().employeeIds)
+        assertEquals(
+            listOf("existing-service.jpg"),
+            form.serviceLines.single().existingAttachmentNames,
+        )
         assertEquals(1, form.serviceLineIdentityVersion)
         assertTrue(form.serviceLines.single().returnToRamp)
         assertTrue(form.tasks.single().returnToRamp)

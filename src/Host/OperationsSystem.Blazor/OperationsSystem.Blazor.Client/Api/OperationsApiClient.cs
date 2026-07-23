@@ -309,6 +309,39 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task DeleteWorkOrderAttachmentAsync(Guid workOrderId, Guid taskId, Guid attachmentId, string rowVersion, CancellationToken ct = default) =>
         api.DeleteAsync($"/operations/work-orders/{workOrderId}/tasks/{taskId}/attachments/{attachmentId}", rowVersion, ct);
 
+    public Task UploadWorkOrderServiceLineAttachmentAsync(
+        Guid workOrderId,
+        Guid serviceLineId,
+        string kind,
+        byte[] content,
+        string fileName,
+        string contentType,
+        string rowVersion,
+        CancellationToken ct = default) =>
+        api.UploadFileAsync(
+            $"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments",
+            content,
+            fileName,
+            contentType,
+            rowVersion,
+            ct,
+            new Dictionary<string, string> { ["kind"] = kind });
+
+    public Task<BrowserFileContent> DownloadWorkOrderServiceLineAttachmentAsync(
+        Guid workOrderId,
+        Guid serviceLineId,
+        Guid attachmentId,
+        CancellationToken ct = default) =>
+        api.GetFileAsync($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments/{attachmentId}", ct);
+
+    public Task DeleteWorkOrderServiceLineAttachmentAsync(
+        Guid workOrderId,
+        Guid serviceLineId,
+        Guid attachmentId,
+        string rowVersion,
+        CancellationToken ct = default) =>
+        api.DeleteAsync($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments/{attachmentId}", rowVersion, ct);
+
     public Task UploadWorkOrderSignatureAsync(Guid workOrderId, byte[] content, string fileName, string contentType, string rowVersion, CancellationToken ct = default) =>
         api.UploadFileAsync($"/operations/work-orders/{workOrderId}/signature", content, fileName, contentType, rowVersion, ct);
 

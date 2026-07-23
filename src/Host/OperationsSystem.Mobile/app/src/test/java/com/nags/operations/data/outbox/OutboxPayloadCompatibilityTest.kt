@@ -71,6 +71,7 @@ class OutboxPayloadCompatibilityTest {
         val line = payload.workOrder!!.serviceLines.single()
 
         assertFalse(line.isReturnToRamp)
+        assertTrue(line.attachments.isEmpty())
         assertEquals(listOf("staff-1"), line.performedByStaffMemberIds)
     }
 
@@ -83,6 +84,16 @@ class OutboxPayloadCompatibilityTest {
             fromIso = "2026-07-11T10:00:00Z",
             toIso = "2026-07-11T11:00:00Z",
             description = null,
+            attachments = listOf(
+                OutboxPayload.AttachmentInput(
+                    relativePath = "0-service.pdf",
+                    kind = "Document",
+                    contentType = "application/pdf",
+                    fileName = "service.pdf",
+                    capturedAtIso = "2026-07-11T10:30:00Z",
+                    sizeBytes = 3,
+                ),
+            ),
             isReturnToRamp = true,
         )
 
@@ -93,6 +104,7 @@ class OutboxPayloadCompatibilityTest {
         assertTrue(decoded.isReturnToRamp)
         assertEquals("line-1", decoded.id)
         assertEquals(listOf("staff-1", "staff-2"), decoded.performedByStaffMemberIds)
+        assertEquals("0-service.pdf", decoded.attachments.single().relativePath)
     }
 
     @Test

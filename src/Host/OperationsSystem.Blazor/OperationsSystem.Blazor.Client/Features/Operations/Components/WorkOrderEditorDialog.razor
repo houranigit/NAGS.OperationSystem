@@ -350,6 +350,7 @@
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => RemoveServiceLine(line))" />
                     }
                 </div>
+                @ServiceLineAttachments(line)
             </div>
         }
     </section>;
@@ -519,7 +520,7 @@
             <span><RadzenIcon Icon="attach_file" />Attachments</span>
             @if (!ViewOnly)
             {
-                @if (CanUploadAttachments(task))
+                @if (CanUploadAttachments)
                 {
                     <div class="owo-attachment-upload">
                         <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
@@ -562,6 +563,61 @@
                         {
                             <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
                                           Disabled="@isAttachmentBusy" Click="@(() => DeleteAttachmentAsync(task, attachment))" />
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
+    private RenderFragment ServiceLineAttachments(ServiceLineForm line) => @<div class="owo-attachments">
+        <div class="owo-attachments-head">
+            <span><RadzenIcon Icon="attach_file" />Attachments</span>
+            @if (!ViewOnly)
+            {
+                @if (CanUploadAttachments)
+                {
+                    <div class="owo-attachment-upload">
+                        <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
+                        <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
+                        <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Document", args))" accept="application/pdf" /></label>
+                    </div>
+                }
+                else
+                {
+                    <span class="owo-attachment-hint">Attachments are available only while the work order is editable.</span>
+                }
+            }
+        </div>
+
+        @if (line.Attachments.Count == 0)
+        {
+            <div class="owo-attachment-empty">No attachments</div>
+        }
+        else
+        {
+            <div class="owo-attachment-list">
+                @foreach (var attachment in line.Attachments)
+                {
+                    <div @key="attachment.Key" class="owo-attachment-row">
+                        <span class="owo-attachment-icon"><RadzenIcon Icon="@AttachmentIcon(attachment.Kind)" /></span>
+                        <span class="owo-attachment-main">
+                            <strong>@attachment.OriginalFileName</strong>
+                            <small>@attachment.Kind · @(attachment.IsPending ? "Pending · " : string.Empty)@FormatFileSize(attachment.Size)</small>
+                        </span>
+                        @if (!string.IsNullOrWhiteSpace(attachment.DownloadUrl))
+                        {
+                            <a class="owo-attachment-link" href="@attachment.DownloadUrl" download="@attachment.OriginalFileName">Open</a>
+                        }
+                        @if (!attachment.IsPending)
+                        {
+                            <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                          Disabled="@isAttachmentBusy" Click="@(() => DownloadServiceLineAttachmentAsync(line, attachment))" />
+                        }
+                        @if (!ViewOnly)
+                        {
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                          Disabled="@isAttachmentBusy" Click="@(() => DeleteServiceLineAttachmentAsync(line, attachment))" />
                         }
                     </div>
                 }
@@ -627,7 +683,7 @@
     private static void AddSupport(TaskForm task) => task.GeneralSupports.Add(new ResourceForm());
     private static void RemoveSupport(TaskForm task, ResourceForm row) => task.GeneralSupports.Remove(row);
 
-    private bool CanUploadAttachments(TaskForm task) =>
+    private bool CanUploadAttachments =>
         IsCompletion && !ViewOnly && (WorkOrderId is null || workOrder is null || workOrder.Status is "Submitted" or "Returned");
 
     private bool CanEditSignature =>
@@ -813,6 +869,93 @@
         {
             await Operations.DeleteWorkOrderAttachmentAsync(workOrderId, taskId, attachmentId, workOrder.RowVersion);
             await ReloadWorkOrderAsync(workOrderId);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not delete the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task UploadServiceLineAttachmentAsync(ServiceLineForm line, string kind, InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        var maxBytes = MaxAttachmentBytes(kind);
+        if (file.Size > maxBytes)
+        {
+            errorMessage = $"{kind} attachments must be at most {FormatFileSize(maxBytes)}.";
+            return;
+        }
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            line.Attachments.Add(new AttachmentForm
+            {
+                Kind = kind,
+                OriginalFileName = file.Name,
+                ContentType = ResolveAttachmentContentType(file.Name, file.ContentType),
+                Size = file.Size,
+                Content = memory.ToArray()
+            });
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            errorMessage = "Could not read the attachment.";
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DownloadServiceLineAttachmentAsync(ServiceLineForm line, AttachmentForm attachment)
+    {
+        if (WorkOrderId is not { } workOrderId || line.Id is not { } serviceLineId || attachment.Id is not { } attachmentId)
+            return;
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            var file = await Operations.DownloadWorkOrderServiceLineAttachmentAsync(workOrderId, serviceLineId, attachmentId);
+            attachment.DownloadUrl = $"data:{file.ContentType};base64,{file.Base64}";
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not download the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DeleteServiceLineAttachmentAsync(ServiceLineForm line, AttachmentForm attachment)
+    {
+        if (attachment.IsPending)
+        {
+            line.Attachments.Remove(attachment);
+            return;
+        }
+
+        if (WorkOrderId is not { } workOrderId || workOrder is null || line.Id is not { } serviceLineId || attachment.Id is not { } attachmentId)
+            return;
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await Operations.DeleteWorkOrderServiceLineAttachmentAsync(workOrderId, serviceLineId, attachmentId, workOrder.RowVersion);
+            line.Attachments.Remove(attachment);
+            workOrder = await Operations.GetWorkOrderAsync(workOrderId);
         }
         catch (ApiException ex)
         {
@@ -1083,7 +1226,12 @@
                     ToOffset(l.ToUtc)!.Value,
                     l.Description,
                     l.IsReturnToRamp,
-                    l.Id)).ToList()
+                    l.Id,
+                    l.Attachments.Where(a => a.IsPending).Select(a => new WorkOrderServiceLineAttachmentRequestModel(
+                        a.Kind,
+                        Convert.ToBase64String(a.Content!),
+                        a.OriginalFileName,
+                        a.ContentType)).ToList())).ToList()
                 : [],
             completion
                 ? model.Tasks.Select(t => new WorkOrderTaskRequestModel(
@@ -1169,7 +1317,15 @@
             FromUtc = l.FromUtc.UtcDateTime,
             ToUtc = l.ToUtc.UtcDateTime,
             Description = l.Description,
-            IsReturnToRamp = l.IsReturnToRamp
+            IsReturnToRamp = l.IsReturnToRamp,
+            Attachments = (l.Attachments ?? []).Select(a => new AttachmentForm
+            {
+                Id = a.Id,
+                Kind = a.Kind,
+                OriginalFileName = a.OriginalFileName,
+                ContentType = a.ContentType,
+                Size = a.Size
+            }).ToList()
         }).ToList(),
         Tasks = workOrder.Tasks.Select(t => new TaskForm
         {
@@ -1218,6 +1374,25 @@
         "Voice" => 25 * 1024 * 1024,
         _ => 20 * 1024 * 1024
     };
+
+    private static string ResolveAttachmentContentType(string fileName, string? contentType)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType))
+            return contentType;
+
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".m4a" => "audio/mp4",
+            ".mp3" => "audio/mpeg",
+            ".ogg" => "audio/ogg",
+            ".webm" => "audio/webm",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream"
+        };
+    }
 
     private static string FormatFileSize(long bytes)
     {
@@ -1281,6 +1456,7 @@
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
         public bool IsReturnToRamp { get; set; }
+        public List<AttachmentForm> Attachments { get; set; } = [];
     }
 
     private sealed class TaskForm

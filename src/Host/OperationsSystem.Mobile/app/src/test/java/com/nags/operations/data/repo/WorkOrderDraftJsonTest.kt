@@ -3,6 +3,7 @@ package com.nags.operations.data.repo
 import com.nags.operations.ui.workorder.WorkOrderDraftSubmissionMode
 import com.nags.operations.ui.workorder.CreateWorkOrderFormState
 import com.nags.operations.ui.workorder.ServiceLineFormRow
+import com.nags.operations.ui.workorder.TaskAttachmentDraft
 import com.nags.operations.ui.workorder.TaskFormRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -39,6 +40,8 @@ class WorkOrderDraftJsonTest {
         assertEquals(WorkOrderDraftSubmissionMode.Unknown, form.draftSubmissionMode)
         assertTrue(form.tasks.single().toolQuantities.isEmpty())
         assertEquals(listOf("staff-1"), form.serviceLines.single().employeeIds)
+        assertTrue(form.serviceLines.single().attachments.isEmpty())
+        assertTrue(form.serviceLines.single().existingAttachmentNames.isEmpty())
     }
 
     @Test
@@ -52,6 +55,17 @@ class WorkOrderDraftJsonTest {
                     localKey = 1L,
                     fromIso = "2026-07-11T10:05:00-05:00",
                     toIso = "",
+                    attachments = listOf(
+                        TaskAttachmentDraft(
+                            kind = "Image",
+                            contentType = "image/jpeg",
+                            fileName = "service.jpg",
+                            base64 = "AQID",
+                            capturedAtIso = "2026-07-11T10:30:00-05:00",
+                            sizeBytes = 3,
+                        ),
+                    ),
+                    existingAttachmentNames = listOf("already-uploaded.pdf"),
                 ),
             ),
             tasks = listOf(
@@ -68,6 +82,11 @@ class WorkOrderDraftJsonTest {
         assertEquals(original.atdIso, restored.atdIso)
         assertEquals(original.serviceLines.single().fromIso, restored.serviceLines.single().fromIso)
         assertEquals(original.serviceLines.single().toIso, restored.serviceLines.single().toIso)
+        assertEquals(original.serviceLines.single().attachments, restored.serviceLines.single().attachments)
+        assertEquals(
+            original.serviceLines.single().existingAttachmentNames,
+            restored.serviceLines.single().existingAttachmentNames,
+        )
         assertEquals(original.tasks.single().fromIso, restored.tasks.single().fromIso)
         assertEquals(original.tasks.single().toIso, restored.tasks.single().toIso)
     }

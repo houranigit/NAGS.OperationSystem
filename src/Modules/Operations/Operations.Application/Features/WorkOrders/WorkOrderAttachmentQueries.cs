@@ -51,6 +51,50 @@ public sealed class GetWorkOrderTaskAttachmentContentQueryHandler(
     }
 }
 
+public sealed record GetWorkOrderServiceLineAttachmentContentQuery(
+    Guid WorkOrderId,
+    Guid ServiceLineId,
+    Guid AttachmentId) : IQuery<WorkOrderAttachmentContent>;
+
+public sealed class GetWorkOrderServiceLineAttachmentContentQueryHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IFileStorage storage) : IQueryHandler<GetWorkOrderServiceLineAttachmentContentQuery, WorkOrderAttachmentContent>
+{
+    public async Task<Result<WorkOrderAttachmentContent>> Handle(
+        GetWorkOrderServiceLineAttachmentContentQuery request,
+        CancellationToken cancellationToken)
+    {
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders.AsNoTracking())
+            .FirstOrDefaultAsync(w => w.Id == request.WorkOrderId, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
+        if (access.IsFailure)
+            return access.Error;
+
+        var serviceLine = workOrder.ServiceLines.FirstOrDefault(line => line.Id == request.ServiceLineId);
+        if (serviceLine is null)
+            return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
+
+        var attachment = serviceLine.Attachments.FirstOrDefault(a => a.Id == request.AttachmentId);
+        if (attachment is null)
+            return Error.NotFound("Attachment not found.", "Operations.WorkOrder.AttachmentNotFound");
+
+        await using var stream = await storage.OpenAsync(attachment.StorageReference, cancellationToken);
+        if (stream is null)
+            return Error.NotFound("Attachment file not found.", "Operations.WorkOrder.AttachmentFileNotFound");
+
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        return new WorkOrderAttachmentContent(memory.ToArray(), attachment.ContentType, attachment.OriginalFileName);
+    }
+}
+
 public sealed record GetWorkOrderSignatureContentQuery(Guid Id) : IQuery<WorkOrderAttachmentContent>;
 
 public sealed class GetWorkOrderSignatureContentQueryHandler(

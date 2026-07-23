@@ -27,7 +27,8 @@ internal static class MobileReturnToRampProvenance
         WorkOrderEditableCommandPayload payload,
         IReadOnlyDictionary<Guid, bool> persistedServiceLineFlags,
         IReadOnlyDictionary<Guid, bool> persistedTaskFlags,
-        int serviceLineIdentityVersion)
+        int serviceLineIdentityVersion,
+        bool hasPersistedServiceLineAttachments = false)
     {
         var serviceLines = payload.ServiceLines ?? [];
         var suppliedServiceLineIds = serviceLines
@@ -54,10 +55,11 @@ internal static class MobileReturnToRampProvenance
         // RTR row as normal. Fail safely and let the device refresh with the identity-aware schema.
         if (serviceLineIdentityVersion < StableServiceLineIdentityVersion &&
             serviceLines.Count > 0 &&
-            persistedServiceLineFlags.Values.Any(isReturnToRamp => isReturnToRamp))
+            (persistedServiceLineFlags.Values.Any(isReturnToRamp => isReturnToRamp) ||
+             hasPersistedServiceLineAttachments))
         {
             return Error.Conflict(
-                "Refresh this work order in the latest mobile app before updating return-to-ramp services.",
+                "Refresh this work order in the latest mobile app before updating services with retained server state.",
                 "Operations.Mobile.ServiceLineIdentityRequired");
         }
 

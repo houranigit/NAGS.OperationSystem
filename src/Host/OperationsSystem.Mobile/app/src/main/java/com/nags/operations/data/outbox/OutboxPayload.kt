@@ -99,6 +99,8 @@ data class OutboxPayload(
         val fromIso: String,
         val toIso: String,
         val description: String?,
+        /** Defaults empty so queued submissions from versions before service attachments remain valid. */
+        val attachments: List<AttachmentInput> = emptyList(),
         val isReturnToRamp: Boolean = false,
     )
 

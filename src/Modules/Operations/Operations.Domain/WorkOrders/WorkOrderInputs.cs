@@ -8,7 +8,8 @@ public sealed record WorkOrderServiceLineInput(
     IReadOnlyList<StaffMemberSnapshot> PerformedBy,
     TimeWindow Window,
     string? Description,
-    bool IsReturnToRamp = false);
+    bool IsReturnToRamp = false,
+    Guid? Id = null);
 
 public sealed record WorkOrderTaskInput(
     Guid? Id,

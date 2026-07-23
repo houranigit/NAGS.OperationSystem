@@ -60,6 +60,7 @@ data class WorkOrderServiceLineWireDto(
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
+    val attachments: List<WorkOrderTaskAttachmentWireDto> = emptyList(),
     val isReturnToRamp: Boolean = false,
     /** Rolling-deploy fallback for responses from the pre-multi-performer backend. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)

@@ -343,6 +343,7 @@
                     <RadzenTextBox @bind-Value="line.Description" MaxLength="2000" Placeholder="Description" class="owf-control" />
                     <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => RemoveServiceLine(line))" />
                 </div>
+                @ServiceLineAttachments(line)
             </div>
         }
     </section>;
@@ -484,6 +485,39 @@
         }
     </div>;
 
+    private RenderFragment ServiceLineAttachments(ServiceLineForm line) => @<div class="owf-attachments">
+        <div class="owf-attachments-head">
+            <span><RadzenIcon Icon="attach_file" />Attachments</span>
+            <div class="owf-attachment-upload">
+                <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
+                <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
+                <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Document", args))" accept="application/pdf" /></label>
+            </div>
+        </div>
+
+        @if (line.Attachments.Count == 0)
+        {
+            <div class="owf-attachment-empty">No attachments</div>
+        }
+        else
+        {
+            <div class="owf-attachment-list">
+                @foreach (var attachment in line.Attachments)
+                {
+                    <div @key="attachment.Key" class="owf-attachment-row">
+                        <span class="owf-attachment-icon"><RadzenIcon Icon="@AttachmentIcon(attachment.Kind)" /></span>
+                        <span class="owf-attachment-main">
+                            <strong>@attachment.OriginalFileName</strong>
+                            <small>@attachment.Kind · Pending · @FormatFileSize(attachment.Size)</small>
+                        </span>
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                      Disabled="@isAttachmentBusy" Click="@(() => DeleteServiceLineAttachment(line, attachment))" />
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
     private RenderFragment Actions() => @<div class="owf-actions">
         <div>
             @if (step > 0)
@@ -617,7 +651,12 @@
                     ToOffset(l.FromUtc)!.Value,
                     ToOffset(l.ToUtc)!.Value,
                     l.Description,
-                    l.IsReturnToRamp)).ToList()
+                    l.IsReturnToRamp,
+                    Attachments: l.Attachments.Select(a => new WorkOrderServiceLineAttachmentRequestModel(
+                        a.Kind,
+                        Convert.ToBase64String(a.Content),
+                        a.OriginalFileName,
+                        a.ContentType)).ToList())).ToList()
                 : [],
             completion
                 ? model.Tasks.Select(t => new WorkOrderTaskRequestModel(
@@ -861,6 +900,7 @@
     private void AddSupport(TaskForm task) => task.GeneralSupports.Add(new ResourceForm());
     private void RemoveSupport(TaskForm task, ResourceForm row) => task.GeneralSupports.Remove(row);
     private void DeleteAttachment(TaskForm task, AttachmentForm attachment) => task.Attachments.Remove(attachment);
+    private void DeleteServiceLineAttachment(ServiceLineForm line, AttachmentForm attachment) => line.Attachments.Remove(attachment);
 
     private async Task UploadSignatureAsync(InputFileChangeEventArgs args)
     {
@@ -940,6 +980,42 @@
         }
     }
 
+    private async Task UploadServiceLineAttachmentAsync(ServiceLineForm line, string kind, InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        var maxBytes = MaxAttachmentBytes(kind);
+        if (file.Size > maxBytes)
+        {
+            errorMessage = $"{kind} attachments must be at most {FormatFileSize(maxBytes)}.";
+            return;
+        }
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            line.Attachments.Add(new AttachmentForm
+            {
+                Kind = kind,
+                OriginalFileName = file.Name,
+                ContentType = ResolveAttachmentContentType(file.Name, file.ContentType),
+                Size = file.Size,
+                Content = memory.ToArray()
+            });
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            errorMessage = "Could not read the attachment.";
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
     private void DismissValidationMessages() => validationMessages = [];
 
     private static void AddResourceValidation(List<string> messages, IEnumerable<ResourceForm> rows, string label)
@@ -986,6 +1062,25 @@
         "Voice" => 25 * 1024 * 1024,
         _ => 20 * 1024 * 1024
     };
+
+    private static string ResolveAttachmentContentType(string fileName, string? contentType)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType))
+            return contentType;
+
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".m4a" => "audio/mp4",
+            ".mp3" => "audio/mpeg",
+            ".ogg" => "audio/ogg",
+            ".webm" => "audio/webm",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream"
+        };
+    }
 
     private static string FormatFileSize(long bytes)
     {
@@ -1035,6 +1130,7 @@
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
         public bool IsReturnToRamp { get; set; }
+        public List<AttachmentForm> Attachments { get; } = [];
     }
 
     private sealed class TaskForm

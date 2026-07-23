@@ -135,6 +135,60 @@ internal static class WorkOrderEndpoints
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.WorkOrders.Author);
 
+        workOrders.MapPost("/{id:guid}/service-lines/{serviceLineId:guid}/attachments", async (Guid id, Guid serviceLineId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            if (!http.HasFormContentType)
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("A multipart form with an attachment file is required.", "Operations.WorkOrder.AttachmentMissing"));
+
+            var form = await http.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            if (file is null || file.Length == 0)
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("An attachment file is required.", "Operations.WorkOrder.AttachmentMissing"));
+            if (file.Length > WorkOrderAttachmentPolicy.MaxUploadBytes)
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("The attachment file is too large.", "Operations.WorkOrder.AttachmentTooLarge"));
+
+            var kindValue = form["kind"].FirstOrDefault();
+            if (!Enum.TryParse<TaskAttachmentKind>(kindValue, ignoreCase: true, out var kind))
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("Attachment kind is required.", "Operations.WorkOrder.AttachmentKindRequired"));
+
+            using var memory = new MemoryStream();
+            await file.CopyToAsync(memory, ct);
+            var result = await sender.Send(new UploadWorkOrderServiceLineAttachmentCommand(
+                id,
+                serviceLineId,
+                kind,
+                memory.ToArray(),
+                file.FileName,
+                file.ContentType,
+                rowVersion), ct);
+
+            return result.ToCreated(attachmentId => $"/api/v1/operations/work-orders/{id}/service-lines/{serviceLineId}/attachments/{attachmentId}");
+        }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+            .DisableAntiforgery()
+            .WithMetadata(
+                new RequestSizeLimitAttribute(MaxAttachmentUploadRequestBytes),
+                new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxAttachmentUploadRequestBytes });
+
+        workOrders.MapGet("/{id:guid}/service-lines/{serviceLineId:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid serviceLineId, Guid attachmentId, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetWorkOrderServiceLineAttachmentContentQuery(id, serviceLineId, attachmentId), ct);
+            return result.IsFailure
+                ? ApiResults.Problem(result.Error)
+                : Results.File(result.Value.Content, result.Value.ContentType, result.Value.FileName);
+        }).RequirePermission(OperationsPermissions.WorkOrders.View);
+
+        workOrders.MapDelete("/{id:guid}/service-lines/{serviceLineId:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid serviceLineId, Guid attachmentId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new DeleteWorkOrderServiceLineAttachmentCommand(id, serviceLineId, attachmentId, rowVersion), ct);
+            return result.ToNoContent();
+        }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+
         workOrders.MapPost("/{id:guid}/tasks/{taskId:guid}/attachments", async (Guid id, Guid taskId, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
             if (http.GetIfMatch() is not { } rowVersion)

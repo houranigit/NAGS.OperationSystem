@@ -166,6 +166,164 @@ public sealed class DeleteWorkOrderTaskAttachmentCommandHandler(
     }
 }
 
+public sealed record UploadWorkOrderServiceLineAttachmentCommand(
+    Guid WorkOrderId,
+    Guid ServiceLineId,
+    TaskAttachmentKind Kind,
+    byte[] Content,
+    string FileName,
+    string ContentType,
+    byte[] RowVersion) : ICommand<Guid>;
+
+public sealed class UploadWorkOrderServiceLineAttachmentCommandValidator : AbstractValidator<UploadWorkOrderServiceLineAttachmentCommand>
+{
+    public UploadWorkOrderServiceLineAttachmentCommandValidator()
+    {
+        RuleFor(x => x.WorkOrderId).NotEmpty();
+        RuleFor(x => x.ServiceLineId).NotEmpty();
+        RuleFor(x => x.Content).NotEmpty();
+        RuleFor(x => x.FileName).NotEmpty().MaximumLength(255);
+        RuleFor(x => x.ContentType).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.RowVersion).NotEmpty();
+    }
+}
+
+public sealed class UploadWorkOrderServiceLineAttachmentCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IFileStorage storage,
+    IWorkOrderTimelineWriter timeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<UploadWorkOrderServiceLineAttachmentCommand, Guid>
+{
+    public async Task<Result<Guid>> Handle(UploadWorkOrderServiceLineAttachmentCommand request, CancellationToken cancellationToken)
+    {
+        var validation = WorkOrderAttachmentPolicy.Validate(request.Kind, request.Content, request.FileName, request.ContentType);
+        if (validation.IsFailure)
+            return validation.Error;
+
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders)
+            .FirstOrDefaultAsync(w => w.Id == request.WorkOrderId, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
+        if (access.IsFailure)
+            return access.Error;
+        var author = WorkOrderAuthorization.EnsureManageAccess(workOrder, user);
+        if (author.IsFailure)
+            return author.Error;
+
+        await using var content = new MemoryStream(request.Content);
+        var stored = await storage.SaveAsync("work-order-attachments", request.FileName, request.ContentType, content, cancellationToken);
+
+        db.SetOriginalRowVersion(workOrder, request.RowVersion);
+        var added = workOrder.AddServiceLineAttachment(
+            request.ServiceLineId,
+            request.Kind,
+            stored.StorageKey,
+            request.FileName,
+            stored.ContentType,
+            stored.SizeBytes,
+            timeProvider.GetUtcNow());
+        if (added.IsFailure)
+        {
+            await storage.DeleteAsync(stored.StorageKey, cancellationToken);
+            return added.Error;
+        }
+
+        await timeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Updated, timeProvider.GetUtcNow(),
+            details: $"Attachment added: {added.Value.OriginalFileName}", cancellationToken: cancellationToken);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await storage.DeleteAsync(stored.StorageKey, cancellationToken);
+            return ConcurrencyErrors.Stale;
+        }
+        catch (DbUpdateException)
+        {
+            await storage.DeleteAsync(stored.StorageKey, cancellationToken);
+            return Error.Conflict("Attachment upload conflicted with another update. Reload and try again.", "Operations.WorkOrder.AttachmentConflict");
+        }
+
+        return added.Value.Id;
+    }
+}
+
+public sealed record DeleteWorkOrderServiceLineAttachmentCommand(
+    Guid WorkOrderId,
+    Guid ServiceLineId,
+    Guid AttachmentId,
+    byte[] RowVersion) : ICommand;
+
+public sealed class DeleteWorkOrderServiceLineAttachmentCommandValidator : AbstractValidator<DeleteWorkOrderServiceLineAttachmentCommand>
+{
+    public DeleteWorkOrderServiceLineAttachmentCommandValidator()
+    {
+        RuleFor(x => x.WorkOrderId).NotEmpty();
+        RuleFor(x => x.ServiceLineId).NotEmpty();
+        RuleFor(x => x.AttachmentId).NotEmpty();
+        RuleFor(x => x.RowVersion).NotEmpty();
+    }
+}
+
+public sealed class DeleteWorkOrderServiceLineAttachmentCommandHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IFileStorage storage,
+    IWorkOrderTimelineWriter timeline,
+    IUserContext user,
+    TimeProvider timeProvider) : ICommandHandler<DeleteWorkOrderServiceLineAttachmentCommand>
+{
+    public async Task<Result> Handle(DeleteWorkOrderServiceLineAttachmentCommand request, CancellationToken cancellationToken)
+    {
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders)
+            .FirstOrDefaultAsync(w => w.Id == request.WorkOrderId, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
+        if (access.IsFailure)
+            return access.Error;
+        var author = WorkOrderAuthorization.EnsureManageAccess(workOrder, user);
+        if (author.IsFailure)
+            return author.Error;
+
+        db.SetOriginalRowVersion(workOrder, request.RowVersion);
+        var storageReference = workOrder.RemoveServiceLineAttachment(
+            request.ServiceLineId,
+            request.AttachmentId,
+            timeProvider.GetUtcNow());
+        if (storageReference.IsFailure)
+            return storageReference.Error;
+
+        await timeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Updated, timeProvider.GetUtcNow(),
+            details: $"Attachment removed: {request.AttachmentId}", cancellationToken: cancellationToken);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
+
+        await storage.DeleteAsync(storageReference.Value, cancellationToken);
+        return Result.Success();
+    }
+}
+
 public static class WorkOrderAttachmentPolicy
 {
     public const int MaxImageBytes = 10 * 1024 * 1024;
@@ -275,9 +433,12 @@ public static class WorkOrderAttachmentPolicy
 internal static class WorkOrderAttachmentStorage
 {
     public static IReadOnlyList<string> References(WorkOrder workOrder) =>
-        workOrder.Tasks
-            .SelectMany(task => task.Attachments)
+        workOrder.ServiceLines
+            .SelectMany(line => line.Attachments)
             .Select(attachment => attachment.StorageReference)
+            .Concat(workOrder.Tasks
+                .SelectMany(task => task.Attachments)
+                .Select(attachment => attachment.StorageReference))
             .Concat([workOrder.CustomerSignatureReference])
             .Where(reference => !string.IsNullOrWhiteSpace(reference))
             .Select(reference => reference!)

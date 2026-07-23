@@ -88,6 +88,20 @@ public sealed class MobileReturnToRampProvenanceTests
         result.Error.Code.ShouldBe("Operations.Mobile.ServiceLineIdentityRequired");
     }
 
+    [Fact]
+    public void ProtectUpdate_RejectsLegacyFullReplacementThatCouldErasePersistedServiceAttachments()
+    {
+        var result = MobileReturnToRampProvenance.ProtectUpdate(
+            Payload([ServiceLine(null)], []),
+            new Dictionary<Guid, bool> { [Guid.NewGuid()] = false },
+            new Dictionary<Guid, bool>(),
+            serviceLineIdentityVersion: 0,
+            hasPersistedServiceLineAttachments: true);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.Mobile.ServiceLineIdentityRequired");
+    }
+
     private static WorkOrderEditableCommandPayload Payload(
         IReadOnlyList<WorkOrderServiceLineCommand> serviceLines,
         IReadOnlyList<WorkOrderTaskCommand> tasks) =>

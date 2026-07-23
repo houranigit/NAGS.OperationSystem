@@ -219,6 +219,8 @@ fun ServiceLineCard(
     services: List<ServiceEntity>,
     employees: List<EmployeeEntity>,
     onChange: (ServiceLineFormRow) -> Unit,
+    onAttachmentAdded: (TaskAttachmentDraft) -> Unit,
+    onAttachmentRemoved: (TaskAttachmentDraft) -> Unit,
     onRemove: () -> Unit,
     canRemove: Boolean,
 ) {
@@ -357,6 +359,74 @@ fun ServiceLineCard(
                         supportingText = fieldErrorSupportingText(lineErrors?.to),
                     )
                 }
+
+                Text(
+                    text = "Attachments (${row.existingAttachmentNames.size + row.attachments.size}/${WorkOrderFormLimits.ServiceAttachments})",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (row.existingAttachmentNames.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            "Already uploaded",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        row.existingAttachmentNames.forEach { name ->
+                            Text(
+                                "• $name",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                val attachmentCount = row.existingAttachmentNames.size + row.attachments.size
+                if (attachmentCount < WorkOrderFormLimits.ServiceAttachments) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        PhotoAttachmentButton(
+                            modifier = Modifier.weight(1f),
+                            onAttachment = onAttachmentAdded,
+                        )
+                        VoiceAttachmentButton(
+                            modifier = Modifier.weight(1f),
+                            onAttachment = onAttachmentAdded,
+                        )
+                        DocumentAttachmentButton(
+                            modifier = Modifier.weight(1f),
+                            onAttachment = onAttachmentAdded,
+                        )
+                    }
+                } else {
+                    Text(
+                        "Attachment limit reached. Remove a new attachment before adding another.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (row.attachments.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.attachments.forEach { attachment ->
+                            TaskAttachmentRow(
+                                attachment = attachment,
+                                onRemove = { onAttachmentRemoved(attachment) },
+                            )
+                        }
+                    }
+                }
+                lineErrors?.attachments?.let { message ->
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
                 OutlinedTextField(
                     value = row.description,
                     onValueChange = {

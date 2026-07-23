@@ -10,7 +10,9 @@ internal object WorkOrderFormLimits {
     const val Remarks = 2_000
     const val LineDescription = 2_000
     const val CancellationReason = 1_000
-    const val TaskAttachments = 10
+    const val AttachmentsPerLine = 10
+    const val ServiceAttachments = AttachmentsPerLine
+    const val TaskAttachments = AttachmentsPerLine
 }
 
 /** String values are persisted in draft JSON; keep names stable and tolerate Unknown legacy rows. */
@@ -77,6 +79,12 @@ internal fun computeWorkOrderLineErrors(
         val description = if (row.description.trim().length > WorkOrderFormLimits.LineDescription) {
             "Description must be at most ${WorkOrderFormLimits.LineDescription} characters."
         } else null
+        val attachments = if (
+            row.existingAttachmentNames.size + row.attachments.size >
+            WorkOrderFormLimits.ServiceAttachments
+        ) {
+            "A service can have at most ${WorkOrderFormLimits.ServiceAttachments} attachments."
+        } else null
 
         val fromDt = safeParseOffset(row.fromIso)
         val toDt = safeParseOffset(row.toIso)
@@ -92,13 +100,17 @@ internal fun computeWorkOrderLineErrors(
             to = mergeValidationMessage(to, "Can't be after departure (ATD).")
         }
 
-        if (service != null || performer != null || from != null || to != null || description != null) {
+        if (
+            service != null || performer != null || from != null || to != null ||
+            description != null || attachments != null
+        ) {
             serviceMap[row.localKey] = ServiceLineSubmitFieldErrors(
                 serviceType = service,
                 performer = performer,
                 from = from,
                 to = to,
                 description = description,
+                attachments = attachments,
             )
         }
     }

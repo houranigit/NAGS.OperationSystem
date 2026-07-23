@@ -200,6 +200,10 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (validate.IsFailure)
             return validate.Error;
 
+        var serviceLineIdentities = ValidateServiceLineIdentities(serviceLines);
+        if (serviceLineIdentities.IsFailure)
+            return serviceLineIdentities.Error;
+
         var previousType = Type;
         Type = type;
         ActualFlightNumber = actualFlightNumber;
@@ -217,7 +221,10 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             CustomerSignedAtUtc = null;
         }
 
-        ReplaceServiceLinesInternal(serviceLines);
+        var reconcileServiceLines = ReconcileServiceLinesInternal(serviceLines);
+        if (reconcileServiceLines.IsFailure)
+            return reconcileServiceLines.Error;
+
         var reconcile = ReconcileTasksInternal(tasks);
         if (reconcile.IsFailure)
             return reconcile.Error;
@@ -366,6 +373,51 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         return storageReference;
     }
 
+    public Result<WorkOrderServiceLineAttachment> AddServiceLineAttachment(
+        Guid serviceLineId,
+        TaskAttachmentKind kind,
+        string storageReference,
+        string originalFileName,
+        string contentType,
+        long size,
+        DateTimeOffset now)
+    {
+        var editable = EnsureEditable();
+        if (editable.IsFailure)
+            return editable.Error;
+
+        var serviceLine = _serviceLines.FirstOrDefault(line => line.Id == serviceLineId);
+        if (serviceLine is null)
+            return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
+
+        var attachment = serviceLine.AddAttachment(kind, storageReference, originalFileName, contentType, size);
+        if (attachment.IsFailure)
+            return attachment.Error;
+
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return attachment;
+    }
+
+    public Result<string> RemoveServiceLineAttachment(Guid serviceLineId, Guid attachmentId, DateTimeOffset now)
+    {
+        var editable = EnsureEditable();
+        if (editable.IsFailure)
+            return editable.Error;
+
+        var serviceLine = _serviceLines.FirstOrDefault(line => line.Id == serviceLineId);
+        if (serviceLine is null)
+            return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
+
+        var storageReference = serviceLine.RemoveAttachment(attachmentId);
+        if (storageReference.IsFailure)
+            return storageReference.Error;
+
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return storageReference;
+    }
+
     public Result SetCustomerSignature(
         string storageReference,
         string fileName,
@@ -424,6 +476,47 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         _serviceLines.Clear();
         foreach (var line in serviceLines)
             _serviceLines.Add(new WorkOrderServiceLine(Guid.NewGuid(), Id, line));
+    }
+
+    private Result ReconcileServiceLinesInternal(IReadOnlyList<WorkOrderServiceLineInput> serviceLines)
+    {
+        var identities = ValidateServiceLineIdentities(serviceLines);
+        if (identities.IsFailure)
+            return identities.Error;
+
+        var existingById = _serviceLines.ToDictionary(line => line.Id);
+        var retained = new HashSet<Guid>();
+
+        foreach (var input in serviceLines)
+        {
+            if (input.Id is { } serviceLineId)
+            {
+                var existing = existingById[serviceLineId];
+                existing.Update(input);
+                retained.Add(serviceLineId);
+                continue;
+            }
+
+            var added = new WorkOrderServiceLine(Guid.NewGuid(), Id, input);
+            _serviceLines.Add(added);
+            retained.Add(added.Id);
+        }
+
+        _serviceLines.RemoveAll(line => !retained.Contains(line.Id));
+        return Result.Success();
+    }
+
+    private Result ValidateServiceLineIdentities(IReadOnlyList<WorkOrderServiceLineInput> serviceLines)
+    {
+        var incomingIds = serviceLines.Where(line => line.Id.HasValue).Select(line => line.Id!.Value).ToList();
+        if (incomingIds.Count != incomingIds.Distinct().Count())
+            return Error.Validation("Service line ids must be unique.", "Operations.WorkOrder.ServiceLineIdsDuplicate");
+
+        var existingIds = _serviceLines.Select(line => line.Id).ToHashSet();
+        if (incomingIds.Any(id => !existingIds.Contains(id)))
+            return Error.Conflict("One or more service line ids do not belong to this work order.", "Operations.WorkOrder.ServiceLineIdForeign");
+
+        return Result.Success();
     }
 
     private Result ReconcileTasksInternal(IReadOnlyList<WorkOrderTaskInput> tasks)

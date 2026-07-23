@@ -105,6 +105,75 @@ public sealed class MobileMutationFingerprintCompatibilityTests
     }
 
     [Fact]
+    public async Task FindReplay_AcceptsFingerprintWrittenBeforeServiceLineAttachments()
+    {
+        var ownerUserId = Guid.NewGuid();
+        var workOrderId = Guid.NewGuid();
+        var flightId = Guid.NewGuid();
+        var clientMutationId = Guid.NewGuid().ToString();
+        var input = CurrentEnvelope(
+            workOrderId,
+            Payload(Guid.NewGuid(), Guid.NewGuid(), serviceIsReturnToRamp: true));
+        var previousContractFingerprint = Fingerprint(PreServiceAttachmentEnvelope(input));
+
+        MobileMutations.CompatibleFingerprints(input).ShouldContain(previousContractFingerprint);
+        MobileMutations.Fingerprint(input).ShouldNotBe(previousContractFingerprint);
+
+        await using var db = CreateDb();
+        db.MobileMutations.Add(MobileMutation.Record(
+            clientMutationId,
+            ownerUserId,
+            "update-work-order",
+            workOrderId,
+            flightId,
+            clientFlightId: null,
+            previousContractFingerprint,
+            FromUtc));
+        await db.SaveChangesAsync();
+
+        var replay = await MobileMutations.FindReplayAsync(
+            db,
+            clientMutationId,
+            ownerUserId,
+            "update-work-order",
+            MobileMutations.Fingerprint(input),
+            expectedWorkOrderId: workOrderId,
+            expectedFlightId: null,
+            expectedClientFlightId: null,
+            CancellationToken.None,
+            MobileMutations.CompatibleFingerprints(input));
+
+        replay.IsSuccess.ShouldBeTrue();
+        replay.Value.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void CompatibleFingerprints_DoesNotDropNonEmptyServiceLineAttachments()
+    {
+        var withoutAttachments = CurrentEnvelope(
+            Guid.NewGuid(),
+            Payload(Guid.NewGuid(), Guid.NewGuid()));
+        var previousContractFingerprint = Fingerprint(PreServiceAttachmentEnvelope(withoutAttachments));
+        var withAttachments = withoutAttachments with
+        {
+            Payload = Payload(
+                withoutAttachments.Payload.ServiceLines.Single().Id!.Value,
+                withoutAttachments.Payload.Tasks.Single().Id!.Value,
+                serviceAttachments:
+                [
+                    new WorkOrderServiceLineAttachmentCommand(
+                        TaskAttachmentKind.Document,
+                        "JVBERi0x",
+                        "service-report.pdf",
+                        "application/pdf")
+                ])
+        };
+
+        MobileMutations.CompatibleFingerprints(withAttachments)
+            .ShouldNotContain(previousContractFingerprint);
+    }
+
+    [Fact]
     public async Task FindReplay_RejectsSemanticChangesAgainstCurrentSchemaFingerprint()
     {
         var ownerUserId = Guid.NewGuid();
@@ -134,6 +203,19 @@ public sealed class MobileMutationFingerprintCompatibilityTests
             CurrentEnvelope(workOrderId, Payload(serviceLineId, taskId, taskIsReturnToRamp: true)),
             CurrentEnvelope(workOrderId, Payload(Guid.NewGuid(), taskId)),
             CurrentEnvelope(workOrderId, Payload(serviceLineId, taskId, description: "Changed")),
+            CurrentEnvelope(
+                workOrderId,
+                Payload(
+                    serviceLineId,
+                    taskId,
+                    serviceAttachments:
+                    [
+                        new WorkOrderServiceLineAttachmentCommand(
+                            TaskAttachmentKind.Image,
+                            "/9j/4AAQ",
+                            "service-photo.jpg",
+                            "image/jpeg")
+                    ])),
             original with { ServiceLineIdentityVersion = 2 }
         };
 
@@ -166,7 +248,8 @@ public sealed class MobileMutationFingerprintCompatibilityTests
         Guid taskId,
         bool serviceIsReturnToRamp = false,
         bool taskIsReturnToRamp = false,
-        string description = "Handled") =>
+        string description = "Handled",
+        IReadOnlyList<WorkOrderServiceLineAttachmentCommand>? serviceAttachments = null) =>
         new(
             ActualFlightNumber: "MOB100",
             AircraftTypeId: null,
@@ -185,7 +268,8 @@ public sealed class MobileMutationFingerprintCompatibilityTests
                     FromUtc.AddMinutes(30),
                     description,
                     serviceIsReturnToRamp,
-                    serviceLineId)
+                    serviceLineId,
+                    serviceAttachments)
             ],
             Tasks:
             [
@@ -262,6 +346,33 @@ public sealed class MobileMutationFingerprintCompatibilityTests
             current.BaseRowVersion,
             current.ServiceLineIdentityVersion);
 
+    private static PreServiceAttachmentUpdateFingerprintEnvelope PreServiceAttachmentEnvelope(
+        CurrentUpdateFingerprintEnvelope current) =>
+        new(
+            current.WorkOrderId,
+            current.Type,
+            new PreServiceAttachmentWorkOrderPayload(
+                current.Payload.ActualFlightNumber,
+                current.Payload.AircraftTypeId,
+                current.Payload.AircraftTailNumber,
+                current.Payload.ActualArrivalUtc,
+                current.Payload.ActualDepartureUtc,
+                current.Payload.CanceledAtUtc,
+                current.Payload.CancellationReason,
+                current.Payload.Remarks,
+                current.Payload.ServiceLines.Select(line => new PreServiceAttachmentServiceLine(
+                    line.ServiceId,
+                    line.PerformedByStaffMemberIds,
+                    line.FromUtc,
+                    line.ToUtc,
+                    line.Description,
+                    line.IsReturnToRamp,
+                    line.Id)).ToList(),
+                current.Payload.Tasks,
+                current.Payload.CustomerSignature),
+            current.BaseRowVersion,
+            current.ServiceLineIdentityVersion);
+
     private static string Fingerprint<T>(T request)
     {
         var json = JsonSerializer.Serialize(request);
@@ -295,6 +406,35 @@ public sealed class MobileMutationFingerprintCompatibilityTests
         PreviousWorkOrderPayload Payload,
         string BaseRowVersion,
         int ServiceLineIdentityVersion);
+
+    private sealed record PreServiceAttachmentUpdateFingerprintEnvelope(
+        Guid WorkOrderId,
+        WorkOrderType Type,
+        PreServiceAttachmentWorkOrderPayload Payload,
+        string BaseRowVersion,
+        int ServiceLineIdentityVersion);
+
+    private sealed record PreServiceAttachmentWorkOrderPayload(
+        string? ActualFlightNumber,
+        Guid? AircraftTypeId,
+        string? AircraftTailNumber,
+        DateTimeOffset? ActualArrivalUtc,
+        DateTimeOffset? ActualDepartureUtc,
+        DateTimeOffset? CanceledAtUtc,
+        string? CancellationReason,
+        string? Remarks,
+        IReadOnlyList<PreServiceAttachmentServiceLine> ServiceLines,
+        IReadOnlyList<WorkOrderTaskCommand> Tasks,
+        WorkOrderSignatureCommand? CustomerSignature = null);
+
+    private sealed record PreServiceAttachmentServiceLine(
+        Guid ServiceId,
+        IReadOnlyList<Guid> PerformedByStaffMemberIds,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc,
+        string? Description,
+        bool IsReturnToRamp = false,
+        Guid? Id = null);
 
     private sealed record PreviousWorkOrderPayload(
         string? ActualFlightNumber,

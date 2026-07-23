@@ -69,7 +69,13 @@ internal static class MobileWriteEndpoints
                         l.FromUtc,
                         l.ToUtc,
                         l.Description,
-                        IsReturnToRamp: true)).ToList() ?? [],
+                        IsReturnToRamp: true,
+                        Attachments: l.Attachments?.Select(a =>
+                            new Operations.Application.Features.WorkOrders.WorkOrderServiceLineAttachmentCommand(
+                                a.Kind,
+                                a.Base64Content,
+                                a.FileName,
+                                a.ContentType)).ToList() ?? [])).ToList() ?? [],
                     request.Tasks?.Select(t => new Operations.Application.Features.WorkOrders.WorkOrderTaskCommand(
                         null,
                         t.TaskType,

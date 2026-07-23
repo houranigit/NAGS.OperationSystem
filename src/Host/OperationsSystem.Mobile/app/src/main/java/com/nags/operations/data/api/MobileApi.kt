@@ -131,9 +131,9 @@ class MobileApi(
         }.bodyOrThrow()
 
     /**
-     * Replace an editable (Submitted/Returned) work order. Service lines are clear-and-rebuild;
-     * tasks reconcile by id — resend task ids to keep their attachments. The request carries the
-     * cached base RowVersion so stale offline edits conflict instead of overwriting newer changes.
+     * Replace an editable (Submitted/Returned) work order. Service lines and tasks reconcile by
+     * id — resend their ids to keep uploaded attachments. The request carries the cached base
+     * RowVersion so stale offline edits conflict instead of overwriting newer changes.
      */
     suspend fun updateWorkOrder(
         workOrderId: String,
@@ -200,6 +200,7 @@ data class WorkOrderServiceLineInput(
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
+    val attachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
     val isReturnToRamp: Boolean = false,
 )
 

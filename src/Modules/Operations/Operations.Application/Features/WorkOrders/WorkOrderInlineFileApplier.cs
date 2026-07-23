@@ -40,45 +40,91 @@ internal static class WorkOrderInlineFileApplier
                 return await FailAsync(set.Error);
         }
 
+        var serviceLineCommands = payload.ServiceLines ?? [];
         var taskCommands = payload.Tasks ?? [];
-        if (!taskCommands.Any(task => task.Attachments is { Count: > 0 }))
+        if (!serviceLineCommands.Any(line => line.Attachments is { Count: > 0 }) &&
+            !taskCommands.Any(task => task.Attachments is { Count: > 0 }))
             return storedReferences;
 
-        var taskIds = ResolveTaskIds(workOrder, taskCommands);
-        if (taskIds.IsFailure)
-            return await FailAsync(taskIds.Error);
-
-        for (var i = 0; i < taskCommands.Count; i++)
+        if (serviceLineCommands.Any(line => line.Attachments is { Count: > 0 }))
         {
-            var task = taskCommands[i];
-            foreach (var attachment in task.Attachments ?? [])
+            var serviceLineIds = ResolveServiceLineIds(workOrder, serviceLineCommands);
+            if (serviceLineIds.IsFailure)
+                return await FailAsync(serviceLineIds.Error);
+
+            for (var i = 0; i < serviceLineCommands.Count; i++)
             {
-                var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
-                if (attachmentContent.IsFailure)
-                    return await FailAsync(attachmentContent.Error);
+                var serviceLine = serviceLineCommands[i];
+                foreach (var attachment in serviceLine.Attachments ?? [])
+                {
+                    var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
+                    if (attachmentContent.IsFailure)
+                        return await FailAsync(attachmentContent.Error);
 
-                var validation = WorkOrderAttachmentPolicy.Validate(
-                    attachment.Kind,
-                    attachmentContent.Value,
-                    attachment.FileName,
-                    attachment.ContentType);
-                if (validation.IsFailure)
-                    return await FailAsync(validation.Error);
+                    var validation = WorkOrderAttachmentPolicy.Validate(
+                        attachment.Kind,
+                        attachmentContent.Value,
+                        attachment.FileName,
+                        attachment.ContentType);
+                    if (validation.IsFailure)
+                        return await FailAsync(validation.Error);
 
-                await using var attachmentStream = new MemoryStream(attachmentContent.Value);
-                var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
-                storedReferences.Add(stored.StorageKey);
+                    await using var attachmentStream = new MemoryStream(attachmentContent.Value);
+                    var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
+                    storedReferences.Add(stored.StorageKey);
 
-                var add = workOrder.AddTaskAttachment(
-                    taskIds.Value[i],
-                    attachment.Kind,
-                    stored.StorageKey,
-                    attachment.FileName,
-                    stored.ContentType,
-                    stored.SizeBytes,
-                    now);
-                if (add.IsFailure)
-                    return await FailAsync(add.Error);
+                    var add = workOrder.AddServiceLineAttachment(
+                        serviceLineIds.Value[i],
+                        attachment.Kind,
+                        stored.StorageKey,
+                        attachment.FileName,
+                        stored.ContentType,
+                        stored.SizeBytes,
+                        now);
+                    if (add.IsFailure)
+                        return await FailAsync(add.Error);
+                }
+            }
+        }
+
+        if (taskCommands.Any(task => task.Attachments is { Count: > 0 }))
+        {
+            var taskIds = ResolveTaskIds(workOrder, taskCommands);
+            if (taskIds.IsFailure)
+                return await FailAsync(taskIds.Error);
+
+            for (var i = 0; i < taskCommands.Count; i++)
+            {
+                var task = taskCommands[i];
+                foreach (var attachment in task.Attachments ?? [])
+                {
+                    var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
+                    if (attachmentContent.IsFailure)
+                        return await FailAsync(attachmentContent.Error);
+
+                    var validation = WorkOrderAttachmentPolicy.Validate(
+                        attachment.Kind,
+                        attachmentContent.Value,
+                        attachment.FileName,
+                        attachment.ContentType);
+                    if (validation.IsFailure)
+                        return await FailAsync(validation.Error);
+
+                    await using var attachmentStream = new MemoryStream(attachmentContent.Value);
+                    var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
+                    storedReferences.Add(stored.StorageKey);
+
+                    var add = workOrder.AddTaskAttachment(
+                        taskIds.Value[i],
+                        attachment.Kind,
+                        stored.StorageKey,
+                        attachment.FileName,
+                        stored.ContentType,
+                        stored.SizeBytes,
+                        now);
+                    if (add.IsFailure)
+                        return await FailAsync(add.Error);
+                }
             }
         }
 
@@ -102,6 +148,39 @@ internal static class WorkOrderInlineFileApplier
 
     private static string ToCodeLabel(string value) =>
         string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
+
+    private static Result<IReadOnlyList<Guid>> ResolveServiceLineIds(
+        WorkOrder workOrder,
+        IReadOnlyList<WorkOrderServiceLineCommand> serviceLineCommands)
+    {
+        var knownCommandServiceLineIds = serviceLineCommands
+            .Where(line => line.Id.HasValue)
+            .Select(line => line.Id!.Value)
+            .ToHashSet();
+        var newWorkOrderServiceLineIds = new Queue<Guid>(workOrder.ServiceLines
+            .Where(line => !knownCommandServiceLineIds.Contains(line.Id))
+            .Select(line => line.Id));
+        var serviceLineIds = new List<Guid>(serviceLineCommands.Count);
+
+        foreach (var serviceLine in serviceLineCommands)
+        {
+            if (serviceLine.Id is { } existingServiceLineId)
+            {
+                if (workOrder.ServiceLines.All(existing => existing.Id != existingServiceLineId))
+                    return Error.Conflict("One or more service line ids do not belong to this work order.", "Operations.WorkOrder.ServiceLineIdForeign");
+
+                serviceLineIds.Add(existingServiceLineId);
+                continue;
+            }
+
+            if (!newWorkOrderServiceLineIds.TryDequeue(out var newServiceLineId))
+                return Error.Conflict("Could not match a new service attachment to its service line.", "Operations.WorkOrder.ServiceLineAttachmentMatchFailed");
+
+            serviceLineIds.Add(newServiceLineId);
+        }
+
+        return serviceLineIds;
+    }
 
     private static Result<IReadOnlyList<Guid>> ResolveTaskIds(
         WorkOrder workOrder,

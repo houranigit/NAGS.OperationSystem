@@ -217,8 +217,24 @@ class ReturnToRampViewModel(
 
     fun replaceServiceLine(row: ServiceLineFormRow) {
         updateForm { f ->
-            f.copy(serviceLines = f.serviceLines.map { if (it.localKey == row.localKey) row else it })
+            f.copy(
+                serviceLines = f.serviceLines.map { current ->
+                    if (current.localKey == row.localKey) {
+                        current.mergeNonAttachmentEdit(row)
+                    } else {
+                        current
+                    }
+                },
+            )
         }
+    }
+
+    fun addServiceLineAttachment(localKey: Long, attachment: TaskAttachmentDraft) {
+        updateForm { f -> f.withServiceLineAttachmentAdded(localKey, attachment) }
+    }
+
+    fun removeServiceLineAttachment(localKey: Long, attachment: TaskAttachmentDraft) {
+        updateForm { f -> f.withServiceLineAttachmentRemoved(localKey, attachment) }
     }
 
     fun addTask() {
@@ -368,6 +384,9 @@ class ReturnToRampViewModel(
                     fromIso = row.fromIso,
                     toIso = row.toIso,
                     description = row.description.takeIf { it.isNotBlank() },
+                    attachments = row.attachments.map { attachment ->
+                        attachment.toOutboxPlaceholder()
+                    },
                     isReturnToRamp = row.returnToRamp,
                 )
             },
@@ -387,15 +406,8 @@ class ReturnToRampViewModel(
                     generalSupports = task.generalSupportIds.map {
                         OutboxPayload.ResourceInput(it, resourceQuantity(task.generalSupportQuantities, it))
                     },
-                    attachments = List(task.attachments.size) { idx ->
-                        OutboxPayload.AttachmentInput(
-                            relativePath = "",
-                            kind = task.attachments[idx].kind,
-                            contentType = task.attachments[idx].contentType,
-                            fileName = task.attachments[idx].fileName,
-                            capturedAtIso = task.attachments[idx].capturedAtIso,
-                            sizeBytes = task.attachments[idx].sizeBytes,
-                        )
+                    attachments = task.attachments.map { attachment ->
+                        attachment.toOutboxPlaceholder()
                     },
                     isReturnToRamp = task.returnToRamp,
                 )
@@ -410,18 +422,7 @@ class ReturnToRampViewModel(
     }
 
     private fun collectAttachments(form: CreateWorkOrderFormState): List<EnqueueAttachment> =
-        form.tasks.flatMap { task ->
-            task.attachments.map { a ->
-                EnqueueAttachment(
-                    base64 = a.base64,
-                    kind = a.kind,
-                    contentType = a.contentType,
-                    fileName = a.fileName,
-                    capturedAtIso = a.capturedAtIso,
-                    sizeBytes = a.sizeBytes,
-                )
-            }
-        }
+        collectAttachmentsForOutbox(form)
 
     private fun validateLines(
         form: CreateWorkOrderFormState,

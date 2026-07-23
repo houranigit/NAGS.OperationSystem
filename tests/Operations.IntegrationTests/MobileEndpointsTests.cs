@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -342,6 +343,124 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         flight.MyWorkOrder.ShouldNotBeNull();
         flight.MyWorkOrder!.Id.ShouldBe(created.WorkOrderId);
         flight.MyWorkOrder.ServiceLines.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Mobile_service_attachment_survives_stable_id_update_and_supports_download_and_delete()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var flightId = await ScheduleFlightAsync(admin, refs, "MOB225", [staff.StaffId]);
+        var now = DateTimeOffset.UtcNow;
+        var fileContent = Encoding.ASCII.GetBytes("%PDF-1 service attachment");
+
+        var submit = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = new
+                {
+                    type = "Completion",
+                    actualFlightNumber = "MOB225",
+                    aircraftTypeId = refs.AircraftTypeId,
+                    aircraftTailNumber = "HZ-TEST",
+                    actualArrivalUtc = now.AddHours(-1),
+                    actualDepartureUtc = now.AddHours(1),
+                    remarks = "Service attachment",
+                    serviceLines = new[]
+                    {
+                        new
+                        {
+                            serviceId = refs.ServiceId,
+                            performedByStaffMemberIds = new[] { staff.StaffId },
+                            fromUtc = now.AddMinutes(-30),
+                            toUtc = now.AddMinutes(30),
+                            description = "Attached service",
+                            attachments = new[]
+                            {
+                                new
+                                {
+                                    kind = "Document",
+                                    base64Content = Convert.ToBase64String(fileContent),
+                                    fileName = "service-report.pdf",
+                                    contentType = "application/pdf"
+                                }
+                            }
+                        }
+                    },
+                    tasks = Array.Empty<object>()
+                }
+            });
+        submit.StatusCode.ShouldBe(HttpStatusCode.Created, await submit.Content.ReadAsStringAsync());
+        var created = await submit.Content.ReadFromJsonAsync<MobileWriteResult>();
+
+        var detail = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{created!.WorkOrderId}");
+        var serviceLine = detail!.ServiceLines.ShouldHaveSingleItem();
+        var attachment = serviceLine.Attachments.ShouldHaveSingleItem();
+        attachment.Kind.ShouldBe("Document");
+        attachment.OriginalFileName.ShouldBe("service-report.pdf");
+        attachment.ContentType.ShouldBe("application/pdf");
+        attachment.Size.ShouldBe(fileContent.Length);
+
+        var download = await staff.Client.GetAsync(
+            $"{OperationsApiFactory.Base}/work-orders/{created.WorkOrderId}/service-lines/{serviceLine.Id}/attachments/{attachment.Id}");
+        download.StatusCode.ShouldBe(HttpStatusCode.OK, await download.Content.ReadAsStringAsync());
+        download.Content.Headers.ContentType!.MediaType.ShouldBe("application/pdf");
+        (await download.Content.ReadAsByteArrayAsync()).ShouldBe(fileContent);
+
+        var update = await staff.Client.PutAsJsonAsync(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                baseRowVersion = detail.RowVersion,
+                serviceLineIdentityVersion = 1,
+                workOrder = new
+                {
+                    type = "Completion",
+                    actualFlightNumber = "MOB225",
+                    aircraftTypeId = refs.AircraftTypeId,
+                    aircraftTailNumber = "HZ-TEST",
+                    actualArrivalUtc = now.AddHours(-1),
+                    actualDepartureUtc = now.AddHours(1),
+                    remarks = "Updated without replacing the service",
+                    serviceLines = new[]
+                    {
+                        new
+                        {
+                            id = (Guid?)serviceLine.Id,
+                            serviceId = refs.ServiceId,
+                            performedByStaffMemberIds = new[] { staff.StaffId },
+                            fromUtc = now.AddMinutes(-25),
+                            toUtc = now.AddMinutes(35),
+                            description = "Updated attached service",
+                            attachments = Array.Empty<object>()
+                        }
+                    },
+                    tasks = Array.Empty<object>()
+                }
+            });
+        update.StatusCode.ShouldBe(HttpStatusCode.OK, await update.Content.ReadAsStringAsync());
+
+        var updated = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}");
+        var retainedService = updated!.ServiceLines.ShouldHaveSingleItem();
+        retainedService.Id.ShouldBe(serviceLine.Id);
+        retainedService.Attachments.ShouldHaveSingleItem().Id.ShouldBe(attachment.Id);
+
+        using var delete = new HttpRequestMessage(
+            HttpMethod.Delete,
+            $"{OperationsApiFactory.Base}/work-orders/{created.WorkOrderId}/service-lines/{retainedService.Id}/attachments/{attachment.Id}");
+        delete.Headers.TryAddWithoutValidation("If-Match", updated.RowVersion);
+        var deleted = await staff.Client.SendAsync(delete);
+        deleted.StatusCode.ShouldBe(HttpStatusCode.NoContent, await deleted.Content.ReadAsStringAsync());
+
+        var afterDelete = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}");
+        afterDelete!.ServiceLines.ShouldHaveSingleItem().Attachments.ShouldBeEmpty();
     }
 
     [Fact]
@@ -807,7 +926,15 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         DateTimeOffset FromUtc,
         DateTimeOffset ToUtc,
         string? Description,
-        bool IsReturnToRamp);
+        bool IsReturnToRamp,
+        List<ServiceLineAttachment>? Attachments = null);
+
+    private sealed record ServiceLineAttachment(
+        Guid Id,
+        string Kind,
+        string OriginalFileName,
+        string ContentType,
+        long Size);
 
     private sealed record WorkOrderServiceLinePerformer(
         Guid StaffMemberId,

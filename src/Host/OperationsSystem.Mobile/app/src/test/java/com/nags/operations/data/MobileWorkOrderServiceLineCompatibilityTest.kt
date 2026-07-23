@@ -1,6 +1,7 @@
 package com.nags.operations.data
 
 import com.nags.operations.data.api.WorkOrderServiceLineInput
+import com.nags.operations.data.api.WorkOrderTaskAttachmentInput
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -35,6 +36,7 @@ class MobileWorkOrderServiceLineCompatibilityTest {
         )
 
         assertFalse(cached.isReturnToRamp)
+        assertTrue(cached.attachments.isEmpty())
         assertEquals(listOf("staff-1", "staff-2"), cached.performedBy.map { it.staffMemberId })
         assertEquals(listOf("Staff One", "Staff Two"), cached.performedBy.map { it.fullName })
         assertEquals(cached.performedBy, cached.effectivePerformedBy)
@@ -101,6 +103,14 @@ class MobileWorkOrderServiceLineCompatibilityTest {
             performedByStaffMemberIds = listOf("staff-1", "staff-2"),
             fromUtc = "2026-07-11T10:00:00Z",
             toUtc = "2026-07-11T11:00:00Z",
+            attachments = listOf(
+                WorkOrderTaskAttachmentInput(
+                    kind = "Document",
+                    base64Content = "AQID",
+                    fileName = "service.pdf",
+                    contentType = "application/pdf",
+                ),
+            ),
             isReturnToRamp = true,
         )
         val encoded = json.encodeToString(WorkOrderServiceLineInput.serializer(), request)
@@ -112,6 +122,7 @@ class MobileWorkOrderServiceLineCompatibilityTest {
         assertTrue(decoded.isReturnToRamp)
         assertEquals("line-1", decoded.id)
         assertEquals(listOf("staff-1", "staff-2"), decoded.performedByStaffMemberIds)
+        assertEquals("service.pdf", decoded.attachments.single().fileName)
         val keys = json.parseToJsonElement(encoded).jsonObject.keys
         assertTrue("performedByStaffMemberIds" in keys)
         assertFalse("performedByStaffMemberId" in keys)
@@ -141,5 +152,37 @@ class MobileWorkOrderServiceLineCompatibilityTest {
 
         assertEquals(listOf("staff-1"), decoded.performedBy.map { it.staffMemberId })
         assertEquals("Staff One", decoded.performedBy.single().fullName)
+    }
+
+    @Test
+    fun cached_service_attachment_metadata_round_trips_and_legacy_defaults_empty() {
+        val current = json.decodeFromString<WorkOrderServiceLineWireDto>(
+            """{
+                "id":"line-1",
+                "serviceId":"service-1",
+                "serviceName":"Baggage",
+                "fromUtc":"2026-07-11T10:00:00Z",
+                "toUtc":"2026-07-11T11:00:00Z",
+                "attachments":[{
+                  "id":"attachment-1",
+                  "kind":"Image",
+                  "originalFileName":"service.jpg",
+                  "contentType":"image/jpeg",
+                  "size":3
+                }]
+            }""".trimIndent(),
+        )
+        val legacy = json.decodeFromString<WorkOrderServiceLineWireDto>(
+            """{
+                "id":"line-2",
+                "serviceId":"service-2",
+                "serviceName":"Pushback",
+                "fromUtc":"2026-07-11T10:00:00Z",
+                "toUtc":"2026-07-11T11:00:00Z"
+            }""".trimIndent(),
+        )
+
+        assertEquals("service.jpg", current.attachments.single().originalFileName)
+        assertTrue(legacy.attachments.isEmpty())
     }
 }

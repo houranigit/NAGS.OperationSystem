@@ -196,18 +196,12 @@ class WorkOrderOutboxRepository(
                     }
                 }
 
-                // Re-stitch durable attachments onto the per-task list in the order they were enqueued.
-                val workOrder = request.payload.workOrder
-                val payloadOnDisk = if (workOrder == null) {
-                    request.payload
-                } else {
-                    val attachmentCursor = AttachmentCursor(durableAttachments)
-                    val tasksWithDurable = workOrder.tasks.map { task ->
-                        val count = task.attachments.size
-                        task.copy(attachments = attachmentCursor.takeNext(count))
-                    }
-                    request.payload.copy(workOrder = workOrder.copy(tasks = tasksWithDurable))
-                }
+                // The ViewModels flatten service attachments first, then task attachments.
+                // Re-stitch in that exact order and reject a mismatch instead of silently
+                // assigning a file to the wrong line.
+                val payloadOnDisk = request.payload.withDurableAttachmentsInServiceThenTaskOrder(
+                    durableAttachments,
+                )
 
                 val now = System.currentTimeMillis()
                 val entity = WorkOrderOutboxEntity(
@@ -522,20 +516,47 @@ class WorkOrderOutboxRepository(
         )
     }
 
-    private class AttachmentCursor(private val all: List<OutboxPayload.AttachmentInput>) {
-        private var nextIndex = 0
-        fun takeNext(count: Int): List<OutboxPayload.AttachmentInput> {
-            if (count == 0) return emptyList()
-            val end = (nextIndex + count).coerceAtMost(all.size)
-            val slice = all.subList(nextIndex, end).toList()
-            nextIndex = end
-            return slice
-        }
-    }
-
     private companion object {
         const val TAG = "WorkOrderOutbox"
     }
+}
+
+/**
+ * Replaces attachment placeholders with durable file references. The order is part of the
+ * persisted-outbox contract and must match `collectAttachmentsForOutbox`.
+ */
+internal fun OutboxPayload.withDurableAttachmentsInServiceThenTaskOrder(
+    durableAttachments: List<OutboxPayload.AttachmentInput>,
+): OutboxPayload {
+    val input = workOrder
+    if (input == null) {
+        require(durableAttachments.isEmpty()) {
+            "Queued attachments require a work-order payload."
+        }
+        return this
+    }
+
+    var nextIndex = 0
+    fun takeNext(count: Int): List<OutboxPayload.AttachmentInput> {
+        require(count >= 0 && nextIndex + count <= durableAttachments.size) {
+            "Queued attachment count does not match the work-order attachment slots."
+        }
+        val slice = durableAttachments.subList(nextIndex, nextIndex + count).toList()
+        nextIndex += count
+        return slice
+    }
+
+    val serviceLines = input.serviceLines.map { line ->
+        line.copy(attachments = takeNext(line.attachments.size))
+    }
+    val tasks = input.tasks.map { task ->
+        task.copy(attachments = takeNext(task.attachments.size))
+    }
+    require(nextIndex == durableAttachments.size) {
+        "Queued attachment count does not match the work-order attachment slots."
+    }
+
+    return copy(workOrder = input.copy(serviceLines = serviceLines, tasks = tasks))
 }
 
 /** Strips path-traversal-friendly characters that the OS would otherwise let through. */
@@ -568,7 +589,7 @@ private fun Int.toOutboxOpStatus(): OutboxOpStatus = when (this) {
  *                       `null` otherwise. Mirrors what the server's idempotency check expects.
  * @param attachmentsToPersist The base64 attachments in the order the ViewModel
  *                             holds them; the repository writes each to disk
- *                             and re-stitches them back onto the right tasks.
+ *                             and re-stitches them back onto the right service lines and tasks.
  * @param draftIdToDelete Optional active draft to delete atomically with the
  *                        outbox insert. `null` preserves the draft and keeps
  *                        enqueue behavior unchanged for non-wizard flows.

@@ -309,7 +309,13 @@ class OutboxWorker(
                         workOrderId = woId,
                         body = MobileReturnToRampRequest(
                             clientMutationId = row.clientMutationId,
-                            serviceLines = workOrder.serviceLines.map { it.toWireServiceLine() },
+                            serviceLines = workOrder.serviceLines.map { line ->
+                                line.toWireServiceLine(
+                                    line.attachments.map { attachment ->
+                                        attachment.toWire(attachmentsDir)
+                                    },
+                                )
+                            },
                             tasks = workOrder.tasks.map { it.toWire(attachmentsDir) },
                         ),
                     )
@@ -373,7 +379,11 @@ class OutboxWorker(
         canceledAtUtc = canceledAtIso,
         cancellationReason = cancellationReason,
         remarks = remarks,
-        serviceLines = serviceLines.map { it.toWireServiceLine() },
+        serviceLines = serviceLines.map { line ->
+            line.toWireServiceLine(
+                line.attachments.map { attachment -> attachment.toWire(attachmentsDir) },
+            )
+        },
         tasks = tasks.map { it.toWire(attachmentsDir) },
         customerSignature = customerSignaturePngBase64?.let {
             WorkOrderSignatureInput(
@@ -479,13 +489,16 @@ class OutboxWorker(
     private class MissingQueuedAttachmentException(message: String) : Exception(message)
 }
 
-internal fun OutboxPayload.ServiceLineInput.toWireServiceLine() = WorkOrderServiceLineInput(
+internal fun OutboxPayload.ServiceLineInput.toWireServiceLine(
+    wireAttachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
+) = WorkOrderServiceLineInput(
     id = id,
     serviceId = serviceId,
     performedByStaffMemberIds = performedByStaffMemberIds,
     fromUtc = fromIso,
     toUtc = toIso,
     description = description,
+    attachments = wireAttachments,
     isReturnToRamp = isReturnToRamp,
 )
 

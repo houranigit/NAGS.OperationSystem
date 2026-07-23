@@ -110,6 +110,7 @@ public sealed class WorkOrderInputBuilderTests
         var staffId = Guid.NewGuid();
         var secondStaffId = Guid.NewGuid();
         var aircraftTypeId = Guid.NewGuid();
+        var serviceLineId = Guid.NewGuid();
         var arrival = DateTimeOffset.UtcNow;
         var reader = new FakeMasterDataReader(stationId);
         var builder = new WorkOrderInputBuilder(new MasterDataResolver(reader));
@@ -129,7 +130,8 @@ public sealed class WorkOrderInputBuilderTests
                         arrival.AddMinutes(5),
                         arrival.AddMinutes(20),
                         "Return to ramp",
-                        IsReturnToRamp: true)
+                        IsReturnToRamp: true,
+                        Id: serviceLineId)
                 ],
                 Tasks =
                 [
@@ -154,6 +156,7 @@ public sealed class WorkOrderInputBuilderTests
 
         result.IsSuccess.ShouldBeTrue();
         var serviceLine = result.Value.ServiceLines.ShouldHaveSingleItem();
+        serviceLine.Id.ShouldBe(serviceLineId);
         serviceLine.IsReturnToRamp.ShouldBeTrue();
         serviceLine.PerformedBy.Select(performer => performer.StaffMemberId)
             .ShouldBe([staffId, secondStaffId]);

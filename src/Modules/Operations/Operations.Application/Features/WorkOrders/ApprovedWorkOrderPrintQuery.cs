@@ -132,6 +132,10 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
                     PerformedBy = line.PerformedBy
                         .OrderBy(performer => performer.FullName, StringComparer.OrdinalIgnoreCase)
                         .ThenBy(performer => performer.StaffMemberId)
+                        .ToList(),
+                    Attachments = (line.Attachments ?? [])
+                        .OrderBy(attachment => attachment.OriginalFileName, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(attachment => attachment.Id)
                         .ToList()
                 })
                 .ToList(),

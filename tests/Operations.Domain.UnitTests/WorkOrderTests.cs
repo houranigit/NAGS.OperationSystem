@@ -128,6 +128,112 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void ReconcileServiceLines_UpdatesExisting_AddsNew_RemovesMissing_AndRetainsAttachments()
+    {
+        var workOrder = SubmitCompletion(
+            ScheduleFlight(),
+            serviceLines:
+            [
+                ServiceLineInput(null, "Retained"),
+                ServiceLineInput(null, "Removed", startMinute: 20)
+            ]);
+        var retained = workOrder.ServiceLines.Single(line => line.Description == "Retained");
+        var removedId = workOrder.ServiceLines.Single(line => line.Description == "Removed").Id;
+        var attachment = workOrder.AddServiceLineAttachment(
+            retained.Id,
+            TaskAttachmentKind.Document,
+            "work-order-attachments/service-report.pdf",
+            "service-report.pdf",
+            "application/pdf",
+            128,
+            TestData.Now.AddMinutes(1));
+        attachment.IsSuccess.ShouldBeTrue();
+
+        var update = workOrder.UpdateDetails(
+            WorkOrderType.Completion,
+            workOrder.ActualFlightNumber,
+            null,
+            null,
+            null,
+            null,
+            null,
+            [
+                ServiceLineInput(retained.Id, "Updated"),
+                ServiceLineInput(null, "Added", startMinute: 20)
+            ],
+            [],
+            TestData.Now.AddMinutes(2));
+
+        update.IsSuccess.ShouldBeTrue();
+        workOrder.ServiceLines.Count.ShouldBe(2);
+        var updated = workOrder.ServiceLines.Single(line => line.Id == retained.Id);
+        updated.ShouldBeSameAs(retained);
+        updated.Description.ShouldBe("Updated");
+        updated.Attachments.ShouldHaveSingleItem().Id.ShouldBe(attachment.Value.Id);
+        workOrder.ServiceLines.ShouldNotContain(line => line.Id == removedId);
+        workOrder.ServiceLines.ShouldContain(line => line.Id != retained.Id && line.Description == "Added");
+    }
+
+    [Fact]
+    public void ReconcileServiceLines_RejectsDuplicateAndForeignIdsWithoutMutation()
+    {
+        var workOrder = SubmitCompletion(
+            ScheduleFlight(),
+            serviceLines: [ServiceLineInput(null, "Original")]);
+        var original = workOrder.ServiceLines.ShouldHaveSingleItem();
+        workOrder.AddServiceLineAttachment(
+            original.Id,
+            TaskAttachmentKind.Image,
+            "work-order-attachments/original.jpg",
+            "original.jpg",
+            "image/jpeg",
+            64,
+            TestData.Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+        var updatedAt = workOrder.UpdatedAtUtc;
+
+        var duplicate = workOrder.UpdateDetails(
+            WorkOrderType.Completion,
+            workOrder.ActualFlightNumber,
+            null,
+            null,
+            null,
+            null,
+            null,
+            [
+                ServiceLineInput(original.Id, "Duplicate one"),
+                ServiceLineInput(original.Id, "Duplicate two", startMinute: 20)
+            ],
+            [],
+            TestData.Now.AddMinutes(2));
+
+        duplicate.IsFailure.ShouldBeTrue();
+        duplicate.Error.Code.ShouldBe("Operations.WorkOrder.ServiceLineIdsDuplicate");
+        workOrder.ServiceLines.ShouldHaveSingleItem().ShouldBeSameAs(original);
+        original.Description.ShouldBe("Original");
+        original.Attachments.ShouldHaveSingleItem();
+        workOrder.UpdatedAtUtc.ShouldBe(updatedAt);
+
+        var foreign = workOrder.UpdateDetails(
+            WorkOrderType.Completion,
+            workOrder.ActualFlightNumber,
+            null,
+            null,
+            null,
+            null,
+            null,
+            [ServiceLineInput(Guid.NewGuid(), "Foreign")],
+            [],
+            TestData.Now.AddMinutes(3));
+
+        foreign.IsFailure.ShouldBeTrue();
+        foreign.Error.Code.ShouldBe("Operations.WorkOrder.ServiceLineIdForeign");
+        workOrder.ServiceLines.ShouldHaveSingleItem().ShouldBeSameAs(original);
+        original.Description.ShouldBe("Original");
+        original.Attachments.ShouldHaveSingleItem();
+        workOrder.UpdatedAtUtc.ShouldBe(updatedAt);
+    }
+
+    [Fact]
     public void ReconcileTasks_UpdatesExisting_AddsNew_RemovesMissing_AndRejectsForeignIds()
     {
         var workOrder = SubmitCompletion(ScheduleFlight(), tasks: [TaskInput(null, "Initial")]);
@@ -316,6 +422,79 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void ServiceLineAttachments_CanBeAddedAndRemovedWhileEditable_AndAreLockedAfterApproval()
+    {
+        var workOrder = SubmitCompletion(
+            ScheduleFlight(),
+            serviceLines: [ServiceLineInput(null, "Attach files")]);
+        var serviceLineId = workOrder.ServiceLines.ShouldHaveSingleItem().Id;
+
+        var added = workOrder.AddServiceLineAttachment(
+            serviceLineId,
+            TaskAttachmentKind.Document,
+            "work-order-attachments/service-file.pdf",
+            "signed-service.pdf",
+            "application/pdf",
+            128,
+            TestData.Now.AddMinutes(1));
+
+        added.IsSuccess.ShouldBeTrue();
+        added.Value.WorkOrderId.ShouldBe(workOrder.Id);
+        added.Value.WorkOrderServiceLineId.ShouldBe(serviceLineId);
+        workOrder.ServiceLines[0].Attachments.ShouldHaveSingleItem().OriginalFileName.ShouldBe("signed-service.pdf");
+
+        var removed = workOrder.RemoveServiceLineAttachment(
+            serviceLineId,
+            added.Value.Id,
+            TestData.Now.AddMinutes(2));
+        removed.IsSuccess.ShouldBeTrue();
+        removed.Value.ShouldBe("work-order-attachments/service-file.pdf");
+        workOrder.ServiceLines[0].Attachments.ShouldBeEmpty();
+
+        var retained = workOrder.AddServiceLineAttachment(
+            serviceLineId,
+            TaskAttachmentKind.Image,
+            "work-order-attachments/service-photo.jpg",
+            "service-photo.jpg",
+            "image/jpeg",
+            256,
+            TestData.Now.AddMinutes(3));
+        retained.IsSuccess.ShouldBeTrue();
+
+        workOrder.UpdateDetails(
+            WorkOrderType.Completion,
+            workOrder.ActualFlightNumber,
+            TestData.AircraftType(),
+            null,
+            ActualTime.Create(TestData.Now, TestData.Now.AddHours(1)).Value,
+            null,
+            null,
+            [ServiceLineInput(serviceLineId, "Attach files")],
+            [],
+            TestData.Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
+        workOrder.Approve(1, "RUH-0001", Guid.NewGuid(), TestData.Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
+
+        var lockedAdd = workOrder.AddServiceLineAttachment(
+            serviceLineId,
+            TaskAttachmentKind.Document,
+            "work-order-attachments/locked.pdf",
+            "locked.pdf",
+            "application/pdf",
+            128,
+            TestData.Now.AddMinutes(6));
+        var lockedRemove = workOrder.RemoveServiceLineAttachment(
+            serviceLineId,
+            retained.Value.Id,
+            TestData.Now.AddMinutes(7));
+
+        lockedAdd.IsFailure.ShouldBeTrue();
+        lockedAdd.Error.Code.ShouldBe("Operations.WorkOrder.Locked");
+        lockedRemove.IsFailure.ShouldBeTrue();
+        lockedRemove.Error.Code.ShouldBe("Operations.WorkOrder.Locked");
+        workOrder.ServiceLines[0].Attachments.ShouldHaveSingleItem().Id.ShouldBe(retained.Value.Id);
+    }
+
+    [Fact]
     public void CustomerSignature_CanBeSetRemoved_AndIsLockedAfterApproval()
     {
         var workOrder = SubmitCompletion(ScheduleFlight());
@@ -493,7 +672,10 @@ public sealed class WorkOrderTests
         allowed.IsSuccess.ShouldBeTrue();
     }
 
-    private static WorkOrder SubmitCompletion(Flight flight, IReadOnlyList<WorkOrderTaskInput>? tasks = null)
+    private static WorkOrder SubmitCompletion(
+        Flight flight,
+        IReadOnlyList<WorkOrderTaskInput>? tasks = null,
+        IReadOnlyList<WorkOrderServiceLineInput>? serviceLines = null)
     {
         var result = WorkOrder.SubmitNew(
             flight,
@@ -506,7 +688,7 @@ public sealed class WorkOrderTests
             null,
             null,
             null,
-            [],
+            serviceLines ?? [],
             tasks ?? [],
             TestData.Now);
         result.IsSuccess.ShouldBeTrue();
@@ -530,6 +712,19 @@ public sealed class WorkOrderTests
         workOrder.Approve(1, "RUH-0001", Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
         return workOrder;
     }
+
+    private static WorkOrderServiceLineInput ServiceLineInput(
+        Guid? id,
+        string description,
+        int startMinute = 0) =>
+        new(
+            TestData.Service(),
+            [TestData.Staff()],
+            TimeWindow.Create(
+                TestData.Now.AddMinutes(startMinute),
+                TestData.Now.AddMinutes(startMinute + 15)).Value,
+            description,
+            Id: id);
 
     private static WorkOrderTaskInput TaskInput(Guid? id, string description, bool isReturnToRamp = false) =>
         new(

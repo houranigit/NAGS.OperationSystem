@@ -105,7 +105,12 @@ public sealed record WorkOrderRequest(
                 l.ToUtc,
                 l.Description,
                 l.IsReturnToRamp,
-                l.Id)).ToList() ?? [],
+                l.Id,
+                l.Attachments?.Select(attachment => new WorkOrderServiceLineAttachmentCommand(
+                    attachment.Kind,
+                    attachment.Base64Content,
+                    attachment.FileName,
+                    attachment.ContentType)).ToList() ?? [])).ToList() ?? [],
             Tasks?.Select(t => new WorkOrderTaskCommand(
                 t.Id,
                 t.TaskType,
@@ -152,7 +157,8 @@ public sealed record WorkOrderServiceLineRequest(
     string? Description,
     bool IsReturnToRamp = false,
     Guid? Id = null,
-    Guid? PerformedByStaffMemberId = null)
+    Guid? PerformedByStaffMemberId = null,
+    IReadOnlyList<WorkOrderServiceLineAttachmentRequest>? Attachments = null)
 {
     public IReadOnlyList<Guid> ResolvePerformedByStaffMemberIds() =>
         PerformedByStaffMemberIds is { Count: > 0 }
@@ -161,6 +167,12 @@ public sealed record WorkOrderServiceLineRequest(
                 ? [legacyPerformerId]
                 : [];
 }
+
+public sealed record WorkOrderServiceLineAttachmentRequest(
+    TaskAttachmentKind Kind,
+    string Base64Content,
+    string FileName,
+    string ContentType);
 
 public sealed record WorkOrderTaskRequest(
     Guid? Id,

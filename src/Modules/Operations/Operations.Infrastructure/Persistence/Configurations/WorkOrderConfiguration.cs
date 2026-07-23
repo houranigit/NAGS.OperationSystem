@@ -127,9 +127,29 @@ public sealed class WorkOrderServiceLineConfiguration : IEntityTypeConfiguration
         });
 
         builder.HasMany(l => l.PerformedBy).WithOne().HasForeignKey(p => p.WorkOrderServiceLineId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(l => l.Attachments).WithOne().HasForeignKey(a => a.WorkOrderServiceLineId).OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(l => l.WorkOrderId);
         builder.Ignore(l => l.IsAircraftPerLanding);
+    }
+}
+
+public sealed class WorkOrderServiceLineAttachmentConfiguration : IEntityTypeConfiguration<WorkOrderServiceLineAttachment>
+{
+    public void Configure(EntityTypeBuilder<WorkOrderServiceLineAttachment> builder)
+    {
+        builder.ToTable("work_order_service_line_attachments");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.WorkOrderId).IsRequired();
+        builder.Property(a => a.WorkOrderServiceLineId).IsRequired();
+        builder.Property(a => a.Kind).HasConversion<int>();
+        builder.Property(a => a.StorageReference).HasMaxLength(500).IsRequired();
+        builder.Property(a => a.OriginalFileName).HasMaxLength(255).IsRequired();
+        builder.Property(a => a.ContentType).HasMaxLength(100).IsRequired();
+        builder.Property(a => a.Size).IsRequired();
+
+        builder.HasIndex(a => a.WorkOrderServiceLineId);
     }
 }
 

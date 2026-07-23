@@ -133,6 +133,36 @@ class WorkOrderFormValidationTest {
     }
 
     @Test
+    fun existing_and_new_service_attachments_share_the_server_limit() {
+        val service = validForm().serviceLines.single().copy(
+            existingAttachmentNames = List(WorkOrderFormLimits.ServiceAttachments) {
+                "existing-$it.pdf"
+            },
+            attachments = listOf(
+                TaskAttachmentDraft(
+                    kind = "Document",
+                    contentType = "application/pdf",
+                    fileName = "new.pdf",
+                    base64 = "JVBERi0=",
+                    capturedAtIso = "2026-07-11T10:00:00Z",
+                    sizeBytes = 5,
+                ),
+            ),
+        )
+
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = validForm().copy(serviceLines = listOf(service)),
+            dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
+            isAdHocScratch = false,
+            selectedCustomerId = null,
+            allowedPerformedServiceIds = setOf("service-1"),
+        )
+
+        assertNotNull(errors?.serviceLinesByKey?.get(1L)?.attachments)
+    }
+
+    @Test
     fun legacy_resource_rows_default_to_quantity_one() {
         assertEquals(1.0, resourceQuantity(emptyMap(), "tool-1"), 0.0)
         assertEquals(

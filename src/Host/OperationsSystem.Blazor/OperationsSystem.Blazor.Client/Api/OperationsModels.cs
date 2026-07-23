@@ -227,9 +227,12 @@ public sealed record WorkOrderServiceLineModel(
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,
-    bool IsReturnToRamp = false);
+    bool IsReturnToRamp = false,
+    IReadOnlyList<WorkOrderServiceLineAttachmentModel>? Attachments = null);
 
 public sealed record WorkOrderServiceLinePerformerModel(Guid StaffMemberId, string FullName, string EmployeeId);
+
+public sealed record WorkOrderServiceLineAttachmentModel(Guid Id, string Kind, string OriginalFileName, string ContentType, long Size);
 
 public sealed record WorkOrderTaskModel(
     Guid Id,
@@ -339,7 +342,14 @@ public sealed record WorkOrderServiceLineRequestModel(
     DateTimeOffset ToUtc,
     string? Description,
     bool IsReturnToRamp = false,
-    Guid? Id = null);
+    Guid? Id = null,
+    IReadOnlyList<WorkOrderServiceLineAttachmentRequestModel>? Attachments = null);
+
+public sealed record WorkOrderServiceLineAttachmentRequestModel(
+    string Kind,
+    string Base64Content,
+    string FileName,
+    string ContentType);
 
 public sealed record WorkOrderTaskRequestModel(
     Guid? Id,

@@ -26,6 +26,25 @@ public sealed class ApprovedWorkOrderPrintQueryTests
         var ownerUserId = Guid.NewGuid();
         var flight = CreateFlight(contractNumber: "CTR-2017", perLanding: true);
         var workOrder = CreateCompletionWorkOrder(flight, ownerUserId, approve: false, signatureReference: "signatures/customer.png");
+        var serviceLineId = workOrder.ServiceLines.Single().Id;
+        var laterServiceAttachment = workOrder.AddServiceLineAttachment(
+            serviceLineId,
+            TaskAttachmentKind.Document,
+            "attachments/z-service-report.pdf",
+            "z-service-report.pdf",
+            "application/pdf",
+            120,
+            Now.AddMinutes(2));
+        laterServiceAttachment.IsSuccess.ShouldBeTrue();
+        var firstServiceAttachment = workOrder.AddServiceLineAttachment(
+            serviceLineId,
+            TaskAttachmentKind.Image,
+            "attachments/a-service-photo.jpg",
+            "a-service-photo.jpg",
+            "image/jpeg",
+            80,
+            Now.AddMinutes(2));
+        firstServiceAttachment.IsSuccess.ShouldBeTrue();
         workOrder.AddTaskAttachment(
             workOrder.Tasks.Single().Id,
             TaskAttachmentKind.Document,
@@ -76,6 +95,14 @@ public sealed class ApprovedWorkOrderPrintQueryTests
         var serviceLine = result.Value.WorkOrder.ServiceLines.ShouldHaveSingleItem();
         serviceLine.ServiceName.ShouldBe("Deicing");
         serviceLine.PerformedBy.ShouldHaveSingleItem().FullName.ShouldBe("Ramp Agent");
+        serviceLine.Attachments.ShouldNotBeNull();
+        serviceLine.Attachments!.Select(attachment => attachment.OriginalFileName)
+            .ShouldBe(["a-service-photo.jpg", "z-service-report.pdf"]);
+        var serviceAttachment = serviceLine.Attachments[0];
+        serviceAttachment.Id.ShouldBe(firstServiceAttachment.Value.Id);
+        serviceAttachment.Kind.ShouldBe(nameof(TaskAttachmentKind.Image));
+        serviceAttachment.ContentType.ShouldBe("image/jpeg");
+        serviceAttachment.Size.ShouldBe(80);
         var task = result.Value.WorkOrder.Tasks.ShouldHaveSingleItem();
         task.Employees.ShouldHaveSingleItem().FullName.ShouldBe("Ramp Agent");
         task.Tools.ShouldHaveSingleItem().Name.ShouldBe("Towbar");

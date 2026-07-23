@@ -34,6 +34,8 @@ internal static class MobileMutations
 {
     private static readonly JsonSerializerOptions PreReturnToRampFingerprintOptions =
         CreatePreReturnToRampFingerprintOptions();
+    private static readonly JsonSerializerOptions PreServiceLineAttachmentsFingerprintOptions =
+        CreatePreServiceLineAttachmentsFingerprintOptions();
     private static readonly JsonSerializerOptions LegacySinglePerformerFingerprintOptions =
         CreateLegacySinglePerformerFingerprintOptions(removeProvenance: false);
     private static readonly JsonSerializerOptions LegacyPreReturnToRampFingerprintOptions =
@@ -61,10 +63,12 @@ internal static class MobileMutations
     /// </summary>
     public static IReadOnlyList<string> CompatibleFingerprints<T>(T request)
     {
-        var fingerprints = new HashSet<string>(StringComparer.Ordinal)
-        {
-            PreReturnToRampFingerprint(request)
-        };
+        var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+        if (HasInlineServiceLineAttachments(request))
+            return fingerprints.ToList();
+
+        fingerprints.Add(Fingerprint(request, PreServiceLineAttachmentsFingerprintOptions));
+        fingerprints.Add(PreReturnToRampFingerprint(request));
 
         AddLegacySinglePerformerFingerprint(
             request,
@@ -76,6 +80,42 @@ internal static class MobileMutations
             fingerprints);
 
         return fingerprints.ToList();
+    }
+
+    private static bool HasInlineServiceLineAttachments<T>(T request)
+    {
+        var root = JsonSerializer.SerializeToElement(request);
+        return ContainsServiceLineAttachments(root);
+    }
+
+    private static bool ContainsServiceLineAttachments(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            if (element.TryGetProperty(nameof(WorkOrderServiceLineCommand.ServiceId), out _) &&
+                element.TryGetProperty(nameof(WorkOrderServiceLineCommand.Attachments), out var attachments) &&
+                attachments.ValueKind == JsonValueKind.Array &&
+                attachments.GetArrayLength() > 0)
+            {
+                return true;
+            }
+
+            foreach (var property in element.EnumerateObject())
+            {
+                if (ContainsServiceLineAttachments(property.Value))
+                    return true;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (ContainsServiceLineAttachments(item))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static string Fingerprint<T>(T request, JsonSerializerOptions? options)
@@ -116,11 +156,24 @@ internal static class MobileMutations
             {
                 RemoveProperty(typeInfo, "Id");
                 RemoveProperty(typeInfo, nameof(WorkOrderServiceLineCommand.IsReturnToRamp));
+                RemoveProperty(typeInfo, nameof(WorkOrderServiceLineCommand.Attachments));
             }
             else if (typeInfo.Type == typeof(WorkOrderTaskCommand))
             {
                 RemoveProperty(typeInfo, nameof(WorkOrderTaskCommand.IsReturnToRamp));
             }
+        });
+
+        return new JsonSerializerOptions { TypeInfoResolver = resolver };
+    }
+
+    private static JsonSerializerOptions CreatePreServiceLineAttachmentsFingerprintOptions()
+    {
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(static typeInfo =>
+        {
+            if (typeInfo.Type == typeof(WorkOrderServiceLineCommand))
+                RemoveProperty(typeInfo, nameof(WorkOrderServiceLineCommand.Attachments));
         });
 
         return new JsonSerializerOptions { TypeInfoResolver = resolver };
@@ -536,7 +589,8 @@ public sealed class MobileUpdateWorkOrderCommandHandler(
             request.Payload,
             current.ServiceLines.ToDictionary(line => line.Id, line => line.IsReturnToRamp),
             current.Tasks.ToDictionary(task => task.Id, task => task.IsReturnToRamp),
-            request.ServiceLineIdentityVersion);
+            request.ServiceLineIdentityVersion,
+            current.ServiceLines.Any(line => line.Attachments.Count > 0));
         if (protectedPayload.IsFailure)
             return protectedPayload.Error;
 
@@ -650,8 +704,10 @@ public sealed class MobileReturnToRampCommandHandler(
                     line.Window.From,
                     line.Window.To,
                     line.Description,
-                    line.IsReturnToRamp))
-                .Concat((request.ServiceLines ?? []).Select(line => line with { IsReturnToRamp = true }))
+                    line.IsReturnToRamp,
+                    Id: line.Id,
+                    Attachments: null))
+                .Concat((request.ServiceLines ?? []).Select(line => line with { Id = null, IsReturnToRamp = true }))
                 .ToList(),
             workOrder.Tasks
                 .Select(task => new WorkOrderTaskCommand(

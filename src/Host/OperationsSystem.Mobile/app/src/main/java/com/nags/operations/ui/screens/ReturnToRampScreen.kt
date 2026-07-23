@@ -160,6 +160,12 @@ fun ReturnToRampScreen(
                             services = state.catalogServices,
                             employees = state.catalogEmployees,
                             onChange = viewModel::replaceServiceLine,
+                            onAttachmentAdded = {
+                                viewModel.addServiceLineAttachment(row.localKey, it)
+                            },
+                            onAttachmentRemoved = {
+                                viewModel.removeServiceLineAttachment(row.localKey, it)
+                            },
                             onRemove = { viewModel.removeServiceLine(row.localKey) },
                             canRemove = true,
                         )
