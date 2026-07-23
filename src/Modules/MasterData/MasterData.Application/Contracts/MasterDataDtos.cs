@@ -228,6 +228,7 @@ public sealed record CustomerListItemDto(
     string CountryName,
     string? LogoFileReference,
     bool IsActive,
+    bool IsSystem,
     int ContactCount);
 
 public sealed record AddressDto(
@@ -264,6 +265,7 @@ public sealed record CustomerDto(
     string? LogoFileReference,
     AddressDto Address,
     bool IsActive,
+    bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,

@@ -1,5 +1,6 @@
 using MasterData.Contracts.Seeding;
 using MasterData.Domain.Countries;
+using MasterData.Domain.Customers;
 using MasterData.Domain.OperationTypes;
 using MasterData.Domain.Services;
 using MasterData.Infrastructure.Persistence;
@@ -9,8 +10,8 @@ using Microsoft.Extensions.Logging;
 namespace MasterData.Infrastructure.Seeding;
 
 /// <summary>
-/// Idempotent MasterData seeding. Inserts missing ISO 3166-1 baseline countries with stable ids and
-/// never overwrites administrator edits: a country already present (by code) is left untouched.
+/// Idempotent MasterData seeding for protected system records and the ISO 3166-1 country baseline.
+/// Existing records are left untouched so startup never overwrites administrator edits.
 /// </summary>
 public sealed class MasterDataDataSeeder(
     MasterDataDbContext db,
@@ -50,6 +51,8 @@ public sealed class MasterDataDataSeeder(
             await db.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Seeded {Count} baseline countries.", added);
         }
+
+        await SeedUnknownCustomerAsync(now, cancellationToken);
     }
 
     private async Task SeedCatalogsAsync(DateTimeOffset now, CancellationToken cancellationToken)
@@ -99,5 +102,50 @@ public sealed class MasterDataDataSeeder(
             await db.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Seeded baseline MasterData operation and service catalogs.");
         }
+    }
+
+    private async Task SeedUnknownCustomerAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (await db.Customers.AnyAsync(c => c.Id == WellKnownMasterDataIds.UnknownCustomer, cancellationToken))
+            return;
+
+        var saudiArabiaId = await db.Countries
+            .Where(c => c.IsoCode == "SA")
+            .Select(c => (Guid?)c.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (saudiArabiaId is null)
+        {
+            logger.LogWarning("Skipped seeding Unknown Customer because the SA country is missing.");
+            return;
+        }
+
+        var address = Address.Create(null, null, null, null, null);
+        if (address.IsFailure)
+        {
+            logger.LogWarning("Skipped seeding Unknown Customer address: {Error}", address.Error.Description);
+            return;
+        }
+
+        var result = Customer.Create(
+            iataCode: null,
+            icaoCode: null,
+            name: "Unknown Customer",
+            countryId: saudiArabiaId.Value,
+            officialEmail: null,
+            officialPhone: null,
+            logoFileReference: null,
+            address.Value,
+            now,
+            WellKnownMasterDataIds.UnknownCustomer);
+
+        if (result.IsFailure)
+        {
+            logger.LogWarning("Skipped seeding Unknown Customer: {Error}", result.Error.Description);
+            return;
+        }
+
+        db.Customers.Add(result.Value);
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Seeded Unknown Customer.");
     }
 }

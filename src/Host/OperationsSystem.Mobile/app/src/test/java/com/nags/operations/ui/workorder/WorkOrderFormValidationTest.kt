@@ -1,7 +1,9 @@
 package com.nags.operations.ui.workorder
 
 import com.nags.operations.data.TaskTypeKind
+import com.nags.operations.data.WellKnownMasterDataIds
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -20,6 +22,84 @@ class WorkOrderFormValidationTest {
         )
 
         assertNull(errors)
+    }
+
+    @Test
+    fun scratch_customer_and_remarks_validation_covers_all_business_combinations() {
+        data class Case(
+            val customerId: String?,
+            val remarks: String,
+            val expectedRemarksError: Boolean,
+        )
+
+        listOf(
+            Case(customerId = null, remarks = "", expectedRemarksError = true),
+            Case(customerId = null, remarks = "Walk-in customer from terminal 2", expectedRemarksError = false),
+            Case(
+                customerId = WellKnownMasterDataIds.UnknownCustomer,
+                remarks = "",
+                expectedRemarksError = true,
+            ),
+            Case(
+                customerId = WellKnownMasterDataIds.UnknownCustomer,
+                remarks = "Badge name: A. Smith",
+                expectedRemarksError = false,
+            ),
+            Case(customerId = "customer-1", remarks = "", expectedRemarksError = false),
+            Case(customerId = "customer-1", remarks = "Optional note", expectedRemarksError = false),
+        ).forEach { case ->
+            val errors = computeCreateWorkOrderSubmitErrors(
+                form = validForm().copy(remarks = case.remarks),
+                dialogAtdIso = null,
+                validationPhase = WorkOrderValidationPhase.Submission,
+                isAdHocScratch = true,
+                selectedCustomerId = case.customerId,
+                allowedPerformedServiceIds = setOf("service-1"),
+            )
+
+            assertEquals(
+                "Unexpected remarks validation for customer=${case.customerId}, remarks=${case.remarks}",
+                case.expectedRemarksError,
+                errors?.remarks != null,
+            )
+            assertNull(errors?.customer)
+        }
+    }
+
+    @Test
+    fun non_scratch_work_order_does_not_require_remarks_without_a_customer_selection() {
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = validForm().copy(remarks = ""),
+            dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
+            isAdHocScratch = false,
+            selectedCustomerId = null,
+            allowedPerformedServiceIds = setOf("service-1"),
+        )
+
+        assertNull(errors)
+    }
+
+    @Test
+    fun blank_or_unknown_customer_detection_is_id_based_and_case_insensitive() {
+        assertTrue(isBlankOrUnknownCustomer(null))
+        assertTrue(isBlankOrUnknownCustomer(""))
+        assertTrue(isBlankOrUnknownCustomer("   "))
+        assertTrue(isBlankOrUnknownCustomer(WellKnownMasterDataIds.UnknownCustomer.uppercase()))
+        assertFalse(isBlankOrUnknownCustomer("customer-1"))
+    }
+
+    @Test
+    fun scratch_customer_resolution_maps_only_blank_values_to_unknown() {
+        assertEquals(
+            WellKnownMasterDataIds.UnknownCustomer,
+            resolveScratchCustomerId(null),
+        )
+        assertEquals(
+            WellKnownMasterDataIds.UnknownCustomer,
+            resolveScratchCustomerId("   "),
+        )
+        assertEquals("customer-1", resolveScratchCustomerId("customer-1"))
     }
 
     @Test

@@ -192,6 +192,8 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be modified.", "MasterData.Customer.SystemProtected");
 
         var countryCheck = await CustomerGuards.EnsureActiveCountryAsync(db, request.CountryId, cancellationToken);
         if (countryCheck.IsFailure)
@@ -272,6 +274,8 @@ public sealed class AddCustomerContactCommandHandler(
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be modified.", "MasterData.Customer.SystemProtected");
 
         if (request.PortalAccessRoleId is { } && !customer.IsActive)
             return Error.Validation("Portal access cannot be granted while the customer is inactive.", "MasterData.Customer.Inactive");
@@ -347,6 +351,8 @@ public sealed class UpdateCustomerContactCommandHandler(IMasterDataDbContext db,
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be modified.", "MasterData.Customer.SystemProtected");
 
         var contact = customer.Contacts.FirstOrDefault(c => c.Id == request.ContactId);
         var previousEmail = contact?.Email;
@@ -406,6 +412,8 @@ public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMast
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be modified.", "MasterData.Customer.SystemProtected");
 
         if (request.Content.Length == 0)
             return Error.Validation("The logo file is empty.", "MasterData.Customer.LogoEmpty");
@@ -482,6 +490,8 @@ public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, IMas
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be activated or deactivated.", "MasterData.Customer.SystemProtected");
 
         customer.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(customer, request.RowVersion);
@@ -513,6 +523,8 @@ public sealed class DeactivateCustomerCommandHandler(IMasterDataDbContext db, IM
             .FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be activated or deactivated.", "MasterData.Customer.SystemProtected");
 
         var now = timeProvider.GetUtcNow();
 

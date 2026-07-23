@@ -1453,10 +1453,8 @@ class CreateWorkOrderViewModel(
         )
 
         val scratch = if (isScratch) {
-            val customerId = snapshot.selectedCustomerId
-                ?: error("Ad-hoc-scratch submission missing customer — validation should have caught this")
             OutboxPayload.ScratchFlightInput(
-                customerId = customerId,
+                customerId = resolveScratchCustomerId(snapshot.selectedCustomerId),
                 flightNumber = form.flightNumber.ifBlank { flight.flightNumber },
                 staIso = form.scheduledArrivalIso,
                 stdIso = form.scheduledDepartureIso,

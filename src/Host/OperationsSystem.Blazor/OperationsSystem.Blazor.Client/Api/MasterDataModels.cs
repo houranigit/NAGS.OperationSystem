@@ -189,6 +189,7 @@ public sealed record CustomerListItem(
     string CountryName,
     string? LogoFileReference,
     bool IsActive,
+    bool IsSystem,
     int ContactCount);
 
 public sealed record AddressModel(string? Line1, string? Line2, string? City, string? Region, string? PostalCode);
@@ -220,6 +221,7 @@ public sealed record CustomerDetail(
     string? LogoFileReference,
     AddressModel Address,
     bool IsActive,
+    bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,

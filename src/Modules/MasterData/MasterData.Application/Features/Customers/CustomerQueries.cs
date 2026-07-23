@@ -6,6 +6,7 @@ using BuildingBlocks.Domain.Results;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Application.Contracts;
+using MasterData.Contracts.Seeding;
 using MasterData.Domain.Customers;
 using Microsoft.EntityFrameworkCore;
 
@@ -61,6 +62,7 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
                 db.Countries.Where(co => co.Id == c.CountryId).Select(co => co.Name).FirstOrDefault() ?? string.Empty,
                 c.LogoFileReference,
                 c.IsActive,
+                c.Id == WellKnownMasterDataIds.UnknownCustomer,
                 c.Contacts.Count(ct => ct.IsActive)))
             .ToListAsync(cancellationToken);
 
@@ -119,9 +121,15 @@ public sealed class GetCustomerByIdQueryHandler(IMasterDataDbContext db, IMaster
             customer.Id, customer.IataCode, customer.IcaoCode, customer.Name,
             customer.CountryId, countryName, customer.OfficialEmail, customer.OfficialPhone, customer.LogoFileReference,
             new AddressDto(customer.Address.Line1, customer.Address.Line2, customer.Address.City, customer.Address.Region, customer.Address.PostalCode),
-            customer.IsActive, customer.CreatedAtUtc, customer.UpdatedAtUtc, Convert.ToBase64String(customer.RowVersion),
+            customer.IsActive, CustomerSystemRecords.IsSystem(customer.Id),
+            customer.CreatedAtUtc, customer.UpdatedAtUtc, Convert.ToBase64String(customer.RowVersion),
             contacts);
     }
+}
+
+internal static class CustomerSystemRecords
+{
+    public static bool IsSystem(Guid id) => id == WellKnownMasterDataIds.UnknownCustomer;
 }
 
 public sealed record CustomerLogoContent(byte[] Content, string ContentType);

@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
+using MasterData.Contracts.Seeding;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
@@ -399,7 +400,7 @@ public sealed class MobileSubmitWorkOrderCommandHandler(
 // --- Create an ad-hoc flight + work order from scratch --------------------------------
 
 public sealed record MobileCreateScratchWorkOrderCommand(
-    Guid CustomerId,
+    Guid? CustomerId,
     string FlightNumber,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
@@ -414,9 +415,16 @@ public sealed class MobileCreateScratchWorkOrderCommandValidator : AbstractValid
 {
     public MobileCreateScratchWorkOrderCommandValidator()
     {
-        RuleFor(x => x.CustomerId).NotEmpty();
         RuleFor(x => x.FlightNumber).NotEmpty().MaximumLength(12);
         RuleFor(x => x.Payload).NotNull();
+        RuleFor(x => x.Payload.Remarks)
+            .NotEmpty()
+            .WithMessage("Remarks are required when the customer is unknown.")
+            .When(x =>
+                x.Payload is not null &&
+                (x.CustomerId is null ||
+                 x.CustomerId == Guid.Empty ||
+                 x.CustomerId == WellKnownMasterDataIds.UnknownCustomer));
         RuleFor(x => x.ClientMutationId)
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
@@ -438,10 +446,14 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
         if (user.UserId is not { } userId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
+        var customerId = request.CustomerId is { } requestedCustomerId && requestedCustomerId != Guid.Empty
+            ? requestedCustomerId
+            : WellKnownMasterDataIds.UnknownCustomer;
+
         const string mutationKind = "scratch-work-order";
         var fingerprintInput = new
         {
-            request.CustomerId,
+            CustomerId = customerId,
             request.FlightNumber,
             request.ScheduledArrivalUtc,
             request.ScheduledDepartureUtc,
@@ -483,7 +495,7 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
 
         var result = await sender.Send(
             new CreateAdHocWorkOrderCommand(
-                request.CustomerId,
+                customerId,
                 stationId,
                 request.FlightNumber,
                 request.ScheduledArrivalUtc,

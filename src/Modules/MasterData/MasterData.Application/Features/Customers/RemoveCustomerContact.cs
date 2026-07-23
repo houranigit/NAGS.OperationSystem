@@ -49,6 +49,8 @@ public sealed class RemoveCustomerContactCommandHandler(
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be modified.", "MasterData.Customer.SystemProtected");
 
         var contact = customer.Contacts.FirstOrDefault(c => c.Id == request.ContactId);
         var linkedUserId = contact?.LinkedUserId;

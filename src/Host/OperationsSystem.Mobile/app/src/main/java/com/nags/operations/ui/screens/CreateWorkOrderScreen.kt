@@ -65,6 +65,7 @@ import com.nags.operations.ui.workorder.SubmitOfflineResult
 import com.nags.operations.ui.workorder.WorkOrderFlightLoadState
 import com.nags.operations.ui.workorder.WorkOrderWizardStep
 import com.nags.operations.ui.workorder.FormSectionTitle
+import com.nags.operations.ui.workorder.isBlankOrUnknownCustomer
 import com.nags.operations.ui.workorder.ServiceLineCard
 import com.nags.operations.ui.workorder.ServiceLinesSectionHeading
 import com.nags.operations.ui.workorder.TaskLineCard
@@ -228,6 +229,8 @@ private fun CreateWorkOrderFormContent(
     val busy = state.isSavingDraft || state.isSubmitting
     val currentStep = state.wizardStep
     val scrollState = rememberScrollState()
+    val remarksRequiredForCustomer =
+        state.isAdHocScratch && isBlankOrUnknownCustomer(state.selectedCustomerId)
 
     BackHandler(
         enabled = currentStep != WorkOrderWizardStep.Flight && !busy && !state.isAtdDialogVisible,
@@ -333,9 +336,9 @@ private fun CreateWorkOrderFormContent(
             val selected: CustomerEntity? =
                 customers.firstOrNull { it.customerId == state.selectedCustomerId }
             InlineSearchableDropdownField(
-                label = "Customer",
+                label = "Customer (optional)",
                 selectedText = selected?.let { customerDisplay(it) } ?: "",
-                placeholder = "Search or select customer",
+                placeholder = "Leave blank for Unknown Customer",
                 options = customers,
                 renderOption = ::customerDisplay,
                 onSelect = { viewModel.selectCustomer(it.customerId) },
@@ -427,7 +430,18 @@ private fun CreateWorkOrderFormContent(
                 .fillMaxWidth()
                 .height(160.dp),
             shape = RoundedCornerShape(14.dp),
-            label = { Text("Remarks (optional)") },
+            label = {
+                Text(if (remarksRequiredForCustomer) "Remarks (required)" else "Remarks (optional)")
+            },
+            placeholder = {
+                Text(
+                    if (remarksRequiredForCustomer) {
+                        "Describe the unknown customer"
+                    } else {
+                        "Add optional remarks"
+                    },
+                )
+            },
             minLines = 5,
             maxLines = 8,
             isError = submitErrs?.remarks != null,

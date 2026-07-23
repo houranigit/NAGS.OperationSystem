@@ -47,6 +47,10 @@
                             {
                                 <StatusBadge Label="@UiStrings.Customers.Inactive" Tone="neutral" />
                             }
+                            @if (c.IsSystem)
+                            {
+                                <StatusBadge Label="@UiStrings.Audit.System" Tone="neutral" />
+                            }
                             <span class="cu-info-badge"><RadzenIcon Icon="tag" />@Display(c.IataCode)</span>
                         </div>
 
@@ -74,7 +78,7 @@
                     </div>
 
                     <div class="cu-hero-actions">
-                        @if (Auth.HasPermission(MasterDataPermissions.CustomersUpdate))
+                        @if (!c.IsSystem && Auth.HasPermission(MasterDataPermissions.CustomersUpdate))
                         {
                             <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
                         }
@@ -267,7 +271,7 @@
             <div class="cu-card-head">
                 <RadzenIcon Icon="contacts" /><h3>@UiStrings.Customers.Contacts</h3>
                 <span class="cu-count">@string.Format(UiStrings.Customers.ContactsCountFormat, activeContacts.Count)</span>
-                @if (Auth.HasPermission(MasterDataPermissions.CustomerContactsCreate))
+                @if (!c.IsSystem && Auth.HasPermission(MasterDataPermissions.CustomerContactsCreate))
                 {
                     <RadzenButton Text="@UiStrings.Customers.AddContact" Icon="person_add" ButtonStyle="ButtonStyle.Light"
                                   Size="ButtonSize.Small" Click="@OpenAddContactAsync" />
@@ -427,11 +431,13 @@
         c.Contacts.Count(ct => ct.IsActive && ct.LinkedUserId is not null);
 
     private bool HasMoreActions(CustomerDetail c) =>
-        (!c.IsActive && Auth.HasPermission(MasterDataPermissions.CustomersActivate))
-        || (c.IsActive && Auth.HasPermission(MasterDataPermissions.CustomersDeactivate));
+        !c.IsSystem
+        && ((!c.IsActive && Auth.HasPermission(MasterDataPermissions.CustomersActivate))
+            || (c.IsActive && Auth.HasPermission(MasterDataPermissions.CustomersDeactivate)));
 
     private bool CanGrantContact(CustomerDetail c, CustomerContactModel contact) =>
-        c.IsActive
+        !c.IsSystem
+        && c.IsActive
         && contact.LinkedUserId is null
         && contact.PortalState != "Provisioning"
         && Auth.CanGrantCustomerContactPortalAccess;
@@ -443,10 +449,11 @@
         contact.IsActive && Auth.HasPermission(MasterDataPermissions.CustomerContactsRemove);
 
     private bool HasContactActions(CustomerDetail c, CustomerContactModel contact) =>
-        CanEditContact(contact)
-        || CanGrantContact(c, contact)
-        || CanRemoveContact(contact)
-        || (contact.LinkedUserId is not null && Auth.HasPermission(IdentityPermissions.UsersView));
+        !c.IsSystem
+        && (CanEditContact(contact)
+            || CanGrantContact(c, contact)
+            || CanRemoveContact(contact)
+            || (contact.LinkedUserId is not null && Auth.HasPermission(IdentityPermissions.UsersView)));
 
     private void OpenLinkedAccount(Guid userId) => Navigation.NavigateTo($"/users/{userId}");
 

@@ -47,7 +47,13 @@
                                 <span class="cu-list-avatar">@CustomerAvatarText(c)</span>
                             }
                             <div class="cu-list-text">
-                                <strong>@c.Name</strong>
+                                <div>
+                                    <strong>@c.Name</strong>
+                                    @if (c.IsSystem)
+                                    {
+                                        <StatusBadge Label="@UiStrings.Audit.System" Tone="neutral" />
+                                    }
+                                </div>
                                 <span class="os-muted">@CustomerCodeText(c)</span>
                             </div>
                         </div>
@@ -80,13 +86,13 @@
                 <RowActionMenu>
                     <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(c.Id))" />
                     <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@MasterDataPermissions.CustomersUpdate"
-                               OnClick="@(() => OpenEditAsync(c))" />
+                               Visible="@(!c.IsSystem)" OnClick="@(() => OpenEditAsync(c))" />
                     <RowAction Separator="true" />
                     <RowAction Text="@UiStrings.Customers.Activate" Icon="check_circle" Permission="@MasterDataPermissions.CustomersActivate"
-                               Visible="@(!c.IsActive)" OnClick="@(() => ActivateAsync(c))" />
+                               Visible="@(!c.IsSystem && !c.IsActive)" OnClick="@(() => ActivateAsync(c))" />
                     <RowAction Text="@UiStrings.Customers.Deactivate" Icon="cancel" Danger="true"
                                Permission="@MasterDataPermissions.CustomersDeactivate"
-                               Visible="@c.IsActive" OnClick="@(() => DeactivateAsync(c))" />
+                               Visible="@(!c.IsSystem && c.IsActive)" OnClick="@(() => DeactivateAsync(c))" />
                 </RowActionMenu>
             </RowActions>
         </DataListCard>

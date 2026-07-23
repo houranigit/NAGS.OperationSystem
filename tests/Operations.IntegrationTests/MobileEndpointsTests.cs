@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using MasterData.Contracts.Seeding;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -564,6 +565,139 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task Mobile_scratch_create_maps_omitted_and_explicit_unknown_customer_to_the_seeded_customer()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(-2);
+        var scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(2);
+        var omittedMutationId = Guid.NewGuid().ToString();
+        var omittedClientFlightId = Guid.NewGuid();
+        var omittedWorkOrderBody = CompletionWorkOrderBody(
+            refs,
+            staff.StaffId,
+            remarks: "Operator name was not available.");
+
+        var omittedCustomerResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/scratch",
+            new
+            {
+                clientMutationId = omittedMutationId,
+                clientFlightId = omittedClientFlightId,
+                flightNumber = "MOB310",
+                scheduledArrivalUtc,
+                scheduledDepartureUtc,
+                aircraftTypeId = refs.AircraftTypeId,
+                plannedServiceIds = new[] { refs.ServiceId },
+                workOrder = omittedWorkOrderBody
+            });
+        omittedCustomerResponse.StatusCode.ShouldBe(
+            HttpStatusCode.Created,
+            await omittedCustomerResponse.Content.ReadAsStringAsync());
+        var omittedCustomer = await omittedCustomerResponse.Content.ReadFromJsonAsync<MobileWriteResult>();
+
+        // Omitted and explicit Unknown are the same semantic request, including for idempotency.
+        var normalizedReplayResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/scratch",
+            new
+            {
+                clientMutationId = omittedMutationId,
+                clientFlightId = omittedClientFlightId,
+                customerId = WellKnownMasterDataIds.UnknownCustomer,
+                flightNumber = "MOB310",
+                scheduledArrivalUtc,
+                scheduledDepartureUtc,
+                aircraftTypeId = refs.AircraftTypeId,
+                plannedServiceIds = new[] { refs.ServiceId },
+                workOrder = omittedWorkOrderBody
+            });
+        normalizedReplayResponse.StatusCode.ShouldBe(
+            HttpStatusCode.OK,
+            await normalizedReplayResponse.Content.ReadAsStringAsync());
+        var normalizedReplay = await normalizedReplayResponse.Content.ReadFromJsonAsync<MobileWriteResult>();
+        normalizedReplay!.Idempotent.ShouldBeTrue();
+        normalizedReplay.WorkOrderId.ShouldBe(omittedCustomer!.WorkOrderId);
+
+        var explicitUnknownResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/scratch",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                clientFlightId = Guid.NewGuid(),
+                customerId = WellKnownMasterDataIds.UnknownCustomer,
+                flightNumber = "MOB311",
+                scheduledArrivalUtc,
+                scheduledDepartureUtc,
+                aircraftTypeId = refs.AircraftTypeId,
+                plannedServiceIds = new[] { refs.ServiceId },
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId, remarks: "Unbadged walk-in operator.")
+            });
+        explicitUnknownResponse.StatusCode.ShouldBe(
+            HttpStatusCode.Created,
+            await explicitUnknownResponse.Content.ReadAsStringAsync());
+        var explicitUnknown = await explicitUnknownResponse.Content.ReadFromJsonAsync<MobileWriteResult>();
+
+        var omittedWorkOrder = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{omittedCustomer!.WorkOrderId}");
+        var explicitWorkOrder = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{explicitUnknown!.WorkOrderId}");
+        var omittedFlight = await staff.Client.GetFromJsonAsync<MobileFlight>(
+            $"{MobileBase}/flights/{omittedCustomer.FlightId}");
+        var explicitFlight = await staff.Client.GetFromJsonAsync<MobileFlight>(
+            $"{MobileBase}/flights/{explicitUnknown.FlightId}");
+
+        omittedWorkOrder!.CustomerId.ShouldBe(WellKnownMasterDataIds.UnknownCustomer);
+        explicitWorkOrder!.CustomerId.ShouldBe(WellKnownMasterDataIds.UnknownCustomer);
+        omittedFlight!.CustomerId.ShouldBe(WellKnownMasterDataIds.UnknownCustomer);
+        explicitFlight!.CustomerId.ShouldBe(WellKnownMasterDataIds.UnknownCustomer);
+    }
+
+    [Fact]
+    public async Task Mobile_scratch_create_rejects_missing_remarks_when_customer_is_omitted_or_unknown()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(-2);
+        var scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(2);
+
+        var omittedCustomerResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/scratch",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                clientFlightId = Guid.NewGuid(),
+                flightNumber = "MOB312",
+                scheduledArrivalUtc,
+                scheduledDepartureUtc,
+                aircraftTypeId = refs.AircraftTypeId,
+                plannedServiceIds = new[] { refs.ServiceId },
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId, remarks: "")
+            });
+
+        var explicitUnknownResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/scratch",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                clientFlightId = Guid.NewGuid(),
+                customerId = WellKnownMasterDataIds.UnknownCustomer,
+                flightNumber = "MOB313",
+                scheduledArrivalUtc,
+                scheduledDepartureUtc,
+                aircraftTypeId = refs.AircraftTypeId,
+                plannedServiceIds = new[] { refs.ServiceId },
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId, remarks: "  ")
+            });
+
+        omittedCustomerResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        explicitUnknownResponse.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await omittedCustomerResponse.Content.ReadAsStringAsync()).ShouldContain("Remarks");
+        (await explicitUnknownResponse.Content.ReadAsStringAsync()).ShouldContain("Remarks");
+    }
+
+    [Fact]
     public async Task Mobile_cancel_and_return_to_ramp_flow_through_the_work_order_rules()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -908,6 +1042,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
     private sealed record MobileFlight(
         Guid Id, string FlightNumber, string Status, bool IsPerLanding, bool IsAdHoc,
+        Guid CustomerId, string CustomerName,
         List<PlannedService> PlannedServices, WorkOrderDetail? MyWorkOrder,
         bool OtherWorkOrdersExist, string RowVersion,
         bool IsWithinMobileWindow, DateTimeOffset MobileWindowStartsAtUtc, DateTimeOffset MobileWindowEndsAtUtc);
@@ -916,6 +1051,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
     private sealed record WorkOrderDetail(
         Guid Id, Guid FlightId, string Type, string Status,
+        Guid CustomerId, string CustomerName,
         string? CancellationReason, string? Remarks, List<ServiceLine> ServiceLines, List<TaskLine> Tasks, string RowVersion);
 
     private sealed record ServiceLine(

@@ -133,7 +133,7 @@ public sealed record MobileWorkOrderWriteRequest(
 public sealed record MobileScratchWorkOrderRequest(
     string ClientMutationId,
     Guid ClientFlightId,
-    Guid CustomerId,
+    Guid? CustomerId,
     string FlightNumber,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,

@@ -1,6 +1,7 @@
 package com.nags.operations.ui.workorder
 
 import com.nags.operations.data.TaskTypeKind
+import com.nags.operations.data.WellKnownMasterDataIds
 import com.nags.operations.ui.util.parseOffsetDateTime
 import java.time.OffsetDateTime
 
@@ -48,6 +49,16 @@ internal fun quantitiesForSelection(
 ): Map<String, Double> = selectedIds.associateWith { id -> resourceQuantity(current, id) }
 
 internal fun isValidResourceQuantity(value: Double): Boolean = value.isFinite() && value > 0.0
+
+internal fun isBlankOrUnknownCustomer(customerId: String?): Boolean {
+    val normalized = customerId?.trim()
+    return normalized.isNullOrEmpty() ||
+        normalized.equals(WellKnownMasterDataIds.UnknownCustomer, ignoreCase = true)
+}
+
+internal fun resolveScratchCustomerId(selectedCustomerId: String?): String =
+    selectedCustomerId?.trim()?.takeIf(String::isNotEmpty)
+        ?: WellKnownMasterDataIds.UnknownCustomer
 
 internal data class WorkOrderLineValidation(
     val services: Map<Long, ServiceLineSubmitFieldErrors>,
@@ -184,7 +195,6 @@ internal fun computeCreateWorkOrderSubmitErrors(
     selectedCustomerId: String?,
     allowedPerformedServiceIds: Set<String>,
 ): CreateWorkOrderSubmitFieldErrors? {
-    val customer = if (isAdHocScratch && selectedCustomerId.isNullOrBlank()) "Customer is required." else null
     val normalizedFlightNumber = form.flightNumber.trim()
     val flightNumber = when {
         normalizedFlightNumber.isBlank() -> "Flight number is required."
@@ -196,9 +206,14 @@ internal fun computeCreateWorkOrderSubmitErrors(
     val tail = if (form.aircraftTailNumber.trim().length > WorkOrderFormLimits.AircraftTailNumber) {
         "Tail number must be at most ${WorkOrderFormLimits.AircraftTailNumber} characters."
     } else null
-    val remarks = if (form.remarks.trim().length > WorkOrderFormLimits.Remarks) {
-        "Remarks must be at most ${WorkOrderFormLimits.Remarks} characters."
-    } else null
+    val normalizedRemarks = form.remarks.trim()
+    val remarks = when {
+        normalizedRemarks.length > WorkOrderFormLimits.Remarks ->
+            "Remarks must be at most ${WorkOrderFormLimits.Remarks} characters."
+        isAdHocScratch && isBlankOrUnknownCustomer(selectedCustomerId) && normalizedRemarks.isBlank() ->
+            "Remarks are required when the customer is blank or Unknown Customer."
+        else -> null
+    }
 
     var scheduledArrival: String? = null
     var scheduledDeparture: String? = null
@@ -264,13 +279,12 @@ internal fun computeCreateWorkOrderSubmitErrors(
         }
     }
 
-    val hasProblems = customer != null || flightNumber != null || aircraft != null || tail != null ||
+    val hasProblems = flightNumber != null || aircraft != null || tail != null ||
         scheduledArrival != null || scheduledDeparture != null || ata != null || atd != null || remarks != null ||
         lineErrors.services.isNotEmpty() || lineErrors.tasks.isNotEmpty()
     if (!hasProblems) return null
 
     return CreateWorkOrderSubmitFieldErrors(
-        customer = customer,
         flightNumber = flightNumber,
         aircraftType = aircraft,
         aircraftTailNumber = tail,

@@ -6,6 +6,7 @@ using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
+using MasterData.Application.Features.Customers;
 using MasterData.Contracts;
 using MasterData.Domain.PortalAccess;
 using Microsoft.EntityFrameworkCore;
@@ -129,6 +130,8 @@ public sealed class GrantContactPortalAccessCommandHandler(
             .FirstOrDefaultAsync(c => c.Id == request.CustomerId, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
+        if (CustomerSystemRecords.IsSystem(customer.Id))
+            return Error.Conflict("System customers cannot be modified.", "MasterData.Customer.SystemProtected");
 
         if (!customer.IsActive)
             return Error.Validation("Portal access cannot be granted while the customer is inactive.", "MasterData.Customer.Inactive");

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using MasterData.Contracts.Seeding;
 using Shouldly;
 
 namespace MasterData.IntegrationTests;
@@ -9,12 +10,13 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
     private const string Base = MasterDataApiFactory.Base;
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
-    private sealed record CustomerItem(Guid Id, string? IataCode, string? IcaoCode, string Name, Guid CountryId, string CountryName, bool IsActive, int ContactCount);
+    private sealed record CustomerItem(Guid Id, string? IataCode, string? IcaoCode, string Name, Guid CountryId, string CountryName, bool IsActive, bool IsSystem, int ContactCount);
     private sealed record AddressBody(string? Line1, string? Line2, string? City, string? Region, string? PostalCode);
     private sealed record ContactBody(Guid Id, string Name, string? JobTitle, string Email, string? Phone, Guid? LinkedUserId, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);
     private sealed record CustomerDetail(Guid Id, string? IataCode, string? IcaoCode, string Name, Guid CountryId, string CountryName,
         string? OfficialEmail, string? OfficialPhone, string? LogoFileReference, AddressBody Address, bool IsActive,
-        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, List<ContactBody> Contacts);
+        bool IsSystem, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, List<ContactBody> Contacts);
+    private sealed record CustomerOption(Guid Id, string? IataCode, string Name);
     private sealed record CountryItem(Guid Id, string Name, string IsoCode, bool IsActive);
     private sealed record CountryDetail(Guid Id, string Name, string IsoCode, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
 
@@ -25,6 +27,90 @@ public class CustomerApiTests(MasterDataApiFactory factory) : IClassFixture<Mast
     {
         var client = factory.CreateClient();
         (await client.GetAsync($"{Base}/customers")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Seeded_unknown_customer_is_visible_in_detail_list_and_options()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+
+        var detail = await client.GetFromJsonAsync<CustomerDetail>(
+            $"{Base}/customers/{WellKnownMasterDataIds.UnknownCustomer}");
+
+        detail.ShouldNotBeNull();
+        detail!.Id.ShouldBe(WellKnownMasterDataIds.UnknownCustomer);
+        detail.Name.ShouldBe("Unknown Customer");
+        detail.IataCode.ShouldBeNull();
+        detail.IcaoCode.ShouldBeNull();
+        detail.CountryName.ShouldBe("Saudi Arabia");
+        detail.Address.Line1.ShouldBeNull();
+        detail.Address.Line2.ShouldBeNull();
+        detail.Address.City.ShouldBeNull();
+        detail.Address.Region.ShouldBeNull();
+        detail.Address.PostalCode.ShouldBeNull();
+        detail.IsActive.ShouldBeTrue();
+        detail.IsSystem.ShouldBeTrue();
+        detail.Contacts.ShouldBeEmpty();
+
+        var list = await client.GetFromJsonAsync<PagedList<CustomerItem>>(
+            $"{Base}/customers?page=1&pageSize=100&search=Unknown%20Customer");
+        list.ShouldNotBeNull();
+        list!.Items.ShouldContain(customer =>
+            customer.Id == WellKnownMasterDataIds.UnknownCustomer && customer.IsSystem);
+
+        var options = await client.GetFromJsonAsync<List<CustomerOption>>($"{Base}/customers/options");
+        options.ShouldNotBeNull();
+        options!.ShouldContain(customer =>
+            customer.Id == WellKnownMasterDataIds.UnknownCustomer && customer.Name == "Unknown Customer");
+    }
+
+    [Fact]
+    public async Task Seeded_unknown_customer_is_protected_from_update_and_deactivate()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var before = await client.GetFromJsonAsync<CustomerDetail>(
+            $"{Base}/customers/{WellKnownMasterDataIds.UnknownCustomer}");
+        before.ShouldNotBeNull();
+
+        var update = new HttpRequestMessage(
+            HttpMethod.Put,
+            $"{Base}/customers/{WellKnownMasterDataIds.UnknownCustomer}")
+        {
+            Content = JsonContent.Create(new
+            {
+                iataCode = (string?)null,
+                icaoCode = (string?)null,
+                name = "Changed Unknown Customer",
+                countryId = before!.CountryId,
+                officialEmail = (string?)null,
+                officialPhone = (string?)null,
+                address = new
+                {
+                    line1 = (string?)null,
+                    line2 = (string?)null,
+                    city = (string?)null,
+                    region = (string?)null,
+                    postalCode = (string?)null
+                }
+            })
+        };
+        update.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
+
+        var updateResponse = await client.SendAsync(update);
+        updateResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict, await updateResponse.Content.ReadAsStringAsync());
+
+        var deactivate = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{Base}/customers/{WellKnownMasterDataIds.UnknownCustomer}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", before.RowVersion);
+
+        var deactivateResponse = await client.SendAsync(deactivate);
+        deactivateResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict, await deactivateResponse.Content.ReadAsStringAsync());
+
+        var after = await client.GetFromJsonAsync<CustomerDetail>(
+            $"{Base}/customers/{WellKnownMasterDataIds.UnknownCustomer}");
+        after!.Name.ShouldBe("Unknown Customer");
+        after.IsActive.ShouldBeTrue();
     }
 
     [Fact]
