@@ -61,6 +61,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
 
     private int FlightTotalCount => flightTotalCount > int.MaxValue ? int.MaxValue : (int)flightTotalCount;
     private bool IsLiveEnabled => selectedRangeMode == DashboardRangeMode.Live;
+    private bool CanExport => Auth.HasPermission(OperationsPermissions.DashboardExport);
 
     private string RangeSummary => activeRangeMode switch
     {
@@ -560,7 +561,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
 
     private async Task ExportAsync(string format)
     {
-        if (isExporting || flightTotalCount <= 0)
+        if (!CanExport || isExporting || flightTotalCount <= 0)
             return;
 
         isExporting = true;

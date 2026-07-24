@@ -88,15 +88,16 @@ MasterData UI implementation must follow the established Identity Users/Roles fe
 
 ### Decided account-facing names
 
-The system has exactly three user types:
+The system has four user types:
 
 | User type | Meaning | MasterData link | Data scope |
 |---|---|---|---|
 | `SystemAdministrator` | Internal administrator with system-wide access | None | All permitted data |
 | `StationStaff` | A portal account belonging to a person working for a station | StaffMember record | The linked station |
 | `CustomerContact` | A portal account belonging to a customer's contact | Customer contact record | The linked customer |
+| `ViewerOnly` | Direct, read-only portal account for oversight users | None | All records allowed by compatible view permissions |
 
-Use the display names **System Administrator**, **Station Staff**, and **Customer Contact**. Avoid the vague UI labels “Station User” and “Customer User.”
+Use the display names **System Administrator**, **Station Staff**, **Customer Contact**, and **Viewer Only**. Avoid the vague UI labels “Station User” and “Customer User.”
 
 `UserType` describes the account's business context and data scope. A `Role` remains a collection of permissions. These concepts must not be collapsed:
 
@@ -128,7 +129,8 @@ Recommended vocabulary:
 - A Customer Contact belongs to exactly one Customer.
 - A StaffMember may be linked to zero or one Identity User.
 - A Customer Contact may be linked to zero or one Identity User.
-- A non-administrator User must be linked to exactly one matching MasterData record.
+- A StationStaff or CustomerContact User must be linked to exactly one matching MasterData record.
+- A SystemAdministrator or ViewerOnly User is direct and has no MasterData link.
 - Cross-module links use public `Guid` identifiers and contracts/events, never navigation properties or foreign keys into another module's database schema.
 
 ### Proposed identity representation
@@ -138,7 +140,7 @@ Identity should restore the useful legacy distinction that the current rewrite d
 - `User.UserType`
 - `User.ExternalReferenceId`
 
-For `StationStaff`, `ExternalReferenceId` identifies the StaffMember. For `CustomerContact`, it identifies the contact. A System Administrator has no external reference.
+For `StationStaff`, `ExternalReferenceId` identifies the StaffMember. For `CustomerContact`, it identifies the contact. System Administrator and Viewer Only accounts have no external reference.
 
 MasterData may also retain `LinkedUserId` on the StaffMember/contact record for efficient reverse lookup. The link is established through idempotent integration events.
 
@@ -369,7 +371,7 @@ WorkingSchedule preserves the legacy day-based model:
 ### Decided
 
 - Runtime registration is invitation-only; there is no public self-registration.
-- Administrators do not create ordinary User accounts directly from Identity.
+- Administrators may directly invite System Administrator and Viewer Only accounts from Identity.
 - A Station Staff or Customer Contact account originates from its MasterData record.
 - While creating a StaffMember or contact, an administrator can choose whether to grant portal access.
 - An administrator may also grant portal access later from an existing StaffMember or contact profile.
@@ -379,7 +381,7 @@ WorkingSchedule preserves the legacy day-based model:
 - When it is not selected, only the MasterData record is created; portal access may be requested later from its detail view.
 - If portal access is requested, Identity creates an invited account without a password.
 - The invitee activates the account by following the invitation and choosing a password.
-- The bootstrap System Administrator remains the one special seeding exception.
+- The bootstrap System Administrator remains the only seeded account; Viewer Only Roles and accounts are administrator-created.
 - A login email is unique among accounts that retain a login identity. A permanently detached account may release its login email for reuse under the removal rules below.
 - Provisioning must be idempotent and must never create two Users for the same MasterData record.
 
@@ -419,6 +421,7 @@ Allow an administrator to request portal access later from an existing StaffMemb
 Authorization always combines permissions with server-side data scope:
 
 - System Administrator: may access all records allowed by the role's permissions.
+- Viewer Only: may read all records allowed by the role's compatible page-view and supporting-read permissions, but may never receive mutation permissions.
 - Station Staff: may access only operational/customer data permitted for the linked Station.
 - Customer Contact: may access only data belonging to the linked Customer, such as that customer's future contracts and flights.
 
@@ -426,7 +429,7 @@ A role can remove capabilities but cannot widen a User beyond the User type's da
 
 ### Decided role model
 
-User types are fixed to `SystemAdministrator`, `StationStaff`, and `CustomerContact`. Roles remain permission collections:
+User types are fixed to `SystemAdministrator`, `StationStaff`, `CustomerContact`, and `ViewerOnly`. Roles remain permission collections:
 
 - A User has exactly one Role in v1.0.0.
 - A Role contains multiple permissions.
@@ -437,7 +440,7 @@ User types are fixed to `SystemAdministrator`, `StationStaff`, and `CustomerCont
 - Portal access cannot be requested until the administrator has created or selected a compatible Role.
 - Identity never silently assigns a fallback Role.
 
-Only the protected System Administrator Role is seeded for the bootstrap administrator. No default StationStaff or CustomerContact Role is seeded. Administrators explicitly define roles such as Station Supervisor, Station Technician, Customer Manager, or Customer Viewer and choose one when granting portal access.
+Only the protected System Administrator Role is seeded for the bootstrap administrator. No default StationStaff, CustomerContact, or ViewerOnly Role is seeded. Administrators explicitly define roles such as Station Supervisor, Station Technician, Customer Manager, Customer Viewer, CEO Dashboard, or Executive Operations and choose one when granting portal access.
 
 ### Decided MasterData permission catalog
 
@@ -502,7 +505,9 @@ All StationStaff access is restricted to the linked Station. StationStaff cannot
 
 All CustomerContact access is restricted to the linked Customer. CustomerContacts cannot create, activate, or deactivate Customers; manage Stations/StaffMembers/global catalogs; grant portal access; or assign Roles.
 
-Customer-contact visibility is intentionally covered by `masterdata.customers.view`, because contacts are part of the customer aggregate returned by the customer detail endpoint. The `grant-access` and `staff-allocation` permissions are SystemAdministrator-compatible only. Allocation separates read-only workforce coverage (`view`) from permanent moves (`reassign`). Portal role pickers also require `identity.roles.view`, and show only roles whose permissions are a subset of the initiating administrator's current permissions. Identity revalidates that live delegation ceiling when it consumes the provisioning request, so delayed events cannot grant authority the initiator no longer holds. Direct invitations and role assignments apply the same ceiling.
+`ViewerOnly` Roles may contain every primary MasterData `.view` permission listed in this foundation, including `masterdata.staff-allocation.view`, plus `masterdata.reference.view-options` as a supporting read permission. Viewer Only has global read scope, but cannot receive create, update, remove, activate, deactivate, reassign, or grant-access permissions. A Viewer Only Role must contain at least one permission that grants a portal page.
+
+Customer-contact visibility is intentionally covered by `masterdata.customers.view`, because contacts are part of the customer aggregate returned by the customer detail endpoint. The `grant-access` and `staff-allocation.reassign` permissions are SystemAdministrator-compatible only. Allocation separates read-only workforce coverage (`view`) from permanent moves (`reassign`). Portal role pickers also require `identity.roles.view`, and show only roles whose permissions are a subset of the initiating administrator's current permissions. Identity revalidates that live delegation ceiling when it consumes the provisioning request, so delayed events cannot grant authority the initiator no longer holds. Direct invitations and role assignments apply the same ceiling.
 
 Each future module defines its own permission actions and UserType compatibility. For example, Operations may later allow StationStaff work-order permissions and CustomerContact flight-view permissions without changing this MasterData catalog.
 
@@ -551,7 +556,7 @@ Access checks fail closed: an active Identity account cannot gain scoped access 
 The initial discussion resolved the following:
 
 1. The individual workforce entity is `StaffMember`.
-2. The system has three fixed UserTypes with permission-bearing compatible Roles.
+2. The system has four fixed UserTypes with permission-bearing compatible Roles; ViewerOnly is a direct, globally scoped, read-only portal account.
 3. An administrator selects a compatible Role when requesting portal access.
 4. Portal access can be requested at initial creation or later.
 5. A linked email change is coordinated with Identity, changes the login email, and requires reverification.
@@ -562,13 +567,13 @@ The initial discussion resolved the following:
 10. Country is implemented before Station.
 11. ManpowerType is implemented before StaffMember.
 12. Station IATA/ICAO and Customer IATA/ICAO codes are backend-normalized to uppercase. Station IATA is required and unique, Station/Customer ICAO is optional and unique when supplied, and Customer IATA is optional and non-unique.
-13. StationStaff and CustomerContact accounts have no automatically assigned default Role; the administrator must select a compatible Role.
+13. StationStaff, CustomerContact, and ViewerOnly accounts have no automatically assigned default Role; the administrator must select a compatible Role.
 14. A permanently removed contact's released email may be reused for a new MasterData identity and a new User.
 15. The first usable release includes complete Country, ManpowerType, License, Service, OperationType, AircraftType, Tool, Material, GeneralSupport, Station, Customer, CustomerContact, and StaffMember management across backend and Blazor UI.
 16. StaffMember requires Station and ManpowerType, supports an optional legacy day-based WorkingSchedule, and supports zero-or-more legacy-style License assignments.
 17. StaffMember employment-contract dates are optional; when present, the period must be valid.
 18. Countries are seeded from the ISO list and remain administrator-maintainable without startup seeding overwriting edits.
-19. MasterData permissions and their UserType compatibility follow the catalog/matrix above; StationStaff and CustomerContact roles operate only within their linked scope.
+19. MasterData permissions and their UserType compatibility follow the catalog/matrix above; StationStaff and CustomerContact roles operate only within their linked scope, while ViewerOnly roles have global read scope and no mutation compatibility.
 20. Customer Address uses the revised fields defined above, including optional state/province/region.
 21. Customer has a required Country and required official Address; the Address uses the Customer Country rather than duplicating Country ID.
 22. Contacts may be created with a Customer or later from Customer details; StaffMembers may be created with a Station, from Station details, or from a top-level Staff Members screen.

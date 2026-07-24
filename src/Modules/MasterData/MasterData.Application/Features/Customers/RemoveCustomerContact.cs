@@ -37,7 +37,7 @@ public sealed class RemoveCustomerContactCommandHandler(
 {
     public async Task<Result> Handle(RemoveCustomerContactCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckCustomerAsync(request.CustomerId, cancellationToken);
+        var scopeCheck = await scope.CheckCustomerForWriteAsync(request.CustomerId, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 

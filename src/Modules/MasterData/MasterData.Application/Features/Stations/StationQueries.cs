@@ -28,7 +28,7 @@ public sealed class GetStationsQueryHandler(IMasterDataDbContext db, IMasterData
         var query = db.Stations.AsNoTracking();
 
         // Station staff only see their own station; customer contacts have no station scope.
-        if (!resolved.Value.IsAdministrator)
+        if (!resolved.Value.HasGlobalReadAccess)
         {
             if (resolved.Value.StationId is not { } scopedStation)
                 return paging.Empty<StationListItemDto>();
@@ -129,7 +129,7 @@ public sealed class GetActiveStationOptionsQueryHandler(IMasterDataDbContext db,
 
         var query = db.Stations.AsNoTracking().Where(s => s.IsActive);
 
-        if (!resolved.Value.IsAdministrator)
+        if (!resolved.Value.HasGlobalReadAccess)
         {
             if (resolved.Value.StationId is not { } scopedStation)
                 return Result.Success<IReadOnlyList<StationOptionDto>>([]);

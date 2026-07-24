@@ -36,7 +36,7 @@ public sealed class GrantStaffPortalAccessCommandHandler(
 {
     public async Task<Result> Handle(GrantStaffPortalAccessCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await scope.ResolveForWriteAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
@@ -114,7 +114,7 @@ public sealed class GrantContactPortalAccessCommandHandler(
 {
     public async Task<Result> Handle(GrantContactPortalAccessCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await scope.ResolveForWriteAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 

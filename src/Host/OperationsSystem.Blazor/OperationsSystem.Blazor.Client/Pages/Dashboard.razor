@@ -3,7 +3,7 @@
 <PageTitle>@UiStrings.Nav.Dashboard</PageTitle>
 
 <RequireAuth>
-    @if (Auth.User is { } user)
+    @if (Auth.User is { } user && CanAccessRootDashboard)
     {
         <main class="os-dashboard">
             <section class="os-dashboard-hero">

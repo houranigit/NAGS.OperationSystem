@@ -14,8 +14,8 @@ using Microsoft.Extensions.Options;
 namespace Identity.Application.Features.Users;
 
 /// <summary>
-/// Direct user creation only creates System Administrators. Station Staff and Customer Contact
-/// accounts are provisioned from their MasterData record via the portal-access flow.
+/// Direct user creation supports System Administrator and Viewer Only roles. Station Staff and
+/// Customer Contact accounts are provisioned from their MasterData record via portal access.
 /// </summary>
 public sealed record InviteUserCommand(string Email, string DisplayName, Guid? RoleId = null) : ICommand<InvitedUserDto>;
 
@@ -63,8 +63,8 @@ public sealed class InviteUserCommandHandler(
         if (emailTaken)
             return Error.Conflict("A user with this email already exists.", "Identity.User.DuplicateEmail");
 
-        // Direct creation is administrator-only, but the inviter may choose any compatible
-        // SystemAdministrator role so new accounts do not need to start with full access.
+        // The selected role is authoritative for the immutable account type. Omitting RoleId keeps
+        // the legacy behavior of selecting the protected System Administrator role.
         var role = request.RoleId is { } roleId
             ? await db.Roles.FirstOrDefaultAsync(r => r.Id == roleId, cancellationToken)
             : await db.Roles.FirstOrDefaultAsync(r => r.IsSystem, cancellationToken);
@@ -73,10 +73,10 @@ public sealed class InviteUserCommandHandler(
                 ? Error.Validation("The selected role does not exist.", "Identity.User.RoleNotFound")
                 : Error.Failure("The protected System Administrator role is not available.", "Identity.User.NoAdminRole");
 
-        if (role.CompatibleUserType != UserType.SystemAdministrator)
+        if (!role.CompatibleUserType.IsDirectlyProvisioned())
         {
             return Error.Conflict(
-                $"Role '{role.Name}' is not compatible with direct administrator invitations.",
+                $"Role '{role.Name}' is not compatible with direct invitations.",
                 "Identity.User.IncompatibleRole");
         }
 
@@ -91,7 +91,14 @@ public sealed class InviteUserCommandHandler(
         var token = tokenService.CreateSecureToken();
         var expiry = now.AddHours(_options.InvitationExpiryHours);
 
-        var userResult = User.Invite(email, request.DisplayName, role.Id, token.Hash, expiry, now, UserType.SystemAdministrator);
+        var userResult = User.Invite(
+            email,
+            request.DisplayName,
+            role.Id,
+            token.Hash,
+            expiry,
+            now,
+            role.CompatibleUserType);
         if (userResult.IsFailure)
             return userResult.Error;
 

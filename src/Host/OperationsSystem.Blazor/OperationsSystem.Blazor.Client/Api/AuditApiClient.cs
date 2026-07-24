@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace OperationsSystem.Blazor.Client.Api;
 
-/// <summary>Typed access to the Audit module API (<c>/api/v1/audit</c>). Administrator-only.</summary>
+/// <summary>Typed access to the read-only Audit module API (<c>/api/v1/audit</c>).</summary>
 public sealed class AuditApiClient(BrowserApiClient api)
 {
     public Task<PagedResult<AuditTrailListItem>> GetTrailsAsync(

@@ -20,7 +20,19 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record RoleItem(Guid Id, string Name);
     private sealed record RoleDetailItem(Guid Id, string Name, string? Description, List<string> Permissions);
-    private sealed record UserDetailItem(Guid Id, Guid RoleId, string UserType);
+    private sealed record UserDetailItem(
+        Guid Id,
+        Guid RoleId,
+        string UserType,
+        Guid? ExternalReferenceId,
+        string PortalSource);
+    private sealed record MeResponse(
+        Guid Id,
+        Guid RoleId,
+        string UserType,
+        Guid? ExternalReferenceId,
+        string PortalSource,
+        List<string> Permissions);
 
     [Fact]
     public async Task Login_with_valid_admin_credentials_returns_access_token()
@@ -134,6 +146,78 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         var detail = await client.GetFromJsonAsync<UserDetailItem>($"{Base}/users/{invited!.Id}");
         detail!.RoleId.ShouldBe(roleId);
         detail.UserType.ShouldBe("SystemAdministrator");
+    }
+
+    [Fact]
+    public async Task Viewer_role_can_be_invited_directly_activated_and_logged_in()
+    {
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+        var roleName = $"ViewerRole-{Guid.NewGuid():N}";
+        var createRole = await admin.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = roleName,
+                description = "CEO dashboard viewer",
+                compatibleUserType = "ViewerOnly",
+                permissions = new[] { "operations.dashboard.view" }
+            });
+        createRole.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var roleId = await createRole.Content.ReadFromJsonAsync<Guid>();
+
+        var email = $"viewer-{Guid.NewGuid():N}@nags.sa";
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "CEO Viewer", roleId });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        invited.ShouldNotBeNull();
+
+        var detail = await admin.GetFromJsonAsync<UserDetailItem>($"{Base}/users/{invited!.Id}");
+        detail.ShouldNotBeNull();
+        detail!.RoleId.ShouldBe(roleId);
+        detail.UserType.ShouldBe("ViewerOnly");
+        detail.ExternalReferenceId.ShouldBeNull();
+        detail.PortalSource.ShouldBe("Direct");
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+        var activate = await admin.PostAsJsonAsync($"{Base}/auth/activate",
+            new { email, invitationToken, newPassword = "Viewer#12345" });
+        activate.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var viewer = factory.CreateClient();
+        var login = await viewer.PostAsJsonAsync($"{Base}/auth/login",
+            new { email, password = "Viewer#12345" });
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var tokens = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        tokens.ShouldNotBeNull();
+        viewer.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", tokens!.AccessToken);
+
+        var me = await viewer.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        me.ShouldNotBeNull();
+        me!.Id.ShouldBe(invited.Id);
+        me.RoleId.ShouldBe(roleId);
+        me.UserType.ShouldBe("ViewerOnly");
+        me.ExternalReferenceId.ShouldBeNull();
+        me.PortalSource.ShouldBe("Direct");
+        me.Permissions.ShouldBe(["operations.dashboard.view"]);
+    }
+
+    [Fact]
+    public async Task Viewer_role_without_a_portal_page_is_rejected()
+    {
+        var client = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+
+        var create = await client.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = $"EmptyViewerRole-{Guid.NewGuid():N}",
+                description = (string?)null,
+                compatibleUserType = "ViewerOnly",
+                permissions = new[] { "identity.sessions.view", "operations.dashboard.export" }
+            });
+
+        create.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]

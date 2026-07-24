@@ -30,7 +30,7 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
         var query = db.StaffMembers.AsNoTracking();
 
         // Station staff only ever see their own station's members; customer contacts see none.
-        if (!resolved.Value.IsAdministrator)
+        if (!resolved.Value.HasGlobalReadAccess)
         {
             if (resolved.Value.StationId is not { } scopedStation)
                 return paging.Empty<StaffMemberListItemDto>();
@@ -105,7 +105,7 @@ public sealed class GetActiveStaffMemberOptionsQueryHandler(IMasterDataDbContext
         var query = db.StaffMembers.AsNoTracking().Where(s => s.IsActive);
 
         // Station staff only ever see their own station's members; customer contacts see none.
-        if (!resolved.Value.IsAdministrator)
+        if (!resolved.Value.HasGlobalReadAccess)
         {
             if (resolved.Value.StationId is not { } scopedStation)
                 return Result.Success<IReadOnlyList<StaffMemberOptionDto>>([]);
@@ -130,9 +130,9 @@ public sealed class GetActiveStaffMemberOptionsQueryHandler(IMasterDataDbContext
 // --- Allocation workspace -------------------------------------------------
 
 /// <summary>
-/// Returns the complete active-staff picture needed by the administrator allocation workspace.
-/// Cross-station staffing is an administrator operation, so scoped callers are denied rather
-/// than being shown a misleading one-station subset.
+/// Returns the complete active-staff picture needed by the allocation workspace. Global readers
+/// may inspect it; the separate reassignment command remains writable only by authorized account
+/// types.
 /// </summary>
 public sealed record GetStaffAllocationOverviewQuery : IQuery<StaffAllocationOverviewDto>;
 
@@ -147,7 +147,7 @@ public sealed class GetStaffAllocationOverviewQueryHandler(IMasterDataDbContext 
         if (resolved.IsFailure)
             return resolved.Error;
 
-        if (!resolved.Value.IsAdministrator)
+        if (!resolved.Value.HasGlobalReadAccess)
             return AllocationForbidden();
 
         IReadOnlyList<StaffAllocationStationDto> stations = await db.Stations
@@ -220,8 +220,8 @@ public sealed class GetStaffAllocationOverviewQueryHandler(IMasterDataDbContext 
 
     private static Error AllocationForbidden() =>
         Error.Forbidden(
-            "Staff allocation across stations is available only to system administrators.",
-            "MasterData.StaffAllocation.AdministratorRequired");
+            "Staff allocation across stations requires global read access.",
+            "MasterData.StaffAllocation.GlobalReadRequired");
 }
 
 // --- By id ----------------------------------------------------------------
@@ -240,7 +240,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
         var query = db.StaffMembers.AsNoTracking()
             .Where(s => s.Id == request.Id);
 
-        if (!resolved.Value.IsAdministrator)
+        if (!resolved.Value.HasGlobalReadAccess)
         {
             if (resolved.Value.StationId is not { } scopedStation)
                 return ScopeForbidden();
@@ -275,7 +275,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             })
             .FirstOrDefaultAsync(cancellationToken);
         if (staff is null)
-            return resolved.Value.IsAdministrator
+            return resolved.Value.HasGlobalReadAccess
                 ? Error.NotFound("Staff member not found.", "MasterData.StaffMember.NotFound")
                 : ScopeForbidden();
 

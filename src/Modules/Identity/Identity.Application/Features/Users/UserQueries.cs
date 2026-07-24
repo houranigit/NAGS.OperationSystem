@@ -145,7 +145,7 @@ public sealed class GetCurrentUserQueryHandler(IIdentityDbContext db, ICurrentUs
 
 internal static class PortalSource
 {
-    /// <summary>How the account was provisioned: administrators are created directly; scoped accounts originate from MasterData.</summary>
+    /// <summary>How the account was provisioned: unlinked types are direct; linked types originate from MasterData.</summary>
     public static string For(BuildingBlocks.Contracts.Authorization.UserType userType) =>
-        userType == BuildingBlocks.Contracts.Authorization.UserType.SystemAdministrator ? "Direct" : "MasterData";
+        userType.IsDirectlyProvisioned() ? "Direct" : "MasterData";
 }

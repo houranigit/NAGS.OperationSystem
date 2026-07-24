@@ -25,6 +25,20 @@ else
                 @UiStrings.Users.InviteAdminNote
             </DismissibleDialogMessage>
 
+            <RadzenFormField Text="@UiStrings.Users.UserType" Variant="Variant.Outlined" Style="width: 100%;">
+                <Start><RadzenIcon Icon="manage_accounts" /></Start>
+                <ChildContent>
+                    <RadzenDropDown TValue="string"
+                                    Value="@model.UserType"
+                                    Change="@((object? value) => OnUserTypeChangedAsync(value?.ToString()))"
+                                    Data="@DirectUserTypeOptions"
+                                    TextProperty="@nameof(UserTypeOption.Label)"
+                                    ValueProperty="@nameof(UserTypeOption.Value)"
+                                    Disabled="@(isSubmitting || isLoadingRoles)"
+                                    Style="width: 100%;" />
+                </ChildContent>
+            </RadzenFormField>
+
             <RadzenFormField Text="@UiStrings.Auth.Email" Variant="Variant.Outlined" Style="width: 100%;">
                 <Start><RadzenIcon Icon="mail" /></Start>
                 <ChildContent>
@@ -39,10 +53,14 @@ else
                 </ChildContent>
             </RadzenFormField>
 
-            @if (roles.Count == 0)
+            @if (isLoadingRoles)
+            {
+                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            }
+            else if (roles.Count == 0)
             {
                 <DismissibleDialogMessage AlertStyle="AlertStyle.Warning">
-                    @UiStrings.Users.NoAdminRoles
+                    @UiStrings.Users.NoCompatibleRoles
                 </DismissibleDialogMessage>
             }
             else
@@ -77,18 +95,42 @@ else
     private InvitedUser? invited;
     private IReadOnlyList<RoleOption> roles = [];
     private bool isSubmitting;
+    private bool isLoadingRoles;
     private string? errorMessage;
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync() => LoadRolesAsync(model.UserType);
+
+    private async Task OnUserTypeChangedAsync(string? userType)
     {
+        if (string.IsNullOrWhiteSpace(userType) ||
+            string.Equals(model.UserType, userType, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        model.UserType = userType;
+        await LoadRolesAsync(userType);
+    }
+
+    private async Task LoadRolesAsync(string userType)
+    {
+        isLoadingRoles = true;
+        roles = [];
+        model.RoleId = null;
+        errorMessage = null;
+
         try
         {
-            roles = await Identity.GetRoleOptionsAsync(UserTypes.SystemAdministrator, assignableOnly: true);
+            roles = await Identity.GetRoleOptionsAsync(userType, assignableOnly: true);
             model.RoleId = roles.FirstOrDefault()?.Id;
         }
         catch (ApiException ex)
         {
             errorMessage = ex.ToDisplayMessage(UiStrings.Errors.LoadFailed);
+        }
+        finally
+        {
+            isLoadingRoles = false;
         }
     }
 
@@ -132,8 +174,23 @@ else
 
     private sealed class InviteModel
     {
+        public string UserType { get; set; } = UserTypes.SystemAdministrator;
         public string Email { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public Guid? RoleId { get; set; }
     }
+
+    private static IReadOnlyList<UserTypeOption> DirectUserTypeOptions =>
+        UserTypes.Direct
+            .Select(value => new UserTypeOption(value, UserTypeLabel(value)))
+            .ToArray();
+
+    private static string UserTypeLabel(string userType) => userType switch
+    {
+        UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.ViewerOnly => UiStrings.Users.TypeViewerOnly,
+        _ => userType
+    };
+
+    private sealed record UserTypeOption(string Value, string Label);
 }

@@ -3,9 +3,13 @@ namespace BuildingBlocks.Contracts.Authorization;
 /// <summary>
 /// One grantable permission plus the user types whose roles may contain it. Compatibility is a
 /// maximum set: it does not grant the permission automatically, it bounds what a role for a given
-/// user type may select.
+/// user type may select. <see cref="GrantsPortalPage"/> distinguishes permissions that unlock a
+/// primary navigable portal destination from supporting reads and exports.
 /// </summary>
-public sealed record PermissionDescriptor(string Code, IReadOnlyList<UserType> CompatibleUserTypes)
+public sealed record PermissionDescriptor(
+    string Code,
+    IReadOnlyList<UserType> CompatibleUserTypes,
+    bool GrantsPortalPage = false)
 {
     public bool IsCompatibleWith(UserType userType) => CompatibleUserTypes.Contains(userType);
 }

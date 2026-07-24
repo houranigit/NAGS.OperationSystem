@@ -52,7 +52,7 @@ public sealed class UploadWorkOrderTaskAttachmentCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
@@ -134,7 +134,7 @@ public sealed class DeleteWorkOrderTaskAttachmentCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
@@ -207,7 +207,7 @@ public sealed class UploadWorkOrderServiceLineAttachmentCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
@@ -289,7 +289,7 @@ public sealed class DeleteWorkOrderServiceLineAttachmentCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);

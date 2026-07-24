@@ -51,6 +51,19 @@ public sealed class ConditionalPermissionAuthorizationTests
     }
 
     [Fact]
+    public async Task Scheduling_is_denied_by_write_scope_for_ViewerOnly_even_with_a_forged_schedule_claim()
+    {
+        var handler = ScheduleHandler(
+            UserWithoutConditionalPermissions(),
+            new StaticScope(new OperationsScopeContext(UserType.ViewerOnly, null, null)));
+
+        var result = await handler.Handle(ScheduleFlight([]), CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.Scope.ReadOnly");
+    }
+
+    [Fact]
     public async Task Immediate_merge_approval_requires_approve_permission()
     {
         var handler = MergeHandler(UserWithoutConditionalPermissions());
@@ -228,6 +241,12 @@ public sealed class ConditionalPermissionAuthorizationTests
     {
         public Task<Result<OperationsScopeContext>> ResolveAsync(CancellationToken cancellationToken) =>
             Task.FromResult<Result<OperationsScopeContext>>(Error.Forbidden("Scope reached.", code));
+    }
+
+    private sealed class StaticScope(OperationsScopeContext context) : IOperationsScope
+    {
+        public Task<Result<OperationsScopeContext>> ResolveAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(Result.Success(context));
     }
 
     private sealed class TestUserContext(IReadOnlySet<string> permissions, Guid? userId = null) : IUserContext

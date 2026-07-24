@@ -688,7 +688,7 @@ public sealed class FindDuplicateCandidatesQueryHandler(IOperationsScope scope, 
 
         var context = scopeResult.Value;
         Guid stationId;
-        if (context.IsAdministrator)
+        if (context.HasGlobalReadAccess)
         {
             if (request.StationId is not { } requestedStationId || requestedStationId == Guid.Empty)
                 return Error.Validation("Station is required to check for duplicates.", "Operations.Flight.DuplicateCheckStationRequired");

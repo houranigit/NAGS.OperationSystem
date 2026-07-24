@@ -93,6 +93,23 @@ public sealed class PortalAccessDelegationTests
         failure.Reason.ShouldContain("initiating user id is missing");
     }
 
+    [Theory]
+    [InlineData(UserType.SystemAdministrator)]
+    [InlineData(UserType.ViewerOnly)]
+    public async Task Provisioning_rejects_direct_account_types(UserType userType)
+    {
+        await using var db = CreateDb();
+        var integrationEvent = Request(Guid.Empty, Guid.Empty) with { UserType = userType };
+
+        await CreateHandler(db).HandleAsync(integrationEvent);
+
+        (await db.Users.CountAsync()).ShouldBe(0);
+        var failure = await OutboxEventAsync<PortalUserProvisioningFailed>(db);
+        failure.UserType.ShouldBe(userType);
+        failure.Reason.ShouldContain("cannot be provisioned from MasterData");
+        (await db.InboxMessages.CountAsync()).ShouldBe(1);
+    }
+
     [Fact]
     public async Task Existing_account_reannouncement_remains_idempotent_after_the_initiator_becomes_inactive()
     {

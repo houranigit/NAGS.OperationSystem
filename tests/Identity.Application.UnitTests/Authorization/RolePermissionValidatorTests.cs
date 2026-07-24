@@ -1,9 +1,13 @@
 using BuildingBlocks.Application.Authorization;
 using BuildingBlocks.Contracts.Authorization;
+using Audit.Application.Authorization;
+using Audit.Domain.Authorization;
 using Identity.Application.Authorization;
 using Identity.Domain.Authorization;
 using MasterData.Application.Authorization;
 using MasterData.Domain.Authorization;
+using Operations.Application.Authorization;
+using Operations.Domain.Authorization;
 using Shouldly;
 
 namespace Identity.Application.UnitTests.Authorization;
@@ -11,7 +15,13 @@ namespace Identity.Application.UnitTests.Authorization;
 public sealed class RolePermissionValidatorTests
 {
     private static PermissionRegistry Registry() =>
-        new([new IdentityPermissionCatalog(), new MasterDataPermissionCatalog()]);
+        new(
+        [
+            new IdentityPermissionCatalog(),
+            new MasterDataPermissionCatalog(),
+            new OperationsPermissionCatalog(),
+            new AuditPermissionCatalog()
+        ]);
 
     [Fact]
     public void Composed_catalog_exposes_masterdata_permissions_by_user_type()
@@ -66,5 +76,55 @@ public sealed class RolePermissionValidatorTests
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("Identity.Role.UnknownPermission");
+    }
+
+    [Fact]
+    public void Role_validation_accepts_viewer_page_with_supporting_read_and_export_permissions()
+    {
+        var result = RolePermissionValidator.Validate(
+        [
+            OperationsPermissions.Dashboard.ViewAnalytics,
+            OperationsPermissions.Dashboard.Export,
+            MasterDataPermissions.Reference.ViewOptions,
+            IdentityPermissions.Sessions.View
+        ],
+            UserType.ViewerOnly,
+            Registry());
+
+        result.IsSuccess.ShouldBeTrue();
+    }
+
+    [Theory]
+    [MemberData(nameof(ViewerRolesWithoutPages))]
+    public void Role_validation_rejects_viewer_role_without_a_portal_page(IReadOnlyList<string> permissions)
+    {
+        var result = RolePermissionValidator.Validate(permissions, UserType.ViewerOnly, Registry());
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.Role.ViewerPagePermissionRequired");
+    }
+
+    public static TheoryData<IReadOnlyList<string>> ViewerRolesWithoutPages => new()
+    {
+        Array.Empty<string>(),
+        new[] { IdentityPermissions.Sessions.View, MasterDataPermissions.Reference.ViewOptions },
+        new[] { OperationsPermissions.Flights.Export, OperationsPermissions.Dashboard.Export }
+    };
+
+    [Theory]
+    [InlineData(IdentityPermissions.Users.Invite)]
+    [InlineData(MasterDataPermissions.Stations.Update)]
+    [InlineData(MasterDataPermissions.StaffAllocation.Reassign)]
+    [InlineData(OperationsPermissions.Flights.Schedule)]
+    [InlineData(OperationsPermissions.WorkOrders.Approve)]
+    public void Role_validation_rejects_mutation_permissions_for_viewer_only(string permission)
+    {
+        var result = RolePermissionValidator.Validate(
+            [OperationsPermissions.Dashboard.View, permission],
+            UserType.ViewerOnly,
+            Registry());
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.Role.IncompatiblePermission");
     }
 }

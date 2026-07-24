@@ -8,6 +8,7 @@ public static class OperationsPermissions
 {
     public const string DashboardView = "operations.dashboard.view";
     public const string DashboardAnalyticsView = "operations.dashboard.view-analytics";
+    public const string DashboardExport = "operations.dashboard.export";
 
     public const string FlightsView = "operations.flights.view";
 

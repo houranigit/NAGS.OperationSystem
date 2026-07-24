@@ -289,7 +289,7 @@ Features/
 - The first created user is the System Admin bootstrap account.
 - System Admin can create roles and assign permissions to roles.
 - Each user has exactly one role for v1.0.0.
-- Each non-administrator Role is compatible with exactly one of the fixed `StationStaff` or `CustomerContact` UserTypes; permission compatibility is enforced when roles are edited and assigned.
+- Each Role is compatible with exactly one fixed UserType. `StationStaff` and `CustomerContact` Roles combine permissions with linked data scope; `ViewerOnly` Roles may contain only explicitly compatible read/page/export permissions and must grant at least one portal page. Compatibility is enforced when roles are edited, assigned, and permissions are authorized.
 - Users cannot have multiple roles unless this rule is explicitly changed in the decisions log.
 - Keep future SSO/external-provider support in mind, but do not overbuild it early.
 
@@ -310,9 +310,10 @@ Features/
 
 - Authorization has two axes: permission checks (can the user perform this action?) and data scope (which records may the user see/act on?).
 - v1.0.0 scopes each StationStaff User through one linked StaffMember to exactly one Station, and each CustomerContact User to exactly one Customer.
+- ViewerOnly is a direct, unlinked web-portal account with global read scope. It has no command/write scope, and report exports are separately permissioned from page views.
 - Data scoping is enforced server-side in queries and command guards, not only hidden in the UI.
 - Scope rules must be explicit, testable, and consistent across endpoints; do not scatter ad-hoc station filters through random handlers.
-- A System Admin (or an explicit all-stations scope) may bypass station scoping where the business requires it.
+- A System Admin may bypass read and write station scoping where the business requires it; an explicit global-read scope such as ViewerOnly bypasses read filtering only.
 
 ## 14. API Contract Rules
 
@@ -619,7 +620,8 @@ Use this section to record decisions as they become final.
 | 2026-06-19 | Blazor calls the API through a hand-written typed client over `BrowserApiClient` (no Orval/TanStack Query/Zod) | Generated TS clients no longer apply; typed C# client keeps DTOs explicit and shared with the contracts |
 | 2026-06-21 | v1.0.0 uses a `MasterData` module instead of legacy `Core` and `Store` modules | Names the business capability explicitly, avoids an ambiguous catch-all `Core`, and keeps catalog-only items together until real inventory behavior requires an `Inventory` module |
 | 2026-06-21 | Rename the legacy individual `Employee` concept to `StaffMember`; reserve Manpower terminology for labor categories/pricing | Produces clear person-level domain language while preserving established manpower pricing concepts |
-| 2026-06-21 | Users have one of three fixed types (`SystemAdministrator`, `StationStaff`, `CustomerContact`) plus one compatible permission-bearing Role | Separates immutable business identity/data scope from configurable authorization capabilities |
+| 2026-06-21 | Users have one immutable business/data-scope type plus one compatible permission-bearing Role | Separates immutable business identity/data scope from configurable authorization capabilities |
+| 2026-07-24 | Add `ViewerOnly` as a direct, unlinked account type with global read scope, an explicit read/export permission allowlist, and permission-aware landing/sidebar behavior | Supports CEO and oversight access without granting administrative mutations; one accessible destination does not need a sidebar |
 | 2026-07-06 | Every MasterData `/options` endpoint requires `masterdata.reference.view-options` OR that resource's `.view`; a lightweight scoped `/staff-members/options` endpoint backs the staff pickers | Lets flight-only roles consume form dropdowns without catalog grid-page permissions (legacy `scheduler.lookups.read` parity); data scope still applies to options |
 | 2026-07-06 | `operations.flights.view-station` grants station staff station-wide flight visibility (station dispatchers) through `OperationsScopeContext`; default staff visibility stays Per-Landing plus assigned | Dispatchers must see and review all their station's flights and work orders without being on the assigned-employee roster; admin-type dispatchers already see all stations via data scope |
 | 2026-07-09 | Work order approval numbers are a current approved display sequence with station-scoped gap-filling reuse; the permanent work-order reference is the Guid Id | Supersedes the removed implementation's "numbers never reused" behavior. Return releases `ApprovalSequence`/`ApprovalNumber`; reapproval allocates the lowest currently free station number. A full ApprovalHistory table is deferred until billing requires historical number retention |

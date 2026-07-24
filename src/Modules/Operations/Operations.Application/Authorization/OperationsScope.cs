@@ -9,9 +9,10 @@ using Operations.Domain.WorkOrders;
 namespace Operations.Application.Authorization;
 
 /// <summary>
-/// The data boundary the current caller may act within. A <see cref="UserType.SystemAdministrator"/>
-/// is unrestricted; a <see cref="UserType.StationStaff"/> is confined to <see cref="StationId"/> and,
-/// for non-Per-Landing flights, to flights they are assigned to — unless they hold the
+/// The data boundary the current caller may read within. A <see cref="UserType.SystemAdministrator"/>
+/// and <see cref="UserType.ViewerOnly"/> can read globally; only the administrator can also write
+/// globally. A <see cref="UserType.StationStaff"/> is confined to <see cref="StationId"/> and, for
+/// non-Per-Landing flights, to flights they are assigned to — unless they hold the
 /// <c>operations.flights.view-station</c> permission (<see cref="CanViewStationWide"/>), which widens
 /// visibility to every flight at their station (station dispatchers). CustomerContacts have no
 /// Operations access in this release.
@@ -26,11 +27,20 @@ public sealed record OperationsScopeContext(
     Guid? ManpowerTypeId = null)
 {
     public bool IsAdministrator => UserType == UserType.SystemAdministrator;
+    public bool HasGlobalReadAccess => UserType is UserType.SystemAdministrator or UserType.ViewerOnly;
+    public bool CanWrite => UserType is UserType.SystemAdministrator or UserType.StationStaff;
 
     public Result EnsureStation(Guid stationId) =>
-        IsAdministrator || StationId == stationId
+        HasGlobalReadAccess || StationId == stationId
             ? Result.Success()
             : Error.Forbidden("This flight is outside your station scope.", "Operations.Scope.Forbidden");
+
+    public Result EnsureWriteAccess() =>
+        CanWrite
+            ? Result.Success()
+            : Error.Forbidden(
+                "Viewer-only accounts cannot modify operations data.",
+                "Operations.Scope.ReadOnly");
 
     /// <summary>
     /// True when the caller may see/act on <paramref name="flight"/>: administrators always; station
@@ -40,7 +50,7 @@ public sealed record OperationsScopeContext(
     /// </summary>
     public bool CanAccessFlight(Flight flight)
     {
-        if (IsAdministrator)
+        if (HasGlobalReadAccess)
             return true;
 
         if (StationId != flight.Station.StationId)
@@ -66,7 +76,7 @@ public sealed record OperationsScopeContext(
 
     public bool CanAccessWorkOrder(WorkOrder workOrder)
     {
-        if (IsAdministrator)
+        if (HasGlobalReadAccess)
             return true;
 
         if (StationId != workOrder.Station.StationId)
@@ -103,6 +113,7 @@ public sealed class OperationsScope(IUserContext user, IMasterDataReader masterD
         switch (userType)
         {
             case UserType.SystemAdministrator:
+            case UserType.ViewerOnly:
                 return new OperationsScopeContext(userType, null, null);
 
             case UserType.StationStaff:
@@ -138,6 +149,15 @@ public sealed class OperationsScope(IUserContext user, IMasterDataReader masterD
 
 public static class OperationsScopeExtensions
 {
-    public static async Task<Result<OperationsScopeContext>> ResolveForWriteAsync(this IOperationsScope scope, CancellationToken cancellationToken) =>
-        await scope.ResolveAsync(cancellationToken);
+    public static async Task<Result<OperationsScopeContext>> ResolveForWriteAsync(
+        this IOperationsScope scope,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        var writeAccess = resolved.Value.EnsureWriteAccess();
+        return writeAccess.IsFailure ? writeAccess.Error : resolved.Value;
+    }
 }

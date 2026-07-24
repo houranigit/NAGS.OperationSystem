@@ -53,7 +53,7 @@ public sealed class CreateStaffMemberCommandHandler(
 {
     public async Task<Result<Guid>> Handle(CreateStaffMemberCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckStationAsync(request.StationId, cancellationToken);
+        var scopeCheck = await scope.CheckStationForWriteAsync(request.StationId, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -157,7 +157,7 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
 {
     public async Task<Result> Handle(UpdateStaffMemberCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await scope.ResolveForWriteAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
@@ -264,7 +264,7 @@ public sealed class ReassignStaffMemberStationCommandHandler(
 {
     public async Task<Result> Handle(ReassignStaffMemberStationCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await scope.ResolveForWriteAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
@@ -317,7 +317,7 @@ public sealed class ActivateStaffMemberCommandHandler(IMasterDataDbContext db, I
 {
     public async Task<Result> Handle(ActivateStaffMemberCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await scope.ResolveForWriteAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
@@ -350,7 +350,7 @@ public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db,
 {
     public async Task<Result> Handle(DeactivateStaffMemberCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await scope.ResolveForWriteAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 

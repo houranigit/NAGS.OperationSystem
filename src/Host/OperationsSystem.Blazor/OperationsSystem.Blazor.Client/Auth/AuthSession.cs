@@ -34,6 +34,10 @@ public sealed class AuthSession
 
     public bool IsSystemAdministrator => User?.UserType == UserTypes.SystemAdministrator;
 
+    public bool IsViewerOnly => User?.UserType == UserTypes.ViewerOnly;
+
+    public bool HasGlobalReadScope => IsSystemAdministrator || IsViewerOnly;
+
     public bool CanGrantStaffPortalAccess =>
         IsSystemAdministrator
         && HasPermission(IdentityPermissions.RolesView)

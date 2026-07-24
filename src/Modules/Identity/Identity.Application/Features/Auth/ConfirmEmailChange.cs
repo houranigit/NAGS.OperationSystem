@@ -51,7 +51,7 @@ public sealed class ConfirmEmailChangeCommandHandler(IIdentityDbContext db, ITok
         if (result.IsFailure)
             return result.Error;
 
-        if (user.ExternalReferenceId is { } externalReferenceId && user.UserType != UserType.SystemAdministrator)
+        if (user.ExternalReferenceId is { } externalReferenceId && user.UserType.RequiresExternalReference())
         {
             db.Enqueue(new PortalUserEmailChangeConfirmed
             {

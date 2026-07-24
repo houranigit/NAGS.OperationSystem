@@ -179,7 +179,7 @@ internal static class WorkOrderQueryVisibility
 {
     public static IQueryable<WorkOrder> ApplyVisibility(IQueryable<WorkOrder> query, OperationsScopeContext scope, IUserContext user)
     {
-        if (scope.IsAdministrator)
+        if (scope.HasGlobalReadAccess)
             return query;
 
         if (scope.StationId is not { } stationId)

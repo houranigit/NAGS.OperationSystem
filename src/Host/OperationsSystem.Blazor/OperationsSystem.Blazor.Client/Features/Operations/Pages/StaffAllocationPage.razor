@@ -13,9 +13,9 @@
             </Actions>
         </PageHeader>
 
-        @if (!Auth.IsSystemAdministrator)
+        @if (!Auth.HasGlobalReadScope)
         {
-            <ErrorState Message="Staff allocation across stations is available only to system administrators." />
+            <ErrorState Message="Staff allocation across stations requires global read access." />
         }
         else if (isLoading && overview is null)
         {

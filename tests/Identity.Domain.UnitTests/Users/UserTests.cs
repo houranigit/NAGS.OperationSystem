@@ -1,3 +1,4 @@
+using BuildingBlocks.Contracts.Authorization;
 using Identity.Domain.Users;
 using Identity.Domain.Users.Events;
 using Shouldly;
@@ -24,6 +25,58 @@ public class UserTests
         user.PasswordHash.ShouldBeNull();
         user.InvitationToken.ShouldBe(TokenHash);
         user.DomainEvents.OfType<UserInvitedEvent>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void Invite_creates_unlinked_viewer_only_user()
+    {
+        var result = User.Invite(
+            AnEmail(),
+            "CEO",
+            RoleId,
+            TokenHash,
+            Now.AddHours(72),
+            Now,
+            UserType.ViewerOnly);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.UserType.ShouldBe(UserType.ViewerOnly);
+        result.Value.ExternalReferenceId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Invite_rejects_external_reference_for_direct_account_type()
+    {
+        var result = User.Invite(
+            AnEmail(),
+            "CEO",
+            RoleId,
+            TokenHash,
+            Now.AddHours(72),
+            Now,
+            UserType.ViewerOnly,
+            Guid.NewGuid());
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.ExternalReferenceNotAllowed");
+    }
+
+    [Theory]
+    [InlineData(UserType.StationStaff)]
+    [InlineData(UserType.CustomerContact)]
+    public void Invite_requires_external_reference_for_linked_account_type(UserType userType)
+    {
+        var result = User.Invite(
+            AnEmail(),
+            "Linked User",
+            RoleId,
+            TokenHash,
+            Now.AddHours(72),
+            Now,
+            userType);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.ExternalReferenceRequired");
     }
 
     [Fact]

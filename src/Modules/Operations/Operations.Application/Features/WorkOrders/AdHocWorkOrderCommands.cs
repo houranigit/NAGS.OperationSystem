@@ -64,7 +64,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         if (user.UserId is not { } ownerUserId)
             return Error.Forbidden("The request is not authenticated.", "Operations.WorkOrder.Unauthenticated");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
 

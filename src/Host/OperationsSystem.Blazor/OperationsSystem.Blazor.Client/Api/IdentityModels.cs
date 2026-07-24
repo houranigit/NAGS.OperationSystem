@@ -14,8 +14,10 @@ public static class UserTypes
     public const string SystemAdministrator = nameof(SystemAdministrator);
     public const string StationStaff = nameof(StationStaff);
     public const string CustomerContact = nameof(CustomerContact);
+    public const string ViewerOnly = nameof(ViewerOnly);
 
-    public static readonly IReadOnlyList<string> All = [SystemAdministrator, StationStaff, CustomerContact];
+    public static readonly IReadOnlyList<string> All = [SystemAdministrator, ViewerOnly, StationStaff, CustomerContact];
+    public static readonly IReadOnlyList<string> Direct = [SystemAdministrator, ViewerOnly];
 }
 
 public sealed record RoleListItem(

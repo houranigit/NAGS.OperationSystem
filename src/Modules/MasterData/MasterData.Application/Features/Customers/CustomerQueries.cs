@@ -31,7 +31,7 @@ public sealed class GetCustomersQueryHandler(IMasterDataDbContext db, IMasterDat
         var query = db.Customers.AsNoTracking();
 
         // Customer contacts only ever see their own customer; station staff see none.
-        if (!resolved.Value.IsAdministrator)
+        if (!resolved.Value.HasGlobalReadAccess)
         {
             if (resolved.Value.CustomerId is not { } scopedCustomer)
                 return paging.Empty<CustomerListItemDto>();

@@ -103,6 +103,7 @@
     private List<UserTypeOption> UserTypeOptions =>
     [
         new(UiStrings.Users.TypeSystemAdministrator, UserTypes.SystemAdministrator),
+        new(UiStrings.Users.TypeViewerOnly, UserTypes.ViewerOnly),
         new(UiStrings.Users.TypeStationStaff, UserTypes.StationStaff),
         new(UiStrings.Users.TypeCustomerContact, UserTypes.CustomerContact)
     ];
@@ -228,6 +229,7 @@
     private static string UserTypeLabel(string userType) => userType switch
     {
         UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.ViewerOnly => UiStrings.Users.TypeViewerOnly,
         UserTypes.StationStaff => UiStrings.Users.TypeStationStaff,
         UserTypes.CustomerContact => UiStrings.Users.TypeCustomerContact,
         _ => userType

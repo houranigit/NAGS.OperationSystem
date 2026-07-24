@@ -317,18 +317,21 @@
                               ShowSearch="false" CountLabel="@UiStrings.OperationsDashboard.Flights"
                               EmptyText="@UiStrings.OperationsDashboard.NoFlights">
                     <Toolbar>
-                        <RowActionMenu Label="@UiStrings.OperationsDashboard.Export"
-                                       BusyLabel="@UiStrings.OperationsDashboard.Exporting"
-                                       ShowLabel="true" TriggerIcon="download" EndIcon="expand_more"
-                                       Disabled="@(isTableLoading || tableLoadError || flightTotalCount <= 0)"
-                                       Busy="@isExporting">
-                            <RowAction Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view"
-                                       OnClick="@(() => ExportAsync("xlsx"))" />
-                            <RowAction Text="@UiStrings.Flights.CsvFile" Icon="csv"
-                                       OnClick="@(() => ExportAsync("csv"))" />
-                            <RowAction Text="@UiStrings.Flights.PdfReport" Icon="picture_as_pdf"
-                                       OnClick="@(() => ExportAsync("pdf"))" />
-                        </RowActionMenu>
+                        @if (CanExport)
+                        {
+                            <RowActionMenu Label="@UiStrings.OperationsDashboard.Export"
+                                           BusyLabel="@UiStrings.OperationsDashboard.Exporting"
+                                           ShowLabel="true" TriggerIcon="download" EndIcon="expand_more"
+                                           Disabled="@(isTableLoading || tableLoadError || flightTotalCount <= 0)"
+                                           Busy="@isExporting">
+                                <RowAction Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view"
+                                           OnClick="@(() => ExportAsync("xlsx"))" />
+                                <RowAction Text="@UiStrings.Flights.CsvFile" Icon="csv"
+                                           OnClick="@(() => ExportAsync("csv"))" />
+                                <RowAction Text="@UiStrings.Flights.PdfReport" Icon="picture_as_pdf"
+                                           OnClick="@(() => ExportAsync("pdf"))" />
+                            </RowActionMenu>
+                        }
                     </Toolbar>
                     <Columns>
                         <RadzenDataGridColumn TItem="DashboardFlightRow" Property="FlightNumber"

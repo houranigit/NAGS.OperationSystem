@@ -49,7 +49,7 @@ public sealed class ApprovePerLandingFlightsCommandHandler(
         ApprovePerLandingFlightsCommand request,
         CancellationToken cancellationToken)
     {
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
 

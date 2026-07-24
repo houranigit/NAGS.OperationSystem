@@ -63,7 +63,7 @@ public sealed class ScheduleFlightCommandHandler(
                 "Operations.Flight.AssignForbidden");
         }
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
 
@@ -162,7 +162,7 @@ public sealed class ScheduleFlightsCommandHandler(
                 "Operations.Flight.AssignForbidden");
         }
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
 
@@ -306,7 +306,7 @@ public sealed class UpdateScheduledFlightCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
@@ -394,7 +394,7 @@ public sealed class ChangeFlightNumberCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
@@ -464,7 +464,7 @@ public sealed class AssignEmployeesCommandHandler(
 
         // Assign permission replaces the scheduled flight roster within the caller's data scope.
         // Invite permission uses the add-only command below.
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
@@ -555,7 +555,7 @@ public sealed class InviteEmployeesToFlightCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);

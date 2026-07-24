@@ -370,6 +370,7 @@
   <data name="Users.FilterByRole" xml:space="preserve"><value>All roles</value></data>
   <data name="Users.UserType" xml:space="preserve"><value>Account type</value></data>
   <data name="Users.TypeSystemAdministrator" xml:space="preserve"><value>System administrator</value></data>
+  <data name="Users.TypeViewerOnly" xml:space="preserve"><value>Viewer Only</value></data>
   <data name="Users.TypeStationStaff" xml:space="preserve"><value>Station staff</value></data>
   <data name="Users.TypeCustomerContact" xml:space="preserve"><value>Customer contact</value></data>
   <data name="Users.Lock" xml:space="preserve"><value>Lock</value></data>
@@ -384,7 +385,7 @@
   <data name="Users.Never" xml:space="preserve"><value>Never</value></data>
   <data name="Users.InviteTitle" xml:space="preserve"><value>Invite a user</value></data>
   <data name="Users.InviteIntro" xml:space="preserve"><value>Send an invitation so this person can set up their portal account.</value></data>
-  <data name="Users.InviteAdminNote" xml:space="preserve"><value>Direct user creation invites a System Administrator. Station staff and customer contacts are invited from their own records.</value></data>
+  <data name="Users.InviteAdminNote" xml:space="preserve"><value>Direct invitations support System Administrator and Viewer Only accounts. Station staff and customer contacts are invited from their own records.</value></data>
   <data name="Users.DisplayNameRequired" xml:space="preserve"><value>A display name is required.</value></data>
   <data name="Users.RoleRequired" xml:space="preserve"><value>Select a role to continue.</value></data>
   <data name="Users.NoAdminRoles" xml:space="preserve"><value>No System Administrator role is available.</value></data>
@@ -423,6 +424,7 @@
   <data name="Users.StatusDeactivatedDesc" xml:space="preserve"><value>This account is deactivated and cannot sign in.</value></data>
   <data name="Users.StatusLockedDesc" xml:space="preserve"><value>This account is temporarily locked out of signing in.</value></data>
   <data name="Users.ScopeFullAccess" xml:space="preserve"><value>Full system access</value></data>
+  <data name="Users.ScopeGlobalRead" xml:space="preserve"><value>Global read-only access</value></data>
   <data name="Users.ScopeStation" xml:space="preserve"><value>Station-scoped access</value></data>
   <data name="Users.ScopeCustomer" xml:space="preserve"><value>Customer-scoped access</value></data>
   <data name="Roles.Title" xml:space="preserve"><value>Roles</value></data>

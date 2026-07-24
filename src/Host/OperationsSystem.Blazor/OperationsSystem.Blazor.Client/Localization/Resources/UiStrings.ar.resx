@@ -370,6 +370,7 @@
   <data name="Users.FilterByRole" xml:space="preserve"><value>جميع الأدوار</value></data>
   <data name="Users.UserType" xml:space="preserve"><value>نوع الحساب</value></data>
   <data name="Users.TypeSystemAdministrator" xml:space="preserve"><value>مسؤول النظام</value></data>
+  <data name="Users.TypeViewerOnly" xml:space="preserve"><value>للعرض فقط</value></data>
   <data name="Users.TypeStationStaff" xml:space="preserve"><value>موظف المحطة</value></data>
   <data name="Users.TypeCustomerContact" xml:space="preserve"><value>جهة اتصال العميل</value></data>
   <data name="Users.Lock" xml:space="preserve"><value>قفل</value></data>
@@ -384,7 +385,7 @@
   <data name="Users.Never" xml:space="preserve"><value>أبداً</value></data>
   <data name="Users.InviteTitle" xml:space="preserve"><value>دعوة مستخدم</value></data>
   <data name="Users.InviteIntro" xml:space="preserve"><value>أرسل دعوة حتى يتمكن هذا الشخص من إعداد حساب البوابة الإلكترونية الخاص به.</value></data>
-  <data name="Users.InviteAdminNote" xml:space="preserve"><value>تؤدي دعوة المستخدم المباشرة إلى إنشاء مسؤول نظام. تتم دعوة موظفي المحطة وجهات اتصال العملاء من سجلاتهم الخاصة.</value></data>
+  <data name="Users.InviteAdminNote" xml:space="preserve"><value>تدعم الدعوات المباشرة حسابات مسؤول النظام والعرض فقط. تتم دعوة موظفي المحطة وجهات اتصال العملاء من سجلاتهم الخاصة.</value></data>
   <data name="Users.DisplayNameRequired" xml:space="preserve"><value>اسم العرض مطلوب.</value></data>
   <data name="Users.RoleRequired" xml:space="preserve"><value>حدد دورًا للمتابعة.</value></data>
   <data name="Users.NoAdminRoles" xml:space="preserve"><value>لا يوجد دور مسؤول نظام متاح.</value></data>
@@ -423,6 +424,7 @@
   <data name="Users.StatusDeactivatedDesc" xml:space="preserve"><value>هذا الحساب معطل ولا يمكنه تسجيل الدخول.</value></data>
   <data name="Users.StatusLockedDesc" xml:space="preserve"><value>هذا الحساب مقفل مؤقتًا ولا يمكنه تسجيل الدخول.</value></data>
   <data name="Users.ScopeFullAccess" xml:space="preserve"><value>وصول كامل للنظام</value></data>
+  <data name="Users.ScopeGlobalRead" xml:space="preserve"><value>وصول عالمي للقراءة فقط</value></data>
   <data name="Users.ScopeStation" xml:space="preserve"><value>وصول ضمن نطاق المحطة</value></data>
   <data name="Users.ScopeCustomer" xml:space="preserve"><value>وصول ضمن نطاق العميل</value></data>
   <data name="Roles.Title" xml:space="preserve"><value>الأدوار</value></data>

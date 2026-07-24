@@ -29,7 +29,7 @@ public sealed class ClaimPerLandingFlightCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var stationCheck = scopeResult.Value.EnsureStation(flight.Station.StationId);

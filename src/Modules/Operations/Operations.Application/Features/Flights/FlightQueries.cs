@@ -302,8 +302,8 @@ internal static class FlightListQuery
 
         // Station staff see their station's Per-Landing flights (station-wide) plus the flights they
         // are assigned to; holders of view-station (station dispatchers) see every flight at their
-        // station; admins see everything (optionally filtered).
-        if (!scope.IsAdministrator && scope.StationId is { } stationId)
+        // station; global readers see everything (optionally filtered).
+        if (!scope.HasGlobalReadAccess && scope.StationId is { } stationId)
         {
             query = query.Where(f => f.Station.StationId == stationId);
 
@@ -441,7 +441,7 @@ public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IO
             .Where(f => f.Status != FlightStatus.Merged)
             .Where(f => f.Schedule.Sta >= request.FromUtc && f.Schedule.Sta <= request.ToUtc);
 
-        if (!scopeResult.Value.IsAdministrator && scopeResult.Value.StationId is { } stationId)
+        if (!scopeResult.Value.HasGlobalReadAccess && scopeResult.Value.StationId is { } stationId)
         {
             query = query.Where(f => f.Station.StationId == stationId);
 

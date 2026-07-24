@@ -48,7 +48,7 @@ public sealed class UploadWorkOrderSignatureCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
@@ -116,7 +116,7 @@ public sealed class DeleteWorkOrderSignatureCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);

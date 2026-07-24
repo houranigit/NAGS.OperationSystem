@@ -43,7 +43,7 @@ public sealed class GetPerformedServiceOptionsQueryHandler(IMasterDataDbContext 
             query = query.Where(service => db.ManpowerTypeAllowedServices.Any(allowance =>
                 allowance.ManpowerTypeId == manpowerTypeId.Value && allowance.ServiceId == service.Id));
         }
-        else if (user.UserType != UserType.SystemAdministrator)
+        else if (user.UserType is not (UserType.SystemAdministrator or UserType.ViewerOnly))
         {
             return ScopeDenied();
         }

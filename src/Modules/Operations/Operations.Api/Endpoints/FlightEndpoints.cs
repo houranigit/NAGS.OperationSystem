@@ -101,7 +101,8 @@ internal static class FlightEndpoints
                 timeProvider.GetUtcNow());
 
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
-        }).RequirePermission(OperationsPermissions.Flights.Export)
+        }).RequirePermission(OperationsPermissions.Flights.View)
+            .RequirePermission(OperationsPermissions.Flights.Export)
             .WithName("ExportFlights");
 
         flights.MapGet("/per-landing-extract", async (
@@ -379,6 +380,7 @@ internal static class FlightEndpoints
                 timeProvider.GetUtcNow());
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics)
+            .RequirePermission(OperationsPermissions.Dashboard.Export)
             .WithTags("Operations.Dashboard")
             .WithName("ExportDashboardFlights");
     }

@@ -32,6 +32,40 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
     private sealed record CountryOption(Guid Id, string Name, string IsoCode);
 
     [Fact]
+    public async Task ViewerOnly_reads_stations_customers_staff_and_allocation_globally()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var stationA = await Helpers.CreateStationAsync(admin);
+        var stationB = await Helpers.CreateStationAsync(admin);
+        var customerA = await Helpers.CreateCustomerAsync(admin);
+        var customerB = await Helpers.CreateCustomerAsync(admin);
+        var manpower = await Helpers.CreateManpowerTypeAsync(admin);
+        var staffA = await Helpers.CreateStaffAsync(admin, stationA, manpower);
+        var staffB = await Helpers.CreateStaffAsync(admin, stationB, manpower);
+        var viewer = await ProvisionViewerClientAsync(admin);
+
+        var stations = await viewer.GetFromJsonAsync<PagedList<StationItem>>(
+            $"{Base}/stations?pageSize=100");
+        var customers = await viewer.GetFromJsonAsync<PagedList<CustomerItem>>(
+            $"{Base}/customers?pageSize=100");
+        var staff = await viewer.GetFromJsonAsync<PagedList<StaffItem>>(
+            $"{Base}/staff-members?pageSize=100");
+        var allocation = await viewer.GetAsync($"{Base}/staff-members/allocation");
+        var performedServiceOptions = await viewer.GetAsync($"{Base}/services/performed-options");
+
+        stations!.Items.ShouldContain(item => item.Id == stationA);
+        stations.Items.ShouldContain(item => item.Id == stationB);
+        customers!.Items.ShouldContain(item => item.Id == customerA);
+        customers.Items.ShouldContain(item => item.Id == customerB);
+        staff!.Items.ShouldContain(item => item.Id == staffA.Id);
+        staff.Items.ShouldContain(item => item.Id == staffB.Id);
+        allocation.StatusCode.ShouldBe(HttpStatusCode.OK, await allocation.Content.ReadAsStringAsync());
+        performedServiceOptions.StatusCode.ShouldBe(
+            HttpStatusCode.OK,
+            await performedServiceOptions.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Station_staff_only_sees_and_touches_its_own_station()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -404,6 +438,54 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
             "masterdata.staff-members.view", "masterdata.staff-members.update");
 
         return await ProvisionScopedStaffClientAsync(admin, staffId, email, roleId);
+    }
+
+    private async Task<HttpClient> ProvisionViewerClientAsync(HttpClient admin)
+    {
+        var roleId = await Helpers.CreateRoleAsync(
+            admin,
+            "ViewerOnly",
+            "masterdata.stations.view",
+            "masterdata.customers.view",
+            "masterdata.staff-members.view",
+            "masterdata.staff-allocation.view",
+            "masterdata.reference.view-options");
+        var suffix = Guid.NewGuid().ToString("N");
+        var email = $"viewer-scope-{suffix}@example.com";
+        var invitation = await admin.PostAsJsonAsync(
+            $"{IdentityBase}/users/invite",
+            new
+            {
+                email,
+                displayName = $"Viewer Scope {suffix[..8]}",
+                roleId
+            });
+        invitation.StatusCode.ShouldBe(
+            HttpStatusCode.Created,
+            await invitation.Content.ReadAsStringAsync());
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+
+        const string password = "Viewer#12345";
+        var activation = await admin.PostAsJsonAsync(
+            $"{IdentityBase}/auth/activate",
+            new { email, invitationToken, newPassword = password });
+        activation.StatusCode.ShouldBe(
+            HttpStatusCode.NoContent,
+            await activation.Content.ReadAsStringAsync());
+
+        var client = factory.CreateClient();
+        var login = await client.PostAsJsonAsync(
+            $"{IdentityBase}/auth/login",
+            new { email, password });
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var token = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        token.ShouldNotBeNull();
+        token!.AccessToken.ShouldNotBeNullOrWhiteSpace();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", token.AccessToken);
+        return client;
     }
 
     private async Task<HttpClient> ProvisionScopedStaffClientWithSeededRoleAsync(HttpClient admin, Guid staffId, string email, params string[] permissions)

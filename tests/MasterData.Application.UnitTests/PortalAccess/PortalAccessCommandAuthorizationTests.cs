@@ -79,6 +79,29 @@ public sealed class PortalAccessCommandAuthorizationTests
         result.Error.Code.ShouldBe("MasterData.PortalAccess.Forbidden");
     }
 
+    [Fact]
+    public async Task Grant_staff_portal_access_is_denied_by_write_scope_for_ViewerOnly_even_with_a_forged_claim()
+    {
+        var handler = new GrantStaffPortalAccessCommandHandler(
+            db: null!,
+            scope: new StaticMasterDataScope(
+                new MasterDataScopeContext(UserType.ViewerOnly, null, null)),
+            userContext: new TestUserContext(
+                UserType.ViewerOnly,
+                new HashSet<string>(StringComparer.Ordinal)
+                {
+                    MasterDataPermissions.StaffMembers.GrantAccess
+                }),
+            timeProvider: TimeProvider.System);
+
+        var result = await handler.Handle(
+            new GrantStaffPortalAccessCommand(Guid.NewGuid(), Guid.NewGuid(), [1]),
+            CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("MasterData.Scope.ReadOnly");
+    }
+
     private static IMasterDataScope AdminScope() =>
         new StaticMasterDataScope(new MasterDataScopeContext(UserType.SystemAdministrator, null, null));
 

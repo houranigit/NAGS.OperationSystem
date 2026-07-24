@@ -34,7 +34,8 @@ public sealed class AnyPermissionRequirement(IReadOnlyList<string> permissions) 
 /// <see cref="UserType"/> that the permission is compatible with (per the composed
 /// <see cref="IPermissionRegistry"/>). This is the server-side guarantee that a forged or
 /// mistakenly-stored permission cannot grant access to an incompatible account type: a Station
-/// Staff or Customer Contact token carrying an administrator-only permission is rejected.
+/// Staff, Customer Contact, or Viewer Only token carrying an incompatible mutation permission is
+/// rejected.
 /// </summary>
 public sealed class PermissionAuthorizationHandler(IPermissionRegistry permissionRegistry)
     : AuthorizationHandler<PermissionRequirement>

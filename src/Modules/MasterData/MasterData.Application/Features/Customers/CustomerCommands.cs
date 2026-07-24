@@ -183,7 +183,7 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
 {
     public async Task<Result> Handle(UpdateCustomerCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        var scopeCheck = await scope.CheckCustomerForWriteAsync(request.Id, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -262,7 +262,7 @@ public sealed class AddCustomerContactCommandHandler(
 {
     public async Task<Result<Guid>> Handle(AddCustomerContactCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckCustomerAsync(request.CustomerId, cancellationToken);
+        var scopeCheck = await scope.CheckCustomerForWriteAsync(request.CustomerId, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -342,7 +342,7 @@ public sealed class UpdateCustomerContactCommandHandler(IMasterDataDbContext db,
 {
     public async Task<Result> Handle(UpdateCustomerContactCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckCustomerAsync(request.CustomerId, cancellationToken);
+        var scopeCheck = await scope.CheckCustomerForWriteAsync(request.CustomerId, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -405,7 +405,7 @@ public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMast
     public async Task<Result<string>> Handle(SetCustomerLogoCommand request, CancellationToken cancellationToken)
     {
         // Logo upload is a customer sub-operation and must honor the caller's data scope.
-        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        var scopeCheck = await scope.CheckCustomerForWriteAsync(request.Id, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -483,7 +483,7 @@ public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, IMas
 {
     public async Task<Result> Handle(ActivateCustomerCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        var scopeCheck = await scope.CheckCustomerForWriteAsync(request.Id, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -514,7 +514,7 @@ public sealed class DeactivateCustomerCommandHandler(IMasterDataDbContext db, IM
 {
     public async Task<Result> Handle(DeactivateCustomerCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckCustomerAsync(request.Id, cancellationToken);
+        var scopeCheck = await scope.CheckCustomerForWriteAsync(request.Id, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 

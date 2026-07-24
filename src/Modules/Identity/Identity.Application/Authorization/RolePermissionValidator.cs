@@ -23,6 +23,23 @@ public static class RolePermissionValidator
                     "Identity.Role.IncompatiblePermission");
         }
 
+        if (userType == UserType.ViewerOnly)
+        {
+            var requestedCodes = requested.ToHashSet(StringComparer.Ordinal);
+            var grantsPortalPage = registry.All.Any(
+                descriptor =>
+                    descriptor.GrantsPortalPage &&
+                    descriptor.IsCompatibleWith(userType) &&
+                    requestedCodes.Contains(descriptor.Code));
+
+            if (!grantsPortalPage)
+            {
+                return Error.Validation(
+                    "A Viewer Only role must grant access to at least one portal page.",
+                    "Identity.Role.ViewerPagePermissionRequired");
+            }
+        }
+
         return Result.Success();
     }
 }

@@ -40,6 +40,33 @@ public sealed class FlightQueryTests
     }
 
     [Fact]
+    public async Task GetFlights_ViewerOnly_reads_flights_across_stations()
+    {
+        await using var db = NewDb();
+        var first = CreateScheduledFlight(
+            customerIata: "RJ",
+            customerName: "Royal Jordanian",
+            flightNumber: "1",
+            stationId: Guid.NewGuid());
+        var second = CreateScheduledFlight(
+            customerIata: "SV",
+            customerName: "Saudia",
+            flightNumber: "2",
+            stationId: Guid.NewGuid());
+        db.Flights.AddRange(first, second);
+        await db.SaveChangesAsync();
+
+        var result = await new GetFlightsQueryHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.ViewerOnly, null, null)))
+            .Handle(new GetFlightsQuery(PageSize: 100), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Items.Select(flight => flight.Id)
+            .ShouldBe([first.Id, second.Id], ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task GetSchedulerCalendar_FiltersByStatusStationAndCustomer()
     {
         await using var db = NewDb();

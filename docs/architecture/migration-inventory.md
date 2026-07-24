@@ -133,8 +133,8 @@ See `docs/modules/operations-foundation.md` (domain design, incl. the 2026-07-04
 | Feature | Status | Old reference files | New location | Notes |
 |---|---|---|---|---|
 | Automatic EF change-capture audit trail | done | `BuildingBlocks.Infrastructure/Persistence/BaseDbContext.cs`, `Persistence/Models/AuditTrail.cs`, `Core.Infrastructure/Persistence/CoreDbContext.cs` | `Audit.Infrastructure` (`audit.audit_trails`) | New Audit module. `AuditSaveChangesInterceptor` captures `IAuditable` create/update deltas into each module's outbox in the same transaction; the Audit consumer persists them (inbox-idempotent). User/Role marked `IAuditable` (MasterData aggregates pending Phase 3). |
-| Business/security event audit | partial | `Audit.Domain/Enumerations/SecurityEventType.cs`, `Audit.Contracts/SecurityEvent/SecurityEventDto.cs` | `BuildingBlocks.Contracts.Auditing.AuditEntryRecorded` + `db.EnqueueAudit(...)` | Cross-cutting event + explicit-event helper available. Read API `GET /api/v1/audit/trails(/{id})` is admin-only and append-only; secrets redacted via `AuditRedaction`. Explicit lifecycle/login/MFA events expanded in Phase 2. |
-| Audit read API + permissions | done | — | `Audit.Api`, `Audit.Domain/Authorization/AuditPermissions.cs` | `audit.trails.view` (SystemAdministrator-only); no write/delete endpoints; retained indefinitely for MVP. |
+| Business/security event audit | partial | `Audit.Domain/Enumerations/SecurityEventType.cs`, `Audit.Contracts/SecurityEvent/SecurityEventDto.cs` | `BuildingBlocks.Contracts.Auditing.AuditEntryRecorded` + `db.EnqueueAudit(...)` | Cross-cutting event + explicit-event helper available. Read API `GET /api/v1/audit/trails(/{id})` is permission-gated and append-only; secrets redacted via `AuditRedaction`. Explicit lifecycle/login/MFA events expanded in Phase 2. |
+| Audit read API + permissions | done | — | `Audit.Api`, `Audit.Domain/Authorization/AuditPermissions.cs` | `audit.trails.view` is compatible with SystemAdministrator and ViewerOnly roles; no write/delete endpoints; retained indefinitely for MVP. |
 
 ### BuildingBlocks (shared foundation)
 

@@ -198,7 +198,7 @@ public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMaster
 {
     public async Task<Result> Handle(UpdateStationCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckStationAsync(request.Id, cancellationToken);
+        var scopeCheck = await scope.CheckStationForWriteAsync(request.Id, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -244,7 +244,7 @@ public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, IMast
 {
     public async Task<Result> Handle(ActivateStationCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckStationAsync(request.Id, cancellationToken);
+        var scopeCheck = await scope.CheckStationForWriteAsync(request.Id, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 
@@ -273,7 +273,7 @@ public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, IMa
 {
     public async Task<Result> Handle(DeactivateStationCommand request, CancellationToken cancellationToken)
     {
-        var scopeCheck = await scope.CheckStationAsync(request.Id, cancellationToken);
+        var scopeCheck = await scope.CheckStationForWriteAsync(request.Id, cancellationToken);
         if (scopeCheck.IsFailure)
             return scopeCheck.Error;
 

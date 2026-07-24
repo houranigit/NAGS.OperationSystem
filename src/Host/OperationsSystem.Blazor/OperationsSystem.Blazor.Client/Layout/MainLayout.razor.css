@@ -11,6 +11,17 @@
     overflow: hidden;
 }
 
+.os-shell--sidebarless {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.os-shell--sidebarless .os-sidebar,
+.os-shell--sidebarless .os-scrim,
+.os-shell--sidebarless .os-rail-toggle,
+.os-shell--sidebarless .os-nav-toggle {
+    display: none;
+}
+
 /* --- Sidebar ------------------------------------------------------------- */
 .os-sidebar {
     position: sticky;

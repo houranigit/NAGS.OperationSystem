@@ -219,29 +219,12 @@
 
     private void NavigateAfterLogin()
     {
-        Navigation.NavigateTo(SafeReturnUrl(), replace: true);
-    }
-
-    private string SafeReturnUrl()
-    {
-        if (string.IsNullOrWhiteSpace(ReturnUrl))
-            return "/";
-
-        var candidate = ReturnUrl.Trim();
-        if (candidate.StartsWith("//", StringComparison.Ordinal) ||
-            candidate.Contains('\\') ||
-            !Uri.TryCreate(candidate, UriKind.Relative, out _))
-        {
-            return "/";
-        }
-
-        if (!candidate.StartsWith("/", StringComparison.Ordinal))
-            candidate = "/" + candidate;
-
-        var path = candidate.Split(['?', '#'], 2)[0].Trim('/');
-        return string.Equals(path, "login", StringComparison.OrdinalIgnoreCase)
-            ? "/"
-            : candidate;
+        var user = Auth.User;
+        var destination = PortalNavigationPolicy.ResolvePostLogin(
+            user?.UserType,
+            user?.Permissions ?? [],
+            ReturnUrl);
+        Navigation.NavigateTo(destination, replace: true);
     }
 
     private async void OnAuthStateChanged()

@@ -431,6 +431,7 @@ public static class UiStrings
         public static string FilterByRole => UiText.Get("Users.FilterByRole", "All roles");
         public static string UserType => UiText.Get("Users.UserType", "Account type");
         public static string TypeSystemAdministrator => UiText.Get("Users.TypeSystemAdministrator", "System administrator");
+        public static string TypeViewerOnly => UiText.Get("Users.TypeViewerOnly", "Viewer Only");
         public static string TypeStationStaff => UiText.Get("Users.TypeStationStaff", "Station staff");
         public static string TypeCustomerContact => UiText.Get("Users.TypeCustomerContact", "Customer contact");
         public static string Lock => UiText.Get("Users.Lock", "Lock");
@@ -445,7 +446,7 @@ public static class UiStrings
         public static string Never => UiText.Get("Users.Never", "Never");
         public static string InviteTitle => UiText.Get("Users.InviteTitle", "Invite a user");
         public static string InviteIntro => UiText.Get("Users.InviteIntro", "Send an invitation so this person can set up their portal account.");
-        public static string InviteAdminNote => UiText.Get("Users.InviteAdminNote", "Direct user creation invites a System Administrator. Station staff and customer contacts are invited from their own records.");
+        public static string InviteAdminNote => UiText.Get("Users.InviteAdminNote", "Direct invitations support System Administrator and Viewer Only accounts. Station staff and customer contacts are invited from their own records.");
         public static string DisplayNameRequired => UiText.Get("Users.DisplayNameRequired", "A display name is required.");
         public static string RoleRequired => UiText.Get("Users.RoleRequired", "Select a role to continue.");
         public static string NoAdminRoles => UiText.Get("Users.NoAdminRoles", "No System Administrator role is available.");
@@ -484,6 +485,7 @@ public static class UiStrings
         public static string StatusDeactivatedDesc => UiText.Get("Users.StatusDeactivatedDesc", "This account is deactivated and cannot sign in.");
         public static string StatusLockedDesc => UiText.Get("Users.StatusLockedDesc", "This account is temporarily locked out of signing in.");
         public static string ScopeFullAccess => UiText.Get("Users.ScopeFullAccess", "Full system access");
+        public static string ScopeGlobalRead => UiText.Get("Users.ScopeGlobalRead", "Global read-only access");
         public static string ScopeStation => UiText.Get("Users.ScopeStation", "Station-scoped access");
         public static string ScopeCustomer => UiText.Get("Users.ScopeCustomer", "Customer-scoped access");
     }

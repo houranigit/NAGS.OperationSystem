@@ -9,7 +9,7 @@ namespace Identity.Domain.Users;
 /// <summary>
 /// A login account. Created via invitation (no password) and activated by the invitee setting
 /// a password. Has exactly one role for v1.0.0. Supports lockout and a status lifecycle.
-/// Carries its fixed <see cref="UserType"/> (business identity/data scope) and, for non-admin
+/// Carries its fixed <see cref="UserType"/> (business identity/data scope) and, for linked
 /// accounts, the <see cref="ExternalReferenceId"/> of the originating MasterData record.
 /// </summary>
 public sealed class User : AggregateRoot<Guid>, IAuditable
@@ -95,8 +95,14 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
         if (roleId == Guid.Empty)
             return Error.Validation("A role is required.", "Identity.User.RoleRequired");
 
-        if (userType != UserType.SystemAdministrator && (externalReferenceId is null || externalReferenceId == Guid.Empty))
-            return Error.Validation("A non-administrator account requires an external reference.", "Identity.User.ExternalReferenceRequired");
+        if (!Enum.IsDefined(userType))
+            return Error.Validation("The account type is invalid.", "Identity.User.UserTypeInvalid");
+
+        if (userType.RequiresExternalReference() && (externalReferenceId is null || externalReferenceId == Guid.Empty))
+            return Error.Validation("A linked account requires an external reference.", "Identity.User.ExternalReferenceRequired");
+
+        if (userType.IsDirectlyProvisioned() && externalReferenceId is not null)
+            return Error.Validation("A directly provisioned account cannot have an external reference.", "Identity.User.ExternalReferenceNotAllowed");
 
         var user = new User
         {

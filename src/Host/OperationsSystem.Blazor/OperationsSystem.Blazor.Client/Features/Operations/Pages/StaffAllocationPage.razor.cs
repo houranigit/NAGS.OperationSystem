@@ -23,7 +23,9 @@ public partial class StaffAllocationPage
     private bool loadError;
     private bool isMoving;
 
-    private bool CanReassignStaff => Auth.HasPermission(MasterDataPermissions.StaffAllocationReassign);
+    private bool CanReassignStaff =>
+        Auth.IsSystemAdministrator
+        && Auth.HasPermission(MasterDataPermissions.StaffAllocationReassign);
     private bool HasFilters => manpowerFilter is not null || licenseFilter is not null || !string.IsNullOrWhiteSpace(searchTerm);
 
     private int TotalManpowerTypes => overview?.StaffMembers
@@ -105,7 +107,7 @@ public partial class StaffAllocationPage
 
     protected override async Task OnInitializedAsync()
     {
-        if (Auth.IsSystemAdministrator)
+        if (Auth.HasGlobalReadScope)
             await LoadAsync();
         else
             isLoading = false;

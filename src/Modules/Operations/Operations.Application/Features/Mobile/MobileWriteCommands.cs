@@ -482,7 +482,7 @@ public sealed class MobileCreateScratchWorkOrderCommandHandler(
             return Error.Conflict("This ad-hoc flight was already submitted.", "Operations.Mobile.ScratchFlightDuplicate");
 
         // The mobile client cannot pick the station; it is forced to the caller's own station.
-        var scopeResult = MobileScope.EnsureStationStaff(await scope.ResolveAsync(cancellationToken));
+        var scopeResult = MobileScope.EnsureStationStaff(await scope.ResolveForWriteAsync(cancellationToken));
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var stationId = scopeResult.Value.StationId!.Value;

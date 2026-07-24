@@ -17,7 +17,7 @@ public interface IUserContext
     /// <summary>The caller's user type, or null when unauthenticated or the claim is absent.</summary>
     public UserType? UserType { get; }
 
-    /// <summary>The linked MasterData record id for scoped accounts; null for System Administrators.</summary>
+    /// <summary>The linked MasterData record id for linked accounts; null for direct account types.</summary>
     public Guid? ExternalReferenceId { get; }
 
     /// <summary>

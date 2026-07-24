@@ -15,7 +15,7 @@ internal static class AuditTrailEndpoints
     {
         var trails = group.MapGroup("/trails").WithTags("Audit.Trails");
 
-        // Administrator-only, paginated, filtered by subject/entity/actor/action. Read-only:
+        // Permission-gated, paginated, filtered by subject/entity/actor/action. Read-only:
         // there are deliberately no write or delete endpoints.
         trails.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20,

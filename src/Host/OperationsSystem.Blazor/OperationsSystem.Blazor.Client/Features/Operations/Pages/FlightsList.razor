@@ -455,7 +455,11 @@
 
     private async Task ExportAsync(string format)
     {
-        if (isExporting || isLoading || loadError || totalCount <= 0)
+        if (!Auth.HasPermission(OperationsPermissions.FlightsExport) ||
+            isExporting ||
+            isLoading ||
+            loadError ||
+            totalCount <= 0)
             return;
 
         isExporting = true;

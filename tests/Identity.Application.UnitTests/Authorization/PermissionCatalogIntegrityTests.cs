@@ -88,7 +88,7 @@ public sealed class PermissionCatalogIntegrityTests
     }
 
     [Fact]
-    public void Staff_allocation_permissions_are_known_and_administrator_only()
+    public void Staff_allocation_permissions_have_expected_user_type_compatibility()
     {
         var registry = Registry();
         string[] permissions =
@@ -109,7 +109,72 @@ public sealed class PermissionCatalogIntegrityTests
             registry.IsCompatibleWith(permission, UserType.SystemAdministrator).ShouldBeTrue();
             registry.IsCompatibleWith(permission, UserType.StationStaff).ShouldBeFalse();
             registry.IsCompatibleWith(permission, UserType.CustomerContact).ShouldBeFalse();
+            registry.IsCompatibleWith(permission, UserType.ViewerOnly)
+                .ShouldBe(permission == MasterDataPermissions.StaffAllocation.View);
         }
+    }
+
+    [Fact]
+    public void Viewer_only_permission_allowlist_and_portal_pages_are_exact()
+    {
+        var registry = Registry();
+        string[] expectedPermissions =
+        [
+            IdentityPermissions.Users.View,
+            IdentityPermissions.Roles.View,
+            IdentityPermissions.Sessions.View,
+            AuditPermissions.Trails.View,
+            MasterDataPermissions.Reference.ViewOptions,
+            MasterDataPermissions.Countries.View,
+            MasterDataPermissions.ManpowerTypes.View,
+            MasterDataPermissions.Licenses.View,
+            MasterDataPermissions.Services.View,
+            MasterDataPermissions.OperationTypes.View,
+            MasterDataPermissions.AircraftTypes.View,
+            MasterDataPermissions.Tools.View,
+            MasterDataPermissions.Materials.View,
+            MasterDataPermissions.GeneralSupports.View,
+            MasterDataPermissions.Stations.View,
+            MasterDataPermissions.StaffMembers.View,
+            MasterDataPermissions.StaffAllocation.View,
+            MasterDataPermissions.Customers.View,
+            OperationsPermissions.Dashboard.View,
+            OperationsPermissions.Dashboard.ViewAnalytics,
+            OperationsPermissions.Dashboard.Export,
+            OperationsPermissions.Flights.View,
+            OperationsPermissions.Flights.Export,
+            OperationsPermissions.WorkOrders.View
+        ];
+        string[] expectedPortalPages =
+        [
+            IdentityPermissions.Users.View,
+            IdentityPermissions.Roles.View,
+            AuditPermissions.Trails.View,
+            MasterDataPermissions.Countries.View,
+            MasterDataPermissions.ManpowerTypes.View,
+            MasterDataPermissions.Licenses.View,
+            MasterDataPermissions.Services.View,
+            MasterDataPermissions.OperationTypes.View,
+            MasterDataPermissions.AircraftTypes.View,
+            MasterDataPermissions.Tools.View,
+            MasterDataPermissions.Materials.View,
+            MasterDataPermissions.GeneralSupports.View,
+            MasterDataPermissions.Stations.View,
+            MasterDataPermissions.StaffMembers.View,
+            MasterDataPermissions.StaffAllocation.View,
+            MasterDataPermissions.Customers.View,
+            OperationsPermissions.Dashboard.View,
+            OperationsPermissions.Dashboard.ViewAnalytics,
+            OperationsPermissions.Flights.View,
+            OperationsPermissions.WorkOrders.View
+        ];
+
+        registry.CompatiblePermissions(UserType.ViewerOnly)
+            .ShouldBe(expectedPermissions, ignoreOrder: true);
+        registry.All
+            .Where(descriptor => descriptor.IsCompatibleWith(UserType.ViewerOnly) && descriptor.GrantsPortalPage)
+            .Select(descriptor => descriptor.Code)
+            .ShouldBe(expectedPortalPages, ignoreOrder: true);
     }
 
     [Theory]

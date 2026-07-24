@@ -171,6 +171,10 @@
                             <dt>@UiStrings.Users.Role</dt>
                             <dd>@u.RoleName</dd>
                         </div>
+                        <div class="us-metric">
+                            <dt>@UiStrings.Users.UserType</dt>
+                            <dd>@UserTypeLabel(u.UserType)</dd>
+                        </div>
                         @if (roleDetail is { } role)
                         {
                             <div class="us-metric">
@@ -766,12 +770,22 @@
 
     private static bool IsIndefiniteLockout(DateTimeOffset value) => value.UtcDateTime.Year >= 9000;
 
+    private static string UserTypeLabel(string userType) => userType switch
+    {
+        UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.ViewerOnly => UiStrings.Users.TypeViewerOnly,
+        UserTypes.StationStaff => UiStrings.Users.TypeStationStaff,
+        UserTypes.CustomerContact => UiStrings.Users.TypeCustomerContact,
+        _ => userType
+    };
+
     private string AccessScope(UserDetail u)
     {
-        var type = roleDetail?.CompatibleUserType;
+        var type = roleDetail?.CompatibleUserType ?? u.UserType;
         return type switch
         {
             UserTypes.SystemAdministrator => UiStrings.Users.ScopeFullAccess,
+            UserTypes.ViewerOnly => UiStrings.Users.ScopeGlobalRead,
             UserTypes.StationStaff => UiStrings.Users.ScopeStation,
             UserTypes.CustomerContact => UiStrings.Users.ScopeCustomer,
             _ => UiStrings.Users.ScopeFullAccess

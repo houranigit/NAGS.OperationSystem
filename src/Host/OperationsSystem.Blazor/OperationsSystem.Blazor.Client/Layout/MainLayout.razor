@@ -12,10 +12,12 @@
 <RadzenTooltip />
 <RadzenContextMenu />
 
-<div class="os-shell @(navOpen ? "os-shell--nav-open" : null) @(railCollapsed ? "os-shell--rail" : null)">
-    <div class="os-scrim" @onclick="CloseNav"></div>
+<div class="os-shell @(navOpen ? "os-shell--nav-open" : null) @(railCollapsed ? "os-shell--rail" : null) @(!ShowSidebar ? "os-shell--sidebarless" : null)">
+    @if (ShowSidebar)
+    {
+        <div class="os-scrim" @onclick="CloseNav"></div>
 
-    <aside class="os-sidebar" aria-label="Primary navigation">
+        <aside class="os-sidebar" aria-label="Primary navigation">
         <div class="os-brand">
             <span class="os-brand-mark">
                 <img src="/branding/portal-icon.png" alt="@UiStrings.App.Name" width="28" height="28" />
@@ -27,10 +29,13 @@
         </div>
 
         <nav class="os-nav">
-            <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link os-nav-link--root" title="@UiStrings.Nav.Dashboard" @onclick="CloseNav">
-                <RadzenIcon Icon="dashboard" />
-                <span>@UiStrings.Nav.Dashboard</span>
-            </NavLink>
+            @if (CanShowDashboardNavigation)
+            {
+                <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link os-nav-link--root" title="@UiStrings.Nav.Dashboard" @onclick="CloseNav">
+                    <RadzenIcon Icon="dashboard" />
+                    <span>@UiStrings.Nav.Dashboard</span>
+                </NavLink>
+            }
 
             <AuthorizeView Context="users">
                 @{
@@ -83,7 +88,7 @@
                     var canOpsDashboard = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.DashboardAnalyticsView);
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
                     var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
-                    var canStaffAllocation = Auth.IsSystemAdministrator
+                    var canStaffAllocation = Auth.HasGlobalReadScope
                         && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffAllocationView);
                     var canOperations = canOpsDashboard || canOpsFlights || canOpsWorkOrders || canStaffAllocation;
                     var operationsActive = IsNavGroupActive("operations");
@@ -259,18 +264,22 @@
         <div class="os-sidebar-foot">
             <span class="os-version-tag">@UiStrings.App.Version</span>
         </div>
-    </aside>
+        </aside>
+    }
 
     <div class="os-main">
         <header class="os-topbar">
             <div class="os-topbar-lead">
-                <button type="button" class="os-icon-btn os-rail-toggle" aria-label="@UiStrings.Nav.ToggleMenu"
-                        aria-expanded="@(!railCollapsed ? "true" : "false")" @onclick="ToggleRail">
-                    <RadzenIcon Icon="menu" />
-                </button>
-                <button type="button" class="os-icon-btn os-nav-toggle" aria-label="@UiStrings.Nav.ToggleMenu" @onclick="ToggleNav">
-                    <RadzenIcon Icon="menu" />
-                </button>
+                @if (ShowSidebar)
+                {
+                    <button type="button" class="os-icon-btn os-rail-toggle" aria-label="@UiStrings.Nav.ToggleMenu"
+                            aria-expanded="@(!railCollapsed ? "true" : "false")" @onclick="ToggleRail">
+                        <RadzenIcon Icon="menu" />
+                    </button>
+                    <button type="button" class="os-icon-btn os-nav-toggle" aria-label="@UiStrings.Nav.ToggleMenu" @onclick="ToggleNav">
+                        <RadzenIcon Icon="menu" />
+                    </button>
+                }
                 <span class="os-topbar-title">@UiStrings.App.Portal</span>
             </div>
 
@@ -350,6 +359,10 @@
     private readonly HashSet<string> expandedNavGroups = new(StringComparer.Ordinal);
 
     private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
+    private bool ShowSidebar => Auth.User is not { } user
+        || PortalNavigationPolicy.ShouldShowSidebar(user.UserType, user.Permissions);
+    private bool CanShowDashboardNavigation =>
+        !Auth.IsViewerOnly || Auth.HasPermission(OperationsPermissions.DashboardView);
 
     protected override async Task OnInitializedAsync()
     {
@@ -361,6 +374,7 @@
         NotificationsRealtime.Connected += OnNotificationsConnected;
         ExpandActiveNavGroup();
         RedirectToMfaEnrollmentIfNeeded();
+        RedirectViewerFromUnavailableRoot();
         await SyncNotificationsForAuthAsync();
     }
 
@@ -509,6 +523,22 @@
             Navigation.NavigateTo("/account", replace: true);
     }
 
+    private void RedirectViewerFromUnavailableRoot()
+    {
+        if (RequiresMfaEnrollment ||
+            !Auth.IsViewerOnly ||
+            CurrentPath.Length != 0 ||
+            Auth.HasPermission(OperationsPermissions.DashboardView) ||
+            Auth.User is not { } user)
+        {
+            return;
+        }
+
+        Navigation.NavigateTo(
+            PortalNavigationPolicy.ResolveLandingPage(user.Permissions),
+            replace: true);
+    }
+
     private async void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
         try
@@ -517,6 +547,7 @@
             {
                 ExpandActiveNavGroup();
                 RedirectToMfaEnrollmentIfNeeded();
+                RedirectViewerFromUnavailableRoot();
                 StateHasChanged();
             });
         }
@@ -535,6 +566,7 @@
                 await SyncNotificationsForAuthAsync();
                 ExpandActiveNavGroup();
                 RedirectToMfaEnrollmentIfNeeded();
+                RedirectViewerFromUnavailableRoot();
                 StateHasChanged();
             });
         }

@@ -486,6 +486,7 @@
     private static string UserTypeLabel(string userType) => userType switch
     {
         UserTypes.SystemAdministrator => UiStrings.Users.TypeSystemAdministrator,
+        UserTypes.ViewerOnly => UiStrings.Users.TypeViewerOnly,
         UserTypes.StationStaff => UiStrings.Users.TypeStationStaff,
         UserTypes.CustomerContact => UiStrings.Users.TypeCustomerContact,
         _ => userType

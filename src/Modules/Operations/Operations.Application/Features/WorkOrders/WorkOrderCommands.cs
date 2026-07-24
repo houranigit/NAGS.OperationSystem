@@ -58,7 +58,7 @@ public sealed class SubmitWorkOrderCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var flightAccess = scopeResult.Value.EnsureFlightAccess(flight);
@@ -180,7 +180,7 @@ public sealed class UpdateWorkOrderCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
@@ -294,7 +294,7 @@ public sealed class DeleteWorkOrderCommandHandler(
         if (workOrder is null)
             return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
@@ -376,7 +376,7 @@ public sealed class ApproveWorkOrderCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var station = scopeResult.Value.EnsureStation(workOrder.Station.StationId);
@@ -467,7 +467,7 @@ public sealed class ReturnWorkOrderCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var station = scopeResult.Value.EnsureStation(workOrder.Station.StationId);
@@ -561,7 +561,7 @@ public sealed class MergeWorkOrdersCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var station = scopeResult.Value.EnsureStation(flight.Station.StationId);

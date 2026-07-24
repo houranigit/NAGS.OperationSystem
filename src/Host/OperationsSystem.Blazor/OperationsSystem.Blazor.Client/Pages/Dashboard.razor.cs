@@ -44,6 +44,9 @@ public partial class Dashboard : IAsyncDisposable
     private bool HasMasterDataAccess =>
         CanViewCustomers || CanViewStations || CanViewServices || CanViewAircraftTypes || CanViewStaffMembers;
 
+    private bool CanAccessRootDashboard =>
+        !Auth.IsViewerOnly || Auth.HasPermission(OperationsPermissions.DashboardView);
+
     private bool HasFlightOperations => CanViewFlightSummary || CanViewFlights;
     private bool HasLiveOperations => HasFlightOperations || CanViewWorkOrders;
     private bool HasDashboardDataAccess => HasMasterDataAccess || HasLiveOperations;
@@ -121,7 +124,24 @@ public partial class Dashboard : IAsyncDisposable
     protected override void OnInitialized()
     {
         Auth.StateChanged += OnAuthStateChanged;
-        TryStartPolling();
+        if (!RedirectViewerFromUnavailableDashboard())
+            TryStartPolling();
+    }
+
+    private bool RedirectViewerFromUnavailableDashboard()
+    {
+        if (Auth.Status != AuthStatus.Authenticated ||
+            !Auth.IsViewerOnly ||
+            Auth.HasPermission(OperationsPermissions.DashboardView) ||
+            Auth.User is not { } user)
+        {
+            return false;
+        }
+
+        Navigation.NavigateTo(
+            PortalNavigationPolicy.ResolveLandingPage(user.Permissions),
+            replace: true);
+        return true;
     }
 
     private void TryStartPolling()
@@ -361,7 +381,7 @@ public partial class Dashboard : IAsyncDisposable
     {
         try
         {
-            if (Auth.Status == AuthStatus.Authenticated)
+            if (Auth.Status == AuthStatus.Authenticated && !RedirectViewerFromUnavailableDashboard())
                 TryStartPolling();
             else if (Auth.Status == AuthStatus.Anonymous)
                 lifetimeCts.Cancel();

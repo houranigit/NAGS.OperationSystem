@@ -44,8 +44,9 @@ Note: the operational workforce person is **`StaffMember`** (owned by MasterData
 - **Scheduler / Ops Planner** — creates and schedules flights from the portal.
 - **Station Staff** — completes work orders (in the field / portal), can create ad-hoc flights, and can cancel their own station's flights.
 - **Operations Admin / Reviewer** — approves work orders (which locks them and sends them to billing), returns approved work orders to review, cancels/reopens flights, and resolves duplicates/merges.
+- **Viewer Only / Executive** — has global, permission-filtered read access to selected portal pages and may receive report-export permissions separately, but cannot mutate operational data.
 
-There is **no** cross-station read-only oversight role in this release.
+Viewer Only provides the explicit cross-station read-only oversight account type. Its Role determines which pages are visible; it does not inherit administrative write authority.
 
 ## 5. Core Workflows
 
@@ -200,7 +201,7 @@ Cancellation means **the customer cancelled the flight**. Because the customer m
 - Crew assignment at scheduling is **optional**; employees can be assigned later.
 - **Non-Per-Landing** flights are visible only to their **assigned employees** (plus schedulers/admins).
 - **Per-Landing** flights are visible **station-wide**; any station employee can claim/serve them.
-- **Station scoping:** Station Staff see only their own station's flights; Schedulers and Admins see all stations. Fail closed if the caller's linked StaffMember or its station is inactive.
+- **Station scoping:** Station Staff see only their own station's flights; Schedulers and Admins see all stations. Viewer Only accounts have global read scope but retain no write scope. Fail closed if a Station Staff caller's linked StaffMember or station is inactive.
 - **Backend-enforced on reads AND writes:** visibility is enforced server-side (`OperationsScopeContext.EnsureFlightAccess`) across flight list/calendar/detail/timeline queries, work-order detail and review-queue queries, and every authoring path — never only in the UI.
 - **Assigned staff can invite:** an already-assigned staff member may assign/invite other employees onto the flight; admins/schedulers are unrestricted.
 
@@ -281,7 +282,8 @@ Service lines and task lines **both support multiple employees**.
 
 - Scheduler calendar (period, station- and assignment-scoped; portal page at `/operations/calendar` shows scheduled and ad-hoc flights).
 - Flights list (paged; filters: status/station/customer/date; scope- and assignment-aware).
-- Flight export (Excel/PDF/CSV; `Completed`/`Canceled` rows use the approved work order,
+- Flight export (Excel/PDF/CSV; requires both `operations.flights.view` and the separately granted
+  `operations.flights.export`; `Completed`/`Canceled` rows use the approved work order,
   `InProgress` rows use the newest submitted or returned work order, and `Scheduled` rows keep
   work-order columns empty).
 - Flight detail (schedule, crew, planned services, work orders with owners, captured approved work-order values, lifecycle timeline).
@@ -289,7 +291,9 @@ Service lines and task lines **both support multiple employees**.
 - Work order review/detail (services, tasks, resources, actuals, owner, signature) — access-scoped.
 - Review queue (submitted work orders) — access-scoped for station staff.
 - Duplicate candidates + merge-conflict resolution screen.
-- Operations dashboard / KPIs.
+- Operations dashboard / KPIs. Viewing analytics requires `operations.dashboard.view-analytics`;
+  downloading its Excel/PDF/CSV flight report additionally requires
+  `operations.dashboard.export`.
 
 ## 16. Dependencies
 
@@ -364,3 +368,4 @@ All previously open questions are now decided; there are no blocking open items.
 - 2026-07-04 — Work-order-first portal flow collects flight planning fields AND work-order actual fields in one dialog; the created flight appears on the calendar and list immediately. Portal calendar page added at `/operations/calendar`.
 - 2026-07-18 — Retired the seeded On Call service. On Call is now derived for a Per-Landing flight from any non-merged work order with at least one performed service line; Per-Landing work orders start empty and staff record only services actually performed.
 - 2026-07-20 — Performed service lines now persist and expose multiple employees, matching task employee selection across the portal and mobile app. Flight exports keep their existing columns and formatting while sourcing work-order values for `InProgress` rows from the latest submitted/returned work order; `Scheduled` rows remain empty.
+- 2026-07-24 — Viewer Only provides global, permission-filtered read access for executive oversight. Operations Dashboard and Flights report downloads require explicit export permissions in addition to their page-view permissions.

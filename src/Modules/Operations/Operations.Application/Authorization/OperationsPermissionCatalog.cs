@@ -12,14 +12,15 @@ namespace Operations.Application.Authorization;
 public sealed class OperationsPermissionCatalog : IPermissionCatalog
 {
     private static readonly UserType[] AdminAndStation = [SystemAdministrator, StationStaff];
+    private static readonly UserType[] AdminStationViewer = [SystemAdministrator, StationStaff, ViewerOnly];
     private static readonly UserType[] AdminOnly = [SystemAdministrator];
 
     public string Module => "operations";
 
     public IReadOnlyList<PermissionDescriptor> Permissions { get; } =
     [
-        new(OperationsPermissions.Flights.View, AdminAndStation),
-        new(OperationsPermissions.Flights.Export, AdminAndStation),
+        new(OperationsPermissions.Flights.View, AdminStationViewer, GrantsPortalPage: true),
+        new(OperationsPermissions.Flights.Export, AdminStationViewer),
         new(OperationsPermissions.Flights.ViewStation, AdminAndStation),
         new(OperationsPermissions.Flights.Schedule, AdminAndStation),
         new(OperationsPermissions.Flights.Update, AdminAndStation),
@@ -27,10 +28,11 @@ public sealed class OperationsPermissionCatalog : IPermissionCatalog
         new(OperationsPermissions.Flights.Invite, AdminAndStation),
         new(OperationsPermissions.Flights.Merge, AdminOnly),
 
-        new(OperationsPermissions.Dashboard.View, AdminAndStation),
-        new(OperationsPermissions.Dashboard.ViewAnalytics, AdminAndStation),
+        new(OperationsPermissions.Dashboard.View, AdminStationViewer, GrantsPortalPage: true),
+        new(OperationsPermissions.Dashboard.ViewAnalytics, AdminStationViewer, GrantsPortalPage: true),
+        new(OperationsPermissions.Dashboard.Export, AdminStationViewer),
 
-        new(OperationsPermissions.WorkOrders.View, AdminAndStation),
+        new(OperationsPermissions.WorkOrders.View, AdminStationViewer, GrantsPortalPage: true),
         new(OperationsPermissions.WorkOrders.ViewOthers, AdminAndStation),
         new(OperationsPermissions.WorkOrders.Author, AdminAndStation),
         new(OperationsPermissions.WorkOrders.ManageOthers, AdminAndStation),

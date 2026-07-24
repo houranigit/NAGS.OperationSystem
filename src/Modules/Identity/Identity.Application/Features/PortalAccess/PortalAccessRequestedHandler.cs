@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Contracts.Messaging;
 using Identity.Application.Abstractions;
 using Identity.Contracts;
@@ -33,6 +34,15 @@ public sealed class PortalAccessRequestedHandler(
     {
         if (await db.HasProcessedAsync(integrationEvent.EventId, Consumer, cancellationToken))
             return;
+
+        if (!integrationEvent.UserType.RequiresExternalReference())
+        {
+            await GiveUpAsync(
+                integrationEvent,
+                $"user type '{integrationEvent.UserType}' cannot be provisioned from MasterData",
+                cancellationToken);
+            return;
+        }
 
         // Idempotency: a live account already exists for this MasterData record. Re-announce the link
         // in case the original reply was lost, then stop. This path intentionally precedes delegation
