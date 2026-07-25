@@ -1,0 +1,156 @@
+<RadzenTemplateForm TItem="AccessChangeModel" Data="@model" Submit="@SubmitAsync">
+    <div class="cua-form">
+        <p class="cua-intro os-muted">
+            @string.Format(UiStrings.Users.ChangeAccessIntro, DisplayName)
+        </p>
+
+        <section class="cua-current" aria-label="@UiStrings.Users.CurrentAccess">
+            <span class="cua-current-icon"><RadzenIcon Icon="person" /></span>
+            <div>
+                <span class="cua-eyebrow">@UiStrings.Users.CurrentAccess</span>
+                <strong>@DisplayName</strong>
+                <span>@CurrentUserTypeLabel · @CurrentRoleName</span>
+            </div>
+        </section>
+
+        @if (CanSelectAccountType)
+        {
+            <RadzenFormField Text="@UiStrings.Users.UserType" Variant="Variant.Outlined" class="cua-field">
+                <Start><RadzenIcon Icon="manage_accounts" /></Start>
+                <ChildContent>
+                    <RadzenDropDown TValue="string"
+                                    Value="@targetUserType"
+                                    Change="@((object? value) => OnTargetTypeChangedAsync(value?.ToString()))"
+                                    Data="@targetTypeOptions"
+                                    TextProperty="@nameof(UserTypeOption.Label)"
+                                    ValueProperty="@nameof(UserTypeOption.Value)"
+                                    Disabled="@(IsBusy || isStale)"
+                                    class="cua-control" />
+                </ChildContent>
+            </RadzenFormField>
+        }
+        else
+        {
+            <RadzenFormField Text="@UiStrings.Users.UserType" Variant="Variant.Outlined" class="cua-field">
+                <Start><RadzenIcon Icon="manage_accounts" /></Start>
+                <ChildContent>
+                    <RadzenTextBox Value="@CurrentUserTypeLabel" ReadOnly="true" class="cua-control" />
+                </ChildContent>
+            </RadzenFormField>
+            <p class="cua-field-hint os-muted">@AccountTypeRestrictionMessage</p>
+        }
+
+        @if (isLoadingRoles)
+        {
+            <div class="cua-loading" role="status">
+                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                <span>@UiStrings.Users.LoadingCompatibleRoles</span>
+            </div>
+        }
+        else if (loadErrorMessage is not null)
+        {
+            <div class="cua-load-state" role="alert">
+                <RadzenIcon Icon="error_outline" />
+                <div>
+                    <strong>@UiStrings.Users.RolesLoadFailed</strong>
+                    <span>@loadErrorMessage</span>
+                </div>
+                <RadzenButton Text="@UiStrings.Users.RetryLoadingRoles" Icon="refresh"
+                              ButtonStyle="ButtonStyle.Light" Click="@RetryRolesAsync" Disabled="@IsBusy" />
+            </div>
+        }
+        else if (roles.Count == 0)
+        {
+            <div class="cua-empty" role="status">
+                <RadzenIcon Icon="badge" />
+                <div>
+                    <strong>@UiStrings.Users.NoCompatibleRoles</strong>
+                    <span>@UiStrings.Users.NoCompatibleRolesHint</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <RadzenFormField Text="@UiStrings.Users.Role" Variant="Variant.Outlined" class="cua-field">
+                <Start><RadzenIcon Icon="badge" /></Start>
+                <ChildContent>
+                    <RadzenDropDown @bind-Value="model.RoleId"
+                                    Data="@roles"
+                                    TextProperty="@nameof(RoleOption.Name)"
+                                    ValueProperty="@nameof(RoleOption.Id)"
+                                    Placeholder="@UiStrings.Users.SelectRole"
+                                    AllowFiltering="true"
+                                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                    Disabled="@(IsBusy || isStale)"
+                                    class="cua-control" />
+                </ChildContent>
+            </RadzenFormField>
+        }
+
+        @if (SelectedRole is { } selectedRole)
+        {
+            <section class="cua-review" aria-label="@UiStrings.Users.NewAccess">
+                <div class="cua-review-item">
+                    <span>@UiStrings.Users.CurrentAccess</span>
+                    <strong>@CurrentUserTypeLabel</strong>
+                    <small>@CurrentRoleName</small>
+                </div>
+                <RadzenIcon Icon="@(UiText.IsArabic ? "arrow_back" : "arrow_forward")"
+                            class="@ReviewArrowClass" />
+                <div class="cua-review-item cua-review-item--target">
+                    <span>@UiStrings.Users.NewAccess</span>
+                    <strong>@TargetUserTypeLabel</strong>
+                    <small>@selectedRole.Name</small>
+                </div>
+            </section>
+        }
+
+        @if (HasPendingChange)
+        {
+            @if (ChangeKind is UserAccessChangeKind.ElevationToAdministrator)
+            {
+                <div class="cua-callout cua-callout--warning" role="status">
+                    <RadzenIcon Icon="warning_amber" />
+                    <span>@UiStrings.Users.ElevationWarning</span>
+                </div>
+            }
+            else if (ChangeKind is UserAccessChangeKind.DemotionToViewer)
+            {
+                <div class="cua-callout cua-callout--warning" role="status">
+                    <RadzenIcon Icon="warning_amber" />
+                    <span>@UiStrings.Users.DemotionWarning</span>
+                </div>
+            }
+
+            <div class="cua-callout cua-callout--info" role="status">
+                <RadzenIcon Icon="logout" />
+                <span>@UiStrings.Users.AccessChangeSessionWarning</span>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            @if (isStale)
+            {
+                <div class="cua-callout cua-callout--danger" role="alert">
+                    <RadzenIcon Icon="sync_problem" />
+                    <span>@errorMessage</span>
+                </div>
+            }
+            else
+            {
+                <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage"
+                                          OnDismiss="@(() => errorMessage = null)">
+                    @errorMessage
+                </DismissibleDialogMessage>
+            }
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="@UiStrings.Common.Cancel" ButtonStyle="ButtonStyle.Light"
+                          Click="@(() => DialogService.Close(false))" Disabled="@IsBusy" />
+            <RadzenButton ButtonType="ButtonType.Submit" Text="@UiStrings.Users.ChangeAccess"
+                          Icon="manage_accounts" ButtonStyle="ButtonStyle.Primary" Disabled="@(!CanSubmit)" />
+        </RadzenStack>
+    </div>
+</RadzenTemplateForm>

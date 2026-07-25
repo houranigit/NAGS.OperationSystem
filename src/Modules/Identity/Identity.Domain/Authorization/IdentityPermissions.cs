@@ -16,6 +16,7 @@ public static class IdentityPermissions
         public const string Lock = "identity.users.lock";
         public const string Unlock = "identity.users.unlock";
         public const string AssignRole = "identity.users.assign-role";
+        public const string ChangeAccountType = "identity.users.change-account-type";
         public const string Suspend = "identity.users.suspend";
         public const string RestoreAccess = "identity.users.restore-access";
         public const string ResetMfa = "identity.users.reset-mfa";
@@ -41,6 +42,7 @@ public static class IdentityPermissions
     [
         Users.View, Users.Update, Users.Invite,
         Users.Deactivate, Users.Lock, Users.Unlock, Users.AssignRole,
+        Users.ChangeAccountType,
         Users.Suspend, Users.RestoreAccess, Users.ResetMfa,
         Roles.View, Roles.Create, Roles.Update, Roles.Delete, Roles.ManagePermissions,
         Sessions.View, Sessions.Revoke

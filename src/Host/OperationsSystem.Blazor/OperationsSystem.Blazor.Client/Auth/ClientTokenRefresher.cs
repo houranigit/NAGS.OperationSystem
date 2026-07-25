@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
+using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.State;
 
 namespace OperationsSystem.Blazor.Client.Auth;
@@ -13,6 +14,9 @@ namespace OperationsSystem.Blazor.Client.Auth;
 /// </summary>
 public sealed class ClientTokenRefresher(IJSRuntime jsRuntime, AuthTokenStore tokenStore, LocaleState locale)
 {
+    internal const string ConsumedRefreshTokenProblemCode =
+        "Identity.Auth.RefreshTokenConsumed";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() }
@@ -40,25 +44,44 @@ public sealed class ClientTokenRefresher(IJSRuntime jsRuntime, AuthTokenStore to
     {
         try
         {
-            var json = await jsRuntime.InvokeAsync<string>(
-                "operationsSystem.api.request",
-                cancellationToken,
-                HttpMethod.Post.Method,
-                "/identity/auth/refresh",
-                new { },
-                (string?)null,
-                locale.Language,
-                (string?)null);
-
-            var token = JsonSerializer.Deserialize<AccessTokenResponse>(json, JsonOptions);
-            if (token is null)
+            // Web Locks serialize portal tabs in supported browsers. Retry a consumed predecessor
+            // once as a defensive fallback (older browsers or a tab running an older cached script);
+            // the shared cookie now contains the winner's successor.
+            for (var attempt = 0; attempt < 2; attempt++)
             {
-                Fail();
-                return false;
+                try
+                {
+                    var json = await jsRuntime.InvokeAsync<string>(
+                        "operationsSystem.api.request",
+                        cancellationToken,
+                        HttpMethod.Post.Method,
+                        "/identity/auth/refresh",
+                        new { },
+                        (string?)null,
+                        locale.Language,
+                        (string?)null);
+
+                    var token = JsonSerializer.Deserialize<AccessTokenResponse>(
+                        json,
+                        JsonOptions);
+                    if (token is null)
+                        break;
+
+                    tokenStore.SetAccessToken(
+                        token.AccessToken,
+                        token.ExpiresAtUtc);
+                    return true;
+                }
+                catch (JSException ex) when (
+                    attempt == 0 &&
+                    IsConsumedRefresh(ex.Message))
+                {
+                    await Task.Yield();
+                }
             }
 
-            tokenStore.SetAccessToken(token.AccessToken, token.ExpiresAtUtc);
-            return true;
+            Fail();
+            return false;
         }
         catch (Exception)
         {
@@ -70,6 +93,21 @@ public sealed class ClientTokenRefresher(IJSRuntime jsRuntime, AuthTokenStore to
             lock (_lock)
                 _inFlight = null;
         }
+    }
+
+    internal static bool IsConsumedRefresh(string message)
+    {
+        if (!BrowserApiClient.TryReadApiError(
+                message,
+                out var statusCode,
+                out var responseBody) ||
+            statusCode != 401)
+        {
+            return false;
+        }
+
+        return new ApiException(statusCode, responseBody).ProblemCode ==
+               ConsumedRefreshTokenProblemCode;
     }
 
     private void Fail()

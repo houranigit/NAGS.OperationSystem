@@ -22,8 +22,24 @@ public sealed class LogoutCommandHandler(
         var session = await db.Sessions.FirstOrDefaultAsync(s => s.RefreshTokenHash == hash, cancellationToken);
         if (session is not null)
         {
-            session.Revoke(timeProvider.GetUtcNow());
+            await using var transaction =
+                await db.BeginSessionFamilyTransactionAsync(
+                    session.FamilyId,
+                    cancellationToken);
+            await db.ReloadAsync(session, cancellationToken);
+
+            var now = timeProvider.GetUtcNow();
+            var familySessions = await db.Sessions
+                .Where(candidate =>
+                    candidate.UserId == session.UserId &&
+                    candidate.FamilyId == session.FamilyId &&
+                    candidate.RevokedAtUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var familySession in familySessions)
+                familySession.Revoke(now);
+
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
 
         return Result.Success();

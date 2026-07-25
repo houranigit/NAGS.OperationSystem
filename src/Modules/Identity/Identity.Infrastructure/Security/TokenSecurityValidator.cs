@@ -6,13 +6,13 @@ using Microsoft.Extensions.Caching.Memory;
 namespace Identity.Infrastructure.Security;
 
 /// <summary>
-/// Bounded live validation of an access token. Positive results are cached briefly to avoid adding
-/// remote database round trips to every API call while still bounding revocation propagation.
+/// Live validation of an access token. Invalid results are cached briefly, but successful results
+/// are never cached: a security-stamp rotation or session revocation must take effect on the very
+/// next request, especially after an Administrator is downgraded.
 /// </summary>
 public sealed class TokenSecurityValidator(IIdentityDbContext db, TimeProvider timeProvider, IMemoryCache cache)
     : ITokenSecurityValidator
 {
-    private static readonly TimeSpan PositiveCacheTtl = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan NegativeCacheTtl = TimeSpan.FromSeconds(5);
 
     public async Task<bool> IsCurrentAsync(
@@ -29,7 +29,9 @@ public sealed class TokenSecurityValidator(IIdentityDbContext db, TimeProvider t
             return cached;
 
         var isCurrent = await QueryIsCurrentAsync(userId, stamp, sessionId, cancellationToken);
-        cache.Set(cacheKey, isCurrent, isCurrent ? PositiveCacheTtl : NegativeCacheTtl);
+        if (!isCurrent)
+            cache.Set(cacheKey, false, NegativeCacheTtl);
+
         return isCurrent;
     }
 
@@ -54,6 +56,7 @@ public sealed class TokenSecurityValidator(IIdentityDbContext db, TimeProvider t
                 db.Sessions.AsNoTracking().Any(s =>
                     s.Id == id
                     && s.UserId == u.Id
+                    && s.SecurityStamp == stamp
                     && s.RevokedAtUtc == null
                     && s.ExpiresAtUtc > now), cancellationToken);
         }

@@ -13,6 +13,7 @@ public static class IdentityPermissions
     public const string UsersLock = "identity.users.lock";
     public const string UsersUnlock = "identity.users.unlock";
     public const string UsersAssignRole = "identity.users.assign-role";
+    public const string UsersChangeAccountType = "identity.users.change-account-type";
     public const string UsersSuspend = "identity.users.suspend";
     public const string UsersRestoreAccess = "identity.users.restore-access";
     public const string UsersResetMfa = "identity.users.reset-mfa";

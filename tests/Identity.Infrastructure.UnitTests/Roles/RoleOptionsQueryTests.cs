@@ -1,5 +1,7 @@
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Authorization;
 using BuildingBlocks.Contracts.Authorization;
+using Identity.Application.Authorization;
 using Identity.Application.Features.Roles;
 using Identity.Domain.Authorization;
 using Identity.Domain.Roles;
@@ -25,7 +27,8 @@ public sealed class RoleOptionsQueryTests
 
         var handler = new GetRoleOptionsQueryHandler(
             db,
-            new TestUserContext([IdentityPermissions.Roles.View]));
+            new TestUserContext([IdentityPermissions.Roles.View]),
+            Registry());
 
         var result = await handler.Handle(
             new GetRoleOptionsQuery(UserType.SystemAdministrator, AssignableOnly: true),
@@ -44,7 +47,10 @@ public sealed class RoleOptionsQueryTests
         db.Roles.AddRange(allowed, elevated);
         await db.SaveChangesAsync();
 
-        var handler = new GetRoleOptionsQueryHandler(db, new TestUserContext([]));
+        var handler = new GetRoleOptionsQueryHandler(
+            db,
+            new TestUserContext([]),
+            Registry());
         var result = await handler.Handle(
             new GetRoleOptionsQuery(UserType.SystemAdministrator),
             CancellationToken.None);
@@ -52,6 +58,36 @@ public sealed class RoleOptionsQueryTests
         result.IsSuccess.ShouldBeTrue();
         result.Value.Select(option => option.Id).ShouldBe([allowed.Id, elevated.Id], ignoreOrder: true);
     }
+
+    [Fact]
+    public async Task Assignable_options_exclude_roles_with_invalid_permission_configuration()
+    {
+        await using var db = CreateDb();
+        var valid = CreateRole("Valid role", [IdentityPermissions.Roles.View]);
+        var invalidViewer = Role.Create(
+            "Invalid viewer role",
+            description: null,
+            permissions: [],
+            UserType.ViewerOnly,
+            DateTimeOffset.UtcNow).Value;
+        db.Roles.AddRange(valid, invalidViewer);
+        await db.SaveChangesAsync();
+
+        var handler = new GetRoleOptionsQueryHandler(
+            db,
+            new TestUserContext([IdentityPermissions.Roles.View]),
+            Registry());
+
+        var result = await handler.Handle(
+            new GetRoleOptionsQuery(AssignableOnly: true),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Select(option => option.Id).ShouldBe([valid.Id]);
+    }
+
+    private static PermissionRegistry Registry() =>
+        new([new IdentityPermissionCatalog()]);
 
     private static IdentityDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<IdentityDbContext>()

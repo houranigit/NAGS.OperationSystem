@@ -67,7 +67,8 @@ public sealed record UserListItemDto(
     string UserType,
     Guid? ExternalReferenceId,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? LastLoginAtUtc);
+    DateTimeOffset? LastLoginAtUtc,
+    string RowVersion);
 
 public sealed record UserDto(
     Guid Id,
@@ -85,7 +86,8 @@ public sealed record UserDto(
     bool MfaEnrollmentRequired,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    DateTimeOffset? LastLoginAtUtc);
+    DateTimeOffset? LastLoginAtUtc,
+    string RowVersion);
 
 /// <summary>
 /// Returned by InviteUser. The invitation token is never exposed; it is delivered only by email.

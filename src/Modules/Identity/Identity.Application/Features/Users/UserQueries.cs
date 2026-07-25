@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Contracts.Authorization;
@@ -61,7 +62,8 @@ public sealed class GetUsersQueryHandler(IIdentityDbContext db, TimeProvider tim
                 x.User.UserType.ToString(),
                 x.User.ExternalReferenceId,
                 x.User.CreatedAtUtc,
-                x.User.LastLoginAtUtc))
+                x.User.LastLoginAtUtc,
+                Convert.ToBase64String(x.User.RowVersion)))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<UserListItemDto>(items, total);
@@ -110,7 +112,8 @@ public sealed class GetUserByIdQueryHandler(IIdentityDbContext db, TimeProvider 
             user.IsLockedOut(timeProvider.GetUtcNow()), user.LockoutEndUtc,
             user.RoleId, roleName, user.UserType.ToString(), user.ExternalReferenceId,
             PortalSource.For(user.UserType), user.MfaEnabled, user.MfaRequired && !user.MfaEnabled,
-            user.CreatedAtUtc, user.UpdatedAtUtc, user.LastLoginAtUtc);
+            user.CreatedAtUtc, user.UpdatedAtUtc, user.LastLoginAtUtc,
+            Convert.ToBase64String(user.RowVersion));
     }
 }
 
@@ -118,7 +121,10 @@ public sealed class GetUserByIdQueryHandler(IIdentityDbContext db, TimeProvider 
 
 public sealed record GetCurrentUserQuery : IQuery<AuthenticatedUserDto>;
 
-public sealed class GetCurrentUserQueryHandler(IIdentityDbContext db, ICurrentUser currentUser)
+public sealed class GetCurrentUserQueryHandler(
+    IIdentityDbContext db,
+    ICurrentUser currentUser,
+    IPermissionRegistry permissionRegistry)
     : IQueryHandler<GetCurrentUserQuery, AuthenticatedUserDto>
 {
     public async Task<Result<AuthenticatedUserDto>> Handle(GetCurrentUserQuery request, CancellationToken cancellationToken)
@@ -132,14 +138,16 @@ public sealed class GetCurrentUserQueryHandler(IIdentityDbContext db, ICurrentUs
 
         var role = await db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.Id == user.RoleId, cancellationToken);
 
-        var permissions = EffectiveUserPermissions.For(user, role);
+        var permissions = EffectiveUserPermissions.For(user, role, permissionRegistry);
+        if (permissions.IsFailure)
+            return permissions.Error;
 
         return new AuthenticatedUserDto(
             user.Id, user.Email.Value, user.DisplayName,
             user.RoleId, role?.Name ?? string.Empty,
             user.UserType.ToString(), user.ExternalReferenceId, PortalSource.For(user.UserType),
             user.MfaEnabled, user.MfaRequired && !user.MfaEnabled,
-            permissions);
+            permissions.Value);
     }
 }
 

@@ -69,9 +69,11 @@
                         @if (HasMoreActions(u))
                         {
                             <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.Users.AssignRole" Icon="badge"
+                                <RowAction Text="@UiStrings.Users.ChangeAccess" Icon="manage_accounts"
                                            Permission="@IdentityPermissions.UsersAssignRole"
-                                           Visible="@Auth.HasPermission(IdentityPermissions.RolesView)" OnClick="@OpenAssignRoleAsync" />
+                                           Visible="@(Auth.HasPermission(IdentityPermissions.RolesView)
+                                                      && UserAccessChangePolicy.CanShowAction(Auth.User?.Id, u.Id, u.Status))"
+                                           OnClick="@OpenChangeAccessAsync" />
                                 <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail"
                                            Permission="@IdentityPermissions.UsersInvite"
                                            Visible="@(u.Status == "Invited")" OnClick="@ResendInvitationAsync" />
@@ -450,7 +452,8 @@
 
     private bool HasMoreActions(UserDetail u) =>
         (Auth.HasPermission(IdentityPermissions.UsersAssignRole)
-            && Auth.HasPermission(IdentityPermissions.RolesView))
+            && Auth.HasPermission(IdentityPermissions.RolesView)
+            && UserAccessChangePolicy.CanShowAction(Auth.User?.Id, u.Id, u.Status))
         || (u.Status == "Invited" && Auth.HasPermission(IdentityPermissions.UsersInvite))
         || (u.IsLockedOut && Auth.HasPermission(IdentityPermissions.UsersUnlock))
         || (u.Status == "Suspended" && Auth.HasPermission(IdentityPermissions.UsersRestoreAccess))
@@ -598,21 +601,30 @@
             await LoadAsync();
     }
 
-    private async Task OpenAssignRoleAsync()
+    private async Task OpenChangeAccessAsync()
     {
-        if (user is null)
+        if (user is null
+            || !UserAccessChangePolicy.CanShowAction(Auth.User?.Id, user.Id, user.Status))
+        {
             return;
+        }
 
-        var result = await DialogService.OpenAsync<AssignRoleDialog>(UiStrings.Users.AssignRoleTitle,
+        var result = await DialogService.OpenAsync<ChangeUserAccessDialog>(UiStrings.Users.ChangeAccessTitle,
             new Dictionary<string, object?>
             {
-                [nameof(AssignRoleDialog.UserId)] = user.Id,
-                [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId,
-                [nameof(AssignRoleDialog.CompatibleUserType)] = user.UserType
+                [nameof(ChangeUserAccessDialog.UserId)] = user.Id,
+                [nameof(ChangeUserAccessDialog.DisplayName)] = user.DisplayName,
+                [nameof(ChangeUserAccessDialog.CurrentRoleId)] = user.RoleId,
+                [nameof(ChangeUserAccessDialog.CurrentRoleName)] = user.RoleName,
+                [nameof(ChangeUserAccessDialog.CurrentUserType)] = user.UserType,
+                [nameof(ChangeUserAccessDialog.RowVersion)] = user.RowVersion
             });
 
         if (result is true)
+        {
             await LoadAsync();
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Users.AccessChangedSuccess);
+        }
     }
 
     private async Task OpenAuditDetailAsync(Guid trailId)

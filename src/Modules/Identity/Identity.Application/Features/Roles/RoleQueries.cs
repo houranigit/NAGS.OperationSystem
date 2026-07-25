@@ -4,6 +4,7 @@ using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Identity.Application.Contracts;
 using Identity.Domain.Roles;
 using Microsoft.EntityFrameworkCore;
@@ -113,7 +114,10 @@ public sealed class GetRolesQueryHandler(IIdentityDbContext db)
 public sealed record GetRoleOptionsQuery(UserType? UserType = null, bool AssignableOnly = false)
     : IQuery<IReadOnlyList<RoleOptionDto>>;
 
-public sealed class GetRoleOptionsQueryHandler(IIdentityDbContext db, IUserContext userContext)
+public sealed class GetRoleOptionsQueryHandler(
+    IIdentityDbContext db,
+    IUserContext userContext,
+    IPermissionRegistry permissionRegistry)
     : IQueryHandler<GetRoleOptionsQuery, IReadOnlyList<RoleOptionDto>>
 {
     public async Task<Result<IReadOnlyList<RoleOptionDto>>> Handle(GetRoleOptionsQuery request, CancellationToken cancellationToken)
@@ -129,7 +133,13 @@ public sealed class GetRoleOptionsQueryHandler(IIdentityDbContext db, IUserConte
             .ToListAsync(cancellationToken);
 
         IReadOnlyList<RoleOptionDto> options = roles
-            .Where(role => !request.AssignableOnly || role.Permissions.All(userContext.HasPermission))
+            .Where(role =>
+                !request.AssignableOnly ||
+                (role.Permissions.All(userContext.HasPermission) &&
+                 RolePermissionValidator.Validate(
+                     role.Permissions.ToList(),
+                     role.CompatibleUserType,
+                     permissionRegistry).IsSuccess))
             .Select(role => new RoleOptionDto(role.Id, role.Name, role.CompatibleUserType.ToString()))
             .ToList();
 

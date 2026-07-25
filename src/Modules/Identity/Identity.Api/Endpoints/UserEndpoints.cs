@@ -1,5 +1,7 @@
 using BuildingBlocks.Api.Authorization;
+using BuildingBlocks.Api.Concurrency;
 using BuildingBlocks.Api.Results;
+using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Contracts.Authorization;
 using Identity.Application.Features.Auth;
 using Identity.Application.Features.Users;
@@ -43,9 +45,17 @@ internal static class UserEndpoints
             return result.ToNoContent();
         }).RequirePermission(IdentityPermissions.Users.Update);
 
-        users.MapPut("/{id:guid}/role", async (Guid id, AssignRoleRequest request, ISender sender, CancellationToken ct) =>
+        users.MapPut("/{id:guid}/role", async (
+            Guid id,
+            AssignRoleRequest request,
+            HttpRequest http,
+            ISender sender,
+            CancellationToken ct) =>
         {
-            var result = await sender.Send(new AssignRoleCommand(id, request.RoleId), ct);
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new AssignRoleCommand(id, request.RoleId, rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(IdentityPermissions.Users.AssignRole);
 

@@ -1,10 +1,11 @@
 namespace BuildingBlocks.Contracts.Authorization;
 
 /// <summary>
-/// The fixed business identity/data-scope of an account. This is an authorization-framework
-/// concept shared across modules: a permission declares which user types it is compatible with,
-/// and MasterData requests portal access for one of these types. It is deliberately small and
-/// stable; it is not a role (roles are configurable permission collections).
+/// The business identity/data-scope of an account. This is an authorization-framework concept
+/// shared across modules: a permission declares which user types it is compatible with, and
+/// MasterData requests portal access for one of the linked types. The set is deliberately small
+/// and stable; direct accounts may transition between System Administrator and Viewer Only while
+/// linked account types remain immutable. It is not a role (roles are configurable permissions).
 /// </summary>
 public enum UserType
 {
@@ -21,7 +22,7 @@ public enum UserType
     ViewerOnly = 3
 }
 
-/// <summary>Provisioning and data-link traits for the fixed account types.</summary>
+/// <summary>Provisioning and data-link traits for the supported account types.</summary>
 public static class UserTypeExtensions
 {
     /// <summary>True when an account can be invited directly without a MasterData record.</summary>

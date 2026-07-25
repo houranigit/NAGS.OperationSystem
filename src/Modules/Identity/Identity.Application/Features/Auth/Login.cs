@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -26,6 +27,7 @@ public sealed class LoginCommandHandler(
     IPasswordHasher passwordHasher,
     ITokenService tokenService,
     IMfaSecretProtector secretProtector,
+    IPermissionRegistry permissionRegistry,
     TimeProvider timeProvider,
     IOptions<IdentityModuleOptions> options)
     : ICommandHandler<LoginCommand, LoginResultDto>
@@ -57,11 +59,18 @@ public sealed class LoginCommandHandler(
 
         if (!passwordHasher.Verify(user.PasswordHash, request.Password))
         {
-            var locked = user.RecordFailedSignIn(_options.MaxFailedSignInAttempts, TimeSpan.FromMinutes(_options.LockoutMinutes), now);
-            if (locked)
-                await AuthSessionRevocation.RevokeActiveSessionsAsync(db, user.Id, now, cancellationToken);
-
-            await db.SaveChangesAsync(cancellationToken);
+            await FailedSignInRecorder.RecordAsync(
+                db,
+                user,
+                candidate =>
+                    candidate.Status == UserStatus.Active &&
+                    candidate.PasswordHash is not null &&
+                    !candidate.IsLockedOut(now) &&
+                    !passwordHasher.Verify(candidate.PasswordHash, request.Password),
+                _options.MaxFailedSignInAttempts,
+                TimeSpan.FromMinutes(_options.LockoutMinutes),
+                now,
+                cancellationToken);
             return InvalidCredentials;
         }
 
@@ -83,22 +92,32 @@ public sealed class LoginCommandHandler(
         }
 
         var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == user.RoleId, cancellationToken);
-        var permissions = EffectiveUserPermissions.For(user, role);
+        var permissions = EffectiveUserPermissions.For(user, role, permissionRegistry);
+        if (permissions.IsFailure)
+            return InvalidCredentials;
 
         user.RecordSuccessfulSignIn(now);
 
         var refresh = tokenService.CreateRefreshToken();
 
         var sessionResult = Domain.Sessions.UserSession.Issue(
-            user.Id, refresh.Hash, refresh.ExpiresAtUtc, now, request.IpAddress, request.UserAgent);
+            user.Id, user.SecurityStamp, refresh.Hash, refresh.ExpiresAtUtc, now, request.IpAddress, request.UserAgent);
         if (sessionResult.IsFailure)
             return sessionResult.Error;
 
         db.Sessions.Add(sessionResult.Value);
 
         // The access token is bound to this session so revoking it invalidates the token too.
-        var access = tokenService.CreateAccessToken(user, permissions, sessionResult.Value.Id);
-        await db.SaveChangesAsync(cancellationToken);
+        var access = tokenService.CreateAccessToken(user, permissions.Value, sessionResult.Value.Id);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // A concurrent access/credential change invalidates this authentication snapshot.
+            return InvalidCredentials;
+        }
 
         return new LoginResultDto(MfaRequired: false, MfaToken: null,
             Tokens: new AuthTokensDto(access.Value, access.ExpiresAtUtc, refresh.Value, refresh.ExpiresAtUtc));

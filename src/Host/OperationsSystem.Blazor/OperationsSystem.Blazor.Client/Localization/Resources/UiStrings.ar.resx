@@ -154,6 +154,7 @@
   <data name="Audit.Field.CreatedAtUtc" xml:space="preserve"><value>تاريخ الإنشاء</value></data>
   <data name="Audit.Field.DisplayName" xml:space="preserve"><value>اسم العرض</value></data>
   <data name="Audit.Field.RoleId" xml:space="preserve"><value>الدور</value></data>
+  <data name="Audit.Field.UserType" xml:space="preserve"><value>نوع الحساب</value></data>
   <data name="Audit.Field.Status" xml:space="preserve"><value>الحالة</value></data>
   <data name="Audit.Entity.User" xml:space="preserve"><value>مستخدم</value></data>
   <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>مرحبًا بعودتك</value></data>
@@ -381,6 +382,7 @@
   <data name="Users.Deactivate" xml:space="preserve"><value>إلغاء التنشيط</value></data>
   <data name="Users.ResendInvitation" xml:space="preserve"><value>إعادة إرسال الدعوة</value></data>
   <data name="Users.AssignRole" xml:space="preserve"><value>تعيين الدور</value></data>
+  <data name="Users.ChangeAccess" xml:space="preserve"><value>تغيير الوصول</value></data>
   <data name="Users.LockedOut" xml:space="preserve"><value>مغلق</value></data>
   <data name="Users.Never" xml:space="preserve"><value>أبداً</value></data>
   <data name="Users.InviteTitle" xml:space="preserve"><value>دعوة مستخدم</value></data>
@@ -394,6 +396,32 @@
   <data name="Users.InvitationDeliveryLabel" xml:space="preserve"><value>حالة تسليم الدعوة</value></data>
   <data name="Users.EditTitle" xml:space="preserve"><value>تحرير المستخدم</value></data>
   <data name="Users.AssignRoleTitle" xml:space="preserve"><value>تعيين الدور</value></data>
+  <data name="Users.ChangeAccessTitle" xml:space="preserve"><value>تغيير الوصول</value></data>
+  <data name="Users.ChangeAccessIntro" xml:space="preserve"><value>راجع نوع الحساب أو الدور وقم بتغييره للمستخدم {0}.</value></data>
+  <data name="Users.CurrentAccess" xml:space="preserve"><value>الوصول الحالي</value></data>
+  <data name="Users.NewAccess" xml:space="preserve"><value>الوصول الجديد</value></data>
+  <data name="Users.SelectRole" xml:space="preserve"><value>حدد دورًا</value></data>
+  <data name="Users.LoadingCompatibleRoles" xml:space="preserve"><value>جارٍ تحميل الأدوار المتوافقة...</value></data>
+  <data name="Users.RolesLoadFailed" xml:space="preserve"><value>تعذر تحميل الأدوار</value></data>
+  <data name="Users.RetryLoadingRoles" xml:space="preserve"><value>إعادة المحاولة</value></data>
+  <data name="Users.NoCompatibleRolesHint" xml:space="preserve"><value>أنشئ دورًا متوافقًا قبل تغيير وصول هذا المستخدم.</value></data>
+  <data name="Users.ChangeAccountTypePermissionRequired" xml:space="preserve"><value>يسمح دورك بتعيين الأدوار، لكنه لا يسمح بتغيير نوع هذا الحساب.</value></data>
+  <data name="Users.LinkedAccountTypeImmutable" xml:space="preserve"><value>نوع هذا الحساب مرتبط بسجل البيانات الأساسية ولا يمكن تغييره هنا.</value></data>
+  <data name="Users.ElevationWarning" xml:space="preserve"><value>سيؤدي هذا إلى ترقية المستخدم إلى مسؤول نظام. قد يمنح الدور المحدد صلاحيات الكتابة والإدارة.</value></data>
+  <data name="Users.DemotionWarning" xml:space="preserve"><value>سيؤدي هذا إلى إزالة صلاحيات الإدارة وجعل الحساب للقراءة فقط على مستوى النظام. لا يمكن تغيير آخر مستخدم قادر على تسجيل الدخول ويحمل دور مسؤول النظام المحمي.</value></data>
+  <data name="Users.AccessChangeSessionWarning" xml:space="preserve"><value>سيتم إلغاء الجلسات النشطة لتطبيق الوصول الجديد، ويجب على المستخدم تسجيل الدخول مرة أخرى.</value></data>
+  <data name="Users.ConfirmAccessChange" xml:space="preserve"><value>هل تريد تغيير وصول {0} إلى {1} بالدور {2}؟ سيتم تسجيل الخروج من الجلسات النشطة.</value></data>
+  <data name="Users.CannotChangeOwnAccess" xml:space="preserve"><value>لا يمكنك تغيير وصول حسابك الخاص.</value></data>
+  <data name="Users.AccessChangeForbidden" xml:space="preserve"><value>ليس لديك إذن لتغيير وصول هذا المستخدم.</value></data>
+  <data name="Users.ChangeAccountTypeForbidden" xml:space="preserve"><value>يمكنك تعيين دور، ولكن ليس لديك إذن لتغيير نوع الحساب.</value></data>
+  <data name="Users.AccountTypeTransitionNotAllowed" xml:space="preserve"><value>لا يمكن تغيير نوع هذا الحساب إلى النوع المحدد.</value></data>
+  <data name="Users.LastAdministratorRequired" xml:space="preserve"><value>يجب أن يبقى مستخدم واحد على الأقل قادرًا على تسجيل الدخول ويحمل دور مسؤول النظام المحمي.</value></data>
+  <data name="Users.PermissionDelegationForbidden" xml:space="preserve"><value>لا يمكنك تعيين دور يمنح صلاحيات لا تملكها.</value></data>
+  <data name="Users.ManagedRoleForbidden" xml:space="preserve"><value>لا يمكنك تغيير هذا المستخدم لأن دوره الحالي يمنح صلاحيات لا تملكها.</value></data>
+  <data name="Users.SelectedRoleUnavailable" xml:space="preserve"><value>لم يعد الدور المحدد متاحًا. تم تحديث قائمة الأدوار؛ اختر مرة أخرى.</value></data>
+  <data name="Users.DeactivatedAccessImmutable" xml:space="preserve"><value>لا يمكن تغيير الوصول لحساب غير نشط.</value></data>
+  <data name="Users.AccessChangedConcurrently" xml:space="preserve"><value>قام مسؤول آخر بتغيير هذا المستخدم. أغلق النافذة وأعد تحميل المستخدم ثم راجع أحدث إعدادات الوصول.</value></data>
+  <data name="Users.AccessChangedSuccess" xml:space="preserve"><value>تم تغيير وصول المستخدم وإلغاء أي جلسات نشطة.</value></data>
   <data name="Users.ConfirmDeactivate" xml:space="preserve"><value>هل تريد إلغاء تنشيط هذا المستخدم؟ سيتم تسجيل خروجهم من جميع الجلسات.</value></data>
   <data name="Users.ConfirmLock" xml:space="preserve"><value>هل تريد منع هذا المستخدم من تسجيل الدخول؟</value></data>
   <data name="Users.ConfirmSuspend" xml:space="preserve"><value>هل تريد تعليق هذا المستخدم؟ سيفقد الوصول حتى تتم استعادته.</value></data>
@@ -536,6 +564,7 @@
   <data name="Roles.Action.activate" xml:space="preserve"><value>تفعيل</value></data>
   <data name="Roles.Action.approve" xml:space="preserve"><value>اعتماد</value></data>
   <data name="Roles.Action.assign" xml:space="preserve"><value>تعيين</value></data>
+  <data name="Roles.Action.change-account-type" xml:space="preserve"><value>تغيير نوع الحساب</value></data>
   <data name="Roles.Action.author" xml:space="preserve"><value>إنشاء</value></data>
   <data name="Roles.Action.create" xml:space="preserve"><value>إنشاء</value></data>
   <data name="Roles.Action.deactivate" xml:space="preserve"><value>إلغاء التفعيل</value></data>

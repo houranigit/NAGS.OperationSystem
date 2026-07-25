@@ -58,7 +58,8 @@ public sealed record UserListItem(
     string RoleName,
     string UserType,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? LastLoginAtUtc);
+    DateTimeOffset? LastLoginAtUtc,
+    string RowVersion);
 
 public sealed record UserDetail(
     Guid Id,
@@ -76,7 +77,8 @@ public sealed record UserDetail(
     bool MfaEnrollmentRequired,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    DateTimeOffset? LastLoginAtUtc);
+    DateTimeOffset? LastLoginAtUtc,
+    string RowVersion);
 
 public sealed record InvitedUser(Guid Id, string Email, string DeliveryStatus);
 

@@ -51,15 +51,29 @@ internal static class AuthEndpoints
             return result.ToOk();
         }).RequireAuthorization();
 
-        auth.MapPost("/mfa/confirm", async (ConfirmMfaRequest request, ISender sender, CancellationToken ct) =>
+        auth.MapPost("/mfa/confirm", async (
+            ConfirmMfaRequest request,
+            ISender sender,
+            HttpContext http,
+            CancellationToken ct) =>
         {
-            var result = await sender.Send(new ConfirmMfaCommand(request.Code), ct);
+            var result = await sender.Send(
+                new ConfirmMfaCommand(
+                    request.Code,
+                    http.Request.Cookies[AuthCookies.RefreshTokenCookie]),
+                ct);
             return result.ToOk();
         }).RequireAuthorization();
 
-        auth.MapPost("/mfa/disable", async (ISender sender, CancellationToken ct) =>
+        auth.MapPost("/mfa/disable", async (
+            ISender sender,
+            HttpContext http,
+            CancellationToken ct) =>
         {
-            var result = await sender.Send(new DisableMfaCommand(), ct);
+            var result = await sender.Send(
+                new DisableMfaCommand(
+                    http.Request.Cookies[AuthCookies.RefreshTokenCookie]),
+                ct);
             return result.ToNoContent();
         }).RequireAuthorization();
 
@@ -74,7 +88,11 @@ internal static class AuthEndpoints
 
             if (result.IsFailure)
             {
-                AuthCookies.ClearRefreshToken(http);
+                // A slower concurrent tab can observe the predecessor after another tab already
+                // rotated it and set the shared cookie to its successor. Deleting the cookie from
+                // this necessarily later response would erase that valid successor.
+                if (result.Error.Code != RefreshTokenCommandHandler.ConsumedTokenErrorCode)
+                    AuthCookies.ClearRefreshToken(http);
                 return ApiResults.Problem(result.Error);
             }
 
@@ -85,9 +103,17 @@ internal static class AuthEndpoints
         auth.MapPost("/logout", async (ISender sender, HttpContext http, CancellationToken ct) =>
         {
             var token = http.Request.Cookies[AuthCookies.RefreshTokenCookie];
-            var result = await sender.Send(new LogoutCommand(token), ct);
-            AuthCookies.ClearRefreshToken(http);
-            return result.ToNoContent();
+            try
+            {
+                var result = await sender.Send(new LogoutCommand(token), ct);
+                return result.ToNoContent();
+            }
+            finally
+            {
+                // Local logout must complete even if a concurrent refresh/revocation reports a
+                // conflict; otherwise the browser can retain a credential after the user signs out.
+                AuthCookies.ClearRefreshToken(http);
+            }
         }).RequireAuthorization();
 
         // Mobile (bearer-only) variants: same handlers and session rotation as the web flow, but the

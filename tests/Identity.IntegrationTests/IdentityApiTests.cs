@@ -1,7 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
+using BuildingBlocks.Application.Messaging;
 using Identity.Application.Abstractions;
+using Identity.Domain.Roles;
+using Identity.Domain.Sessions;
+using Identity.Domain.Users;
 using Identity.Infrastructure.Persistence;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -25,7 +29,8 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         Guid RoleId,
         string UserType,
         Guid? ExternalReferenceId,
-        string PortalSource);
+        string PortalSource,
+        string RowVersion);
     private sealed record MeResponse(
         Guid Id,
         Guid RoleId,
@@ -201,6 +206,317 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         me.ExternalReferenceId.ShouldBeNull();
         me.PortalSource.ShouldBe("Direct");
         me.Permissions.ShouldBe(["operations.dashboard.view"]);
+    }
+
+    [Fact]
+    public async Task Invited_direct_account_transition_replaces_the_activation_credential()
+    {
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+        var viewerRoleResponse = await admin.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = $"InvitedViewer-{Guid.NewGuid():N}",
+                description = "Invitation transition viewer",
+                compatibleUserType = "ViewerOnly",
+                permissions = new[] { "operations.dashboard.view" }
+            });
+        viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();
+        var adminRoleId = await CreateAdministratorRoleAsync(
+            admin,
+            $"InvitedAdmin-{Guid.NewGuid():N}");
+
+        var email = $"invited-transition-{Guid.NewGuid():N}@nags.sa";
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "Invited Transition", roleId = viewerRoleId });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        var originalToken = await factory.GetInvitationTokenAsync(email);
+        originalToken.ShouldNotBeNullOrWhiteSpace();
+
+        var before = await admin.GetFromJsonAsync<UserDetailItem>(
+            $"{Base}/users/{invited!.Id}");
+        var change = await SendAccessChangeAsync(
+            admin,
+            invited.Id,
+            adminRoleId,
+            before!.RowVersion);
+        change.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var replacementToken = await factory.GetInvitationTokenAsync(email);
+        replacementToken.ShouldNotBeNullOrWhiteSpace();
+        replacementToken.ShouldNotBe(originalToken);
+
+        var oldActivation = await admin.PostAsJsonAsync($"{Base}/auth/activate",
+            new
+            {
+                email,
+                invitationToken = originalToken,
+                newPassword = "Invited#12345"
+            });
+        oldActivation.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        var replacementActivation = await admin.PostAsJsonAsync($"{Base}/auth/activate",
+            new
+            {
+                email,
+                invitationToken = replacementToken,
+                newPassword = "Invited#12345"
+            });
+        replacementActivation.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        using var promoted = factory.CreateClient();
+        var login = await promoted.PostAsJsonAsync($"{Base}/auth/login",
+            new { email, password = "Invited#12345" });
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var tokens = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        promoted.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", tokens!.AccessToken);
+        var me = await promoted.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        me!.UserType.ShouldBe("SystemAdministrator");
+        me.RoleId.ShouldBe(adminRoleId);
+    }
+
+    [Fact]
+    public async Task Direct_account_can_transition_admin_to_viewer_and_back_with_immediate_session_invalidation()
+    {
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+
+        var adminRoleResponse = await admin.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = $"AccessAdmin-{Guid.NewGuid():N}",
+                description = "Direct transition test administrator",
+                compatibleUserType = "SystemAdministrator",
+                permissions = new[] { "identity.users.view", "identity.users.update" }
+            });
+        adminRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var adminRoleId = await adminRoleResponse.Content.ReadFromJsonAsync<Guid>();
+
+        var viewerRoleResponse = await admin.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = $"AccessViewer-{Guid.NewGuid():N}",
+                description = "Direct transition test viewer",
+                compatibleUserType = "ViewerOnly",
+                permissions = new[] { "operations.dashboard.view" }
+            });
+        viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();
+
+        var email = $"access-transition-{Guid.NewGuid():N}@nags.sa";
+        const string password = "Transition#12345";
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "Access Transition User", roleId = adminRoleId });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        invited.ShouldNotBeNull();
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+        var activate = await admin.PostAsJsonAsync($"{Base}/auth/activate",
+            new { email, invitationToken, newPassword = password });
+        activate.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var target = factory.CreateClient();
+        var initialLogin = await target.PostAsJsonAsync($"{Base}/auth/login", new { email, password });
+        initialLogin.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var initialToken = await initialLogin.Content.ReadFromJsonAsync<TokenResponse>();
+        target.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", initialToken!.AccessToken);
+
+        // Prime live token validation before the downgrade. The next call must still fail
+        // immediately; a positive validation result may not survive an access change.
+        (await target.GetAsync($"{Base}/me")).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var beforeDemotion = await admin.GetFromJsonAsync<UserDetailItem>($"{Base}/users/{invited!.Id}");
+        beforeDemotion.ShouldNotBeNull();
+        var demote = await SendAccessChangeAsync(
+            admin,
+            invited.Id,
+            viewerRoleId,
+            beforeDemotion!.RowVersion);
+        demote.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var afterDemotion = await admin.GetFromJsonAsync<UserDetailItem>($"{Base}/users/{invited.Id}");
+        afterDemotion!.RoleId.ShouldBe(viewerRoleId);
+        afterDemotion.UserType.ShouldBe("ViewerOnly");
+        afterDemotion.ExternalReferenceId.ShouldBeNull();
+        afterDemotion.PortalSource.ShouldBe("Direct");
+
+        // Both the warmed access token and its refresh session are invalid immediately.
+        (await target.PutAsJsonAsync(
+            $"{Base}/users/{invited.Id}",
+            new { displayName = "Old administrator token must fail" }))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await target.PostAsync($"{Base}/auth/refresh", content: null))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+
+        var viewer = factory.CreateClient();
+        var viewerLogin = await viewer.PostAsJsonAsync($"{Base}/auth/login", new { email, password });
+        viewerLogin.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var viewerToken = await viewerLogin.Content.ReadFromJsonAsync<TokenResponse>();
+        viewer.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", viewerToken!.AccessToken);
+        var viewerMe = await viewer.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        viewerMe!.RoleId.ShouldBe(viewerRoleId);
+        viewerMe.UserType.ShouldBe("ViewerOnly");
+        viewerMe.Permissions.ShouldBe(["operations.dashboard.view"]);
+
+        // Successful sign-in updates LastLoginAtUtc and therefore the user's rowversion. Reload
+        // before making the next administrative access decision.
+        var beforePromotion = await admin.GetFromJsonAsync<UserDetailItem>(
+            $"{Base}/users/{invited.Id}");
+        beforePromotion.ShouldNotBeNull();
+        var promote = await SendAccessChangeAsync(
+            admin,
+            invited.Id,
+            adminRoleId,
+            beforePromotion!.RowVersion);
+        promote.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        (await viewer.GetAsync($"{Base}/me")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+
+        var promoted = factory.CreateClient();
+        var promotedLogin = await promoted.PostAsJsonAsync($"{Base}/auth/login", new { email, password });
+        promotedLogin.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var promotedToken = await promotedLogin.Content.ReadFromJsonAsync<TokenResponse>();
+        promoted.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", promotedToken!.AccessToken);
+        var promotedMe = await promoted.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        promotedMe!.RoleId.ShouldBe(adminRoleId);
+        promotedMe.UserType.ShouldBe("SystemAdministrator");
+        promotedMe.Permissions.ShouldBe(["identity.users.view", "identity.users.update"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task Access_change_rejects_stale_rowversion_but_exact_retry_is_idempotent()
+    {
+        var admin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+        var firstRole = await CreateAdministratorRoleAsync(admin, $"FirstAccess-{Guid.NewGuid():N}");
+        var secondRole = await CreateAdministratorRoleAsync(admin, $"SecondAccess-{Guid.NewGuid():N}");
+        var thirdRole = await CreateAdministratorRoleAsync(admin, $"ThirdAccess-{Guid.NewGuid():N}");
+
+        var email = $"stale-access-{Guid.NewGuid():N}@nags.sa";
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName = "Stale Access User", roleId = firstRole });
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        var before = await admin.GetFromJsonAsync<UserDetailItem>($"{Base}/users/{invited!.Id}");
+
+        var missingPrecondition = await admin.PutAsJsonAsync(
+            $"{Base}/users/{invited.Id}/role",
+            new { roleId = secondRole });
+        missingPrecondition.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        var firstChange = await SendAccessChangeAsync(admin, invited.Id, secondRole, before!.RowVersion);
+        firstChange.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        // Repeating the already-applied target is a successful no-op even with the original token.
+        var retry = await SendAccessChangeAsync(admin, invited.Id, secondRole, before.RowVersion);
+        retry.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        // A different decision made from the same stale screen must not overwrite the first.
+        var staleChange = await SendAccessChangeAsync(admin, invited.Id, thirdRole, before.RowVersion);
+        staleChange.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        var after = await admin.GetFromJsonAsync<UserDetailItem>($"{Base}/users/{invited.Id}");
+        after!.RoleId.ShouldBe(secondRole);
+        after.UserType.ShouldBe("SystemAdministrator");
+    }
+
+    [Fact]
+    public async Task Concurrent_system_administrators_cannot_demote_each_other_with_stale_live_authority()
+    {
+        var bootstrapAdmin = await IdentityApiTestData.CreateAuthenticatedAdminClientAsync(factory);
+        var viewerRoleResponse = await bootstrapAdmin.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = $"RaceViewer-{Guid.NewGuid():N}",
+                description = "Concurrent access transition target",
+                compatibleUserType = "ViewerOnly",
+                permissions = new[] { "operations.dashboard.view" }
+            });
+        viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();
+
+        var raceBarrier = new AccessManagementRaceBarrier(requiredArrivals: 2);
+        await using var racingApp = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+                services.Replace(ServiceDescriptor.Scoped<IIdentityDbContext>(serviceProvider =>
+                    new BarrierIdentityDbContext(
+                        serviceProvider.GetRequiredService<IdentityDbContext>(),
+                        raceBarrier)))));
+
+        var first = await InviteActivateAndLoginSystemAdministratorAsync(
+            bootstrapAdmin,
+            "First Race Administrator",
+            racingApp.CreateClient);
+        var second = await InviteActivateAndLoginSystemAdministratorAsync(
+            bootstrapAdmin,
+            "Second Race Administrator",
+            racingApp.CreateClient);
+
+        // Sign-in changes each user's rowversion, so capture both preconditions only after both
+        // actors hold their final access tokens.
+        var firstBefore = await bootstrapAdmin.GetFromJsonAsync<UserDetailItem>(
+            $"{Base}/users/{first.UserId}");
+        var secondBefore = await bootstrapAdmin.GetFromJsonAsync<UserDetailItem>(
+            $"{Base}/users/{second.UserId}");
+        firstBefore.ShouldNotBeNull();
+        secondBefore.ShouldNotBeNull();
+        firstBefore!.RoleId.ShouldBe(secondBefore!.RoleId);
+        firstBefore.UserType.ShouldBe("SystemAdministrator");
+        secondBefore.UserType.ShouldBe("SystemAdministrator");
+        var protectedSystemRoleId = firstBefore.RoleId;
+
+        // Hold both handlers immediately before the real SQL access-management transaction. This
+        // proves both requests have already passed endpoint authorization before either can win the
+        // database lock and demote the other actor.
+        var firstRequest =
+            SendAccessChangeAsync(
+                first.Client,
+                second.UserId,
+                viewerRoleId,
+                secondBefore.RowVersion);
+        var secondRequest =
+            SendAccessChangeAsync(
+                second.Client,
+                first.UserId,
+                viewerRoleId,
+                firstBefore.RowVersion);
+
+        try
+        {
+            await raceBarrier.AllArrived.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            raceBarrier.Release();
+        }
+
+        // The winner demotes the other actor. Once the loser acquires the serialized lock, its
+        // live role must be revalidated and the now-stale administrator authority must be rejected.
+        var responses = await Task.WhenAll(firstRequest, secondRequest);
+
+        responses.Count(response => response.StatusCode == HttpStatusCode.NoContent)
+            .ShouldBe(1);
+        responses.Single(response => response.StatusCode != HttpStatusCode.NoContent)
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var firstAfter = await bootstrapAdmin.GetFromJsonAsync<UserDetailItem>(
+            $"{Base}/users/{first.UserId}");
+        var secondAfter = await bootstrapAdmin.GetFromJsonAsync<UserDetailItem>(
+            $"{Base}/users/{second.UserId}");
+        var finalUsers = new[] { firstAfter!, secondAfter! };
+
+        finalUsers.Count(user =>
+                user.UserType == "SystemAdministrator" &&
+                user.RoleId == protectedSystemRoleId)
+            .ShouldBe(1);
+        finalUsers.Count(user =>
+                user.UserType == "ViewerOnly" &&
+                user.RoleId == viewerRoleId)
+            .ShouldBe(1);
     }
 
     [Fact]
@@ -453,6 +769,133 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     }
 
     private sealed record UserItem(Guid Id, string Email, string DisplayName);
+
+    private static async Task<Guid> CreateAdministratorRoleAsync(HttpClient admin, string name)
+    {
+        var response = await admin.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name,
+                description = (string?)null,
+                compatibleUserType = "SystemAdministrator",
+                permissions = new[] { "identity.users.view" }
+            });
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return await response.Content.ReadFromJsonAsync<Guid>();
+    }
+
+    private static Task<HttpResponseMessage> SendAccessChangeAsync(
+        HttpClient client,
+        Guid userId,
+        Guid roleId,
+        string rowVersion)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/users/{userId}/role")
+        {
+            Content = JsonContent.Create(new { roleId })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", rowVersion);
+        return client.SendAsync(request);
+    }
+
+    private async Task<(Guid UserId, HttpClient Client)> InviteActivateAndLoginSystemAdministratorAsync(
+        HttpClient inviter,
+        string displayName,
+        Func<HttpClient>? createClient = null)
+    {
+        var unique = Guid.NewGuid().ToString("N");
+        var email = $"race-admin-{unique}@nags.sa";
+        var password = $"Race#{unique[..12]}Aa1";
+
+        var invite = await inviter.PostAsJsonAsync($"{Base}/users/invite",
+            new { email, displayName });
+        invite.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        invited.ShouldNotBeNull();
+
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+        var activate = await inviter.PostAsJsonAsync($"{Base}/auth/activate",
+            new { email, invitationToken, newPassword = password });
+        activate.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var client = createClient?.Invoke() ?? factory.CreateClient();
+        var login = await client.PostAsJsonAsync($"{Base}/auth/login", new { email, password });
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var tokens = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        tokens.ShouldNotBeNull();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", tokens!.AccessToken);
+
+        var me = await client.GetFromJsonAsync<MeResponse>($"{Base}/me");
+        me.ShouldNotBeNull();
+        me!.Id.ShouldBe(invited!.Id);
+        me.UserType.ShouldBe("SystemAdministrator");
+
+        return (invited.Id, client);
+    }
+
+    private sealed class AccessManagementRaceBarrier(int requiredArrivals)
+    {
+        private readonly TaskCompletionSource _allArrived =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _arrivals;
+
+        public Task AllArrived => _allArrived.Task;
+
+        public async Task ArriveAndWaitAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _arrivals) == requiredArrivals)
+                _allArrived.TrySetResult();
+
+            await _release.Task.WaitAsync(cancellationToken);
+        }
+
+        public void Release() => _release.TrySetResult();
+    }
+
+    private sealed class BarrierIdentityDbContext(
+        IdentityDbContext inner,
+        AccessManagementRaceBarrier barrier) : IIdentityDbContext
+    {
+        public DbSet<User> Users => inner.Users;
+        public DbSet<Role> Roles => inner.Roles;
+        public DbSet<UserSession> Sessions => inner.Sessions;
+        public DbSet<OutboxMessage> OutboxMessages => inner.OutboxMessages;
+        public DbSet<InboxMessage> InboxMessages => inner.InboxMessages;
+
+        public async Task<IIdentityTransaction> BeginAccessManagementTransactionAsync(
+            CancellationToken cancellationToken = default)
+        {
+            await barrier.ArriveAndWaitAsync(cancellationToken);
+            return await inner.BeginAccessManagementTransactionAsync(cancellationToken);
+        }
+
+        public Task<IIdentityTransaction> BeginSessionFamilyTransactionAsync(
+            Guid familyId,
+            CancellationToken cancellationToken = default) =>
+            inner.BeginSessionFamilyTransactionAsync(familyId, cancellationToken);
+
+        public Task AcquireSessionFamilyLockAsync(
+            Guid familyId,
+            CancellationToken cancellationToken = default) =>
+            inner.AcquireSessionFamilyLockAsync(familyId, cancellationToken);
+
+        public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion)
+            where TEntity : class =>
+            inner.SetOriginalRowVersion(entity, rowVersion);
+
+        public Task ReloadAsync<TEntity>(
+            TEntity entity,
+            CancellationToken cancellationToken = default)
+            where TEntity : class =>
+            inner.ReloadAsync(entity, cancellationToken);
+
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+            inner.SaveChangesAsync(cancellationToken);
+    }
 
     private async Task ReleaseLoginEmailAsync(Guid userId)
     {

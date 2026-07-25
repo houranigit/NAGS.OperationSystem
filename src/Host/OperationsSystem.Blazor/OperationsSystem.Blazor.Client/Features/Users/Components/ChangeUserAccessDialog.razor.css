@@ -1,0 +1,211 @@
+.cua-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+}
+
+.cua-intro {
+    margin: 0;
+}
+
+.cua-current {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--os-space-3);
+    align-items: center;
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-lg);
+    background: var(--os-color-surface-muted);
+}
+
+.cua-current-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.cua-current div {
+    display: grid;
+    gap: var(--os-space-1);
+    min-width: 0;
+}
+
+.cua-current strong,
+.cua-current span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cua-current div > span:last-child,
+.cua-eyebrow {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.cua-eyebrow {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.cua-field,
+.cua-control {
+    width: 100%;
+}
+
+.cua-form ::deep .rz-form-field-start .rz-icon {
+    color: var(--os-color-text-muted);
+    font-size: 1.1rem;
+}
+
+.cua-field-hint {
+    margin: calc(var(--os-space-3) * -1) 0 0;
+    font-size: var(--os-text-sm);
+}
+
+.cua-loading {
+    display: flex;
+    gap: var(--os-space-3);
+    align-items: center;
+    justify-content: center;
+    min-height: 5rem;
+    color: var(--os-color-text-muted);
+}
+
+.cua-loading ::deep .rz-progressbar-circular {
+    width: 2rem;
+    height: 2rem;
+}
+
+.cua-load-state,
+.cua-empty {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--os-space-3);
+    align-items: center;
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-lg);
+    background: var(--os-color-surface-muted);
+}
+
+.cua-empty {
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+.cua-load-state > div,
+.cua-empty > div {
+    display: grid;
+    gap: var(--os-space-1);
+}
+
+.cua-load-state > .rz-icon {
+    color: var(--os-color-danger);
+}
+
+.cua-empty > .rz-icon {
+    color: var(--os-color-warning);
+}
+
+.cua-load-state span,
+.cua-empty span {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.cua-review {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--os-space-3);
+    align-items: stretch;
+}
+
+.cua-review-item {
+    display: grid;
+    gap: var(--os-space-1);
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.cua-review-item--target {
+    border-color: var(--os-color-primary-soft-border);
+    background: var(--os-color-primary-soft);
+}
+
+.cua-review-item span,
+.cua-review-item small {
+    color: var(--os-color-text-muted);
+}
+
+.cua-review-arrow {
+    align-self: center;
+    color: var(--os-color-text-muted);
+}
+
+.cua-callout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--os-space-3);
+    align-items: start;
+    padding: var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+}
+
+.cua-callout--warning {
+    border-color: color-mix(in srgb, var(--os-color-warning) 40%, var(--os-color-border));
+    background: var(--os-color-warning-bg);
+}
+
+.cua-callout--warning > .rz-icon {
+    color: var(--os-color-warning);
+}
+
+.cua-callout--info {
+    border-color: var(--os-color-primary-soft-border);
+    background: var(--os-color-primary-soft);
+}
+
+.cua-callout--info > .rz-icon {
+    color: var(--os-color-primary);
+}
+
+.cua-callout--danger {
+    border-color: color-mix(in srgb, var(--os-color-danger) 40%, var(--os-color-border));
+    background: var(--os-color-danger-bg);
+}
+
+.cua-callout--danger > .rz-icon {
+    color: var(--os-color-danger);
+}
+
+@media (max-width: 520px) {
+    .cua-review {
+        grid-template-columns: 1fr;
+    }
+
+    .cua-review-arrow {
+        justify-self: center;
+        transform: rotate(90deg);
+    }
+
+    .cua-review-arrow--rtl {
+        transform: rotate(-90deg);
+    }
+
+    .cua-load-state {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .cua-load-state ::deep .rz-button {
+        grid-column: 1 / -1;
+    }
+}

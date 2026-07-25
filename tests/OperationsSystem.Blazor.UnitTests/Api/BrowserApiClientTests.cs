@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Auth;
@@ -95,6 +96,41 @@ public sealed class BrowserApiClientTests
         runtime.Arguments[5].ShouldBe("row-version");
     }
 
+    [Fact]
+    public async Task Change_user_access_forwards_role_and_row_version()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var identity = new IdentityApiClient(NewClient(runtime));
+        var userId = Guid.NewGuid();
+        var roleId = Guid.NewGuid();
+
+        await identity.ChangeUserAccessAsync(
+            userId,
+            new AssignRoleRequest(roleId),
+            "user-row-version");
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.request");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe("PUT");
+        runtime.Arguments[1].ShouldBe($"/identity/users/{userId}/role");
+        ((AssignRoleRequest)runtime.Arguments[2]!).RoleId.ShouldBe(roleId);
+        runtime.Arguments[5].ShouldBe("user-row-version");
+    }
+
+    [Fact]
+    public async Task Direct_refresh_retries_once_when_another_tab_consumed_the_predecessor()
+    {
+        var runtime = new ConsumedThenSuccessJsRuntime();
+        var api = NewClient(runtime);
+
+        var token = await api.PostAsync<object, AccessTokenResponse>(
+            "/identity/auth/refresh",
+            new { });
+
+        token.AccessToken.ShouldBe("successor-access-token");
+        runtime.CallCount.ShouldBe(2);
+    }
+
     private static BrowserApiClient NewClient(IJSRuntime jsRuntime)
     {
         var tokenStore = new AuthTokenStore();
@@ -133,6 +169,45 @@ public sealed class BrowserApiClientTests
             Identifier = identifier;
             Arguments = args;
             return ValueTask.FromResult(default(TValue)!);
+        }
+    }
+
+    private sealed class ConsumedThenSuccessJsRuntime : IJSRuntime
+    {
+        public int CallCount { get; private set; }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(
+            string identifier,
+            object?[]? args) =>
+            InvokeAsync<TValue>(
+                identifier,
+                CancellationToken.None,
+                args);
+
+        public ValueTask<TValue> InvokeAsync<TValue>(
+            string identifier,
+            CancellationToken cancellationToken,
+            object?[]? args)
+        {
+            CallCount++;
+            if (CallCount == 1)
+            {
+                var body = JsonSerializer.Serialize(new
+                {
+                    code = ClientTokenRefresher.ConsumedRefreshTokenProblemCode
+                });
+                var error = JsonSerializer.Serialize(new
+                {
+                    status = 401,
+                    body
+                });
+                throw new JSException(error);
+            }
+
+            var response = JsonSerializer.Serialize(new AccessTokenResponse(
+                "successor-access-token",
+                DateTimeOffset.UtcNow.AddMinutes(15)));
+            return ValueTask.FromResult((TValue)(object)response);
         }
     }
 }

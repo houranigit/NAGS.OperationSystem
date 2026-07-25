@@ -1,5 +1,10 @@
-using Identity.Application.Abstractions;
+using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Authorization;
+using BuildingBlocks.Contracts.Authorization;
+using Identity.Application.Authorization;
 using Identity.Application.Features.Users;
+using Identity.Domain.Authorization;
+using Identity.Domain.Roles;
 using Identity.Domain.Users;
 using Identity.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -29,12 +34,28 @@ public class UserLifecycleGuardTests(IdentityApiFactory factory) : IClassFixture
             now).Value;
         lockedAdmin.Lock(now);
 
+        var managerRole = Role.Create(
+            $"Lifecycle Manager-{Guid.NewGuid():N}",
+            null,
+            [IdentityPermissions.Users.Lock],
+            UserType.SystemAdministrator,
+            now).Value;
+        var manager = User.CreateActive(
+            Email.Create($"lifecycle-manager-{Guid.NewGuid():N}@nags.sa").Value,
+            "Lifecycle Manager",
+            managerRole.Id,
+            "hashed-password",
+            now).Value;
+
+        db.Roles.Add(managerRole);
         db.Users.Add(lockedAdmin);
+        db.Users.Add(manager);
         await db.SaveChangesAsync();
 
         var handler = new LockUserCommandHandler(
             db,
-            new TestCurrentUser(Guid.NewGuid()),
+            new TestUserContext(manager.Id, [IdentityPermissions.Users.Lock]),
+            new PermissionRegistry([new IdentityPermissionCatalog()]),
             new FixedTimeProvider(now.AddMinutes(1)));
 
         var result = await handler.Handle(new LockUserCommand(seededAdmin.Id), CancellationToken.None);
@@ -44,11 +65,13 @@ public class UserLifecycleGuardTests(IdentityApiFactory factory) : IClassFixture
         seededAdmin.IsLockedOut(now.AddMinutes(2)).ShouldBeFalse();
     }
 
-    private sealed class TestCurrentUser(Guid userId) : ICurrentUser
+    private sealed class TestUserContext(Guid userId, IReadOnlyList<string> permissions) : IUserContext
     {
         public Guid? UserId { get; } = userId;
-
         public bool IsAuthenticated => true;
+        public UserType? UserType => BuildingBlocks.Contracts.Authorization.UserType.SystemAdministrator;
+        public Guid? ExternalReferenceId => null;
+        public bool HasPermission(string permission) => permissions.Contains(permission);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider

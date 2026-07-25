@@ -138,6 +138,9 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("ExpiresAtUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<Guid>("FamilyId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("RefreshTokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -145,6 +148,15 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("RevokedAtUtc")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("SecurityStamp")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(512)
@@ -154,6 +166,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FamilyId");
 
                     b.HasIndex("RefreshTokenHash")
                         .IsUnique();
@@ -236,6 +250,12 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RoleId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("SecurityStamp")
                         .HasColumnType("uniqueidentifier");
 
@@ -270,11 +290,20 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasFilter("[ExternalReferenceId] IS NOT NULL AND [LoginEmailReleased] = 0");
 
-                    b.ToTable("users", "identity");
+                    b.ToTable("users", "identity", t =>
+                        {
+                            t.HasCheckConstraint("CK_users_UserType_ExternalReference", "([UserType] IN ('SystemAdministrator', 'ViewerOnly') AND [ExternalReferenceId] IS NULL)\nOR\n([UserType] IN ('StationStaff', 'CustomerContact')\n    AND ([ExternalReferenceId] IS NOT NULL OR [LoginEmailReleased] = 1))");
+                        });
                 });
 
             modelBuilder.Entity("Identity.Domain.Users.User", b =>
                 {
+                    b.HasOne("Identity.Domain.Roles.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.OwnsOne("Identity.Domain.Users.Email", "Email", b1 =>
                         {
                             b1.Property<Guid>("UserId")

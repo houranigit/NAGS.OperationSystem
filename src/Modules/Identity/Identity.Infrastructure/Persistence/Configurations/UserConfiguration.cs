@@ -1,3 +1,4 @@
+using Identity.Domain.Roles;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -8,7 +9,15 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 {
     public void Configure(EntityTypeBuilder<User> builder)
     {
-        builder.ToTable("users");
+        builder.ToTable("users", table =>
+            table.HasCheckConstraint(
+                "CK_users_UserType_ExternalReference",
+                """
+                ([UserType] IN ('SystemAdministrator', 'ViewerOnly') AND [ExternalReferenceId] IS NULL)
+                OR
+                ([UserType] IN ('StationStaff', 'CustomerContact')
+                    AND ([ExternalReferenceId] IS NOT NULL OR [LoginEmailReleased] = 1))
+                """));
         builder.HasKey(u => u.Id);
 
         builder.OwnsOne(u => u.Email, email =>
@@ -54,6 +63,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.CreatedAtUtc).IsRequired();
         builder.Property(u => u.UpdatedAtUtc);
         builder.Property(u => u.LastLoginAtUtc);
+        builder.Property(u => u.RowVersion).IsRowVersion();
 
         builder.HasIndex(u => u.RoleId);
         builder.HasIndex(u => u.ExternalReferenceId);
@@ -70,6 +80,11 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => new { u.UserType, u.ExternalReferenceId })
             .IsUnique()
             .HasFilter("[ExternalReferenceId] IS NOT NULL AND [LoginEmailReleased] = 0");
+
+        builder.HasOne<Role>()
+            .WithMany()
+            .HasForeignKey(u => u.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Ignore(u => u.DomainEvents);
     }

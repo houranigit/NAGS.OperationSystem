@@ -67,8 +67,12 @@ public sealed class IdentityApiClient(BrowserApiClient api)
     public Task UpdateUserAsync(Guid id, UpdateUserRequest request, CancellationToken ct = default) =>
         api.PutAsync($"/identity/users/{id}", request, ct);
 
-    public Task AssignRoleAsync(Guid id, AssignRoleRequest request, CancellationToken ct = default) =>
-        api.PutAsync($"/identity/users/{id}/role", request, ct);
+    public Task ChangeUserAccessAsync(
+        Guid id,
+        AssignRoleRequest request,
+        string rowVersion,
+        CancellationToken ct = default) =>
+        api.PutAsync($"/identity/users/{id}/role", request, rowVersion, ct);
 
     public Task LockUserAsync(Guid id, CancellationToken ct = default) =>
         api.PostAsync($"/identity/users/{id}/lock", ct);

@@ -56,6 +56,7 @@ builder.Services.AddProblemDetails(options =>
         context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
     };
 });
+builder.Services.AddExceptionHandler<OperationsSystem.Api.ConcurrencyExceptionHandler>();
 
 builder.Services.AddOpenApi();
 

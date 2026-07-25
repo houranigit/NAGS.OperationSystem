@@ -104,6 +104,11 @@ Use the display names **System Administrator**, **Station Staff**, **Customer Co
 - User type answers: **who does this account represent and what business boundary scopes it?**
 - Role answers: **what actions may this account perform inside that scope?**
 
+The linked types (`StationStaff` and `CustomerContact`) are immutable because their identity and
+scope are owned by a MasterData record. The two direct, unlinked types may transition between
+`SystemAdministrator` and `ViewerOnly` when an authorized administrator selects a compatible Role.
+That operation changes the Role and UserType atomically; selecting a Role remains authoritative.
+
 ### Decided workforce entity name
 
 Use `StaffMember` for an individual person assigned to a Station.
@@ -429,18 +434,65 @@ A role can remove capabilities but cannot widen a User beyond the User type's da
 
 ### Decided role model
 
-User types are fixed to `SystemAdministrator`, `StationStaff`, `CustomerContact`, and `ViewerOnly`. Roles remain permission collections:
+The supported user-type set is fixed to `SystemAdministrator`, `StationStaff`, `CustomerContact`,
+and `ViewerOnly`. Roles remain permission collections:
 
 - A User has exactly one Role in v1.0.0.
 - A Role contains multiple permissions.
 - A Role declares which UserType it is compatible with.
 - Multiple Roles may exist for a UserType.
 - When requesting portal access, the administrator selects a compatible Role.
-- Identity rejects assigning a Role whose UserType does not match the User.
+- Same-type Role changes are allowed for all four account types.
+- Identity may derive and atomically change a direct User from `SystemAdministrator` to
+  `ViewerOnly`, or vice versa, when the selected Role has that direct type.
+- Identity rejects every transition between direct and linked types, and every
+  `StationStaff`/`CustomerContact` cross-transition.
 - Portal access cannot be requested until the administrator has created or selected a compatible Role.
 - Identity never silently assigns a fallback Role.
 
 Only the protected System Administrator Role is seeded for the bootstrap administrator. No default StationStaff, CustomerContact, or ViewerOnly Role is seeded. Administrators explicitly define roles such as Station Supervisor, Station Technician, Customer Manager, Customer Viewer, CEO Dashboard, or Executive Operations and choose one when granting portal access.
+
+Changing a User's access is a security-sensitive operation:
+
+- Same-type Role changes require `identity.users.assign-role`.
+- Direct account-type changes additionally require
+  `identity.users.change-account-type`; this avoids silently giving existing custom
+  Role managers promotion/demotion authority.
+- The caller cannot change their own access and cannot delegate permissions outside both their
+  current live Role and token permission ceilings.
+- The last usable holder of the protected System Administrator Role cannot be demoted, moved to a
+  custom Role, locked, suspended, or deactivated. A replacement must be promoted first.
+- Direct invitations and privileged Identity mutations—including access, Role/permission,
+  lifecycle, profile, session-revocation, and MFA-reset actions—share one serialized boundary and
+  revalidate the actor's live Role after entering it. A token issued before the actor was demoted
+  therefore cannot win a queued administrative write.
+- Automatic failed-sign-in lockout uses the same boundary. The failure remains an authentication
+  failure, but lockout is suppressed at the threshold while that User is the final sign-in-capable
+  holder of the protected System Administrator Role.
+- The client supplies the current User rowversion. A stale dialog fails with a concurrency conflict
+  instead of overwriting another administrator's decision.
+- A real change updates Role and UserType together, rotates the security stamp, revokes refresh
+  sessions, invalidates pending password-reset and linked-email verification state, and is captured
+  in the audit outbox. MasterData is notified when a linked email verification is canceled.
+- If the User is still invited, the old activation link is replaced and the new invitation is
+  queued in the same transaction. Role-permission changes apply the same credential invalidation
+  to every live holder of that Role.
+- An exact retry is an idempotent no-op and does not sign the User out.
+- Sessions are bound to the security stamp, and positive token-validity results are not cached, so
+  an already-used Administrator token cannot retain write access after demotion.
+- Refresh tokens are single-use within a stable session family. Per-family serialization makes
+  refresh, logout, and revocation linearizable; browser tabs additionally share an origin-wide
+  refresh lock so one tab cannot consume or delete another tab's successor cookie.
+- Invited, active, locked, and suspended Users may be changed; terminal deactivated or released
+  login records may not.
+
+On startup, seeding preserves a deliberately reassigned bootstrap administrator instead of silently
+elevating it. If an existing database has no live or recoverable holder of the protected System
+Administrator Role, startup fails with an actionable configuration error so the absence of a
+break-glass administrator cannot go unnoticed. An invited holder counts as recoverable only while
+its activation credential is present and unexpired. Catalog synchronization uses the same atomic
+credential/session/invitation invalidation for live holders of any system or custom Role whose
+permissions changed.
 
 ### Decided MasterData permission catalog
 
@@ -556,7 +608,9 @@ Access checks fail closed: an active Identity account cannot gain scoped access 
 The initial discussion resolved the following:
 
 1. The individual workforce entity is `StaffMember`.
-2. The system has four fixed UserTypes with permission-bearing compatible Roles; ViewerOnly is a direct, globally scoped, read-only portal account.
+2. The system has four supported UserTypes with permission-bearing compatible Roles; ViewerOnly is
+   a direct, globally scoped, read-only portal account. A direct account may transition only between
+   SystemAdministrator and ViewerOnly; linked account types remain immutable.
 3. An administrator selects a compatible Role when requesting portal access.
 4. Portal access can be requested at initial creation or later.
 5. A linked email change is coordinated with Identity, changes the login email, and requires reverification.

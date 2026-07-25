@@ -155,6 +155,31 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
             // is single-flight, so many concurrent 401s share one refresh. The refresh endpoint
             // itself is excluded to avoid recursion.
             var isRefresh = path.Contains("/auth/refresh", StringComparison.Ordinal);
+            if (statusCode == 401 &&
+                isRefresh &&
+                ClientTokenRefresher.IsConsumedRefresh(ex.Message))
+            {
+                try
+                {
+                    // Another tab rotated the shared cookie. Retry once with its successor instead
+                    // of making this tab anonymous during startup or an explicit session reload.
+                    return await InvokeAsync(
+                        method,
+                        path,
+                        body,
+                        ifMatch,
+                        cancellationToken);
+                }
+                catch (JSException retryEx) when (
+                    TryReadApiError(
+                        retryEx.Message,
+                        out var retryStatus,
+                        out var retryBody))
+                {
+                    throw new ApiException(retryStatus, retryBody);
+                }
+            }
+
             if (statusCode == 401 && !isRefresh && await refresher.TryRefreshAsync(cancellationToken))
             {
                 try
@@ -191,7 +216,7 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
             tokenStore.AccessToken,
             locale.Language);
 
-    private static bool TryReadApiError(string message, out int statusCode, out string responseBody)
+    internal static bool TryReadApiError(string message, out int statusCode, out string responseBody)
     {
         statusCode = 0;
         responseBody = string.Empty;

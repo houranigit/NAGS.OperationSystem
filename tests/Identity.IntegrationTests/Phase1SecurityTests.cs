@@ -23,10 +23,11 @@ public class Phase1SecurityTests(IdentityApiFactory factory) : IClassFixture<Ide
     private sealed record InvitedResponse(Guid Id, string Email, string DeliveryStatus);
     private sealed record AuditTrailItem(Guid Id, string Module, string EntityType, Guid? EntityId, string Action);
     private sealed record AuditChange(string Field, string? Before, string? After);
-    private sealed record AuditTrailDetail(Guid Id, string Action, List<AuditChange> Changes);
+    private sealed record AuditTrailDetail(Guid Id, Guid? ActorId, string Action, List<AuditChange> Changes);
     private sealed record PagedAudit(List<AuditTrailItem> Items, long TotalCount);
     private sealed record PagedSessions(List<SessionItem> Items, long TotalCount);
     private sealed record SessionItem(Guid Id, bool IsActive);
+    private sealed record UserVersion(string RowVersion);
 
     [Fact]
     public async Task Admin_cannot_deactivate_their_own_account()
@@ -44,8 +45,14 @@ public class Phase1SecurityTests(IdentityApiFactory factory) : IClassFixture<Ide
         var (client, adminId) = await AuthenticatedAdminAsync();
         var roleId = await CreateAdminRoleAsync(client, $"SelfAssign-{Guid.NewGuid():N}",
             [IdentityPermissions.Roles.View]);
+        var user = await client.GetFromJsonAsync<UserVersion>($"{Base}/users/{adminId}");
 
-        var response = await client.PutAsJsonAsync($"{Base}/users/{adminId}/role", new { roleId });
+        var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/users/{adminId}/role")
+        {
+            Content = JsonContent.Create(new { roleId })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", user!.RowVersion);
+        var response = await client.SendAsync(request);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
@@ -183,6 +190,81 @@ public class Phase1SecurityTests(IdentityApiFactory factory) : IClassFixture<Ide
         // The audit trail is administrator-only.
         var anon = factory.CreateClient();
         (await anon.GetAsync("/api/v1/audit/trails")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Access_transition_audits_role_and_account_type_once_with_the_actor()
+    {
+        var (admin, adminId) = await AuthenticatedAdminAsync();
+        var sourceRoleId = await CreateAdminRoleAsync(
+            admin,
+            $"AuditAccessSource-{Guid.NewGuid():N}",
+            [IdentityPermissions.Users.View]);
+
+        var viewerRoleResponse = await admin.PostAsJsonAsync($"{Base}/roles",
+            new
+            {
+                name = $"AuditAccessViewer-{Guid.NewGuid():N}",
+                description = (string?)null,
+                compatibleUserType = "ViewerOnly",
+                permissions = new[] { "operations.dashboard.view" }
+            });
+        viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();
+
+        var invite = await admin.PostAsJsonAsync($"{Base}/users/invite",
+            new
+            {
+                email = $"audit-access-{Guid.NewGuid():N}@nags.sa",
+                displayName = "Audit Access Target",
+                roleId = sourceRoleId
+            });
+        var invited = await invite.Content.ReadFromJsonAsync<InvitedResponse>();
+        var before = await admin.GetFromJsonAsync<UserVersion>($"{Base}/users/{invited!.Id}");
+
+        var change = new HttpRequestMessage(HttpMethod.Put, $"{Base}/users/{invited.Id}/role")
+        {
+            Content = JsonContent.Create(new { roleId = viewerRoleId })
+        };
+        change.Headers.TryAddWithoutValidation("If-Match", before!.RowVersion);
+        (await admin.SendAsync(change)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        await DrainAsync();
+
+        var trails = await admin.GetFromJsonAsync<PagedAudit>(
+            $"/api/v1/audit/trails?subjectType=User&subjectId={invited.Id}&pageSize=100");
+        var transitionDetails = new List<AuditTrailDetail>();
+        foreach (var item in trails!.Items.Where(item => item.Action == "Updated"))
+        {
+            var detail = await admin.GetFromJsonAsync<AuditTrailDetail>(
+                $"/api/v1/audit/trails/{item.Id}");
+            if (detail!.Changes.Any(field => field.Field == "UserType"))
+                transitionDetails.Add(detail);
+        }
+
+        var transition = transitionDetails.ShouldHaveSingleItem();
+        transition.ActorId.ShouldBe(adminId);
+        transition.Changes.ShouldContain(change =>
+            change.Field == "RoleId"
+            && change.Before == sourceRoleId.ToString()
+            && change.After == viewerRoleId.ToString());
+        transition.Changes.ShouldContain(change =>
+            change.Field == "UserType"
+            && change.Before == "SystemAdministrator"
+            && change.After == "ViewerOnly");
+
+        var current = await admin.GetFromJsonAsync<UserVersion>($"{Base}/users/{invited.Id}");
+        var noOp = new HttpRequestMessage(HttpMethod.Put, $"{Base}/users/{invited.Id}/role")
+        {
+            Content = JsonContent.Create(new { roleId = viewerRoleId })
+        };
+        noOp.Headers.TryAddWithoutValidation("If-Match", current!.RowVersion);
+        (await admin.SendAsync(noOp)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await DrainAsync();
+
+        var afterNoOp = await admin.GetFromJsonAsync<PagedAudit>(
+            $"/api/v1/audit/trails?subjectType=User&subjectId={invited.Id}&pageSize=100");
+        afterNoOp!.TotalCount.ShouldBe(trails.TotalCount);
     }
 
     private async Task<(HttpClient Client, Guid AdminId)> AuthenticatedAdminAsync()

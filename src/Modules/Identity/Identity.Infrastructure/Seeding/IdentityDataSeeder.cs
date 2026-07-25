@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using Identity.Application;
 using Identity.Application.Abstractions;
+using Identity.Application.Features.Roles;
 using Identity.Domain.Authorization;
 using Identity.Domain.Roles;
 using Identity.Domain.Users;
@@ -34,43 +35,79 @@ public sealed class IdentityDataSeeder(
         var normalizedAdminRole = IdentitySeedIds.SystemAdminRoleName.ToUpperInvariant();
         var adminPermissions = AllKnownPermissions();
 
-        var adminRole = await db.Roles.FirstOrDefaultAsync(r => r.NormalizedName == normalizedAdminRole, cancellationToken);
-        if (adminRole is null)
+        Role adminRole;
+        await using (var roleTransaction =
+            await db.BeginAccessManagementTransactionAsync(cancellationToken))
         {
-            var roleResult = Role.Create(
-                IdentitySeedIds.SystemAdminRoleName,
-                "Full system access. Seeded and protected.",
-                adminPermissions,
-                UserType.SystemAdministrator,
-                now,
-                isSystem: true);
-
-            if (roleResult.IsFailure)
+            // Read only after taking the shared access-management lock. Multiple host instances can
+            // seed concurrently, and a pre-lock tracked role would otherwise overwrite the grant
+            // synchronized by the instance that acquired the lock first.
+            var existingAdminRole = await db.Roles.FirstOrDefaultAsync(
+                role => role.NormalizedName == normalizedAdminRole,
+                cancellationToken);
+            if (existingAdminRole is null)
             {
-                logger.LogError("Failed to seed System Administrator role: {Error}", roleResult.Error.Description);
-                return;
-            }
+                var roleResult = Role.Create(
+                    IdentitySeedIds.SystemAdminRoleName,
+                    "Full system access. Seeded and protected.",
+                    adminPermissions,
+                    UserType.SystemAdministrator,
+                    now,
+                    isSystem: true);
 
-            adminRole = roleResult.Value;
-            db.Roles.Add(adminRole);
-            await db.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Seeded System Administrator role {RoleId}.", adminRole.Id);
-        }
-        else
-        {
-            // Keep the system admin role's permissions in sync as the catalog grows, without
-            // writing/auditing every startup when the set is already correct.
-            if (!HasSamePermissions(adminRole, adminPermissions))
-            {
-                adminRole.SetPermissions(adminPermissions, now);
+                if (roleResult.IsFailure)
+                {
+                    logger.LogError("Failed to seed System Administrator role: {Error}", roleResult.Error.Description);
+                    return;
+                }
+
+                adminRole = roleResult.Value;
+                db.Roles.Add(adminRole);
                 await db.SaveChangesAsync(cancellationToken);
-                logger.LogInformation("Synchronized System Administrator role permissions with the composed catalog.");
+                logger.LogInformation("Seeded System Administrator role {RoleId}.", adminRole.Id);
             }
+            else
+            {
+                adminRole = existingAdminRole;
+
+                // Keep the system admin role's permissions in sync as the catalog grows, without
+                // writing/auditing every startup when the set is already correct.
+                if (!HasSamePermissions(adminRole, adminPermissions))
+                {
+                    adminRole.SetPermissions(adminPermissions, now);
+
+                    // The role grant, credential generations, refresh sessions, and replacement
+                    // invitations form one authorization change and must commit atomically.
+                    var invalidation = await RoleHolderAccessInvalidation.InvalidateAsync(
+                        db,
+                        [adminRole.Id],
+                        invitationNotifier,
+                        tokenService,
+                        _options.InvitationExpiryHours,
+                        now,
+                        cancellationToken);
+                    if (invalidation.IsFailure)
+                        throw new InvalidOperationException(invalidation.Error.Description);
+
+                    await db.SaveChangesAsync(cancellationToken);
+                    logger.LogInformation("Synchronized System Administrator role permissions with the composed catalog.");
+                }
+            }
+
+            await roleTransaction.CommitAsync(cancellationToken);
         }
 
         await RemoveRetiredPermissionsFromCustomRolesAsync(now, cancellationToken);
 
         await SeedBootstrapAdminAsync(adminRole.Id, now, cancellationToken);
+        if (!await HasRecoverableProtectedAdministratorAsync(now, cancellationToken))
+        {
+            throw new InvalidOperationException(
+                $"Identity bootstrap invariant failed: no live or recoverable System Administrator " +
+                $"holds a protected system role after seeding. Verify Identity:Admin configuration " +
+                $"and assign a non-deactivated, non-released administrator to the seeded " +
+                $"'{IdentitySeedIds.SystemAdminRoleName}' role before restarting.");
+        }
 
         await SeedDemoDataAsync(cancellationToken);
     }
@@ -79,9 +116,13 @@ public sealed class IdentityDataSeeder(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        await using var transaction =
+            await db.BeginAccessManagementTransactionAsync(cancellationToken);
+
         var customRoles = await db.Roles
             .Where(role => !role.IsSystem)
             .ToListAsync(cancellationToken);
+        var changedRoleIds = new List<Guid>();
         var changedRoleCount = 0;
         var retiredPermissionCount = 0;
 
@@ -103,13 +144,29 @@ public sealed class IdentityDataSeeder(
             }
 
             changedRoleCount++;
+            changedRoleIds.Add(role.Id);
             retiredPermissionCount += removedCount;
         }
 
         if (changedRoleCount == 0)
+        {
+            await transaction.CommitAsync(cancellationToken);
             return;
+        }
+
+        var invalidation = await RoleHolderAccessInvalidation.InvalidateAsync(
+            db,
+            changedRoleIds,
+            invitationNotifier,
+            tokenService,
+            _options.InvitationExpiryHours,
+            now,
+            cancellationToken);
+        if (invalidation.IsFailure)
+            throw new InvalidOperationException(invalidation.Error.Description);
 
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         logger.LogInformation(
             "Removed {PermissionCount} retired permission assignments from {RoleCount} custom roles.",
             retiredPermissionCount,
@@ -117,6 +174,25 @@ public sealed class IdentityDataSeeder(
     }
 
     private async Task SeedBootstrapAdminAsync(Guid adminRoleId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await db.BeginAccessManagementTransactionAsync(cancellationToken);
+
+        await SeedBootstrapAdminUnderAccessLockAsync(
+            adminRoleId,
+            now,
+            cancellationToken);
+
+        // Do not rely on a notifier implementation to persist the User/token. The production
+        // notifier writes an outbox row, but logging/test implementations are intentionally no-op.
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task SeedBootstrapAdminUnderAccessLockAsync(
+        Guid adminRoleId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         var emailResult = Email.Create(_options.Admin.Email);
         if (emailResult.IsFailure)
@@ -132,27 +208,33 @@ public sealed class IdentityDataSeeder(
 
         if (existing is not null)
         {
+            // The same DbContext participated in earlier seeding transactions. Identity resolution
+            // can return a tracked holder changed by another host between phases; refresh it after
+            // acquiring this phase's access lock before making bootstrap/recovery decisions.
+            await db.Entry(existing).ReloadAsync(cancellationToken);
+
             if (existing.UserType != UserType.SystemAdministrator)
             {
+                await EnsureRecoverableProtectedAdministratorAsync(
+                    email.Value,
+                    now,
+                    cancellationToken);
                 logger.LogWarning(
                     "Configured bootstrap admin email {Email} belongs to a {UserType} account; seeding will not elevate it.",
                     email.Value, existing.UserType);
                 return;
             }
 
-            var roleReassigned = false;
             SecureToken? invitation = null;
 
             if (existing.RoleId != adminRoleId)
             {
-                var assignResult = existing.AssignRole(adminRoleId, now);
-                if (assignResult.IsFailure)
-                {
-                    logger.LogError("Failed to reassign bootstrap admin {Email}: {Error}", email.Value, assignResult.Error.Description);
-                    return;
-                }
-
-                roleReassigned = true;
+                // Bootstrap is an initial-provisioning concern. Once administrators deliberately
+                // change this user's role, startup must not silently undo that access decision.
+                logger.LogInformation(
+                    "Configured bootstrap administrator {Email} now uses role {RoleId}; preserving the assigned role.",
+                    email.Value,
+                    existing.RoleId);
             }
 
             if (ShouldRequeueBootstrapInvitation(existing, now))
@@ -170,25 +252,22 @@ public sealed class IdentityDataSeeder(
                 }
             }
 
-            if (roleReassigned || invitation is not null)
+            if (invitation is not null)
             {
-                if (invitation is not null)
-                {
-                    // Commit the refreshed token and durable email outbox row together. If email
-                    // queueing fails, the old/expired invitation state remains retryable on startup.
-                    await invitationNotifier.SendInvitationAsync(
-                        email.Value, existing.DisplayName, existing.Id, invitation.Value, cancellationToken);
-                    logger.LogInformation("Refreshed expired bootstrap admin invitation for {Email}. Activate via the emailed link.", email.Value);
-                }
-                else
-                {
-                    await db.SaveChangesAsync(cancellationToken);
-                }
-
-                if (roleReassigned)
-                    logger.LogInformation("Reassigned bootstrap admin {Email} to the protected System Administrator role.", email.Value);
+                // Commit the refreshed token and durable email outbox row together. If email
+                // queueing fails, the old/expired invitation state remains retryable on startup.
+                await invitationNotifier.SendInvitationAsync(
+                    email.Value, existing.DisplayName, existing.Id, invitation.Value, cancellationToken);
+                logger.LogInformation("Refreshed expired bootstrap admin invitation for {Email}. Activate via the emailed link.", email.Value);
             }
 
+            // The recoverability predicate executes in SQL. Persist a freshly requeued invitation
+            // inside this still-uncommitted transaction so that predicate observes the new token.
+            await db.SaveChangesAsync(cancellationToken);
+            await EnsureRecoverableProtectedAdministratorAsync(
+                email.Value,
+                now,
+                cancellationToken);
             return;
         }
 
@@ -365,6 +444,46 @@ public sealed class IdentityDataSeeder(
             return false;
 
         return role.Permissions.ToHashSet(StringComparer.Ordinal).SetEquals(permissions);
+    }
+
+    /// <summary>
+    /// Suspended and locked protected administrators remain recoverable. An active holder must
+    /// have a password, and an invited holder must have a currently usable activation credential.
+    /// Deactivated or login-email-released identities never satisfy the invariant.
+    /// </summary>
+    private Task<bool> HasRecoverableProtectedAdministratorAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken) =>
+        db.Users.AnyAsync(user =>
+            user.UserType == UserType.SystemAdministrator
+            && user.Status != UserStatus.Deactivated
+            && !user.LoginEmailReleased
+            && (user.Status == UserStatus.Suspended
+                || (user.Status == UserStatus.Active && user.PasswordHash != null)
+                || (user.Status == UserStatus.Invited
+                    && user.InvitationToken != null
+                    && user.InvitationExpiresAtUtc != null
+                    && user.InvitationExpiresAtUtc > now))
+            && db.Roles.Any(role =>
+                role.Id == user.RoleId
+                && role.IsSystem
+                && role.CompatibleUserType == UserType.SystemAdministrator),
+            cancellationToken);
+
+    private async Task EnsureRecoverableProtectedAdministratorAsync(
+        string configuredEmail,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (await HasRecoverableProtectedAdministratorAsync(now, cancellationToken))
+            return;
+
+        throw new InvalidOperationException(
+            $"Identity bootstrap invariant failed: the configured bootstrap identity " +
+            $"'{configuredEmail}' already exists, but no live or recoverable System Administrator " +
+            $"holds a protected system role. Assign a non-deactivated, non-released System " +
+            $"Administrator to the seeded '{IdentitySeedIds.SystemAdminRoleName}' role before " +
+            $"restarting. Startup will not silently elevate the configured account.");
     }
 
     private static bool ShouldRequeueBootstrapInvitation(User user, DateTimeOffset now) =>

@@ -34,41 +34,57 @@ window.operationsSystem.storage = {
 
 window.operationsSystem.api = {
   async request(method, path, body, accessToken, language, ifMatch) {
-    const headers = {
-      Accept: "application/json",
-      "Accept-Language": language || "en",
+    const execute = async () => {
+      const headers = {
+        Accept: "application/json",
+        "Accept-Language": language || "en",
+      };
+
+      const options = {
+        method,
+        headers,
+        credentials: "include",
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      if (ifMatch) {
+        headers["If-Match"] = ifMatch;
+      }
+
+      if (body !== null && body !== undefined) {
+        headers["Content-Type"] = "application/json";
+        options.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(`/api/v1${path}`, options);
+      const text = await response.text();
+
+      if (!response.ok) {
+        throw new Error(JSON.stringify({
+          status: response.status,
+          body: text,
+        }));
+      }
+
+      return text;
     };
 
-    const options = {
-      method,
-      headers,
-      credentials: "include",
-    };
-
-    if (accessToken) {
-      headers.Authorization = `Bearer ${accessToken}`;
+    // Refresh tokens are single-use and the cookie jar is shared by every tab. Serialize refresh
+    // fetches across the origin so each waiting tab reads the successor cookie produced by the tab
+    // ahead of it. The server's consumed-token response remains the fallback for browsers without
+    // Web Locks support or requests issued outside this portal client.
+    if (method === "POST" &&
+        path === "/identity/auth/refresh" &&
+        navigator.locks?.request) {
+      return await navigator.locks.request(
+        "operations-system-refresh-token",
+        execute);
     }
 
-    if (ifMatch) {
-      headers["If-Match"] = ifMatch;
-    }
-
-    if (body !== null && body !== undefined) {
-      headers["Content-Type"] = "application/json";
-      options.body = JSON.stringify(body);
-    }
-
-    const response = await fetch(`/api/v1${path}`, options);
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw new Error(JSON.stringify({
-        status: response.status,
-        body: text,
-      }));
-    }
-
-    return text;
+    return await execute();
   },
 
   async uploadFile(path, bytes, fileName, contentType, accessToken, language, ifMatch, fields) {

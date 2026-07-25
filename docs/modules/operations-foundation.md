@@ -48,6 +48,12 @@ Note: the operational workforce person is **`StaffMember`** (owned by MasterData
 
 Viewer Only provides the explicit cross-station read-only oversight account type. Its Role determines which pages are visible; it does not inherit administrative write authority.
 
+Because Viewer Only and System Administrator are both direct, unlinked accounts, Identity may move
+an account between those two types by atomically assigning a compatible Role and deriving the target
+type from it. Promotion grants only the selected Administrator Role's permissions; demotion restores
+the Viewer write-scope denial. Station Staff and Customer Contact types never participate in this
+transition because their operational scope remains owned by their MasterData link.
+
 ## 5. Core Workflows
 
 ```mermaid

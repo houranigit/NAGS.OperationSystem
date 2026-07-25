@@ -1,11 +1,14 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
 using Identity.Application.Authorization;
-using Identity.Domain.Users;
+using Identity.Domain.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Application.Features.Roles;
 
@@ -33,73 +36,145 @@ public sealed class UpdateRoleAndPermissionsCommandValidator : AbstractValidator
 
 public sealed class UpdateRoleAndPermissionsCommandHandler(
     IIdentityDbContext db,
-    ICurrentUser currentUser,
+    IUserContext userContext,
     IPermissionRegistry permissions,
-    TimeProvider timeProvider)
+    IInvitationNotifier invitationNotifier,
+    ITokenService tokenService,
+    TimeProvider timeProvider,
+    IOptions<IdentityModuleOptions> options,
+    ILogger<UpdateRoleAndPermissionsCommandHandler> logger)
     : ICommandHandler<UpdateRoleAndPermissionsCommand>
 {
+    private readonly IdentityModuleOptions _options = options.Value;
+
     public async Task<Result> Handle(UpdateRoleAndPermissionsCommand request, CancellationToken cancellationToken)
     {
-        var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
-        if (role is null)
-            return Error.NotFound("Role not found.", "Identity.Role.NotFound");
-
-        if (role.IsSystem)
-            return Error.Conflict("System roles cannot be modified.", "Identity.Role.SystemProtected");
-
-        var normalized = request.Name.Trim().ToUpperInvariant();
-        var duplicate = await db.Roles.AnyAsync(
-            r => r.NormalizedName == normalized && r.Id != role.Id,
-            cancellationToken);
-        if (duplicate)
-            return Error.Conflict("A role with this name already exists.", "Identity.Role.DuplicateName");
-
-        var permissionCheck = RolePermissionValidator.Validate(request.Permissions, role.CompatibleUserType, permissions);
-        if (permissionCheck.IsFailure)
-            return permissionCheck.Error;
-
-        var permissionsChanged = !role.Permissions.ToHashSet(StringComparer.Ordinal)
-            .SetEquals(request.Permissions);
-
-        if (permissionsChanged && currentUser.UserId is { } currentUserId)
+        try
         {
-            var isOwnRole = await db.Users.AnyAsync(
-                user => user.Id == currentUserId && user.RoleId == role.Id && user.Status == UserStatus.Active,
+            await using var transaction =
+                await db.BeginAccessManagementTransactionAsync(cancellationToken);
+
+            var now = timeProvider.GetUtcNow();
+            var updateAccess = await RoleAssignmentAuthorization.GetLiveActorRoleAsync(
+                db,
+                userContext,
+                permissions,
+                IdentityPermissions.Roles.Update,
+                now,
                 cancellationToken);
-            if (isOwnRole)
-                return Error.Conflict("You cannot modify permissions for your own role.", "Identity.Role.CannotModifyOwnPermissions");
-        }
+            if (updateAccess.IsFailure)
+                return updateAccess.Error;
 
-        var now = timeProvider.GetUtcNow();
-        var updateResult = role.Update(request.Name, request.Description, now);
-        if (updateResult.IsFailure)
-            return updateResult.Error;
+            var permissionAccess = await RoleAssignmentAuthorization.GetLiveActorRoleAsync(
+                db,
+                userContext,
+                permissions,
+                IdentityPermissions.Roles.ManagePermissions,
+                now,
+                cancellationToken);
+            if (permissionAccess.IsFailure)
+                return permissionAccess.Error;
 
-        if (permissionsChanged)
-        {
-            var permissionResult = role.SetPermissions(request.Permissions, now);
-            if (permissionResult.IsFailure)
-                return permissionResult.Error;
+            var role = await db.Roles.FirstOrDefaultAsync(
+                candidate => candidate.Id == request.Id,
+                cancellationToken);
+            if (role is null)
+                return Error.NotFound("Role not found.", "Identity.Role.NotFound");
 
-            var affectedUsers = await db.Users
-                .Where(user => user.RoleId == role.Id && user.Status == UserStatus.Active)
-                .ToListAsync(cancellationToken);
-            var affectedUserIds = affectedUsers.Select(user => user.Id).ToList();
-
-            foreach (var user in affectedUsers)
-                user.RotateSecurityStamp(now);
-
-            if (affectedUserIds.Count > 0)
+            if (role.IsSystem)
             {
-                var sessions = await db.Sessions
-                    .Where(session => affectedUserIds.Contains(session.UserId) && session.RevokedAtUtc == null)
-                    .ToListAsync(cancellationToken);
-                foreach (var session in sessions)
-                    session.Revoke(now);
+                return Error.Conflict(
+                    "System roles cannot be modified.",
+                    "Identity.Role.SystemProtected");
             }
-        }
 
-        await db.SaveChangesAsync(cancellationToken);
-        return Result.Success();
+            var normalized = request.Name.Trim().ToUpperInvariant();
+            var duplicate = await db.Roles.AnyAsync(
+                candidate =>
+                    candidate.NormalizedName == normalized &&
+                    candidate.Id != role.Id,
+                cancellationToken);
+            if (duplicate)
+            {
+                return Error.Conflict(
+                    "A role with this name already exists.",
+                    "Identity.Role.DuplicateName");
+            }
+
+            var permissionCheck = RolePermissionValidator.Validate(
+                request.Permissions,
+                role.CompatibleUserType,
+                permissions);
+            if (permissionCheck.IsFailure)
+                return permissionCheck.Error;
+
+            var permissionsChanged = !role.Permissions.ToHashSet(StringComparer.Ordinal)
+                .SetEquals(request.Permissions);
+
+            if (permissionsChanged && updateAccess.Value.Id == role.Id)
+            {
+                return Error.Conflict("You cannot modify permissions for your own role.", "Identity.Role.CannotModifyOwnPermissions");
+            }
+
+            var currentCeiling = RoleAssignmentAuthorization.EnsureWithinPermissionCeiling(
+                userContext,
+                permissionAccess.Value,
+                role,
+                isCurrentRole: true);
+            if (currentCeiling.IsFailure)
+                return currentCeiling.Error;
+
+            var requestedCeiling = RoleMutationAuthorization.EnsureRequestedPermissionsWithinCeiling(
+                userContext,
+                permissionAccess.Value,
+                request.Permissions);
+            if (requestedCeiling.IsFailure)
+                return requestedCeiling.Error;
+
+            var updateResult = role.Update(request.Name, request.Description, now);
+            if (updateResult.IsFailure)
+                return updateResult.Error;
+
+            if (permissionsChanged)
+            {
+                var permissionResult = role.SetPermissions(request.Permissions, now);
+                if (permissionResult.IsFailure)
+                    return permissionResult.Error;
+
+                try
+                {
+                    var invalidation = await RoleHolderAccessInvalidation.InvalidateAsync(
+                        db,
+                        [role.Id],
+                        invitationNotifier,
+                        tokenService,
+                        _options.InvitationExpiryHours,
+                        now,
+                        cancellationToken);
+                    if (invalidation.IsFailure)
+                        return invalidation.Error;
+                }
+                catch (Exception ex) when (
+                    ex is not OperationCanceledException and
+                    not DbUpdateConcurrencyException)
+                {
+                    logger.LogError(
+                        ex,
+                        "Replacement invitation delivery failed while updating role {RoleId}.",
+                        role.Id);
+                    return Error.Failure(
+                        "A replacement invitation could not be queued. The role was not changed.",
+                        "Identity.User.InvitationDeliveryFailed");
+                }
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Result.Success();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
     }
 }

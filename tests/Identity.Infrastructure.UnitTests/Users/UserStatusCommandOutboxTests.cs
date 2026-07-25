@@ -1,8 +1,11 @@
 using System.Text.Json;
+using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Authorization;
 using BuildingBlocks.Contracts.Authorization;
-using Identity.Application.Abstractions;
+using Identity.Application.Authorization;
 using Identity.Application.Features.Users;
 using Identity.Contracts;
+using Identity.Domain.Authorization;
 using Identity.Domain.Roles;
 using Identity.Domain.Users;
 using Identity.Infrastructure.Persistence;
@@ -21,15 +24,23 @@ public sealed class UserStatusCommandOutboxTests
     {
         await using var db = CreateDb();
         var user = await AddLinkedStationUserAsync(db);
-        var currentUser = new TestCurrentUser(Guid.NewGuid());
+        var managementPermissions = new[]
+        {
+            IdentityPermissions.Users.Lock,
+            IdentityPermissions.Users.Deactivate,
+            IdentityPermissions.Users.Suspend
+        };
+        var actor = await AddAdministratorAsync(db, managementPermissions);
+        var currentUser = new TestUserContext(actor.Id, managementPermissions);
+        var registry = new PermissionRegistry([new IdentityPermissionCatalog()]);
 
         var result = action switch
         {
-            LinkedUserBlockingAction.Lock => await new LockUserCommandHandler(db, currentUser, TimeProvider.System)
+            LinkedUserBlockingAction.Lock => await new LockUserCommandHandler(db, currentUser, registry, TimeProvider.System)
                 .Handle(new LockUserCommand(user.Id), CancellationToken.None),
-            LinkedUserBlockingAction.Deactivate => await new DeactivateUserCommandHandler(db, currentUser, TimeProvider.System)
+            LinkedUserBlockingAction.Deactivate => await new DeactivateUserCommandHandler(db, currentUser, registry, TimeProvider.System)
                 .Handle(new DeactivateUserCommand(user.Id), CancellationToken.None),
-            LinkedUserBlockingAction.Suspend => await new SuspendUserCommandHandler(db, currentUser, TimeProvider.System)
+            LinkedUserBlockingAction.Suspend => await new SuspendUserCommandHandler(db, currentUser, registry, TimeProvider.System)
                 .Handle(new SuspendUserCommand(user.Id), CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
         };
@@ -73,6 +84,30 @@ public sealed class UserStatusCommandOutboxTests
         return user;
     }
 
+    private static async Task<User> AddAdministratorAsync(
+        IdentityDbContext db,
+        IReadOnlyList<string> permissions)
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        var role = Role.Create(
+            $"Lifecycle manager-{Guid.NewGuid():N}",
+            null,
+            permissions,
+            UserType.SystemAdministrator,
+            now).Value;
+        var user = User.CreateActive(
+            Email.Create($"lifecycle-manager-{Guid.NewGuid():N}@example.com").Value,
+            "Lifecycle Manager",
+            role.Id,
+            "password-hash",
+            now).Value;
+
+        db.Roles.Add(role);
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        return user;
+    }
+
     public enum LinkedUserBlockingAction
     {
         Lock,
@@ -80,10 +115,12 @@ public sealed class UserStatusCommandOutboxTests
         Suspend
     }
 
-    private sealed class TestCurrentUser(Guid userId) : ICurrentUser
+    private sealed class TestUserContext(Guid userId, IReadOnlyList<string> permissions) : IUserContext
     {
         public Guid? UserId => userId;
-
         public bool IsAuthenticated => true;
+        public UserType? UserType => BuildingBlocks.Contracts.Authorization.UserType.SystemAdministrator;
+        public Guid? ExternalReferenceId => null;
+        public bool HasPermission(string permission) => permissions.Contains(permission);
     }
 }

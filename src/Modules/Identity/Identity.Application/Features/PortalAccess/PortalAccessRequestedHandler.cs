@@ -16,7 +16,7 @@ namespace Identity.Application.Features.PortalAccess;
 /// always originates from a MasterData identity (no manual user creation). Idempotent via the inbox
 /// and the unique <see cref="User.ExternalReferenceId"/>; never creates two users for one record.
 /// On success it enqueues <see cref="PortalUserProvisioned"/> so MasterData can store the link, then
-/// sends the invitation after the user is committed.
+/// queues the invitation in the same serialized access transaction.
 /// </summary>
 public sealed class PortalAccessRequestedHandler(
     IIdentityDbContext db,
@@ -43,6 +43,23 @@ public sealed class PortalAccessRequestedHandler(
                 cancellationToken);
             return;
         }
+
+        // Role validation, assignment, user creation, and invitation queueing share the same access
+        // boundary as interactive role edits. This closes both the permission-ceiling TOCTOU and
+        // stale-invitation ordering races.
+        await using var transaction =
+            await db.BeginAccessManagementTransactionAsync(cancellationToken);
+        await HandleUnderAccessLockAsync(integrationEvent, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task HandleUnderAccessLockAsync(
+        PortalAccessRequested integrationEvent,
+        CancellationToken cancellationToken)
+    {
+        // Another consumer may have completed while this delivery waited for the access lock.
+        if (await db.HasProcessedAsync(integrationEvent.EventId, Consumer, cancellationToken))
+            return;
 
         // Idempotency: a live account already exists for this MasterData record. Re-announce the link
         // in case the original reply was lost, then stop. This path intentionally precedes delegation
@@ -168,13 +185,15 @@ public sealed class PortalAccessRequestedHandler(
         db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
         await db.SaveChangesAsync(cancellationToken);
 
-        // Delivery happens only after the invited user is committed. A failure is logged and does not
-        // roll back the account; the administrator can use Resend invitation.
+        // The outbox notification is queued before the access transaction commits. A failure is
+        // logged and does not roll back the account; the administrator can use Resend invitation.
         try
         {
             await invitationNotifier.SendInvitationAsync(emailValue, user.DisplayName, user.Id, token.Value, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (
+            ex is not OperationCanceledException and
+            not DbUpdateConcurrencyException)
         {
             logger.LogError(ex, "Invitation delivery failed for provisioned user {UserId}.", user.Id);
         }

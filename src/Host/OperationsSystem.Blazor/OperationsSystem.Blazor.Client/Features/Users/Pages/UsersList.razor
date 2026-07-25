@@ -78,9 +78,11 @@
                     <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => OpenUser(user.Id))" />
                     <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@IdentityPermissions.UsersUpdate"
                                OnClick="@(() => OpenEditAsync(user))" />
-                    <RowAction Text="@UiStrings.Users.AssignRole" Icon="badge" Permission="@IdentityPermissions.UsersAssignRole"
-                               Visible="@Auth.HasPermission(IdentityPermissions.RolesView)"
-                               OnClick="@(() => OpenAssignRoleAsync(user))" />
+                    <RowAction Text="@UiStrings.Users.ChangeAccess" Icon="manage_accounts"
+                               Permission="@IdentityPermissions.UsersAssignRole"
+                               Visible="@(Auth.HasPermission(IdentityPermissions.RolesView)
+                                          && UserAccessChangePolicy.CanShowAction(Auth.User?.Id, user.Id, user.Status))"
+                               OnClick="@(() => OpenChangeAccessAsync(user))" />
                     <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail" Permission="@IdentityPermissions.UsersInvite"
                                Visible="@(user.Status == "Invited")" OnClick="@(() => ResendInvitationAsync(user))" />
                     <RowAction Separator="true" />
@@ -240,18 +242,27 @@
             await ReloadAsync();
     }
 
-    private async Task OpenAssignRoleAsync(UserListItem user)
+    private async Task OpenChangeAccessAsync(UserListItem user)
     {
-        var result = await DialogService.OpenAsync<AssignRoleDialog>(UiStrings.Users.AssignRoleTitle,
+        if (!UserAccessChangePolicy.CanShowAction(Auth.User?.Id, user.Id, user.Status))
+            return;
+
+        var result = await DialogService.OpenAsync<ChangeUserAccessDialog>(UiStrings.Users.ChangeAccessTitle,
             new Dictionary<string, object?>
             {
-                [nameof(AssignRoleDialog.UserId)] = user.Id,
-                [nameof(AssignRoleDialog.CurrentRoleId)] = user.RoleId,
-                [nameof(AssignRoleDialog.CompatibleUserType)] = user.UserType
+                [nameof(ChangeUserAccessDialog.UserId)] = user.Id,
+                [nameof(ChangeUserAccessDialog.DisplayName)] = user.DisplayName,
+                [nameof(ChangeUserAccessDialog.CurrentRoleId)] = user.RoleId,
+                [nameof(ChangeUserAccessDialog.CurrentRoleName)] = user.RoleName,
+                [nameof(ChangeUserAccessDialog.CurrentUserType)] = user.UserType,
+                [nameof(ChangeUserAccessDialog.RowVersion)] = user.RowVersion
             });
 
         if (result is true)
+        {
             await ReloadAsync();
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Users.AccessChangedSuccess);
+        }
     }
 
     private Task ResendInvitationAsync(UserListItem user) =>

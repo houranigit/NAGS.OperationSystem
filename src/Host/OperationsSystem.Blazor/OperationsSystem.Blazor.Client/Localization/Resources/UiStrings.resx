@@ -154,6 +154,7 @@
   <data name="Audit.Field.CreatedAtUtc" xml:space="preserve"><value>Created</value></data>
   <data name="Audit.Field.DisplayName" xml:space="preserve"><value>Display name</value></data>
   <data name="Audit.Field.RoleId" xml:space="preserve"><value>Role</value></data>
+  <data name="Audit.Field.UserType" xml:space="preserve"><value>Account type</value></data>
   <data name="Audit.Field.Status" xml:space="preserve"><value>Status</value></data>
   <data name="Audit.Entity.User" xml:space="preserve"><value>User</value></data>
   <data name="Dashboard.WelcomeBack" xml:space="preserve"><value>Welcome back</value></data>
@@ -381,6 +382,7 @@
   <data name="Users.Deactivate" xml:space="preserve"><value>Deactivate</value></data>
   <data name="Users.ResendInvitation" xml:space="preserve"><value>Resend invitation</value></data>
   <data name="Users.AssignRole" xml:space="preserve"><value>Assign role</value></data>
+  <data name="Users.ChangeAccess" xml:space="preserve"><value>Change access</value></data>
   <data name="Users.LockedOut" xml:space="preserve"><value>Locked out</value></data>
   <data name="Users.Never" xml:space="preserve"><value>Never</value></data>
   <data name="Users.InviteTitle" xml:space="preserve"><value>Invite a user</value></data>
@@ -394,6 +396,32 @@
   <data name="Users.InvitationDeliveryLabel" xml:space="preserve"><value>Invitation delivery status</value></data>
   <data name="Users.EditTitle" xml:space="preserve"><value>Edit user</value></data>
   <data name="Users.AssignRoleTitle" xml:space="preserve"><value>Assign role</value></data>
+  <data name="Users.ChangeAccessTitle" xml:space="preserve"><value>Change access</value></data>
+  <data name="Users.ChangeAccessIntro" xml:space="preserve"><value>Review and change the account type or role for {0}.</value></data>
+  <data name="Users.CurrentAccess" xml:space="preserve"><value>Current access</value></data>
+  <data name="Users.NewAccess" xml:space="preserve"><value>New access</value></data>
+  <data name="Users.SelectRole" xml:space="preserve"><value>Select a role</value></data>
+  <data name="Users.LoadingCompatibleRoles" xml:space="preserve"><value>Loading compatible roles...</value></data>
+  <data name="Users.RolesLoadFailed" xml:space="preserve"><value>Roles could not be loaded</value></data>
+  <data name="Users.RetryLoadingRoles" xml:space="preserve"><value>Retry</value></data>
+  <data name="Users.NoCompatibleRolesHint" xml:space="preserve"><value>Create a compatible role before changing this user's access.</value></data>
+  <data name="Users.ChangeAccountTypePermissionRequired" xml:space="preserve"><value>Your role can assign roles but cannot change this account's type.</value></data>
+  <data name="Users.LinkedAccountTypeImmutable" xml:space="preserve"><value>This account type is linked to its MasterData record and cannot be changed here.</value></data>
+  <data name="Users.ElevationWarning" xml:space="preserve"><value>This promotes the user to System Administrator. The selected role may grant write and administrative permissions.</value></data>
+  <data name="Users.DemotionWarning" xml:space="preserve"><value>This removes administrative access and makes the account globally read-only. The last sign-in-capable holder of the protected System Administrator role cannot be changed.</value></data>
+  <data name="Users.AccessChangeSessionWarning" xml:space="preserve"><value>Active sessions will be revoked so the new access takes effect. The user must sign in again.</value></data>
+  <data name="Users.ConfirmAccessChange" xml:space="preserve"><value>Change {0}'s access to {1} with the {2} role? Active sessions will be signed out.</value></data>
+  <data name="Users.CannotChangeOwnAccess" xml:space="preserve"><value>You cannot change your own account access.</value></data>
+  <data name="Users.AccessChangeForbidden" xml:space="preserve"><value>You do not have permission to change this user's access.</value></data>
+  <data name="Users.ChangeAccountTypeForbidden" xml:space="preserve"><value>You can assign a role, but you do not have permission to change the account type.</value></data>
+  <data name="Users.AccountTypeTransitionNotAllowed" xml:space="preserve"><value>This account type cannot be changed to the selected type.</value></data>
+  <data name="Users.LastAdministratorRequired" xml:space="preserve"><value>At least one sign-in-capable holder of the protected System Administrator role must remain.</value></data>
+  <data name="Users.PermissionDelegationForbidden" xml:space="preserve"><value>You cannot assign a role that grants permissions you do not hold.</value></data>
+  <data name="Users.ManagedRoleForbidden" xml:space="preserve"><value>You cannot change this user because their current role grants permissions you do not hold.</value></data>
+  <data name="Users.SelectedRoleUnavailable" xml:space="preserve"><value>The selected role is no longer available. The role list was refreshed; choose again.</value></data>
+  <data name="Users.DeactivatedAccessImmutable" xml:space="preserve"><value>Access cannot be changed for a deactivated account.</value></data>
+  <data name="Users.AccessChangedConcurrently" xml:space="preserve"><value>Another administrator changed this user. Close the dialog, reload the user, and review the latest access.</value></data>
+  <data name="Users.AccessChangedSuccess" xml:space="preserve"><value>User access changed. Any active sessions were signed out.</value></data>
   <data name="Users.ConfirmDeactivate" xml:space="preserve"><value>Deactivate this user? They will be signed out of all sessions.</value></data>
   <data name="Users.ConfirmLock" xml:space="preserve"><value>Lock this user out of signing in?</value></data>
   <data name="Users.ConfirmSuspend" xml:space="preserve"><value>Suspend this user? They will lose access until restored.</value></data>
@@ -536,6 +564,7 @@
   <data name="Roles.Action.activate" xml:space="preserve"><value>Activate</value></data>
   <data name="Roles.Action.approve" xml:space="preserve"><value>Approve</value></data>
   <data name="Roles.Action.assign" xml:space="preserve"><value>Assign</value></data>
+  <data name="Roles.Action.change-account-type" xml:space="preserve"><value>Change account type</value></data>
   <data name="Roles.Action.author" xml:space="preserve"><value>Author</value></data>
   <data name="Roles.Action.create" xml:space="preserve"><value>Create</value></data>
   <data name="Roles.Action.deactivate" xml:space="preserve"><value>Deactivate</value></data>

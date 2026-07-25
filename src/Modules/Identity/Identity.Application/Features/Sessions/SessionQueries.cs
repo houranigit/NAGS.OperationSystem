@@ -10,14 +10,18 @@ namespace Identity.Application.Features.Sessions;
 
 internal static class SessionMapping
 {
-    public static UserSessionDto ToDto(this UserSession session, DateTimeOffset now, bool isCurrent) =>
+    public static UserSessionDto ToDto(
+        this UserSession session,
+        DateTimeOffset now,
+        Guid currentSecurityStamp,
+        bool isCurrent) =>
         new(
             session.Id,
             session.UserId,
             session.CreatedAtUtc,
             session.ExpiresAtUtc,
             session.RevokedAtUtc,
-            session.IsActive(now),
+            session.IsActive(now) && session.SecurityStamp == currentSecurityStamp,
             isCurrent,
             session.CreatedByIp,
             session.UserAgent);
@@ -35,15 +39,30 @@ public sealed class GetUserSessionsQueryHandler(IIdentityDbContext db, TimeProvi
     {
         var paging = PageRequest.From(request.Page, request.PageSize);
         var now = timeProvider.GetUtcNow();
-
-        var query = db.Sessions.AsNoTracking().Where(s => s.UserId == request.UserId);
+        var query =
+            from session in db.Sessions.AsNoTracking()
+            join user in db.Users.AsNoTracking()
+                on session.UserId equals user.Id
+            where session.UserId == request.UserId
+            select new
+            {
+                Session = session,
+                CurrentSecurityStamp = user.SecurityStamp
+            };
         if (request.ActiveOnly)
-            query = query.Where(s => s.RevokedAtUtc == null && s.ExpiresAtUtc > now);
+        {
+            query = query.Where(item =>
+                item.Session.RevokedAtUtc == null &&
+                item.Session.ExpiresAtUtc > now &&
+                item.Session.SecurityStamp == item.CurrentSecurityStamp);
+        }
 
         var total = await query.LongCountAsync(cancellationToken);
         if (total == 0)
         {
-            var userExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == request.UserId, cancellationToken);
+            var userExists = await db.Users.AsNoTracking().AnyAsync(
+                user => user.Id == request.UserId,
+                cancellationToken);
             if (!userExists)
                 return Error.NotFound("User not found.", "Identity.User.NotFound");
         }
@@ -51,13 +70,18 @@ public sealed class GetUserSessionsQueryHandler(IIdentityDbContext db, TimeProvi
             return paging.Empty<UserSessionDto>(total);
 
         var sessions = await query
-            .OrderByDescending(s => s.CreatedAtUtc)
-            .ThenByDescending(s => s.Id)
+            .OrderByDescending(item => item.Session.CreatedAtUtc)
+            .ThenByDescending(item => item.Session.Id)
             .Skip(paging.Skip)
             .Take(paging.PageSize)
             .ToListAsync(cancellationToken);
 
-        IReadOnlyList<UserSessionDto> items = sessions.Select(s => s.ToDto(now, isCurrent: false)).ToList();
+        IReadOnlyList<UserSessionDto> items = sessions
+            .Select(item => item.Session.ToDto(
+                now,
+                item.CurrentSecurityStamp,
+                isCurrent: false))
+            .ToList();
         return paging.ToResult<UserSessionDto>(items, total);
     }
 }
@@ -85,20 +109,42 @@ public sealed class GetMySessionsQueryHandler(
             ? null
             : tokenService.HashRefreshToken(request.CurrentRefreshToken);
 
-        var query = db.Sessions.AsNoTracking().Where(s => s.UserId == userId);
+        var query =
+            from session in db.Sessions.AsNoTracking()
+            join user in db.Users.AsNoTracking()
+                on session.UserId equals user.Id
+            where session.UserId == userId
+            select new
+            {
+                Session = session,
+                CurrentSecurityStamp = user.SecurityStamp
+            };
         var total = await query.LongCountAsync(cancellationToken);
+        if (total == 0)
+        {
+            var userExists = await db.Users.AsNoTracking().AnyAsync(
+                user => user.Id == userId,
+                cancellationToken);
+            if (!userExists)
+                return Error.NotFound("Account not found.", "Identity.User.NotFound");
+        }
         if (paging.IsOutOfRange(total))
             return paging.Empty<UserSessionDto>(total);
 
         var sessions = await query
-            .OrderByDescending(s => s.CreatedAtUtc)
-            .ThenByDescending(s => s.Id)
+            .OrderByDescending(item => item.Session.CreatedAtUtc)
+            .ThenByDescending(item => item.Session.Id)
             .Skip(paging.Skip)
             .Take(paging.PageSize)
             .ToListAsync(cancellationToken);
 
         IReadOnlyList<UserSessionDto> items = sessions
-            .Select(s => s.ToDto(now, isCurrent: currentHash is not null && s.RefreshTokenHash == currentHash))
+            .Select(item => item.Session.ToDto(
+                now,
+                item.CurrentSecurityStamp,
+                isCurrent:
+                    currentHash is not null &&
+                    item.Session.RefreshTokenHash == currentHash))
             .ToList();
         return paging.ToResult<UserSessionDto>(items, total);
     }

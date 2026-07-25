@@ -24,6 +24,7 @@ public sealed class IdentityPermissionCatalog : IPermissionCatalog
         new(IdentityPermissions.Users.Lock, AdminOnly),
         new(IdentityPermissions.Users.Unlock, AdminOnly),
         new(IdentityPermissions.Users.AssignRole, AdminOnly),
+        new(IdentityPermissions.Users.ChangeAccountType, AdminOnly),
         new(IdentityPermissions.Users.Suspend, AdminOnly),
         new(IdentityPermissions.Users.RestoreAccess, AdminOnly),
         new(IdentityPermissions.Users.ResetMfa, AdminOnly),

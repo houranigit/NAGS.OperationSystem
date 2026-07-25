@@ -199,6 +199,26 @@ public class UserTests
     }
 
     [Fact]
+    public void RecordFailedSignIn_can_preserve_the_last_break_glass_administrator()
+    {
+        var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
+        var originalStamp = user.SecurityStamp;
+        for (var i = 0; i < 4; i++)
+            user.RecordFailedSignIn(5, TimeSpan.FromMinutes(15), Now).ShouldBeFalse();
+
+        var locked = user.RecordFailedSignIn(
+            5,
+            TimeSpan.FromMinutes(15),
+            Now.AddMinutes(1),
+            allowLockout: false);
+
+        locked.ShouldBeFalse();
+        user.IsLockedOut(Now.AddMinutes(2)).ShouldBeFalse();
+        user.AccessFailedCount.ShouldBe(4);
+        user.SecurityStamp.ShouldBe(originalStamp);
+    }
+
+    [Fact]
     public void Lock_then_Unlock_restores_access()
     {
         var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
@@ -323,14 +343,200 @@ public class UserTests
     }
 
     [Fact]
-    public void AssignRole_rotates_security_stamp()
+    public void ChangeAccess_between_direct_types_changes_role_and_type_and_clears_reset()
     {
         var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
+        user.RequestPasswordReset(TokenHash, Now.AddHours(1), Now).IsSuccess.ShouldBeTrue();
         var originalStamp = user.SecurityStamp;
+        var viewerRoleId = Guid.NewGuid();
 
-        user.AssignRole(Guid.NewGuid(), Now);
+        var result = user.ChangeAccess(viewerRoleId, UserType.ViewerOnly, Now.AddMinutes(1));
 
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldBe(AccessChangeOutcome.Changed);
+        user.RoleId.ShouldBe(viewerRoleId);
+        user.UserType.ShouldBe(UserType.ViewerOnly);
         user.SecurityStamp.ShouldNotBe(originalStamp);
+        user.PasswordResetToken.ShouldBeNull();
+        user.PasswordResetExpiresAtUtc.ShouldBeNull();
+        var domainEvent = user.DomainEvents.OfType<UserAccessChangedEvent>().ShouldHaveSingleItem();
+        domainEvent.PreviousRoleId.ShouldBe(RoleId);
+        domainEvent.RoleId.ShouldBe(viewerRoleId);
+        domainEvent.PreviousUserType.ShouldBe(UserType.SystemAdministrator);
+        domainEvent.UserType.ShouldBe(UserType.ViewerOnly);
+    }
+
+    [Fact]
+    public void ChangeAccess_from_viewer_to_administrator_succeeds()
+    {
+        var viewerRoleId = Guid.NewGuid();
+        var user = User.Invite(
+            AnEmail(),
+            "Viewer",
+            viewerRoleId,
+            TokenHash,
+            Now.AddHours(1),
+            Now,
+            UserType.ViewerOnly).Value;
+
+        var result = user.ChangeAccess(RoleId, UserType.SystemAdministrator, Now.AddMinutes(1));
+
+        result.IsSuccess.ShouldBeTrue();
+        user.RoleId.ShouldBe(RoleId);
+        user.UserType.ShouldBe(UserType.SystemAdministrator);
+    }
+
+    [Fact]
+    public void ChangeAccess_same_role_and_type_is_an_idempotent_no_op()
+    {
+        var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
+        user.RequestPasswordReset(TokenHash, Now.AddHours(1), Now).IsSuccess.ShouldBeTrue();
+        var originalStamp = user.SecurityStamp;
+        var originalUpdatedAt = user.UpdatedAtUtc;
+
+        var result = user.ChangeAccess(RoleId, UserType.SystemAdministrator, Now.AddMinutes(1));
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldBe(AccessChangeOutcome.Unchanged);
+        user.SecurityStamp.ShouldBe(originalStamp);
+        user.UpdatedAtUtc.ShouldBe(originalUpdatedAt);
+        user.PasswordResetToken.ShouldBe(TokenHash);
+        user.DomainEvents.OfType<UserAccessChangedEvent>().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(UserType.StationStaff)]
+    [InlineData(UserType.CustomerContact)]
+    public void ChangeAccess_allows_linked_role_change_within_the_same_type(UserType userType)
+    {
+        var user = User.Invite(
+            AnEmail(),
+            "Linked",
+            RoleId,
+            TokenHash,
+            Now.AddHours(1),
+            Now,
+            userType,
+            Guid.NewGuid()).Value;
+        user.RequestEmailChange(
+            Email.Create($"pending-{Guid.NewGuid():N}@nags.sa").Value,
+            "pending-email-hash",
+            Now.AddHours(1),
+            Now).IsSuccess.ShouldBeTrue();
+        var newRoleId = Guid.NewGuid();
+
+        var result = user.ChangeAccess(newRoleId, userType, Now.AddMinutes(1));
+
+        result.IsSuccess.ShouldBeTrue();
+        user.RoleId.ShouldBe(newRoleId);
+        user.UserType.ShouldBe(userType);
+        user.ExternalReferenceId.ShouldNotBeNull();
+        user.PendingEmail.ShouldBeNull();
+        user.EmailChangeToken.ShouldBeNull();
+        user.EmailChangeExpiresAtUtc.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(UserType.StationStaff)]
+    [InlineData(UserType.CustomerContact)]
+    public void ChangeAccess_rejects_direct_to_linked_transition(UserType targetUserType)
+    {
+        var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
+
+        var result = user.ChangeAccess(Guid.NewGuid(), targetUserType, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.AccountTypeTransitionNotAllowed");
+        user.RoleId.ShouldBe(RoleId);
+        user.UserType.ShouldBe(UserType.SystemAdministrator);
+    }
+
+    [Theory]
+    [InlineData(UserType.SystemAdministrator)]
+    [InlineData(UserType.ViewerOnly)]
+    [InlineData(UserType.CustomerContact)]
+    public void ChangeAccess_rejects_station_staff_type_transition(UserType targetUserType)
+    {
+        var user = User.Invite(
+            AnEmail(),
+            "Staff",
+            RoleId,
+            TokenHash,
+            Now.AddHours(1),
+            Now,
+            UserType.StationStaff,
+            Guid.NewGuid()).Value;
+
+        var result = user.ChangeAccess(Guid.NewGuid(), targetUserType, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.AccountTypeTransitionNotAllowed");
+    }
+
+    [Fact]
+    public void ChangeAccess_rejects_deactivated_account()
+    {
+        var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
+        user.Deactivate(Now);
+
+        var result = user.ChangeAccess(Guid.NewGuid(), UserType.ViewerOnly, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.Deactivated");
+    }
+
+    [Fact]
+    public void ChangeAccess_rejects_released_login_identity()
+    {
+        var user = User.Invite(
+            AnEmail(),
+            "Staff",
+            RoleId,
+            TokenHash,
+            Now.AddHours(1),
+            Now,
+            UserType.StationStaff,
+            Guid.NewGuid()).Value;
+        user.ReleaseLoginEmail(Now);
+
+        var result = user.ChangeAccess(Guid.NewGuid(), UserType.StationStaff, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.LoginEmailReleased");
+    }
+
+    [Fact]
+    public void ChangeAccess_rejects_corrupt_direct_external_reference()
+    {
+        var user = User.CreateActive(AnEmail(), "Admin", RoleId, "hash", Now).Value;
+        typeof(User).GetProperty(nameof(User.ExternalReferenceId))!
+            .SetValue(user, Guid.NewGuid());
+
+        var result = user.ChangeAccess(Guid.NewGuid(), UserType.ViewerOnly, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.ExternalReferenceNotAllowed");
+    }
+
+    [Fact]
+    public void ChangeAccess_rejects_corrupt_linked_account_without_external_reference()
+    {
+        var user = User.Invite(
+            AnEmail(),
+            "Staff",
+            RoleId,
+            TokenHash,
+            Now.AddHours(1),
+            Now,
+            UserType.StationStaff,
+            Guid.NewGuid()).Value;
+        typeof(User).GetProperty(nameof(User.ExternalReferenceId))!
+            .SetValue(user, null);
+
+        var result = user.ChangeAccess(Guid.NewGuid(), UserType.StationStaff, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Identity.User.ExternalReferenceRequired");
     }
 
     [Fact]

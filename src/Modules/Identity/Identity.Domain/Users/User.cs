@@ -9,8 +9,9 @@ namespace Identity.Domain.Users;
 /// <summary>
 /// A login account. Created via invitation (no password) and activated by the invitee setting
 /// a password. Has exactly one role for v1.0.0. Supports lockout and a status lifecycle.
-/// Carries its fixed <see cref="UserType"/> (business identity/data scope) and, for linked
-/// accounts, the <see cref="ExternalReferenceId"/> of the originating MasterData record.
+/// Carries its <see cref="UserType"/> (business identity/data scope) and, for linked accounts, the
+/// <see cref="ExternalReferenceId"/> of the originating MasterData record. Direct accounts may
+/// transition between administrator and viewer access; linked account types remain fixed.
 /// </summary>
 public sealed class User : AggregateRoot<Guid>, IAuditable
 {
@@ -27,7 +28,7 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
     public UserStatus Status { get; private set; }
     public Guid RoleId { get; private set; }
 
-    /// <summary>The account's fixed business identity and data scope.</summary>
+    /// <summary>The account's business identity and data scope.</summary>
     public UserType UserType { get; private set; }
 
     /// <summary>For StationStaff/CustomerContact, the id of the linked MasterData record.</summary>
@@ -75,6 +76,7 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
     public DateTimeOffset? LastLoginAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public bool IsLockedOut(DateTimeOffset now) => LockoutEndUtc is { } end && end > now;
 
@@ -409,18 +411,97 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
-    public Result AssignRole(Guid roleId, DateTimeOffset now)
+    /// <summary>
+    /// Atomically changes the role and, when both sides are directly provisioned, the account type.
+    /// Linked identities may change roles only within their existing account type because their
+    /// external-reference ownership is coordinated with MasterData.
+    /// </summary>
+    public Result<AccessChangeOutcome> ChangeAccess(
+        Guid roleId,
+        UserType targetUserType,
+        DateTimeOffset now)
     {
         if (roleId == Guid.Empty)
             return Error.Validation("A role is required.", "Identity.User.RoleRequired");
 
+        if (!Enum.IsDefined(UserType) || !Enum.IsDefined(targetUserType))
+            return Error.Validation("The account type is invalid.", "Identity.User.UserTypeInvalid");
+
+        if (LoginEmailReleased)
+            return Error.Conflict(
+                "Cannot change access for an account whose login identity was released.",
+                "Identity.User.LoginEmailReleased");
+
+        if (Status == UserStatus.Deactivated)
+            return Error.Conflict(
+                "Cannot change access for a deactivated account.",
+                "Identity.User.Deactivated");
+
+        if (UserType.IsDirectlyProvisioned())
+        {
+            if (ExternalReferenceId is not null)
+            {
+                return Error.Conflict(
+                    "A directly provisioned account cannot have an external reference.",
+                    "Identity.User.ExternalReferenceNotAllowed");
+            }
+
+            if (!targetUserType.IsDirectlyProvisioned())
+            {
+                return Error.Conflict(
+                    "Direct accounts cannot be converted to linked account types.",
+                    "Identity.User.AccountTypeTransitionNotAllowed");
+            }
+        }
+        else
+        {
+            if (ExternalReferenceId is null || ExternalReferenceId == Guid.Empty)
+            {
+                return Error.Conflict(
+                    "A linked account requires an external reference.",
+                    "Identity.User.ExternalReferenceRequired");
+            }
+
+            if (targetUserType != UserType)
+            {
+                return Error.Conflict(
+                    "Linked accounts cannot change account type.",
+                    "Identity.User.AccountTypeTransitionNotAllowed");
+            }
+        }
+
+        if (RoleId == roleId && UserType == targetUserType)
+            return AccessChangeOutcome.Unchanged;
+
+        var previousRoleId = RoleId;
+        var previousUserType = UserType;
         RoleId = roleId;
-        // A role change alters the permission set; rotate the stamp so outstanding access tokens
-        // (which carry the old permissions) are rejected on their next request.
+        UserType = targetUserType;
+        InvalidateAccessCredentials(now);
+        RaiseDomainEvent(new UserAccessChangedEvent(
+            Id,
+            previousRoleId,
+            roleId,
+            previousUserType,
+            targetUserType));
+        return AccessChangeOutcome.Changed;
+    }
+
+    /// <summary>
+    /// Invalidates credentials that were issued for an earlier authorization configuration.
+    /// Unlike a session-only stamp rotation, this also cancels a pending password reset: a reset
+    /// or login-email verification link issued before a promotion must not be able to take over
+    /// the promoted account.
+    /// </summary>
+    public void InvalidateAccessCredentials(DateTimeOffset now)
+    {
+        PendingEmail = null;
+        EmailChangeToken = null;
+        EmailChangeExpiresAtUtc = null;
+        PasswordResetToken = null;
+        PasswordResetExpiresAtUtc = null;
         SecurityStamp = Guid.NewGuid();
         UpdatedAtUtc = now;
-        RaiseDomainEvent(new UserRoleAssignedEvent(Id, roleId));
-        return Result.Success();
     }
 
     /// <summary>Rotates the security stamp without other state changes (e.g. when the role's permissions change).</summary>
@@ -509,12 +590,24 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
     /// Records a failed sign-in, auto-locking once <paramref name="maxFailedAttempts"/> is reached.
     /// Returns true when this attempt locked the account so callers can revoke active sessions.
     /// </summary>
-    public bool RecordFailedSignIn(int maxFailedAttempts, TimeSpan lockoutDuration, DateTimeOffset now)
+    public bool RecordFailedSignIn(
+        int maxFailedAttempts,
+        TimeSpan lockoutDuration,
+        DateTimeOffset now,
+        bool allowLockout = true)
     {
         AccessFailedCount++;
         UpdatedAtUtc = now;
         if (AccessFailedCount >= maxFailedAttempts)
         {
+            if (!allowLockout)
+            {
+                // The last protected break-glass administrator must remain recoverable. Keep the
+                // counter at the threshold edge so every later failure re-evaluates that invariant.
+                AccessFailedCount = Math.Max(0, maxFailedAttempts - 1);
+                return false;
+            }
+
             LockoutEndUtc = now.Add(lockoutDuration);
             AccessFailedCount = 0;
             SecurityStamp = Guid.NewGuid();

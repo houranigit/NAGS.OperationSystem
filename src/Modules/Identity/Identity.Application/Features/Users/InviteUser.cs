@@ -1,11 +1,13 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using Identity.Application.Abstractions;
 using Identity.Application.Authorization;
 using Identity.Application.Contracts;
+using Identity.Domain.Authorization;
 using Identity.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -33,6 +35,7 @@ public sealed class InviteUserCommandValidator : AbstractValidator<InviteUserCom
 public sealed class InviteUserCommandHandler(
     IIdentityDbContext db,
     IUserContext userContext,
+    IPermissionRegistry permissions,
     IInvitationNotifier invitationNotifier,
     ITokenService tokenService,
     TimeProvider timeProvider,
@@ -44,6 +47,13 @@ public sealed class InviteUserCommandHandler(
 
     public async Task<Result<InvitedUserDto>> Handle(InviteUserCommand request, CancellationToken cancellationToken)
     {
+        if (!userContext.HasPermission(IdentityPermissions.Users.Invite))
+        {
+            return Error.Forbidden(
+                "Inviting a user requires permission to invite users.",
+                "Identity.User.InviteForbidden");
+        }
+
         // Inviting a user always assigns a role. The endpoint's invite permission is therefore not
         // sufficient on its own, even when the caller omits RoleId and the protected system role is
         // selected as the compatibility default.
@@ -51,70 +61,127 @@ public sealed class InviteUserCommandHandler(
         if (roleAssignmentAccess.IsFailure)
             return roleAssignmentAccess.Error;
 
-        var emailResult = Email.Create(request.Email);
-        if (emailResult.IsFailure)
-            return emailResult.Error;
-
-        var email = emailResult.Value;
-        var emailValue = email.Value;
-
-        // Only an active login email participates in uniqueness; released emails are reusable.
-        var emailTaken = await db.Users.AnyAsync(u => u.Email.Value == emailValue && !u.LoginEmailReleased, cancellationToken);
-        if (emailTaken)
-            return Error.Conflict("A user with this email already exists.", "Identity.User.DuplicateEmail");
-
-        // The selected role is authoritative for the immutable account type. Omitting RoleId keeps
-        // the legacy behavior of selecting the protected System Administrator role.
-        var role = request.RoleId is { } roleId
-            ? await db.Roles.FirstOrDefaultAsync(r => r.Id == roleId, cancellationToken)
-            : await db.Roles.FirstOrDefaultAsync(r => r.IsSystem, cancellationToken);
-        if (role is null)
-            return request.RoleId is { }
-                ? Error.Validation("The selected role does not exist.", "Identity.User.RoleNotFound")
-                : Error.Failure("The protected System Administrator role is not available.", "Identity.User.NoAdminRole");
-
-        if (!role.CompatibleUserType.IsDirectlyProvisioned())
-        {
-            return Error.Conflict(
-                $"Role '{role.Name}' is not compatible with direct invitations.",
-                "Identity.User.IncompatibleRole");
-        }
-
-        // Prevent permission escalation through delegation: holding assign-role allows the caller
-        // to delegate only permissions they already possess. Apply the ceiling to the effective
-        // role, including the legacy default selected when RoleId is omitted.
-        var delegationAccess = RoleAssignmentAuthorization.EnsureWithinPermissionCeiling(userContext, role);
-        if (delegationAccess.IsFailure)
-            return delegationAccess.Error;
-
-        var now = timeProvider.GetUtcNow();
-        var token = tokenService.CreateSecureToken();
-        var expiry = now.AddHours(_options.InvitationExpiryHours);
-
-        var userResult = User.Invite(
-            email,
-            request.DisplayName,
-            role.Id,
-            token.Hash,
-            expiry,
-            now,
-            role.CompatibleUserType);
-        if (userResult.IsFailure)
-            return userResult.Error;
-
-        db.Users.Add(userResult.Value);
-        await db.SaveChangesAsync(cancellationToken);
-
         try
         {
-            await invitationNotifier.SendInvitationAsync(email.Value, request.DisplayName, userResult.Value.Id, token.Value, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "Invitation delivery failed for direct user {UserId}.", userResult.Value.Id);
-            return new InvitedUserDto(userResult.Value.Id, email.Value, "Failed");
-        }
+            await using var transaction =
+                await db.BeginAccessManagementTransactionAsync(cancellationToken);
 
-        return new InvitedUserDto(userResult.Value.Id, email.Value, "Queued");
+            var now = timeProvider.GetUtcNow();
+            var liveActorRole = await RoleAssignmentAuthorization.GetLiveActorRoleAsync(
+                db,
+                userContext,
+                permissions,
+                IdentityPermissions.Users.Invite,
+                now,
+                cancellationToken);
+            if (liveActorRole.IsFailure)
+            {
+                return Error.Forbidden(
+                    liveActorRole.Error.Description,
+                    "Identity.User.InviteForbidden");
+            }
+
+            var liveAssignmentAccess = RoleAssignmentAuthorization.EnsureLivePermission(
+                liveActorRole.Value,
+                IdentityPermissions.Users.AssignRole,
+                "Identity.User.AssignRoleForbidden");
+            if (liveAssignmentAccess.IsFailure)
+                return liveAssignmentAccess.Error;
+
+            var emailResult = Email.Create(request.Email);
+            if (emailResult.IsFailure)
+                return emailResult.Error;
+
+            var email = emailResult.Value;
+            var emailValue = email.Value;
+
+            // Only an active login email participates in uniqueness; released emails are reusable.
+            var emailTaken = await db.Users.AnyAsync(
+                u => u.Email.Value == emailValue && !u.LoginEmailReleased,
+                cancellationToken);
+            if (emailTaken)
+                return Error.Conflict("A user with this email already exists.", "Identity.User.DuplicateEmail");
+
+            // The selected role is authoritative for the account's initial direct type. Omitting
+            // RoleId keeps the legacy behavior of selecting the protected System Administrator role.
+            var role = request.RoleId is { } roleId
+                ? await db.Roles.FirstOrDefaultAsync(r => r.Id == roleId, cancellationToken)
+                : await db.Roles.FirstOrDefaultAsync(r => r.IsSystem, cancellationToken);
+            if (role is null)
+            {
+                return request.RoleId is { }
+                    ? Error.Validation("The selected role does not exist.", "Identity.User.RoleNotFound")
+                    : Error.Failure("The protected System Administrator role is not available.", "Identity.User.NoAdminRole");
+            }
+
+            if (!role.CompatibleUserType.IsDirectlyProvisioned())
+            {
+                return Error.Conflict(
+                    $"Role '{role.Name}' is not compatible with direct invitations.",
+                    "Identity.User.IncompatibleRole");
+            }
+
+            var roleConfiguration = RolePermissionValidator.Validate(
+                role.Permissions.ToList(),
+                role.CompatibleUserType,
+                permissions);
+            if (roleConfiguration.IsFailure)
+                return roleConfiguration.Error;
+
+            // Prevent permission escalation through delegation. Both the token and the actor's
+            // live role bound the selected role, including the legacy default.
+            var delegationAccess = RoleAssignmentAuthorization.EnsureWithinPermissionCeiling(
+                userContext,
+                liveActorRole.Value,
+                role,
+                isCurrentRole: false);
+            if (delegationAccess.IsFailure)
+                return delegationAccess.Error;
+
+            var token = tokenService.CreateSecureToken();
+            var expiry = now.AddHours(_options.InvitationExpiryHours);
+
+            var userResult = User.Invite(
+                email,
+                request.DisplayName,
+                role.Id,
+                token.Hash,
+                expiry,
+                now,
+                role.CompatibleUserType);
+            if (userResult.IsFailure)
+                return userResult.Error;
+
+            var user = userResult.Value;
+            db.Users.Add(user);
+
+            // Queue the credential while the access lock is still held. A role update cannot rotate
+            // the invitation and queue a replacement before this original message is queued.
+            var deliveryStatus = "Queued";
+            try
+            {
+                await invitationNotifier.SendInvitationAsync(
+                    email.Value,
+                    request.DisplayName,
+                    user.Id,
+                    token.Value,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (
+                ex is not OperationCanceledException and
+                not DbUpdateConcurrencyException)
+            {
+                logger.LogError(ex, "Invitation delivery failed for direct user {UserId}.", user.Id);
+                deliveryStatus = "Failed";
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new InvitedUserDto(user.Id, email.Value, deliveryStatus);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrencyErrors.Stale;
+        }
     }
 }
