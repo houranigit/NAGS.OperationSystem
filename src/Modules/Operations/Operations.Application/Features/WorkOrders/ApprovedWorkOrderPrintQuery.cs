@@ -46,6 +46,8 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
         }
 
         var flight = await db.Flights.AsNoTracking()
+            .Include(f => f.PlannedServices)
+            .Include(f => f.AssignedEmployees)
             .SingleOrDefaultAsync(f =>
                 f.Id == request.FlightId &&
                 f.Status == FlightStatus.Completed,
@@ -63,6 +65,29 @@ public sealed class GetApprovedWorkOrderPrintQueryHandler(
 
         return new ApprovedWorkOrderPrintDto(
             detail,
+            new WorkOrderPrintFlightDto(
+                flight.FlightNumber.Value,
+                flight.OriginalFlightNumber,
+                flight.IsPerLanding,
+                flight.AircraftType?.Manufacturer,
+                flight.AircraftType?.Model,
+                flight.PlannedServices
+                    .OrderBy(service => service.Service.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(service => service.Service.ServiceId)
+                    .Select(service => new PlannedServiceDto(
+                        service.Service.ServiceId,
+                        service.Service.Name,
+                        service.IsAircraftPerLanding))
+                    .ToList(),
+                flight.AssignedEmployees
+                    .OrderBy(employee => employee.Employee.FullName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(employee => employee.Employee.EmployeeId, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(employee => employee.Employee.StaffMemberId)
+                    .Select(employee => new AssignedEmployeeDto(
+                        employee.Employee.StaffMemberId,
+                        employee.Employee.FullName,
+                        employee.Employee.EmployeeId))
+                    .ToList()),
             workOrder.AircraftType?.Manufacturer,
             flight.ContractNumber,
             staff,

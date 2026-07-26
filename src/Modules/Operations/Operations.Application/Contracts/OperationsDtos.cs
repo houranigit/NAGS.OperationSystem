@@ -260,11 +260,21 @@ public sealed record WorkOrderDetailDto(
 
 public sealed record ApprovedWorkOrderPrintDto(
     WorkOrderDetailDto WorkOrder,
+    WorkOrderPrintFlightDto Flight,
     string? AircraftManufacturer,
     string? ContractNumber,
     IReadOnlyList<WorkOrderPrintStaffDto> Staff,
     byte[]? CustomerSignatureContent,
     string? CustomerSignatureContentType);
+
+public sealed record WorkOrderPrintFlightDto(
+    string CurrentFlightNumber,
+    string OriginalFlightNumber,
+    bool IsPerLanding,
+    string? ScheduledAircraftManufacturer,
+    string? ScheduledAircraftModel,
+    IReadOnlyList<PlannedServiceDto> PlannedServices,
+    IReadOnlyList<AssignedEmployeeDto> AssignedEmployees);
 
 public sealed record WorkOrderPrintStaffDto(
     Guid StaffMemberId,

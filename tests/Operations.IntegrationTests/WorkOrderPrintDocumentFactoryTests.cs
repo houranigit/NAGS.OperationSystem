@@ -11,43 +11,72 @@ namespace Operations.IntegrationTests;
 public sealed class WorkOrderPrintDocumentFactoryTests
 {
     [Fact]
-    public void Create_PreservesHistoricPageAndReturnsNamedPdf()
+    public void Create_ReturnsBrandedMultipageA4Pdf()
     {
         var source = CreateSource(includeCompletionDetails: true);
 
         var file = WorkOrderPrintDocumentFactory.Create(source);
 
         file.FileName.ShouldBe("work-order-HOF-0042.pdf");
-        file.Content.Length.ShouldBeGreaterThan(100_000);
+        file.Content.Length.ShouldBeGreaterThan(20_000);
         Encoding.ASCII.GetString(file.Content, 0, 4).ShouldBe("%PDF");
 
         using var stream = new MemoryStream(file.Content, writable: false);
         using var document = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
-        document.PageCount.ShouldBe(1);
-        document.Pages[0].Width.Point.ShouldBe(595.676, tolerance: 0.01);
-        document.Pages[0].Height.Point.ShouldBe(879.144, tolerance: 0.01);
-        var content = ContentReader.ReadContent(document.Pages[0]);
-        content.OfType<COperator>()
+        document.PageCount.ShouldBeGreaterThanOrEqualTo(2);
+        var pages = Enumerable.Range(0, document.PageCount)
+            .Select(index => document.Pages[index])
+            .ToList();
+        foreach (var page in pages)
+        {
+            page.Width.Point.ShouldBe(595.276, tolerance: 0.1);
+            page.Height.Point.ShouldBe(841.89, tolerance: 0.1);
+        }
+        pages
+            .SelectMany(page => ContentReader.ReadContent(page).OfType<COperator>())
             .Count(operation => operation.Name is "Tj" or "TJ")
-            .ShouldBeGreaterThan(10);
+            .ShouldBeGreaterThan(40);
     }
 
     [Fact]
     public void Create_ToleratesApprovedPerLandingWorkOrderWithoutActualsAircraftOrSignature()
     {
         var baseline = CreateSource(includeCompletionDetails: false);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var performers = Enumerable.Range(1, 20)
+            .Select(index => new WorkOrderServiceLinePerformerDto(
+                Guid.NewGuid(),
+                $"Long Name Performer {index}",
+                $"EMP-{index:D3}"))
+            .ToList();
         var source = baseline with
         {
             WorkOrder = baseline.WorkOrder with
             {
-                Remarks = $"Long unbroken value: {new string('X', 2_000)}"
-            }
+                Remarks = $"Long unbroken value: {new string('X', 2_000)}",
+                ServiceLines =
+                [
+                    new WorkOrderServiceLineDto(
+                        Guid.NewGuid(),
+                        Guid.NewGuid(),
+                        "Aircraft Per Landing",
+                        performers,
+                        now,
+                        now.AddMinutes(45),
+                        new string('D', 2_000),
+                        false)
+                ]
+            },
+            Flight = baseline.Flight with { IsPerLanding = true }
         };
 
         var file = WorkOrderPrintDocumentFactory.Create(source);
 
         Encoding.ASCII.GetString(file.Content, 0, 4).ShouldBe("%PDF");
         file.FileName.ShouldBe("work-order-HOF-0042.pdf");
+        using var stream = new MemoryStream(file.Content, writable: false);
+        using var document = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
+        document.PageCount.ShouldBeGreaterThanOrEqualTo(2);
     }
 
     [Fact]
@@ -73,7 +102,7 @@ public sealed class WorkOrderPrintDocumentFactoryTests
     }
 
     [Fact]
-    public void PrintableRows_UseWorkOrderServicesReturnEndAndTaskStaffWording()
+    public void HeaderAndReturnWindow_UseApprovedRecordWithoutAStatusField()
     {
         var baseline = CreateSource(includeCompletionDetails: true);
         var now = baseline.WorkOrder.ScheduledArrivalUtc;
@@ -84,20 +113,14 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             .ToList();
         var workOrder = baseline.WorkOrder with { ServiceLines = serviceLines };
 
-        WorkOrderPrintDocumentFactory.BuildRequestedServiceRows(workOrder)
-            .ShouldBe(["Service 1", "Service 2", "Service 3", "Service 4", "More 3 Services"]);
-        WorkOrderPrintDocumentFactory.BuildRequestedServiceRows(workOrder with
-            {
-                ServiceLines = serviceLines.Take(5).ToList()
-            })
-            .ShouldBe(["Service 1", "Service 2", "Service 3", "Service 4", "Service 5"]);
+        var header = WorkOrderPrintDocumentFactory.BuildHeaderDetails(workOrder);
+        header.Select(detail => detail.Label).ShouldBe(["WO NUMBER", "STATION"]);
+        header.Select(detail => detail.Value).ShouldBe(["HOF-0042", "HOF"]);
+        header.ShouldNotContain(detail =>
+            detail.Label.Equals("STATUS", StringComparison.OrdinalIgnoreCase));
+
         WorkOrderPrintDocumentFactory.ResolveHeaderTo(workOrder)
             .ShouldBe(now.AddMinutes(17));
-        WorkOrderPrintDocumentFactory.BuildCorrectiveActionRows(workOrder)
-            .ShouldBe([
-                "Major Task By Alex Technician, Completed inspection",
-                "Minor Task By Dana Engineer, Sam Technician, Completed follow-up"
-            ]);
 
         var returnTask = workOrder.Tasks[0] with
         {
@@ -120,6 +143,44 @@ public sealed class WorkOrderPrintDocumentFactoryTests
     }
 
     [Fact]
+    public void FlightNumber_UsesExactlyOneCarrierCode()
+    {
+        var workOrder = CreateSource(includeCompletionDetails: true).WorkOrder;
+
+        WorkOrderPrintDocumentFactory.DisplayFlightNumber(workOrder, "123")
+            .ShouldBe("RJ-123");
+        WorkOrderPrintDocumentFactory.DisplayFlightNumber(workOrder, "RJ123")
+            .ShouldBe("RJ-123");
+        WorkOrderPrintDocumentFactory.DisplayFlightNumber(workOrder, "rj-123")
+            .ShouldBe("RJ-123");
+        WorkOrderPrintDocumentFactory.DisplayFlightNumber(workOrder, null)
+            .ShouldBe("Not recorded");
+    }
+
+    [Fact]
+    public void ReturnToRampDuration_PreservesGapsAndCoalescesOverlaps()
+    {
+        var baseline = CreateSource(includeCompletionDetails: false);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var serviceLines = new[]
+        {
+            new WorkOrderServiceLineDto(
+                Guid.NewGuid(), Guid.NewGuid(), "First return", PerformedBy(Guid.NewGuid(), "Alex"),
+                now, now.AddMinutes(10), null, true),
+            new WorkOrderServiceLineDto(
+                Guid.NewGuid(), Guid.NewGuid(), "Second return", PerformedBy(Guid.NewGuid(), "Sam"),
+                now.AddMinutes(60), now.AddMinutes(70), null, true),
+            new WorkOrderServiceLineDto(
+                Guid.NewGuid(), Guid.NewGuid(), "Overlapping return", PerformedBy(Guid.NewGuid(), "Dana"),
+                now.AddMinutes(65), now.AddMinutes(80), null, true)
+        };
+        var workOrder = baseline.WorkOrder with { ServiceLines = serviceLines };
+
+        WorkOrderPrintDocumentFactory.CalculateReturnToRampDuration(workOrder)
+            .ShouldBe(TimeSpan.FromMinutes(30));
+    }
+
+    [Fact]
     public void Create_HandlesMoreStaffAndTasksThanTheOriginalStaticRows()
     {
         var baseline = CreateSource(includeCompletionDetails: true);
@@ -131,7 +192,14 @@ public sealed class WorkOrderPrintDocumentFactoryTests
                 Guid.NewGuid(), Guid.NewGuid(), $"Overflow Service {index + 1}",
                 PerformedBy(staff.StaffMemberId, $"Overflow Staff Member {index + 1}"),
                 now.AddMinutes(index), now.AddMinutes(index + 10),
-                null, false))
+                index == 0
+                    ? string.Join(
+                        " ",
+                        Enumerable.Repeat(
+                            "Detailed operational narrative remains readable when a performed service continues across lines.",
+                            16))
+                    : null,
+                index is 0 or 7))
             .ToList();
         var tasks = Enumerable.Range(0, 16)
             .Select(index => baseline.WorkOrder.Tasks[index % baseline.WorkOrder.Tasks.Count] with
@@ -146,10 +214,12 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             Staff = baseline.Staff.Concat(additionalStaff).ToList()
         };
 
-        WorkOrderPrintDocumentFactory.BuildCorrectiveActionRows(source.WorkOrder).Count.ShouldBe(16);
         var file = WorkOrderPrintDocumentFactory.Create(source);
 
         Encoding.ASCII.GetString(file.Content, 0, 4).ShouldBe("%PDF");
+        using var stream = new MemoryStream(file.Content, writable: false);
+        using var document = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
+        document.PageCount.ShouldBeGreaterThan(2);
     }
 
     private static ApprovedWorkOrderPrintDto CreateSource(bool includeCompletionDetails)
@@ -214,6 +284,22 @@ public sealed class WorkOrderPrintDocumentFactoryTests
 
         return new ApprovedWorkOrderPrintDto(
             workOrder,
+            new WorkOrderPrintFlightDto(
+                CurrentFlightNumber: "123",
+                OriginalFlightNumber: "122",
+                IsPerLanding: false,
+                ScheduledAircraftManufacturer: "Airbus",
+                ScheduledAircraftModel: "A320",
+                PlannedServices:
+                [
+                    new PlannedServiceDto(Guid.NewGuid(), "Engineer On Call", false),
+                    new PlannedServiceDto(Guid.NewGuid(), "Cabin Check", false)
+                ],
+                AssignedEmployees:
+                [
+                    new AssignedEmployeeDto(staffId, "Alex Technician", "EMP-100"),
+                    new AssignedEmployeeDto(secondStaffId, "Sam Technician", "EMP-200")
+                ]),
             includeCompletionDetails ? "Airbus" : null,
             "C-7788",
             Staff: includeCompletionDetails

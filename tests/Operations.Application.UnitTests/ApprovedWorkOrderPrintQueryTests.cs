@@ -84,6 +84,17 @@ public sealed class ApprovedWorkOrderPrintQueryTests
         var result = await handler.Handle(new GetApprovedWorkOrderPrintQuery(flight.Id), CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
+        result.Value.Flight.CurrentFlightNumber.ShouldBe("RJ123");
+        result.Value.Flight.OriginalFlightNumber.ShouldBe("RJ123");
+        result.Value.Flight.IsPerLanding.ShouldBeTrue();
+        result.Value.Flight.ScheduledAircraftManufacturer.ShouldBe("Airbus");
+        result.Value.Flight.ScheduledAircraftModel.ShouldBe("A320");
+        var plannedService = result.Value.Flight.PlannedServices.ShouldHaveSingleItem();
+        plannedService.Name.ShouldBe("Aircraft Per Landing");
+        plannedService.IsAircraftPerLanding.ShouldBeTrue();
+        var assignedEmployee = result.Value.Flight.AssignedEmployees.ShouldHaveSingleItem();
+        assignedEmployee.FullName.ShouldBe("Flight Coordinator");
+        assignedEmployee.EmployeeId.ShouldBe("EMP-FLIGHT");
         result.Value.AircraftManufacturer.ShouldBe("Airbus");
         result.Value.ContractNumber.ShouldBe("CTR-2017");
         result.Value.CustomerSignatureContent.ShouldBe(signature);
@@ -280,6 +291,10 @@ public sealed class ApprovedWorkOrderPrintQueryTests
         IReadOnlyList<ServiceSnapshot> plannedServices = perLanding
             ? [new ServiceSnapshot(WellKnownMasterDataIds.AircraftPerLandingService, "Aircraft Per Landing")]
             : [new ServiceSnapshot(Guid.NewGuid(), "Ground handling")];
+        IReadOnlyList<StaffMemberSnapshot> assignedEmployees =
+        [
+            new StaffMemberSnapshot(Guid.NewGuid(), "Flight Coordinator", "EMP-FLIGHT")
+        ];
 
         return Flight.ScheduleNew(
             new CustomerSnapshot(Guid.NewGuid(), "RJ", "Royal Jordanian"),
@@ -289,7 +304,7 @@ public sealed class ApprovedWorkOrderPrintQueryTests
             ScheduledTime.Create(Now, Now.AddHours(2)).Value,
             new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A320"),
             plannedServices,
-            assignedEmployees: [],
+            assignedEmployees,
             contractId: contractNumber is null ? null : Guid.NewGuid(),
             contractNumber,
             createdByUserId: Guid.NewGuid(),
