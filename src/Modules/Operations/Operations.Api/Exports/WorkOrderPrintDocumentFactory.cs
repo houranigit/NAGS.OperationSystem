@@ -63,17 +63,16 @@ internal static class WorkOrderPrintDocumentFactory
         var section = document.AddSection();
         section.PageSetup.PageFormat = PageFormat.A4;
         section.PageSetup.Orientation = Orientation.Portrait;
-        section.PageSetup.TopMargin = Unit.FromCentimeter(2.75);
+        section.PageSetup.TopMargin = Unit.FromCentimeter(1.1);
         section.PageSetup.BottomMargin = Unit.FromCentimeter(1.45);
         section.PageSetup.LeftMargin = Unit.FromCentimeter(1.4);
         section.PageSetup.RightMargin = Unit.FromCentimeter(1.4);
         section.PageSetup.OddAndEvenPagesHeaderFooter = false;
         section.PageSetup.DifferentFirstPageHeaderFooter = false;
-        section.PageSetup.HeaderDistance = Unit.FromCentimeter(0.45);
         section.PageSetup.FooterDistance = Unit.FromCentimeter(0.45);
 
-        AddDocumentHeader(section.Headers.Primary, source);
         AddDocumentFooter(section.Footers.Primary, workOrder);
+        AddFirstPageTitle(section, source);
         AddFlightOverview(section, source);
         AddFlightTimes(section, workOrder);
         AddPlannedFlightServices(section, source);
@@ -104,80 +103,47 @@ internal static class WorkOrderPrintDocumentFactory
         return document;
     }
 
-    private static void AddDocumentHeader(
-        HeaderFooter header,
+    private static void AddFirstPageTitle(
+        Section section,
         ApprovedWorkOrderPrintDto source)
     {
-        var table = ConfigureTable(
-            header.AddTable(),
-            2.2,
-            10.5,
-            2.2,
-            3.3);
+        var table = ConfigureTable(section.AddTable(), 14.7, 3.5);
         table.Borders.Width = Unit.Zero;
         table.Borders.Bottom.Color = Color.Parse(BrandColor);
         table.Borders.Bottom.Width = Unit.FromPoint(1.2);
 
-        var first = table.AddRow();
-        var second = table.AddRow();
-        first.TopPadding = Unit.FromPoint(2);
-        first.BottomPadding = Unit.FromPoint(2);
-        second.TopPadding = Unit.FromPoint(2);
-        second.BottomPadding = Unit.FromPoint(3);
+        var row = table.AddRow();
+        row.TopPadding = Unit.FromPoint(2);
+        row.BottomPadding = Unit.FromPoint(5);
+        row.Cells[0].VerticalAlignment = VerticalAlignment.Center;
+        row.Cells[1].VerticalAlignment = VerticalAlignment.Center;
 
-        first.Cells[0].MergeDown = 1;
-        first.Cells[1].MergeDown = 1;
-        first.Cells[0].VerticalAlignment = VerticalAlignment.Center;
-        first.Cells[1].VerticalAlignment = VerticalAlignment.Center;
-
-        var logo = first.Cells[0].AddImage(GetLogoDataUri());
-        logo.LockAspectRatio = true;
-        logo.Height = Unit.FromCentimeter(1.25);
-
-        var title = first.Cells[1].AddParagraph("WORK ORDER");
-        title.Format.Alignment = ParagraphAlignment.Center;
-        title.Format.Font.Size = Unit.FromPoint(19);
-        title.Format.Font.Bold = true;
+        var title = row.Cells[0].AddParagraph();
+        title.Format.Alignment = ParagraphAlignment.Left;
         title.Format.Font.Color = Color.Parse(TextColor);
+        var titleText = title.AddFormattedText("WORK ORDER", TextFormat.Bold);
+        titleText.Font.Size = Unit.FromPoint(19);
+        var numberText = title.AddFormattedText(
+            $"  {DisplayValue(source.WorkOrder.ApprovalNumber)}",
+            TextFormat.Bold);
+        numberText.Font.Size = Unit.FromPoint(11.5);
+        numberText.Font.Color = Color.Parse(BrandColor);
 
-        var subtitle = first.Cells[1].AddParagraph("FLIGHT MAINTENANCE AND GROUND SUPPORT");
-        subtitle.Format.Alignment = ParagraphAlignment.Center;
+        var subtitle = row.Cells[0].AddParagraph("FLIGHT MAINTENANCE AND GROUND SUPPORT");
+        subtitle.Format.Alignment = ParagraphAlignment.Left;
         subtitle.Format.Font.Size = Unit.FromPoint(7.2);
         subtitle.Format.Font.Color = Color.Parse(MutedTextColor);
         subtitle.Format.SpaceBefore = Unit.FromPoint(1);
 
-        var headerDetails = BuildHeaderDetails(source.WorkOrder);
-        AddHeaderDetail(first.Cells[2], first.Cells[3], headerDetails[0]);
-        AddHeaderDetail(second.Cells[2], second.Cells[3], headerDetails[1]);
+        var logoContainer = row.Cells[1].AddParagraph();
+        logoContainer.Format.Alignment = ParagraphAlignment.Right;
+        var logo = logoContainer.AddImage(GetLogoDataUri());
+        logo.LockAspectRatio = true;
+        logo.Height = Unit.FromCentimeter(1.35);
+
+        KeepRowsTogether(table);
+        AddTableSpacing(section, 10);
     }
-
-    private static void AddHeaderDetail(Cell labelCell, Cell valueCell, HeaderDetail detail)
-    {
-        foreach (var cell in new[] { labelCell, valueCell })
-        {
-            cell.Borders.Color = Color.Parse(BorderColor);
-            cell.Borders.Width = Unit.FromPoint(0.5);
-            cell.Shading.Color = Color.Parse(HeaderFillColor);
-            cell.VerticalAlignment = VerticalAlignment.Center;
-        }
-
-        var label = labelCell.AddParagraph(detail.Label);
-        label.Format.Font.Size = Unit.FromPoint(6.2);
-        label.Format.Font.Color = Color.Parse(MutedTextColor);
-        label.Format.Alignment = ParagraphAlignment.Left;
-
-        var value = valueCell.AddParagraph(PdfSafeText(detail.Value));
-        value.Format.Font.Size = Unit.FromPoint(8.2);
-        value.Format.Font.Bold = true;
-        value.Format.Font.Color = Color.Parse(TextColor);
-        value.Format.Alignment = ParagraphAlignment.Right;
-    }
-
-    internal static IReadOnlyList<HeaderDetail> BuildHeaderDetails(WorkOrderDetailDto workOrder) =>
-    [
-        new("WO NUMBER", DisplayValue(workOrder.ApprovalNumber)),
-        new("STATION", DisplayValue(workOrder.StationIata))
-    ];
 
     private static void AddDocumentFooter(HeaderFooter footer, WorkOrderDetailDto workOrder)
     {
@@ -208,7 +174,7 @@ internal static class WorkOrderPrintDocumentFactory
     private static void AddFlightOverview(Section section, ApprovedWorkOrderPrintDto source)
     {
         var workOrder = source.WorkOrder;
-        var table = CreateContentTable(section, 7.0, 5.4, 5.8);
+        var table = CreateContentTable(section, 6.4, 5.6, 6.2);
         table.KeepTogether = true;
         AddSectionHeaderRow(table, "Flight Overview");
 
@@ -222,55 +188,65 @@ internal static class WorkOrderPrintDocumentFactory
                 : $"IATA {workOrder.CustomerIataCode!.Trim().ToUpperInvariant()}");
         AddFactCell(
             first.Cells[1],
-            "Actual Flight",
-            DisplayFlightNumber(workOrder, workOrder.ActualFlightNumber));
-        AddFactCell(first.Cells[2], "Operation Type", workOrder.OperationTypeName);
+            "Flight No",
+            DisplayFlightNumber(workOrder, workOrder.ActualFlightNumber),
+            BuildScheduledFlightNote(source));
+        AddFactCell(
+            first.Cells[2],
+            "Operation Type",
+            workOrder.OperationTypeName,
+            BuildServiceBasisNote(source));
 
         var second = AddFactRow(table);
+        AddFactCell(second.Cells[0], "Contract", DisplayValue(source.ContractNumber));
         AddFactCell(
-            second.Cells[0],
+            second.Cells[1],
             "Aircraft",
-            JoinNonEmpty(source.AircraftManufacturer, workOrder.AircraftTypeModel),
-            BuildScheduledAircraftNote(source.Flight));
-        AddFactCell(second.Cells[1], "Registration", DisplayValue(workOrder.AircraftTailNumber));
+            BuildAircraftDisplay(source),
+            $"Registration: {DisplayValueOrNotApplicable(workOrder.AircraftTailNumber)}");
         AddFactCell(
             second.Cells[2],
             "Station",
             JoinCodeAndName(workOrder.StationIata, workOrder.StationName));
 
-        var third = AddFactRow(table);
-        AddFactCell(third.Cells[0], "Contract", DisplayValue(source.ContractNumber));
-        AddFactCell(
-            third.Cells[1],
-            "Scheduled Flight",
-            DisplayFlightNumber(workOrder, source.Flight.CurrentFlightNumber),
-            BuildOriginalFlightNote(source));
-        AddFactCell(
-            third.Cells[2],
-            "Service Basis",
-            source.Flight.IsPerLanding ? "Per Landing" : "Standard flight");
-
         KeepRowsTogether(table);
         AddTableSpacing(section);
     }
 
-    private static string? BuildScheduledAircraftNote(WorkOrderPrintFlightDto flight)
+    private static string BuildAircraftDisplay(ApprovedWorkOrderPrintDto source)
     {
-        var scheduled = JoinNonEmpty(flight.ScheduledAircraftManufacturer, flight.ScheduledAircraftModel);
-        return scheduled.Length == 0 ? null : $"Scheduled: {scheduled}";
+        var actual = JoinNonEmpty(
+            source.AircraftManufacturer,
+            source.WorkOrder.AircraftTypeModel);
+        if (actual.Length > 0)
+            return actual;
+
+        return JoinNonEmpty(
+            source.Flight.ScheduledAircraftManufacturer,
+            source.Flight.ScheduledAircraftModel);
     }
 
-    private static string? BuildOriginalFlightNote(ApprovedWorkOrderPrintDto source)
+    internal static string? BuildScheduledFlightNote(ApprovedWorkOrderPrintDto source)
     {
-        var original = Clean(source.Flight.OriginalFlightNumber);
-        if (original.Length == 0 ||
-            original.Equals(source.Flight.CurrentFlightNumber, StringComparison.OrdinalIgnoreCase))
-        {
+        var scheduled = Clean(source.Flight.CurrentFlightNumber);
+        if (scheduled.Length == 0)
             return null;
-        }
 
-        return $"Original: {DisplayFlightNumber(source.WorkOrder, original)}";
+        var actualDisplay = DisplayFlightNumber(
+            source.WorkOrder,
+            source.WorkOrder.ActualFlightNumber);
+        var scheduledDisplay = DisplayFlightNumber(source.WorkOrder, scheduled);
+        return actualDisplay.Equals(scheduledDisplay, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"Scheduled: {scheduledDisplay}";
     }
+
+    internal static string? BuildServiceBasisNote(ApprovedWorkOrderPrintDto source) =>
+        !source.Flight.IsPerLanding
+            ? null
+            : source.WorkOrder.ServiceLines.Count > 0
+                ? "Service basis: On Call"
+                : "Service basis: Per Landing";
 
     private static void AddFlightTimes(Section section, WorkOrderDetailDto workOrder)
     {
@@ -1385,6 +1361,12 @@ internal static class WorkOrderPrintDocumentFactory
         return cleaned.Length == 0 ? "Not recorded" : cleaned;
     }
 
+    private static string DisplayValueOrNotApplicable(string? value)
+    {
+        var cleaned = Clean(value);
+        return cleaned.Length == 0 ? "N/A" : cleaned;
+    }
+
     private static string Clean(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1448,8 +1430,6 @@ internal static class WorkOrderPrintDocumentFactory
                 char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '-'));
         return $"work-order-{safeNumber}.pdf";
     }
-
-    internal sealed record HeaderDetail(string Label, string Value);
 
     internal sealed record WorkerWindow(
         Guid StaffMemberId,

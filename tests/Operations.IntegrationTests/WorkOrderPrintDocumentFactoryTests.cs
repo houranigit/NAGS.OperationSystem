@@ -102,7 +102,7 @@ public sealed class WorkOrderPrintDocumentFactoryTests
     }
 
     [Fact]
-    public void HeaderAndReturnWindow_UseApprovedRecordWithoutAStatusField()
+    public void ReturnWindow_UsesApprovedRecord()
     {
         var baseline = CreateSource(includeCompletionDetails: true);
         var now = baseline.WorkOrder.ScheduledArrivalUtc;
@@ -112,12 +112,6 @@ public sealed class WorkOrderPrintDocumentFactoryTests
                 now.AddMinutes(index), now.AddMinutes(index + 10), null, index == 7))
             .ToList();
         var workOrder = baseline.WorkOrder with { ServiceLines = serviceLines };
-
-        var header = WorkOrderPrintDocumentFactory.BuildHeaderDetails(workOrder);
-        header.Select(detail => detail.Label).ShouldBe(["WO NUMBER", "STATION"]);
-        header.Select(detail => detail.Value).ShouldBe(["HOF-0042", "HOF"]);
-        header.ShouldNotContain(detail =>
-            detail.Label.Equals("STATUS", StringComparison.OrdinalIgnoreCase));
 
         WorkOrderPrintDocumentFactory.ResolveHeaderTo(workOrder)
             .ShouldBe(now.AddMinutes(17));
@@ -140,6 +134,36 @@ public sealed class WorkOrderPrintDocumentFactoryTests
                 Tasks = workOrder.Tasks.Select(task => task with { IsReturnToRamp = false }).ToList()
             })
             .ShouldBe(workOrder.ActualDepartureUtc);
+    }
+
+    [Fact]
+    public void FlightOverview_ShowsOnlyRelevantSecondaryDetails()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+
+        WorkOrderPrintDocumentFactory.BuildScheduledFlightNote(baseline)
+            .ShouldBeNull();
+        WorkOrderPrintDocumentFactory.BuildServiceBasisNote(baseline)
+            .ShouldBeNull();
+
+        WorkOrderPrintDocumentFactory.BuildScheduledFlightNote(baseline with
+            {
+                Flight = baseline.Flight with { CurrentFlightNumber = "456" }
+            })
+            .ShouldBe("Scheduled: RJ-456");
+
+        WorkOrderPrintDocumentFactory.BuildServiceBasisNote(baseline with
+            {
+                WorkOrder = baseline.WorkOrder with { ServiceLines = [] },
+                Flight = baseline.Flight with { IsPerLanding = true }
+            })
+            .ShouldBe("Service basis: Per Landing");
+
+        WorkOrderPrintDocumentFactory.BuildServiceBasisNote(baseline with
+            {
+                Flight = baseline.Flight with { IsPerLanding = true }
+            })
+            .ShouldBe("Service basis: On Call");
     }
 
     [Fact]
