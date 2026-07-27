@@ -30,11 +30,58 @@
 </head>
 
 <body>
+    @* Static boot splash: visible in the first HTML response while Interactive Auto starts
+       (prerender is off). Removed once the Blazor shell or auth layout paints. *@
+    <div id="os-boot-splash" class="os-boot-splash" role="status" aria-live="polite">
+        <div class="os-boot-splash__card">
+            <img class="os-boot-splash__logo" src="/branding/portal-icon.png" width="56" height="56" alt="" />
+            <strong class="os-boot-splash__title" data-en="Operations System" data-ar="نظام العمليات">Operations System</strong>
+            <span class="os-boot-splash__spinner" aria-hidden="true"></span>
+            <span class="os-boot-splash__label" data-en="Loading..." data-ar="تحميل...">Loading...</span>
+        </div>
+    </div>
+
     <Routes @rendermode="PageRenderMode" />
     <ReconnectModal />
     <script src="@Assets["_content/Radzen.Blazor/Radzen.Blazor.js"]"></script>
     <script src="@Assets["js/api-client.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script>
+        (function () {
+            var splash = document.getElementById("os-boot-splash");
+            if (!splash) return;
+
+            try {
+                var lang = document.documentElement.getAttribute("lang") || "en";
+                var ar = lang === "ar";
+                splash.querySelectorAll("[data-en][data-ar]").forEach(function (el) {
+                    el.textContent = ar ? el.getAttribute("data-ar") : el.getAttribute("data-en");
+                });
+            } catch (_) { /* ignore */ }
+
+            var hide = function () {
+                if (!splash || splash.classList.contains("os-boot-splash--done")) return;
+                splash.classList.add("os-boot-splash--done");
+                window.setTimeout(function () {
+                    splash.remove();
+                    splash = null;
+                }, 220);
+            };
+
+            if (document.querySelector(".os-shell, .os-auth")) {
+                hide();
+                return;
+            }
+
+            var observer = new MutationObserver(function () {
+                if (document.querySelector(".os-shell, .os-auth")) {
+                    observer.disconnect();
+                    hide();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+    </script>
 </body>
 
 </html>

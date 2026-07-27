@@ -70,6 +70,79 @@ body {
     text-rendering: optimizeLegibility;
 }
 
+/* Static first-paint splash while Interactive Auto boots (prerender disabled). */
+.os-boot-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: grid;
+    place-items: center;
+    background:
+        radial-gradient(ellipse 80% 60% at 50% 35%, rgba(var(--os-color-primary-rgb), 0.08), transparent 70%),
+        var(--os-color-bg);
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.os-boot-splash--done {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.os-boot-splash__card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--os-space-3);
+    padding: var(--os-space-6);
+    text-align: center;
+}
+
+.os-boot-splash__logo {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: var(--os-radius-lg);
+    box-shadow: 0 8px 24px rgba(var(--os-color-primary-rgb), 0.18);
+}
+
+.os-boot-splash__title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--os-color-text);
+}
+
+.os-boot-splash__spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: var(--os-space-2);
+    border: 2.5px solid var(--os-color-primary-soft-border);
+    border-top-color: var(--os-color-primary);
+    border-radius: 50%;
+    animation: os-boot-spin 0.7s linear infinite;
+}
+
+.os-boot-splash__label {
+    font-size: var(--os-text-sm);
+    color: var(--os-color-text-muted);
+}
+
+@keyframes os-boot-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .os-boot-splash__spinner {
+        animation: none;
+        border-top-color: var(--os-color-primary-soft-border);
+        opacity: 0.7;
+    }
+
+    .os-boot-splash {
+        transition: none;
+    }
+}
+
 h1, h2, h3, h4 {
     color: var(--os-color-text);
     font-weight: 700;
