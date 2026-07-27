@@ -34,9 +34,11 @@ private const val QualityStep = 10
 internal fun compressImageToDraft(context: Context, uri: Uri): TaskAttachmentDraft? {
     val resolver = context.contentResolver
     return runCatching {
+        // inJustDecodeBounds makes decodeStream return null by design; only the stream
+        // open can fail here. Dimensions are validated from Options afterward.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: return@runCatching null
+        val boundsStream = resolver.openInputStream(uri) ?: return@runCatching null
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
 
         val decodeOptions = BitmapFactory.Options().apply {
