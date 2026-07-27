@@ -227,6 +227,7 @@
   <data name="OperationsDashboard.TotalFlights" xml:space="preserve"><value>Total flights</value></data>
   <data name="OperationsDashboard.InSelectedPeriod" xml:space="preserve"><value>In the selected period</value></data>
   <data name="OperationsDashboard.Refresh" xml:space="preserve"><value>Refresh data</value></data>
+  <data name="OperationsDashboard.UpdatingDashboard" xml:space="preserve"><value>Updating dashboard...</value></data>
   <data name="OperationsDashboard.GlobalFilter" xml:space="preserve"><value>Global filter</value></data>
   <data name="OperationsDashboard.PeriodShortcuts" xml:space="preserve"><value>Period shortcuts</value></data>
   <data name="OperationsDashboard.Today" xml:space="preserve"><value>Today</value></data>

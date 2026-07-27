@@ -21,6 +21,8 @@ public partial class DashboardPieChart
     private string flightsLabel = "flights";
     private string emptyText = "No matching flight data.";
     private string tone = "primary";
+    private IReadOnlyList<DashboardBreakdownItem>? projectedItems;
+    private string projectionLabelKey = string.Empty;
     private long total;
     private bool hasData;
 
@@ -53,22 +55,28 @@ public partial class DashboardPieChart
         tone = Tone;
         fills = Fills is { Count: > 0 } ? Fills : DefaultFills;
 
-        entries = Items
-            .Where(item => item.FlightCount > 0)
-            .Select((item, index) =>
-            {
-                var label = DisplayLabel(item);
-                return new PieEntry(
-                    $"{item.Id?.ToString() ?? "other"}-{index}",
-                    label,
-                    $"{label} · {FormatCount(item.FlightCount)} · {FormatPercentage(item.Percentage)}",
-                    item.FlightCount,
-                    item.Percentage);
-            })
-            .ToList();
+        var labelKey = $"{OtherLabel}\u001f{PerLandingLabel}\u001f{OnCallLabel}";
+        if (!ReferenceEquals(projectedItems, Items) ||
+            !string.Equals(projectionLabelKey, labelKey, StringComparison.Ordinal))
+        {
+            projectedItems = Items;
+            projectionLabelKey = labelKey;
+            entries = Items
+                .Where(item => item.FlightCount > 0)
+                .Select((item, index) =>
+                {
+                    var label = DisplayLabel(item);
+                    return new PieEntry(
+                        $"{item.Id?.ToString() ?? "other"}-{index}",
+                        label,
+                        item.FlightCount,
+                        item.Percentage);
+                })
+                .ToList();
 
-        total = entries.Sum(entry => entry.FlightCount);
-        hasData = total > 0;
+            total = entries.Sum(entry => entry.FlightCount);
+            hasData = total > 0;
+        }
     }
 
     private string DisplayLabel(DashboardBreakdownItem item)
@@ -92,10 +100,20 @@ public partial class DashboardPieChart
     private static string FormatPercentage(double value) =>
         value.ToString("0.#", CultureInfo.CurrentCulture) + "%";
 
+    private string LegendSwatchStyle(int index)
+    {
+        var fill = fills.Count == 0 ? string.Empty : fills[index % fills.Count];
+        return string.IsNullOrWhiteSpace(fill)
+            ? string.Empty
+            : $"background-color: {fill};";
+    }
+
+    private string LegendItemDescription(PieEntry entry) =>
+        $"{entry.Label}: {FormatCount(entry.FlightCount)} {flightsLabel}, {FormatPercentage(entry.Percentage)}";
+
     private sealed record PieEntry(
         string Key,
         string Label,
-        string LegendLabel,
         long FlightCount,
         double Percentage);
 }

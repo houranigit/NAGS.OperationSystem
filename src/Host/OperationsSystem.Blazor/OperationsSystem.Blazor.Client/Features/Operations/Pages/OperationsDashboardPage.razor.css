@@ -160,6 +160,32 @@
     backdrop-filter: blur(14px);
 }
 
+.od-filter-bar::after {
+    position: absolute;
+    right: 0.8rem;
+    bottom: -1px;
+    left: 0.8rem;
+    height: 3px;
+    border-radius: var(--os-radius-pill);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        var(--os-color-primary) 35%,
+        var(--os-color-info) 60%,
+        transparent
+    );
+    background-size: 220% 100%;
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--os-transition);
+}
+
+.od-filter-bar.is-updating::after {
+    animation: od-filter-progress 1.05s ease-in-out infinite;
+    opacity: 1;
+}
+
 .od-filter-topline {
     display: flex;
     align-items: center;
@@ -216,6 +242,7 @@
 .od-filter-summary {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     min-width: 0;
     gap: 0.38rem;
     color: var(--os-color-text-muted);
@@ -236,6 +263,26 @@
     color: var(--os-color-text-subtle);
     font-size: 0.61rem;
     font-weight: 750;
+}
+
+.od-filter-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    padding: 0.22rem 0.48rem;
+    border: 1px solid color-mix(in srgb, var(--os-color-primary) 24%, transparent);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+    font-size: 0.65rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.od-filter-loading ::deep .rz-icon {
+    animation: od-spin 0.85s linear infinite;
+    color: currentColor;
+    font-size: 0.82rem;
 }
 
 .od-filter-grid {
@@ -775,9 +822,27 @@
     }
 }
 
+@keyframes od-filter-progress {
+    from {
+        background-position-x: 100%;
+    }
+
+    to {
+        background-position-x: -120%;
+    }
+}
+
+@keyframes od-spin {
+    to {
+        transform: rotate(1turn);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .od-live-state.is-connected .od-live-dot::after,
-    .od-skeleton {
+    .od-skeleton,
+    .od-filter-bar.is-updating::after,
+    .od-filter-loading ::deep .rz-icon {
         animation: none;
     }
 }

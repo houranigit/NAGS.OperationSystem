@@ -105,7 +105,7 @@
                             GridLines="DataGridGridLines.Horizontal">
                 <Columns>
                     @Columns
-                    @if (RowActions is not null)
+                    @if (ShowActionsColumn && RowActions is not null)
                     {
                         <RadzenDataGridColumn TItem="TItem" Title="@(ActionsTitle ?? UiStrings.Common.Actions)"
                                               Sortable="false" Filterable="false" Resizable="false" Reorderable="false"
@@ -133,6 +133,9 @@
 
     /// <summary>Cell content for the pinned trailing actions column. Omit to hide the column.</summary>
     [Parameter] public RenderFragment<TItem>? RowActions { get; set; }
+
+    /// <summary>Allows a supplied actions template to be hidden without rebuilding the surrounding list markup.</summary>
+    [Parameter] public bool ShowActionsColumn { get; set; } = true;
 
     /// <summary>Extra controls rendered on the right of the toolbar, before the count badge.</summary>
     [Parameter] public RenderFragment? Toolbar { get; set; }

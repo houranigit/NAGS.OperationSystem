@@ -54,19 +54,25 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     private IEnumerable<Guid>? selectedCustomerIds = [];
     private IEnumerable<Guid>? selectedServiceIds = [];
     private DashboardFilter appliedFilter = default!;
+    private DashboardFilter displayedFilter = default!;
 
     private long flightTotalCount;
     private int currentPageSize = 10;
     private string? currentSort;
     private bool isInitialLoading = true;
     private bool isRefreshing;
+    private bool isFilterApplyPending;
+    private bool isFilterRefreshActive;
     private bool isTableLoading;
     private bool isExporting;
+    private Guid? printingWorkOrderFlightId;
     private bool dashboardLoadError;
     private bool tableLoadError;
     private bool isRealtimeConnected;
     private bool hasConnectedOnce;
     private long filterRevision;
+    private long refreshSequence;
+    private long activeRefreshSequence;
 
     [Inject] private AuthSession Auth { get; set; } = default!;
     [Inject] private OperationsApiClient Operations { get; set; } = default!;
@@ -76,6 +82,11 @@ public partial class OperationsDashboardPage : IAsyncDisposable
 
     private int FlightTotalCount => flightTotalCount > int.MaxValue ? int.MaxValue : (int)flightTotalCount;
     private bool CanExport => Auth.HasPermission(OperationsPermissions.DashboardExport);
+    private bool CanPrintWorkOrders => Auth.HasPermission(OperationsPermissions.WorkOrdersView);
+    private bool IsFilterBusy => isFilterApplyPending || isFilterRefreshActive;
+    private string FilterBarClass => IsFilterBusy
+        ? "od-filter-bar is-updating"
+        : "od-filter-bar";
     private bool HasActiveDimensionFilters =>
         SelectedIds(selectedStationIds).Count > 0 ||
         SelectedIds(selectedCustomerIds).Count > 0 ||
@@ -90,7 +101,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         ? "—"
         : dashboard.GeneratedAtUtc.UtcDateTime.ToString("HH:mm:ss 'UTC'", CultureInfo.CurrentCulture);
     private string TrendRangeKey =>
-        $"{appliedFilter.FromUtc:O}|{appliedFilter.ToUtc:O}|{selectedPreset}";
+        $"{displayedFilter.FromUtc:O}|{displayedFilter.ToUtc:O}";
 
     private IReadOnlyList<PeriodOption> PeriodPresets =>
     [
@@ -100,21 +111,8 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         new(DashboardPeriodPreset.Max, UiStrings.OperationsDashboard.Max)
     ];
 
-    private string RangeSummary
-    {
-        get
-        {
-            if (appliedFilter.FromDate is null || appliedFilter.ToDate is null)
-                return UiStrings.OperationsDashboard.AllAvailableHistory;
-
-            return appliedFilter.FromDate.Value.Date == appliedFilter.ToDate.Value.Date
-                ? appliedFilter.FromDate.Value.ToString("dddd, dd MMM yyyy", CultureInfo.CurrentCulture)
-                : string.Format(
-                    UiStrings.OperationsDashboard.PeriodFormat,
-                    appliedFilter.FromDate.Value.ToString("dd MMM yyyy", CultureInfo.CurrentCulture),
-                    appliedFilter.ToDate.Value.ToString("dd MMM yyyy", CultureInfo.CurrentCulture));
-        }
-    }
+    private string FilterRangeSummary => FormatRangeSummary(appliedFilter);
+    private string RangeSummary => FormatRangeSummary(displayedFilter);
 
     private IReadOnlyList<StatusCard> StatusCards =>
         dashboard?.Statuses.Select(item => new StatusCard(
@@ -136,6 +134,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
             UtcDayBoundary(today.AddDays(1)),
             today,
             today);
+        displayedFilter = appliedFilter;
 
         Auth.StateChanged += OnAuthStateChanged;
         Realtime.DashboardChanged += OnRealtimeDashboardChanged;
@@ -201,8 +200,12 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     {
         filterAutoApplyCts?.Cancel();
         filterAutoApplyCts?.Dispose();
-        filterAutoApplyCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
-        var requestToken = filterAutoApplyCts.Token;
+        var requestCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
+        filterAutoApplyCts = requestCts;
+        var requestToken = requestCts.Token;
+
+        isFilterApplyPending = true;
+        await InvokeAsync(StateHasChanged);
 
         try
         {
@@ -212,6 +215,15 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         catch (OperationCanceledException) when (requestToken.IsCancellationRequested)
         {
             // A newer dimension selection superseded this one.
+        }
+        finally
+        {
+            if (ReferenceEquals(filterAutoApplyCts, requestCts))
+            {
+                isFilterApplyPending = false;
+                if (!lifetimeCts.IsCancellationRequested)
+                    await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -230,7 +242,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
 
     private async Task SelectPeriodPresetAsync(DashboardPeriodPreset preset)
     {
-        if (isRefreshing)
+        if (isInitialLoading)
             return;
 
         var filter = ConfigurePeriodPreset(preset);
@@ -328,13 +340,15 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         DashboardFilter filter,
         CancellationToken cancellationToken)
     {
+        filterAutoApplyCts?.Cancel();
+        isFilterApplyPending = false;
         SetAppliedFilter(filter);
         return await RefreshFilteredDataAsync(cancellationToken, includeOptions: false);
     }
 
     private async Task RefreshEverythingAsync()
     {
-        if (isRefreshing)
+        if (isInitialLoading || IsFilterBusy || isRefreshing)
             return;
 
         RefreshRollingPresetState();
@@ -374,6 +388,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
                 return false;
 
             dashboard = result;
+            displayedFilter = filter;
             if (includeOptions)
             {
                 stationOptions = result.StationOptions;
@@ -414,7 +429,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         currentPageSize = args.Top ?? currentPageSize;
         currentSort = SortBuilder.From(args);
         var requestRevision = filterRevision;
-        var filter = appliedFilter;
+        var filter = displayedFilter;
 
         tableRequestCts?.Cancel();
         tableRequestCts?.Dispose();
@@ -481,8 +496,15 @@ public partial class OperationsDashboardPage : IAsyncDisposable
 
     private async Task ExportAsync(string format)
     {
-        if (!CanExport || isExporting || flightTotalCount <= 0)
+        if (!CanExport ||
+            IsFilterBusy ||
+            isTableLoading ||
+            tableLoadError ||
+            isExporting ||
+            flightTotalCount <= 0)
+        {
             return;
+        }
 
         isExporting = true;
         await InvokeAsync(StateHasChanged);
@@ -490,11 +512,11 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         {
             await Operations.ExportOperationsDashboardFlightsAsync(
                 format,
-                appliedFilter.FromUtc,
-                appliedFilter.ToUtc,
-                appliedFilter.StationIds,
-                appliedFilter.CustomerIds,
-                appliedFilter.ServiceIds,
+                displayedFilter.FromUtc,
+                displayedFilter.ToUtc,
+                displayedFilter.StationIds,
+                displayedFilter.CustomerIds,
+                displayedFilter.ServiceIds,
                 currentSort,
                 lifetimeCts.Token);
 
@@ -526,6 +548,45 @@ public partial class OperationsDashboardPage : IAsyncDisposable
             isExporting = false;
             if (!lifetimeCts.IsCancellationRequested)
                 await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PrintWorkOrderAsync(DashboardFlightRow flight)
+    {
+        if (printingWorkOrderFlightId.HasValue || !CanPrintWorkOrder(flight))
+            return;
+
+        printingWorkOrderFlightId = flight.Id;
+        try
+        {
+            await Operations.DownloadApprovedWorkOrderAsync(flight.Id, lifetimeCts.Token);
+            Notifications.Notify(
+                NotificationSeverity.Success,
+                UiStrings.Flights.WorkOrderDownloadReady,
+                UiStrings.Flights.WorkOrderDownloadReadyDetail);
+        }
+        catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested)
+        {
+            // The page was left while the download was starting.
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(
+                NotificationSeverity.Error,
+                UiStrings.Flights.WorkOrderDownloadFailed,
+                ex.ToDisplayMessage(UiStrings.Flights.WorkOrderDownloadFailedDetail));
+        }
+        catch (JSException)
+        {
+            Notifications.Notify(
+                NotificationSeverity.Error,
+                UiStrings.Flights.WorkOrderDownloadFailed,
+                UiStrings.Flights.WorkOrderDownloadFailedDetail);
+        }
+        finally
+        {
+            if (printingWorkOrderFlightId == flight.Id)
+                printingWorkOrderFlightId = null;
         }
     }
 
@@ -611,11 +672,28 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         CancellationToken cancellationToken,
         bool includeOptions)
     {
-        if (!await LoadDashboardAsync(cancellationToken, includeOptions))
-            return false;
+        var refreshId = ++refreshSequence;
+        activeRefreshSequence = refreshId;
+        isFilterRefreshActive = true;
+        await InvokeAsync(StateHasChanged);
 
-        await ReloadFlightsAsync();
-        return true;
+        try
+        {
+            if (!await LoadDashboardAsync(cancellationToken, includeOptions))
+                return false;
+
+            await ReloadFlightsAsync();
+            return true;
+        }
+        finally
+        {
+            if (activeRefreshSequence == refreshId)
+            {
+                isFilterRefreshActive = false;
+                if (!lifetimeCts.IsCancellationRequested)
+                    await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     private void SetAppliedFilter(DashboardFilter filter)
@@ -755,6 +833,21 @@ public partial class OperationsDashboardPage : IAsyncDisposable
             : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
     private static string DateTimeDisplay(DateTimeOffset value) =>
         value.UtcDateTime.ToString("dd MMM yyyy · HH:mm", CultureInfo.CurrentCulture);
+    private bool CanPrintWorkOrder(DashboardFlightRow flight) =>
+        CanPrintWorkOrders && flight.Status is "Completed";
+
+    private static string FormatRangeSummary(DashboardFilter filter)
+    {
+        if (filter.FromDate is null || filter.ToDate is null)
+            return UiStrings.OperationsDashboard.AllAvailableHistory;
+
+        return filter.FromDate.Value.Date == filter.ToDate.Value.Date
+            ? filter.FromDate.Value.ToString("dddd, dd MMM yyyy", CultureInfo.CurrentCulture)
+            : string.Format(
+                UiStrings.OperationsDashboard.PeriodFormat,
+                filter.FromDate.Value.ToString("dd MMM yyyy", CultureInfo.CurrentCulture),
+                filter.ToDate.Value.ToString("dd MMM yyyy", CultureInfo.CurrentCulture));
+    }
 
     private static string StatusLabel(string status) => status switch
     {

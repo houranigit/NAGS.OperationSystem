@@ -280,6 +280,7 @@ public static class UiStrings
         public static string TotalFlights => UiText.Get("OperationsDashboard.TotalFlights", "Total flights");
         public static string InSelectedPeriod => UiText.Get("OperationsDashboard.InSelectedPeriod", "In the selected period");
         public static string Refresh => UiText.Get("OperationsDashboard.Refresh", "Refresh data");
+        public static string UpdatingDashboard => UiText.Get("OperationsDashboard.UpdatingDashboard", "Updating dashboard...");
         public static string GlobalFilter => UiText.Get("OperationsDashboard.GlobalFilter", "Global filter");
         public static string PeriodShortcuts => UiText.Get("OperationsDashboard.PeriodShortcuts", "Period shortcuts");
         public static string Today => UiText.Get("OperationsDashboard.Today", "Today");

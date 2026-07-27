@@ -18,6 +18,7 @@ public partial class DashboardFlightTrend
     private string periodLabel = "Period";
     private string rangeKey = string.Empty;
     private string previousRangeKey = string.Empty;
+    private IReadOnlyList<DashboardTimelinePoint>? projectedPoints;
     private DashboardPeriodPreset selectedPreset;
     private DateTime trendMin;
     private DateTime trendMax;
@@ -52,7 +53,17 @@ public partial class DashboardFlightTrend
     {
         title = Title;
         description = Description;
-        points = Points.OrderBy(point => point.BucketUtc).ToList();
+        if (!ReferenceEquals(projectedPoints, Points))
+        {
+            projectedPoints = Points;
+            points = Points.OrderBy(point => point.BucketUtc).ToList();
+            hasData = points.Any(point => point.FlightCount > 0);
+            trendMin = points.Count == 0 ? DateTime.UtcNow.Date : points[0].BucketDateUtc;
+            trendMax = points.Count == 0 ? DateTime.UtcNow.Date.AddDays(1) : points[^1].BucketDateUtc;
+            if (trendMax <= trendMin)
+                trendMax = trendMin.AddHours(1);
+        }
+
         granularity = Granularity;
         rangeSummary = RangeSummary;
         rangeKey = RangeKey;
@@ -68,11 +79,6 @@ public partial class DashboardFlightTrend
         periodLabel = PeriodLabel;
         selectedPreset = SelectedPreset;
         busy = Busy;
-        hasData = points.Any(point => point.FlightCount > 0);
-        trendMin = points.Count == 0 ? DateTime.UtcNow.Date : points[0].BucketDateUtc;
-        trendMax = points.Count == 0 ? DateTime.UtcNow.Date.AddDays(1) : points[^1].BucketDateUtc;
-        if (trendMax <= trendMin)
-            trendMax = trendMin.AddHours(1);
         presets =
         [
             new(DashboardPeriodPreset.Today, TodayLabel),

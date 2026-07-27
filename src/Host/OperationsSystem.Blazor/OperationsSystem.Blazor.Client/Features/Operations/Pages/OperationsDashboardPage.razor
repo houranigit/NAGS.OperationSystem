@@ -29,14 +29,16 @@
                 <button type="button"
                         class="od-icon-button"
                         title="@UiStrings.OperationsDashboard.Refresh"
-                        disabled="@isRefreshing"
+                        disabled="@(isInitialLoading || IsFilterBusy)"
                         @onclick="RefreshEverythingAsync">
                     <RadzenIcon Icon="refresh" />
                 </button>
             </div>
         </header>
 
-        <section class="od-filter-bar" aria-label="@UiStrings.OperationsDashboard.GlobalFilter">
+        <section class="@FilterBarClass"
+                 aria-label="@UiStrings.OperationsDashboard.GlobalFilter"
+                 aria-busy="@IsFilterBusy">
             <div class="od-filter-topline">
                 <div class="od-period-presets" role="group" aria-label="@UiStrings.OperationsDashboard.PeriodShortcuts">
                     @foreach (var option in PeriodPresets)
@@ -44,7 +46,7 @@
                         <button type="button"
                                 class="@PeriodPresetClass(option.Value)"
                                 aria-pressed="@(selectedPreset == option.Value)"
-                                disabled="@isRefreshing"
+                                disabled="@isInitialLoading"
                                 @onclick="() => SelectPeriodPresetAsync(option.Value)">
                             @option.Label
                         </button>
@@ -53,10 +55,17 @@
 
                 <div class="od-filter-summary">
                     <RadzenIcon Icon="date_range" />
-                    <span>@RangeSummary</span>
+                    <span>@FilterRangeSummary</span>
                     <span class="od-utc-badge"
                           title="@UiStrings.OperationsDashboard.UtcReporting"
                           aria-label="@UiStrings.OperationsDashboard.UtcReporting">UTC</span>
+                    @if (IsFilterBusy)
+                    {
+                        <span class="od-filter-loading" role="status" aria-live="polite">
+                            <RadzenIcon Icon="progress_activity" />
+                            @UiStrings.OperationsDashboard.UpdatingDashboard
+                        </span>
+                    }
                 </div>
             </div>
 
@@ -66,12 +75,14 @@
                         <button type="button"
                                 class="@DateModeClass(DashboardDateMode.Day)"
                                 aria-pressed="@(dateMode == DashboardDateMode.Day)"
+                                disabled="@isInitialLoading"
                                 @onclick="() => SelectDateModeAsync(DashboardDateMode.Day)">
                             @UiStrings.OperationsDashboard.Day
                         </button>
                         <button type="button"
                                 class="@DateModeClass(DashboardDateMode.Range)"
                                 aria-pressed="@(dateMode == DashboardDateMode.Range)"
+                                disabled="@isInitialLoading"
                                 @onclick="() => SelectDateModeAsync(DashboardDateMode.Range)">
                             @UiStrings.OperationsDashboard.Range
                         </button>
@@ -87,6 +98,7 @@
                                               DateFormat="dd MMM yyyy"
                                               ShowTime="false"
                                               AllowClear="false"
+                                              Disabled="@isInitialLoading"
                                               Placeholder="@UiStrings.OperationsDashboard.SelectDay"
                                               aria-label="@UiStrings.OperationsDashboard.Date"
                                               class="od-date-picker"
@@ -104,6 +116,7 @@
                                                   DateFormat="dd MMM yyyy"
                                                   ShowTime="false"
                                                   AllowClear="false"
+                                                  Disabled="@isInitialLoading"
                                                   Placeholder="@UiStrings.OperationsDashboard.FromDate"
                                                   aria-label="@UiStrings.OperationsDashboard.FromDate"
                                                   class="od-date-picker"
@@ -117,6 +130,7 @@
                                                   DateFormat="dd MMM yyyy"
                                                   ShowTime="false"
                                                   AllowClear="false"
+                                                  Disabled="@isInitialLoading"
                                                   Placeholder="@UiStrings.OperationsDashboard.ToDate"
                                                   aria-label="@UiStrings.OperationsDashboard.ToDate"
                                                   class="od-date-picker"
@@ -136,6 +150,7 @@
                                     ValueProperty="Id"
                                     Multiple="true"
                                     Chips="false"
+                                    Disabled="@isInitialLoading"
                                     MaxSelectedLabels="1"
                                     SelectedItemsText="@UiStrings.OperationsDashboard.ItemsSelected"
                                     AllowClear="true"
@@ -157,6 +172,7 @@
                                     ValueProperty="Id"
                                     Multiple="true"
                                     Chips="false"
+                                    Disabled="@isInitialLoading"
                                     MaxSelectedLabels="1"
                                     SelectedItemsText="@UiStrings.OperationsDashboard.ItemsSelected"
                                     AllowClear="true"
@@ -178,6 +194,7 @@
                                     ValueProperty="Id"
                                     Multiple="true"
                                     Chips="false"
+                                    Disabled="@isInitialLoading"
                                     MaxSelectedLabels="1"
                                     SelectedItemsText="@UiStrings.OperationsDashboard.ItemsSelected"
                                     AllowClear="true"
@@ -191,7 +208,7 @@
 
                 <button type="button"
                         class="od-clear-button"
-                        disabled="@(!HasActiveDimensionFilters || isRefreshing)"
+                        disabled="@(!HasActiveDimensionFilters || isInitialLoading)"
                         @onclick="ClearDimensionFiltersAsync">
                     <RadzenIcon Icon="filter_alt_off" />
                     <span>@UiStrings.OperationsDashboard.ClearFilters</span>
@@ -307,8 +324,7 @@
                                           LastThreeMonthsLabel="@UiStrings.OperationsDashboard.LastThreeMonths"
                                           MaxLabel="@UiStrings.OperationsDashboard.Max"
                                           SelectedPreset="@selectedPreset"
-                                          SelectedPresetChanged="@SelectPeriodPresetAsync"
-                                          Busy="@isRefreshing" />
+                                          SelectedPresetChanged="@SelectPeriodPresetAsync" />
                 </div>
 
                 <DashboardPieChart Title="@UiStrings.OperationsDashboard.TopFourCustomers"
@@ -354,6 +370,7 @@
                               OnRetry="@ReloadFlightsAsync" LoadData="@LoadFlightsAsync"
                               PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
                               ShowSearch="false" CountLabel="@UiStrings.OperationsDashboard.Flights"
+                              ShowActionsColumn="@CanPrintWorkOrders"
                               EmptyText="@UiStrings.OperationsDashboard.NoFlights">
                     <Toolbar>
                         @if (CanExport)
@@ -361,7 +378,7 @@
                             <RowActionMenu Label="@UiStrings.OperationsDashboard.Export"
                                            BusyLabel="@UiStrings.OperationsDashboard.Exporting"
                                            ShowLabel="true" TriggerIcon="download" EndIcon="expand_more"
-                                           Disabled="@(isTableLoading || tableLoadError || flightTotalCount <= 0)"
+                                           Disabled="@(IsFilterBusy || isTableLoading || tableLoadError || flightTotalCount <= 0)"
                                            Busy="@isExporting">
                                 <RowAction Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view"
                                            OnClick="@(() => ExportAsync("xlsx"))" />
@@ -428,6 +445,19 @@
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
+                    <RowActions Context="flight">
+                        @if (CanPrintWorkOrder(flight))
+                        {
+                            <RowActionMenu Busy="@(printingWorkOrderFlightId == flight.Id)"
+                                           BusyLabel="@UiStrings.Flights.PrintWorkOrder"
+                                           Disabled="@(printingWorkOrderFlightId.HasValue && printingWorkOrderFlightId != flight.Id)">
+                                <RowAction Text="@UiStrings.Flights.PrintWorkOrder"
+                                           Icon="print"
+                                           Permission="@OperationsPermissions.WorkOrdersView"
+                                           OnClick="@(() => PrintWorkOrderAsync(flight))" />
+                            </RowActionMenu>
+                        }
+                    </RowActions>
                 </DataListCard>
             </section>
         }

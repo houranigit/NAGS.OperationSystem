@@ -27,47 +27,57 @@
     }
     else
     {
-        <div class="dpc-chart" role="img" aria-label="@ChartAriaLabel">
-            <RadzenChart Width="100%"
-                         Height="278px"
-                         Animate="true"
-                         AnimateDataUpdates="true"
-                         AnimationDuration="360"
-                         MarginTop="20"
-                         MarginBottom="22"
-                         MarginLeft="44"
-                         MarginRight="44">
-                <RadzenPieSeries TItem="PieEntry"
-                                 Data="@entries"
-                                 CategoryProperty="@nameof(PieEntry.LegendLabel)"
-                                 ValueProperty="@nameof(PieEntry.FlightCount)"
-                                 Fills="@fills"
-                                 StrokeWidth="0"
-                                 CornerRadius="4"
-                                 SegmentGap="2"
-                                 ExplodeOffset="3"
-                                 StartAngle="270"
-                                 TotalAngle="360"
-                                 FillMode="FillMode.Gradient"
-                                 ShowTooltipOnLegend="true">
-                    <ChildContent>
-                        <RadzenSeriesDataLabels Visible="true"
-                                                Position="DataLabelPosition.Auto"
-                                                Appearance="DataLabelAppearance.Outline"
-                                                AllowOverlap="false"
-                                                Formatter="@FormatChartLabel" />
-                    </ChildContent>
-                    <TooltipTemplate Context="entry">
-                        <div class="dpc-tooltip">
-                            <strong>@entry.Label</strong>
-                            <span>@FormatCount(entry.FlightCount) @flightsLabel</span>
-                            <span>@FormatPercentage(entry.Percentage)</span>
-                        </div>
-                    </TooltipTemplate>
-                </RadzenPieSeries>
-                <RadzenChartTooltipOptions Visible="true" HighlightDataPoint="true" />
-                <RadzenLegend Visible="true" Position="LegendPosition.Bottom" />
-            </RadzenChart>
+        <div class="dpc-chart">
+            <div class="dpc-plot" role="img" aria-label="@ChartAriaLabel">
+                <RadzenChart Animate="true"
+                             AnimateDataUpdates="true"
+                             AnimationDuration="360">
+                    <RadzenPieSeries TItem="PieEntry"
+                                     Data="@entries"
+                                     CategoryProperty="@nameof(PieEntry.Label)"
+                                     ValueProperty="@nameof(PieEntry.FlightCount)"
+                                     Fills="@fills"
+                                     StrokeWidth="0"
+                                     CornerRadius="4"
+                                     SegmentGap="2"
+                                     ExplodeOffset="3"
+                                     StartAngle="270"
+                                     TotalAngle="360"
+                                     FillMode="FillMode.Gradient">
+                        <ChildContent>
+                            <RadzenSeriesDataLabels Visible="true"
+                                                    Position="DataLabelPosition.Auto"
+                                                    Appearance="DataLabelAppearance.Outline"
+                                                    AllowOverlap="false"
+                                                    Formatter="@FormatChartLabel" />
+                        </ChildContent>
+                        <TooltipTemplate Context="entry">
+                            <div class="dpc-tooltip">
+                                <strong>@entry.Label</strong>
+                                <span>@FormatCount(entry.FlightCount) @flightsLabel</span>
+                                <span>@FormatPercentage(entry.Percentage)</span>
+                            </div>
+                        </TooltipTemplate>
+                    </RadzenPieSeries>
+                    <RadzenChartTooltipOptions Visible="true" HighlightDataPoint="true" />
+                    <RadzenLegend Visible="false" />
+                </RadzenChart>
+            </div>
+
+            <ul class="dpc-legend" aria-label="@title">
+                @for (var index = 0; index < entries.Count; index++)
+                {
+                    var entry = entries[index];
+                    <li @key="entry.Key"
+                        title="@LegendItemDescription(entry)"
+                        aria-label="@LegendItemDescription(entry)">
+                        <span class="dpc-legend-swatch"
+                              style="@LegendSwatchStyle(index)"
+                              aria-hidden="true"></span>
+                        <span>@entry.Label</span>
+                    </li>
+                }
+            </ul>
         </div>
     }
 </article>
