@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Auth;
+using OperationsSystem.Blazor.Client.Features.Operations.Components;
 using OperationsSystem.Blazor.Client.Localization;
 using OperationsSystem.Blazor.Client.Shared;
 using OperationsSystem.Blazor.Client.State;
@@ -13,16 +14,29 @@ namespace OperationsSystem.Blazor.Client.Features.Operations.Pages;
 public partial class OperationsDashboardPage : IAsyncDisposable
 {
     private const string GridKey = "operations-dashboard-flights";
-    private static readonly TimeSpan LiveRefreshInterval = TimeSpan.FromSeconds(20);
+    private const int DashboardTopCount = 4;
     private static readonly TimeSpan FilterAutoApplyDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan RealtimeCoalesceDelay = TimeSpan.FromMilliseconds(180);
     private static readonly int[] PageSizes = [10, 25, 50, 100];
     private static DateTime UtcToday => DateTime.UtcNow.Date;
+
+    private static readonly IReadOnlyList<string> StationFills =
+        ["#2f6fed", "#0f9f8f", "#8a1538", "#f59e0b", "#7c3aed", "#e05263", "#0891b2", "#64748b"];
+    private static readonly IReadOnlyList<string> LandingModeFills = ["#0f9f8f", "#2f6fed"];
+    private static readonly IReadOnlyList<string> OperationTypeFills =
+        ["#8a1538", "#7c3aed", "#2f6fed", "#0f9f8f", "#f59e0b", "#64748b"];
+    private static readonly IReadOnlyList<string> CustomerFills =
+        ["#8a1538", "#2f6fed", "#0f9f8f", "#f59e0b", "#94a3b8"];
+    private static readonly IReadOnlyList<string> ServiceFills =
+        ["#d97706", "#8a1538", "#2f6fed", "#0f9f8f", "#94a3b8"];
 
     private readonly CancellationTokenSource lifetimeCts = new();
     private CancellationTokenSource? dashboardRequestCts;
     private CancellationTokenSource? tableRequestCts;
     private CancellationTokenSource? filterAutoApplyCts;
-    private Task? pollingTask;
+    private CancellationTokenSource? realtimeRefreshCts;
+    private Task? initializationTask;
+    private Task? utcRolloverTask;
     private DataListCard<DashboardFlightRow>? flightList;
 
     private OperationsDashboard? dashboard;
@@ -31,20 +45,17 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     private IReadOnlyList<DashboardFilterOption> customerOptions = [];
     private IReadOnlyList<DashboardFilterOption> serviceOptions = [];
 
-    private DashboardRangeMode selectedRangeMode = DashboardRangeMode.Live;
-    private DashboardRangeMode activeRangeMode = DashboardRangeMode.Live;
+    private DashboardDateMode dateMode = DashboardDateMode.Day;
+    private DashboardPeriodPreset selectedPreset = DashboardPeriodPreset.Today;
     private DateTime? selectedDay;
     private DateTime? selectedFromDate;
     private DateTime? selectedToDate;
-    private DateTime? calendarSelection;
-    private bool isRangeStartPending;
     private IEnumerable<Guid>? selectedStationIds = [];
     private IEnumerable<Guid>? selectedCustomerIds = [];
     private IEnumerable<Guid>? selectedServiceIds = [];
     private DashboardFilter appliedFilter = default!;
 
     private long flightTotalCount;
-    private int currentPage = 1;
     private int currentPageSize = 10;
     private string? currentSort;
     private bool isInitialLoading = true;
@@ -53,89 +64,66 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     private bool isExporting;
     private bool dashboardLoadError;
     private bool tableLoadError;
+    private bool isRealtimeConnected;
+    private bool hasConnectedOnce;
+    private long filterRevision;
 
     [Inject] private AuthSession Auth { get; set; } = default!;
     [Inject] private OperationsApiClient Operations { get; set; } = default!;
+    [Inject] private OperationsDashboardRealtimeClient Realtime { get; set; } = default!;
     [Inject] private NotificationService Notifications { get; set; } = default!;
     [Inject] private GridPreferences GridPrefs { get; set; } = default!;
 
     private int FlightTotalCount => flightTotalCount > int.MaxValue ? int.MaxValue : (int)flightTotalCount;
-    private bool IsLiveEnabled => selectedRangeMode == DashboardRangeMode.Live;
     private bool CanExport => Auth.HasPermission(OperationsPermissions.DashboardExport);
-
-    private string RangeSummary => activeRangeMode switch
-    {
-        DashboardRangeMode.Live => string.Format(
-            UiStrings.OperationsDashboard.LiveTodayFormat,
-            UtcToday.ToString("dd MMM yyyy", CultureInfo.CurrentCulture)),
-        DashboardRangeMode.SingleDay => appliedFilter.FromDate.ToString("dddd, dd MMM yyyy", CultureInfo.CurrentCulture),
-        _ => string.Format(
-            UiStrings.OperationsDashboard.PeriodFormat,
-            appliedFilter.FromDate.ToString("dd MMM yyyy", CultureInfo.CurrentCulture),
-            appliedFilter.ToDate.ToString("dd MMM yyyy", CultureInfo.CurrentCulture))
-    };
-
+    private bool HasActiveDimensionFilters =>
+        SelectedIds(selectedStationIds).Count > 0 ||
+        SelectedIds(selectedCustomerIds).Count > 0 ||
+        SelectedIds(selectedServiceIds).Count > 0;
+    private string RealtimeClass => isRealtimeConnected
+        ? "od-live-state is-connected"
+        : "od-live-state is-connecting";
+    private string RealtimeLabel => isRealtimeConnected
+        ? UiStrings.OperationsDashboard.LiveConnected
+        : UiStrings.OperationsDashboard.LiveConnecting;
     private string LastUpdatedLabel => dashboard is null
-        ? UiStrings.OperationsDashboard.WaitingForData
-        : string.Format(
-            UiStrings.OperationsDashboard.UpdatedAtFormat,
-            dashboard.GeneratedAtUtc.UtcDateTime.ToString("HH:mm:ss 'UTC'", CultureInfo.CurrentCulture));
+        ? "—"
+        : dashboard.GeneratedAtUtc.UtcDateTime.ToString("HH:mm:ss 'UTC'", CultureInfo.CurrentCulture);
+    private string TrendRangeKey =>
+        $"{appliedFilter.FromUtc:O}|{appliedFilter.ToUtc:O}|{selectedPreset}";
 
-    private string CalendarSelectionSummary => IsLiveEnabled
-        ? UtcToday.ToString("dd MMM yyyy", CultureInfo.CurrentCulture)
-        : selectedRangeMode == DashboardRangeMode.Period && selectedFromDate is { } from
-            ? selectedToDate is { } to
-                ? string.Format(
-                    UiStrings.OperationsDashboard.PeriodFormat,
-                    from.ToString("dd MMM yyyy", CultureInfo.CurrentCulture),
-                    to.ToString("dd MMM yyyy", CultureInfo.CurrentCulture))
-                : from.ToString("dd MMM yyyy", CultureInfo.CurrentCulture)
-            : (selectedDay ?? UtcToday).ToString("dd MMM yyyy", CultureInfo.CurrentCulture);
+    private IReadOnlyList<PeriodOption> PeriodPresets =>
+    [
+        new(DashboardPeriodPreset.Today, UiStrings.OperationsDashboard.Today),
+        new(DashboardPeriodPreset.LastMonth, UiStrings.OperationsDashboard.LastMonth),
+        new(DashboardPeriodPreset.LastThreeMonths, UiStrings.OperationsDashboard.LastThreeMonths),
+        new(DashboardPeriodPreset.Max, UiStrings.OperationsDashboard.Max)
+    ];
 
-    private string CalendarHint => IsLiveEnabled
-        ? UiStrings.OperationsDashboard.LiveModeDescription
-        : selectedRangeMode == DashboardRangeMode.Period
-            ? isRangeStartPending
-                ? UiStrings.OperationsDashboard.SelectRangeEnd
-                : selectedToDate is null
-                    ? UiStrings.OperationsDashboard.SelectRangeStart
-                    : UiStrings.OperationsDashboard.RangeSelected
-            : UiStrings.OperationsDashboard.SelectDay;
-
-    private IReadOnlyList<DashboardTrendPoint> LocalizedMonthlyPoints =>
-        dashboard?.Monthly
-            .Select(point => point is { SortOrder: >= 1 and <= 12 }
-                ? point with
-                {
-                    Label = CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedMonthName(point.SortOrder)
-                }
-                : point)
-            .ToList() ?? [];
-
-    private IReadOnlyList<StatusSegment> StatusSegments
+    private string RangeSummary
     {
         get
         {
-            if (dashboard is null)
-                return [];
+            if (appliedFilter.FromDate is null || appliedFilter.ToDate is null)
+                return UiStrings.OperationsDashboard.AllAvailableHistory;
 
-            var offset = 0d;
-            var segments = new List<StatusSegment>(dashboard.Statuses.Count);
-            foreach (var status in dashboard.Statuses.Where(item => item.FlightCount > 0))
-            {
-                segments.Add(new StatusSegment(
-                    status.Status,
-                    StatusLabel(status.Status),
-                    StatusTone(status.Status),
-                    status.FlightCount,
-                    status.Percentage,
-                    offset));
-                offset += status.Percentage;
-            }
-
-            return segments;
+            return appliedFilter.FromDate.Value.Date == appliedFilter.ToDate.Value.Date
+                ? appliedFilter.FromDate.Value.ToString("dddd, dd MMM yyyy", CultureInfo.CurrentCulture)
+                : string.Format(
+                    UiStrings.OperationsDashboard.PeriodFormat,
+                    appliedFilter.FromDate.Value.ToString("dd MMM yyyy", CultureInfo.CurrentCulture),
+                    appliedFilter.ToDate.Value.ToString("dd MMM yyyy", CultureInfo.CurrentCulture));
         }
     }
+
+    private IReadOnlyList<StatusCard> StatusCards =>
+        dashboard?.Statuses.Select(item => new StatusCard(
+            item.Status,
+            StatusLabel(item.Status),
+            StatusTone(item.Status),
+            StatusIcon(item.Status),
+            item.FlightCount,
+            item.Percentage)).ToList() ?? [];
 
     protected override void OnInitialized()
     {
@@ -143,26 +131,32 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         selectedDay = today;
         selectedFromDate = today;
         selectedToDate = today;
-        calendarSelection = today;
-        appliedFilter = BuildFilter(DashboardRangeMode.Live, today, today);
+        appliedFilter = BuildFilter(
+            UtcDayBoundary(today),
+            UtcDayBoundary(today.AddDays(1)),
+            today,
+            today);
 
         Auth.StateChanged += OnAuthStateChanged;
-        TryStartPolling();
+        Realtime.DashboardChanged += OnRealtimeDashboardChanged;
+        Realtime.ConnectionStateChanged += OnRealtimeConnectionStateChanged;
+        TryStartInitialization();
+        utcRolloverTask = RunUtcDayRolloverAsync(lifetimeCts.Token);
     }
 
-    private void TryStartPolling()
+    private void TryStartInitialization()
     {
-        if (pollingTask is not null ||
+        if (initializationTask is not null ||
             Auth.Status != AuthStatus.Authenticated ||
             !Auth.HasPermission(OperationsPermissions.DashboardAnalyticsView))
         {
             return;
         }
 
-        pollingTask = InitializeAndPollAsync(lifetimeCts.Token);
+        initializationTask = InitializeAsync(lifetimeCts.Token);
     }
 
-    private async Task InitializeAndPollAsync(CancellationToken cancellationToken)
+    private async Task InitializeAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -170,35 +164,11 @@ public partial class OperationsDashboardPage : IAsyncDisposable
             if (await LoadDashboardAsync(cancellationToken))
                 await ReloadFlightsAsync();
 
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(LiveRefreshInterval, cancellationToken);
-                if (activeRangeMode != DashboardRangeMode.Live)
-                    continue;
-
-                var liveFilter = BuildFilter(
-                    DashboardRangeMode.Live,
-                    UtcToday,
-                    UtcToday);
-                liveFilter = liveFilter with
-                {
-                    StationIds = appliedFilter.StationIds,
-                    CustomerIds = appliedFilter.CustomerIds,
-                    ServiceIds = appliedFilter.ServiceIds
-                };
-                if (await LoadDashboardAsync(
-                        cancellationToken,
-                        includeOptions: false,
-                        requestedFilter: liveFilter,
-                        requestedRangeMode: DashboardRangeMode.Live))
-                {
-                    await ReloadFlightsAsync();
-                }
-            }
+            await Realtime.StartAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Expected when the page is left or the session ends.
+            // Expected when the page is left or the authenticated session ends.
         }
         catch (Exception ex)
         {
@@ -209,18 +179,21 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     private Task OnStationSelectionChangedAsync(IEnumerable<Guid>? values)
     {
         selectedStationIds = values?.Distinct().ToList() ?? [];
+        SetAppliedFilter(appliedFilter with { StationIds = SelectedIds(selectedStationIds) });
         return ScheduleDimensionFilterApplyAsync();
     }
 
     private Task OnCustomerSelectionChangedAsync(IEnumerable<Guid>? values)
     {
         selectedCustomerIds = values?.Distinct().ToList() ?? [];
+        SetAppliedFilter(appliedFilter with { CustomerIds = SelectedIds(selectedCustomerIds) });
         return ScheduleDimensionFilterApplyAsync();
     }
 
     private Task OnServiceSelectionChangedAsync(IEnumerable<Guid>? values)
     {
         selectedServiceIds = values?.Distinct().ToList() ?? [];
+        SetAppliedFilter(appliedFilter with { ServiceIds = SelectedIds(selectedServiceIds) });
         return ScheduleDimensionFilterApplyAsync();
     }
 
@@ -234,183 +207,129 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         try
         {
             await Task.Delay(FilterAutoApplyDelay, requestToken);
-            var nextFilter = appliedFilter with
-            {
-                StationIds = SelectedIds(selectedStationIds),
-                CustomerIds = SelectedIds(selectedCustomerIds),
-                ServiceIds = SelectedIds(selectedServiceIds)
-            };
-            await ApplyDashboardFilterAsync(nextFilter, activeRangeMode, requestToken);
+            await RefreshFilteredDataAsync(requestToken, includeOptions: false);
         }
         catch (OperationCanceledException) when (requestToken.IsCancellationRequested)
         {
-            // A newer automatic filter selection superseded this one.
+            // A newer dimension selection superseded this one.
         }
     }
 
-    private async Task ToggleLiveAsync()
+    private async Task ClearDimensionFiltersAsync()
+    {
+        selectedStationIds = [];
+        selectedCustomerIds = [];
+        selectedServiceIds = [];
+        await ApplyDashboardFilterAsync(appliedFilter with
+        {
+            StationIds = [],
+            CustomerIds = [],
+            ServiceIds = []
+        }, lifetimeCts.Token);
+    }
+
+    private async Task SelectPeriodPresetAsync(DashboardPeriodPreset preset)
     {
         if (isRefreshing)
             return;
 
-        var previousMode = selectedRangeMode;
-        var previousDay = selectedDay;
-        var previousFrom = selectedFromDate;
-        var previousTo = selectedToDate;
-        var previousCalendarSelection = calendarSelection;
-        var previousRangeState = isRangeStartPending;
-        var today = UtcToday;
-
-        selectedRangeMode = IsLiveEnabled
-            ? DashboardRangeMode.SingleDay
-            : DashboardRangeMode.Live;
-        selectedDay = today;
-        selectedFromDate = today;
-        selectedToDate = today;
-        calendarSelection = today;
-        isRangeStartPending = false;
-
-        var nextFilter = BuildFilter(selectedRangeMode, today, today);
-        if (await ApplyDashboardFilterAsync(nextFilter, selectedRangeMode, lifetimeCts.Token))
+        var filter = ConfigurePeriodPreset(preset);
+        if (filter is null)
             return;
 
-        selectedRangeMode = previousMode;
-        selectedDay = previousDay;
-        selectedFromDate = previousFrom;
-        selectedToDate = previousTo;
-        calendarSelection = previousCalendarSelection;
-        isRangeStartPending = previousRangeState;
+        selectedPreset = preset;
+        await ApplyDashboardFilterAsync(filter, lifetimeCts.Token);
     }
 
-    private async Task SelectCalendarModeAsync(DashboardRangeMode mode)
+    private async Task SelectDateModeAsync(DashboardDateMode mode)
     {
-        if (IsLiveEnabled || mode == selectedRangeMode)
+        if (mode == dateMode)
             return;
 
-        if (mode == DashboardRangeMode.Period)
+        dateMode = mode;
+        selectedPreset = DashboardPeriodPreset.Custom;
+        var anchor = selectedDay ?? selectedToDate ?? selectedFromDate ?? UtcToday;
+
+        if (mode == DashboardDateMode.Day)
         {
-            selectedRangeMode = DashboardRangeMode.Period;
-            selectedFromDate = null;
-            selectedToDate = null;
-            isRangeStartPending = false;
-            return;
-        }
-
-        var previousMode = selectedRangeMode;
-        var day = selectedDay ?? selectedToDate ?? selectedFromDate ?? UtcToday;
-        selectedRangeMode = DashboardRangeMode.SingleDay;
-        selectedDay = day;
-        selectedFromDate = day;
-        selectedToDate = day;
-        calendarSelection = day;
-        isRangeStartPending = false;
-
-        var nextFilter = BuildFilter(DashboardRangeMode.SingleDay, day, day);
-        if (!await ApplyDashboardFilterAsync(
-                nextFilter,
-                DashboardRangeMode.SingleDay,
-                lifetimeCts.Token))
-        {
-            selectedRangeMode = previousMode;
-        }
-    }
-
-    private async Task OnCalendarDateChangedAsync(DateTime? value)
-    {
-        if (IsLiveEnabled || value is null)
-            return;
-
-        var selectedDate = value.Value.Date > UtcToday ? UtcToday : value.Value.Date;
-        calendarSelection = selectedDate;
-
-        if (selectedRangeMode == DashboardRangeMode.SingleDay)
-        {
-            selectedDay = selectedDate;
-            selectedFromDate = selectedDate;
-            selectedToDate = selectedDate;
-            var dayFilter = BuildFilter(DashboardRangeMode.SingleDay, selectedDate, selectedDate);
+            selectedDay = anchor;
+            selectedFromDate = anchor;
+            selectedToDate = anchor;
             await ApplyDashboardFilterAsync(
-                dayFilter,
-                DashboardRangeMode.SingleDay,
+                BuildFilter(
+                    UtcDayBoundary(anchor),
+                    UtcDayBoundary(anchor.AddDays(1)),
+                    anchor,
+                    anchor),
                 lifetimeCts.Token);
             return;
         }
 
-        if (!isRangeStartPending)
-        {
-            selectedFromDate = selectedDate;
-            selectedToDate = null;
-            isRangeStartPending = true;
+        selectedFromDate ??= anchor;
+        selectedToDate ??= anchor;
+    }
+
+    private async Task OnDayChangedAsync(DateTime? value)
+    {
+        if (value is null)
             return;
-        }
 
-        var firstDate = selectedFromDate?.Date ?? selectedDate;
-        selectedFromDate = firstDate <= selectedDate ? firstDate : selectedDate;
-        selectedToDate = firstDate <= selectedDate ? selectedDate : firstDate;
-        selectedDay = selectedToDate;
-        calendarSelection = selectedToDate;
-        isRangeStartPending = false;
-
-        var rangeFilter = BuildFilter(
-            DashboardRangeMode.Period,
-            selectedFromDate.Value,
-            selectedToDate.Value);
+        var day = value.Value.Date;
+        selectedPreset = DashboardPeriodPreset.Custom;
+        selectedDay = day;
+        selectedFromDate = day;
+        selectedToDate = day;
         await ApplyDashboardFilterAsync(
-            rangeFilter,
-            DashboardRangeMode.Period,
+            BuildFilter(UtcDayBoundary(day), UtcDayBoundary(day.AddDays(1)), day, day),
             lifetimeCts.Token);
     }
 
-    private void RenderCalendarDate(DateRenderEventArgs args)
+    private Task OnFromDateChangedAsync(DateTime? value)
     {
-        if (args.Date.Date > UtcToday)
-        {
-            args.Disabled = true;
+        if (value is null)
+            return Task.CompletedTask;
+
+        selectedFromDate = value.Value.Date;
+        if (selectedToDate is null || selectedToDate.Value.Date < selectedFromDate.Value.Date)
+            selectedToDate = selectedFromDate;
+
+        return ApplyCustomRangeAsync();
+    }
+
+    private Task OnToDateChangedAsync(DateTime? value)
+    {
+        if (value is null)
+            return Task.CompletedTask;
+
+        selectedToDate = value.Value.Date;
+        if (selectedFromDate is null || selectedFromDate.Value.Date > selectedToDate.Value.Date)
+            selectedFromDate = selectedToDate;
+
+        return ApplyCustomRangeAsync();
+    }
+
+    private async Task ApplyCustomRangeAsync()
+    {
+        if (selectedFromDate is not { } fromDate || selectedToDate is not { } toDate)
             return;
-        }
 
-        var date = args.Date.Date;
-        string? markerClass = null;
-        if (selectedRangeMode == DashboardRangeMode.Period && selectedFromDate is { } from)
-        {
-            if (date == from.Date || date == selectedToDate?.Date)
-                markerClass = "od-calendar-range-edge";
-            else if (selectedToDate is { } to && date > from.Date && date < to.Date)
-                markerClass = "od-calendar-range-day";
-        }
-        else if (date == selectedDay?.Date)
-        {
-            markerClass = "od-calendar-selected-day";
-        }
-
-        if (markerClass is null)
-            return;
-
-        var existingClass = args.Attributes.TryGetValue("class", out var value)
-            ? Convert.ToString(value, CultureInfo.InvariantCulture)
-            : null;
-        args.Attributes["class"] = string.IsNullOrWhiteSpace(existingClass)
-            ? markerClass
-            : $"{existingClass} {markerClass}";
+        selectedPreset = DashboardPeriodPreset.Custom;
+        selectedDay = toDate;
+        await ApplyDashboardFilterAsync(
+            BuildFilter(
+                UtcDayBoundary(fromDate),
+                UtcDayBoundary(toDate.AddDays(1)),
+                fromDate,
+                toDate),
+            lifetimeCts.Token);
     }
 
     private async Task<bool> ApplyDashboardFilterAsync(
         DashboardFilter filter,
-        DashboardRangeMode rangeMode,
         CancellationToken cancellationToken)
     {
-        if (!await LoadDashboardAsync(
-                cancellationToken,
-                includeOptions: false,
-                requestedFilter: filter,
-                requestedRangeMode: rangeMode))
-        {
-            return false;
-        }
-
-        currentPage = 1;
-        await ReloadFlightsAsync();
-        return true;
+        SetAppliedFilter(filter);
+        return await RefreshFilteredDataAsync(cancellationToken, includeOptions: false);
     }
 
     private async Task RefreshEverythingAsync()
@@ -418,21 +337,21 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         if (isRefreshing)
             return;
 
-        if (await LoadDashboardAsync(lifetimeCts.Token))
-            await ReloadFlightsAsync();
+        RefreshRollingPresetState();
+        await RefreshFilteredDataAsync(lifetimeCts.Token, includeOptions: true);
     }
 
     private async Task<bool> LoadDashboardAsync(
         CancellationToken cancellationToken,
-        bool includeOptions = true,
-        DashboardFilter? requestedFilter = null,
-        DashboardRangeMode? requestedRangeMode = null)
+        bool includeOptions = true)
     {
         dashboardRequestCts?.Cancel();
         dashboardRequestCts?.Dispose();
-        dashboardRequestCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var requestToken = dashboardRequestCts.Token;
-        var filter = requestedFilter ?? appliedFilter;
+        var requestCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        dashboardRequestCts = requestCts;
+        var requestToken = requestCts.Token;
+        var filter = appliedFilter;
+        var requestRevision = filterRevision;
 
         isRefreshing = true;
         if (dashboard is null)
@@ -447,17 +366,13 @@ public partial class OperationsDashboardPage : IAsyncDisposable
                 filter.StationIds,
                 filter.CustomerIds,
                 filter.ServiceIds,
-                includeOptions,
-                requestToken);
+                topCount: DashboardTopCount,
+                includeOptions: includeOptions,
+                ct: requestToken);
 
-            if (requestToken.IsCancellationRequested)
+            if (requestToken.IsCancellationRequested || requestRevision != filterRevision)
                 return false;
 
-            if (requestedFilter is not null)
-            {
-                appliedFilter = filter;
-                activeRangeMode = requestedRangeMode ?? activeRangeMode;
-            }
             dashboard = result;
             if (includeOptions)
             {
@@ -470,7 +385,6 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         }
         catch (OperationCanceledException) when (requestToken.IsCancellationRequested)
         {
-            // A newer filter or page disposal superseded this request.
             return false;
         }
         catch (ApiException) when (!requestToken.IsCancellationRequested)
@@ -485,11 +399,12 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         }
         finally
         {
-            if (!requestToken.IsCancellationRequested)
+            if (ReferenceEquals(dashboardRequestCts, requestCts))
             {
                 isRefreshing = false;
                 isInitialLoading = false;
-                await InvokeAsync(StateHasChanged);
+                if (!lifetimeCts.IsCancellationRequested)
+                    await InvokeAsync(StateHasChanged);
             }
         }
     }
@@ -497,13 +412,15 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     private async Task LoadFlightsAsync(LoadDataArgs args)
     {
         currentPageSize = args.Top ?? currentPageSize;
-        currentPage = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
         currentSort = SortBuilder.From(args);
+        var requestRevision = filterRevision;
+        var filter = appliedFilter;
 
         tableRequestCts?.Cancel();
         tableRequestCts?.Dispose();
-        tableRequestCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
-        var requestToken = tableRequestCts.Token;
+        var requestCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
+        tableRequestCts = requestCts;
+        var requestToken = requestCts.Token;
 
         isTableLoading = true;
         tableLoadError = false;
@@ -511,18 +428,19 @@ public partial class OperationsDashboardPage : IAsyncDisposable
 
         try
         {
+            var page = ((args.Skip ?? 0) / Math.Max(currentPageSize, 1)) + 1;
             var result = await Operations.GetOperationsDashboardFlightsAsync(
-                currentPage,
+                page,
                 currentPageSize,
-                appliedFilter.FromUtc,
-                appliedFilter.ToUtc,
-                appliedFilter.StationIds,
-                appliedFilter.CustomerIds,
-                appliedFilter.ServiceIds,
+                filter.FromUtc,
+                filter.ToUtc,
+                filter.StationIds,
+                filter.CustomerIds,
+                filter.ServiceIds,
                 currentSort,
                 requestToken);
 
-            if (requestToken.IsCancellationRequested)
+            if (requestToken.IsCancellationRequested || requestRevision != filterRevision)
                 return;
 
             flightRows = result.Items;
@@ -530,7 +448,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         }
         catch (OperationCanceledException) when (requestToken.IsCancellationRequested)
         {
-            // A newer paging/filter request superseded this request.
+            // A newer paging or filter request superseded this request.
         }
         catch (ApiException) when (!requestToken.IsCancellationRequested)
         {
@@ -542,16 +460,18 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         }
         finally
         {
-            if (!requestToken.IsCancellationRequested)
+            if (ReferenceEquals(tableRequestCts, requestCts))
             {
                 isTableLoading = false;
-                await InvokeAsync(StateHasChanged);
+                if (!lifetimeCts.IsCancellationRequested)
+                    await InvokeAsync(StateHasChanged);
             }
         }
     }
 
     private Task ReloadFlightsAsync() =>
-        flightList?.ReloadAsync() ?? LoadFlightsAsync(new LoadDataArgs { Skip = 0, Top = currentPageSize });
+        flightList?.ReloadAsync() ??
+        LoadFlightsAsync(new LoadDataArgs { Skip = 0, Top = currentPageSize });
 
     private async Task OnPageSizeChangedAsync(int pageSize)
     {
@@ -585,7 +505,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         }
         catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested)
         {
-            // The page was left while the browser download was starting.
+            // The page was left while the download was starting.
         }
         catch (ApiException ex)
         {
@@ -609,57 +529,230 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         }
     }
 
-    private DashboardFilter BuildFilter(DashboardRangeMode mode, DateTime fromDate, DateTime toDate)
+    private async void OnRealtimeDashboardChanged()
     {
-        var normalizedFrom = fromDate.Date;
-        var normalizedTo = mode == DashboardRangeMode.Period ? toDate.Date : normalizedFrom;
-        return new DashboardFilter(
-            UtcDayBoundary(normalizedFrom),
-            UtcDayBoundary(normalizedTo.AddDays(1)),
-            normalizedFrom,
-            normalizedTo,
-            SelectedIds(selectedStationIds),
-            SelectedIds(selectedCustomerIds),
-            SelectedIds(selectedServiceIds));
+        try
+        {
+            await InvokeAsync(ScheduleRealtimeRefreshAsync);
+        }
+        catch (Exception ex)
+        {
+            await InvokeAsync(() => DispatchExceptionAsync(ex));
+        }
     }
 
-    private static DateTimeOffset UtcDayBoundary(DateTime date) =>
-        new(DateTime.SpecifyKind(date.Date, DateTimeKind.Utc));
+    private async void OnRealtimeConnectionStateChanged(bool connected)
+    {
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                var shouldReconcile = connected && hasConnectedOnce;
+                isRealtimeConnected = connected;
+                if (connected)
+                    hasConnectedOnce = true;
+
+                StateHasChanged();
+                if (shouldReconcile)
+                    await ScheduleRealtimeRefreshAsync();
+            });
+        }
+        catch (Exception ex)
+        {
+            await InvokeAsync(() => DispatchExceptionAsync(ex));
+        }
+    }
+
+    private async Task ScheduleRealtimeRefreshAsync()
+    {
+        realtimeRefreshCts?.Cancel();
+        realtimeRefreshCts?.Dispose();
+        realtimeRefreshCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
+        var requestToken = realtimeRefreshCts.Token;
+
+        try
+        {
+            await Task.Delay(RealtimeCoalesceDelay, requestToken);
+            RefreshRollingPresetState();
+            await RefreshFilteredDataAsync(requestToken, includeOptions: true);
+        }
+        catch (OperationCanceledException) when (requestToken.IsCancellationRequested)
+        {
+            // A newer invalidation coalesced this refresh.
+        }
+    }
 
     private async void OnAuthStateChanged()
     {
         try
         {
-            if (Auth.Status == AuthStatus.Authenticated)
-                TryStartPolling();
-            else if (Auth.Status == AuthStatus.Anonymous)
-                lifetimeCts.Cancel();
+            await InvokeAsync(async () =>
+            {
+                if (Auth.Status == AuthStatus.Authenticated)
+                {
+                    TryStartInitialization();
+                }
+                else if (Auth.Status == AuthStatus.Anonymous)
+                {
+                    lifetimeCts.Cancel();
+                    await Realtime.StopAsync();
+                }
 
-            await InvokeAsync(StateHasChanged);
+                StateHasChanged();
+            });
         }
         catch (Exception ex)
         {
-            await DispatchExceptionAsync(ex);
+            await InvokeAsync(() => DispatchExceptionAsync(ex));
         }
     }
 
-    private string CalendarModeClass(DashboardRangeMode mode) =>
-        selectedRangeMode == mode ? "od-calendar-mode is-active" : "od-calendar-mode";
+    private async Task<bool> RefreshFilteredDataAsync(
+        CancellationToken cancellationToken,
+        bool includeOptions)
+    {
+        if (!await LoadDashboardAsync(cancellationToken, includeOptions))
+            return false;
+
+        await ReloadFlightsAsync();
+        return true;
+    }
+
+    private void SetAppliedFilter(DashboardFilter filter)
+    {
+        appliedFilter = filter;
+        filterRevision++;
+        dashboardRequestCts?.Cancel();
+        tableRequestCts?.Cancel();
+    }
+
+    private DashboardFilter? ConfigurePeriodPreset(DashboardPeriodPreset preset)
+    {
+        var today = UtcToday;
+        switch (preset)
+        {
+            case DashboardPeriodPreset.Today:
+                dateMode = DashboardDateMode.Day;
+                selectedDay = today;
+                selectedFromDate = today;
+                selectedToDate = today;
+                return BuildFilter(
+                    UtcDayBoundary(today),
+                    UtcDayBoundary(today.AddDays(1)),
+                    today,
+                    today);
+            case DashboardPeriodPreset.LastMonth:
+                dateMode = DashboardDateMode.Range;
+                var thisMonth = new DateTime(today.Year, today.Month, 1);
+                var lastMonth = thisMonth.AddMonths(-1);
+                selectedFromDate = lastMonth;
+                selectedToDate = thisMonth.AddDays(-1);
+                selectedDay = selectedToDate;
+                return BuildFilter(
+                    UtcDayBoundary(lastMonth),
+                    UtcDayBoundary(thisMonth),
+                    lastMonth,
+                    thisMonth.AddDays(-1));
+            case DashboardPeriodPreset.LastThreeMonths:
+                dateMode = DashboardDateMode.Range;
+                var threeMonthsAgo = today.AddMonths(-3);
+                selectedFromDate = threeMonthsAgo;
+                selectedToDate = today;
+                selectedDay = today;
+                return BuildFilter(
+                    UtcDayBoundary(threeMonthsAgo),
+                    UtcDayBoundary(today.AddDays(1)),
+                    threeMonthsAgo,
+                    today);
+            case DashboardPeriodPreset.Max:
+                dateMode = DashboardDateMode.Range;
+                selectedFromDate = null;
+                selectedToDate = null;
+                return BuildFilter(null, null, null, null);
+            default:
+                return null;
+        }
+    }
+
+    private void RefreshRollingPresetState()
+    {
+        if (selectedPreset is not (
+            DashboardPeriodPreset.Today or
+            DashboardPeriodPreset.LastMonth or
+            DashboardPeriodPreset.LastThreeMonths))
+        {
+            return;
+        }
+
+        if (ConfigurePeriodPreset(selectedPreset) is { } filter)
+            SetAppliedFilter(filter);
+    }
+
+    private async Task RunUtcDayRolloverAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var nextUtcDay = new DateTimeOffset(now.UtcDateTime.Date.AddDays(1), TimeSpan.Zero);
+                await Task.Delay(nextUtcDay - now + TimeSpan.FromMilliseconds(100), cancellationToken);
+
+                await InvokeAsync(async () =>
+                {
+                    if (selectedPreset is
+                        DashboardPeriodPreset.Today or
+                        DashboardPeriodPreset.LastMonth or
+                        DashboardPeriodPreset.LastThreeMonths)
+                    {
+                        RefreshRollingPresetState();
+                        await RefreshFilteredDataAsync(cancellationToken, includeOptions: true);
+                    }
+                });
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Expected when the page is left or the authenticated session ends.
+        }
+    }
+
+    private DashboardFilter BuildFilter(
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        DateTime? fromDate,
+        DateTime? toDate) =>
+        new(
+            fromUtc,
+            toUtc,
+            fromDate,
+            toDate,
+            SelectedIds(selectedStationIds),
+            SelectedIds(selectedCustomerIds),
+            SelectedIds(selectedServiceIds));
+
+    private string PeriodPresetClass(DashboardPeriodPreset preset) =>
+        preset == selectedPreset ? "od-period-preset is-active" : "od-period-preset";
+
+    private string DateModeClass(DashboardDateMode mode) =>
+        mode == dateMode ? "od-date-mode is-active" : "od-date-mode";
+
+    private static DateTimeOffset UtcDayBoundary(DateTime date) =>
+        new(DateTime.SpecifyKind(date.Date, DateTimeKind.Utc));
 
     private static IReadOnlyList<Guid> SelectedIds(IEnumerable<Guid>? values) =>
         values?.Distinct().ToList() ?? [];
 
-    private static string FormatCount(long? value) => value?.ToString("N0", CultureInfo.CurrentCulture) ?? "—";
-    private static string FormatPercentage(double value) => value.ToString("0.#", CultureInfo.CurrentCulture) + "%";
-    private static string SvgNumber(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+    private static string FormatCount(long? value) =>
+        value?.ToString("N0", CultureInfo.CurrentCulture) ?? "—";
+    private static string FormatPercentage(double value) =>
+        value.ToString("0.#", CultureInfo.CurrentCulture) + "%";
     private static string DisplayCode(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value.Trim().ToUpperInvariant();
-
     private static string DisplayFlightNumber(DashboardFlightRow flight) =>
         string.IsNullOrWhiteSpace(flight.CustomerIataCode)
             ? flight.FlightNumber
             : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
-
     private static string DateTimeDisplay(DateTimeOffset value) =>
         value.UtcDateTime.ToString("dd MMM yyyy · HH:mm", CultureInfo.CurrentCulture);
 
@@ -680,44 +773,61 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         _ => "neutral"
     };
 
+    private static string StatusIcon(string status) => status switch
+    {
+        "Completed" => "check_circle",
+        "Canceled" => "cancel",
+        "InProgress" => "pending_actions",
+        _ => "schedule"
+    };
+
     public async ValueTask DisposeAsync()
     {
         Auth.StateChanged -= OnAuthStateChanged;
+        Realtime.DashboardChanged -= OnRealtimeDashboardChanged;
+        Realtime.ConnectionStateChanged -= OnRealtimeConnectionStateChanged;
+
         lifetimeCts.Cancel();
         dashboardRequestCts?.Cancel();
         tableRequestCts?.Cancel();
         filterAutoApplyCts?.Cancel();
+        realtimeRefreshCts?.Cancel();
 
-        if (pollingTask is not null)
-            await pollingTask;
+        await Realtime.StopAsync();
+        if (initializationTask is not null)
+            await initializationTask;
+        if (utcRolloverTask is not null)
+            await utcRolloverTask;
 
         dashboardRequestCts?.Dispose();
         tableRequestCts?.Dispose();
         filterAutoApplyCts?.Dispose();
+        realtimeRefreshCts?.Dispose();
         lifetimeCts.Dispose();
     }
 
     private sealed record DashboardFilter(
-        DateTimeOffset FromUtc,
-        DateTimeOffset ToUtc,
-        DateTime FromDate,
-        DateTime ToDate,
+        DateTimeOffset? FromUtc,
+        DateTimeOffset? ToUtc,
+        DateTime? FromDate,
+        DateTime? ToDate,
         IReadOnlyList<Guid> StationIds,
         IReadOnlyList<Guid> CustomerIds,
         IReadOnlyList<Guid> ServiceIds);
 
-    private sealed record StatusSegment(
+    private sealed record StatusCard(
         string Status,
         string Label,
         string Tone,
+        string Icon,
         long Count,
-        double Percentage,
-        double Offset);
+        double Percentage);
 
-    private enum DashboardRangeMode
+    private sealed record PeriodOption(DashboardPeriodPreset Value, string Label);
+
+    private enum DashboardDateMode
     {
-        SingleDay,
-        Period,
-        Live
+        Day,
+        Range
     }
 }

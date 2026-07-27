@@ -1,0 +1,103 @@
+<article class="dft-card">
+    <header class="dft-header">
+        <div class="dft-heading">
+            <span class="dft-icon" aria-hidden="true"><RadzenIcon Icon="show_chart" /></span>
+            <div>
+                <h3>@title</h3>
+                <p>@description</p>
+            </div>
+        </div>
+
+        <div class="dft-presets" role="group" aria-label="@periodLabel">
+            @foreach (var option in presets)
+            {
+                <button type="button"
+                        class="@PresetClass(option.Value)"
+                        aria-pressed="@(selectedPreset == option.Value)"
+                        disabled="@busy"
+                        @onclick="() => SelectPresetAsync(option.Value)">
+                    @option.Label
+                </button>
+            }
+        </div>
+    </header>
+
+    <div class="dft-meta">
+        <span><RadzenIcon Icon="date_range" /> @rangeSummary</span>
+        <span><RadzenIcon Icon="zoom_in" /> @zoomHint</span>
+    </div>
+
+    @if (!hasData)
+    {
+        <div class="dft-empty">
+            <span><RadzenIcon Icon="timeline" /></span>
+            <p>@emptyText</p>
+        </div>
+    }
+    else
+    {
+        <div class="dft-chart" role="img" aria-label="@($"{title}: {rangeSummary}")">
+            <RadzenChart @key="rangeKey"
+                         Width="100%"
+                         Height="266px"
+                         AllowZoom="true"
+                         AllowPan="true"
+                         @bind-ViewStart="@viewStart"
+                         @bind-ViewEnd="@viewEnd"
+                         Animate="true"
+                         AnimateDataUpdates="true"
+                         AnimationDuration="360"
+                         MarginTop="18"
+                         MarginRight="24"
+                         MarginBottom="12"
+                         MarginLeft="22">
+                <RadzenLineSeries TItem="DashboardTimelinePoint"
+                                  Data="@points"
+                                  CategoryProperty="@nameof(DashboardTimelinePoint.BucketDateUtc)"
+                                  ValueProperty="@nameof(DashboardTimelinePoint.FlightCount)"
+                                  Title="@flightsLabel"
+                                  Smooth="true"
+                                  Stroke="#8a1538"
+                                  StrokeWidth="3">
+                    <ChildContent>
+                        <RadzenMarkers Visible="false" MarkerType="MarkerType.None" />
+                        <RadzenSeriesDataLabels Visible="false" />
+                    </ChildContent>
+                    <TooltipTemplate Context="point">
+                        <div class="dft-tooltip">
+                            <strong>@FormatTooltipDate(point.BucketUtc)</strong>
+                            <span>@FormatCount(point.FlightCount) @flightsLabel</span>
+                        </div>
+                    </TooltipTemplate>
+                </RadzenLineSeries>
+                <RadzenCategoryAxis Formatter="@FormatAxisValue"
+                                    TickPlacement="TickPlacement.Between"
+                                    TickDistance="@AxisTickDistance">
+                    <RadzenGridLines Visible="false" />
+                </RadzenCategoryAxis>
+                <RadzenValueAxis Min="0" Formatter="@FormatCountAxis" TickDistance="48">
+                    <RadzenGridLines Visible="true" />
+                    <RadzenAxisTitle Text="@flightsLabel" />
+                </RadzenValueAxis>
+                <RadzenChartTooltipOptions Visible="true"
+                                           Shared="true"
+                                           Trigger="ChartTooltipTrigger.Axis"
+                                           HighlightDataPoint="true" />
+                <RadzenLegend Visible="false" />
+            </RadzenChart>
+            <div class="dft-navigator" aria-label="@zoomHint">
+                <RadzenRangeNavigator @key="rangeKey"
+                                      @bind-Start="@viewStart"
+                                      @bind-End="@viewEnd"
+                                      ShowHandleLabels="false"
+                                      ShowAxis="false"
+                                      Min="@trendMin"
+                                      Max="@trendMax" />
+                <div class="dft-navigator-window" aria-live="polite">
+                    <span>@FormatNavigatorDate(ScaleToTrend(viewStart))</span>
+                    <span>@FormatNavigatorDate(ScaleToTrend(viewEnd))</span>
+                </div>
+            </div>
+        </div>
+    }
+</article>

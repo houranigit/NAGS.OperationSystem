@@ -1,0 +1,161 @@
+.dpc-card {
+    --dpc-accent: var(--os-color-primary);
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-lg);
+    background: var(--os-color-surface);
+    box-shadow: var(--os-shadow-sm);
+}
+
+.dpc-card::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: linear-gradient(90deg, var(--dpc-accent), transparent 78%);
+    content: "";
+}
+
+.dpc-card--blue { --dpc-accent: #2f6fed; }
+.dpc-card--teal { --dpc-accent: #0f9f8f; }
+.dpc-card--violet { --dpc-accent: #7c3aed; }
+.dpc-card--amber { --dpc-accent: #d97706; }
+
+.dpc-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--os-space-3);
+    min-height: 4.8rem;
+    padding: 1rem 1rem 0;
+}
+
+.dpc-title {
+    display: flex;
+    min-width: 0;
+    gap: 0.7rem;
+}
+
+.dpc-title > div {
+    min-width: 0;
+}
+
+.dpc-icon {
+    display: grid;
+    flex: 0 0 auto;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, var(--dpc-accent) 11%, var(--os-color-surface));
+    color: var(--dpc-accent);
+    place-items: center;
+}
+
+.dpc-icon ::deep .rz-icon {
+    font-size: 1.15rem;
+}
+
+.dpc-title h3 {
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: 0.96rem;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+}
+
+.dpc-title p {
+    display: -webkit-box;
+    overflow: hidden;
+    margin: 0.2rem 0 0;
+    color: var(--os-color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.dpc-total {
+    flex: 0 0 auto;
+    text-align: end;
+}
+
+.dpc-total strong,
+.dpc-total span {
+    display: block;
+}
+
+.dpc-total strong {
+    color: var(--os-color-text);
+    font-size: 1.28rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.dpc-total span {
+    margin-top: 0.18rem;
+    color: var(--os-color-text-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.dpc-chart {
+    min-height: 278px;
+    padding: 0 0.25rem 0.15rem;
+}
+
+.dpc-chart ::deep .rz-chart {
+    font-family: inherit;
+}
+
+.dpc-chart ::deep .rz-chart-legend-item-text {
+    fill: var(--os-color-text-muted);
+    font-size: 0.67rem;
+    font-weight: 650;
+}
+
+.dpc-chart ::deep .rz-chart-data-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+.dpc-tooltip {
+    display: grid;
+    min-width: 7.5rem;
+    gap: 0.2rem;
+}
+
+.dpc-tooltip strong {
+    margin-bottom: 0.1rem;
+}
+
+.dpc-tooltip span {
+    font-variant-numeric: tabular-nums;
+}
+
+.dpc-empty {
+    display: grid;
+    min-height: 278px;
+    padding: var(--os-space-5);
+    color: var(--os-color-text-muted);
+    text-align: center;
+    place-content: center;
+}
+
+.dpc-empty > span {
+    display: grid;
+    width: 2.6rem;
+    height: 2.6rem;
+    margin: 0 auto 0.55rem;
+    border-radius: 50%;
+    background: var(--os-color-surface-muted);
+    color: var(--dpc-accent);
+    place-items: center;
+}
+
+.dpc-empty p {
+    max-width: 15rem;
+    margin: 0;
+    font-size: var(--os-text-sm);
+}

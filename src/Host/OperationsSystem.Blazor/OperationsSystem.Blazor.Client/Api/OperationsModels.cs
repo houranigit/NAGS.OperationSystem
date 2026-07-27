@@ -12,6 +12,10 @@ public sealed record OperationsDashboard(
     IReadOnlyList<DashboardBreakdownItem> Stations,
     IReadOnlyList<DashboardBreakdownItem> Customers,
     IReadOnlyList<DashboardBreakdownItem> Services,
+    IReadOnlyList<DashboardBreakdownItem> OperationTypes,
+    IReadOnlyList<DashboardBreakdownItem> ServiceCategories,
+    IReadOnlyList<DashboardTimelinePoint> Timeline,
+    string TimelineGranularity,
     IReadOnlyList<DashboardTrendPoint> Hourly,
     IReadOnlyList<DashboardTrendPoint> Monthly,
     IReadOnlyList<DashboardTrendPoint> Yearly,
@@ -42,6 +46,11 @@ public sealed record DashboardBreakdownItem(
     int GroupedItemCount);
 
 public sealed record DashboardTrendPoint(string Key, string Label, int SortOrder, long FlightCount);
+
+public sealed record DashboardTimelinePoint(DateTimeOffset BucketUtc, long FlightCount)
+{
+    public DateTime BucketDateUtc => BucketUtc.UtcDateTime;
+}
 
 public sealed record DashboardFilterOption(Guid Id, string Label, string? Code);
 

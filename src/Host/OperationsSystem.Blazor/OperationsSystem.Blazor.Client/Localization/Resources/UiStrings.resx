@@ -216,13 +216,24 @@
   <data name="Dashboard.ManageRoles" xml:space="preserve"><value>Manage roles</value></data>
   <data name="OperationsDashboard.NavLabel" xml:space="preserve"><value>Operations dashboard</value></data>
   <data name="OperationsDashboard.Title" xml:space="preserve"><value>Operations dashboard</value></data>
+  <data name="OperationsDashboard.ExecutiveOverview" xml:space="preserve"><value>Executive overview</value></data>
   <data name="OperationsDashboard.ControlCenter" xml:space="preserve"><value>Operations control center</value></data>
   <data name="OperationsDashboard.Description" xml:space="preserve"><value>Monitor flight activity, service delivery, and performance across your operational scope.</value></data>
+  <data name="OperationsDashboard.RealtimeDescription" xml:space="preserve"><value>Operational changes appear here as they happen.</value></data>
+  <data name="OperationsDashboard.LastUpdated" xml:space="preserve"><value>Last updated</value></data>
+  <data name="OperationsDashboard.LiveConnected" xml:space="preserve"><value>Live connection</value></data>
+  <data name="OperationsDashboard.LiveConnecting" xml:space="preserve"><value>Connecting live</value></data>
   <data name="OperationsDashboard.UtcReporting" xml:space="preserve"><value>All times are shown in UTC</value></data>
   <data name="OperationsDashboard.TotalFlights" xml:space="preserve"><value>Total flights</value></data>
   <data name="OperationsDashboard.InSelectedPeriod" xml:space="preserve"><value>In the selected period</value></data>
   <data name="OperationsDashboard.Refresh" xml:space="preserve"><value>Refresh data</value></data>
   <data name="OperationsDashboard.GlobalFilter" xml:space="preserve"><value>Global filter</value></data>
+  <data name="OperationsDashboard.PeriodShortcuts" xml:space="preserve"><value>Period shortcuts</value></data>
+  <data name="OperationsDashboard.Today" xml:space="preserve"><value>Today</value></data>
+  <data name="OperationsDashboard.LastMonth" xml:space="preserve"><value>Last month</value></data>
+  <data name="OperationsDashboard.LastThreeMonths" xml:space="preserve"><value>Last 3 months</value></data>
+  <data name="OperationsDashboard.Max" xml:space="preserve"><value>Max</value></data>
+  <data name="OperationsDashboard.AllAvailableHistory" xml:space="preserve"><value>All available history</value></data>
   <data name="OperationsDashboard.FilterTitle" xml:space="preserve"><value>Refine your operational view</value></data>
   <data name="OperationsDashboard.FilterDescription" xml:space="preserve"><value>Filter all dashboard metrics, charts, and flight records from one place.</value></data>
   <data name="OperationsDashboard.ActiveFiltersFormat" xml:space="preserve"><value>Active filters: {0}</value></data>
@@ -250,6 +261,7 @@
   <data name="OperationsDashboard.ItemsSelected" xml:space="preserve"><value>items selected</value></data>
   <data name="OperationsDashboard.FilterLogicHint" xml:space="preserve"><value>Station, customer, and service selections are combined to narrow all results.</value></data>
   <data name="OperationsDashboard.Reset" xml:space="preserve"><value>Reset</value></data>
+  <data name="OperationsDashboard.ClearFilters" xml:space="preserve"><value>Clear filters</value></data>
   <data name="OperationsDashboard.ApplyFilters" xml:space="preserve"><value>Apply filters</value></data>
   <data name="OperationsDashboard.DataUnavailable" xml:space="preserve"><value>Dashboard data is currently unavailable.</value></data>
   <data name="OperationsDashboard.StaleWarning" xml:space="preserve"><value>We couldn't refresh the latest data. The last successful results remain displayed.</value></data>
@@ -263,11 +275,25 @@
   <data name="OperationsDashboard.Distribution" xml:space="preserve"><value>Distribution</value></data>
   <data name="OperationsDashboard.FlightDistribution" xml:space="preserve"><value>Flight distribution</value></data>
   <data name="OperationsDashboard.FlightDistributionDescription" xml:space="preserve"><value>Top stations, customers, and performed services in the selected period.</value></data>
+  <data name="OperationsDashboard.StationDistribution" xml:space="preserve"><value>Flights by station</value></data>
+  <data name="OperationsDashboard.StationDistributionDescription" xml:space="preserve"><value>Each station's share of the matching flights.</value></data>
+  <data name="OperationsDashboard.LandingMode" xml:space="preserve"><value>Per Landing vs On Call</value></data>
+  <data name="OperationsDashboard.LandingModeDescription" xml:space="preserve"><value>Landing mode for flights assigned to aircraft services.</value></data>
+  <data name="OperationsDashboard.DesignatedFlights" xml:space="preserve"><value>Designated flights</value></data>
+  <data name="OperationsDashboard.PerLanding" xml:space="preserve"><value>Per Landing</value></data>
+  <data name="OperationsDashboard.OnCall" xml:space="preserve"><value>On Call</value></data>
+  <data name="OperationsDashboard.NoLandingModeFlights" xml:space="preserve"><value>No Per Landing or On Call flights match these filters.</value></data>
+  <data name="OperationsDashboard.OperationTypeDistribution" xml:space="preserve"><value>Flights by operation type</value></data>
+  <data name="OperationsDashboard.OperationTypeDistributionDescription" xml:space="preserve"><value>Operation mix with Ad Hoc flights listed first.</value></data>
   <data name="OperationsDashboard.TopStations" xml:space="preserve"><value>Top stations</value></data>
   <data name="OperationsDashboard.TopStationsDescription" xml:space="preserve"><value>Flights by station, with remaining stations grouped as Other.</value></data>
   <data name="OperationsDashboard.TopCustomers" xml:space="preserve"><value>Top customers</value></data>
   <data name="OperationsDashboard.TopCustomersDescription" xml:space="preserve"><value>Flights by customer, with remaining customers grouped as Other.</value></data>
+  <data name="OperationsDashboard.TopFourCustomers" xml:space="preserve"><value>Top 4 customers</value></data>
+  <data name="OperationsDashboard.TopFourCustomersDescription" xml:space="preserve"><value>Flight count and share for the leading four customers; all others are grouped.</value></data>
   <data name="OperationsDashboard.PerformedServicesDescription" xml:space="preserve"><value>Distinct flights using each performed service; percentages show the share of all service usage. Remaining services are grouped as Other.</value></data>
+  <data name="OperationsDashboard.TopFourServices" xml:space="preserve"><value>Top 4 services</value></data>
+  <data name="OperationsDashboard.TopFourServicesDescription" xml:space="preserve"><value>Flight usage for the leading four performed services; all others are grouped.</value></data>
   <data name="OperationsDashboard.NoFlightData" xml:space="preserve"><value>No flight data</value></data>
   <data name="OperationsDashboard.NoMatchingActivity" xml:space="preserve"><value>No activity matches the selected dashboard filters.</value></data>
   <data name="OperationsDashboard.Other" xml:space="preserve"><value>Other</value></data>
@@ -275,7 +301,8 @@
   <data name="OperationsDashboard.TotalServiceUses" xml:space="preserve"><value>Total service uses</value></data>
   <data name="OperationsDashboard.TemporalAnalysis" xml:space="preserve"><value>Temporal analysis</value></data>
   <data name="OperationsDashboard.FlightTrends" xml:space="preserve"><value>Flight trends</value></data>
-  <data name="OperationsDashboard.FlightTrendsDescription" xml:space="preserve"><value>Flight volume across hours and calendar months in the selected range.</value></data>
+  <data name="OperationsDashboard.FlightTrendsDescription" xml:space="preserve"><value>Flight volume automatically grouped by hour, day, or month for the selected range.</value></data>
+  <data name="OperationsDashboard.ZoomHint" xml:space="preserve"><value>Scroll to zoom · drag to pan</value></data>
   <data name="OperationsDashboard.FlightsByHour" xml:space="preserve"><value>Flights by hour</value></data>
   <data name="OperationsDashboard.FlightsByHourDescription" xml:space="preserve"><value>Flight count grouped by hour of day.</value></data>
   <data name="OperationsDashboard.FlightsByMonth" xml:space="preserve"><value>Flights by month</value></data>
@@ -306,7 +333,7 @@
   <data name="OperationsDashboard.LiveInterrupted" xml:space="preserve"><value>Live update interrupted</value></data>
   <data name="OperationsDashboard.WaitingForData" xml:space="preserve"><value>Waiting for data</value></data>
   <data name="OperationsDashboard.LiveToday" xml:space="preserve"><value>Live data for today</value></data>
-  <data name="OperationsDashboard.LiveModeDescription" xml:space="preserve"><value>Updates automatically every 20 seconds as operational data changes.</value></data>
+  <data name="OperationsDashboard.LiveModeDescription" xml:space="preserve"><value>Updates immediately as operational data changes.</value></data>
   <data name="OperationsDashboard.YesterdayDescription" xml:space="preserve"><value>Shows the previous calendar day, which is the default dashboard view.</value></data>
   <data name="OperationsDashboard.LiveTodayFormat" xml:space="preserve"><value>Live today · {0}</value></data>
   <data name="OperationsDashboard.YesterdayFormat" xml:space="preserve"><value>Yesterday · {0}</value></data>

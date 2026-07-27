@@ -17,6 +17,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         IReadOnlyList<Guid>? stationIds = null,
         IReadOnlyList<Guid>? customerIds = null,
         IReadOnlyList<Guid>? serviceIds = null,
+        int topCount = 4,
         bool includeOptions = true,
         CancellationToken ct = default)
     {
@@ -26,6 +27,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             .Add("stationIds", stationIds)
             .Add("customerIds", customerIds)
             .Add("serviceIds", serviceIds)
+            .Add("topCount", topCount)
             .Add("includeOptions", includeOptions)
             .Build();
         return api.GetAsync<OperationsDashboard>($"/operations/analytics-dashboard{query}", ct);

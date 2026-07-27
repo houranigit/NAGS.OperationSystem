@@ -50,6 +50,7 @@ app.UseWebSockets();
 app.MapStaticAssets();
 app.MapApiProxy();
 app.MapNotificationsHubProxy();
+app.MapOperationsDashboardHubProxy();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()

@@ -6,6 +6,7 @@ using Operations.Application.Authorization;
 using Operations.Application.Contracts;
 using Operations.Application.Features.Dashboard;
 using Operations.Application.Features.Flights;
+using Operations.Application.Features.WorkOrders;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
@@ -111,6 +112,10 @@ public sealed class DashboardQueryTests
         result.Value.Stations.ShouldBeEmpty();
         result.Value.Customers.ShouldBeEmpty();
         result.Value.Services.ShouldBeEmpty();
+        result.Value.OperationTypes.ShouldBeEmpty();
+        result.Value.ServiceCategories.ShouldBeEmpty();
+        result.Value.Timeline.ShouldBeEmpty();
+        result.Value.TimelineGranularity.ShouldBe("Month");
         result.Value.Hourly.ShouldBeEmpty();
         result.Value.StationOptions.ShouldBeEmpty();
     }
@@ -216,6 +221,94 @@ public sealed class DashboardQueryTests
     }
 
     [Fact]
+    public async Task Dashboard_ReturnsAllStationsAndPutsAdHocFirstAmongAllOperationTypes()
+    {
+        await using var db = NewDb();
+        var turnaroundId = Guid.NewGuid();
+        var transitId = Guid.NewGuid();
+        var specifications = new[]
+        {
+            (OperationTypeId: WellKnownMasterDataIds.AdHocOperationType, OperationTypeName: "Ad Hoc"),
+            (OperationTypeId: turnaroundId, OperationTypeName: "Turnaround"),
+            (OperationTypeId: turnaroundId, OperationTypeName: "Turnaround"),
+            (OperationTypeId: turnaroundId, OperationTypeName: "Turnaround"),
+            (OperationTypeId: transitId, OperationTypeName: "Transit"),
+            (OperationTypeId: transitId, OperationTypeName: "Transit")
+        };
+        var flights = specifications
+            .Select((specification, index) => CreateFlight(
+                (100 + index).ToString(),
+                stationId: Guid.NewGuid(),
+                stationIata: $"S{index + 1:00}",
+                stationName: $"Station {index + 1:00}",
+                operationTypeId: specification.OperationTypeId,
+                operationTypeName: specification.OperationTypeName))
+            .ToArray();
+        db.Flights.AddRange(flights);
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(
+            new GetOperationsDashboardQuery(TopCount: 1, IncludeOptions: false),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Stations.Count.ShouldBe(6);
+        result.Value.Stations.ShouldAllBe(station => !station.IsOther);
+        result.Value.Customers.Count.ShouldBe(2);
+        result.Value.Customers.Last().IsOther.ShouldBeTrue();
+        result.Value.OperationTypes.Select(item => item.Id).ShouldBe(
+        [
+            WellKnownMasterDataIds.AdHocOperationType,
+            turnaroundId,
+            transitId
+        ]);
+        result.Value.OperationTypes.Select(item => item.FlightCount).ShouldBe([1, 3, 2]);
+        result.Value.OperationTypes.ShouldAllBe(item => !item.IsOther);
+    }
+
+    [Fact]
+    public async Task Dashboard_UsesCanonicalMutuallyExclusivePerLandingAndOnCallCategories()
+    {
+        await using var db = NewDb();
+        static ServiceSnapshot PerLandingService() => new(
+            WellKnownMasterDataIds.AircraftPerLandingService,
+            "Aircraft Per Landing");
+        var performedService = new ServiceSnapshot(Guid.NewGuid(), "Baggage");
+        var plainPerLanding = CreateFlight("100", plannedServices: [PerLandingService()]);
+        var emptyWorkOrderPerLanding = CreateFlight("200", plannedServices: [PerLandingService()]);
+        var mergedWorkOrderPerLanding = CreateFlight("300", plannedServices: [PerLandingService()]);
+        var onCall = CreateFlight("400", plannedServices: [PerLandingService()]);
+        var other = CreateFlight("500");
+        var emptyWorkOrder = CreateWorkOrder(emptyWorkOrderPerLanding);
+        var mergedWorkOrder = CreateWorkOrder(mergedWorkOrderPerLanding, performedService);
+        mergedWorkOrder.MarkMergedInto(Guid.NewGuid(), Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+
+        db.Flights.AddRange(
+            plainPerLanding,
+            emptyWorkOrderPerLanding,
+            mergedWorkOrderPerLanding,
+            onCall,
+            other);
+        db.WorkOrders.AddRange(
+            emptyWorkOrder,
+            mergedWorkOrder,
+            CreateWorkOrder(onCall, performedService),
+            CreateWorkOrder(other, performedService));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(
+            new GetOperationsDashboardQuery(IncludeOptions: false),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TotalFlights.ShouldBe(5);
+        result.Value.ServiceCategories.Select(item => item.Label).ShouldBe(["Per Landing", "On Call"]);
+        result.Value.ServiceCategories.Select(item => item.FlightCount).ShouldBe([3, 1]);
+        result.Value.ServiceCategories.Select(item => item.Percentage).ShouldBe([75d, 25d]);
+        result.Value.ServiceCategories.ShouldAllBe(item => !item.IsOther);
+    }
+
+    [Fact]
     public async Task Dashboard_PerformedServicesCountDistinctFlightServicePairsAndIgnoreMergedWorkOrders()
     {
         await using var db = NewDb();
@@ -281,6 +374,144 @@ public sealed class DashboardQueryTests
         result.Value.Monthly.Single(point => point.Key == "02").FlightCount.ShouldBe(0);
         result.Value.Yearly.Select(point => point.Key).ShouldBe(["2025", "2026", "2027"]);
         result.Value.Yearly.Select(point => point.FlightCount).ShouldBe([1, 2, 1]);
+        result.Value.TimelineGranularity.ShouldBe("Month");
+        result.Value.Timeline.Count.ShouldBe(36);
+        result.Value.Timeline[0].BucketUtc.ShouldBe(
+            new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        result.Value.Timeline.Single(point =>
+                point.BucketUtc == new DateTimeOffset(2025, 2, 1, 0, 0, 0, TimeSpan.Zero))
+            .FlightCount.ShouldBe(0);
+        result.Value.Timeline[^1].BucketUtc.ShouldBe(
+            new DateTimeOffset(2027, 12, 1, 0, 0, 0, TimeSpan.Zero));
+    }
+
+    [Theory]
+    [InlineData(2, "Hour")]
+    [InlineData(3, "Day")]
+    [InlineData(120, "Day")]
+    [InlineData(121, "Month")]
+    public void Dashboard_TimelineGranularityUsesRequestedRange(int days, string expected)
+    {
+        DashboardTimelineProjection
+            .SelectGranularity(Now, Now.AddDays(days))
+            .ToString()
+            .ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task Dashboard_TimelineZeroFillsEveryIntersectingHourlyBucket()
+    {
+        await using var db = NewDb();
+        var fromUtc = new DateTimeOffset(2026, 7, 12, 10, 30, 0, TimeSpan.Zero);
+        var toUtc = new DateTimeOffset(2026, 7, 12, 13, 15, 0, TimeSpan.Zero);
+        db.Flights.AddRange(
+            CreateFlight("100", scheduledArrival: fromUtc),
+            CreateFlight("200", scheduledArrival: new DateTimeOffset(2026, 7, 12, 12, 45, 0, TimeSpan.Zero)));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(
+            new GetOperationsDashboardQuery(
+                FromUtc: fromUtc,
+                ToUtc: toUtc,
+                IncludeOptions: false),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TimelineGranularity.ShouldBe("Hour");
+        result.Value.Timeline.Select(point => point.BucketUtc).ShouldBe(
+        [
+            new DateTimeOffset(2026, 7, 12, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 12, 11, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 12, 12, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 12, 13, 0, 0, TimeSpan.Zero)
+        ]);
+        result.Value.Timeline.Select(point => point.FlightCount).ShouldBe([1, 0, 1, 0]);
+    }
+
+    [Fact]
+    public async Task Dashboard_MaxTimelineUsesHourlyBucketsWhenAllDataIsInOneUtcDay()
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateFlight(
+                "100",
+                scheduledArrival: new DateTimeOffset(2026, 7, 12, 3, 15, 0, TimeSpan.Zero)),
+            CreateFlight(
+                "200",
+                scheduledArrival: new DateTimeOffset(2026, 7, 12, 6, 45, 0, TimeSpan.Zero)));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(
+            new GetOperationsDashboardQuery(IncludeOptions: false),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TimelineGranularity.ShouldBe("Hour");
+        result.Value.Timeline.Select(point => point.BucketUtc).ShouldBe(
+        [
+            new DateTimeOffset(2026, 7, 12, 3, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 12, 4, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 12, 5, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 12, 6, 0, 0, TimeSpan.Zero)
+        ]);
+        result.Value.Timeline.Select(point => point.FlightCount).ShouldBe([1, 0, 0, 1]);
+    }
+
+    [Fact]
+    public async Task Dashboard_MaxTimelineUsesDailyBucketsWhenAllDataIsInOneUtcMonth()
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateFlight(
+                "100",
+                scheduledArrival: new DateTimeOffset(2026, 7, 2, 3, 15, 0, TimeSpan.Zero)),
+            CreateFlight(
+                "200",
+                scheduledArrival: new DateTimeOffset(2026, 7, 5, 6, 45, 0, TimeSpan.Zero)));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(
+            new GetOperationsDashboardQuery(IncludeOptions: false),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TimelineGranularity.ShouldBe("Day");
+        result.Value.Timeline.Select(point => point.BucketUtc).ShouldBe(
+        [
+            new DateTimeOffset(2026, 7, 2, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 3, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 4, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 5, 0, 0, 0, TimeSpan.Zero)
+        ]);
+        result.Value.Timeline.Select(point => point.FlightCount).ShouldBe([1, 0, 0, 1]);
+    }
+
+    [Fact]
+    public async Task Dashboard_MaxTimelineUsesContinuousMonthlyBucketsAcrossActualData()
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateFlight(
+                "100",
+                scheduledArrival: new DateTimeOffset(2025, 1, 15, 0, 0, 0, TimeSpan.Zero)),
+            CreateFlight(
+                "200",
+                scheduledArrival: new DateTimeOffset(2025, 3, 20, 0, 0, 0, TimeSpan.Zero)));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(
+            new GetOperationsDashboardQuery(IncludeOptions: false),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TimelineGranularity.ShouldBe("Month");
+        result.Value.Timeline.Select(point => point.BucketUtc).ShouldBe(
+        [
+            new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2025, 2, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2025, 3, 1, 0, 0, 0, TimeSpan.Zero)
+        ]);
+        result.Value.Timeline.Select(point => point.FlightCount).ShouldBe([1, 0, 1]);
     }
 
     [Fact]
@@ -357,6 +588,7 @@ public sealed class DashboardQueryTests
                 .Options);
         var performedWorkOrders = DashboardFlightQuery.PerformedWorkOrders(db);
         var performedServiceLines = DashboardFlightQuery.PerformedServiceLines(db);
+        var qualifyingOnCallWorkOrders = db.WorkOrders.AsNoTracking().QualifyingForOnCall();
         var scopedFlights = DashboardFlightQuery.ApplyScope(
             db.Flights.AsNoTracking(),
             new OperationsScopeContext(UserType.SystemAdministrator, null, null),
@@ -396,6 +628,19 @@ public sealed class DashboardQueryTests
                     group.Max(flight => flight.Station.IataCode),
                     group.LongCount()))
                 .ToQueryString(),
+            flights.GroupBy(flight => flight.OperationType.OperationTypeId)
+                .Select(group => new DashboardGroupRow(
+                    group.Key,
+                    group.Max(flight => flight.OperationType.Name)!,
+                    null,
+                    group.LongCount()))
+                .ToQueryString(),
+            flights
+                .Where(flight => flight.PlannedServices.Any(service =>
+                    service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService))
+                .Where(flight => qualifyingOnCallWorkOrders.Any(workOrder =>
+                    workOrder.FlightId == flight.Id))
+                .ToQueryString(),
             performedServicesForFlights
                 .GroupBy(service => service.ServiceId)
                 .Select(group => new DashboardGroupRow(
@@ -406,6 +651,25 @@ public sealed class DashboardQueryTests
                 .ToQueryString(),
             flights.GroupBy(flight => flight.Schedule.Sta.Hour)
                 .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
+                .ToQueryString(),
+            flights.GroupBy(_ => 1)
+                .Select(group => new DashboardTimelineBounds(
+                    group.Min(flight => flight.Schedule.Sta),
+                    group.Max(flight => flight.Schedule.Sta)))
+                .ToQueryString(),
+            flights.GroupBy(flight => new
+                {
+                    flight.Schedule.Sta.Year,
+                    flight.Schedule.Sta.Month,
+                    flight.Schedule.Sta.Day,
+                    flight.Schedule.Sta.Hour
+                })
+                .Select(group => new DashboardTimelineCount(
+                    group.Key.Year,
+                    group.Key.Month,
+                    group.Key.Day,
+                    group.Key.Hour,
+                    group.LongCount()))
                 .ToQueryString(),
             (from workOrder in performedWorkOrders
                 join line in performedServiceLines
@@ -461,11 +725,13 @@ public sealed class DashboardQueryTests
         string customerName = "Royal Jordanian",
         DateTimeOffset? scheduledArrival = null,
         string stationIata = "ORD",
-        string stationName = "Chicago O'Hare") =>
+        string stationName = "Chicago O'Hare",
+        Guid? operationTypeId = null,
+        string operationTypeName = "Transit") =>
         Flight.ScheduleNew(
             new CustomerSnapshot(customerId ?? Guid.NewGuid(), customerIata, customerName),
             new StationSnapshot(stationId ?? Guid.NewGuid(), stationIata, stationName),
-            new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
+            new OperationTypeSnapshot(operationTypeId ?? Guid.NewGuid(), operationTypeName),
             FlightNumber.Create(flightNumber).Value,
             ScheduledTime.Create(scheduledArrival ?? Now, (scheduledArrival ?? Now).AddHours(1)).Value,
             aircraftType: null,

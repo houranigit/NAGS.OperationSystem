@@ -26,6 +26,8 @@ using Notifications.Api.Realtime;
 using Notifications.Infrastructure;
 using Operations.Api;
 using Operations.Api.Mobile;
+using Operations.Api.Realtime;
+using Operations.Application.Behaviors;
 using Operations.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
@@ -88,8 +90,9 @@ var moduleApplicationAssemblies = new[]
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssemblies(moduleApplicationAssemblies);
-    // MobileSyncBroadcastBehavior is registered first (outermost) so the mobile-sync buffer
-    // flushes only after validation and the handler (including its SaveChanges) succeeded.
+    // Post-success realtime behaviors wrap validation and the handler, whose SaveChanges calls
+    // complete before either best-effort live notification is emitted.
+    cfg.AddOpenBehavior(typeof(OperationsDashboardRealtimeBehavior<,>));
     cfg.AddOpenBehavior(typeof(BuildingBlocks.Application.Mobile.MobileSyncBroadcastBehavior<,>));
     cfg.AddOpenBehavior(typeof(ValidationPipelineBehavior<,>));
 });
@@ -113,6 +116,7 @@ builder.Services.AddOperationsModule(builder.Configuration);
 
 // Mobile offline-sync: SignalR hub + per-request change broadcaster.
 builder.Services.AddMobileSync();
+builder.Services.AddOperationsDashboardRealtime();
 
 // Compose the cross-module permission catalog after all module catalogs are registered.
 builder.Services.AddPermissionRegistry();
@@ -250,6 +254,7 @@ new NotificationsEndpointModule().MapEndpoints(app);
 new OperationsEndpointModule().MapEndpoints(app);
 
 app.MapHub<Operations.Api.Mobile.MobileSyncHub>(Operations.Api.Mobile.MobileSyncHub.Path);
+app.MapHub<OperationsDashboardHub>(OperationsDashboardHub.Path);
 app.MapHub<NotificationsHub>(NotificationsHub.Path);
 
 var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")

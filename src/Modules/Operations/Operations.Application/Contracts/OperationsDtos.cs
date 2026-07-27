@@ -142,6 +142,10 @@ public sealed record OperationsDashboardDto(
     IReadOnlyList<DashboardBreakdownItemDto> Stations,
     IReadOnlyList<DashboardBreakdownItemDto> Customers,
     IReadOnlyList<DashboardBreakdownItemDto> Services,
+    IReadOnlyList<DashboardBreakdownItemDto> OperationTypes,
+    IReadOnlyList<DashboardBreakdownItemDto> ServiceCategories,
+    IReadOnlyList<DashboardTimelinePointDto> Timeline,
+    string TimelineGranularity,
     IReadOnlyList<DashboardTrendPointDto> Hourly,
     IReadOnlyList<DashboardTrendPointDto> Monthly,
     IReadOnlyList<DashboardTrendPointDto> Yearly,
@@ -177,6 +181,10 @@ public sealed record DashboardTrendPointDto(
     string Key,
     string Label,
     int SortOrder,
+    long FlightCount);
+
+public sealed record DashboardTimelinePointDto(
+    DateTimeOffset BucketUtc,
     long FlightCount);
 
 public sealed record DashboardFilterOptionDto(

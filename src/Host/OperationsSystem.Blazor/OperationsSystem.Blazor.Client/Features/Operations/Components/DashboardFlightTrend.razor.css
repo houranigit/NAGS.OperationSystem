@@ -1,0 +1,210 @@
+.dft-card {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-lg);
+    background: var(--os-color-surface);
+    box-shadow: var(--os-shadow-sm);
+}
+
+.dft-card::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: linear-gradient(90deg, var(--os-color-primary), #e05263 45%, transparent 88%);
+    content: "";
+}
+
+.dft-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--os-space-4);
+    padding: 1rem 1rem 0;
+}
+
+.dft-heading {
+    display: flex;
+    min-width: 0;
+    gap: 0.7rem;
+}
+
+.dft-icon {
+    display: grid;
+    flex: 0 0 auto;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 0.65rem;
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+    place-items: center;
+}
+
+.dft-heading h3 {
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+}
+
+.dft-heading p {
+    margin: 0.2rem 0 0;
+    color: var(--os-color-text-muted);
+    font-size: 0.74rem;
+    line-height: 1.35;
+}
+
+.dft-presets {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 0.15rem;
+    padding: 0.2rem;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface-muted);
+}
+
+.dft-preset {
+    min-height: 1.85rem;
+    padding: 0.25rem 0.58rem;
+    border: 0;
+    border-radius: var(--os-radius-pill);
+    background: transparent;
+    color: var(--os-color-text-muted);
+    font: inherit;
+    font-size: 0.67rem;
+    font-weight: 750;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.dft-preset:hover:not(:disabled) {
+    color: var(--os-color-text);
+}
+
+.dft-preset.is-active {
+    background: var(--os-color-surface);
+    box-shadow: 0 1px 5px rgba(28, 22, 25, 0.12);
+    color: var(--os-color-primary);
+}
+
+.dft-preset:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
+.dft-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.42rem 1rem 0;
+    color: var(--os-color-text-muted);
+    font-size: 0.68rem;
+}
+
+.dft-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.dft-meta ::deep .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 0.9rem;
+}
+
+.dft-chart {
+    min-height: 300px;
+    padding: 0 0.35rem 0.35rem 0;
+}
+
+.dft-chart ::deep .rz-chart {
+    font-family: inherit;
+}
+
+.dft-chart ::deep .rz-axis .rz-tick-text {
+    fill: var(--os-color-text-muted);
+    font-size: 0.68rem;
+}
+
+.dft-chart ::deep .rz-axis-title {
+    fill: var(--os-color-text-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.dft-chart ::deep .rz-grid-line {
+    stroke: color-mix(in srgb, var(--os-color-border) 78%, transparent);
+}
+
+.dft-tooltip {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.dft-tooltip span {
+    font-variant-numeric: tabular-nums;
+}
+
+.dft-navigator {
+    padding: 0 1.2rem 0.2rem 3rem;
+}
+
+.dft-navigator ::deep .rz-range-navigator {
+    width: 100%;
+}
+
+.dft-navigator-window {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.08rem;
+    color: var(--os-color-text-muted);
+    font-size: 0.65rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+}
+
+.dft-empty {
+    display: grid;
+    min-height: 300px;
+    padding: var(--os-space-5);
+    color: var(--os-color-text-muted);
+    text-align: center;
+    place-content: center;
+}
+
+.dft-empty > span {
+    display: grid;
+    width: 2.8rem;
+    height: 2.8rem;
+    margin: 0 auto 0.65rem;
+    border-radius: 50%;
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-primary);
+    place-items: center;
+}
+
+.dft-empty p {
+    margin: 0;
+    font-size: var(--os-text-sm);
+}
+
+@media (max-width: 720px) {
+    .dft-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .dft-presets {
+        align-self: stretch;
+        overflow-x: auto;
+    }
+
+    .dft-preset {
+        flex: 1 0 auto;
+    }
+}

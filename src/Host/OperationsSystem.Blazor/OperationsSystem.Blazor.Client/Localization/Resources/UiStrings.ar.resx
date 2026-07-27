@@ -216,13 +216,24 @@
   <data name="Dashboard.ManageRoles" xml:space="preserve"><value>إدارة الأدوار</value></data>
   <data name="OperationsDashboard.NavLabel" xml:space="preserve"><value>لوحة العمليات</value></data>
   <data name="OperationsDashboard.Title" xml:space="preserve"><value>لوحة العمليات</value></data>
+  <data name="OperationsDashboard.ExecutiveOverview" xml:space="preserve"><value>نظرة تنفيذية</value></data>
   <data name="OperationsDashboard.ControlCenter" xml:space="preserve"><value>مركز التحكم التشغيلي</value></data>
   <data name="OperationsDashboard.Description" xml:space="preserve"><value>راقب نشاط الرحلات وتنفيذ الخدمات والأداء ضمن نطاق عملياتك.</value></data>
+  <data name="OperationsDashboard.RealtimeDescription" xml:space="preserve"><value>تظهر تغييرات العمليات هنا فور حدوثها.</value></data>
+  <data name="OperationsDashboard.LastUpdated" xml:space="preserve"><value>آخر تحديث</value></data>
+  <data name="OperationsDashboard.LiveConnected" xml:space="preserve"><value>اتصال مباشر</value></data>
+  <data name="OperationsDashboard.LiveConnecting" xml:space="preserve"><value>جارٍ الاتصال المباشر</value></data>
   <data name="OperationsDashboard.UtcReporting" xml:space="preserve"><value>تُعرض جميع الأوقات بالتوقيت العالمي المنسق (UTC)</value></data>
   <data name="OperationsDashboard.TotalFlights" xml:space="preserve"><value>إجمالي الرحلات</value></data>
   <data name="OperationsDashboard.InSelectedPeriod" xml:space="preserve"><value>ضمن الفترة المحددة</value></data>
   <data name="OperationsDashboard.Refresh" xml:space="preserve"><value>تحديث البيانات</value></data>
   <data name="OperationsDashboard.GlobalFilter" xml:space="preserve"><value>التصفية الشاملة</value></data>
+  <data name="OperationsDashboard.PeriodShortcuts" xml:space="preserve"><value>اختصارات الفترة</value></data>
+  <data name="OperationsDashboard.Today" xml:space="preserve"><value>اليوم</value></data>
+  <data name="OperationsDashboard.LastMonth" xml:space="preserve"><value>الشهر الماضي</value></data>
+  <data name="OperationsDashboard.LastThreeMonths" xml:space="preserve"><value>آخر 3 أشهر</value></data>
+  <data name="OperationsDashboard.Max" xml:space="preserve"><value>الكل</value></data>
+  <data name="OperationsDashboard.AllAvailableHistory" xml:space="preserve"><value>جميع البيانات المتاحة</value></data>
   <data name="OperationsDashboard.FilterTitle" xml:space="preserve"><value>تخصيص العرض التشغيلي</value></data>
   <data name="OperationsDashboard.FilterDescription" xml:space="preserve"><value>صفِّ جميع مؤشرات اللوحة ومخططاتها وسجلات الرحلات من مكان واحد.</value></data>
   <data name="OperationsDashboard.ActiveFiltersFormat" xml:space="preserve"><value>عوامل التصفية النشطة: {0}</value></data>
@@ -250,6 +261,7 @@
   <data name="OperationsDashboard.ItemsSelected" xml:space="preserve"><value>عناصر محددة</value></data>
   <data name="OperationsDashboard.FilterLogicHint" xml:space="preserve"><value>تُجمع اختيارات المحطات والعملاء والخدمات لتضييق نطاق جميع النتائج.</value></data>
   <data name="OperationsDashboard.Reset" xml:space="preserve"><value>إعادة تعيين</value></data>
+  <data name="OperationsDashboard.ClearFilters" xml:space="preserve"><value>مسح عوامل التصفية</value></data>
   <data name="OperationsDashboard.ApplyFilters" xml:space="preserve"><value>تطبيق عوامل التصفية</value></data>
   <data name="OperationsDashboard.DataUnavailable" xml:space="preserve"><value>بيانات لوحة العمليات غير متاحة حاليًا.</value></data>
   <data name="OperationsDashboard.StaleWarning" xml:space="preserve"><value>تعذّر تحديث أحدث البيانات. لا تزال آخر النتائج التي تم تحميلها بنجاح معروضة.</value></data>
@@ -263,11 +275,25 @@
   <data name="OperationsDashboard.Distribution" xml:space="preserve"><value>التوزيع</value></data>
   <data name="OperationsDashboard.FlightDistribution" xml:space="preserve"><value>توزيع الرحلات</value></data>
   <data name="OperationsDashboard.FlightDistributionDescription" xml:space="preserve"><value>أبرز المحطات والعملاء والخدمات المنفذة خلال الفترة المحددة.</value></data>
+  <data name="OperationsDashboard.StationDistribution" xml:space="preserve"><value>توزيع الرحلات حسب المحطة</value></data>
+  <data name="OperationsDashboard.StationDistributionDescription" xml:space="preserve"><value>حصة كل محطة من الرحلات المطابقة.</value></data>
+  <data name="OperationsDashboard.LandingMode" xml:space="preserve"><value>لكل هبوط مقابل تحت الطلب</value></data>
+  <data name="OperationsDashboard.LandingModeDescription" xml:space="preserve"><value>نمط الهبوط للرحلات المعيّنة لخدمات الطائرات.</value></data>
+  <data name="OperationsDashboard.DesignatedFlights" xml:space="preserve"><value>الرحلات المعيّنة</value></data>
+  <data name="OperationsDashboard.PerLanding" xml:space="preserve"><value>لكل هبوط</value></data>
+  <data name="OperationsDashboard.OnCall" xml:space="preserve"><value>تحت الطلب</value></data>
+  <data name="OperationsDashboard.NoLandingModeFlights" xml:space="preserve"><value>لا توجد رحلات لكل هبوط أو تحت الطلب تطابق عوامل التصفية.</value></data>
+  <data name="OperationsDashboard.OperationTypeDistribution" xml:space="preserve"><value>الرحلات حسب نوع العملية</value></data>
+  <data name="OperationsDashboard.OperationTypeDistributionDescription" xml:space="preserve"><value>مزيج أنواع العمليات مع عرض الرحلات المخصصة أولاً.</value></data>
   <data name="OperationsDashboard.TopStations" xml:space="preserve"><value>أكثر المحطات نشاطًا</value></data>
   <data name="OperationsDashboard.TopStationsDescription" xml:space="preserve"><value>عدد الرحلات حسب المحطة، مع تجميع بقية المحطات ضمن «أخرى».</value></data>
   <data name="OperationsDashboard.TopCustomers" xml:space="preserve"><value>أكثر العملاء نشاطًا</value></data>
   <data name="OperationsDashboard.TopCustomersDescription" xml:space="preserve"><value>عدد الرحلات حسب العميل، مع تجميع بقية العملاء ضمن «أخرى».</value></data>
+  <data name="OperationsDashboard.TopFourCustomers" xml:space="preserve"><value>أبرز 4 عملاء</value></data>
+  <data name="OperationsDashboard.TopFourCustomersDescription" xml:space="preserve"><value>عدد الرحلات ونسبتها لأبرز أربعة عملاء، مع تجميع البقية.</value></data>
   <data name="OperationsDashboard.PerformedServicesDescription" xml:space="preserve"><value>الرحلات الفريدة المستفيدة من كل خدمة منفذة؛ وتمثل النسب حصة الخدمة من إجمالي استخدام الخدمات. تُجمع بقية الخدمات ضمن «أخرى».</value></data>
+  <data name="OperationsDashboard.TopFourServices" xml:space="preserve"><value>أبرز 4 خدمات</value></data>
+  <data name="OperationsDashboard.TopFourServicesDescription" xml:space="preserve"><value>استخدام الرحلات لأبرز أربع خدمات منفذة، مع تجميع البقية.</value></data>
   <data name="OperationsDashboard.NoFlightData" xml:space="preserve"><value>لا توجد بيانات رحلات</value></data>
   <data name="OperationsDashboard.NoMatchingActivity" xml:space="preserve"><value>لا يوجد نشاط يطابق عوامل التصفية المحددة في اللوحة.</value></data>
   <data name="OperationsDashboard.Other" xml:space="preserve"><value>أخرى</value></data>
@@ -275,7 +301,8 @@
   <data name="OperationsDashboard.TotalServiceUses" xml:space="preserve"><value>إجمالي مرات استخدام الخدمات</value></data>
   <data name="OperationsDashboard.TemporalAnalysis" xml:space="preserve"><value>التحليل الزمني</value></data>
   <data name="OperationsDashboard.FlightTrends" xml:space="preserve"><value>اتجاهات الرحلات</value></data>
-  <data name="OperationsDashboard.FlightTrendsDescription" xml:space="preserve"><value>أحجام الرحلات موزعة على الساعات والأشهر التقويمية ضمن النطاق المحدد.</value></data>
+  <data name="OperationsDashboard.FlightTrendsDescription" xml:space="preserve"><value>حجم الرحلات مجمّع تلقائيًا حسب الساعة أو اليوم أو الشهر للنطاق المحدد.</value></data>
+  <data name="OperationsDashboard.ZoomHint" xml:space="preserve"><value>مرّر للتكبير · اسحب للتحريك</value></data>
   <data name="OperationsDashboard.FlightsByHour" xml:space="preserve"><value>الرحلات حسب الساعة</value></data>
   <data name="OperationsDashboard.FlightsByHourDescription" xml:space="preserve"><value>عدد الرحلات مصنفًا حسب ساعات اليوم.</value></data>
   <data name="OperationsDashboard.FlightsByMonth" xml:space="preserve"><value>الرحلات حسب الشهر</value></data>
@@ -306,7 +333,7 @@
   <data name="OperationsDashboard.LiveInterrupted" xml:space="preserve"><value>توقف التحديث المباشر</value></data>
   <data name="OperationsDashboard.WaitingForData" xml:space="preserve"><value>بانتظار البيانات</value></data>
   <data name="OperationsDashboard.LiveToday" xml:space="preserve"><value>بيانات اليوم المباشرة</value></data>
-  <data name="OperationsDashboard.LiveModeDescription" xml:space="preserve"><value>تُحدَّث البيانات تلقائيًا كل 20 ثانية مع تغير بيانات العمليات.</value></data>
+  <data name="OperationsDashboard.LiveModeDescription" xml:space="preserve"><value>تُحدَّث البيانات فورًا مع تغير بيانات العمليات.</value></data>
   <data name="OperationsDashboard.YesterdayDescription" xml:space="preserve"><value>يعرض اليوم التقويمي السابق، وهو العرض الافتراضي للوحة.</value></data>
   <data name="OperationsDashboard.LiveTodayFormat" xml:space="preserve"><value>مباشر اليوم · {0}</value></data>
   <data name="OperationsDashboard.YesterdayFormat" xml:space="preserve"><value>أمس · {0}</value></data>

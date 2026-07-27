@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Operations.Application.Abstractions;
 using Operations.Domain.Enumerations;
 using Operations.Domain.WorkOrders;
 using Operations.Infrastructure.Persistence;
@@ -46,9 +47,11 @@ public sealed class AutoWorkOrderBackgroundService(
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+        var dashboardRealtime = scope.ServiceProvider.GetRequiredService<IOperationsDashboardRealtimeNotifier>();
         var now = timeProvider.GetUtcNow();
         var cutoff = now.AddMinutes(-Math.Max(settings.DelayMinutes, 1));
         var batchSize = Math.Clamp(settings.BatchSize, 1, 100);
+        var dashboardChanged = false;
 
         var flights = await db.Flights
             .Include(f => f.PlannedServices)
@@ -113,11 +116,25 @@ public sealed class AutoWorkOrderBackgroundService(
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
+                dashboardChanged = true;
             }
             catch (DbUpdateException ex)
             {
                 logger.LogWarning(ex, "Auto work-order creation conflicted for flight {FlightId}.", flight.Id);
             }
+        }
+
+        if (!dashboardChanged)
+            return;
+
+        try
+        {
+            await dashboardRealtime.NotifyChangedAsync(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The persisted rows are authoritative; realtime delivery is an optimization.
+            logger.LogWarning(ex, "Operations dashboard realtime invalidation failed after the auto work-order scan.");
         }
     }
 }

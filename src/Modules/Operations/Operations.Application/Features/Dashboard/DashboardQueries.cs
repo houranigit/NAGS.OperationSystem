@@ -2,6 +2,7 @@ using System.Globalization;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
@@ -110,6 +111,9 @@ public sealed class GetOperationsDashboardQueryHandler
             .ToListAsync(cancellationToken);
         var totalFlights = statusCounts.Sum(item => item.Count);
         var statuses = DashboardProjection.BuildStatuses(statusCounts, totalFlights);
+        var timelineGranularity = DashboardTimelineProjection.SelectGranularity(
+            filter.FromUtc,
+            filter.ToUtc);
 
         if (!request.IncludeAnalytics)
         {
@@ -123,12 +127,29 @@ public sealed class GetOperationsDashboardQueryHandler
                 Stations: [],
                 Customers: [],
                 Services: [],
+                OperationTypes: [],
+                ServiceCategories: [],
+                Timeline: [],
+                TimelineGranularity: timelineGranularity.ToString(),
                 Hourly: [],
                 Monthly: [],
                 Yearly: [],
                 StationOptions: [],
                 CustomerOptions: [],
                 ServiceOptions: []);
+        }
+
+        if (filter.FromUtc is null && filter.ToUtc is null && totalFlights > 0)
+        {
+            var timelineBounds = await flights
+                .GroupBy(_ => 1)
+                .Select(group => new DashboardTimelineBounds(
+                    group.Min(flight => flight.Schedule.Sta),
+                    group.Max(flight => flight.Schedule.Sta)))
+                .SingleAsync(cancellationToken);
+            timelineGranularity = DashboardTimelineProjection.SelectMaxGranularity(
+                timelineBounds.FirstFlightUtc,
+                timelineBounds.LastFlightUtc);
         }
 
         var stationGroups = await flights
@@ -148,6 +169,23 @@ public sealed class GetOperationsDashboardQueryHandler
                 group.Max(flight => flight.Customer.IataCode),
                 group.LongCount()))
             .ToListAsync(cancellationToken);
+
+        var operationTypeGroups = await flights
+            .GroupBy(flight => flight.OperationType.OperationTypeId)
+            .Select(group => new DashboardGroupRow(
+                group.Key,
+                group.Max(flight => flight.OperationType.Name)!,
+                Code: null,
+                group.LongCount()))
+            .ToListAsync(cancellationToken);
+
+        var perLandingFlights = flights.Where(flight => flight.PlannedServices.Any(service =>
+            service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService));
+        var perLandingFlightCount = await perLandingFlights.LongCountAsync(cancellationToken);
+        var qualifyingOnCallWorkOrders = _db.WorkOrders.AsNoTracking().QualifyingForOnCall();
+        var onCallFlightCount = await perLandingFlights.LongCountAsync(
+            flight => qualifyingOnCallWorkOrders.Any(workOrder => workOrder.FlightId == flight.Id),
+            cancellationToken);
 
         var performedServicesForFlights =
             from workOrder in performedWorkOrders
@@ -186,6 +224,10 @@ public sealed class GetOperationsDashboardQueryHandler
             .GroupBy(flight => flight.Schedule.Sta.Year)
             .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
             .ToListAsync(cancellationToken);
+        var timelineCounts = await DashboardTimelineProjection.LoadCountsAsync(
+            flights,
+            timelineGranularity,
+            cancellationToken);
 
         IReadOnlyList<DashboardFilterOptionDto> stationOptions = [];
         IReadOnlyList<DashboardFilterOptionDto> customerOptions = [];
@@ -229,9 +271,20 @@ public sealed class GetOperationsDashboardQueryHandler
             totalFlights,
             flightsWithPerformedServices,
             statuses,
-            DashboardProjection.BuildBreakdown(stationGroups, request.TopCount, totalFlights),
+            DashboardProjection.BuildCompleteBreakdown(stationGroups, totalFlights),
             DashboardProjection.BuildBreakdown(customerGroups, request.TopCount, totalFlights),
             DashboardProjection.BuildBreakdown(serviceGroups, request.TopCount, totalServiceFlightPairs),
+            DashboardProjection.BuildCompleteBreakdown(
+                operationTypeGroups,
+                totalFlights,
+                WellKnownMasterDataIds.AdHocOperationType),
+            DashboardProjection.BuildServiceCategories(perLandingFlightCount, onCallFlightCount),
+            DashboardTimelineProjection.Build(
+                timelineCounts,
+                timelineGranularity,
+                filter.FromUtc,
+                filter.ToUtc),
+            timelineGranularity.ToString(),
             DashboardProjection.BuildHourly(hourlyCounts),
             DashboardProjection.BuildMonthly(monthlyCounts),
             DashboardProjection.BuildYearly(yearlyCounts, filter.FromUtc, filter.ToUtc),
@@ -596,6 +649,52 @@ internal static class DashboardProjection
         return items;
     }
 
+    public static IReadOnlyList<DashboardBreakdownItemDto> BuildCompleteBreakdown(
+        IReadOnlyList<DashboardGroupRow> groups,
+        long denominator,
+        Guid? firstId = null) =>
+        groups
+            .OrderBy(group => firstId.HasValue && group.Id == firstId.Value ? 0 : 1)
+            .ThenByDescending(group => group.Count)
+            .ThenBy(group => group.Label, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(group => group.Label, StringComparer.Ordinal)
+            .ThenBy(group => group.Id)
+            .Select(group => new DashboardBreakdownItemDto(
+                group.Id,
+                group.Label,
+                group.Code,
+                group.Count,
+                Percentage(group.Count, denominator),
+                IsOther: false,
+                GroupedItemCount: 1))
+            .ToList();
+
+    public static IReadOnlyList<DashboardBreakdownItemDto> BuildServiceCategories(
+        long perLandingFlightCount,
+        long onCallFlightCount)
+    {
+        var perLandingOnlyFlightCount = perLandingFlightCount - onCallFlightCount;
+        return
+        [
+            new DashboardBreakdownItemDto(
+                Id: null,
+                Label: "Per Landing",
+                Code: null,
+                perLandingOnlyFlightCount,
+                Percentage(perLandingOnlyFlightCount, perLandingFlightCount),
+                IsOther: false,
+                GroupedItemCount: 1),
+            new DashboardBreakdownItemDto(
+                Id: null,
+                Label: "On Call",
+                Code: null,
+                onCallFlightCount,
+                Percentage(onCallFlightCount, perLandingFlightCount),
+                IsOther: false,
+                GroupedItemCount: 1)
+        ];
+    }
+
     public static IReadOnlyList<DashboardTrendPointDto> BuildHourly(IReadOnlyList<DashboardTrendCount> counts)
     {
         var lookup = counts.ToDictionary(item => item.Key, item => item.Count);
@@ -651,9 +750,199 @@ internal static class DashboardProjection
             : Math.Round(count * 100d / denominator, 2, MidpointRounding.AwayFromZero);
 }
 
+internal enum DashboardTimelineGranularity
+{
+    Hour,
+    Day,
+    Month
+}
+
+internal static class DashboardTimelineProjection
+{
+    public static DashboardTimelineGranularity SelectGranularity(
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc)
+    {
+        if (fromUtc is null || toUtc is null)
+            return DashboardTimelineGranularity.Month;
+
+        var duration = toUtc.Value - fromUtc.Value;
+        if (duration <= TimeSpan.FromDays(2))
+            return DashboardTimelineGranularity.Hour;
+        if (duration <= TimeSpan.FromDays(120))
+            return DashboardTimelineGranularity.Day;
+
+        return DashboardTimelineGranularity.Month;
+    }
+
+    public static DashboardTimelineGranularity SelectMaxGranularity(
+        DateTimeOffset firstFlightUtc,
+        DateTimeOffset lastFlightUtc)
+    {
+        var first = firstFlightUtc.ToUniversalTime();
+        var last = lastFlightUtc.ToUniversalTime();
+        if (first.Year == last.Year && first.DayOfYear == last.DayOfYear)
+            return DashboardTimelineGranularity.Hour;
+        if (first.Year == last.Year && first.Month == last.Month)
+            return DashboardTimelineGranularity.Day;
+
+        return DashboardTimelineGranularity.Month;
+    }
+
+    public static async Task<IReadOnlyList<DashboardTimelineCount>> LoadCountsAsync(
+        IQueryable<Flight> flights,
+        DashboardTimelineGranularity granularity,
+        CancellationToken cancellationToken) =>
+        granularity switch
+        {
+            DashboardTimelineGranularity.Hour => await flights
+                .GroupBy(flight => new
+                {
+                    flight.Schedule.Sta.Year,
+                    flight.Schedule.Sta.Month,
+                    flight.Schedule.Sta.Day,
+                    flight.Schedule.Sta.Hour
+                })
+                .Select(group => new DashboardTimelineCount(
+                    group.Key.Year,
+                    group.Key.Month,
+                    group.Key.Day,
+                    group.Key.Hour,
+                    group.LongCount()))
+                .ToListAsync(cancellationToken),
+            DashboardTimelineGranularity.Day => await flights
+                .GroupBy(flight => new
+                {
+                    flight.Schedule.Sta.Year,
+                    flight.Schedule.Sta.Month,
+                    flight.Schedule.Sta.Day
+                })
+                .Select(group => new DashboardTimelineCount(
+                    group.Key.Year,
+                    group.Key.Month,
+                    group.Key.Day,
+                    Hour: 0,
+                    group.LongCount()))
+                .ToListAsync(cancellationToken),
+            _ => await flights
+                .GroupBy(flight => new
+                {
+                    flight.Schedule.Sta.Year,
+                    flight.Schedule.Sta.Month
+                })
+                .Select(group => new DashboardTimelineCount(
+                    group.Key.Year,
+                    group.Key.Month,
+                    Day: 1,
+                    Hour: 0,
+                    group.LongCount()))
+                .ToListAsync(cancellationToken)
+        };
+
+    public static IReadOnlyList<DashboardTimelinePointDto> Build(
+        IReadOnlyList<DashboardTimelineCount> counts,
+        DashboardTimelineGranularity granularity,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc)
+    {
+        var lookup = counts.ToDictionary(ToBucketUtc, count => count.Count);
+        if (!TryResolveBounds(counts, granularity, fromUtc, toUtc, out var firstBucket, out var endExclusive))
+            return [];
+
+        var points = new List<DashboardTimelinePointDto>();
+        for (var bucket = firstBucket; bucket < endExclusive; bucket = AddBucket(bucket, granularity))
+        {
+            points.Add(new DashboardTimelinePointDto(
+                bucket,
+                lookup.GetValueOrDefault(bucket)));
+        }
+
+        return points;
+    }
+
+    private static bool TryResolveBounds(
+        IReadOnlyList<DashboardTimelineCount> counts,
+        DashboardTimelineGranularity granularity,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        out DateTimeOffset firstBucket,
+        out DateTimeOffset endExclusive)
+    {
+        if (fromUtc is { } from && toUtc is { } to)
+        {
+            firstBucket = FloorToBucket(from, granularity);
+            endExclusive = to;
+            return true;
+        }
+
+        if (counts.Count == 0)
+        {
+            firstBucket = default;
+            endExclusive = default;
+            return false;
+        }
+
+        var populatedBuckets = counts.Select(ToBucketUtc).ToList();
+        firstBucket = fromUtc is { } lowerBound
+            ? FloorToBucket(lowerBound, granularity)
+            : populatedBuckets.Min();
+        endExclusive = toUtc ?? AddBucket(populatedBuckets.Max(), granularity);
+        return firstBucket < endExclusive;
+    }
+
+    private static DateTimeOffset ToBucketUtc(DashboardTimelineCount count) =>
+        new(count.Year, count.Month, count.Day, count.Hour, 0, 0, TimeSpan.Zero);
+
+    private static DateTimeOffset FloorToBucket(
+        DateTimeOffset value,
+        DashboardTimelineGranularity granularity)
+    {
+        var utc = value.ToUniversalTime();
+        return granularity switch
+        {
+            DashboardTimelineGranularity.Hour => new DateTimeOffset(
+                utc.Year,
+                utc.Month,
+                utc.Day,
+                utc.Hour,
+                0,
+                0,
+                TimeSpan.Zero),
+            DashboardTimelineGranularity.Day => new DateTimeOffset(
+                utc.Year,
+                utc.Month,
+                utc.Day,
+                0,
+                0,
+                0,
+                TimeSpan.Zero),
+            _ => new DateTimeOffset(
+                utc.Year,
+                utc.Month,
+                1,
+                0,
+                0,
+                0,
+                TimeSpan.Zero)
+        };
+    }
+
+    private static DateTimeOffset AddBucket(
+        DateTimeOffset bucket,
+        DashboardTimelineGranularity granularity) =>
+        granularity switch
+        {
+            DashboardTimelineGranularity.Hour => bucket.AddHours(1),
+            DashboardTimelineGranularity.Day => bucket.AddDays(1),
+            _ => bucket.AddMonths(1)
+        };
+}
+
 internal sealed record DashboardStatusCount(FlightStatus Status, long Count);
 internal sealed record DashboardGroupRow(Guid Id, string Label, string? Code, long Count);
 internal sealed record DashboardTrendCount(int Key, long Count);
+internal sealed record DashboardTimelineBounds(DateTimeOffset FirstFlightUtc, DateTimeOffset LastFlightUtc);
+internal sealed record DashboardTimelineCount(int Year, int Month, int Day, int Hour, long Count);
 internal sealed record DashboardFlightServiceRow(Guid FlightId, Guid ServiceId, string ServiceName);
 internal sealed record DashboardFlightBaseRow(
     Guid Id,

@@ -72,6 +72,20 @@ public static class ApiProxyExtensions
         return endpoints;
     }
 
+    /// <summary>
+    /// Same-origin proxy for the permission-protected operations-dashboard invalidation hub.
+    /// </summary>
+    public static IEndpointRouteBuilder MapOperationsDashboardHubProxy(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapMethods(
+                "/hubs/operations-dashboard/{**path}",
+                ProxiedMethods,
+                ProxyOperationsDashboardHubAsync)
+            .AllowAnonymous()
+            .DisableAntiforgery();
+        return endpoints;
+    }
+
     private static async Task ProxyAsync(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
@@ -94,7 +108,28 @@ public static class ApiProxyExtensions
         IHttpClientFactory httpClientFactory,
         IOptions<ApiProxyOptions> options)
     {
-        var targetUri = BuildNotificationsHubTargetUri(context, options.Value);
+        await ProxyHubAsync(
+            context,
+            httpClientFactory,
+            BuildNotificationsHubTargetUri(context, options.Value));
+    }
+
+    private static async Task ProxyOperationsDashboardHubAsync(
+        HttpContext context,
+        IHttpClientFactory httpClientFactory,
+        IOptions<ApiProxyOptions> options)
+    {
+        await ProxyHubAsync(
+            context,
+            httpClientFactory,
+            BuildOperationsDashboardHubTargetUri(context, options.Value));
+    }
+
+    private static async Task ProxyHubAsync(
+        HttpContext context,
+        IHttpClientFactory httpClientFactory,
+        Uri targetUri)
+    {
         if (context.WebSockets.IsWebSocketRequest)
         {
             await ProxyWebSocketAsync(context, targetUri);
@@ -115,7 +150,7 @@ public static class ApiProxyExtensions
         catch (HttpRequestException) when (!context.RequestAborted.IsCancellationRequested)
         {
             // SignalR's client owns retry/backoff. Surface an upstream outage as a gateway error
-            // instead of an unhandled portal exception while the persisted inbox stays available.
+            // instead of an unhandled portal exception while the REST-backed features stay available.
             if (!context.Response.HasStarted)
                 context.Response.StatusCode = StatusCodes.Status502BadGateway;
         }
@@ -129,11 +164,17 @@ public static class ApiProxyExtensions
     }
 
     internal static Uri BuildNotificationsHubTargetUri(HttpContext context, ApiProxyOptions options)
+        => BuildHubTargetUri(context, options, "notifications");
+
+    internal static Uri BuildOperationsDashboardHubTargetUri(HttpContext context, ApiProxyOptions options)
+        => BuildHubTargetUri(context, options, "operations-dashboard");
+
+    private static Uri BuildHubTargetUri(HttpContext context, ApiProxyOptions options, string hubName)
     {
         var baseUrl = options.BaseUrl.Trim().TrimEnd('/');
         var path = context.Request.RouteValues["path"]?.ToString()?.TrimStart('/');
         var suffix = string.IsNullOrEmpty(path) ? string.Empty : $"/{path}";
-        return new Uri($"{baseUrl}/hubs/notifications{suffix}{context.Request.QueryString}");
+        return new Uri($"{baseUrl}/hubs/{hubName}{suffix}{context.Request.QueryString}");
     }
 
     internal static Uri ToWebSocketUri(Uri httpUri)
