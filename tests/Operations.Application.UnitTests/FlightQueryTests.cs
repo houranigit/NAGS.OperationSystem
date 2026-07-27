@@ -249,6 +249,62 @@ public sealed class FlightQueryTests
     }
 
     [Fact]
+    public async Task GetFlightsExport_UsesDistinctResourcesFromTheSelectedWorkOrderOnly()
+    {
+        await using var db = NewDb();
+        var completedFlight = CreateScheduledFlight("RJ", "Royal Jordanian", "110");
+        var toolId = Guid.NewGuid();
+        var materialId = Guid.NewGuid();
+        var supportId = Guid.NewGuid();
+        var approvedTask = ResourceTaskInput(
+            toolId,
+            "Towbar",
+            materialId,
+            "Hydraulic fluid",
+            supportId,
+            "GPU");
+        var approved = CreateWorkOrder(
+            completedFlight,
+            "111",
+            "Approved resources",
+            tasks: [approvedTask, approvedTask]);
+        var newerSubmitted = CreateWorkOrder(
+            completedFlight,
+            "112",
+            "Unselected resources",
+            tasks:
+            [
+                ResourceTaskInput(
+                    Guid.NewGuid(),
+                    "Must not leak tool",
+                    Guid.NewGuid(),
+                    "Must not leak material",
+                    Guid.NewGuid(),
+                    "Must not leak support")
+            ],
+            submittedAt: Now.AddMinutes(1));
+        approved.Approve(1, "DMM-0011", Guid.NewGuid(), Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
+        completedFlight.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        completedFlight.SettleCompleted(Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
+
+        db.Flights.Add(completedFlight);
+        db.WorkOrders.AddRange(approved, newerSubmitted);
+        await db.SaveChangesAsync();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var workOrder = result.Value.ShouldHaveSingleItem().ApprovedWorkOrder;
+        workOrder.ShouldNotBeNull();
+        workOrder!.ToolNames.ShouldBe(["Towbar"]);
+        workOrder.MaterialNames.ShouldBe(["Hydraulic fluid"]);
+        workOrder.GeneralSupportNames.ShouldBe(["GPU"]);
+    }
+
+    [Fact]
     public async Task GetFlightsExport_InProgressFlightUsesNewestSubmittedWorkOrderWithDeterministicTieBreak()
     {
         await using var db = NewDb();
@@ -766,6 +822,38 @@ public sealed class FlightQueryTests
             Tools: [],
             Materials: [],
             GeneralSupports: []);
+
+    private static WorkOrderTaskInput ResourceTaskInput(
+        Guid toolId,
+        string toolName,
+        Guid materialId,
+        string materialName,
+        Guid supportId,
+        string supportName) =>
+        new(
+            Id: null,
+            TaskType.Minor,
+            "Task with export resources",
+            TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
+            Employees: [],
+            Tools:
+            [
+                new WorkOrderTaskToolInput(
+                    new ToolSnapshot(toolId, toolName),
+                    Quantity.Create(1).Value)
+            ],
+            Materials:
+            [
+                new WorkOrderTaskMaterialInput(
+                    new MaterialSnapshot(materialId, materialName),
+                    Quantity.Create(2).Value)
+            ],
+            GeneralSupports:
+            [
+                new WorkOrderTaskGeneralSupportInput(
+                    new GeneralSupportSnapshot(supportId, supportName),
+                    Quantity.Create(1).Value)
+            ]);
 
     private static void TransitionWorkOrder(WorkOrder workOrder, WorkOrderStatus status)
     {

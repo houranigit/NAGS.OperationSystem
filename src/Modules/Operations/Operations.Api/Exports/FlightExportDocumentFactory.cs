@@ -18,20 +18,23 @@ internal enum FlightExportFormat
 
 internal sealed record FlightExportCriteria(
     string? Search,
-    Guid? StationId,
-    Guid? CustomerId,
+    IReadOnlyList<Guid> StationIds,
+    IReadOnlyList<Guid> CustomerIds,
     Guid? OperationTypeId,
     IReadOnlyList<FlightStatus>? Statuses,
     DateTimeOffset? FromUtc,
     DateTimeOffset? ToUtc,
     IReadOnlyList<FlightServiceCategory>? ServiceCategories,
+    IReadOnlyList<Guid> ServiceIds,
+    bool ToUtcExclusive,
     string? Sort);
 
 internal sealed record FlightExportFile(byte[] Content, string ContentType, string FileName);
 
 /// <summary>
-/// Presentation-layer document generation for the Flights list. Record selection remains in the
-/// application query; this factory only turns the already-authorized projection into native files.
+/// Canonical presentation-layer document generation shared by the Flights list and operations
+/// dashboard. Record selection remains in each authorized application query; this factory only
+/// turns the resulting common projection into native files.
 /// </summary>
 internal static class FlightExportDocumentFactory
 {
@@ -58,7 +61,7 @@ internal static class FlightExportDocumentFactory
         "Arrival Delay", "Departure Delay", "Scheduled Duration", "Actual Duration",
         "Customer IATA Code", "Customer Name", "Station IATA Code", "Station Name",
         "Aircraft Manufacturer", "Aircraft Model", "Aircraft Tail Number", "Planned Services",
-        "Services", "Assigned Employees", "Remarks", "Status"
+        "Services", "Tools", "Materials", "General Support", "Assigned Employees", "Remarks", "Status"
     ];
 
     public static bool TryParseFormat(string? value, out FlightExportFormat format)
@@ -117,7 +120,7 @@ internal static class FlightExportDocumentFactory
         FlightExportCriteria criteria,
         DateTimeOffset generatedAtUtc)
     {
-        const int columnCount = 24;
+        const int columnCount = 27;
         const int headerRowNumber = 5;
 
         using var workbook = new XLWorkbook();
@@ -181,7 +184,7 @@ internal static class FlightExportDocumentFactory
 
             sheet.Range(rowNumber, 1, rowNumber, columnCount).Style.Border.BottomBorder = XLBorderStyleValues.Hair;
             sheet.Range(rowNumber, 1, rowNumber, columnCount).Style.Border.BottomBorderColor = XLColor.FromHtml(BorderColor);
-            ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 24), row.Status);
+            ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 27), row.Status);
             sheet.Row(rowNumber).Height = 20;
             rowNumber++;
         }
@@ -227,11 +230,14 @@ internal static class FlightExportDocumentFactory
         SetOptionalText(sheet.Cell(rowNumber, 19), approved?.AircraftTailNumber);
         SetOptionalText(sheet.Cell(rowNumber, 20), JoinNames(row.PlannedServiceNames));
         SetOptionalText(sheet.Cell(rowNumber, 21), approved is null ? null : JoinNames(approved.ServiceNames));
-        SetOptionalText(sheet.Cell(rowNumber, 22), JoinNames(row.AssignedEmployeeNames));
-        SetOptionalText(sheet.Cell(rowNumber, 23), approved?.Remarks);
-        sheet.Cell(rowNumber, 24).SetValue(StatusLabel(row.Status));
+        SetOptionalText(sheet.Cell(rowNumber, 22), approved is null ? null : JoinNames(approved.ToolNames));
+        SetOptionalText(sheet.Cell(rowNumber, 23), approved is null ? null : JoinNames(approved.MaterialNames));
+        SetOptionalText(sheet.Cell(rowNumber, 24), approved is null ? null : JoinNames(approved.GeneralSupportNames));
+        SetOptionalText(sheet.Cell(rowNumber, 25), JoinNames(row.AssignedEmployeeNames));
+        SetOptionalText(sheet.Cell(rowNumber, 26), approved?.Remarks);
+        sheet.Cell(rowNumber, 27).SetValue(StatusLabel(row.Status));
 
-        var rowRange = sheet.Range(rowNumber, 1, rowNumber, 24);
+        var rowRange = sheet.Range(rowNumber, 1, rowNumber, 27);
         rowRange.Style.Font.FontSize = 9;
         rowRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
         rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
@@ -255,7 +261,11 @@ internal static class FlightExportDocumentFactory
 
     private static void SetWorkbookColumnWidths(IXLWorksheet sheet)
     {
-        var widths = new[] { 7d, 16, 18, 18, 21, 21, 21, 21, 16, 18, 19, 17, 18, 28, 18, 26, 22, 20, 20, 35, 35, 35, 40, 16 };
+        var widths = new[]
+        {
+            7d, 16, 18, 18, 21, 21, 21, 21, 16, 18, 19, 17, 18, 28, 18, 26, 22,
+            20, 20, 35, 35, 30, 30, 30, 35, 40, 16
+        };
         for (var index = 0; index < widths.Length; index++)
             sheet.Column(index + 1).Width = widths[index];
     }
@@ -290,6 +300,9 @@ internal static class FlightExportDocumentFactory
                     SpreadsheetSafeText(approved?.AircraftTailNumber ?? string.Empty),
                     SpreadsheetSafeText(JoinNames(row.PlannedServiceNames)),
                     SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.ServiceNames)),
+                    SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.ToolNames)),
+                    SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.MaterialNames)),
+                    SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.GeneralSupportNames)),
                     SpreadsheetSafeText(JoinNames(row.AssignedEmployeeNames)),
                     SpreadsheetSafeText(approved?.Remarks ?? string.Empty), StatusLabel(row.Status)
                 ]);
@@ -516,7 +529,7 @@ internal static class FlightExportDocumentFactory
         }
     }
 
-    private static IReadOnlyList<PdfColumnSpec> BuildPdfColumns(FlightExportCriteria criteria)
+    internal static IReadOnlyList<PdfColumnSpec> BuildPdfColumns(FlightExportCriteria criteria)
     {
         var columns = new List<PdfColumnSpec>
         {
@@ -524,19 +537,20 @@ internal static class FlightExportDocumentFactory
             new("WO#", 2.2, ParagraphAlignment.Center, (row, _) => row.ApprovedWorkOrder?.ApprovalNumber ?? "-"),
             new("Flight#", 2.1, ParagraphAlignment.Left, (row, _) => DisplayFlightNumber(row, row.ApprovedWorkOrder?.ActualFlightNumber ?? row.FlightNumber))
         };
-        if (!criteria.CustomerId.HasValue)
+        if (criteria.CustomerIds.Count != 1)
             columns.Add(new("Customer", 5.0, ParagraphAlignment.Left, (row, _) => row.CustomerName));
-        if (!criteria.StationId.HasValue)
+        if (criteria.StationIds.Count != 1)
             columns.Add(new("Station", 2.5, ParagraphAlignment.Left, (row, _) => row.StationName));
 
-        var reclaimed = (criteria.CustomerId.HasValue ? 2.5 : 0) + (criteria.StationId.HasValue ? 1.25 : 0);
+        var reclaimed = (criteria.CustomerIds.Count == 1 ? 2.5 : 0) +
+            (criteria.StationIds.Count == 1 ? 1.25 : 0);
         columns.Add(new("Aircraft", 2.4, ParagraphAlignment.Left, (row, _) => row.ApprovedWorkOrder?.AircraftModel ?? string.Empty));
         columns.Add(new("Services", 5.0 + reclaimed, ParagraphAlignment.Left, (row, _) => PdfServices(row)));
         columns.Add(new("Remarks", 5.4 + reclaimed, ParagraphAlignment.Left, (row, _) => row.ApprovedWorkOrder?.Remarks ?? string.Empty));
         return columns;
     }
 
-    private sealed record PdfColumnSpec(
+    internal sealed record PdfColumnSpec(
         string Header,
         double WidthCentimeters,
         ParagraphAlignment Alignment,
@@ -571,27 +585,37 @@ internal static class FlightExportDocumentFactory
         if (!string.IsNullOrWhiteSpace(criteria.Search))
             filters.Add($"Search: {criteria.Search.Trim()}");
 
-        if (criteria.StationId.HasValue)
+        if (criteria.StationIds.Count == 1)
         {
             var station = rows.FirstOrDefault();
             filters.Add(station is null ? "Station filter applied" : $"Station: {station.StationIata} - {station.StationName}");
         }
+        else if (criteria.StationIds.Count > 1)
+        {
+            filters.Add($"Stations: {criteria.StationIds.Count} selected");
+        }
 
-        if (criteria.CustomerId.HasValue)
+        if (criteria.CustomerIds.Count == 1)
         {
             var customer = rows.FirstOrDefault();
             filters.Add(customer is null ? "Customer filter applied" : $"Customer: {CustomerDisplay(customer)}");
         }
+        else if (criteria.CustomerIds.Count > 1)
+        {
+            filters.Add($"Customers: {criteria.CustomerIds.Count} selected");
+        }
 
-        if (criteria.FromUtc is { } from && criteria.ToUtc is { } to)
+        if (criteria.FromUtc is { } from && DisplayToUtc(criteria) is { } to)
             filters.Add($"Scheduled arrival: {from.UtcDateTime:yyyy-MM-dd} to {to.UtcDateTime:yyyy-MM-dd}");
         else if (criteria.FromUtc is { } fromOnly)
             filters.Add($"Scheduled arrival from: {fromOnly.UtcDateTime:yyyy-MM-dd}");
-        else if (criteria.ToUtc is { } toOnly)
+        else if (DisplayToUtc(criteria) is { } toOnly)
             filters.Add($"Scheduled arrival through: {toOnly.UtcDateTime:yyyy-MM-dd}");
 
         if (criteria.ServiceCategories is { Count: > 0 } categories)
             filters.Add($"Service category: {string.Join(", ", categories.Select(ServiceCategoryLabel))}");
+        if (criteria.ServiceIds.Count > 0)
+            filters.Add($"Performed services: {criteria.ServiceIds.Count} selected");
 
         return filters.Count == 0
             ? "All flights within your authorized scope"
@@ -704,24 +728,36 @@ internal static class FlightExportDocumentFactory
 
     private static string PdfDateScope(FlightExportCriteria criteria)
     {
-        if (criteria.FromUtc is { } from && criteria.ToUtc is { } to)
+        if (criteria.FromUtc is { } from && DisplayToUtc(criteria) is { } to)
             return $"From {from.UtcDateTime:dd MMM yyyy HH:mm} UTC\nTo   {to.UtcDateTime:dd MMM yyyy HH:mm} UTC";
         if (criteria.FromUtc is { } fromOnly)
             return $"From {fromOnly.UtcDateTime:dd MMM yyyy HH:mm} UTC";
-        if (criteria.ToUtc is { } toOnly)
+        if (DisplayToUtc(criteria) is { } toOnly)
             return $"To   {toOnly.UtcDateTime:dd MMM yyyy HH:mm} UTC";
         return string.Empty;
     }
+
+    private static DateTimeOffset? DisplayToUtc(FlightExportCriteria criteria) =>
+        criteria is { ToUtcExclusive: true, ToUtc: { } exclusiveTo } &&
+        exclusiveTo != DateTimeOffset.MinValue
+            ? exclusiveTo.AddTicks(-1)
+            : criteria.ToUtc;
 
     private static IReadOnlyList<string> BuildPdfScopeLines(
         IReadOnlyList<FlightExportRowDto> rows,
         FlightExportCriteria criteria)
     {
         var lines = new List<string>();
-        if (criteria.CustomerId.HasValue)
+        if (criteria.CustomerIds.Count == 1)
             lines.Add(rows.FirstOrDefault() is { } row ? $"Customer: {CustomerDisplay(row)}" : "Customer filter applied");
-        if (criteria.StationId.HasValue)
+        else if (criteria.CustomerIds.Count > 1)
+            lines.Add($"Customers: {criteria.CustomerIds.Count} selected");
+        if (criteria.StationIds.Count == 1)
             lines.Add(rows.FirstOrDefault() is { } row ? $"Station: {row.StationIata} - {row.StationName}" : "Station filter applied");
+        else if (criteria.StationIds.Count > 1)
+            lines.Add($"Stations: {criteria.StationIds.Count} selected");
+        if (criteria.ServiceIds.Count > 0)
+            lines.Add($"Performed services: {criteria.ServiceIds.Count} selected");
         if (!string.IsNullOrWhiteSpace(criteria.Search))
             lines.Add($"Search: {criteria.Search.Trim()}");
         return lines;

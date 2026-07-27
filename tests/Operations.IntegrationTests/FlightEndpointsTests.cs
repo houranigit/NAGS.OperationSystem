@@ -72,17 +72,23 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
                     var sheet = workbook.Worksheet("Flights");
                     var lastRow = sheet.LastRowUsed()!.RowNumber();
                     sheet.Cell(5, 1).GetString().ShouldBe("#");
-                    sheet.Cell(5, 24).GetString().ShouldBe("Status");
+                    sheet.Cell(5, 22).GetString().ShouldBe("Tools");
+                    sheet.Cell(5, 23).GetString().ShouldBe("Materials");
+                    sheet.Cell(5, 24).GetString().ShouldBe("General Support");
+                    sheet.Cell(5, 27).GetString().ShouldBe("Status");
                     sheet.Cell(6, 1).GetValue<int>().ShouldBe(1);
                     sheet.Cell(6, 2).GetString().ShouldBe("-");
                     sheet.Cell(6, 4).IsEmpty().ShouldBeTrue();
                     sheet.Cell(6, 17).IsEmpty().ShouldBeTrue();
                     sheet.Cell(6, 21).IsEmpty().ShouldBeTrue();
+                    sheet.Cell(6, 22).IsEmpty().ShouldBeTrue();
                     sheet.Cell(6, 23).IsEmpty().ShouldBeTrue();
+                    sheet.Cell(6, 24).IsEmpty().ShouldBeTrue();
+                    sheet.Cell(6, 26).IsEmpty().ShouldBeTrue();
 
                     for (var row = 6; row <= lastRow; row++)
                     {
-                        var statusCell = sheet.Cell(row, 24);
+                        var statusCell = sheet.Cell(row, 27);
                         var expectedColors = statusCell.GetString() switch
                         {
                             "Completed" => (Background: "#DDF7E7", Foreground: "#18733A"),
@@ -107,7 +113,7 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
 
                 var csv = Encoding.UTF8.GetString(content, 3, content.Length - 3);
                 var header = csv.Split('\n', 2)[0].TrimEnd('\r');
-                header.ShouldBe("#,WO#,Flight#,WO Flight#,STA,STD,ATA,ATD,Arrival Delay,Departure Delay,Scheduled Duration,Actual Duration,Customer IATA Code,Customer Name,Station IATA Code,Station Name,Aircraft Manufacturer,Aircraft Model,Aircraft Tail Number,Planned Services,Services,Assigned Employees,Remarks,Status");
+                header.ShouldBe("#,WO#,Flight#,WO Flight#,STA,STD,ATA,ATD,Arrival Delay,Departure Delay,Scheduled Duration,Actual Duration,Customer IATA Code,Customer Name,Station IATA Code,Station Name,Aircraft Manufacturer,Aircraft Model,Aircraft Tail Number,Planned Services,Services,Tools,Materials,General Support,Assigned Employees,Remarks,Status");
                 csv.ShouldContain("Export Customer");
                 break;
             case "pdf":
@@ -136,15 +142,40 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
         lines[1].ShouldContain(matchingFlightNumber);
     }
 
-    private async Task<string> SeedFlightAsync()
+    [Fact]
+    public async Task DashboardAndFlights_WithEquivalentFilters_ExportTheSameCanonicalCsv()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var seed = await SeedFlightDetailsAsync();
+        var flightsUrl =
+            $"{OperationsApiFactory.Base}/flights/export?format=csv&stationId={seed.StationId}&customerId={seed.CustomerId}";
+        var dashboardUrl =
+            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=csv&stationIds={seed.StationId}&customerIds={seed.CustomerId}";
+
+        var flightsResponse = await admin.GetAsync(flightsUrl);
+        var dashboardResponse = await admin.GetAsync(dashboardUrl);
+
+        flightsResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        dashboardResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var flightsCsv = await flightsResponse.Content.ReadAsByteArrayAsync();
+        var dashboardCsv = await dashboardResponse.Content.ReadAsByteArrayAsync();
+        dashboardCsv.ShouldBe(flightsCsv);
+    }
+
+    private async Task<string> SeedFlightAsync() =>
+        (await SeedFlightDetailsAsync()).FlightNumber;
+
+    private async Task<SeededFlight> SeedFlightDetailsAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
         var now = new DateTimeOffset(2026, 7, 11, 12, 0, 0, TimeSpan.Zero);
         var flightNumber = $"RPT{Guid.NewGuid():N}"[..12];
+        var customerId = Guid.NewGuid();
+        var stationId = Guid.NewGuid();
         var flight = Flight.ScheduleNew(
-            new CustomerSnapshot(Guid.NewGuid(), "EX", "Export Customer"),
-            new StationSnapshot(Guid.NewGuid(), "DMM", "Dammam"),
+            new CustomerSnapshot(customerId, "EX", "Export Customer"),
+            new StationSnapshot(stationId, "DMM", "Dammam"),
             new OperationTypeSnapshot(Guid.NewGuid(), "Report operation"),
             FlightNumber.Create(flightNumber).Value,
             ScheduledTime.Create(now, now.AddHours(2).AddMinutes(10)).Value,
@@ -158,6 +189,8 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
 
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
-        return flightNumber;
+        return new SeededFlight(flightNumber, customerId, stationId);
     }
+
+    private sealed record SeededFlight(string FlightNumber, Guid CustomerId, Guid StationId);
 }

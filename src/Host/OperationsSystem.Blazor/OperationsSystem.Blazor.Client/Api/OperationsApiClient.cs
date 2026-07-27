@@ -78,7 +78,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             .Build();
         return api.DownloadFileAsync(
             $"/operations/analytics-dashboard/flights/export{query}",
-            fallbackFileName: $"operations-dashboard.{format}",
+            fallbackFileName: $"flights-report.{format}",
             cancellationToken: ct);
     }
 

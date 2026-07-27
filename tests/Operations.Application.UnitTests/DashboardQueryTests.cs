@@ -515,17 +515,27 @@ public sealed class DashboardQueryTests
     }
 
     [Fact]
-    public async Task DashboardFlights_UsesIdenticalFiltersPagingSortingAndPerformedServiceRows()
+    public async Task DashboardFlights_UsesIdenticalFiltersAndSortingForGridAndCanonicalReportRows()
     {
         await using var db = NewDb();
         var stationId = Guid.NewGuid();
+        var matchingCustomerId = Guid.NewGuid();
         var baggage = new ServiceSnapshot(Guid.NewGuid(), "Baggage");
         var pushback = new ServiceSnapshot(Guid.NewGuid(), "Pushback");
-        var matching = CreateFlight("100", stationId, scheduledArrival: Now);
+        var matching = CreateFlight(
+            "100",
+            stationId,
+            customerId: matchingCustomerId,
+            scheduledArrival: Now);
         var notMatching = CreateFlight("200", stationId, scheduledArrival: Now.AddHours(1));
+        matching.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        notMatching.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
         db.Flights.AddRange(matching, notMatching);
         db.WorkOrders.AddRange(
-            CreateWorkOrder(matching, pushback, baggage, baggage),
+            CreateWorkOrder(
+                matching,
+                [pushback, baggage, baggage],
+                [ResourceTaskInput()]),
             CreateWorkOrder(notMatching, pushback));
         await db.SaveChangesAsync();
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
@@ -548,14 +558,33 @@ public sealed class DashboardQueryTests
                 ServiceIds: [baggage.ServiceId],
                 Sort: "flightnumber:asc"),
             CancellationToken.None);
+        var canonical = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(
+                StationId: stationId,
+                CustomerId: matchingCustomerId,
+                FromUtc: Now,
+                ToUtc: Now.AddHours(2),
+                Sort: "flightnumber:asc"),
+            CancellationToken.None);
 
         paged.IsSuccess.ShouldBeTrue();
         exported.IsSuccess.ShouldBeTrue();
+        canonical.IsSuccess.ShouldBeTrue();
         paged.Value.TotalCount.ShouldBe(1);
         paged.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(matching.Id);
         paged.Value.Items[0].PerformedServiceNames.ShouldBe(["Baggage", "Pushback"]);
         exported.Value.ShouldHaveSingleItem().Id.ShouldBe(paged.Value.Items[0].Id);
-        exported.Value[0].PerformedServiceNames.ShouldBe(paged.Value.Items[0].PerformedServiceNames);
+        canonical.Value.ShouldHaveSingleItem().Id.ShouldBe(exported.Value[0].Id);
+        exported.Value[0].ApprovedWorkOrder.ShouldNotBeNull();
+        var dashboardWorkOrder = exported.Value[0].ApprovedWorkOrder!;
+        var canonicalWorkOrder = canonical.Value[0].ApprovedWorkOrder.ShouldNotBeNull();
+        dashboardWorkOrder.ServiceNames.ShouldBe(canonicalWorkOrder.ServiceNames);
+        dashboardWorkOrder.ToolNames.ShouldBe(canonicalWorkOrder.ToolNames);
+        dashboardWorkOrder.MaterialNames.ShouldBe(canonicalWorkOrder.MaterialNames);
+        dashboardWorkOrder.GeneralSupportNames.ShouldBe(canonicalWorkOrder.GeneralSupportNames);
+        dashboardWorkOrder.ToolNames.ShouldBe(["Towbar"]);
+        dashboardWorkOrder.MaterialNames.ShouldBe(["Hydraulic fluid"]);
+        dashboardWorkOrder.GeneralSupportNames.ShouldBe(["GPU"]);
     }
 
     [Fact]
@@ -704,7 +733,10 @@ public sealed class DashboardQueryTests
                     workOrder.FlightId,
                     line.Service.ServiceId,
                     line.Service.Name))
-                .ToQueryString()
+                .ToQueryString(),
+            FlightExportProjection.ToolRowsQuery(db, [Guid.NewGuid()]).ToQueryString(),
+            FlightExportProjection.MaterialRowsQuery(db, [Guid.NewGuid()]).ToQueryString(),
+            FlightExportProjection.GeneralSupportRowsQuery(db, [Guid.NewGuid()]).ToQueryString()
         };
 
         sql.ShouldAllBe(statement => statement.Contains("SELECT", StringComparison.OrdinalIgnoreCase));
@@ -742,7 +774,13 @@ public sealed class DashboardQueryTests
             createdByUserId: Guid.NewGuid(),
             now: Now).Value;
 
-    private static WorkOrder CreateWorkOrder(Flight flight, params ServiceSnapshot[] services)
+    private static WorkOrder CreateWorkOrder(Flight flight, params ServiceSnapshot[] services) =>
+        CreateWorkOrder(flight, services, []);
+
+    private static WorkOrder CreateWorkOrder(
+        Flight flight,
+        IReadOnlyList<ServiceSnapshot> services,
+        IReadOnlyList<WorkOrderTaskInput> tasks)
     {
         var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Ramp Engineer", "ENG-1");
         var serviceLines = services.Select(service => new WorkOrderServiceLineInput(
@@ -762,9 +800,35 @@ public sealed class DashboardQueryTests
             cancellation: null,
             remarks: null,
             serviceLines,
-            tasks: [],
+            tasks,
             now: Now).Value;
     }
+
+    private static WorkOrderTaskInput ResourceTaskInput() =>
+        new(
+            Id: null,
+            TaskType.Minor,
+            "Task with export resources",
+            TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(35)).Value,
+            Employees: [],
+            Tools:
+            [
+                new WorkOrderTaskToolInput(
+                    new ToolSnapshot(Guid.NewGuid(), "Towbar"),
+                    Quantity.Create(1).Value)
+            ],
+            Materials:
+            [
+                new WorkOrderTaskMaterialInput(
+                    new MaterialSnapshot(Guid.NewGuid(), "Hydraulic fluid"),
+                    Quantity.Create(2).Value)
+            ],
+            GeneralSupports:
+            [
+                new WorkOrderTaskGeneralSupportInput(
+                    new GeneralSupportSnapshot(Guid.NewGuid(), "GPU"),
+                    Quantity.Create(1).Value)
+            ]);
 
     private static GetOperationsDashboardQueryHandler AdminHandler(OperationsDbContext db) =>
         new(

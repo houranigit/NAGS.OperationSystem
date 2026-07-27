@@ -134,7 +134,27 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
                 request.ServiceCategories),
             qualifyingWorkOrders);
 
-        var flightRows = await FlightListQuery.ApplySort(query, request.Sort)
+        var rows = await FlightExportProjection.LoadAsync(
+            db,
+            FlightListQuery.ApplySort(query, request.Sort),
+            cancellationToken);
+        return Result.Success(rows);
+    }
+}
+
+/// <summary>
+/// Builds the canonical flight-report projection for every export entry point. Keeping work-order
+/// selection and report data in one place ensures the Flights page and dashboard export identical
+/// rows even though each page applies a different filter model and permission set.
+/// </summary>
+internal static class FlightExportProjection
+{
+    public static async Task<IReadOnlyList<FlightExportRowDto>> LoadAsync(
+        IOperationsDbContext db,
+        IQueryable<Flight> flights,
+        CancellationToken cancellationToken)
+    {
+        var flightRows = await flights
             .Select(f => new
             {
                 f.Id,
@@ -165,34 +185,72 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
             .ThenByDescending(w => w.Id)
             .Select(w => new
             {
+                w.Id,
                 w.FlightId,
                 w.Status,
-                WorkOrder = new ApprovedWorkOrderExportDto(
-                    w.ApprovalNumber,
-                    w.ActualFlightNumber.Value,
-                    w.Actuals == null ? null : w.Actuals.Ata,
-                    w.Actuals == null ? null : w.Actuals.Atd,
-                    w.AircraftType == null ? null : w.AircraftType.Manufacturer,
-                    w.AircraftType == null ? null : w.AircraftType.Model,
-                    w.AircraftTailNumber,
-                    w.ServiceLines.Select(line => line.Service.Name).ToList(),
-                    w.Remarks)
+                w.ApprovalNumber,
+                ActualFlightNumber = w.ActualFlightNumber.Value,
+                ActualArrivalUtc = w.Actuals == null ? (DateTimeOffset?)null : w.Actuals.Ata,
+                ActualDepartureUtc = w.Actuals == null ? (DateTimeOffset?)null : w.Actuals.Atd,
+                AircraftManufacturer = w.AircraftType == null ? null : w.AircraftType.Manufacturer,
+                AircraftModel = w.AircraftType == null ? null : w.AircraftType.Model,
+                w.AircraftTailNumber,
+                ServiceNames = w.ServiceLines.Select(line => line.Service.Name).ToList(),
+                w.Remarks
             })
             .ToListAsync(cancellationToken);
 
         var workOrdersByFlight = exportWorkOrders.ToLookup(w => w.FlightId);
+        var selectedWorkOrdersByFlight = flightRows
+            .Select(f => new
+            {
+                f.Id,
+                WorkOrder = f.LifecycleStatus switch
+                {
+                    FlightStatus.InProgress => workOrdersByFlight[f.Id].FirstOrDefault(w =>
+                        w.Status is WorkOrderStatus.Submitted or WorkOrderStatus.Returned),
+                    FlightStatus.Completed or FlightStatus.Canceled => workOrdersByFlight[f.Id]
+                        .FirstOrDefault(w => w.Status == WorkOrderStatus.Approved),
+                    _ => null
+                }
+            })
+            .Where(selection => selection.WorkOrder is not null)
+            .ToDictionary(selection => selection.Id, selection => selection.WorkOrder!);
+        var selectedWorkOrderIds = selectedWorkOrdersByFlight.Values
+            .Select(workOrder => workOrder.Id)
+            .ToList();
+
+        List<FlightExportResourceNameRow> toolRows = selectedWorkOrderIds.Count == 0
+            ? []
+            : await ToolRowsQuery(db, selectedWorkOrderIds).ToListAsync(cancellationToken);
+        List<FlightExportResourceNameRow> materialRows = selectedWorkOrderIds.Count == 0
+            ? []
+            : await MaterialRowsQuery(db, selectedWorkOrderIds).ToListAsync(cancellationToken);
+        List<FlightExportResourceNameRow> generalSupportRows = selectedWorkOrderIds.Count == 0
+            ? []
+            : await GeneralSupportRowsQuery(db, selectedWorkOrderIds).ToListAsync(cancellationToken);
+        var toolNamesByWorkOrder = toolRows.ToLookup(row => row.WorkOrderId, row => row.Name);
+        var materialNamesByWorkOrder = materialRows.ToLookup(row => row.WorkOrderId, row => row.Name);
+        var generalSupportNamesByWorkOrder = generalSupportRows.ToLookup(row => row.WorkOrderId, row => row.Name);
 
         IReadOnlyList<FlightExportRowDto> items = flightRows.Select(f =>
         {
-            var workOrders = workOrdersByFlight[f.Id];
-            var workOrder = f.LifecycleStatus switch
-            {
-                FlightStatus.InProgress => workOrders.FirstOrDefault(w =>
-                    w.Status is WorkOrderStatus.Submitted or WorkOrderStatus.Returned)?.WorkOrder,
-                FlightStatus.Completed or FlightStatus.Canceled => workOrders
-                    .FirstOrDefault(w => w.Status == WorkOrderStatus.Approved)?.WorkOrder,
-                _ => null
-            };
+            selectedWorkOrdersByFlight.TryGetValue(f.Id, out var selectedWorkOrder);
+            var workOrder = selectedWorkOrder is null
+                ? null
+                : new ApprovedWorkOrderExportDto(
+                    selectedWorkOrder.ApprovalNumber,
+                    selectedWorkOrder.ActualFlightNumber,
+                    selectedWorkOrder.ActualArrivalUtc,
+                    selectedWorkOrder.ActualDepartureUtc,
+                    selectedWorkOrder.AircraftManufacturer,
+                    selectedWorkOrder.AircraftModel,
+                    selectedWorkOrder.AircraftTailNumber,
+                    selectedWorkOrder.ServiceNames,
+                    NormalizeNames(toolNamesByWorkOrder[selectedWorkOrder.Id]),
+                    NormalizeNames(materialNamesByWorkOrder[selectedWorkOrder.Id]),
+                    NormalizeNames(generalSupportNamesByWorkOrder[selectedWorkOrder.Id]),
+                    selectedWorkOrder.Remarks);
 
             return new FlightExportRowDto(
                 f.Id,
@@ -212,9 +270,47 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
                 workOrder);
         }).ToList();
 
-        return Result.Success(items);
+        return items;
     }
+
+    internal static IQueryable<FlightExportResourceNameRow> ToolRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        from workOrder in db.WorkOrders.AsNoTracking()
+        where workOrderIds.Contains(workOrder.Id)
+        from task in workOrder.Tasks
+        from tool in task.Tools
+        select new FlightExportResourceNameRow(workOrder.Id, tool.Tool.Name);
+
+    internal static IQueryable<FlightExportResourceNameRow> MaterialRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        from workOrder in db.WorkOrders.AsNoTracking()
+        where workOrderIds.Contains(workOrder.Id)
+        from task in workOrder.Tasks
+        from material in task.Materials
+        select new FlightExportResourceNameRow(workOrder.Id, material.Material.Name);
+
+    internal static IQueryable<FlightExportResourceNameRow> GeneralSupportRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        from workOrder in db.WorkOrders.AsNoTracking()
+        where workOrderIds.Contains(workOrder.Id)
+        from task in workOrder.Tasks
+        from support in task.GeneralSupports
+        select new FlightExportResourceNameRow(workOrder.Id, support.GeneralSupport.Name);
+
+    private static IReadOnlyList<string> NormalizeNames(IEnumerable<string> names) =>
+        names
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(name => name, StringComparer.Ordinal)
+            .ToList();
 }
+
+internal sealed record FlightExportResourceNameRow(Guid WorkOrderId, string Name);
 
 public sealed class GetPerLandingExtractionQueryHandler(IOperationsDbContext db, IOperationsScope scope)
     : IQueryHandler<GetPerLandingExtractionQuery, IReadOnlyList<PerLandingExtractionItemDto>>

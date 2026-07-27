@@ -45,7 +45,7 @@ public sealed record GetDashboardFlightsExportQuery(
     IReadOnlyList<Guid>? StationIds = null,
     IReadOnlyList<Guid>? CustomerIds = null,
     IReadOnlyList<Guid>? ServiceIds = null,
-    string? Sort = null) : IQuery<IReadOnlyList<DashboardFlightRowDto>>;
+    string? Sort = null) : IQuery<IReadOnlyList<FlightExportRowDto>>;
 
 public sealed class GetOperationsDashboardQueryHandler
     : IQueryHandler<GetOperationsDashboardQuery, OperationsDashboardDto>
@@ -339,9 +339,9 @@ public sealed class GetDashboardFlightsQueryHandler(IOperationsDbContext db, IOp
 }
 
 public sealed class GetDashboardFlightsExportQueryHandler(IOperationsDbContext db, IOperationsScope scope)
-    : IQueryHandler<GetDashboardFlightsExportQuery, IReadOnlyList<DashboardFlightRowDto>>
+    : IQueryHandler<GetDashboardFlightsExportQuery, IReadOnlyList<FlightExportRowDto>>
 {
-    public async Task<Result<IReadOnlyList<DashboardFlightRowDto>>> Handle(
+    public async Task<Result<IReadOnlyList<FlightExportRowDto>>> Handle(
         GetDashboardFlightsExportQuery request,
         CancellationToken cancellationToken)
     {
@@ -365,15 +365,11 @@ public sealed class GetDashboardFlightsExportQueryHandler(IOperationsDbContext d
             performedWorkOrders,
             performedServiceLines);
 
-        var rows = await DashboardFlightQuery.LoadRowsAsync(
-            flights,
-            performedWorkOrders,
-            performedServiceLines,
-            request.Sort,
-            skip: null,
-            take: null,
+        var rows = await FlightExportProjection.LoadAsync(
+            db,
+            DashboardFlightQuery.ApplySort(flights, request.Sort),
             cancellationToken);
-        return Result.Success<IReadOnlyList<DashboardFlightRowDto>>(rows);
+        return Result.Success(rows);
     }
 }
 
@@ -541,7 +537,7 @@ internal static class DashboardFlightQuery
             serviceNames.GetValueOrDefault(row.Id, []))).ToList();
     }
 
-    private static IOrderedQueryable<Flight> ApplySort(IQueryable<Flight> query, string? sort)
+    public static IOrderedQueryable<Flight> ApplySort(IQueryable<Flight> query, string? sort)
     {
         if (SortSpec.Parse(sort) is not { } spec)
             return DefaultSort(query);

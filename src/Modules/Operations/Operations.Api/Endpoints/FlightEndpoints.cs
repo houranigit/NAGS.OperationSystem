@@ -89,15 +89,17 @@ internal static class FlightEndpoints
                 exportFormat,
                 result.Value,
                 new FlightExportCriteria(
-                    search,
-                    stationId,
-                    customerId,
-                    operationTypeId,
-                    statuses,
-                    fromUtc,
-                    toUtc,
-                    serviceCategories,
-                    sort),
+                    Search: search,
+                    StationIds: stationId.HasValue ? [stationId.Value] : [],
+                    CustomerIds: customerId.HasValue ? [customerId.Value] : [],
+                    OperationTypeId: operationTypeId,
+                    Statuses: statuses,
+                    FromUtc: fromUtc,
+                    ToUtc: toUtc,
+                    ServiceCategories: serviceCategories,
+                    ServiceIds: [],
+                    ToUtcExclusive: false,
+                    Sort: sort),
                 timeProvider.GetUtcNow());
 
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
@@ -341,7 +343,7 @@ internal static class FlightEndpoints
             string? serviceIds = null,
             string? sort = null) =>
         {
-            if (!DashboardFlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
+            if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
             {
                 return ApiResults.Problem(Error.Validation(
                     new Dictionary<string, string[]>
@@ -368,15 +370,21 @@ internal static class FlightEndpoints
             if (result.IsFailure)
                 return ApiResults.Problem(result.Error);
 
-            var file = DashboardFlightExportDocumentFactory.Create(
+            var file = FlightExportDocumentFactory.Create(
                 exportFormat,
                 result.Value,
-                new DashboardFlightExportCriteria(
-                    fromUtc,
-                    toUtc,
-                    parsedStationIds,
-                    parsedCustomerIds,
-                    parsedServiceIds),
+                new FlightExportCriteria(
+                    Search: null,
+                    StationIds: parsedStationIds,
+                    CustomerIds: parsedCustomerIds,
+                    OperationTypeId: null,
+                    Statuses: null,
+                    FromUtc: fromUtc,
+                    ToUtc: toUtc,
+                    ServiceCategories: null,
+                    ServiceIds: parsedServiceIds,
+                    ToUtcExclusive: true,
+                    Sort: sort),
                 timeProvider.GetUtcNow());
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics)

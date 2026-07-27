@@ -59,6 +59,9 @@ public sealed record ApprovedWorkOrderExportDto(
     string? AircraftModel,
     string? AircraftTailNumber,
     IReadOnlyList<string> ServiceNames,
+    IReadOnlyList<string> ToolNames,
+    IReadOnlyList<string> MaterialNames,
+    IReadOnlyList<string> GeneralSupportNames,
     string? Remarks);
 
 public sealed record CalendarFlightDto(
