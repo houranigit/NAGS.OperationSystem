@@ -243,6 +243,12 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             fallbackFileName: "approved-work-order.pdf",
             cancellationToken: ct);
 
+    public Task DownloadDashboardApprovedWorkOrderAsync(Guid flightId, CancellationToken ct = default) =>
+        api.DownloadFileAsync(
+            $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf",
+            fallbackFileName: "approved-work-order.pdf",
+            cancellationToken: ct);
+
     public Task<PagedResult<WorkOrderListItem>> GetWorkOrdersAsync(
         int page,
         int pageSize,

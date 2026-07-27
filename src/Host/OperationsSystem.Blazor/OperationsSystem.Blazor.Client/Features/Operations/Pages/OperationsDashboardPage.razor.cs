@@ -82,7 +82,6 @@ public partial class OperationsDashboardPage : IAsyncDisposable
 
     private int FlightTotalCount => flightTotalCount > int.MaxValue ? int.MaxValue : (int)flightTotalCount;
     private bool CanExport => Auth.HasPermission(OperationsPermissions.DashboardExport);
-    private bool CanPrintWorkOrders => Auth.HasPermission(OperationsPermissions.WorkOrdersView);
     private bool IsFilterBusy => isFilterApplyPending || isFilterRefreshActive;
     private string FilterBarClass => IsFilterBusy
         ? "od-filter-bar is-updating"
@@ -559,7 +558,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         printingWorkOrderFlightId = flight.Id;
         try
         {
-            await Operations.DownloadApprovedWorkOrderAsync(flight.Id, lifetimeCts.Token);
+            await Operations.DownloadDashboardApprovedWorkOrderAsync(flight.Id, lifetimeCts.Token);
             Notifications.Notify(
                 NotificationSeverity.Success,
                 UiStrings.Flights.WorkOrderDownloadReady,
@@ -834,7 +833,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     private static string DateTimeDisplay(DateTimeOffset value) =>
         value.UtcDateTime.ToString("dd MMM yyyy · HH:mm", CultureInfo.CurrentCulture);
     private bool CanPrintWorkOrder(DashboardFlightRow flight) =>
-        CanPrintWorkOrders && flight.Status is "Completed";
+        CanExport && flight.Status is "Completed";
 
     private static string FormatRangeSummary(DashboardFilter filter)
     {

@@ -116,7 +116,7 @@
     font-family: inherit;
 }
 
-.dpc-plot ::deep .rz-chart-data-label {
+.dpc-plot ::deep .rz-series-data-label {
     font-size: 0.68rem;
     font-weight: 800;
 }
@@ -146,12 +146,11 @@
 }
 
 .dpc-legend-swatch {
+    display: block;
     flex: 0 0 auto;
     width: 0.56rem;
     height: 0.56rem;
     margin-top: 0.12rem;
-    border-radius: 50%;
-    background: var(--os-color-primary);
 }
 
 .dpc-tooltip {

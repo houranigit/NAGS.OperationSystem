@@ -383,6 +383,26 @@ internal static class FlightEndpoints
             .RequirePermission(OperationsPermissions.Dashboard.Export)
             .WithTags("Operations.Dashboard")
             .WithName("ExportDashboardFlights");
+
+        group.MapGet("/analytics-dashboard/flights/{flightId:guid}/work-orders/approved/pdf", async (
+            Guid flightId,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetApprovedWorkOrderPrintQuery(flightId), ct);
+            if (result.IsFailure)
+                return ApiResults.Problem(result.Error);
+
+            var file = WorkOrderPrintDocumentFactory.Create(result.Value);
+            return Results.File(
+                file.Content,
+                "application/pdf",
+                file.FileName,
+                enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics)
+            .RequirePermission(OperationsPermissions.Dashboard.Export)
+            .WithTags("Operations.Dashboard")
+            .WithName("DownloadDashboardApprovedWorkOrder");
     }
 
     private static IReadOnlyList<FlightStatus>? ParseStatuses(string? value)

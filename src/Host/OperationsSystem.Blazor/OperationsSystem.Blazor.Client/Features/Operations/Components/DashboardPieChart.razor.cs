@@ -21,6 +21,7 @@ public partial class DashboardPieChart
     private string flightsLabel = "flights";
     private string emptyText = "No matching flight data.";
     private string tone = "primary";
+    private bool useCodeLabels = true;
     private IReadOnlyList<DashboardBreakdownItem>? projectedItems;
     private string projectionLabelKey = string.Empty;
     private long total;
@@ -37,6 +38,7 @@ public partial class DashboardPieChart
     [Parameter] public string PerLandingLabel { get; set; } = "Per Landing";
     [Parameter] public string OnCallLabel { get; set; } = "On Call";
     [Parameter] public string Tone { get; set; } = "primary";
+    [Parameter] public bool UseCodeLabels { get; set; } = true;
     [Parameter] public IReadOnlyList<string>? Fills { get; set; }
 
     private string CardClass => $"dpc-card dpc-card--{tone}";
@@ -53,9 +55,10 @@ public partial class DashboardPieChart
         flightsLabel = FlightsLabel;
         emptyText = EmptyText;
         tone = Tone;
+        useCodeLabels = UseCodeLabels;
         fills = Fills is { Count: > 0 } ? Fills : DefaultFills;
 
-        var labelKey = $"{OtherLabel}\u001f{PerLandingLabel}\u001f{OnCallLabel}";
+        var labelKey = $"{OtherLabel}\u001f{PerLandingLabel}\u001f{OnCallLabel}\u001f{useCodeLabels}";
         if (!ReferenceEquals(projectedItems, Items) ||
             !string.Equals(projectionLabelKey, labelKey, StringComparison.Ordinal))
         {
@@ -88,9 +91,9 @@ public partial class DashboardPieChart
         if (string.Equals(item.Label, "On Call", StringComparison.OrdinalIgnoreCase))
             return OnCallLabel;
 
-        return string.IsNullOrWhiteSpace(item.Code)
-            ? item.Label
-            : item.Code.Trim().ToUpperInvariant();
+        return useCodeLabels && !string.IsNullOrWhiteSpace(item.Code)
+            ? item.Code.Trim().ToUpperInvariant()
+            : item.Label;
     }
 
     private static string FormatChartLabel(object value) =>
@@ -100,13 +103,10 @@ public partial class DashboardPieChart
     private static string FormatPercentage(double value) =>
         value.ToString("0.#", CultureInfo.CurrentCulture) + "%";
 
-    private string LegendSwatchStyle(int index)
-    {
-        var fill = fills.Count == 0 ? string.Empty : fills[index % fills.Count];
-        return string.IsNullOrWhiteSpace(fill)
-            ? string.Empty
-            : $"background-color: {fill};";
-    }
+    private string LegendSwatchFill(int index) =>
+        fills.Count == 0
+            ? "var(--os-color-primary)"
+            : fills[index % fills.Count];
 
     private string LegendItemDescription(PieEntry entry) =>
         $"{entry.Label}: {FormatCount(entry.FlightCount)} {flightsLabel}, {FormatPercentage(entry.Percentage)}";

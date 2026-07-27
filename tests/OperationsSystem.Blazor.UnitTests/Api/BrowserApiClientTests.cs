@@ -35,6 +35,22 @@ public sealed class BrowserApiClientTests
     }
 
     [Fact]
+    public async Task Dashboard_approved_work_order_download_uses_dashboard_authenticated_blob_route()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var flightId = Guid.NewGuid();
+
+        await operations.DownloadDashboardApprovedWorkOrderAsync(flightId);
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe(
+            $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf");
+        runtime.Arguments[1].ShouldBe("approved-work-order.pdf");
+    }
+
+    [Fact]
     public async Task Service_line_attachment_upload_uses_service_line_route()
     {
         var runtime = new CapturingDownloadJsRuntime();

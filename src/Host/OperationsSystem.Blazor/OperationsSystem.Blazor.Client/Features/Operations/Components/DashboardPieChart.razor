@@ -47,7 +47,7 @@
                         <ChildContent>
                             <RadzenSeriesDataLabels Visible="true"
                                                     Position="DataLabelPosition.Auto"
-                                                    Appearance="DataLabelAppearance.Outline"
+                                                    Appearance="DataLabelAppearance.Chip"
                                                     AllowOverlap="false"
                                                     Formatter="@FormatChartLabel" />
                         </ChildContent>
@@ -71,9 +71,12 @@
                     <li @key="entry.Key"
                         title="@LegendItemDescription(entry)"
                         aria-label="@LegendItemDescription(entry)">
-                        <span class="dpc-legend-swatch"
-                              style="@LegendSwatchStyle(index)"
-                              aria-hidden="true"></span>
+                        <svg class="dpc-legend-swatch"
+                             viewBox="0 0 10 10"
+                             aria-hidden="true"
+                             focusable="false">
+                            <circle cx="5" cy="5" r="5" fill="@LegendSwatchFill(index)" />
+                        </svg>
                         <span>@entry.Label</span>
                     </li>
                 }

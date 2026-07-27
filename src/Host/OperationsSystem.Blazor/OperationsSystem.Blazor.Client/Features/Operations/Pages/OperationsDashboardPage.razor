@@ -335,6 +335,7 @@
                                    Fills="@CustomerFills"
                                    TotalLabel="@UiStrings.OperationsDashboard.Flights"
                                    FlightsLabel="@UiStrings.OperationsDashboard.Flights"
+                                   UseCodeLabels="false"
                                    OtherLabel="@UiStrings.OperationsDashboard.Other"
                                    EmptyText="@UiStrings.OperationsDashboard.NoMatchingActivity" />
 
@@ -370,7 +371,7 @@
                               OnRetry="@ReloadFlightsAsync" LoadData="@LoadFlightsAsync"
                               PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
                               ShowSearch="false" CountLabel="@UiStrings.OperationsDashboard.Flights"
-                              ShowActionsColumn="@CanPrintWorkOrders"
+                              ShowActionsColumn="@CanExport"
                               EmptyText="@UiStrings.OperationsDashboard.NoFlights">
                     <Toolbar>
                         @if (CanExport)
@@ -453,7 +454,7 @@
                                            Disabled="@(printingWorkOrderFlightId.HasValue && printingWorkOrderFlightId != flight.Id)">
                                 <RowAction Text="@UiStrings.Flights.PrintWorkOrder"
                                            Icon="print"
-                                           Permission="@OperationsPermissions.WorkOrdersView"
+                                           Permission="@OperationsPermissions.DashboardExport"
                                            OnClick="@(() => PrintWorkOrderAsync(flight))" />
                             </RowActionMenu>
                         }
