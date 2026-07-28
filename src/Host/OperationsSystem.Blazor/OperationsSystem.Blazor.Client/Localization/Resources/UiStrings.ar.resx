@@ -6,7 +6,7 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <data name="App.Name" xml:space="preserve"><value>نظام العمليات</value></data>
   <data name="App.Portal" xml:space="preserve"><value></value></data>
-  <data name="App.Version" xml:space="preserve"><value>v1.0.4</value></data>
+  <data name="App.Version" xml:space="preserve"><value>v1.0.5</value></data>
   <data name="Common.Loading" xml:space="preserve"><value>تحميل...</value></data>
   <data name="Common.Save" xml:space="preserve"><value>يحفظ</value></data>
   <data name="Common.Cancel" xml:space="preserve"><value>يلغي</value></data>
