@@ -123,6 +123,8 @@
   <data name="Nav.Stations" xml:space="preserve"><value>Stations</value></data>
   <data name="Nav.Customers" xml:space="preserve"><value>Customers</value></data>
   <data name="Nav.StaffMembers" xml:space="preserve"><value>Staff members</value></data>
+  <data name="Nav.UserManual" xml:space="preserve"><value>User manual</value></data>
+  <data name="Nav.DownloadUserManual" xml:space="preserve"><value>Download manual</value></data>
   <data name="Nav.ToggleMenu" xml:space="preserve"><value>Toggle navigation</value></data>
   <data name="Nav.Language" xml:space="preserve"><value>Language</value></data>
   <data name="Audit.Title" xml:space="preserve"><value>Audit log</value></data>

@@ -19,6 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\..\..\..\docs\user-manual\release\nags-operations-field-guide.html"
+                      LogicalName="OperationsSystem.Blazor.UserManual.html" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>OperationsSystem.Blazor.UnitTests</_Parameter1>
     </AssemblyAttribute>

@@ -172,6 +172,9 @@ public static class UiStrings
         public static string Stations => UiText.Get("Nav.Stations", "Stations");
         public static string Customers => UiText.Get("Nav.Customers", "Customers");
         public static string StaffMembers => UiText.Get("Nav.StaffMembers", "Staff members");
+        public static string UserManual => UiText.Get("Nav.UserManual", "User manual");
+        public static string DownloadUserManual =>
+            UiText.Get("Nav.DownloadUserManual", "Download manual");
         public static string ToggleMenu => UiText.Get("Nav.ToggleMenu", "Toggle navigation");
         public static string Language => UiText.Get("Nav.Language", "Language");
     }

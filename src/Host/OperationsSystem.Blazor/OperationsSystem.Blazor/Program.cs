@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using OperationsSystem.Blazor.Api;
 using OperationsSystem.Blazor.Client;
 using OperationsSystem.Blazor.Components;
+using OperationsSystem.Blazor.UserManual;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +52,7 @@ app.MapStaticAssets();
 app.MapApiProxy();
 app.MapNotificationsHubProxy();
 app.MapOperationsDashboardHubProxy();
+app.MapUserManual();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()

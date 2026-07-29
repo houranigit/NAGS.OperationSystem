@@ -10,6 +10,36 @@ permissions:
   contents: read
 
 jobs:
+  user-manual:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/user-manual
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/user-manual/package-lock.json
+
+      - name: Install manual dependencies
+        run: npm ci
+
+      - name: Validate and rebuild manual
+        run: |
+          committed_hash="$(git hash-object release/nags-operations-field-guide.html)"
+          npm run lint
+          npm test
+          generated_hash="$(git hash-object release/nags-operations-field-guide.html)"
+
+          if [ "$committed_hash" != "$generated_hash" ]; then
+            echo "::error::The committed manual is stale. Run 'npm run export:manual' in docs/user-manual and commit the result."
+            exit 1
+          fi
+
   build-and-test:
     runs-on: ubuntu-latest
     steps:

@@ -260,6 +260,13 @@
                     </div>
                 }
             </AuthorizeView>
+
+            <a href="/manual" target="_blank" rel="noopener noreferrer" data-enhance-nav="false"
+               class="os-nav-link os-nav-link--root" title="@UiStrings.Nav.UserManual"
+               @onclick="CloseNav">
+                <RadzenIcon Icon="menu_book" />
+                <span>@UiStrings.Nav.UserManual</span>
+            </a>
         </nav>
 
         <div class="os-sidebar-foot">
@@ -319,6 +326,16 @@
                                 </div>
                             </div>
                             <div class="os-profile-menu">
+                                <a href="/manual" target="_blank" rel="noopener noreferrer" data-enhance-nav="false"
+                                   class="os-profile-item" @onclick="CloseProfile">
+                                    <RadzenIcon Icon="menu_book" />
+                                    <span>@UiStrings.Nav.UserManual</span>
+                                </a>
+                                <a href="/manual/download" download data-enhance-nav="false"
+                                   class="os-profile-item" @onclick="CloseProfile">
+                                    <RadzenIcon Icon="download" />
+                                    <span>@UiStrings.Nav.DownloadUserManual</span>
+                                </a>
                                 <button type="button" class="os-profile-item" @onclick="GoToAccountAsync">
                                     <RadzenIcon Icon="account_circle" />
                                     <span>@UiStrings.Account.Title</span>

@@ -545,6 +545,7 @@
     font-size: var(--os-text-sm);
     font-weight: 500;
     text-align: start;
+    text-decoration: none;
     cursor: pointer;
     transition: background var(--os-transition), color var(--os-transition);
 }
