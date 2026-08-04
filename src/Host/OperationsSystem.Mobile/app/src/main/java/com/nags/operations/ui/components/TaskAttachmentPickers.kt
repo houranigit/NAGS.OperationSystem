@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -186,16 +187,34 @@ fun VoiceAttachmentButton(
         elapsedMs = 0L
 
         if (r == null) return
-        runCatching { r.stop() }
+        val stoppedCleanly = runCatching { r.stop() }.isSuccess
         runCatching { r.release() }
-        if (file == null || !file.exists() || file.length() == 0L) return
+        if (!stoppedCleanly || file == null || !file.exists() || file.length() == 0L) {
+            file?.delete()
+            Toast.makeText(
+                context,
+                "The voice recording was too short or could not be saved. Please record it again.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
 
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             file,
         )
-        captureAttachmentInternal(context, uri, TaskAttachmentKindValue.Voice)?.let(onAttachment)
+        val attachment = captureAttachmentInternal(context, uri, TaskAttachmentKindValue.Voice)
+        file.delete()
+        if (attachment == null) {
+            Toast.makeText(
+                context,
+                "The voice recording is invalid. Please record it again.",
+                Toast.LENGTH_LONG,
+            ).show()
+        } else {
+            onAttachment(attachment)
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(

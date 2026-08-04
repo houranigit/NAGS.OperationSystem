@@ -11,6 +11,7 @@ public sealed class WorkOrderAttachmentPolicyTests
     {
         WorkOrderAttachmentPolicy.Validate(TaskAttachmentKind.Document, [0x25, 0x50, 0x44, 0x46, 0x2D, 0x31], "report.pdf", "application/pdf").IsSuccess.ShouldBeTrue();
         WorkOrderAttachmentPolicy.Validate(TaskAttachmentKind.Image, [0xFF, 0xD8, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "photo.jpg", "image/jpeg").IsSuccess.ShouldBeTrue();
+        WorkOrderAttachmentPolicy.Validate(TaskAttachmentKind.Voice, [0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x70, 0x34, 0x32], "voice.m4a", "audio/mp4").IsSuccess.ShouldBeTrue();
     }
 
     [Fact]

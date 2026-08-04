@@ -37,16 +37,23 @@ internal fun captureAttachmentInternal(context: Context, uri: Uri, kind: String)
             }
             buffer.toByteArray()
         } ?: return@runCatching null
-        val type = resolver.getType(uri) ?: when (kind) {
+        val resolvedType = resolver.getType(uri) ?: when (kind) {
             TaskAttachmentKindValue.Image -> "image/jpeg"
             TaskAttachmentKindValue.Voice -> "audio/mp4"
             TaskAttachmentKindValue.Document -> "application/pdf"
             else -> "application/octet-stream"
         }
+        // Voice recordings created by TaskAttachmentPickers use an MPEG-4 container. Some
+        // FileProvider/MIME databases report .m4a inconsistently, so send the canonical type
+        // only after verifying that the recorder produced a complete MPEG-4 file.
+        val type = if (kind == TaskAttachmentKindValue.Voice) "audio/mp4" else resolvedType
         val name = uri.lastPathSegment ?: when (kind) {
             TaskAttachmentKindValue.Image -> "photo.jpg"
             TaskAttachmentKindValue.Voice -> "voice.m4a"
             else -> "document"
+        }
+        if (kind == TaskAttachmentKindValue.Voice && !bytes.hasMp4ContainerSignature()) {
+            return@runCatching null
         }
         if (kind == TaskAttachmentKindValue.Document &&
             (type != "application/pdf" || !bytes.hasPdfSignature())
@@ -67,3 +74,7 @@ internal fun captureAttachmentInternal(context: Context, uri: Uri, kind: String)
 private fun ByteArray.hasPdfSignature(): Boolean =
     size >= 5 && this[0] == 0x25.toByte() && this[1] == 0x50.toByte() &&
         this[2] == 0x44.toByte() && this[3] == 0x46.toByte() && this[4] == 0x2D.toByte()
+
+internal fun ByteArray.hasMp4ContainerSignature(): Boolean =
+    size >= 12 && this[4] == 0x66.toByte() && this[5] == 0x74.toByte() &&
+        this[6] == 0x79.toByte() && this[7] == 0x70.toByte()
