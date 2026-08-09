@@ -172,7 +172,7 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         var t = await reader.GetToolAsync(id, ct);
         if (t is null || !t.IsActive)
             return Error.Validation($"Tool '{id}' was not found or is inactive.", "Operations.Ref.ToolInvalid");
-        return new ToolSnapshot(t.Id, t.Name);
+        return new ToolSnapshot(t.Id, t.Name, t.CalculationType);
     }
 
     public async Task<Result<MaterialSnapshot>> MaterialAsync(Guid id, CancellationToken ct)
@@ -180,7 +180,7 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         var m = await reader.GetMaterialAsync(id, ct);
         if (m is null || !m.IsActive)
             return Error.Validation($"Material '{id}' was not found or is inactive.", "Operations.Ref.MaterialInvalid");
-        return new MaterialSnapshot(m.Id, m.Name);
+        return new MaterialSnapshot(m.Id, m.Name, m.CalculationType);
     }
 
     public async Task<Result<GeneralSupportSnapshot>> GeneralSupportAsync(Guid id, CancellationToken ct)
@@ -188,6 +188,6 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         var g = await reader.GetGeneralSupportAsync(id, ct);
         if (g is null || !g.IsActive)
             return Error.Validation($"General support '{id}' was not found or is inactive.", "Operations.Ref.GeneralSupportInvalid");
-        return new GeneralSupportSnapshot(g.Id, g.Name);
+        return new GeneralSupportSnapshot(g.Id, g.Name, g.CalculationType);
     }
 }

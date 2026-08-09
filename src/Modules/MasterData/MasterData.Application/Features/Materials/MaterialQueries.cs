@@ -32,7 +32,7 @@ public sealed class GetMaterialsQueryHandler(IMasterDataDbContext db)
         var items = await ApplySort(query, request.Sort)
             .Skip(paging.Skip)
             .Take(paging.PageSize)
-            .Select(m => new MaterialListItemDto(m.Id, m.Name, m.Description, m.IsActive))
+            .Select(m => new MaterialListItemDto(m.Id, m.Name, m.Description, m.IsActive, m.CalculationType))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<MaterialListItemDto>(items, total);
@@ -46,6 +46,7 @@ public sealed class GetMaterialsQueryHandler(IMasterDataDbContext db)
         return spec.Field switch
         {
             "name" => spec.Descending ? query.OrderByDescending(m => m.Name).ThenByDescending(m => m.Id) : query.OrderBy(m => m.Name).ThenBy(m => m.Id),
+            "calculationtype" => spec.Descending ? query.OrderByDescending(m => m.CalculationType).ThenByDescending(m => m.Id) : query.OrderBy(m => m.CalculationType).ThenBy(m => m.Id),
             "isactive" => spec.Descending ? query.OrderByDescending(m => m.IsActive).ThenByDescending(m => m.Id) : query.OrderBy(m => m.IsActive).ThenBy(m => m.Id),
             _ => query.OrderBy(m => m.Name).ThenBy(m => m.Id)
         };
@@ -65,7 +66,8 @@ public sealed class GetMaterialByIdQueryHandler(IMasterDataDbContext db)
 
         return new MaterialDto(
             material.Id, material.Name, material.Description, material.IsActive,
-            material.CreatedAtUtc, material.UpdatedAtUtc, Convert.ToBase64String(material.RowVersion));
+            material.CreatedAtUtc, material.UpdatedAtUtc, Convert.ToBase64String(material.RowVersion),
+            material.CalculationType);
     }
 }
 
@@ -80,7 +82,7 @@ public sealed class GetActiveMaterialOptionsQueryHandler(IMasterDataDbContext db
             .Where(m => m.IsActive)
             .OrderBy(m => m.Name)
             .ThenBy(m => m.Id)
-            .Select(m => new MaterialOptionDto(m.Id, m.Name))
+            .Select(m => new MaterialOptionDto(m.Id, m.Name, m.CalculationType))
             .ToListAsync(cancellationToken);
 
         return Result.Success(options);

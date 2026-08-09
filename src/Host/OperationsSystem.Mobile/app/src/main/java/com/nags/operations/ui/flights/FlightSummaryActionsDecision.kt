@@ -9,9 +9,30 @@ enum class FlightSummaryActionsDecision {
     CreateOrCancel,
     UpdateOrReturnToRamp,
     CreateOnly,
-    /** Completed flights expose only the future Return-to-ramp entry point. */
+    /** Completed flights expose one flight-scoped Return-to-ramp action. */
     CompletedReturnToRamp,
     ReadOnly,
+}
+
+internal enum class ReturnToRampActionPlacement {
+    None,
+    CompletedPrimary,
+    InProgressSecondary,
+}
+
+/** Ensures the sheet never renders both completed and in-progress RTR actions. */
+internal fun returnToRampActionPlacement(
+    decision: FlightSummaryActionsDecision,
+    flightStatus: FlightStatusKind?,
+    workOrderEditable: Boolean,
+    myWorkOrderIsCancellation: Boolean,
+): ReturnToRampActionPlacement = when {
+    myWorkOrderIsCancellation -> ReturnToRampActionPlacement.None
+    decision == FlightSummaryActionsDecision.CompletedReturnToRamp ->
+        ReturnToRampActionPlacement.CompletedPrimary
+    flightStatus == FlightStatusKind.InProgress && workOrderEditable ->
+        ReturnToRampActionPlacement.InProgressSecondary
+    else -> ReturnToRampActionPlacement.None
 }
 
 fun deriveFlightSummaryActions(summary: MobileFlightDto): FlightSummaryActionsDecision {

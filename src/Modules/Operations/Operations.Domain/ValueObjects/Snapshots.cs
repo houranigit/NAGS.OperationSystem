@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.ValueObjects;
+using MasterData.Contracts.Resources;
 
 namespace Operations.Domain.ValueObjects;
 
@@ -141,19 +142,25 @@ public sealed class ToolSnapshot : ValueObject
 {
     private ToolSnapshot() { }
 
-    public ToolSnapshot(Guid toolId, string name)
+    public ToolSnapshot(
+        Guid toolId,
+        string name,
+        ResourceCalculationType calculationType = ResourceCalculationType.Duration)
     {
         ToolId = toolId;
         Name = name;
+        CalculationType = calculationType;
     }
 
     public Guid ToolId { get; private set; }
     public string Name { get; private set; } = null!;
+    public ResourceCalculationType CalculationType { get; private set; }
 
     protected override IEnumerable<object?> GetEqualityComponents()
     {
         yield return ToolId;
         yield return Name;
+        yield return CalculationType;
     }
 }
 
@@ -161,19 +168,25 @@ public sealed class MaterialSnapshot : ValueObject
 {
     private MaterialSnapshot() { }
 
-    public MaterialSnapshot(Guid materialId, string name)
+    public MaterialSnapshot(
+        Guid materialId,
+        string name,
+        ResourceCalculationType calculationType = ResourceCalculationType.Quantity)
     {
         MaterialId = materialId;
         Name = name;
+        CalculationType = calculationType;
     }
 
     public Guid MaterialId { get; private set; }
     public string Name { get; private set; } = null!;
+    public ResourceCalculationType CalculationType { get; private set; }
 
     protected override IEnumerable<object?> GetEqualityComponents()
     {
         yield return MaterialId;
         yield return Name;
+        yield return CalculationType;
     }
 }
 
@@ -181,18 +194,24 @@ public sealed class GeneralSupportSnapshot : ValueObject
 {
     private GeneralSupportSnapshot() { }
 
-    public GeneralSupportSnapshot(Guid generalSupportId, string name)
+    public GeneralSupportSnapshot(
+        Guid generalSupportId,
+        string name,
+        ResourceCalculationType calculationType = ResourceCalculationType.Quantity)
     {
         GeneralSupportId = generalSupportId;
         Name = name;
+        CalculationType = calculationType;
     }
 
     public Guid GeneralSupportId { get; private set; }
     public string Name { get; private set; } = null!;
+    public ResourceCalculationType CalculationType { get; private set; }
 
     protected override IEnumerable<object?> GetEqualityComponents()
     {
         yield return GeneralSupportId;
         yield return Name;
+        yield return CalculationType;
     }
 }

@@ -3,9 +3,11 @@ using BuildingBlocks.Api.Results;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Operations.Api.Endpoints;
 using Operations.Application.Features.Mobile;
+using Operations.Application.Features.WorkOrders;
 using Operations.Domain.Authorization;
 
 namespace Operations.Api.Mobile;
@@ -26,7 +28,8 @@ internal static class MobileWriteEndpoints
                 var result = await sender.Send(new MobileSubmitWorkOrderCommand(
                     flightId, request.WorkOrder.Type, request.WorkOrder.ToPayload(), request.ClientMutationId), ct);
                 return ToWriteResult(result, created: true);
-            }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+            }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+                .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         group.MapPost("/work-orders/scratch",
             async (MobileScratchWorkOrderRequest request, ISender sender, CancellationToken ct) =>
@@ -43,7 +46,8 @@ internal static class MobileWriteEndpoints
                     request.ClientMutationId,
                     request.ClientFlightId), ct);
                 return ToWriteResult(result, created: true);
-            }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+            }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+                .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         group.MapPut("/work-orders/{workOrderId:guid}",
             async (Guid workOrderId, MobileWorkOrderWriteRequest request, ISender sender, CancellationToken ct) =>
@@ -56,7 +60,8 @@ internal static class MobileWriteEndpoints
                     request.BaseRowVersion ?? string.Empty,
                     request.ServiceLineIdentityVersion), ct);
                 return ToWriteResult(result, created: false);
-            }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+            }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+                .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         group.MapPost("/work-orders/{workOrderId:guid}/return-to-ramp",
             async (Guid workOrderId, MobileReturnToRampRequest request, ISender sender, CancellationToken ct) =>
@@ -69,7 +74,7 @@ internal static class MobileWriteEndpoints
                         l.FromUtc,
                         l.ToUtc,
                         l.Description,
-                        IsReturnToRamp: true,
+                        IsReturnToRamp: false,
                         Attachments: l.Attachments?.Select(a =>
                             new Operations.Application.Features.WorkOrders.WorkOrderServiceLineAttachmentCommand(
                                 a.Kind,
@@ -83,15 +88,27 @@ internal static class MobileWriteEndpoints
                         t.FromUtc,
                         t.ToUtc,
                         t.EmployeeIds ?? [],
-                        t.Tools?.Select(tool => new Operations.Application.Features.WorkOrders.WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity)).ToList() ?? [],
-                        t.Materials?.Select(m => new Operations.Application.Features.WorkOrders.WorkOrderTaskMaterialCommand(m.MaterialId, m.Quantity)).ToList() ?? [],
-                        t.GeneralSupports?.Select(g => new Operations.Application.Features.WorkOrders.WorkOrderTaskGeneralSupportCommand(g.GeneralSupportId, g.Quantity)).ToList() ?? [],
+                        t.Tools?.Select(tool => new Operations.Application.Features.WorkOrders.WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity, tool.FromUtc, tool.ToUtc)).ToList() ?? [],
+                        t.Materials?.Select(m => new Operations.Application.Features.WorkOrders.WorkOrderTaskMaterialCommand(m.MaterialId, m.Quantity, m.FromUtc, m.ToUtc)).ToList() ?? [],
+                        t.GeneralSupports?.Select(g => new Operations.Application.Features.WorkOrders.WorkOrderTaskGeneralSupportCommand(g.GeneralSupportId, g.Quantity, g.FromUtc, g.ToUtc)).ToList() ?? [],
                         t.Attachments?.Select(a => new Operations.Application.Features.WorkOrders.WorkOrderTaskAttachmentCommand(
                             a.Kind, a.Base64Content, a.FileName, a.ContentType)).ToList() ?? [],
-                        IsReturnToRamp: true)).ToList() ?? [],
+                        IsReturnToRamp: false)).ToList() ?? [],
                     request.ClientMutationId), ct);
                 return ToWriteResult(result, created: false);
-            }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+            }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+                .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
+
+        group.MapPost("/flights/{flightId:guid}/return-to-ramps",
+            async (Guid flightId, MobileFlightReturnToRampRequest request, ISender sender, CancellationToken ct) =>
+            {
+                var result = await sender.Send(new MobileRecordReturnToRampForFlightCommand(
+                    flightId,
+                    request.ToCommand(),
+                    request.ClientMutationId), ct);
+                return ToWriteResult(result, created: false);
+            }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+                .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         group.MapPost("/flights/{flightId:guid}/cancel",
             async (Guid flightId, MobileCancelFlightRequest request, ISender sender, CancellationToken ct) =>
@@ -145,6 +162,28 @@ public sealed record MobileReturnToRampRequest(
     string ClientMutationId,
     IReadOnlyList<WorkOrderServiceLineRequest>? ServiceLines,
     IReadOnlyList<WorkOrderTaskRequest>? Tasks);
+
+/// <summary>
+/// Canonical mobile occurrence contract. Unlike the legacy singular work-order route, the target
+/// is the flight, so completed flights can append to their approved completion work order without
+/// requiring the device to know or own that work-order id.
+/// </summary>
+public sealed record MobileFlightReturnToRampRequest(
+    string ClientMutationId,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    string? Description,
+    IReadOnlyList<WorkOrderServiceLineRequest>? ServiceLines,
+    IReadOnlyList<WorkOrderTaskRequest>? Tasks)
+{
+    public WorkOrderReturnToRampCommand ToCommand() => new WorkOrderReturnToRampRequest(
+        Id: null,
+        FromUtc: FromUtc,
+        ToUtc: ToUtc,
+        Description: Description,
+        ServiceLines: ServiceLines,
+        Tasks: Tasks).ToCommand();
+}
 
 public sealed record MobileCancelFlightRequest(
     string ClientMutationId,

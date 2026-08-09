@@ -2,6 +2,7 @@ using BuildingBlocks.Api.Authorization;
 using BuildingBlocks.Api.Concurrency;
 using BuildingBlocks.Api.Results;
 using BuildingBlocks.Application.Persistence;
+using BuildingBlocks.Domain.Results;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -25,7 +26,21 @@ internal static class WorkOrderEndpoints
         {
             var result = await sender.Send(new SubmitWorkOrderCommand(flightId, request.Type, request.ToPayload()), ct);
             return result.ToCreated(id => $"/api/v1/operations/work-orders/{id}");
-        }).RequirePermission(OperationsPermissions.WorkOrders.Author).WithTags("Operations.WorkOrders");
+        }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+            .WithTags("Operations.WorkOrders")
+            .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
+
+        group.MapPost("/flights/{flightId:guid}/return-to-ramps", async (
+            Guid flightId,
+            WorkOrderReturnToRampRequest request,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            var result = await sender.Send(new RecordReturnToRampForFlightCommand(flightId, request.ToCommand()), ct);
+            return result.ToCreated(id => $"/api/v1/operations/flights/{flightId}/return-to-ramps/{id}");
+        }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+            .WithTags("Operations.WorkOrders")
+            .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         group.MapGet("/flights/{flightId:guid}/work-orders/mine", async (Guid flightId, ISender sender, CancellationToken ct) =>
         {
@@ -36,13 +51,24 @@ internal static class WorkOrderEndpoints
         group.MapGet("/flights/{flightId:guid}/work-orders/approved/pdf", async (
             Guid flightId,
             ISender sender,
-            CancellationToken ct) =>
+            CancellationToken ct,
+            string? timeZoneId = null) =>
         {
+            if (!FlightExportTimeZoneResolver.TryResolve(timeZoneId, out var displayTimeZone))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    new Dictionary<string, string[]>
+                    {
+                        ["timeZoneId"] = ["Time zone must be a valid IANA, Windows, or Browser UTC±HH:mm identifier."]
+                    },
+                    code: "Operations.WorkOrder.PrintTimeZoneInvalid"));
+            }
+
             var result = await sender.Send(new GetApprovedWorkOrderPrintQuery(flightId), ct);
             if (result.IsFailure)
                 return ApiResults.Problem(result.Error);
 
-            var file = WorkOrderPrintDocumentFactory.Create(result.Value);
+            var file = WorkOrderPrintDocumentFactory.Create(result.Value, displayTimeZone);
             return Results.File(
                 file.Content,
                 "application/pdf",
@@ -64,7 +90,8 @@ internal static class WorkOrderEndpoints
         {
             var result = await sender.Send(request.ToCommand(), ct);
             return result.ToCreated(id => $"/api/v1/operations/work-orders/{id}");
-        }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+        }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+            .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         workOrders.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null,
@@ -86,6 +113,17 @@ internal static class WorkOrderEndpoints
             var result = await sender.Send(new GetWorkOrderTimelineQuery(id), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.WorkOrders.View);
+
+        workOrders.MapPost("/{id:guid}/return-to-ramps", async (
+            Guid id,
+            WorkOrderReturnToRampRequest request,
+            ISender sender,
+            CancellationToken ct) =>
+        {
+            var result = await sender.Send(new RecordReturnToRampOnWorkOrderCommand(id, request.ToCommand()), ct);
+            return result.ToCreated(returnToRampId => $"/api/v1/operations/work-orders/{id}/return-to-ramps/{returnToRampId}");
+        }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+            .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         workOrders.MapPost("/{id:guid}/signature", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
@@ -250,7 +288,8 @@ internal static class WorkOrderEndpoints
 
             var result = await sender.Send(new UpdateWorkOrderCommand(id, rowVersion, request.Type, request.ToPayload()), ct);
             return result.ToNoContent();
-        }).RequirePermission(OperationsPermissions.WorkOrders.Author);
+        }).RequirePermission(OperationsPermissions.WorkOrders.Author)
+            .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
         workOrders.MapDelete("/{id:guid}", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {

@@ -127,7 +127,8 @@ public sealed record ScheduleFlightsCommand(
     IReadOnlyList<DateOnly> SelectedDates,
     Guid? AircraftTypeId,
     IReadOnlyList<Guid> PlannedServiceIds,
-    IReadOnlyList<Guid> AssignedStaffMemberIds) : ICommand<IReadOnlyList<Guid>>;
+    IReadOnlyList<Guid> AssignedStaffMemberIds,
+    string? TimeZoneId = null) : ICommand<IReadOnlyList<Guid>>;
 
 public sealed class ScheduleFlightsCommandValidator : AbstractValidator<ScheduleFlightsCommand>
 {
@@ -139,6 +140,7 @@ public sealed class ScheduleFlightsCommandValidator : AbstractValidator<Schedule
         RuleFor(x => x.FlightNumber).NotEmpty().MaximumLength(12);
         RuleFor(x => x.PlannedServiceIds).NotEmpty();
         RuleFor(x => x.SelectedDates).NotEmpty();
+        RuleFor(x => x.TimeZoneId).MaximumLength(128);
     }
 }
 
@@ -180,6 +182,13 @@ public sealed class ScheduleFlightsCommandHandler(
         if (selectedDates.Count == 0)
             return Error.Validation("At least one selected date is required.", "Operations.Flight.BatchDatesRequired");
 
+        if (!TryResolveTimeZone(request.TimeZoneId, out var scheduleTimeZone))
+        {
+            return Error.Validation(
+                $"Time zone '{request.TimeZoneId}' is not recognized. Refresh the page and try again.",
+                "Operations.Flight.BatchTimeZoneInvalid");
+        }
+
         var references = await FlightBuildHelpers.BuildReferencesAsync(resolver, request.CustomerId, request.StationId,
             request.OperationTypeId, request.AircraftTypeId, request.FlightNumber, request.PlannedServiceIds, cancellationToken);
         if (references.IsFailure)
@@ -198,10 +207,21 @@ public sealed class ScheduleFlightsCommandHandler(
 
         foreach (var selectedDate in selectedDates)
         {
-            var sta = CombineUtc(selectedDate, request.ScheduledArrivalTimeUtc);
-            var std = CombineUtc(selectedDate, request.ScheduledDepartureTimeUtc);
-            if (std <= sta)
-                std = std.AddDays(1);
+            var departureDate = request.ScheduledDepartureTimeUtc <= request.ScheduledArrivalTimeUtc
+                ? selectedDate.AddDays(1)
+                : selectedDate;
+            if (!TryCombineUtc(selectedDate, request.ScheduledArrivalTimeUtc, scheduleTimeZone, out var sta, out var arrivalError))
+            {
+                return Error.Validation(
+                    $"Flight on {selectedDate:yyyy-MM-dd}: STA {arrivalError}",
+                    "Operations.Flight.BatchLocalTimeInvalid");
+            }
+            if (!TryCombineUtc(departureDate, request.ScheduledDepartureTimeUtc, scheduleTimeZone, out var std, out var departureError))
+            {
+                return Error.Validation(
+                    $"Flight on {selectedDate:yyyy-MM-dd}: STD {departureError}",
+                    "Operations.Flight.BatchLocalTimeInvalid");
+            }
 
             var built = FlightBuildHelpers.BuildWithSchedule(references.Value, sta, std);
             if (built.IsFailure)
@@ -261,10 +281,87 @@ public sealed class ScheduleFlightsCommandHandler(
         return ids;
     }
 
-    private static DateTimeOffset CombineUtc(DateOnly date, TimeOnly time)
+    internal static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo timeZone)
     {
-        var dateTime = date.ToDateTime(time, DateTimeKind.Utc);
-        return new DateTimeOffset(dateTime);
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            timeZone = TimeZoneInfo.Utc;
+            return true;
+        }
+
+        const string browserOffsetPrefix = "Browser UTC";
+        var rawBrowserOffset = timeZoneId.StartsWith(browserOffsetPrefix, StringComparison.Ordinal)
+            ? timeZoneId[browserOffsetPrefix.Length..]
+            : string.Empty;
+        if (rawBrowserOffset.Length > 1 &&
+            rawBrowserOffset[0] is '+' or '-' &&
+            TimeSpan.TryParse(rawBrowserOffset[1..], out var browserOffsetMagnitude))
+        {
+            var browserOffset = rawBrowserOffset[0] == '-' ? -browserOffsetMagnitude : browserOffsetMagnitude;
+            if (browserOffset >= TimeSpan.FromHours(-14) && browserOffset <= TimeSpan.FromHours(14))
+            {
+                timeZone = TimeZoneInfo.CreateCustomTimeZone(timeZoneId, browserOffset, timeZoneId, timeZoneId);
+                return true;
+            }
+        }
+
+        try
+        {
+            timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            if (TimeZoneInfo.TryConvertIanaIdToWindowsId(timeZoneId, out var windowsId))
+            {
+                try
+                {
+                    timeZone = TimeZoneInfo.FindSystemTimeZoneById(windowsId);
+                    return true;
+                }
+                catch (TimeZoneNotFoundException)
+                {
+                    // Return a validation error below.
+                }
+                catch (InvalidTimeZoneException)
+                {
+                    // Return a validation error below.
+                }
+            }
+        }
+        catch (InvalidTimeZoneException)
+        {
+            // Return a validation error below.
+        }
+
+        timeZone = TimeZoneInfo.Utc;
+        return false;
+    }
+
+    internal static bool TryCombineUtc(
+        DateOnly date,
+        TimeOnly time,
+        TimeZoneInfo timeZone,
+        out DateTimeOffset instant,
+        out string error)
+    {
+        var local = date.ToDateTime(time, DateTimeKind.Unspecified);
+        if (timeZone.IsInvalidTime(local))
+        {
+            instant = default;
+            error = $"{local:HH:mm} does not exist in {timeZone.Id} because the clock moves forward.";
+            return false;
+        }
+        if (timeZone.IsAmbiguousTime(local))
+        {
+            instant = default;
+            error = $"{local:HH:mm} occurs twice in {timeZone.Id} because the clock moves back; choose a time outside the repeated hour.";
+            return false;
+        }
+
+        instant = new DateTimeOffset(local, timeZone.GetUtcOffset(local)).ToUniversalTime();
+        error = string.Empty;
+        return true;
     }
 }
 

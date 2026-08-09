@@ -295,6 +295,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("CalculationType")
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -324,7 +328,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("general_supports", "masterdata");
+                    b.ToTable("general_supports", "masterdata", t =>
+                        {
+                            t.HasCheckConstraint("CK_general_supports_CalculationType", "[CalculationType] IN (0, 1)");
+                        });
                 });
 
             modelBuilder.Entity("MasterData.Domain.Licenses.License", b =>
@@ -416,6 +423,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("CalculationType")
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -445,7 +456,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("materials", "masterdata");
+                    b.ToTable("materials", "masterdata", t =>
+                        {
+                            t.HasCheckConstraint("CK_materials_CalculationType", "[CalculationType] IN (0, 1)");
+                        });
                 });
 
             modelBuilder.Entity("MasterData.Domain.OperationTypes.OperationType", b =>
@@ -751,6 +765,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("CalculationType")
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -780,7 +798,10 @@ namespace MasterData.Infrastructure.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("tools", "masterdata");
+                    b.ToTable("tools", "masterdata", t =>
+                        {
+                            t.HasCheckConstraint("CK_tools_CalculationType", "[CalculationType] IN (0, 1)");
+                        });
                 });
 
             modelBuilder.Entity("MasterData.Domain.Customers.Customer", b =>

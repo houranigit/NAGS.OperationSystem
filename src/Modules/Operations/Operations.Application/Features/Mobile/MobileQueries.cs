@@ -100,9 +100,9 @@ public sealed class GetMobileCatalogsQueryHandler(
             services.Select(s => new MobileServiceCatalogItemDto(
                 s.Id, s.Name, s.Id == WellKnownMasterDataIds.AircraftPerLandingService)).ToList(),
             allowedPerformedServiceIds.OrderBy(id => id).ToList(),
-            tools.Select(t => new MobileCatalogItemDto(t.Id, t.Name)).ToList(),
-            materials.Select(m => new MobileCatalogItemDto(m.Id, m.Name)).ToList(),
-            generalSupports.Select(g => new MobileCatalogItemDto(g.Id, g.Name)).ToList(),
+            tools.Select(t => new MobileCatalogItemDto(t.Id, t.Name, t.CalculationType)).ToList(),
+            materials.Select(m => new MobileCatalogItemDto(m.Id, m.Name, m.CalculationType)).ToList(),
+            generalSupports.Select(g => new MobileCatalogItemDto(g.Id, g.Name, g.CalculationType)).ToList(),
             customers.Select(c => new MobileCustomerDto(c.Id, c.IataCode, c.Name)).ToList(),
             aircraftTypes.Select(a => new MobileAircraftTypeDto(a.Id, a.Manufacturer, a.Model)).ToList(),
             timeProvider.GetUtcNow());
@@ -196,7 +196,7 @@ public sealed class GetMobileFlightsQueryHandler(
         };
 
         var flights = await query
-            .OrderBy(f => f.Schedule.Sta).ThenBy(f => f.Id)
+            .OrderByDescending(f => f.Schedule.Sta).ThenByDescending(f => f.Id)
             .ToListAsync(cancellationToken);
 
         var dtos = await MobileFlightDtoMapper.MapWithWorkOrdersAsync(

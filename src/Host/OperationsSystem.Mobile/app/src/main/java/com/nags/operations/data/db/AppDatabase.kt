@@ -49,7 +49,7 @@ import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
  * and cannot be replayed against the new API; caches repopulate on first sync.
  */
 @Database(
-    version = 14,
+    version = 15,
     exportSchema = true,
     entities = [
         ServiceEntity::class,
@@ -72,6 +72,7 @@ import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
     FlightServiceConverters::class,
     MyWorkOrderCacheConverters::class,
     FlightAssignedEmployeeConverters::class,
+    ResourceCalculationTypeConverters::class,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun serviceDao(): ServiceDao
@@ -100,7 +101,12 @@ abstract class AppDatabase : RoomDatabase() {
                     // every schema change must provide an explicit migration so pending field
                     // work can never be erased by an accidentally omitted migration.
                     .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-                    .addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(
+                        MIGRATION_11_12,
+                        MIGRATION_12_13,
+                        MIGRATION_13_14,
+                        MIGRATION_14_15,
+                    )
                     .build()
                     .also { instance = it }
             }
@@ -141,6 +147,20 @@ abstract class AppDatabase : RoomDatabase() {
                 // Fail closed until the next personalized catalog sync supplies the allowance set.
                 db.execSQL(
                     "ALTER TABLE services ADD COLUMN isAllowedPerformedService INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE tools ADD COLUMN calculationType TEXT NOT NULL DEFAULT 'Duration'",
+                )
+                db.execSQL(
+                    "ALTER TABLE materials ADD COLUMN calculationType TEXT NOT NULL DEFAULT 'Quantity'",
+                )
+                db.execSQL(
+                    "ALTER TABLE general_supports ADD COLUMN calculationType TEXT NOT NULL DEFAULT 'Quantity'",
                 )
             }
         }

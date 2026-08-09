@@ -28,6 +28,25 @@ public sealed class WorkOrderAttachmentPolicyTests
     }
 
     [Fact]
+    public void Validate_WebmVoice_RequiresEbmlHeader()
+    {
+        var valid = WorkOrderAttachmentPolicy.Validate(
+            TaskAttachmentKind.Voice,
+            [0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81],
+            "voice.webm",
+            "audio/webm");
+        var invalid = WorkOrderAttachmentPolicy.Validate(
+            TaskAttachmentKind.Voice,
+            [0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x4D],
+            "voice.webm",
+            "audio/webm");
+
+        valid.IsSuccess.ShouldBeTrue();
+        invalid.IsFailure.ShouldBeTrue();
+        invalid.Error.Code.ShouldBe("Operations.WorkOrder.AttachmentInvalidSignature");
+    }
+
+    [Fact]
     public void SignaturePolicy_AllowsPngAndRejectsNonPngContent()
     {
         byte[] png =

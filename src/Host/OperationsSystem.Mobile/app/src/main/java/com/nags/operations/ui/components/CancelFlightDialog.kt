@@ -26,7 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.time.OffsetDateTime
-import java.time.ZoneOffset
+import java.time.ZoneId
 import com.nags.operations.ui.workorder.WorkOrderFormLimits
 
 /**
@@ -39,7 +39,7 @@ import com.nags.operations.ui.workorder.WorkOrderFormLimits
  * under-review cancel work order (see [isUpdate] / [initialCanceledAtIso]).
  *
  * @param flightStdIso Scheduled departure, used to seed the picker when no initial time is given.
- * @param flightOffset Zone offset of the flight so the picker shows local time.
+ * @param flightOffset User zone so the picker shows local time with the correct date rules.
  * @param initialCanceledAtIso Existing cancellation time when editing; null seeds the picker to now.
  * @param isUpdate When true, the copy reflects editing an existing cancellation rather than filing a new one.
  * @param isSubmitting True while the cancellation is being written durably to the local outbox.
@@ -50,7 +50,7 @@ import com.nags.operations.ui.workorder.WorkOrderFormLimits
 @Composable
 fun CancelFlightDialog(
     flightStdIso: String,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     onDismiss: () -> Unit,
     onConfirm: (canceledAtIso: String, reason: String) -> Unit,
     initialCanceledAtIso: String? = null,

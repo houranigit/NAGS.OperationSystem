@@ -1,4 +1,5 @@
 using System.Text;
+using MigraDoc.DocumentObjectModel.IO;
 using Operations.Api.Exports;
 using Operations.Application.Contracts;
 using PdfSharp.Pdf.Content;
@@ -36,6 +37,44 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             .SelectMany(page => ContentReader.ReadContent(page).OfType<COperator>())
             .Count(operation => operation.Name is "Tj" or "TJ")
             .ShouldBeGreaterThan(40);
+    }
+
+    [Fact]
+    public void PrintPresentation_DefaultsToRiyadhAndSupportsUtcAndDstZones()
+    {
+        var source = CreateSource(includeCompletionDetails: true);
+        FlightExportTimeZoneResolver.TryResolve(
+                "America/New_York",
+                out var newYork)
+            .ShouldBeTrue();
+
+        var riyadhDdl = DdlWriter.WriteToString(
+            WorkOrderPrintDocumentFactory.BuildDocument(source));
+        var utcDdl = DdlWriter.WriteToString(
+            WorkOrderPrintDocumentFactory.BuildDocument(source, TimeZoneInfo.Utc));
+        var newYorkDdl = DdlWriter.WriteToString(
+            WorkOrderPrintDocumentFactory.BuildDocument(source, newYork));
+
+        riyadhDdl.ShouldContain("TIMES SHOWN IN ASIA/RIYADH");
+        riyadhDdl.ShouldContain("20 Jul 2026 21:00 +03:00");
+        riyadhDdl.ShouldContain("20 Jul 2026 21:05 - 21:35 (+03:00)");
+        riyadhDdl.ShouldContain("Time Zone");
+        riyadhDdl.ShouldContain("Asia/Riyadh");
+        riyadhDdl.ShouldNotContain("ALL TIMES UTC");
+        riyadhDdl.ShouldNotContain("WORK WINDOW (UTC)");
+
+        utcDdl.ShouldContain("TIMES SHOWN IN UTC");
+        utcDdl.ShouldContain("20 Jul 2026 18:00 +00:00");
+        newYorkDdl.ShouldContain($"TIMES SHOWN IN {newYork.Id.ToUpperInvariant()}");
+        newYorkDdl.ShouldContain("20 Jul 2026 14:00 -04:00");
+
+        var beforeFallBack = new DateTimeOffset(2026, 11, 1, 5, 30, 0, TimeSpan.Zero);
+        var afterFallBack = new DateTimeOffset(2026, 11, 1, 6, 30, 0, TimeSpan.Zero);
+        WorkOrderPrintDocumentFactory.FormatCompactWindow(
+                beforeFallBack,
+                afterFallBack,
+                newYork)
+            .ShouldBe("01 Nov 2026 01:30 -04:00 - 01:30 -05:00");
     }
 
     [Fact]
@@ -205,6 +244,88 @@ public sealed class WorkOrderPrintDocumentFactoryTests
     }
 
     [Fact]
+    public void ReturnToRampDuration_UsesDistinctOccurrenceWindowsWhenAvailable()
+    {
+        var baseline = CreateSource(includeCompletionDetails: false);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var occurrences = new[]
+        {
+            new WorkOrderReturnToRampDto(
+                Guid.NewGuid(), now, now.AddMinutes(10), "First", Guid.NewGuid(), now, [], []),
+            new WorkOrderReturnToRampDto(
+                Guid.NewGuid(), now.AddMinutes(60), now.AddMinutes(80), "Second", Guid.NewGuid(), now, [], []),
+            new WorkOrderReturnToRampDto(
+                Guid.NewGuid(), now.AddMinutes(70), now.AddMinutes(90), "Third", Guid.NewGuid(), now, [], [])
+        };
+        var workOrder = baseline.WorkOrder with
+        {
+            ReturnToRamps = occurrences,
+            ServiceLines = [],
+            Tasks = []
+        };
+
+        WorkOrderPrintDocumentFactory.CalculateReturnToRampDuration(workOrder)
+            .ShouldBe(TimeSpan.FromMinutes(40));
+        WorkOrderPrintDocumentFactory.ResolveHeaderTo(workOrder)
+            .ShouldBe(now.AddMinutes(90));
+    }
+
+    [Fact]
+    public void Approved_print_includes_nested_return_to_ramp_task_resource_and_attachment_once_per_register()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var staff = baseline.WorkOrder.Tasks[0].Employees.ShouldHaveSingleItem();
+        var taskId = Guid.NewGuid();
+        const string toolName = "RTR UNIQUE TOW BAR";
+        const string attachmentName = "rtr-unique-evidence.pdf";
+        var task = new WorkOrderTaskDto(
+            taskId,
+            "Minor",
+            "Nested return-to-ramp corrective action",
+            now.AddMinutes(105),
+            now.AddMinutes(125),
+            [staff],
+            [
+                new WorkOrderTaskToolDto(
+                    Guid.NewGuid(),
+                    toolName,
+                    MasterData.Contracts.Resources.ResourceCalculationType.Duration,
+                    null,
+                    now.AddMinutes(107),
+                    now.AddMinutes(120))
+            ],
+            [],
+            [],
+            [new WorkOrderTaskAttachmentDto(Guid.NewGuid(), "Document", attachmentName, "application/pdf", 512)],
+            true);
+        var occurrence = new WorkOrderReturnToRampDto(
+            Guid.NewGuid(),
+            now.AddMinutes(100),
+            now.AddMinutes(130),
+            "Evidence-backed return",
+            Guid.NewGuid(),
+            now.AddMinutes(130),
+            [],
+            [task]);
+        var source = baseline with
+        {
+            WorkOrder = baseline.WorkOrder with
+            {
+                Tasks = baseline.WorkOrder.Tasks.Concat([task]).ToList(),
+                ReturnToRamps = [occurrence]
+            }
+        };
+
+        var ddl = DdlWriter.WriteToString(WorkOrderPrintDocumentFactory.BuildDocument(source));
+        var toolRegister = Between(ddl, "Tools Used (1)", "General Support (0)");
+        var attachmentRegister = Between(ddl, "Attachment Register (1)", "Approval and Customer Acceptance");
+
+        CountOccurrences(toolRegister, toolName).ShouldBe(1);
+        CountOccurrences(attachmentRegister, attachmentName).ShouldBe(1);
+    }
+
+    [Fact]
     public void Create_HandlesMoreStaffAndTasksThanTheOriginalStaticRows()
     {
         var baseline = CreateSource(includeCompletionDetails: true);
@@ -295,7 +416,13 @@ public sealed class WorkOrderPrintDocumentFactoryTests
                     new WorkOrderTaskDto(
                         Guid.NewGuid(), "Major", "Completed inspection", now.AddMinutes(10), now.AddMinutes(50),
                         [new WorkOrderTaskEmployeeDto(staffId, "Alex Technician", "EMP-100")], [],
-                        [new WorkOrderTaskMaterialDto(Guid.NewGuid(), "Hydraulic fluid", 2)], [], [], false),
+                        [new WorkOrderTaskMaterialDto(
+                            Guid.NewGuid(),
+                            "Hydraulic fluid",
+                            MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                            2,
+                            null,
+                            null)], [], [], false),
                     new WorkOrderTaskDto(
                         Guid.NewGuid(), "Minor", "Completed follow-up", now.AddMinutes(55), now.AddMinutes(95),
                         [
@@ -342,4 +469,16 @@ public sealed class WorkOrderPrintDocumentFactoryTests
         string fullName,
         string employeeId = "EMP") =>
         [new WorkOrderServiceLinePerformerDto(staffMemberId, fullName, employeeId)];
+
+    private static string Between(string source, string start, string end)
+    {
+        var startIndex = source.IndexOf(start, StringComparison.Ordinal);
+        startIndex.ShouldBeGreaterThanOrEqualTo(0);
+        var endIndex = source.IndexOf(end, startIndex, StringComparison.Ordinal);
+        endIndex.ShouldBeGreaterThan(startIndex);
+        return source[startIndex..endIndex];
+    }
+
+    private static int CountOccurrences(string source, string value) =>
+        source.Split(value, StringSplitOptions.None).Length - 1;
 }

@@ -1,9 +1,11 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Resources;
 using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Authorization;
+using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
 using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
@@ -108,6 +110,27 @@ public sealed class FlightQueryTests
         result.Value.Single().StationName.ShouldBe("Dammam");
         canceledResult.IsSuccess.ShouldBeTrue();
         canceledResult.Value.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GetSchedulerCalendar_UsesStartInclusiveEndExclusiveUtcBounds()
+    {
+        await using var db = NewDb();
+        var atStart = CreateScheduledFlight("RJ", "Royal Jordanian", "101", scheduledArrival: Now);
+        var beforeEnd = CreateScheduledFlight("RJ", "Royal Jordanian", "102", scheduledArrival: Now.AddHours(1).AddTicks(-1));
+        var atEnd = CreateScheduledFlight("RJ", "Royal Jordanian", "103", scheduledArrival: Now.AddHours(1));
+        db.Flights.AddRange(atStart, beforeEnd, atEnd);
+        await db.SaveChangesAsync();
+
+        var result = await new GetSchedulerCalendarQueryHandler(
+            db,
+            new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null)))
+            .Handle(
+                new GetSchedulerCalendarQuery(Now, Now.AddHours(1)),
+                CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Select(item => item.Id).ShouldBe([atStart.Id, beforeEnd.Id]);
     }
 
     [Theory]
@@ -302,6 +325,172 @@ public sealed class FlightQueryTests
         workOrder!.ToolNames.ShouldBe(["Towbar"]);
         workOrder.MaterialNames.ShouldBe(["Hydraulic fluid"]);
         workOrder.GeneralSupportNames.ShouldBe(["GPU"]);
+    }
+
+    [Fact]
+    public async Task GetFlightsExport_ProjectsSelectedWorkOrderServiceTaskAndReturnToRampDetailsOnly()
+    {
+        await using var db = NewDb();
+        var completedFlight = CreateScheduledFlight("RJ", "Royal Jordanian", "120");
+        var standardServicePerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Standard Engineer", "ENG-10");
+        var standardTaskPerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Standard Engineer", "ENG-10");
+        var returnServicePerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Ramp Engineer", "ENG-20");
+        var returnTaskPerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Ramp Engineer", "ENG-20");
+        var standardService = new WorkOrderServiceLineInput(
+            new ServiceSnapshot(Guid.NewGuid(), "Standard service"),
+            [standardServicePerformer],
+            TimeWindow.Create(Now.AddMinutes(12), Now.AddMinutes(25)).Value,
+            "Standard service notes");
+        var standardTask = new WorkOrderTaskInput(
+            Id: null,
+            TaskType.Major,
+            "Standard task notes",
+            TimeWindow.Create(Now.AddMinutes(26), Now.AddMinutes(32)).Value,
+            Employees: [standardTaskPerformer],
+            Tools:
+            [
+                new WorkOrderTaskToolInput(
+                    new ToolSnapshot(Guid.NewGuid(), "Standard tool", ResourceCalculationType.Quantity),
+                    QuantityUsage(2))
+            ],
+            Materials: [],
+            GeneralSupports: []);
+        var secondStandardTask = new WorkOrderTaskInput(
+            Id: null,
+            TaskType.Minor,
+            "Second standard task",
+            TimeWindow.Create(Now.AddMinutes(33), Now.AddMinutes(38)).Value,
+            Employees: [],
+            Tools: [],
+            Materials: [],
+            GeneralSupports: []);
+        var returnToRamp = new WorkOrderReturnToRampInput(
+            Id: null,
+            TimeWindow.Create(Now.AddMinutes(40), Now.AddMinutes(65)).Value,
+            "Bird-strike inspection",
+            ServiceLines:
+            [
+                new WorkOrderServiceLineInput(
+                    new ServiceSnapshot(Guid.NewGuid(), "RTR service"),
+                    [returnServicePerformer],
+                    TimeWindow.Create(Now.AddMinutes(42), Now.AddMinutes(50)).Value,
+                    "RTR service notes")
+            ],
+            Tasks:
+            [
+                new WorkOrderTaskInput(
+                    Id: null,
+                    TaskType.Minor,
+                    "RTR task notes",
+                    TimeWindow.Create(Now.AddMinutes(51), Now.AddMinutes(60)).Value,
+                    Employees: [returnTaskPerformer],
+                    Tools: [],
+                    Materials:
+                    [
+                        new WorkOrderTaskMaterialInput(
+                            new MaterialSnapshot(
+                                Guid.NewGuid(),
+                                "Inspection compound",
+                                ResourceCalculationType.Quantity),
+                            QuantityUsage(1.5m))
+                    ],
+                    GeneralSupports: [])
+            ]);
+        var selected = CreateWorkOrder(
+            completedFlight,
+            "121",
+            "Selected details",
+            tasks: [standardTask, secondStandardTask],
+            serviceLines: [standardService],
+            returnToRamps: [returnToRamp]);
+        var unselected = CreateWorkOrder(
+            completedFlight,
+            "122",
+            "Must not leak work order",
+            tasks:
+            [
+                new WorkOrderTaskInput(
+                    Id: null,
+                    TaskType.Major,
+                    "Must not leak task",
+                    TimeWindow.Create(Now.AddMinutes(20), Now.AddMinutes(25)).Value,
+                    Employees: [],
+                    Tools: [],
+                    Materials: [],
+                    GeneralSupports: [])
+            ],
+            serviceLines:
+            [
+                new WorkOrderServiceLineInput(
+                    new ServiceSnapshot(Guid.NewGuid(), "Must not leak service"),
+                    [new StaffMemberSnapshot(Guid.NewGuid(), "Leak Engineer", "ENG-99")],
+                    TimeWindow.Create(Now.AddMinutes(20), Now.AddMinutes(25)).Value,
+                    null)
+            ],
+            submittedAt: Now.AddMinutes(1));
+        selected.Approve(1, "DMM-0012", Guid.NewGuid(), Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
+        completedFlight.OnWorkOrderSubmitted(Now).IsSuccess.ShouldBeTrue();
+        completedFlight.SettleCompleted(Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
+
+        db.Flights.Add(completedFlight);
+        db.WorkOrders.AddRange(selected, unselected);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
+        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+            new GetFlightsExportQuery(),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var workOrder = result.Value.ShouldHaveSingleItem().ApprovedWorkOrder.ShouldNotBeNull();
+        workOrder.WorkOrderId.ShouldBe(selected.Id);
+        workOrder.WorkOrderStatus.ShouldBe("Approved");
+        workOrder.ServiceDetails.Select(detail => detail.ServiceName)
+            .ShouldBe(["Standard service", "RTR service"]);
+        workOrder.TaskDetails.Select(detail => detail.Description)
+            .ShouldBe(["Standard task notes", "Second standard task", "RTR task notes"]);
+        workOrder.TaskNames.ShouldBe(
+        [
+            "Major: Standard task notes",
+            "Minor: Second standard task",
+            "Minor: RTR task notes"
+        ]);
+        workOrder.ServiceDetails.ShouldNotContain(detail => detail.ServiceName.Contains("Must not leak"));
+        workOrder.TaskDetails.ShouldNotContain(detail =>
+            detail.Description != null && detail.Description.Contains("Must not leak"));
+
+        var standardServiceDetail = workOrder.ServiceDetails[0];
+        standardServiceDetail.PerformedByNames.ShouldBe(["Standard Engineer"]);
+        standardServiceDetail.Description.ShouldBe("Standard service notes");
+        standardServiceDetail.ReturnToRamp.ShouldBeNull();
+        var standardTaskDetail = workOrder.TaskDetails[0];
+        standardTaskDetail.TaskType.ShouldBe("Major");
+        standardTaskDetail.PerformedByNames.ShouldBe(["Standard Engineer"]);
+        standardTaskDetail.Tools.ShouldHaveSingleItem().ShouldBe(
+            new FlightExportResourceUsageDto(
+                "Standard tool",
+                ResourceCalculationType.Quantity,
+                2,
+                null,
+                null));
+
+        var returnServiceDetail = workOrder.ServiceDetails[1];
+        returnServiceDetail.PerformedByNames.ShouldBe(["Ramp Engineer"]);
+        returnServiceDetail.ReturnToRamp.ShouldNotBeNull();
+        returnServiceDetail.ReturnToRamp!.Sequence.ShouldBe(1);
+        returnServiceDetail.ReturnToRamp.Description.ShouldBe("Bird-strike inspection");
+        returnServiceDetail.ReturnToRamp.FromUtc.ShouldBe(Now.AddMinutes(40));
+        returnServiceDetail.ReturnToRamp.ToUtc.ShouldBe(Now.AddMinutes(65));
+        var returnTaskDetail = workOrder.TaskDetails[2];
+        returnTaskDetail.ReturnToRamp?.Id.ShouldBe(returnServiceDetail.ReturnToRamp.Id);
+        returnTaskDetail.Materials.ShouldHaveSingleItem().ShouldBe(
+            new FlightExportResourceUsageDto(
+                "Inspection compound",
+                ResourceCalculationType.Quantity,
+                1.5m,
+                null,
+                null));
     }
 
     [Fact]
@@ -777,15 +966,17 @@ public sealed class FlightQueryTests
         bool includeService = true,
         WorkOrderType type = WorkOrderType.Completion,
         IReadOnlyList<WorkOrderTaskInput>? tasks = null,
+        IReadOnlyList<WorkOrderServiceLineInput>? serviceLines = null,
+        IReadOnlyList<WorkOrderReturnToRampInput>? returnToRamps = null,
         bool mergeGenerated = false,
         DateTimeOffset? submittedAt = null,
         Guid? id = null)
     {
         var now = submittedAt ?? Now;
         var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report Engineer", "ENG-1");
-        WorkOrderServiceLineInput[] serviceLines = includeService
+        IReadOnlyList<WorkOrderServiceLineInput> submittedServiceLines = serviceLines ?? (includeService
             ? [ServiceLineInput(employee)]
-            : [];
+            : []);
         var cancellation = type == WorkOrderType.Cancellation
             ? CancellationDetails.Create(Now.AddMinutes(5), "Customer canceled").Value
             : null;
@@ -797,11 +988,12 @@ public sealed class FlightQueryTests
         var workOrder = mergeGenerated
             ? WorkOrder.SubmitMerged(
                 flight, type, ownerUserId, employee, actualNumber, aircraftType, "HZ-ABC", actuals,
-                cancellation, remarks, serviceLines, tasks ?? [], now, id)
+                cancellation, remarks, submittedServiceLines, tasks ?? [], returnToRamps ?? [], now, id)
             : WorkOrder.SubmitNew(
                 flight, type, ownerUserId, employee, actualNumber, aircraftType, "HZ-ABC", actuals,
-                cancellation, remarks, serviceLines, tasks ?? [], now, id);
+                cancellation, remarks, submittedServiceLines, tasks ?? [], returnToRamps ?? [], now, id);
 
+        workOrder.IsSuccess.ShouldBeTrue(workOrder.IsFailure ? workOrder.Error.Description : null);
         return workOrder.Value;
     }
 
@@ -839,21 +1031,24 @@ public sealed class FlightQueryTests
             Tools:
             [
                 new WorkOrderTaskToolInput(
-                    new ToolSnapshot(toolId, toolName),
-                    Quantity.Create(1).Value)
+                    new ToolSnapshot(toolId, toolName, ResourceCalculationType.Quantity),
+                    QuantityUsage(1))
             ],
             Materials:
             [
                 new WorkOrderTaskMaterialInput(
-                    new MaterialSnapshot(materialId, materialName),
-                    Quantity.Create(2).Value)
+                    new MaterialSnapshot(materialId, materialName, ResourceCalculationType.Quantity),
+                    QuantityUsage(2))
             ],
             GeneralSupports:
             [
                 new WorkOrderTaskGeneralSupportInput(
-                    new GeneralSupportSnapshot(supportId, supportName),
-                    Quantity.Create(1).Value)
+                    new GeneralSupportSnapshot(supportId, supportName, ResourceCalculationType.Quantity),
+                    QuantityUsage(1))
             ]);
+
+    private static ResourceUsage QuantityUsage(decimal quantity) =>
+        ResourceUsage.Create(ResourceCalculationType.Quantity, quantity, null, null).Value;
 
     private static void TransitionWorkOrder(WorkOrder workOrder, WorkOrderStatus status)
     {

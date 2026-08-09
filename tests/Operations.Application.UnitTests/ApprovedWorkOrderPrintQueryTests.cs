@@ -345,9 +345,27 @@ public sealed class ApprovedWorkOrderPrintQueryTests
                     "Turnaround support",
                     TimeWindow.Create(Now, Now.AddMinutes(30)).Value,
                     Employees: [employee],
-                    Tools: [new WorkOrderTaskToolInput(new ToolSnapshot(Guid.NewGuid(), "Towbar"), Quantity.Create(1).Value)],
-                    Materials: [new WorkOrderTaskMaterialInput(new MaterialSnapshot(Guid.NewGuid(), "Hydraulic fluid"), Quantity.Create(2).Value)],
-                    GeneralSupports: [new WorkOrderTaskGeneralSupportInput(new GeneralSupportSnapshot(Guid.NewGuid(), "GPU"), Quantity.Create(1).Value)])
+                    Tools: [new WorkOrderTaskToolInput(
+                        new ToolSnapshot(Guid.NewGuid(), "Towbar"),
+                        ResourceUsage.Create(
+                            MasterData.Contracts.Resources.ResourceCalculationType.Duration,
+                            null,
+                            Now,
+                            Now.AddMinutes(30)).Value)],
+                    Materials: [new WorkOrderTaskMaterialInput(
+                        new MaterialSnapshot(Guid.NewGuid(), "Hydraulic fluid"),
+                        ResourceUsage.Create(
+                            MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                            2,
+                            null,
+                            null).Value)],
+                    GeneralSupports: [new WorkOrderTaskGeneralSupportInput(
+                        new GeneralSupportSnapshot(Guid.NewGuid(), "GPU"),
+                        ResourceUsage.Create(
+                            MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                            1,
+                            null,
+                            null).Value)])
             ],
             Now).Value;
 

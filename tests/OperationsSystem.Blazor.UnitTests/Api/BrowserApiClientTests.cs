@@ -35,6 +35,49 @@ public sealed class BrowserApiClientTests
     }
 
     [Fact]
+    public async Task Approved_work_order_download_forwards_the_user_time_zone()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var flightId = Guid.NewGuid();
+
+        await operations.DownloadApprovedWorkOrderAsync(flightId, "America/Chicago");
+
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe(
+            $"/operations/flights/{flightId}/work-orders/approved/pdf?timeZoneId=America%2FChicago");
+    }
+
+    [Fact]
+    public async Task Return_to_ramp_clients_use_the_canonical_flight_and_work_order_routes()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var flightId = Guid.NewGuid();
+        var workOrderId = Guid.NewGuid();
+        var request = new WorkOrderReturnToRampRequestModel(
+            null,
+            DateTimeOffset.Parse("2026-08-08T10:00:00Z"),
+            DateTimeOffset.Parse("2026-08-08T11:00:00Z"),
+            "Second visit",
+            [],
+            []);
+
+        await operations.RecordFlightReturnToRampAsync(flightId, request);
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.request");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe("POST");
+        runtime.Arguments[1].ShouldBe($"/operations/flights/{flightId}/return-to-ramps");
+        runtime.Arguments[2].ShouldBeSameAs(request);
+
+        await operations.RecordWorkOrderReturnToRampAsync(workOrderId, request);
+
+        runtime.Arguments![1].ShouldBe($"/operations/work-orders/{workOrderId}/return-to-ramps");
+        runtime.Arguments[2].ShouldBeSameAs(request);
+    }
+
+    [Fact]
     public async Task Dashboard_approved_work_order_download_uses_dashboard_authenticated_blob_route()
     {
         var runtime = new CapturingDownloadJsRuntime();
@@ -48,6 +91,20 @@ public sealed class BrowserApiClientTests
         runtime.Arguments![0].ShouldBe(
             $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf");
         runtime.Arguments[1].ShouldBe("approved-work-order.pdf");
+    }
+
+    [Fact]
+    public async Task Flights_export_forwards_the_user_time_zone_to_the_regular_export_route()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+
+        await operations.ExportFlightsAsync("xlsx", timeZoneId: "Asia/Riyadh");
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe(
+            "/operations/flights/export?format=xlsx&timeZoneId=Asia%2FRiyadh");
     }
 
     [Fact]

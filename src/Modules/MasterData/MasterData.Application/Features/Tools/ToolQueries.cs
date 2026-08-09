@@ -32,7 +32,8 @@ public sealed class GetToolsQueryHandler(IMasterDataDbContext db)
         var items = await ApplySort(query, request.Sort)
             .Skip(paging.Skip)
             .Take(paging.PageSize)
-            .Select(t => new ToolListItemDto(t.Id, t.Name, t.Description, t.IsActive, t.Equipments.Count))
+            .Select(t => new ToolListItemDto(
+                t.Id, t.Name, t.Description, t.IsActive, t.Equipments.Count, t.CalculationType))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<ToolListItemDto>(items, total);
@@ -46,6 +47,7 @@ public sealed class GetToolsQueryHandler(IMasterDataDbContext db)
         return spec.Field switch
         {
             "name" => spec.Descending ? query.OrderByDescending(t => t.Name).ThenByDescending(t => t.Id) : query.OrderBy(t => t.Name).ThenBy(t => t.Id),
+            "calculationtype" => spec.Descending ? query.OrderByDescending(t => t.CalculationType).ThenByDescending(t => t.Id) : query.OrderBy(t => t.CalculationType).ThenBy(t => t.Id),
             "isactive" => spec.Descending ? query.OrderByDescending(t => t.IsActive).ThenByDescending(t => t.Id) : query.OrderBy(t => t.IsActive).ThenBy(t => t.Id),
             _ => query.OrderBy(t => t.Name).ThenBy(t => t.Id)
         };
@@ -74,7 +76,8 @@ public sealed class GetToolByIdQueryHandler(IMasterDataDbContext db)
                     .ThenBy(e => e.SerialId)
                     .ThenBy(e => e.Id)
                     .Select(e => new ToolEquipmentDto(e.Id, e.FactoryId, e.SerialId, e.CalibrationDate))
-                    .ToList()))
+                    .ToList(),
+                t.CalculationType))
             .FirstOrDefaultAsync(cancellationToken);
 
         return tool is null
@@ -94,7 +97,7 @@ public sealed class GetActiveToolOptionsQueryHandler(IMasterDataDbContext db)
             .Where(t => t.IsActive)
             .OrderBy(t => t.Name)
             .ThenBy(t => t.Id)
-            .Select(t => new ToolOptionDto(t.Id, t.Name))
+            .Select(t => new ToolOptionDto(t.Id, t.Name, t.CalculationType))
             .ToListAsync(cancellationToken);
 
         return Result.Success(options);

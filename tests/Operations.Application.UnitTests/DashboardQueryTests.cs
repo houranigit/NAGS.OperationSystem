@@ -815,19 +815,31 @@ public sealed class DashboardQueryTests
             [
                 new WorkOrderTaskToolInput(
                     new ToolSnapshot(Guid.NewGuid(), "Towbar"),
-                    Quantity.Create(1).Value)
+                    ResourceUsage.Create(
+                        MasterData.Contracts.Resources.ResourceCalculationType.Duration,
+                        null,
+                        Now.AddMinutes(10),
+                        Now.AddMinutes(35)).Value)
             ],
             Materials:
             [
                 new WorkOrderTaskMaterialInput(
                     new MaterialSnapshot(Guid.NewGuid(), "Hydraulic fluid"),
-                    Quantity.Create(2).Value)
+                    ResourceUsage.Create(
+                        MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                        2,
+                        null,
+                        null).Value)
             ],
             GeneralSupports:
             [
                 new WorkOrderTaskGeneralSupportInput(
                     new GeneralSupportSnapshot(Guid.NewGuid(), "GPU"),
-                    Quantity.Create(1).Value)
+                    ResourceUsage.Create(
+                        MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                        1,
+                        null,
+                        null).Value)
             ]);
 
     private static GetOperationsDashboardQueryHandler AdminHandler(OperationsDbContext db) =>

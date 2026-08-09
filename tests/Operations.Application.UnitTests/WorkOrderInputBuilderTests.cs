@@ -1,4 +1,5 @@
 using MasterData.Contracts.Readers;
+using MasterData.Contracts.Resources;
 using Operations.Application.Common;
 using Operations.Application.Features.WorkOrders;
 using Operations.Domain.Enumerations;
@@ -103,7 +104,7 @@ public sealed class WorkOrderInputBuilderTests
     }
 
     [Fact]
-    public async Task BuildAsync_CopiesReturnToRampProvenanceToDomainInput()
+    public async Task BuildAsync_TranslatesLegacyReturnToRampFlagsIntoOneOccurrence()
     {
         var stationId = Guid.NewGuid();
         var serviceId = Guid.NewGuid();
@@ -155,13 +156,254 @@ public sealed class WorkOrderInputBuilderTests
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
-        var serviceLine = result.Value.ServiceLines.ShouldHaveSingleItem();
+        result.Value.ServiceLines.ShouldBeEmpty();
+        result.Value.Tasks.ShouldBeEmpty();
+        var occurrence = result.Value.ReturnToRamps!.ShouldHaveSingleItem();
+        var serviceLine = occurrence.ServiceLines.ShouldHaveSingleItem();
         serviceLine.Id.ShouldBe(serviceLineId);
         serviceLine.IsReturnToRamp.ShouldBeTrue();
         serviceLine.PerformedBy.Select(performer => performer.StaffMemberId)
             .ShouldBe([staffId, secondStaffId]);
-        result.Value.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        occurrence.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        occurrence.Window.From.ShouldBe(arrival.AddMinutes(5));
+        occurrence.Window.To.ShouldBe(arrival.AddMinutes(20));
     }
+
+    [Fact]
+    public async Task BuildAsync_PreservesExplicitOccurrenceGroupingAndAllowsPostAtdWindows()
+    {
+        var stationId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        var arrival = DateTimeOffset.UtcNow;
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+
+        WorkOrderReturnToRampCommand Occurrence(int hour) => new(
+            null,
+            arrival.AddHours(hour),
+            arrival.AddHours(hour).AddMinutes(30),
+            $"Occurrence {hour}",
+            [new WorkOrderServiceLineCommand(
+                serviceId,
+                [staffId],
+                arrival.AddHours(hour).AddMinutes(5),
+                arrival.AddHours(hour).AddMinutes(20),
+                "Performed service")],
+            []);
+
+        var result = await builder.BuildAsync(
+            EmptyPayload() with
+            {
+                ActualFlightNumber = "RJ234",
+                AircraftTypeId = Guid.NewGuid(),
+                ActualArrivalUtc = arrival,
+                ActualDepartureUtc = arrival.AddHours(1),
+                ReturnToRamps = [Occurrence(2), Occurrence(4)]
+            },
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ReturnToRamps!.Count.ShouldBe(2);
+        result.Value.ReturnToRamps.Select(item => item.Description)
+            .ShouldBe(["Occurrence 2", "Occurrence 4"]);
+    }
+
+    [Fact]
+    public async Task BuildAsync_UsesCatalogDurationTypeAndAllowsOpenEnd()
+    {
+        var stationId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        var toolId = Guid.NewGuid();
+        var arrival = DateTimeOffset.UtcNow;
+        var taskFrom = arrival.AddMinutes(5);
+        var taskTo = arrival.AddMinutes(45);
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+
+        var result = await builder.BuildAsync(
+            CompletionPayload(arrival, new WorkOrderTaskCommand(
+                null,
+                TaskType.Major,
+                null,
+                taskFrom,
+                taskTo,
+                [staffId],
+                [new WorkOrderTaskToolCommand(toolId, null, taskFrom.AddMinutes(2), null)],
+                [],
+                [])),
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var tool = result.Value.Tasks.ShouldHaveSingleItem().Tools.ShouldHaveSingleItem();
+        tool.Tool.CalculationType.ShouldBe(ResourceCalculationType.Duration);
+        tool.Usage.Quantity.ShouldBeNull();
+        tool.Usage.FromUtc.ShouldBe(taskFrom.AddMinutes(2));
+        tool.Usage.ToUtc.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task BuildAsync_TranslatesLegacyQuantityOnlyDurationResourceToTaskWindow()
+    {
+        var stationId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        var arrival = DateTimeOffset.UtcNow;
+        var taskFrom = arrival.AddMinutes(5);
+        var taskTo = arrival.AddMinutes(45);
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+
+        var result = await builder.BuildAsync(
+            CompletionPayload(arrival, new WorkOrderTaskCommand(
+                null,
+                TaskType.Minor,
+                null,
+                taskFrom,
+                taskTo,
+                [staffId],
+                [new WorkOrderTaskToolCommand(Guid.NewGuid(), 1)],
+                [],
+                [])),
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var usage = result.Value.Tasks.ShouldHaveSingleItem().Tools.ShouldHaveSingleItem().Usage;
+        usage.Quantity.ShouldBeNull();
+        usage.FromUtc.ShouldBe(taskFrom);
+        usage.ToUtc.ShouldBe(taskTo);
+    }
+
+    [Fact]
+    public async Task BuildAsync_RejectsDuplicateResourceRowsAndDurationOutsideTask()
+    {
+        var stationId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        var toolId = Guid.NewGuid();
+        var arrival = DateTimeOffset.UtcNow;
+        var taskFrom = arrival.AddMinutes(5);
+        var taskTo = arrival.AddMinutes(45);
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+
+        var duplicate = await builder.BuildAsync(
+            CompletionPayload(arrival, new WorkOrderTaskCommand(
+                null,
+                TaskType.Major,
+                null,
+                taskFrom,
+                taskTo,
+                [staffId],
+                [new WorkOrderTaskToolCommand(toolId, 1), new WorkOrderTaskToolCommand(toolId, 1)],
+                [],
+                [])),
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        duplicate.IsFailure.ShouldBeTrue();
+        duplicate.Error.Failures!.Keys.ShouldContain("Tasks[0].Tools[1].ItemId");
+
+        var outsideTask = await builder.BuildAsync(
+            CompletionPayload(arrival, new WorkOrderTaskCommand(
+                null,
+                TaskType.Major,
+                null,
+                taskFrom,
+                taskTo,
+                [staffId],
+                [new WorkOrderTaskToolCommand(toolId, null, taskFrom.AddMinutes(-1), null)],
+                [],
+                [])),
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        outsideTask.IsFailure.ShouldBeTrue();
+        outsideTask.Error.Code.ShouldBe("Operations.ResourceUsage.FromBeforeTask");
+    }
+
+    [Fact]
+    public async Task BuildAsync_AppliesDuplicateAndDurationBoundsToReturnToRampTaskResources()
+    {
+        var stationId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        var toolId = Guid.NewGuid();
+        var arrival = DateTimeOffset.UtcNow;
+        var occurrenceFrom = arrival.AddHours(2);
+        var occurrenceTo = occurrenceFrom.AddHours(1);
+        var taskFrom = occurrenceFrom.AddMinutes(5);
+        var taskTo = occurrenceTo.AddMinutes(-5);
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+
+        WorkOrderEditableCommandPayload PayloadWith(params WorkOrderTaskToolCommand[] tools) =>
+            EmptyPayload() with
+            {
+                ActualFlightNumber = "RJ234",
+                AircraftTypeId = Guid.NewGuid(),
+                ActualArrivalUtc = arrival,
+                ActualDepartureUtc = arrival.AddHours(1),
+                ReturnToRamps =
+                [
+                    new WorkOrderReturnToRampCommand(
+                        null,
+                        occurrenceFrom,
+                        occurrenceTo,
+                        null,
+                        [],
+                        [new WorkOrderTaskCommand(
+                            null,
+                            TaskType.Minor,
+                            "RTR resource validation",
+                            taskFrom,
+                            taskTo,
+                            [staffId],
+                            tools,
+                            [],
+                            [])])
+                ]
+            };
+
+        var duplicate = await builder.BuildAsync(
+            PayloadWith(
+                new WorkOrderTaskToolCommand(toolId, 1),
+                new WorkOrderTaskToolCommand(toolId, 1)),
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        duplicate.IsFailure.ShouldBeTrue();
+        duplicate.Error.Failures!.Keys.ShouldContain("ReturnToRamps[0].Tasks[0].Tools[1].ItemId");
+
+        var outsideTask = await builder.BuildAsync(
+            PayloadWith(new WorkOrderTaskToolCommand(toolId, null, taskFrom, taskTo.AddMinutes(1))),
+            WorkOrderType.Completion,
+            "RJ234",
+            stationId,
+            CancellationToken.None);
+
+        outsideTask.IsFailure.ShouldBeTrue();
+        outsideTask.Error.Code.ShouldBe("Operations.ResourceUsage.ToAfterTask");
+    }
+
+    private static WorkOrderEditableCommandPayload CompletionPayload(
+        DateTimeOffset arrival,
+        WorkOrderTaskCommand task) =>
+        EmptyPayload() with
+        {
+            ActualFlightNumber = "RJ234",
+            AircraftTypeId = Guid.NewGuid(),
+            ActualArrivalUtc = arrival,
+            ActualDepartureUtc = arrival.AddHours(1),
+            Tasks = [task]
+        };
 
     private static WorkOrderEditableCommandPayload EmptyPayload() =>
         new(
@@ -214,13 +456,13 @@ public sealed class WorkOrderInputBuilderTests
             throw new NotImplementedException();
 
         public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<ToolReadSnapshot?>(new(id, "Towbar", IsActive: true, CalculationType: ResourceCalculationType.Duration));
 
         public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<MaterialReadSnapshot?>(new(id, "Hydraulic fluid", IsActive: true, CalculationType: ResourceCalculationType.Quantity));
 
         public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken cancellationToken) =>
-            throw new NotImplementedException();
+            Task.FromResult<GeneralSupportReadSnapshot?>(new(id, "GPU", IsActive: true, CalculationType: ResourceCalculationType.Quantity));
 
         public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();

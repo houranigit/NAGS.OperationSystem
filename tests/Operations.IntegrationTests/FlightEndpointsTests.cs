@@ -76,6 +76,7 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
                     sheet.Cell(5, 23).GetString().ShouldBe("Materials");
                     sheet.Cell(5, 24).GetString().ShouldBe("General Support");
                     sheet.Cell(5, 27).GetString().ShouldBe("Status");
+                    sheet.Cell(5, 28).GetString().ShouldBe("Tasks");
                     sheet.Cell(6, 1).GetValue<int>().ShouldBe(1);
                     sheet.Cell(6, 2).GetString().ShouldBe("-");
                     sheet.Cell(6, 4).IsEmpty().ShouldBeTrue();
@@ -113,7 +114,7 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
 
                 var csv = Encoding.UTF8.GetString(content, 3, content.Length - 3);
                 var header = csv.Split('\n', 2)[0].TrimEnd('\r');
-                header.ShouldBe("#,WO#,Flight#,WO Flight#,STA,STD,ATA,ATD,Arrival Delay,Departure Delay,Scheduled Duration,Actual Duration,Customer IATA Code,Customer Name,Station IATA Code,Station Name,Aircraft Manufacturer,Aircraft Model,Aircraft Tail Number,Planned Services,Services,Tools,Materials,General Support,Assigned Employees,Remarks,Status");
+                header.ShouldBe("#,WO#,Flight#,WO Flight#,STA,STD,ATA,ATD,Arrival Delay,Departure Delay,Scheduled Duration,Actual Duration,Customer IATA Code,Customer Name,Station IATA Code,Station Name,Aircraft Manufacturer,Aircraft Model,Aircraft Tail Number,Planned Services,Services,Tools,Materials,General Support,Assigned Employees,Remarks,Status,Tasks");
                 csv.ShouldContain("Export Customer");
                 break;
             case "pdf":
@@ -143,12 +144,41 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
     }
 
     [Fact]
+    public async Task ExportFlights_OmittedTimeZoneDefaultsToRiyadhPresentation()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var seed = await SeedFlightDetailsAsync();
+        var response = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/export?format=xlsx&search={Uri.EscapeDataString(seed.FlightNumber)}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var workbook = new XLWorkbook(stream);
+        var sheet = workbook.Worksheet("Flights");
+        sheet.Cell(6, 5).GetDateTime().ShouldBe(seed.ScheduledArrivalUtc.AddHours(3).DateTime);
+        sheet.Column(5).Style.DateFormat.Format.ShouldContain("Asia/Riyadh");
+        sheet.Cell(2, 1).GetString().ShouldContain("[Asia/Riyadh]");
+    }
+
+    [Fact]
+    public async Task ExportFlights_InvalidTimeZoneReturnsValidationProblem()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+
+        var response = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/export?format=csv&timeZoneId=Moon%2FBase");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Operations.Flight.ExportTimeZoneInvalid");
+    }
+
+    [Fact]
     public async Task DashboardAndFlights_WithEquivalentFilters_ExportTheSameCanonicalCsv()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var seed = await SeedFlightDetailsAsync();
         var flightsUrl =
-            $"{OperationsApiFactory.Base}/flights/export?format=csv&stationId={seed.StationId}&customerId={seed.CustomerId}";
+            $"{OperationsApiFactory.Base}/flights/export?format=csv&stationId={seed.StationId}&customerId={seed.CustomerId}&timeZoneId=UTC";
         var dashboardUrl =
             $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=csv&stationIds={seed.StationId}&customerIds={seed.CustomerId}";
 
@@ -189,8 +219,12 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
 
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
-        return new SeededFlight(flightNumber, customerId, stationId);
+        return new SeededFlight(flightNumber, customerId, stationId, now);
     }
 
-    private sealed record SeededFlight(string FlightNumber, Guid CustomerId, Guid StationId);
+    private sealed record SeededFlight(
+        string FlightNumber,
+        Guid CustomerId,
+        Guid StationId,
+        DateTimeOffset ScheduledArrivalUtc);
 }

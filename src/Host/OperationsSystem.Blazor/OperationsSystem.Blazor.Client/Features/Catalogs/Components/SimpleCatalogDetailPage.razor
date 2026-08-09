@@ -132,6 +132,13 @@
                             <dt>Description</dt>
                             <dd>@DescriptionOrNone(catalog.Description)</dd>
                         </div>
+                        @if (catalog.CalculationType is { } calculationType)
+                        {
+                            <div class="md-metric">
+                                <dt>Usage calculation</dt>
+                                <dd>@calculationType</dd>
+                            </div>
+                        }
                         <div class="md-metric">
                             <dt>Status</dt>
                             <dd>@(catalog.IsActive ? "Active" : "Inactive")</dd>
@@ -429,10 +436,10 @@
         _ => "Catalog"
     };
 
-    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
-    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+    private static SimpleCatalogDetail ToDetail(ServiceDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null);
+    private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null);
+    private static SimpleCatalogDetail ToDetail(MaterialDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType);
+    private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) => new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType);
 
     private void GoBack() => Navigation.NavigateTo($"/master-data/{Route}");
 

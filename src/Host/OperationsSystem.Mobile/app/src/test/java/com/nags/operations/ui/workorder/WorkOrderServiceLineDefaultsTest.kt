@@ -56,19 +56,23 @@ class WorkOrderServiceLineDefaultsTest {
     }
 
     @Test
-    fun current_timestamp_uses_flight_offset_and_minute_precision() {
+    fun current_timestamp_uses_user_zone_and_minute_precision() {
         val clock = Clock.fixed(
             Instant.parse("2026-07-18T15:42:37.987Z"),
             ZoneId.of("UTC"),
         )
 
         assertEquals(
-            "2026-07-18T10:42-05:00",
-            currentWorkOrderTimestamp(clock, "2026-07-18T08:00:00-05:00"),
+            "2026-07-18T18:42+03:00",
+            currentWorkOrderTimestamp(
+                clock,
+                "2026-07-18T08:00:00-05:00",
+                zoneId = ZoneId.of("Asia/Riyadh"),
+            ),
         )
         assertEquals(
             "2026-07-18T15:42Z",
-            currentWorkOrderTimestamp(clock, "invalid"),
+            currentWorkOrderTimestamp(clock, "invalid", zoneId = ZoneId.of("UTC")),
         )
     }
 

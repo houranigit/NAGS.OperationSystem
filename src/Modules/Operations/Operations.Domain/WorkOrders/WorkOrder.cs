@@ -13,6 +13,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<WorkOrderServiceLine> _serviceLines = [];
     private readonly List<WorkOrderTask> _tasks = [];
+    private readonly List<WorkOrderReturnToRamp> _returnToRamps = [];
 
     private WorkOrder() { }
 
@@ -57,6 +58,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
     public IReadOnlyList<WorkOrderServiceLine> ServiceLines => _serviceLines.AsReadOnly();
     public IReadOnlyList<WorkOrderTask> Tasks => _tasks.AsReadOnly();
+    public IReadOnlyList<WorkOrderReturnToRamp> ReturnToRamps => _returnToRamps.AsReadOnly();
     public bool IsEditable => Status is WorkOrderStatus.Submitted or WorkOrderStatus.Returned;
 
     public static Result<WorkOrder> SubmitNew(
@@ -75,7 +77,43 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         DateTimeOffset now,
         Guid? id = null)
     {
+        var legacy = SplitLegacyReturnToRampActivities(serviceLines, tasks);
         return SubmitInternal(
+            flight,
+            type,
+            ownerUserId,
+            owner,
+            actualFlightNumber,
+            aircraftType,
+            aircraftTailNumber,
+            actuals,
+            cancellation,
+            remarks,
+            legacy.ServiceLines,
+            legacy.Tasks,
+            legacy.ReturnToRamps,
+            now,
+            isMergeGenerated: false,
+            id);
+    }
+
+    public static Result<WorkOrder> SubmitNew(
+        Flight flight,
+        WorkOrderType type,
+        Guid ownerUserId,
+        StaffMemberSnapshot? owner,
+        FlightNumber? actualFlightNumber,
+        AircraftTypeSnapshot? aircraftType,
+        string? aircraftTailNumber,
+        ActualTime? actuals,
+        CancellationDetails? cancellation,
+        string? remarks,
+        IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
+        IReadOnlyList<WorkOrderTaskInput> tasks,
+        IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
+        DateTimeOffset now,
+        Guid? id = null) =>
+        SubmitInternal(
             flight,
             type,
             ownerUserId,
@@ -88,10 +126,10 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             remarks,
             serviceLines,
             tasks,
+            returnToRamps,
             now,
             isMergeGenerated: false,
             id);
-    }
 
     public static Result<WorkOrder> SubmitMerged(
         Flight flight,
@@ -109,7 +147,43 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         DateTimeOffset now,
         Guid? id = null)
     {
+        var legacy = SplitLegacyReturnToRampActivities(serviceLines, tasks);
         return SubmitInternal(
+            flight,
+            type,
+            ownerUserId,
+            owner,
+            actualFlightNumber,
+            aircraftType,
+            aircraftTailNumber,
+            actuals,
+            cancellation,
+            remarks,
+            legacy.ServiceLines,
+            legacy.Tasks,
+            legacy.ReturnToRamps,
+            now,
+            isMergeGenerated: true,
+            id);
+    }
+
+    public static Result<WorkOrder> SubmitMerged(
+        Flight flight,
+        WorkOrderType type,
+        Guid ownerUserId,
+        StaffMemberSnapshot? owner,
+        FlightNumber? actualFlightNumber,
+        AircraftTypeSnapshot? aircraftType,
+        string? aircraftTailNumber,
+        ActualTime? actuals,
+        CancellationDetails? cancellation,
+        string? remarks,
+        IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
+        IReadOnlyList<WorkOrderTaskInput> tasks,
+        IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
+        DateTimeOffset now,
+        Guid? id = null) =>
+        SubmitInternal(
             flight,
             type,
             ownerUserId,
@@ -122,10 +196,10 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             remarks,
             serviceLines,
             tasks,
+            returnToRamps,
             now,
             isMergeGenerated: true,
             id);
-    }
 
     private static Result<WorkOrder> SubmitInternal(
         Flight flight,
@@ -140,6 +214,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         string? remarks,
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
         IReadOnlyList<WorkOrderTaskInput> tasks,
+        IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
         DateTimeOffset now,
         bool isMergeGenerated,
         Guid? id = null)
@@ -147,7 +222,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (flight.Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
             return Error.Conflict("Work orders can only be submitted for scheduled or in-progress flights.", "Operations.WorkOrder.FlightNotOpen");
 
-        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks);
+        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps);
         if (validate.IsFailure)
             return validate.Error;
 
@@ -176,6 +251,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         workOrder.ReplaceServiceLinesInternal(serviceLines);
         workOrder.ReconcileTasksInternal(tasks);
+        workOrder.ReplaceReturnToRampsInternal(returnToRamps, ownerUserId, now);
         workOrder.RaiseDomainEvent(new WorkOrderSubmitted(workOrder.Id, flight.Id));
         return workOrder;
     }
@@ -192,11 +268,50 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<WorkOrderTaskInput> tasks,
         DateTimeOffset now)
     {
+        var legacy = SplitLegacyReturnToRampActivities(serviceLines, tasks);
+        IReadOnlyList<WorkOrderReturnToRampInput>? returnToRamps = legacy.ReturnToRamps.Count == 0
+            ? null
+            : legacy.ReturnToRamps;
+        return UpdateDetails(
+            type,
+            actualFlightNumber,
+            aircraftType,
+            aircraftTailNumber,
+            actuals,
+            cancellation,
+            remarks,
+            legacy.ServiceLines,
+            legacy.Tasks,
+            returnToRamps,
+            now);
+    }
+
+    /// <summary>
+    /// Updates editable work-order details. A null return-to-ramp collection means an older client
+    /// omitted the collection and the existing occurrence records must be preserved; an empty
+    /// collection is an explicit request from a collection-aware client to remove them.
+    /// </summary>
+    public Result UpdateDetails(
+        WorkOrderType type,
+        FlightNumber actualFlightNumber,
+        AircraftTypeSnapshot? aircraftType,
+        string? aircraftTailNumber,
+        ActualTime? actuals,
+        CancellationDetails? cancellation,
+        string? remarks,
+        IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
+        IReadOnlyList<WorkOrderTaskInput> tasks,
+        IReadOnlyList<WorkOrderReturnToRampInput>? returnToRamps,
+        DateTimeOffset now)
+    {
         var editable = EnsureEditable();
         if (editable.IsFailure)
             return editable.Error;
 
-        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks);
+        if (type == WorkOrderType.Cancellation && returnToRamps is null && _returnToRamps.Count > 0)
+            return Error.Validation("Cancellation work orders cannot include return-to-ramp records.", "Operations.ReturnToRamp.CancellationNotAllowed");
+
+        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps ?? []);
         if (validate.IsFailure)
             return validate.Error;
 
@@ -228,6 +343,13 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         var reconcile = ReconcileTasksInternal(tasks);
         if (reconcile.IsFailure)
             return reconcile.Error;
+
+        if (returnToRamps is not null)
+        {
+            var reconcileReturnToRamps = ReconcileReturnToRampsInternal(returnToRamps, OwnerUserId, now);
+            if (reconcileReturnToRamps.IsFailure)
+                return reconcileReturnToRamps.Error;
+        }
 
         UpdatedAtUtc = now;
         RaiseDomainEvent(previousType == Type ? new WorkOrderUpdated(Id) : new WorkOrderConverted(Id));
@@ -341,7 +463,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (editable.IsFailure)
             return editable.Error;
 
-        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        var task = _tasks.FirstOrDefault(t => t.Id == taskId && t.ReturnToRampId is null);
         if (task is null)
             return Error.NotFound("Task not found.", "Operations.WorkOrder.TaskNotFound");
 
@@ -360,7 +482,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (editable.IsFailure)
             return editable.Error;
 
-        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        var task = _tasks.FirstOrDefault(t => t.Id == taskId && t.ReturnToRampId is null);
         if (task is null)
             return Error.NotFound("Task not found.", "Operations.WorkOrder.TaskNotFound");
 
@@ -386,7 +508,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (editable.IsFailure)
             return editable.Error;
 
-        var serviceLine = _serviceLines.FirstOrDefault(line => line.Id == serviceLineId);
+        var serviceLine = _serviceLines.FirstOrDefault(line => line.Id == serviceLineId && line.ReturnToRampId is null);
         if (serviceLine is null)
             return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
 
@@ -405,7 +527,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (editable.IsFailure)
             return editable.Error;
 
-        var serviceLine = _serviceLines.FirstOrDefault(line => line.Id == serviceLineId);
+        var serviceLine = _serviceLines.FirstOrDefault(line => line.Id == serviceLineId && line.ReturnToRampId is null);
         if (serviceLine is null)
             return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
 
@@ -471,6 +593,114 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             ? Result.Success()
             : Error.Conflict("This work order is locked and can no longer be edited.", "Operations.WorkOrder.Locked");
 
+    public Result<WorkOrderReturnToRamp> AppendReturnToRamp(
+        WorkOrderReturnToRampInput input,
+        Guid recordedByUserId,
+        DateTimeOffset now,
+        bool allowApprovedCompletion = false)
+    {
+        if (Type != WorkOrderType.Completion)
+            return Error.Conflict("Return to ramp can only be recorded on completion work orders.", "Operations.ReturnToRamp.CompletionRequired");
+        if (!IsEditable && !(allowApprovedCompletion && Status == WorkOrderStatus.Approved))
+            return Error.Conflict("This work order cannot accept a return-to-ramp record.", "Operations.ReturnToRamp.WorkOrderLocked");
+
+        var validation = ValidateReturnToRamp(input);
+        if (validation.IsFailure)
+            return validation.Error;
+
+        var id = input.Id is { } requestedId && requestedId != Guid.Empty ? requestedId : Guid.NewGuid();
+        if (_returnToRamps.Any(item => item.Id == id))
+            return Error.Conflict("The return-to-ramp id already belongs to this work order.", "Operations.ReturnToRamp.IdDuplicate");
+
+        var record = new WorkOrderReturnToRamp(id, Id, input, recordedByUserId, now);
+        _returnToRamps.Add(record);
+        _serviceLines.AddRange(record.ServiceLines);
+        _tasks.AddRange(record.Tasks);
+        UpdatedAtUtc = now.ToUniversalTime();
+        RaiseDomainEvent(new WorkOrderReturnToRampRecorded(Id, record.Id));
+        return record;
+    }
+
+    public Result<WorkOrderServiceLineAttachment> AddReturnToRampServiceLineAttachment(
+        Guid serviceLineId,
+        TaskAttachmentKind kind,
+        string storageReference,
+        string originalFileName,
+        string contentType,
+        long size,
+        DateTimeOffset now)
+    {
+        var line = _serviceLines.FirstOrDefault(item => item.Id == serviceLineId && item.ReturnToRampId.HasValue);
+        if (line is null)
+            return Error.NotFound("Return-to-ramp service line not found.", "Operations.ReturnToRamp.ServiceLineNotFound");
+        if (!IsEditable && !(Type == WorkOrderType.Completion && Status == WorkOrderStatus.Approved))
+            return Error.Conflict("This work order cannot accept return-to-ramp attachments.", "Operations.ReturnToRamp.WorkOrderLocked");
+
+        var attachment = line.AddAttachment(kind, storageReference, originalFileName, contentType, size);
+        if (attachment.IsFailure)
+            return attachment.Error;
+        UpdatedAtUtc = now.ToUniversalTime();
+        return attachment;
+    }
+
+    public Result<WorkOrderTaskAttachment> AddReturnToRampTaskAttachment(
+        Guid taskId,
+        TaskAttachmentKind kind,
+        string storageReference,
+        string originalFileName,
+        string contentType,
+        long size,
+        DateTimeOffset now)
+    {
+        var task = _tasks.FirstOrDefault(item => item.Id == taskId && item.ReturnToRampId.HasValue);
+        if (task is null)
+            return Error.NotFound("Return-to-ramp task not found.", "Operations.ReturnToRamp.TaskNotFound");
+        if (!IsEditable && !(Type == WorkOrderType.Completion && Status == WorkOrderStatus.Approved))
+            return Error.Conflict("This work order cannot accept return-to-ramp attachments.", "Operations.ReturnToRamp.WorkOrderLocked");
+
+        var attachment = task.AddAttachment(kind, storageReference, originalFileName, contentType, size);
+        if (attachment.IsFailure)
+            return attachment.Error;
+        UpdatedAtUtc = now.ToUniversalTime();
+        return attachment;
+    }
+
+    public Result<string> RemoveReturnToRampServiceLineAttachment(
+        Guid serviceLineId,
+        Guid attachmentId,
+        DateTimeOffset now)
+    {
+        var line = _serviceLines.FirstOrDefault(item => item.Id == serviceLineId && item.ReturnToRampId.HasValue);
+        if (line is null)
+            return Error.NotFound("Return-to-ramp service line not found.", "Operations.ReturnToRamp.ServiceLineNotFound");
+        if (!IsEditable && !(Type == WorkOrderType.Completion && Status == WorkOrderStatus.Approved))
+            return Error.Conflict("This work order cannot modify return-to-ramp attachments.", "Operations.ReturnToRamp.WorkOrderLocked");
+
+        var storageReference = line.RemoveAttachment(attachmentId);
+        if (storageReference.IsFailure)
+            return storageReference.Error;
+        UpdatedAtUtc = now.ToUniversalTime();
+        return storageReference;
+    }
+
+    public Result<string> RemoveReturnToRampTaskAttachment(
+        Guid taskId,
+        Guid attachmentId,
+        DateTimeOffset now)
+    {
+        var task = _tasks.FirstOrDefault(item => item.Id == taskId && item.ReturnToRampId.HasValue);
+        if (task is null)
+            return Error.NotFound("Return-to-ramp task not found.", "Operations.ReturnToRamp.TaskNotFound");
+        if (!IsEditable && !(Type == WorkOrderType.Completion && Status == WorkOrderStatus.Approved))
+            return Error.Conflict("This work order cannot modify return-to-ramp attachments.", "Operations.ReturnToRamp.WorkOrderLocked");
+
+        var storageReference = task.RemoveAttachment(attachmentId);
+        if (storageReference.IsFailure)
+            return storageReference.Error;
+        UpdatedAtUtc = now.ToUniversalTime();
+        return storageReference;
+    }
+
     private void ReplaceServiceLinesInternal(IReadOnlyList<WorkOrderServiceLineInput> serviceLines)
     {
         _serviceLines.Clear();
@@ -484,7 +714,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (identities.IsFailure)
             return identities.Error;
 
-        var existingById = _serviceLines.ToDictionary(line => line.Id);
+        var existingById = _serviceLines
+            .Where(line => line.ReturnToRampId is null)
+            .ToDictionary(line => line.Id);
         var retained = new HashSet<Guid>();
 
         foreach (var input in serviceLines)
@@ -502,7 +734,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             retained.Add(added.Id);
         }
 
-        _serviceLines.RemoveAll(line => !retained.Contains(line.Id));
+        _serviceLines.RemoveAll(line => line.ReturnToRampId is null && !retained.Contains(line.Id));
         return Result.Success();
     }
 
@@ -512,7 +744,10 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (incomingIds.Count != incomingIds.Distinct().Count())
             return Error.Validation("Service line ids must be unique.", "Operations.WorkOrder.ServiceLineIdsDuplicate");
 
-        var existingIds = _serviceLines.Select(line => line.Id).ToHashSet();
+        var existingIds = _serviceLines
+            .Where(line => line.ReturnToRampId is null)
+            .Select(line => line.Id)
+            .ToHashSet();
         if (incomingIds.Any(id => !existingIds.Contains(id)))
             return Error.Conflict("One or more service line ids do not belong to this work order.", "Operations.WorkOrder.ServiceLineIdForeign");
 
@@ -525,7 +760,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (incomingIds.Count != incomingIds.Distinct().Count())
             return Error.Validation("Task ids must be unique.", "Operations.WorkOrder.TaskIdsDuplicate");
 
-        var existingById = _tasks.ToDictionary(t => t.Id);
+        var existingById = _tasks
+            .Where(task => task.ReturnToRampId is null)
+            .ToDictionary(t => t.Id);
         var retained = new HashSet<Guid>();
 
         foreach (var input in tasks)
@@ -545,7 +782,79 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             retained.Add(added.Id);
         }
 
-        _tasks.RemoveAll(t => !retained.Contains(t.Id));
+        _tasks.RemoveAll(t => t.ReturnToRampId is null && !retained.Contains(t.Id));
+        return Result.Success();
+    }
+
+    private void ReplaceReturnToRampsInternal(
+        IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
+        Guid recordedByUserId,
+        DateTimeOffset now)
+    {
+        _returnToRamps.Clear();
+        foreach (var input in returnToRamps)
+        {
+            var id = input.Id is { } requestedId && requestedId != Guid.Empty ? requestedId : Guid.NewGuid();
+            var record = new WorkOrderReturnToRamp(id, Id, input, recordedByUserId, now);
+            _returnToRamps.Add(record);
+            _serviceLines.AddRange(record.ServiceLines);
+            _tasks.AddRange(record.Tasks);
+        }
+    }
+
+    private Result ReconcileReturnToRampsInternal(
+        IReadOnlyList<WorkOrderReturnToRampInput> inputs,
+        Guid recordedByUserId,
+        DateTimeOffset now)
+    {
+        var incomingIds = inputs.Where(item => item.Id.HasValue).Select(item => item.Id!.Value).ToList();
+        if (incomingIds.Count != incomingIds.Distinct().Count())
+            return Error.Validation("Return-to-ramp ids must be unique.", "Operations.ReturnToRamp.IdsDuplicate");
+
+        var existingById = _returnToRamps.ToDictionary(item => item.Id);
+        if (incomingIds.Any(id => !existingById.ContainsKey(id)))
+            return Error.Conflict("One or more return-to-ramp ids do not belong to this work order.", "Operations.ReturnToRamp.IdForeign");
+
+        var retained = new HashSet<Guid>();
+        foreach (var input in inputs)
+        {
+            if (input.Id is { } id)
+            {
+                var record = existingById[id];
+                var previousLines = record.ServiceLines.ToList();
+                var previousTasks = record.Tasks.ToList();
+                var update = record.Update(input);
+                if (update.IsFailure)
+                    return update.Error;
+
+                var currentLineIds = record.ServiceLines.Select(line => line.Id).ToHashSet();
+                var currentTaskIds = record.Tasks.Select(task => task.Id).ToHashSet();
+                _serviceLines.RemoveAll(line => previousLines.Contains(line) && !currentLineIds.Contains(line.Id));
+                _tasks.RemoveAll(task => previousTasks.Contains(task) && !currentTaskIds.Contains(task.Id));
+                foreach (var line in record.ServiceLines.Where(line => _serviceLines.All(existing => existing.Id != line.Id)))
+                    _serviceLines.Add(line);
+                foreach (var task in record.Tasks.Where(task => _tasks.All(existing => existing.Id != task.Id)))
+                    _tasks.Add(task);
+                retained.Add(id);
+                continue;
+            }
+
+            var added = new WorkOrderReturnToRamp(Guid.NewGuid(), Id, input, recordedByUserId, now);
+            _returnToRamps.Add(added);
+            _serviceLines.AddRange(added.ServiceLines);
+            _tasks.AddRange(added.Tasks);
+            retained.Add(added.Id);
+        }
+
+        foreach (var removed in _returnToRamps.Where(item => !retained.Contains(item.Id)).ToList())
+        {
+            var serviceIds = removed.ServiceLines.Select(line => line.Id).ToHashSet();
+            var taskIds = removed.Tasks.Select(task => task.Id).ToHashSet();
+            _serviceLines.RemoveAll(line => serviceIds.Contains(line.Id));
+            _tasks.RemoveAll(task => taskIds.Contains(task.Id));
+            _returnToRamps.Remove(removed);
+        }
+
         return Result.Success();
     }
 
@@ -556,7 +865,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         ActualTime? actuals,
         CancellationDetails? cancellation,
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
-        IReadOnlyList<WorkOrderTaskInput> tasks)
+        IReadOnlyList<WorkOrderTaskInput> tasks,
+        IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps)
     {
         if (NormalizeTail(aircraftTailNumber)?.Length > 20)
             return Error.Validation("Aircraft tail number must be at most 20 characters.", "Operations.WorkOrder.TailTooLong");
@@ -566,6 +876,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             return Error.Validation("Cancellation details are required.", "Operations.WorkOrder.CancellationRequired");
         if (type == WorkOrderType.Completion && cancellation is not null)
             return Error.Validation("Completion work orders cannot include cancellation details.", "Operations.WorkOrder.CancellationNotAllowed");
+        if (type == WorkOrderType.Cancellation && returnToRamps.Count > 0)
+            return Error.Validation("Cancellation work orders cannot include return-to-ramp records.", "Operations.ReturnToRamp.CancellationNotAllowed");
 
         foreach (var line in serviceLines)
         {
@@ -581,11 +893,149 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         {
             if (string.IsNullOrWhiteSpace(task.Description) is false && task.Description.Trim().Length > 2000)
                 return Error.Validation("Task description must be at most 2000 characters.", "Operations.WorkOrder.TaskDescriptionTooLong");
+            var resourceValidation = ValidateTaskResources(task);
+            if (resourceValidation.IsFailure)
+                return resourceValidation.Error;
+        }
+
+        var returnIds = returnToRamps.Where(item => item.Id.HasValue).Select(item => item.Id!.Value).ToList();
+        if (returnIds.Count != returnIds.Distinct().Count())
+            return Error.Validation("Return-to-ramp ids must be unique.", "Operations.ReturnToRamp.IdsDuplicate");
+        foreach (var returnToRamp in returnToRamps)
+        {
+            var validation = ValidateReturnToRamp(returnToRamp);
+            if (validation.IsFailure)
+                return validation.Error;
         }
 
         _ = actuals;
         return Result.Success();
     }
+
+    private static Result ValidateReturnToRamp(WorkOrderReturnToRampInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.Description) is false && input.Description.Trim().Length > WorkOrderReturnToRamp.MaxDescriptionLength)
+            return Error.Validation("Return-to-ramp description must be at most 2000 characters.", "Operations.ReturnToRamp.DescriptionTooLong");
+        if ((input.ServiceLines?.Count ?? 0) + (input.Tasks?.Count ?? 0) == 0)
+            return Error.Validation("Return to ramp requires at least one service or task.", "Operations.ReturnToRamp.ActivityRequired");
+
+        foreach (var line in input.ServiceLines ?? [])
+        {
+            if (line.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+                return Error.Validation("Aircraft Per Landing cannot be selected as a return-to-ramp service.", "Operations.WorkOrder.PerLandingLineNotAllowed");
+            if (line.PerformedBy is not { Count: > 0 })
+                return Error.Validation("Every return-to-ramp service requires at least one performer.", "Operations.WorkOrder.ServiceLinePerformerRequired");
+            if (string.IsNullOrWhiteSpace(line.Description) is false && line.Description.Trim().Length > 2000)
+                return Error.Validation("Service line description must be at most 2000 characters.", "Operations.WorkOrder.ServiceLineDescriptionTooLong");
+            if (line.Window.From < input.Window.From || line.Window.To > input.Window.To)
+                return Error.Validation("Return-to-ramp service times must be inside the occurrence window.", "Operations.ReturnToRamp.ServiceWindowOutsideOccurrence");
+        }
+
+        foreach (var task in input.Tasks ?? [])
+        {
+            if (task.Employees is not { Count: > 0 })
+                return Error.Validation("Every return-to-ramp task requires at least one employee.", "Operations.ReturnToRamp.TaskEmployeeRequired");
+            if (string.IsNullOrWhiteSpace(task.Description) is false && task.Description.Trim().Length > 2000)
+                return Error.Validation("Task description must be at most 2000 characters.", "Operations.WorkOrder.TaskDescriptionTooLong");
+            if (task.Window.From < input.Window.From || task.Window.To > input.Window.To)
+                return Error.Validation("Return-to-ramp task times must be inside the occurrence window.", "Operations.ReturnToRamp.TaskWindowOutsideOccurrence");
+            var resourceValidation = ValidateTaskResources(task);
+            if (resourceValidation.IsFailure)
+                return resourceValidation.Error;
+        }
+
+        return Result.Success();
+    }
+
+    private static Result ValidateTaskResources(WorkOrderTaskInput task)
+    {
+        if ((task.Tools ?? []).Select(item => item.Tool.ToolId).Distinct().Count() != (task.Tools?.Count ?? 0))
+            return Error.Validation("Duplicate tool rows are not allowed within one task.", "Operations.ResourceUsage.ToolDuplicate");
+        if ((task.Materials ?? []).Select(item => item.Material.MaterialId).Distinct().Count() != (task.Materials?.Count ?? 0))
+            return Error.Validation("Duplicate material rows are not allowed within one task.", "Operations.ResourceUsage.MaterialDuplicate");
+        if ((task.GeneralSupports ?? []).Select(item => item.GeneralSupport.GeneralSupportId).Distinct().Count() != (task.GeneralSupports?.Count ?? 0))
+            return Error.Validation("Duplicate general support rows are not allowed within one task.", "Operations.ResourceUsage.GeneralSupportDuplicate");
+
+        foreach (var item in task.Tools ?? [])
+        {
+            if (item.Usage is null || item.Tool.CalculationType != item.Usage.CalculationType)
+                return Error.Validation(
+                    $"Tool '{item.Tool.Name}' usage does not match its calculation type.",
+                    "Operations.ResourceUsage.ToolCalculationTypeMismatch");
+            var windowValidation = ValidateResourceWindow(item.Usage, task.Window, "Tool");
+            if (windowValidation.IsFailure)
+                return windowValidation.Error;
+        }
+
+        foreach (var item in task.Materials ?? [])
+        {
+            if (item.Usage is null || item.Material.CalculationType != item.Usage.CalculationType)
+                return Error.Validation(
+                    $"Material '{item.Material.Name}' usage does not match its calculation type.",
+                    "Operations.ResourceUsage.MaterialCalculationTypeMismatch");
+            var windowValidation = ValidateResourceWindow(item.Usage, task.Window, "Material");
+            if (windowValidation.IsFailure)
+                return windowValidation.Error;
+        }
+
+        foreach (var item in task.GeneralSupports ?? [])
+        {
+            if (item.Usage is null || item.GeneralSupport.CalculationType != item.Usage.CalculationType)
+                return Error.Validation(
+                    $"General support '{item.GeneralSupport.Name}' usage does not match its calculation type.",
+                    "Operations.ResourceUsage.GeneralSupportCalculationTypeMismatch");
+            var windowValidation = ValidateResourceWindow(item.Usage, task.Window, "GeneralSupport");
+            if (windowValidation.IsFailure)
+                return windowValidation.Error;
+        }
+
+        return Result.Success();
+    }
+
+    private static Result ValidateResourceWindow(ResourceUsage usage, TimeWindow taskWindow, string resourceKind)
+    {
+        if (usage.CalculationType != MasterData.Contracts.Resources.ResourceCalculationType.Duration)
+            return Result.Success();
+        if (usage.FromUtc < taskWindow.From)
+            return Error.Validation(
+                "Resource usage From time cannot be before its task From time.",
+                $"Operations.ResourceUsage.{resourceKind}FromBeforeTask");
+        if (usage.ToUtc > taskWindow.To)
+            return Error.Validation(
+                "Resource usage To time cannot be after its task To time.",
+                $"Operations.ResourceUsage.{resourceKind}ToAfterTask");
+        return Result.Success();
+    }
+
+    private static LegacyActivitySplit SplitLegacyReturnToRampActivities(
+        IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
+        IReadOnlyList<WorkOrderTaskInput> tasks)
+    {
+        var returnServices = serviceLines.Where(line => line.IsReturnToRamp).ToList();
+        var returnTasks = tasks.Where(task => task.IsReturnToRamp).ToList();
+        if (returnServices.Count + returnTasks.Count == 0)
+            return new LegacyActivitySplit(serviceLines, tasks, []);
+
+        var from = returnServices.Select(line => line.Window.From)
+            .Concat(returnTasks.Select(task => task.Window.From))
+            .Min();
+        var to = returnServices.Select(line => line.Window.To)
+            .Concat(returnTasks.Select(task => task.Window.To))
+            .Max();
+        var window = TimeWindow.Create(from, to);
+        if (window.IsFailure)
+            return new LegacyActivitySplit(serviceLines, tasks, []);
+
+        return new LegacyActivitySplit(
+            serviceLines.Where(line => !line.IsReturnToRamp).ToList(),
+            tasks.Where(task => !task.IsReturnToRamp).ToList(),
+            [new WorkOrderReturnToRampInput(null, window.Value, null, returnServices, returnTasks)]);
+    }
+
+    private sealed record LegacyActivitySplit(
+        IReadOnlyList<WorkOrderServiceLineInput> ServiceLines,
+        IReadOnlyList<WorkOrderTaskInput> Tasks,
+        IReadOnlyList<WorkOrderReturnToRampInput> ReturnToRamps);
 
     private static string? NormalizeTail(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();

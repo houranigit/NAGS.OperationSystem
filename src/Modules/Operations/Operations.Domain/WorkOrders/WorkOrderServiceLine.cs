@@ -15,19 +15,26 @@ public sealed class WorkOrderServiceLine : Entity<Guid>
 
     private WorkOrderServiceLine() { }
 
-    internal WorkOrderServiceLine(Guid id, Guid workOrderId, WorkOrderServiceLineInput input)
+    internal WorkOrderServiceLine(
+        Guid id,
+        Guid workOrderId,
+        WorkOrderServiceLineInput input,
+        Guid? returnToRampId = null)
     {
         Id = id;
         WorkOrderId = workOrderId;
+        ReturnToRampId = returnToRampId;
         Apply(input);
     }
 
     public Guid WorkOrderId { get; private set; }
+    public Guid? ReturnToRampId { get; private set; }
     public ServiceSnapshot Service { get; private set; } = null!;
     public IReadOnlyList<WorkOrderServiceLinePerformer> PerformedBy => _performedBy.AsReadOnly();
     public TimeWindow Window { get; private set; } = null!;
     public string? Description { get; private set; }
-    public bool IsReturnToRamp { get; private set; }
+    /// <summary>Compatibility alias for clients deployed before occurrence records.</summary>
+    public bool IsReturnToRamp => ReturnToRampId.HasValue;
     public IReadOnlyList<WorkOrderServiceLineAttachment> Attachments => _attachments.AsReadOnly();
 
     public bool IsAircraftPerLanding => Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService;
@@ -79,8 +86,6 @@ public sealed class WorkOrderServiceLine : Entity<Guid>
         Service = input.Service;
         Window = input.Window;
         Description = NormalizeDescription(input.Description);
-        IsReturnToRamp = input.IsReturnToRamp;
-
         _performedBy.Clear();
         foreach (var performer in input.PerformedBy.GroupBy(p => p.StaffMemberId).Select(group => group.First()))
         {

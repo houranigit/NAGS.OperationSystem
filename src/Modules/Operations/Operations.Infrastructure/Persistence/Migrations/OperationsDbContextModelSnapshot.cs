@@ -316,6 +316,31 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("work_orders", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderReturnToRamp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("RecordedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("WorkOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkOrderId");
+
+                    b.ToTable("work_order_return_to_ramps", "operations");
+                });
+
             modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderServiceLine", b =>
                 {
                     b.Property<Guid>("Id")
@@ -325,8 +350,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
-                    b.Property<bool>("IsReturnToRamp")
-                        .HasColumnType("bit");
+                    b.Property<Guid?>("ReturnToRampId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("WorkOrderId")
                         .HasColumnType("uniqueidentifier");
@@ -334,6 +359,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("WorkOrderId");
+
+                    b.HasIndex("ReturnToRampId", "WorkOrderId");
 
                     b.ToTable("work_order_service_lines", "operations");
                 });
@@ -404,8 +431,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
-                    b.Property<bool>("IsReturnToRamp")
-                        .HasColumnType("bit");
+                    b.Property<Guid?>("ReturnToRampId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("TaskType")
                         .HasColumnType("int");
@@ -416,6 +443,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("WorkOrderId");
+
+                    b.HasIndex("ReturnToRampId", "WorkOrderId");
 
                     b.ToTable("work_order_tasks", "operations");
                 });
@@ -492,7 +521,10 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("WorkOrderTaskId");
 
-                    b.ToTable("work_order_task_general_supports", "operations");
+                    b.ToTable("work_order_task_general_supports", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_work_order_task_general_supports_ResourceUsage", "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))");
+                        });
                 });
 
             modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderTaskMaterial", b =>
@@ -510,7 +542,10 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("WorkOrderTaskId");
 
-                    b.ToTable("work_order_task_materials", "operations");
+                    b.ToTable("work_order_task_materials", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_work_order_task_materials_ResourceUsage", "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))");
+                        });
                 });
 
             modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderTaskTool", b =>
@@ -528,7 +563,10 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("WorkOrderTaskId");
 
-                    b.ToTable("work_order_task_tools", "operations");
+                    b.ToTable("work_order_task_tools", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_work_order_task_tools_ResourceUsage", "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))");
+                        });
                 });
 
             modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderTimelineEntry", b =>
@@ -1133,6 +1171,39 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderReturnToRamp", b =>
+                {
+                    b.HasOne("Operations.Domain.WorkOrders.WorkOrder", null)
+                        .WithMany("ReturnToRamps")
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
+                        {
+                            b1.Property<Guid>("WorkOrderReturnToRampId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("From")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<DateTimeOffset>("To")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("WorkOrderReturnToRampId");
+
+                            b1.ToTable("work_order_return_to_ramps", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("WorkOrderReturnToRampId");
+                        });
+
+                    b.Navigation("Window")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderServiceLine", b =>
                 {
                     b.HasOne("Operations.Domain.WorkOrders.WorkOrder", null)
@@ -1140,6 +1211,12 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasForeignKey("WorkOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Operations.Domain.WorkOrders.WorkOrderReturnToRamp", null)
+                        .WithMany("ServiceLines")
+                        .HasForeignKey("ReturnToRampId", "WorkOrderId")
+                        .HasPrincipalKey("Id", "WorkOrderId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.OwnsOne("Operations.Domain.ValueObjects.ServiceSnapshot", "Service", b1 =>
                         {
@@ -1250,6 +1327,12 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Operations.Domain.WorkOrders.WorkOrderReturnToRamp", null)
+                        .WithMany("Tasks")
+                        .HasForeignKey("ReturnToRampId", "WorkOrderId")
+                        .HasPrincipalKey("Id", "WorkOrderId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
                         {
                             b1.Property<Guid>("WorkOrderTaskId")
@@ -1338,6 +1421,11 @@ namespace Operations.Infrastructure.Persistence.Migrations
                             b1.Property<Guid>("WorkOrderTaskGeneralSupportId")
                                 .HasColumnType("uniqueidentifier");
 
+                            b1.Property<int>("CalculationType")
+                                .HasColumnType("int")
+                                .HasDefaultValue(0)
+                                .HasColumnName("CalculationType");
+
                             b1.Property<Guid>("GeneralSupportId")
                                 .HasColumnType("uniqueidentifier")
                                 .HasColumnName("GeneralSupportId");
@@ -1356,15 +1444,23 @@ namespace Operations.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("WorkOrderTaskGeneralSupportId");
                         });
 
-                    b.OwnsOne("Operations.Domain.ValueObjects.Quantity", "Quantity", b1 =>
+                    b.OwnsOne("Operations.Domain.ValueObjects.ResourceUsage", "Usage", b1 =>
                         {
                             b1.Property<Guid>("WorkOrderTaskGeneralSupportId")
                                 .HasColumnType("uniqueidentifier");
 
-                            b1.Property<decimal>("Value")
+                            b1.Property<DateTimeOffset?>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<decimal?>("Quantity")
                                 .HasPrecision(18, 2)
                                 .HasColumnType("decimal(18,2)")
                                 .HasColumnName("Quantity");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
 
                             b1.HasKey("WorkOrderTaskGeneralSupportId");
 
@@ -1377,7 +1473,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("GeneralSupport")
                         .IsRequired();
 
-                    b.Navigation("Quantity")
+                    b.Navigation("Usage")
                         .IsRequired();
                 });
 
@@ -1393,6 +1489,11 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         {
                             b1.Property<Guid>("WorkOrderTaskMaterialId")
                                 .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("CalculationType")
+                                .HasColumnType("int")
+                                .HasDefaultValue(0)
+                                .HasColumnName("CalculationType");
 
                             b1.Property<Guid>("MaterialId")
                                 .HasColumnType("uniqueidentifier")
@@ -1412,15 +1513,23 @@ namespace Operations.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("WorkOrderTaskMaterialId");
                         });
 
-                    b.OwnsOne("Operations.Domain.ValueObjects.Quantity", "Quantity", b1 =>
+                    b.OwnsOne("Operations.Domain.ValueObjects.ResourceUsage", "Usage", b1 =>
                         {
                             b1.Property<Guid>("WorkOrderTaskMaterialId")
                                 .HasColumnType("uniqueidentifier");
 
-                            b1.Property<decimal>("Value")
+                            b1.Property<DateTimeOffset?>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<decimal?>("Quantity")
                                 .HasPrecision(18, 2)
                                 .HasColumnType("decimal(18,2)")
                                 .HasColumnName("Quantity");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
 
                             b1.HasKey("WorkOrderTaskMaterialId");
 
@@ -1433,7 +1542,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("Material")
                         .IsRequired();
 
-                    b.Navigation("Quantity")
+                    b.Navigation("Usage")
                         .IsRequired();
                 });
 
@@ -1449,6 +1558,11 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         {
                             b1.Property<Guid>("WorkOrderTaskToolId")
                                 .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("CalculationType")
+                                .HasColumnType("int")
+                                .HasDefaultValue(1)
+                                .HasColumnName("CalculationType");
 
                             b1.Property<string>("Name")
                                 .IsRequired()
@@ -1468,15 +1582,23 @@ namespace Operations.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("WorkOrderTaskToolId");
                         });
 
-                    b.OwnsOne("Operations.Domain.ValueObjects.Quantity", "Quantity", b1 =>
+                    b.OwnsOne("Operations.Domain.ValueObjects.ResourceUsage", "Usage", b1 =>
                         {
                             b1.Property<Guid>("WorkOrderTaskToolId")
                                 .HasColumnType("uniqueidentifier");
 
-                            b1.Property<decimal>("Value")
+                            b1.Property<DateTimeOffset?>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<decimal?>("Quantity")
                                 .HasPrecision(18, 2)
                                 .HasColumnType("decimal(18,2)")
                                 .HasColumnName("Quantity");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
 
                             b1.HasKey("WorkOrderTaskToolId");
 
@@ -1486,10 +1608,10 @@ namespace Operations.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("WorkOrderTaskToolId");
                         });
 
-                    b.Navigation("Quantity")
+                    b.Navigation("Tool")
                         .IsRequired();
 
-                    b.Navigation("Tool")
+                    b.Navigation("Usage")
                         .IsRequired();
                 });
 
@@ -1501,6 +1623,15 @@ namespace Operations.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrder", b =>
+                {
+                    b.Navigation("ReturnToRamps");
+
+                    b.Navigation("ServiceLines");
+
+                    b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("Operations.Domain.WorkOrders.WorkOrderReturnToRamp", b =>
                 {
                     b.Navigation("ServiceLines");
 

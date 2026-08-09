@@ -6,6 +6,7 @@
 @inject AuthSession Auth
 @inject IJSRuntime JS
 @inject AuditApiClient AuditApi
+@inject UserTimeZone UserTimeZone
 @using OperationsSystem.Blazor.Client.Features.Operations
 
 <PageTitle>@(flight is null ? "Flight" : DisplayFlightNumber(flight))</PageTitle>
@@ -75,9 +76,11 @@
                                     <RowAction Separator="true" />
                                     <RowAction Text="Open work order" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                                Visible="@CanAuthorWorkOrder(flight)" OnClick="@OpenCompletionWorkOrderAsync" />
+                                    <RowAction Text="Record return to ramp" Icon="u_turn_left" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                                               Visible="@CanRecordReturnToRamp(flight)" OnClick="@RecordReturnToRampAsync" />
                                     <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                                Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@OpenCancellationWorkOrderAsync" />
-                                    <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
+                                    <RowAction Text="Return work order for correction" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
                                                Visible="@CanReturnApprovedWorkOrder(flight)" OnClick="@ReturnApprovedFlightWorkOrderAsync" />
                                 </RowActionMenu>
                             }
@@ -168,8 +171,8 @@
                     </div>
                     <dl class="ofd-metrics">
                         <div class="ofd-metric"><dt>Flight number</dt><dd>@DisplayFlightNumber(f)</dd></div>
-                        <div class="ofd-metric"><dt>STA (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledArrivalUtc)</dd></div>
-                        <div class="ofd-metric"><dt>STD (UTC)</dt><dd>@DateTimeDisplay(f.ScheduledDepartureUtc)</dd></div>
+                        <div class="ofd-metric"><dt>STA (@UserTimeZone.Id)</dt><dd>@DateTimeDisplay(f.ScheduledArrivalUtc)</dd></div>
+                        <div class="ofd-metric"><dt>STD (@UserTimeZone.Id)</dt><dd>@DateTimeDisplay(f.ScheduledDepartureUtc)</dd></div>
                         <div class="ofd-metric"><dt>Customer</dt><dd>@f.CustomerName</dd></div>
                         <div class="ofd-metric"><dt>Station</dt><dd>@f.StationName</dd></div>
                     </dl>
@@ -374,7 +377,7 @@
                         <div class="ofd-timeline-text">
                             <p class="ofd-timeline-title">@entry.Action</p>
                             <p class="os-muted ofd-timeline-sub">
-                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span title="@UserTimeZone.Format(entry.OccurredOnUtc, "F")">@RelativeTime(entry.OccurredOnUtc)</span>
                                 <span class="ofd-dot-sep">&middot;</span>
                                 @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
@@ -412,7 +415,7 @@
                         <div>
                             <p class="ofd-state-history-entry-title">@entry.Action</p>
                             <p class="os-muted ofd-state-history-entry-sub">
-                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span title="@UserTimeZone.Format(entry.OccurredOnUtc, "F")">@RelativeTime(entry.OccurredOnUtc)</span>
                                 <span class="ofd-dot-sep">&middot;</span>
                                 @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
@@ -439,7 +442,7 @@
                         <div class="ofd-timeline-text">
                             <p class="ofd-timeline-title">@TimelineLabel(entry)</p>
                             <p class="os-muted ofd-timeline-sub">
-                                <span title="@entry.OccurredAtUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredAtUtc)</span>
+                                <span title="@UserTimeZone.Format(entry.OccurredAtUtc, "F")">@RelativeTime(entry.OccurredAtUtc)</span>
                                 <span class="ofd-dot-sep">&middot;</span>
                                 @(entry.ActorName ?? "Administrator/System")
                             </p>
@@ -470,7 +473,11 @@
         </div>
     </text>;
 
-    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -624,6 +631,42 @@
 
     private Task OpenCompletionWorkOrderAsync() => OpenWorkOrderAsync("Completion");
     private Task OpenCancellationWorkOrderAsync() => OpenWorkOrderAsync("Cancellation");
+
+    private async Task RecordReturnToRampAsync()
+    {
+        if (flight is null || !CanRecordReturnToRamp(flight))
+            return;
+
+        try
+        {
+            var draft = new ReturnToRampDraft
+            {
+                FromLocal = UserTimeZone.ToLocalDateTime(flight.ScheduledArrivalUtc),
+                ToLocal = UserTimeZone.ToLocalDateTime(flight.ScheduledDepartureUtc)
+            };
+            var result = await DialogService.OpenAsync<ReturnToRampEditorDialog>(
+                "Record return to ramp",
+                new Dictionary<string, object?>
+                {
+                    [nameof(ReturnToRampEditorDialog.StationId)] = flight.StationId,
+                    [nameof(ReturnToRampEditorDialog.Draft)] = draft
+                },
+                new DialogOptions { Width = "1080px" });
+
+            if (result is not ReturnToRampEditorResult saved)
+                return;
+
+            await Operations.RecordFlightReturnToRampAsync(
+                flight.Id,
+                ReturnToRampDraftMapper.ToRequest(saved.Draft, UserTimeZone));
+            Notifications.Notify(NotificationSeverity.Success, "Return to ramp recorded", "The occurrence and its services and tasks were added to the work order.");
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Return to ramp unavailable", ex.ToDisplayMessage("Could not record the return to ramp."));
+        }
+    }
 
     private async Task OpenWorkOrderAsync(string type)
     {
@@ -781,8 +824,8 @@
             new DialogOptions { Width = "760px" });
     }
 
-    private static string DateTimeDisplay(DateTimeOffset? value) =>
-        value?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "None";
+    private string DateTimeDisplay(DateTimeOffset? value) =>
+        value is { } instant ? UserTimeZone.Format(instant) : "None";
 
     private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
 
@@ -811,6 +854,7 @@
         || (CanInvite(f) && Auth.HasPermission(OperationsPermissions.FlightsInvite))
         || CanResolveDuplicate(f)
         || (CanAuthorWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor))
+        || (CanRecordReturnToRamp(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersAuthor))
         || (CanReturnApprovedWorkOrder(f) && Auth.HasPermission(OperationsPermissions.WorkOrdersApprove));
 
     private bool CanResolveDuplicate(FlightDetail f) =>
@@ -840,6 +884,7 @@
 
     private static bool CanMerge(FlightDetail f) => f.Status is not "Completed" and not "Canceled" and not "Merged";
     private static bool CanAuthorWorkOrder(FlightDetail f) => f.Status is "Scheduled" or "InProgress";
+    private static bool CanRecordReturnToRamp(FlightDetail f) => ReturnToRampPortalPolicy.CanRecordForFlightStatus(f.Status);
     private bool CanEditWorkOrder(WorkOrderSummaryModel workOrder) =>
         workOrder.Status is "Submitted" or "Returned"
         && (Auth.User?.Id == workOrder.OwnerUserId
@@ -929,7 +974,7 @@
         _ => "Current operational lifecycle state."
     };
 
-    private static string RelativeTime(DateTimeOffset value)
+    private string RelativeTime(DateTimeOffset value)
     {
         var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
         if (delta < TimeSpan.Zero)
@@ -944,7 +989,7 @@
         if (delta.TotalDays < 30)
             return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
 
-        return value.ToLocalTime().ToString("d");
+        return UserTimeZone.ToLocal(value).ToString("d");
     }
 
     private static string HumanizeEventType(string value)

@@ -73,7 +73,10 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
             return stationCheck.Error;
 
         var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
-            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            (request.Payload.ServiceLines?.Select(line => line.ServiceId) ?? [])
+                .Concat(request.Payload.ReturnToRamps?.SelectMany(item => item.ServiceLines ?? []).Select(line => line.ServiceId) ?? [])
+                .Distinct()
+                .ToList(),
             scopeResult.Value.ManpowerTypeId,
             scopeResult.Value.IsAdministrator,
             cancellationToken);
@@ -157,6 +160,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
             workOrderInput.Value.Remarks,
             workOrderInput.Value.ServiceLines,
             workOrderInput.Value.Tasks,
+            workOrderInput.Value.ReturnToRamps ?? [],
             now,
             request.WorkOrderId);
         if (workOrder.IsFailure)

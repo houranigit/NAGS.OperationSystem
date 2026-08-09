@@ -1,4 +1,5 @@
 using MasterData.Domain.AircraftTypes;
+using MasterData.Contracts.Resources;
 
 namespace MasterData.Application.Contracts;
 
@@ -136,7 +137,8 @@ public sealed record ToolListItemDto(
     string Name,
     string? Description,
     bool IsActive,
-    int EquipmentCount);
+    int EquipmentCount,
+    ResourceCalculationType CalculationType);
 
 public sealed record ToolEquipmentDto(Guid Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
 
@@ -148,9 +150,10 @@ public sealed record ToolDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    IReadOnlyList<ToolEquipmentDto> Equipments);
+    IReadOnlyList<ToolEquipmentDto> Equipments,
+    ResourceCalculationType CalculationType);
 
-public sealed record ToolOptionDto(Guid Id, string Name);
+public sealed record ToolOptionDto(Guid Id, string Name, ResourceCalculationType CalculationType);
 
 // --- Materials -------------------------------------------------------------
 
@@ -158,7 +161,8 @@ public sealed record MaterialListItemDto(
     Guid Id,
     string Name,
     string? Description,
-    bool IsActive);
+    bool IsActive,
+    ResourceCalculationType CalculationType);
 
 public sealed record MaterialDto(
     Guid Id,
@@ -167,9 +171,10 @@ public sealed record MaterialDto(
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    ResourceCalculationType CalculationType);
 
-public sealed record MaterialOptionDto(Guid Id, string Name);
+public sealed record MaterialOptionDto(Guid Id, string Name, ResourceCalculationType CalculationType);
 
 // --- GeneralSupports -------------------------------------------------------
 
@@ -177,7 +182,8 @@ public sealed record GeneralSupportListItemDto(
     Guid Id,
     string Name,
     string? Description,
-    bool IsActive);
+    bool IsActive,
+    ResourceCalculationType CalculationType);
 
 public sealed record GeneralSupportDto(
     Guid Id,
@@ -186,9 +192,10 @@ public sealed record GeneralSupportDto(
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    ResourceCalculationType CalculationType);
 
-public sealed record GeneralSupportOptionDto(Guid Id, string Name);
+public sealed record GeneralSupportOptionDto(Guid Id, string Name, ResourceCalculationType CalculationType);
 
 // --- Stations --------------------------------------------------------------
 

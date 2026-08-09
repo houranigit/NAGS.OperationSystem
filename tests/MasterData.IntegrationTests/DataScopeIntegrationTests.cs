@@ -162,56 +162,37 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
     }
 
     [Fact]
-    public async Task Station_staff_cannot_deactivate_a_cross_scope_station_even_with_lifecycle_permission()
+    public async Task Station_staff_cannot_sign_in_with_incompatible_station_deactivate_permission()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var (stationA, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
-        var stationB = await Helpers.CreateStationAsync(admin);
         var staffInA = await Helpers.CreateStaffAsync(admin, stationA, manpower);
 
-        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+        var (_, login) = await ProvisionScopedStaffLoginWithSeededRoleAsync(
             admin,
             staffInA.Id,
             staffInA.Email,
             "masterdata.stations.deactivate");
 
-        var otherStation = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
-        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/stations/{stationB}/deactivate");
-        deactivate.Headers.TryAddWithoutValidation("If-Match", otherStation!.RowVersion);
-
-        (await scoped.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-
-        var after = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
-        after!.IsActive.ShouldBeTrue();
+        // Lifecycle permissions are Administrator-only. Even a directly seeded legacy role is
+        // revalidated at sign-in and fails closed instead of issuing an impossible StationStaff token.
+        login.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
-    public async Task Station_staff_cannot_activate_a_cross_scope_station_even_with_lifecycle_permission()
+    public async Task Station_staff_cannot_sign_in_with_incompatible_station_activate_permission()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var (stationA, manpower) = (await Helpers.CreateStationAsync(admin), await Helpers.CreateManpowerTypeAsync(admin));
-        var stationB = await Helpers.CreateStationAsync(admin);
         var staffInA = await Helpers.CreateStaffAsync(admin, stationA, manpower);
 
-        var stationBDetail = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
-        var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/stations/{stationB}/deactivate");
-        deactivate.Headers.TryAddWithoutValidation("If-Match", stationBDetail!.RowVersion);
-        (await admin.SendAsync(deactivate)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-
-        var scoped = await ProvisionScopedStaffClientWithSeededRoleAsync(
+        var (_, login) = await ProvisionScopedStaffLoginWithSeededRoleAsync(
             admin,
             staffInA.Id,
             staffInA.Email,
             "masterdata.stations.activate");
 
-        var inactiveStation = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
-        var activate = new HttpRequestMessage(HttpMethod.Post, $"{Base}/stations/{stationB}/activate");
-        activate.Headers.TryAddWithoutValidation("If-Match", inactiveStation!.RowVersion);
-
-        (await scoped.SendAsync(activate)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-
-        var after = await admin.GetFromJsonAsync<StationDetail>($"{Base}/stations/{stationB}");
-        after!.IsActive.ShouldBeFalse();
+        login.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -490,6 +471,23 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
 
     private async Task<HttpClient> ProvisionScopedStaffClientWithSeededRoleAsync(HttpClient admin, Guid staffId, string email, params string[] permissions)
     {
+        var (client, login) = await ProvisionScopedStaffLoginWithSeededRoleAsync(
+            admin,
+            staffId,
+            email,
+            permissions);
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var token = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.AccessToken);
+        return client;
+    }
+
+    private async Task<(HttpClient Client, HttpResponseMessage Login)> ProvisionScopedStaffLoginWithSeededRoleAsync(
+        HttpClient admin,
+        Guid staffId,
+        string email,
+        params string[] permissions)
+    {
         var roleResult = Role.Create(
             $"Legacy Scoped Role {Guid.NewGuid():N}",
             description: null,
@@ -505,10 +503,23 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
             await db.SaveChangesAsync();
         }
 
-        return await ProvisionScopedStaffClientAsync(admin, staffId, email, roleResult.Value.Id);
+        return await ProvisionScopedStaffLoginAsync(admin, staffId, email, roleResult.Value.Id);
     }
 
     private async Task<HttpClient> ProvisionScopedStaffClientAsync(HttpClient admin, Guid staffId, string email, Guid roleId)
+    {
+        var (client, login) = await ProvisionScopedStaffLoginAsync(admin, staffId, email, roleId);
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var token = await login.Content.ReadFromJsonAsync<TokenResponse>();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.AccessToken);
+        return client;
+    }
+
+    private async Task<(HttpClient Client, HttpResponseMessage Login)> ProvisionScopedStaffLoginAsync(
+        HttpClient admin,
+        Guid staffId,
+        string email,
+        Guid roleId)
     {
         var staff = await admin.GetFromJsonAsync<StaffDetail>($"{Base}/staff-members/{staffId}");
         var grant = new HttpRequestMessage(HttpMethod.Post, $"{Base}/staff-members/{staffId}/grant-access")
@@ -529,10 +540,7 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
 
         var client = factory.CreateClient();
         var login = await client.PostAsJsonAsync($"{IdentityBase}/auth/login", new { email, password });
-        login.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var token = await login.Content.ReadFromJsonAsync<TokenResponse>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.AccessToken);
-        return client;
+        return (client, login);
     }
 
     private async Task<HttpClient> ProvisionScopedContactClientAsync(HttpClient admin, Guid customerId, Guid contactId, string email)

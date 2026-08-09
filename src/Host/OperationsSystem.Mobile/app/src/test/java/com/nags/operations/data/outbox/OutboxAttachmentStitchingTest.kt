@@ -41,6 +41,61 @@ class OutboxAttachmentStitchingTest {
         }
     }
 
+    @Test
+    fun grouped_occurrence_attachments_are_stitched_after_normal_rows() {
+        val base = payloadWithSlots(serviceCounts = listOf(1), taskCounts = listOf(1))
+        val nestedService = serviceWithSlots("nested-service", 1)
+        val nestedTask = taskWithSlots(1)
+        val payload = base.copy(
+            workOrder = requireNotNull(base.workOrder).copy(
+                returnToRamps = listOf(
+                    OutboxPayload.ReturnToRampInput(
+                        fromIso = "2026-08-08T10:00:00Z",
+                        toIso = "2026-08-08T11:00:00Z",
+                        serviceLines = listOf(nestedService),
+                        tasks = listOf(nestedTask),
+                    ),
+                ),
+            ),
+        )
+        val stitched = payload.withDurableAttachmentsInServiceThenTaskOrder(
+            listOf(
+                attachment("0-normal-service.jpg"),
+                attachment("1-normal-task.jpg"),
+                attachment("2-rtr-service.jpg"),
+                attachment("3-rtr-task.jpg"),
+            ),
+        )
+        val occurrence = requireNotNull(stitched.workOrder).returnToRamps.single()
+        assertEquals("2-rtr-service.jpg", occurrence.serviceLines.single().attachments.single().relativePath)
+        assertEquals("3-rtr-task.jpg", occurrence.tasks.single().attachments.single().relativePath)
+    }
+
+    @Test
+    fun standalone_occurrence_stitches_without_work_order_payload() {
+        val payload = OutboxPayload(
+            kind = OutboxPayload.Kind.ReturnToRamp,
+            returnToRamp = OutboxPayload.ReturnToRampInput(
+                fromIso = "2026-08-08T10:00:00Z",
+                toIso = "2026-08-08T11:00:00Z",
+                serviceLines = listOf(serviceWithSlots("service", 1)),
+                tasks = listOf(taskWithSlots(1)),
+            ),
+        )
+
+        val stitched = payload.withDurableAttachmentsInServiceThenTaskOrder(
+            listOf(attachment("0-service.jpg"), attachment("1-task.jpg")),
+        )
+
+        assertEquals(
+            listOf("0-service.jpg", "1-task.jpg"),
+            requireNotNull(stitched.returnToRamp).let { occurrence ->
+                occurrence.serviceLines.flatMap { it.attachments }.map { it.relativePath } +
+                    occurrence.tasks.flatMap { it.attachments }.map { it.relativePath }
+            },
+        )
+    }
+
     private fun payloadWithSlots(
         serviceCounts: List<Int>,
         taskCounts: List<Int>,
@@ -84,5 +139,23 @@ class OutboxAttachmentStitchingTest {
         fileName = relativePath.ifBlank { "placeholder.jpg" },
         capturedAtIso = "2026-07-11T10:30:00Z",
         sizeBytes = 3,
+    )
+
+    private fun serviceWithSlots(id: String, count: Int) = OutboxPayload.ServiceLineInput(
+        serviceId = id,
+        performedByStaffMemberIds = listOf("staff-1"),
+        fromIso = "2026-08-08T10:00:00Z",
+        toIso = "2026-08-08T10:30:00Z",
+        description = null,
+        attachments = List(count) { attachment("") },
+    )
+
+    private fun taskWithSlots(count: Int) = OutboxPayload.TaskInput(
+        taskType = "Minor",
+        description = null,
+        fromIso = "2026-08-08T10:00:00Z",
+        toIso = "2026-08-08T10:30:00Z",
+        employeeIds = listOf("staff-1"),
+        attachments = List(count) { attachment("") },
     )
 }

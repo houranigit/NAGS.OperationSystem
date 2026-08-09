@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using ClosedXML.Excel;
+using MasterData.Contracts.Resources;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
@@ -61,7 +62,23 @@ internal static class FlightExportDocumentFactory
         "Arrival Delay", "Departure Delay", "Scheduled Duration", "Actual Duration",
         "Customer IATA Code", "Customer Name", "Station IATA Code", "Station Name",
         "Aircraft Manufacturer", "Aircraft Model", "Aircraft Tail Number", "Planned Services",
-        "Services", "Tools", "Materials", "General Support", "Assigned Employees", "Remarks", "Status"
+        "Services", "Tools", "Materials", "General Support", "Assigned Employees", "Remarks", "Status", "Tasks"
+    ];
+
+    private static readonly string[] ServiceDetailHeaders =
+    [
+        "#", "WO#", "WO Status", "Flight#", "WO Flight#", "Flight Status",
+        "Customer IATA Code", "Customer Name", "Station IATA Code", "Station Name", "Operation Type",
+        "STA", "STD", "ATA", "ATD", "Activity Context", "RTR From", "RTR To", "RTR Description",
+        "Service", "From", "To", "Performed By", "Description"
+    ];
+
+    private static readonly string[] TaskDetailHeaders =
+    [
+        "#", "WO#", "WO Status", "Flight#", "WO Flight#", "Flight Status",
+        "Customer IATA Code", "Customer Name", "Station IATA Code", "Station Name", "Operation Type",
+        "STA", "STD", "ATA", "ATD", "Activity Context", "RTR From", "RTR To", "RTR Description",
+        "Major/Minor", "Description", "From", "To", "Performed By", "Tools", "Materials", "General Support"
     ];
 
     public static bool TryParseFormat(string? value, out FlightExportFormat format)
@@ -93,22 +110,24 @@ internal static class FlightExportDocumentFactory
         FlightExportFormat format,
         IReadOnlyList<FlightExportRowDto> rows,
         FlightExportCriteria criteria,
-        DateTimeOffset generatedAtUtc)
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo? displayTimeZone = null)
     {
+        var timeZone = displayTimeZone ?? TimeZoneInfo.Utc;
         var stamp = generatedAtUtc.UtcDateTime.ToString("yyyyMMdd-HHmmss'Z'", CultureInfo.InvariantCulture);
 
         return format switch
         {
             FlightExportFormat.Xlsx => new FlightExportFile(
-                CreateWorkbook(rows, criteria, generatedAtUtc),
+                CreateWorkbook(rows, criteria, generatedAtUtc, timeZone),
                 WorkbookContentType,
                 $"flights-report-{stamp}.xlsx"),
             FlightExportFormat.Csv => new FlightExportFile(
-                CreateCsv(rows),
+                CreateCsv(rows, timeZone),
                 CsvContentType,
                 $"flights-report-{stamp}.csv"),
             FlightExportFormat.Pdf => new FlightExportFile(
-                CreatePdf(rows, criteria, generatedAtUtc),
+                CreatePdf(rows, criteria, generatedAtUtc, timeZone),
                 PdfContentType,
                 $"flights-report-{stamp}.pdf"),
             _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported flight export format.")
@@ -118,9 +137,10 @@ internal static class FlightExportDocumentFactory
     private static byte[] CreateWorkbook(
         IReadOnlyList<FlightExportRowDto> rows,
         FlightExportCriteria criteria,
-        DateTimeOffset generatedAtUtc)
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
     {
-        const int columnCount = 27;
+        var columnCount = CsvHeaders.Length;
         const int headerRowNumber = 5;
 
         using var workbook = new XLWorkbook();
@@ -144,7 +164,9 @@ internal static class FlightExportDocumentFactory
         sheet.Row(1).Height = 34;
 
         var summaryRange = sheet.Range(2, 1, 2, columnCount).Merge();
-        summaryRange.Value = $"{rows.Count.ToString("N0", CultureInfo.InvariantCulture)} records  |  Generated {FormatReportTimestamp(generatedAtUtc)}";
+        SetWorkbookText(
+            summaryRange.FirstCell(),
+            $"{rows.Count.ToString("N0", CultureInfo.InvariantCulture)} records  |  Generated {FormatReportTimestamp(generatedAtUtc, timeZone)}");
         summaryRange.Style.Font.FontSize = 10;
         summaryRange.Style.Font.FontColor = XLColor.FromHtml(MutedTextColor);
         summaryRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#F3E9EA");
@@ -152,7 +174,7 @@ internal static class FlightExportDocumentFactory
         sheet.Row(2).Height = 22;
 
         var filterRange = sheet.Range(3, 1, 3, columnCount).Merge();
-        filterRange.Value = $"Scope: {BuildFilterSummary(rows, criteria)}";
+        SetWorkbookText(filterRange.FirstCell(), $"Scope: {BuildFilterSummary(rows, criteria, timeZone)}");
         filterRange.Style.Font.FontSize = 9;
         filterRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
         filterRange.Style.Alignment.WrapText = true;
@@ -177,7 +199,7 @@ internal static class FlightExportDocumentFactory
         var sequence = 1;
         foreach (var row in rows)
         {
-            WriteWorkbookRow(sheet, rowNumber, sequence++, row);
+            WriteWorkbookRow(sheet, rowNumber, sequence++, row, timeZone);
 
             if ((rowNumber - headerRowNumber) % 2 == 0)
                 sheet.Range(rowNumber, 1, rowNumber, columnCount).Style.Fill.BackgroundColor = XLColor.FromHtml(AlternateRowColor);
@@ -195,28 +217,36 @@ internal static class FlightExportDocumentFactory
 
         SetWorkbookColumnWidths(sheet);
         foreach (var column in new[] { 5, 6, 7, 8 })
-            sheet.Column(column).Style.DateFormat.Format = "yyyy-mm-dd hh:mm \"UTC\"";
+            sheet.Column(column).Style.DateFormat.Format = WorkbookDateFormat(timeZone);
         foreach (var column in new[] { 9, 10 })
             sheet.Column(column).Style.NumberFormat.Format = "0 \"min\";-0 \"min\"";
         foreach (var column in new[] { 11, 12 })
             sheet.Column(column).Style.NumberFormat.Format = "[h]\"h \"mm\"m\"";
+
+        AddServiceDetailsWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
+        AddTaskDetailsWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         return stream.ToArray();
     }
 
-    private static void WriteWorkbookRow(IXLWorksheet sheet, int rowNumber, int sequence, FlightExportRowDto row)
+    private static void WriteWorkbookRow(
+        IXLWorksheet sheet,
+        int rowNumber,
+        int sequence,
+        FlightExportRowDto row,
+        TimeZoneInfo timeZone)
     {
         var approved = row.ApprovedWorkOrder;
         sheet.Cell(rowNumber, 1).SetValue(sequence);
         sheet.Cell(rowNumber, 2).SetValue(SpreadsheetSafeText(approved?.ApprovalNumber ?? "-"));
         sheet.Cell(rowNumber, 3).SetValue(SpreadsheetSafeText(DisplayFlightNumber(row, row.FlightNumber)));
         SetOptionalText(sheet.Cell(rowNumber, 4), approved is null ? null : DisplayFlightNumber(row, approved.ActualFlightNumber));
-        sheet.Cell(rowNumber, 5).SetValue(row.ScheduledArrivalUtc.UtcDateTime);
-        sheet.Cell(rowNumber, 6).SetValue(row.ScheduledDepartureUtc.UtcDateTime);
-        SetOptionalDate(sheet.Cell(rowNumber, 7), approved?.ActualArrivalUtc);
-        SetOptionalDate(sheet.Cell(rowNumber, 8), approved?.ActualDepartureUtc);
+        sheet.Cell(rowNumber, 5).SetValue(ToWorkbookDate(row.ScheduledArrivalUtc, timeZone));
+        sheet.Cell(rowNumber, 6).SetValue(ToWorkbookDate(row.ScheduledDepartureUtc, timeZone));
+        SetOptionalDate(sheet.Cell(rowNumber, 7), approved?.ActualArrivalUtc, timeZone);
+        SetOptionalDate(sheet.Cell(rowNumber, 8), approved?.ActualDepartureUtc, timeZone);
         SetOptionalMinutes(sheet.Cell(rowNumber, 9), ArrivalDelay(row));
         SetOptionalMinutes(sheet.Cell(rowNumber, 10), DepartureDelay(row));
         SetOptionalDuration(sheet.Cell(rowNumber, 11), ScheduledDuration(row));
@@ -236,8 +266,9 @@ internal static class FlightExportDocumentFactory
         SetOptionalText(sheet.Cell(rowNumber, 25), JoinNames(row.AssignedEmployeeNames));
         SetOptionalText(sheet.Cell(rowNumber, 26), approved?.Remarks);
         sheet.Cell(rowNumber, 27).SetValue(StatusLabel(row.Status));
+        SetOptionalText(sheet.Cell(rowNumber, 28), approved is null ? null : JoinNames(approved.TaskNames));
 
-        var rowRange = sheet.Range(rowNumber, 1, rowNumber, 27);
+        var rowRange = sheet.Range(rowNumber, 1, rowNumber, CsvHeaders.Length);
         rowRange.Style.Font.FontSize = 9;
         rowRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
         rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
@@ -264,13 +295,356 @@ internal static class FlightExportDocumentFactory
         var widths = new[]
         {
             7d, 16, 18, 18, 21, 21, 21, 21, 16, 18, 19, 17, 18, 28, 18, 26, 22,
-            20, 20, 35, 35, 30, 30, 30, 35, 40, 16
+            20, 20, 35, 35, 30, 30, 30, 35, 40, 16, 42
         };
         for (var index = 0; index < widths.Length; index++)
             sheet.Column(index + 1).Width = widths[index];
     }
 
-    private static byte[] CreateCsv(IReadOnlyList<FlightExportRowDto> rows)
+    private static void AddServiceDetailsWorksheet(
+        XLWorkbook workbook,
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria,
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
+    {
+        const int headerRowNumber = 5;
+        var detailCount = rows.Sum(row => row.ApprovedWorkOrder?.ServiceDetails.Count ?? 0);
+        var sheet = CreateDetailWorksheetFrame(
+            workbook,
+            "Service Details",
+            "Daily Operation Report — Service Details",
+            ServiceDetailHeaders,
+            detailCount,
+            rows,
+            criteria,
+            generatedAtUtc,
+            timeZone);
+
+        var rowNumber = headerRowNumber + 1;
+        var sequence = 1;
+        foreach (var flight in rows)
+        {
+            if (flight.ApprovedWorkOrder is not { } workOrder)
+                continue;
+
+            foreach (var detail in workOrder.ServiceDetails)
+            {
+                WriteDetailIdentity(
+                    sheet,
+                    rowNumber,
+                    sequence++,
+                    flight,
+                    workOrder,
+                    detail.ReturnToRamp,
+                    timeZone);
+                SetWorkbookText(sheet.Cell(rowNumber, 20), detail.ServiceName);
+                SetOptionalDate(sheet.Cell(rowNumber, 21), detail.FromUtc, timeZone);
+                SetOptionalDate(sheet.Cell(rowNumber, 22), detail.ToUtc, timeZone);
+                SetOptionalText(sheet.Cell(rowNumber, 23), JoinNames(detail.PerformedByNames));
+                SetOptionalText(sheet.Cell(rowNumber, 24), detail.Description);
+                StyleDetailDataRow(
+                    sheet,
+                    rowNumber,
+                    ServiceDetailHeaders.Length,
+                    workOrder.WorkOrderStatus,
+                    flight.Status);
+                rowNumber++;
+            }
+        }
+
+        FinalizeDetailWorksheet(
+            sheet,
+            ServiceDetailHeaders.Length,
+            headerRowNumber,
+            rowNumber,
+            [12, 13, 14, 15, 17, 18, 21, 22],
+            [19, 23, 24],
+            [
+                7d, 17, 15, 17, 17, 15, 18, 27, 18, 27, 20, 20, 20, 20, 20,
+                21, 20, 20, 34, 28, 20, 20, 30, 42
+            ],
+            "No work-order services match the selected flights.",
+            timeZone);
+    }
+
+    private static void AddTaskDetailsWorksheet(
+        XLWorkbook workbook,
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria,
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
+    {
+        const int headerRowNumber = 5;
+        var detailCount = rows.Sum(row => row.ApprovedWorkOrder?.TaskDetails.Count ?? 0);
+        var sheet = CreateDetailWorksheetFrame(
+            workbook,
+            "Task Details",
+            "Daily Operation Report — Task Details",
+            TaskDetailHeaders,
+            detailCount,
+            rows,
+            criteria,
+            generatedAtUtc,
+            timeZone);
+
+        var rowNumber = headerRowNumber + 1;
+        var sequence = 1;
+        foreach (var flight in rows)
+        {
+            if (flight.ApprovedWorkOrder is not { } workOrder)
+                continue;
+
+            foreach (var detail in workOrder.TaskDetails)
+            {
+                WriteDetailIdentity(
+                    sheet,
+                    rowNumber,
+                    sequence++,
+                    flight,
+                    workOrder,
+                    detail.ReturnToRamp,
+                    timeZone);
+                SetWorkbookText(sheet.Cell(rowNumber, 20), detail.TaskType);
+                SetOptionalText(sheet.Cell(rowNumber, 21), detail.Description);
+                SetOptionalDate(sheet.Cell(rowNumber, 22), detail.FromUtc, timeZone);
+                SetOptionalDate(sheet.Cell(rowNumber, 23), detail.ToUtc, timeZone);
+                SetOptionalText(sheet.Cell(rowNumber, 24), JoinNames(detail.PerformedByNames));
+                SetOptionalText(sheet.Cell(rowNumber, 25), JoinResourceUsages(detail.Tools, timeZone));
+                SetOptionalText(sheet.Cell(rowNumber, 26), JoinResourceUsages(detail.Materials, timeZone));
+                SetOptionalText(sheet.Cell(rowNumber, 27), JoinResourceUsages(detail.GeneralSupports, timeZone));
+                StyleDetailDataRow(
+                    sheet,
+                    rowNumber,
+                    TaskDetailHeaders.Length,
+                    workOrder.WorkOrderStatus,
+                    flight.Status);
+                rowNumber++;
+            }
+        }
+
+        FinalizeDetailWorksheet(
+            sheet,
+            TaskDetailHeaders.Length,
+            headerRowNumber,
+            rowNumber,
+            [12, 13, 14, 15, 17, 18, 22, 23],
+            [19, 21, 24, 25, 26, 27],
+            [
+                7d, 17, 15, 17, 17, 15, 18, 27, 18, 27, 20, 20, 20, 20, 20,
+                21, 20, 20, 34, 15, 42, 20, 20, 30, 34, 34, 34
+            ],
+            "No work-order tasks match the selected flights.",
+            timeZone);
+    }
+
+    private static IXLWorksheet CreateDetailWorksheetFrame(
+        XLWorkbook workbook,
+        string worksheetName,
+        string title,
+        IReadOnlyList<string> headers,
+        int detailCount,
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria,
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
+    {
+        const int headerRowNumber = 5;
+        var sheet = workbook.Worksheets.Add(worksheetName);
+        sheet.ShowGridLines = false;
+
+        var titleRange = sheet.Range(1, 1, 1, headers.Count).Merge();
+        SetWorkbookText(titleRange.FirstCell(), title);
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 18;
+        titleRange.Style.Font.FontColor = XLColor.FromHtml(HeaderTextColor);
+        titleRange.Style.Fill.BackgroundColor = XLColor.FromHtml(BrandColor);
+        titleRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        titleRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+        sheet.Row(1).Height = 34;
+
+        var summaryRange = sheet.Range(2, 1, 2, headers.Count).Merge();
+        SetWorkbookText(
+            summaryRange.FirstCell(),
+            $"{detailCount.ToString("N0", CultureInfo.InvariantCulture)} detail records across " +
+            $"{rows.Count.ToString("N0", CultureInfo.InvariantCulture)} flights  |  " +
+            $"Generated {FormatReportTimestamp(generatedAtUtc, timeZone)}");
+        summaryRange.Style.Font.FontSize = 10;
+        summaryRange.Style.Font.FontColor = XLColor.FromHtml(MutedTextColor);
+        summaryRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#F3E9EA");
+        summaryRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        sheet.Row(2).Height = 22;
+
+        var filterRange = sheet.Range(3, 1, 3, headers.Count).Merge();
+        SetWorkbookText(filterRange.FirstCell(), $"Scope: {BuildFilterSummary(rows, criteria, timeZone)}");
+        filterRange.Style.Font.FontSize = 9;
+        filterRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
+        filterRange.Style.Alignment.WrapText = true;
+        filterRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        sheet.Row(3).Height = 30;
+
+        for (var index = 0; index < headers.Count; index++)
+            SetWorkbookText(sheet.Cell(headerRowNumber, index + 1), headers[index]);
+
+        var header = sheet.Range(headerRowNumber, 1, headerRowNumber, headers.Count);
+        header.Style.Font.Bold = true;
+        header.Style.Font.FontColor = XLColor.FromHtml(HeaderTextColor);
+        header.Style.Font.FontSize = 9;
+        header.Style.Fill.BackgroundColor = XLColor.FromHtml(BrandDarkColor);
+        header.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        header.Style.Alignment.WrapText = true;
+        header.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+        header.Style.Border.BottomBorderColor = XLColor.FromHtml(BrandDarkColor);
+        sheet.Row(headerRowNumber).Height = 32;
+
+        return sheet;
+    }
+
+    private static void WriteDetailIdentity(
+        IXLWorksheet sheet,
+        int rowNumber,
+        int sequence,
+        FlightExportRowDto flight,
+        ApprovedWorkOrderExportDto workOrder,
+        FlightExportReturnToRampContextDto? returnToRamp,
+        TimeZoneInfo timeZone)
+    {
+        sheet.Cell(rowNumber, 1).SetValue(sequence);
+        SetWorkbookText(sheet.Cell(rowNumber, 2), WorkOrderReference(workOrder));
+        SetWorkbookText(
+            sheet.Cell(rowNumber, 3),
+            string.IsNullOrWhiteSpace(workOrder.WorkOrderStatus) ? "-" : workOrder.WorkOrderStatus);
+        SetWorkbookText(sheet.Cell(rowNumber, 4), DisplayFlightNumber(flight, flight.FlightNumber));
+        SetWorkbookText(sheet.Cell(rowNumber, 5), DisplayFlightNumber(flight, workOrder.ActualFlightNumber));
+        SetWorkbookText(sheet.Cell(rowNumber, 6), StatusLabel(flight.Status));
+        SetOptionalText(sheet.Cell(rowNumber, 7), flight.CustomerIataCode);
+        SetWorkbookText(sheet.Cell(rowNumber, 8), flight.CustomerName);
+        SetWorkbookText(sheet.Cell(rowNumber, 9), flight.StationIata);
+        SetWorkbookText(sheet.Cell(rowNumber, 10), flight.StationName);
+        SetWorkbookText(sheet.Cell(rowNumber, 11), flight.OperationTypeName);
+        SetOptionalDate(sheet.Cell(rowNumber, 12), flight.ScheduledArrivalUtc, timeZone);
+        SetOptionalDate(sheet.Cell(rowNumber, 13), flight.ScheduledDepartureUtc, timeZone);
+        SetOptionalDate(sheet.Cell(rowNumber, 14), workOrder.ActualArrivalUtc, timeZone);
+        SetOptionalDate(sheet.Cell(rowNumber, 15), workOrder.ActualDepartureUtc, timeZone);
+        SetWorkbookText(
+            sheet.Cell(rowNumber, 16),
+            returnToRamp is null ? "Work order" : $"Return to ramp #{returnToRamp.Sequence}");
+        SetOptionalDate(sheet.Cell(rowNumber, 17), returnToRamp?.FromUtc, timeZone);
+        SetOptionalDate(sheet.Cell(rowNumber, 18), returnToRamp?.ToUtc, timeZone);
+        SetOptionalText(sheet.Cell(rowNumber, 19), returnToRamp?.Description);
+
+    }
+
+    private static void StyleDetailDataRow(
+        IXLWorksheet sheet,
+        int rowNumber,
+        int columnCount,
+        string workOrderStatus,
+        string flightStatus)
+    {
+        var rowRange = sheet.Range(rowNumber, 1, rowNumber, columnCount);
+        rowRange.Style.Font.FontSize = 9;
+        rowRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
+        rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        rowRange.Style.Border.BottomBorder = XLBorderStyleValues.Hair;
+        rowRange.Style.Border.BottomBorderColor = XLColor.FromHtml(BorderColor);
+        if ((rowNumber - 5) % 2 == 0)
+            rowRange.Style.Fill.BackgroundColor = XLColor.FromHtml(AlternateRowColor);
+
+        ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 3), workOrderStatus);
+        ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 6), flightStatus);
+        sheet.Row(rowNumber).Height = 26;
+    }
+
+    private static void FinalizeDetailWorksheet(
+        IXLWorksheet sheet,
+        int columnCount,
+        int headerRowNumber,
+        int nextRowNumber,
+        IReadOnlyList<int> dateColumns,
+        IReadOnlyList<int> wrappedColumns,
+        IReadOnlyList<double> widths,
+        string emptyMessage,
+        TimeZoneInfo timeZone)
+    {
+        var finalDataRow = nextRowNumber - 1;
+        var autoFilterLastRow = Math.Max(headerRowNumber, finalDataRow);
+        sheet.Range(headerRowNumber, 1, autoFilterLastRow, columnCount).SetAutoFilter();
+        sheet.SheetView.FreezeRows(headerRowNumber);
+
+        for (var index = 0; index < widths.Count; index++)
+            sheet.Column(index + 1).Width = widths[index];
+        foreach (var column in dateColumns)
+            sheet.Column(column).Style.DateFormat.Format = WorkbookDateFormat(timeZone);
+        foreach (var column in wrappedColumns)
+            sheet.Column(column).Style.Alignment.WrapText = true;
+
+        if (finalDataRow >= headerRowNumber + 1)
+            return;
+
+        var emptyRange = sheet.Range(headerRowNumber + 1, 1, headerRowNumber + 1, columnCount).Merge();
+        SetWorkbookText(emptyRange.FirstCell(), emptyMessage);
+        emptyRange.Style.Font.FontColor = XLColor.FromHtml(MutedTextColor);
+        emptyRange.Style.Font.Italic = true;
+        emptyRange.Style.Fill.BackgroundColor = XLColor.FromHtml(AlternateRowColor);
+        emptyRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        emptyRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        sheet.Row(headerRowNumber + 1).Height = 30;
+    }
+
+    private static string WorkOrderReference(ApprovedWorkOrderExportDto workOrder)
+    {
+        if (!string.IsNullOrWhiteSpace(workOrder.ApprovalNumber))
+            return workOrder.ApprovalNumber;
+
+        return workOrder.WorkOrderId == Guid.Empty
+            ? "-"
+            : $"WO-{workOrder.WorkOrderId.ToString("N", CultureInfo.InvariantCulture)[..8].ToUpperInvariant()}";
+    }
+
+    private static string JoinResourceUsages(
+        IReadOnlyList<FlightExportResourceUsageDto> resources,
+        TimeZoneInfo timeZone) =>
+        string.Join(
+            ", ",
+            resources.Select(resource => FormatResourceUsage(resource, timeZone)));
+
+    private static string FormatResourceUsage(
+        FlightExportResourceUsageDto resource,
+        TimeZoneInfo timeZone)
+    {
+        if (resource.CalculationType == ResourceCalculationType.Quantity)
+        {
+            return resource.Quantity is { } quantity
+                ? $"{resource.Name} × {quantity.ToString("0.##", CultureInfo.InvariantCulture)}"
+                : resource.Name;
+        }
+
+        if (resource.FromUtc is not { } fromUtc)
+            return $"{resource.Name} (duration not recorded)";
+
+        if (IsUtc(timeZone))
+        {
+            var utcFrom = fromUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
+            var utcTo = resource.ToUtc is { } utcToValue
+                ? utcToValue.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)
+                : "open";
+            return $"{resource.Name}: {utcFrom} → {utcTo}";
+        }
+
+        var from = TimeZoneInfo.ConvertTime(fromUtc, timeZone)
+            .ToString("yyyy-MM-dd HH:mm zzz", CultureInfo.InvariantCulture);
+        var to = resource.ToUtc is { } toUtc
+            ? TimeZoneInfo.ConvertTime(toUtc, timeZone)
+                .ToString("yyyy-MM-dd HH:mm zzz", CultureInfo.InvariantCulture)
+            : "open";
+        return $"{resource.Name}: {from} → {to} [{timeZone.Id}]";
+    }
+
+    private static void SetWorkbookText(IXLCell cell, string value) =>
+        cell.SetValue(SpreadsheetSafeText(value));
+
+    private static byte[] CreateCsv(IReadOnlyList<FlightExportRowDto> rows, TimeZoneInfo timeZone)
     {
         using var stream = new MemoryStream();
         stream.Write(Encoding.UTF8.GetPreamble());
@@ -289,8 +663,8 @@ internal static class FlightExportDocumentFactory
                     SpreadsheetSafeText(approved?.ApprovalNumber ?? "-"),
                     SpreadsheetSafeText(DisplayFlightNumber(row, row.FlightNumber)),
                     SpreadsheetSafeText(approved is null ? string.Empty : DisplayFlightNumber(row, approved.ActualFlightNumber)),
-                    FormatCsvTimestamp(row.ScheduledArrivalUtc), FormatCsvTimestamp(row.ScheduledDepartureUtc),
-                    FormatCsvTimestamp(approved?.ActualArrivalUtc), FormatCsvTimestamp(approved?.ActualDepartureUtc),
+                    FormatCsvTimestamp(row.ScheduledArrivalUtc, timeZone), FormatCsvTimestamp(row.ScheduledDepartureUtc, timeZone),
+                    FormatCsvTimestamp(approved?.ActualArrivalUtc, timeZone), FormatCsvTimestamp(approved?.ActualDepartureUtc, timeZone),
                     FormatCsvDuration(ArrivalDelay(row)), FormatCsvDuration(DepartureDelay(row)),
                     FormatCsvDuration(ScheduledDuration(row)), FormatCsvDuration(ActualDuration(row)),
                     SpreadsheetSafeText(row.CustomerIataCode ?? string.Empty), SpreadsheetSafeText(row.CustomerName),
@@ -304,7 +678,8 @@ internal static class FlightExportDocumentFactory
                     SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.MaterialNames)),
                     SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.GeneralSupportNames)),
                     SpreadsheetSafeText(JoinNames(row.AssignedEmployeeNames)),
-                    SpreadsheetSafeText(approved?.Remarks ?? string.Empty), StatusLabel(row.Status)
+                    SpreadsheetSafeText(approved?.Remarks ?? string.Empty), StatusLabel(row.Status),
+                    SpreadsheetSafeText(approved is null ? string.Empty : JoinNames(approved.TaskNames))
                 ]);
             }
         }
@@ -339,7 +714,8 @@ internal static class FlightExportDocumentFactory
     private static byte[] CreatePdf(
         IReadOnlyList<FlightExportRowDto> rows,
         FlightExportCriteria criteria,
-        DateTimeOffset generatedAtUtc)
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
     {
         PdfDocumentAssets.EnsureFontResolver();
 
@@ -363,8 +739,8 @@ internal static class FlightExportDocumentFactory
         section.PageSetup.HeaderDistance = Unit.FromCentimeter(0.45);
         section.PageSetup.FooterDistance = Unit.FromCentimeter(0.45);
 
-        AddPdfFooter(section, generatedAtUtc);
-        AddPdfFirstPageHeader(section, rows, criteria);
+        AddPdfFooter(section, generatedAtUtc, timeZone);
+        AddPdfFirstPageHeader(section, rows, criteria, timeZone);
 
         if (rows.Count == 0)
         {
@@ -390,7 +766,8 @@ internal static class FlightExportDocumentFactory
     private static void AddPdfFirstPageHeader(
         Section section,
         IReadOnlyList<FlightExportRowDto> rows,
-        FlightExportCriteria criteria)
+        FlightExportCriteria criteria,
+        TimeZoneInfo timeZone)
     {
         var masthead = section.AddTable();
         masthead.Borders.Bottom.Color = Color.Parse(BrandColor);
@@ -418,7 +795,7 @@ internal static class FlightExportDocumentFactory
         report.Format.Font.Color = Color.Parse(BrandColor);
         report.Format.SpaceBefore = Unit.FromPoint(2);
 
-        var date = mastheadRow.Cells[2].AddParagraph(PdfSafeText(PdfDateScope(criteria)));
+        var date = mastheadRow.Cells[2].AddParagraph(PdfSafeText(PdfDateScope(criteria, timeZone)));
         date.Format.Alignment = ParagraphAlignment.Right;
         date.Format.Font.Size = Unit.FromPoint(8);
         date.Format.Font.Bold = true;
@@ -451,7 +828,10 @@ internal static class FlightExportDocumentFactory
         section.AddParagraph().Format.SpaceAfter = Unit.FromPoint(2);
     }
 
-    private static void AddPdfFooter(Section section, DateTimeOffset generatedAtUtc)
+    private static void AddPdfFooter(
+        Section section,
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
     {
         var legend = section.Footers.Primary.AddTable();
         legend.Rows.LeftIndent = Unit.Zero;
@@ -477,7 +857,7 @@ internal static class FlightExportDocumentFactory
         footer.Format.Borders.Top.Color = Color.Parse(BorderColor);
         footer.Format.Borders.Top.Width = Unit.FromPoint(0.5);
         footer.Format.SpaceBefore = Unit.FromPoint(4);
-        footer.AddText($"Generated {FormatReportTimestamp(generatedAtUtc)}   |   Page ");
+        footer.AddText($"Generated {FormatReportTimestamp(generatedAtUtc, timeZone)}   |   Page ");
         footer.AddPageField();
         footer.AddText(" of ");
         footer.AddNumPagesField();
@@ -578,7 +958,10 @@ internal static class FlightExportDocumentFactory
         _ => Color.Parse("#536274")
     };
 
-    private static string BuildFilterSummary(IReadOnlyList<FlightExportRowDto> rows, FlightExportCriteria criteria)
+    private static string BuildFilterSummary(
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria,
+        TimeZoneInfo timeZone)
     {
         var filters = new List<string>();
 
@@ -606,11 +989,11 @@ internal static class FlightExportDocumentFactory
         }
 
         if (criteria.FromUtc is { } from && DisplayToUtc(criteria) is { } to)
-            filters.Add($"Scheduled arrival: {from.UtcDateTime:yyyy-MM-dd} to {to.UtcDateTime:yyyy-MM-dd}");
+            filters.Add($"Scheduled arrival: {DisplayDate(from, timeZone)} to {DisplayDate(to, timeZone)}{ZoneSuffix(timeZone)}");
         else if (criteria.FromUtc is { } fromOnly)
-            filters.Add($"Scheduled arrival from: {fromOnly.UtcDateTime:yyyy-MM-dd}");
+            filters.Add($"Scheduled arrival from: {DisplayDate(fromOnly, timeZone)}{ZoneSuffix(timeZone)}");
         else if (DisplayToUtc(criteria) is { } toOnly)
-            filters.Add($"Scheduled arrival through: {toOnly.UtcDateTime:yyyy-MM-dd}");
+            filters.Add($"Scheduled arrival through: {DisplayDate(toOnly, timeZone)}{ZoneSuffix(timeZone)}");
 
         if (criteria.ServiceCategories is { Count: > 0 } categories)
             filters.Add($"Service category: {string.Join(", ", categories.Select(ServiceCategoryLabel))}");
@@ -684,10 +1067,10 @@ internal static class FlightExportDocumentFactory
 
     private static TimeSpan? NonNegative(TimeSpan value) => value < TimeSpan.Zero ? null : value;
 
-    private static void SetOptionalDate(IXLCell cell, DateTimeOffset? value)
+    private static void SetOptionalDate(IXLCell cell, DateTimeOffset? value, TimeZoneInfo timeZone)
     {
         if (value.HasValue)
-            cell.SetValue(value.Value.UtcDateTime);
+            cell.SetValue(ToWorkbookDate(value.Value, timeZone));
     }
 
     private static void SetOptionalText(IXLCell cell, string? value)
@@ -719,15 +1102,35 @@ internal static class FlightExportDocumentFactory
         return JoinNames(row.ApprovedWorkOrder.ServiceNames);
     }
 
-    private static string FormatCsvTimestamp(DateTimeOffset? value) => value?.UtcDateTime
-        .ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture) ?? string.Empty;
+    internal static string FormatCsvTimestamp(DateTimeOffset? value, TimeZoneInfo timeZone)
+    {
+        if (!value.HasValue)
+            return string.Empty;
+
+        if (IsUtc(timeZone))
+            return value.Value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+        var local = TimeZoneInfo.ConvertTime(value.Value, timeZone);
+        return $"{local.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture)} [{timeZone.Id}]";
+    }
 
     private static string FormatCsvDuration(TimeSpan? value) => value.HasValue
         ? Math.Round(value.Value.TotalMinutes).ToString(CultureInfo.InvariantCulture)
         : string.Empty;
 
-    private static string PdfDateScope(FlightExportCriteria criteria)
+    internal static string PdfDateScope(FlightExportCriteria criteria, TimeZoneInfo timeZone)
     {
+        if (!IsUtc(timeZone))
+        {
+            if (criteria.FromUtc is { } localFrom && DisplayToUtc(criteria) is { } localTo)
+                return $"From {FormatPdfTimestamp(localFrom, timeZone)}\nTo   {FormatPdfTimestamp(localTo, timeZone)}\nZone {timeZone.Id}";
+            if (criteria.FromUtc is { } localFromOnly)
+                return $"From {FormatPdfTimestamp(localFromOnly, timeZone)}\nZone {timeZone.Id}";
+            if (DisplayToUtc(criteria) is { } localToOnly)
+                return $"To   {FormatPdfTimestamp(localToOnly, timeZone)}\nZone {timeZone.Id}";
+            return string.Empty;
+        }
+
         if (criteria.FromUtc is { } from && DisplayToUtc(criteria) is { } to)
             return $"From {from.UtcDateTime:dd MMM yyyy HH:mm} UTC\nTo   {to.UtcDateTime:dd MMM yyyy HH:mm} UTC";
         if (criteria.FromUtc is { } fromOnly)
@@ -779,10 +1182,35 @@ internal static class FlightExportDocumentFactory
         _ => status
     };
 
-    private static string FormatReportTimestamp(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
+    internal static string FormatReportTimestamp(DateTimeOffset value, TimeZoneInfo timeZone)
+    {
+        if (IsUtc(timeZone))
+            return value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
 
-    private static string FormatPdfTimestamp(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        var local = TimeZoneInfo.ConvertTime(value, timeZone);
+        return $"{local.ToString("yyyy-MM-dd HH:mm zzz", CultureInfo.InvariantCulture)} [{timeZone.Id}]";
+    }
+
+    private static string FormatPdfTimestamp(DateTimeOffset value, TimeZoneInfo timeZone) =>
+        TimeZoneInfo.ConvertTime(value, timeZone)
+            .ToString("dd MMM yyyy HH:mm zzz", CultureInfo.InvariantCulture);
+
+    private static DateTime ToWorkbookDate(DateTimeOffset value, TimeZoneInfo timeZone) =>
+        DateTime.SpecifyKind(TimeZoneInfo.ConvertTime(value, timeZone).DateTime, DateTimeKind.Unspecified);
+
+    private static string WorkbookDateFormat(TimeZoneInfo timeZone)
+    {
+        var label = timeZone.Id.Replace("\"", "\"\"", StringComparison.Ordinal);
+        return $"yyyy-mm-dd hh:mm \"{label}\"";
+    }
+
+    private static string DisplayDate(DateTimeOffset value, TimeZoneInfo timeZone) =>
+        TimeZoneInfo.ConvertTime(value, timeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static string ZoneSuffix(TimeZoneInfo timeZone) =>
+        IsUtc(timeZone) ? string.Empty : $" [{timeZone.Id}]";
+
+    private static bool IsUtc(TimeZoneInfo timeZone) =>
+        timeZone.Equals(TimeZoneInfo.Utc) || string.Equals(timeZone.Id, TimeZoneInfo.Utc.Id, StringComparison.Ordinal);
 
 }

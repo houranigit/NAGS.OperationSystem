@@ -106,6 +106,25 @@ public sealed class MobileFlightQueryTests
     }
 
     [Fact]
+    public async Task Mobile_lists_are_ordered_by_sta_descending()
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var staff = new StaffMemberSnapshot(Guid.NewGuid(), "Mobile Staff", "EMP-100");
+        var early = CreateFlight("MY110", stationId, assigned: [staff], sta: Now.AddHours(-2));
+        var middle = CreateFlight("MY120", stationId, assigned: [staff], sta: Now);
+        var late = CreateFlight("MY130", stationId, assigned: [staff], sta: Now.AddHours(2));
+        db.Flights.AddRange(early, middle, late);
+        await db.SaveChangesAsync();
+
+        var result = await Handler(db, stationId, staff.StaffMemberId).Handle(
+            new GetMobileFlightsQuery(MobileFlightList.My), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Select(flight => flight.Id).ShouldBe([late.Id, middle.Id, early.Id]);
+    }
+
+    [Fact]
     public async Task By_id_allows_same_station_ad_hoc_realtime_fetch_without_broadening_regular_access()
     {
         await using var db = NewDb();

@@ -1,3 +1,5 @@
+using MasterData.Contracts.Resources;
+
 namespace MasterData.Contracts.Readers;
 
 // Lightweight, point-in-time read projections MasterData exposes to other modules (e.g. Operations)
@@ -16,11 +18,23 @@ public sealed record ServiceReadSnapshot(Guid Id, string Name, bool IsActive);
 
 public sealed record StaffMemberReadSnapshot(Guid Id, string FullName, string EmployeeId, Guid StationId, Guid ManpowerTypeId, bool IsActive);
 
-public sealed record ToolReadSnapshot(Guid Id, string Name, bool IsActive);
+public sealed record ToolReadSnapshot(
+    Guid Id,
+    string Name,
+    bool IsActive,
+    ResourceCalculationType CalculationType = ResourceCalculationType.Duration);
 
-public sealed record MaterialReadSnapshot(Guid Id, string Name, bool IsActive);
+public sealed record MaterialReadSnapshot(
+    Guid Id,
+    string Name,
+    bool IsActive,
+    ResourceCalculationType CalculationType = ResourceCalculationType.Quantity);
 
-public sealed record GeneralSupportReadSnapshot(Guid Id, string Name, bool IsActive);
+public sealed record GeneralSupportReadSnapshot(
+    Guid Id,
+    string Name,
+    bool IsActive,
+    ResourceCalculationType CalculationType = ResourceCalculationType.Quantity);
 
 public sealed record ManpowerTypeReadSnapshot(Guid Id, string Name, bool IsActive);
 

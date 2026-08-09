@@ -108,29 +108,96 @@ public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer
 
 // --- Tools ----------------------------------------------------------------
 
-public sealed record ToolListItem(Guid Id, string Name, string? Description, bool IsActive, int EquipmentCount);
+public enum ResourceCalculationType
+{
+    Quantity = 0,
+    Duration = 1
+}
+
+public sealed record ToolListItem(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    int EquipmentCount,
+    ResourceCalculationType CalculationType);
 public sealed record ToolEquipmentModel(Guid Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
-public sealed record ToolDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, IReadOnlyList<ToolEquipmentModel> Equipments);
-public sealed record ToolOption(Guid Id, string Name);
+public sealed record ToolDetail(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion,
+    IReadOnlyList<ToolEquipmentModel> Equipments,
+    ResourceCalculationType CalculationType);
+public sealed record ToolOption(Guid Id, string Name, ResourceCalculationType CalculationType);
 public sealed record ToolEquipmentRequest(Guid? Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
-public sealed record CreateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest> Equipments);
-public sealed record UpdateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest> Equipments);
+public sealed record CreateToolRequest(
+    string Name,
+    string? Description,
+    IReadOnlyList<ToolEquipmentRequest> Equipments,
+    ResourceCalculationType CalculationType);
+public sealed record UpdateToolRequest(
+    string Name,
+    string? Description,
+    IReadOnlyList<ToolEquipmentRequest> Equipments,
+    ResourceCalculationType CalculationType);
 
 // --- Materials -------------------------------------------------------------
 
-public sealed record MaterialListItem(Guid Id, string Name, string? Description, bool IsActive);
-public sealed record MaterialDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
-public sealed record MaterialOption(Guid Id, string Name);
-public sealed record CreateMaterialRequest(string Name, string? Description);
-public sealed record UpdateMaterialRequest(string Name, string? Description);
+public sealed record MaterialListItem(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    ResourceCalculationType CalculationType);
+public sealed record MaterialDetail(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion,
+    ResourceCalculationType CalculationType);
+public sealed record MaterialOption(Guid Id, string Name, ResourceCalculationType CalculationType);
+public sealed record CreateMaterialRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType CalculationType);
+public sealed record UpdateMaterialRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType CalculationType);
 
 // --- GeneralSupports -------------------------------------------------------
 
-public sealed record GeneralSupportListItem(Guid Id, string Name, string? Description, bool IsActive);
-public sealed record GeneralSupportDetail(Guid Id, string Name, string? Description, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
-public sealed record GeneralSupportOption(Guid Id, string Name);
-public sealed record CreateGeneralSupportRequest(string Name, string? Description);
-public sealed record UpdateGeneralSupportRequest(string Name, string? Description);
+public sealed record GeneralSupportListItem(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    ResourceCalculationType CalculationType);
+public sealed record GeneralSupportDetail(
+    Guid Id,
+    string Name,
+    string? Description,
+    bool IsActive,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion,
+    ResourceCalculationType CalculationType);
+public sealed record GeneralSupportOption(Guid Id, string Name, ResourceCalculationType CalculationType);
+public sealed record CreateGeneralSupportRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType CalculationType);
+public sealed record UpdateGeneralSupportRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType CalculationType);
 
 // --- Stations --------------------------------------------------------------
 

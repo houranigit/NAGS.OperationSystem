@@ -21,6 +21,8 @@ public interface IOperationsDbContext : IOutboxDbContext
 
     public DbSet<WorkOrderServiceLine> WorkOrderServiceLines { get; }
 
+    public DbSet<WorkOrderReturnToRamp> WorkOrderReturnToRamps { get; }
+
     public DbSet<WorkOrderTimelineEntry> WorkOrderTimelineEntries { get; }
 
     public DbSet<MobileMutation> MobileMutations { get; }

@@ -28,6 +28,16 @@ public sealed record FlightScheduleUpdated : IntegrationEvent
     public Guid? UpdatedByUserId { get; init; }
 }
 
+/// <summary>
+/// Requests durable cleanup of a work-order blob after its authoritative database metadata was
+/// removed. The Operations outbox retries transient storage failures, so the delete endpoint can
+/// complete once the database transaction commits without leaving a 500-then-NotFound retry trap.
+/// </summary>
+public sealed record WorkOrderFileDeletionRequested : IntegrationEvent
+{
+    public required string StorageReference { get; init; }
+}
+
 /// <summary>Describes the user action that added the employee without coupling Operations to notification UI.</summary>
 public enum FlightAssignmentSource
 {

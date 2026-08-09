@@ -44,9 +44,21 @@ data class WorkOrderDetailWireDto(
     val approvalNumber: String? = null,
     val serviceLines: List<WorkOrderServiceLineWireDto> = emptyList(),
     val tasks: List<WorkOrderTaskWireDto> = emptyList(),
+    val returnToRamps: List<WorkOrderReturnToRampWireDto> = emptyList(),
     val createdAtUtc: String,
     val updatedAtUtc: String? = null,
     val rowVersion: String,
+)
+
+/** Canonical occurrence grouping returned by current servers. */
+@Serializable
+data class WorkOrderReturnToRampWireDto(
+    val id: String,
+    val fromUtc: String,
+    val toUtc: String,
+    val description: String? = null,
+    val serviceLines: List<WorkOrderServiceLineWireDto> = emptyList(),
+    val tasks: List<WorkOrderTaskWireDto> = emptyList(),
 )
 
 /** Mirrors server `WorkOrderServiceLineDto`. */
@@ -130,7 +142,11 @@ data class WorkOrderTaskResourceWireDto(
     val materialId: String? = null,
     val generalSupportId: String? = null,
     val name: String,
-    val quantity: Double = 1.0,
+    /** Null on duration rows; defaults retain compatibility with an older quantity-only API. */
+    val calculationType: ResourceCalculationType? = null,
+    val quantity: Double? = 1.0,
+    val fromUtc: String? = null,
+    val toUtc: String? = null,
 ) {
     val resourceId: String get() = toolId ?: materialId ?: generalSupportId ?: ""
 }

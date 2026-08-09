@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nags.operations.data.TaskTypeKind
+import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
@@ -53,7 +55,7 @@ import com.nags.operations.ui.components.VoiceAttachmentButton
 import com.nags.operations.ui.components.WorkOrderDateTimePickerField
 import com.nags.operations.ui.components.WorkOrderServicePicker
 import com.nags.operations.ui.components.formatMultiSelectSummary
-import java.time.ZoneOffset
+import java.time.ZoneId
 
 private fun resolvedServiceName(row: ServiceLineFormRow, services: List<ServiceEntity>): String? =
     services.firstOrNull { it.serviceId == row.serviceId }?.name ?: row.serviceName
@@ -152,7 +154,6 @@ fun WorkOrderLineRecapChip(
     lineNumber: Int,
     chipLabel: String,
     emphasize: Boolean,
-    showReturnToRamp: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -171,20 +172,6 @@ fun WorkOrderLineRecapChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (showReturnToRamp) {
-                Surface(
-                    shape = RoundedCornerShape(percent = 50),
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
-                ) {
-                    Text(
-                        text = "RTR",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                    )
-                }
-            }
             Surface(
                 shape = RoundedCornerShape(percent = 50),
                 color = MaterialTheme.colorScheme.primary,
@@ -212,7 +199,7 @@ fun WorkOrderLineRecapChip(
 @Composable
 fun ServiceLineCard(
     lineNumber: Int,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     scheduleAnchorIso: String,
     row: ServiceLineFormRow,
     lineErrors: ServiceLineSubmitFieldErrors?,
@@ -272,7 +259,6 @@ fun ServiceLineCard(
                         lineNumber = lineNumber,
                         chipLabel = chipLabel,
                         emphasize = hasServiceSelected,
-                        showReturnToRamp = row.returnToRamp,
                         modifier = Modifier.weight(1f),
                     )
                     if (canRemove) {
@@ -450,7 +436,7 @@ fun ServiceLineCard(
 @Composable
 fun TaskLineCard(
     lineNumber: Int,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     scheduleAnchorIso: String,
     row: TaskFormRow,
     lineErrors: TaskLineSubmitFieldErrors?,
@@ -509,7 +495,6 @@ fun TaskLineCard(
                         lineNumber = lineNumber,
                         chipLabel = chipLabel,
                         emphasize = performerHighlight,
-                        showReturnToRamp = row.returnToRamp,
                         modifier = Modifier.weight(1f),
                     )
                     if (canRemove) {
@@ -549,6 +534,49 @@ fun TaskLineCard(
                         text = message,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                OutlinedTextField(
+                    value = row.description,
+                    onValueChange = {
+                        onChange(row.copy(description = it.take(WorkOrderFormLimits.LineDescription)))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = fieldShape,
+                    label = { Text("Description (optional)") },
+                    placeholder = { Text("What was observed or corrected") },
+                    minLines = 2,
+                    maxLines = 4,
+                    isError = lineErrors?.description != null,
+                    supportingText = fieldErrorSupportingText(lineErrors?.description),
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    WorkOrderDateTimePickerField(
+                        iso = row.fromIso,
+                        label = "From",
+                        placeholder = "Start date & time",
+                        flightOffset = flightOffset,
+                        defaultInitialIso = scheduleAnchorIso,
+                        onIsoConfirmed = { onChange(row.copy(fromIso = it)) },
+                        modifier = Modifier.weight(1f),
+                        isError = lineErrors?.from != null,
+                        supportingText = fieldErrorSupportingText(lineErrors?.from),
+                    )
+                    WorkOrderDateTimePickerField(
+                        iso = row.toIso,
+                        label = "To",
+                        placeholder = "End date & time",
+                        flightOffset = flightOffset,
+                        defaultInitialIso = row.fromIso.takeIf { it.isNotBlank() } ?: scheduleAnchorIso,
+                        onIsoConfirmed = { onChange(row.copy(toIso = it)) },
+                        modifier = Modifier.weight(1f),
+                        isError = lineErrors?.to != null,
+                        supportingText = fieldErrorSupportingText(lineErrors?.to),
                     )
                 }
 
@@ -599,17 +627,37 @@ fun TaskLineCard(
                             row.copy(
                                 toolIds = ids,
                                 toolQuantities = quantitiesForSelection(ids, row.toolQuantities),
+                                toolUsages = usagesForSelection(
+                                    ids,
+                                    row.toolUsages,
+                                    row.toolQuantities,
+                                    tools.associate { it.toolId to it.calculationType },
+                                    ResourceCalculationType.Duration,
+                                    row.fromIso,
+                                    row.toIso,
+                                ),
                             ),
                         )
                     },
                 )
-                ResourceQuantityFields(
+                ResourceUsageFields(
                     selectedIds = row.toolIds,
                     namesById = tools.associate { it.toolId to it.name },
-                    quantities = row.toolQuantities,
+                    calculationTypesById = tools.associate { it.toolId to it.calculationType },
+                    defaultCalculationType = ResourceCalculationType.Duration,
+                    usages = row.toolUsages,
+                    legacyQuantities = row.toolQuantities,
+                    taskFromIso = row.fromIso,
+                    taskToIso = row.toIso,
+                    flightOffset = flightOffset,
+                    scheduleAnchorIso = scheduleAnchorIso,
                     error = lineErrors?.tools,
-                    onQuantityChanged = { id, quantity ->
-                        onChange(row.copy(toolQuantities = row.toolQuantities + (id to quantity)))
+                    onUsageChanged = { id, usage ->
+                        onChange(row.copy(
+                            toolUsages = row.toolUsages + (id to usage),
+                            toolQuantities = usage.quantity?.let { row.toolQuantities + (id to it) }
+                                ?: row.toolQuantities,
+                        ))
                     },
                 )
                 val materialOrderedIds = remember(materials) { materials.map { it.materialId } }
@@ -630,17 +678,37 @@ fun TaskLineCard(
                             row.copy(
                                 materialIds = ids,
                                 materialQuantities = quantitiesForSelection(ids, row.materialQuantities),
+                                materialUsages = usagesForSelection(
+                                    ids,
+                                    row.materialUsages,
+                                    row.materialQuantities,
+                                    materials.associate { it.materialId to it.calculationType },
+                                    ResourceCalculationType.Quantity,
+                                    row.fromIso,
+                                    row.toIso,
+                                ),
                             ),
                         )
                     },
                 )
-                ResourceQuantityFields(
+                ResourceUsageFields(
                     selectedIds = row.materialIds,
                     namesById = materials.associate { it.materialId to it.name },
-                    quantities = row.materialQuantities,
+                    calculationTypesById = materials.associate { it.materialId to it.calculationType },
+                    defaultCalculationType = ResourceCalculationType.Quantity,
+                    usages = row.materialUsages,
+                    legacyQuantities = row.materialQuantities,
+                    taskFromIso = row.fromIso,
+                    taskToIso = row.toIso,
+                    flightOffset = flightOffset,
+                    scheduleAnchorIso = scheduleAnchorIso,
                     error = lineErrors?.materials,
-                    onQuantityChanged = { id, quantity ->
-                        onChange(row.copy(materialQuantities = row.materialQuantities + (id to quantity)))
+                    onUsageChanged = { id, usage ->
+                        onChange(row.copy(
+                            materialUsages = row.materialUsages + (id to usage),
+                            materialQuantities = usage.quantity?.let { row.materialQuantities + (id to it) }
+                                ?: row.materialQuantities,
+                        ))
                     },
                 )
                 val gsOrderedIds = remember(generalSupports) { generalSupports.map { it.generalSupportId } }
@@ -666,51 +734,42 @@ fun TaskLineCard(
                                     ids,
                                     row.generalSupportQuantities,
                                 ),
+                                generalSupportUsages = usagesForSelection(
+                                    ids,
+                                    row.generalSupportUsages,
+                                    row.generalSupportQuantities,
+                                    generalSupports.associate { it.generalSupportId to it.calculationType },
+                                    ResourceCalculationType.Quantity,
+                                    row.fromIso,
+                                    row.toIso,
+                                ),
                             ),
                         )
                     },
                 )
-                ResourceQuantityFields(
+                ResourceUsageFields(
                     selectedIds = row.generalSupportIds,
                     namesById = generalSupports.associate { it.generalSupportId to it.name },
-                    quantities = row.generalSupportQuantities,
+                    calculationTypesById = generalSupports.associate { it.generalSupportId to it.calculationType },
+                    defaultCalculationType = ResourceCalculationType.Quantity,
+                    usages = row.generalSupportUsages,
+                    legacyQuantities = row.generalSupportQuantities,
+                    taskFromIso = row.fromIso,
+                    taskToIso = row.toIso,
+                    flightOffset = flightOffset,
+                    scheduleAnchorIso = scheduleAnchorIso,
                     error = lineErrors?.generalSupports,
-                    onQuantityChanged = { id, quantity ->
+                    onUsageChanged = { id, usage ->
                         onChange(
                             row.copy(
-                                generalSupportQuantities = row.generalSupportQuantities + (id to quantity),
+                                generalSupportUsages = row.generalSupportUsages + (id to usage),
+                                generalSupportQuantities = usage.quantity?.let {
+                                    row.generalSupportQuantities + (id to it)
+                                } ?: row.generalSupportQuantities,
                             ),
                         )
                     },
                 )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    WorkOrderDateTimePickerField(
-                        iso = row.fromIso,
-                        label = "From",
-                        placeholder = "Start date & time",
-                        flightOffset = flightOffset,
-                        defaultInitialIso = scheduleAnchorIso,
-                        onIsoConfirmed = { onChange(row.copy(fromIso = it)) },
-                        modifier = Modifier.weight(1f),
-                        isError = lineErrors?.from != null,
-                        supportingText = fieldErrorSupportingText(lineErrors?.from),
-                    )
-                    WorkOrderDateTimePickerField(
-                        iso = row.toIso,
-                        label = "To",
-                        placeholder = "End date & time",
-                        flightOffset = flightOffset,
-                        defaultInitialIso = row.fromIso.takeIf { it.isNotBlank() } ?: scheduleAnchorIso,
-                        onIsoConfirmed = { onChange(row.copy(toIso = it)) },
-                        modifier = Modifier.weight(1f),
-                        isError = lineErrors?.to != null,
-                        supportingText = fieldErrorSupportingText(lineErrors?.to),
-                    )
-                }
 
                 Text(
                     text = "Attachments (${row.existingAttachmentNames.size + row.attachments.size}/${WorkOrderFormLimits.TaskAttachments})",
@@ -781,64 +840,131 @@ fun TaskLineCard(
                     )
                 }
 
-                OutlinedTextField(
-                    value = row.description,
-                    onValueChange = {
-                        onChange(row.copy(description = it.take(WorkOrderFormLimits.LineDescription)))
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = fieldShape,
-                    label = { Text("Description (optional)") },
-                    placeholder = { Text("What was observed or corrected") },
-                    minLines = 2,
-                    maxLines = 4,
-                    isError = lineErrors?.description != null,
-                    supportingText = fieldErrorSupportingText(lineErrors?.description),
-                )
             }
         }
     }
 }
 
 @Composable
-private fun ResourceQuantityFields(
+private fun ResourceUsageFields(
     selectedIds: List<String>,
     namesById: Map<String, String>,
-    quantities: Map<String, Double>,
+    calculationTypesById: Map<String, ResourceCalculationType>,
+    defaultCalculationType: ResourceCalculationType,
+    usages: Map<String, ResourceUsageForm>,
+    legacyQuantities: Map<String, Double>,
+    taskFromIso: String,
+    taskToIso: String,
+    flightOffset: ZoneId,
+    scheduleAnchorIso: String,
     error: String?,
-    onQuantityChanged: (String, Double) -> Unit,
+    onUsageChanged: (String, ResourceUsageForm) -> Unit,
 ) {
     if (selectedIds.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         selectedIds.forEach { id ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            val calculationType = usages[id]?.calculationType
+                ?: calculationTypesById[id]
+                ?: defaultCalculationType
+            val usage = resourceUsage(
+                id,
+                usages,
+                legacyQuantities,
+                calculationType,
+                taskFromIso,
+                taskToIso,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = namesById[id] ?: "Selected item",
+                    text = "${namesById[id] ?: "Selected item"} · ${calculationType.name}",
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val quantity = resourceQuantity(quantities, id)
-                var quantityText by remember(id) { mutableStateOf(formatQuantity(quantity)) }
-                OutlinedTextField(
-                    value = quantityText,
-                    onValueChange = { raw ->
-                        if (raw.count { it == '.' } <= 1 && raw.all { it.isDigit() || it == '.' }) {
-                            quantityText = raw
-                            onQuantityChanged(id, raw.toDoubleOrNull() ?: 0.0)
+                if (calculationType == ResourceCalculationType.Quantity) {
+                    val quantity = usage.quantity ?: resourceQuantity(legacyQuantities, id)
+                    var quantityText by remember(id, quantity) { mutableStateOf(formatQuantity(quantity)) }
+                    OutlinedTextField(
+                        value = quantityText,
+                        onValueChange = { raw ->
+                            if (raw.count { it == '.' } <= 1 && raw.all { it.isDigit() || it == '.' }) {
+                                quantityText = raw
+                                onUsageChanged(
+                                    id,
+                                    ResourceUsageForm(
+                                        calculationType = ResourceCalculationType.Quantity,
+                                        quantity = raw.toDoubleOrNull() ?: 0.0,
+                                    ),
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Quantity") },
+                        singleLine = true,
+                        isError = !isValidResourceQuantity(quantity),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        WorkOrderDateTimePickerField(
+                            iso = usage.fromIso,
+                            label = "Usage From",
+                            placeholder = "Required",
+                            flightOffset = flightOffset,
+                            defaultInitialIso = taskFromIso.takeIf { it.isNotBlank() } ?: scheduleAnchorIso,
+                            onIsoConfirmed = { value ->
+                                onUsageChanged(
+                                    id,
+                                    usage.copy(
+                                        calculationType = ResourceCalculationType.Duration,
+                                        quantity = null,
+                                        fromIso = value,
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            isError = usage.fromIso.isBlank(),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            WorkOrderDateTimePickerField(
+                                iso = usage.toIso.orEmpty(),
+                                label = "Usage To (optional)",
+                                placeholder = "Open-ended",
+                                flightOffset = flightOffset,
+                                defaultInitialIso = usage.fromIso.takeIf { it.isNotBlank() }
+                                    ?: taskFromIso.takeIf { it.isNotBlank() }
+                                    ?: scheduleAnchorIso,
+                                onIsoConfirmed = { value ->
+                                    onUsageChanged(
+                                        id,
+                                        usage.copy(
+                                            calculationType = ResourceCalculationType.Duration,
+                                            quantity = null,
+                                            toIso = value,
+                                        ),
+                                    )
+                                },
+                            )
+                            if (!usage.toIso.isNullOrBlank()) {
+                                TextButton(
+                                    onClick = {
+                                        onUsageChanged(
+                                            id,
+                                            usage.copy(
+                                                calculationType = ResourceCalculationType.Duration,
+                                                quantity = null,
+                                                toIso = null,
+                                            ),
+                                        )
+                                    },
+                                ) { Text("Clear To") }
+                            }
                         }
-                    },
-                    modifier = Modifier.width(112.dp),
-                    label = { Text("Quantity") },
-                    singleLine = true,
-                    isError = !isValidResourceQuantity(quantity),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                )
+                    }
+                }
             }
         }
         error?.let { message ->

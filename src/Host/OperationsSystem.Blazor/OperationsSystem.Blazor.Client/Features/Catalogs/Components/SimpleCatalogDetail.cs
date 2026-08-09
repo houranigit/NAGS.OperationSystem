@@ -1,3 +1,5 @@
+using OperationsSystem.Blazor.Client.Api;
+
 namespace OperationsSystem.Blazor.Client.Features.Catalogs.Components;
 
 internal sealed record SimpleCatalogDetail(
@@ -8,4 +10,5 @@ internal sealed record SimpleCatalogDetail(
     bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    ResourceCalculationType? CalculationType);

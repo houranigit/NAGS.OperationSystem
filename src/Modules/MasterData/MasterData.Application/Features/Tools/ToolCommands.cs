@@ -3,6 +3,7 @@ using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
+using MasterData.Contracts.Resources;
 using MasterData.Domain.Tools;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +11,11 @@ namespace MasterData.Application.Features.Tools;
 
 public sealed record ToolEquipmentInput(Guid? Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
 
-public sealed record CreateToolCommand(string Name, string? Description, IReadOnlyList<ToolEquipmentInput>? Equipments) : ICommand<Guid>;
+public sealed record CreateToolCommand(
+    string Name,
+    string? Description,
+    IReadOnlyList<ToolEquipmentInput>? Equipments,
+    ResourceCalculationType? CalculationType = null) : ICommand<Guid>;
 
 public sealed class CreateToolCommandValidator : AbstractValidator<CreateToolCommand>
 {
@@ -18,6 +23,9 @@ public sealed class CreateToolCommandValidator : AbstractValidator<CreateToolCom
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
+        RuleFor(x => x.CalculationType)
+            .Must(type => type is null or ResourceCalculationType.Quantity or ResourceCalculationType.Duration)
+            .WithMessage("Calculation type must be Quantity or Duration.");
         RuleForEach(x => x.Equipments).SetValidator(new ToolEquipmentInputValidator());
     }
 }
@@ -36,7 +44,11 @@ public sealed class CreateToolCommandHandler(IMasterDataDbContext db, TimeProvid
 {
     public async Task<Result<Guid>> Handle(CreateToolCommand request, CancellationToken cancellationToken)
     {
-        var result = Tool.Create(request.Name, request.Description, timeProvider.GetUtcNow());
+        var result = Tool.Create(
+            request.Name,
+            request.Description,
+            timeProvider.GetUtcNow(),
+            calculationType: request.CalculationType ?? ResourceCalculationType.Duration);
         if (result.IsFailure)
             return result.Error;
 
@@ -58,7 +70,13 @@ public sealed class CreateToolCommandHandler(IMasterDataDbContext db, TimeProvid
     }
 }
 
-public sealed record UpdateToolCommand(Guid Id, string Name, string? Description, IReadOnlyList<ToolEquipmentInput>? Equipments, byte[] RowVersion) : ICommand;
+public sealed record UpdateToolCommand(
+    Guid Id,
+    string Name,
+    string? Description,
+    IReadOnlyList<ToolEquipmentInput>? Equipments,
+    byte[] RowVersion,
+    ResourceCalculationType? CalculationType = null) : ICommand;
 
 public sealed class UpdateToolCommandValidator : AbstractValidator<UpdateToolCommand>
 {
@@ -67,6 +85,9 @@ public sealed class UpdateToolCommandValidator : AbstractValidator<UpdateToolCom
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
+        RuleFor(x => x.CalculationType)
+            .Must(type => type is null or ResourceCalculationType.Quantity or ResourceCalculationType.Duration)
+            .WithMessage("Calculation type must be Quantity or Duration.");
         RuleFor(x => x.RowVersion).NotEmpty();
         RuleForEach(x => x.Equipments).SetValidator(new ToolEquipmentInputValidator());
     }
@@ -88,7 +109,7 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
             return Error.Conflict("A tool with this name already exists.", "MasterData.Tool.DuplicateName");
 
         var now = timeProvider.GetUtcNow();
-        var result = tool.Update(request.Name, request.Description, now);
+        var result = tool.Update(request.Name, request.Description, now, request.CalculationType);
         if (result.IsFailure)
             return result.Error;
 

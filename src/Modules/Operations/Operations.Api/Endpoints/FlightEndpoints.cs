@@ -52,7 +52,8 @@ internal static class FlightEndpoints
             string? serviceCategory = null,
             DateTimeOffset? fromUtc = null,
             DateTimeOffset? toUtc = null,
-            string? sort = null) =>
+            string? sort = null,
+            string? timeZoneId = null) =>
         {
             if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
             {
@@ -62,6 +63,16 @@ internal static class FlightEndpoints
                         ["format"] = ["Format must be one of: xlsx, csv, or pdf."]
                     },
                     code: "Operations.Flight.ExportFormatInvalid"));
+            }
+
+            if (!FlightExportTimeZoneResolver.TryResolve(timeZoneId, out var displayTimeZone))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    new Dictionary<string, string[]>
+                    {
+                        ["timeZoneId"] = ["Time zone must be a valid IANA, Windows, or Browser UTC±HH:mm identifier."]
+                    },
+                    code: "Operations.Flight.ExportTimeZoneInvalid"));
             }
 
             var statuses = ParseStatuses(status);
@@ -100,7 +111,8 @@ internal static class FlightEndpoints
                     ServiceIds: [],
                     ToUtcExclusive: false,
                     Sort: sort),
-                timeProvider.GetUtcNow());
+                timeProvider.GetUtcNow(),
+                displayTimeZone);
 
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Flights.View)
@@ -188,7 +200,8 @@ internal static class FlightEndpoints
             var result = await sender.Send(new ScheduleFlightsCommand(
                 request.CustomerId, request.StationId, request.OperationTypeId, request.FlightNumber,
                 request.ScheduledArrivalTimeUtc, request.ScheduledDepartureTimeUtc, request.SelectedDates ?? [],
-                request.AircraftTypeId, request.PlannedServiceIds ?? [], request.AssignedStaffMemberIds ?? []), ct);
+                request.AircraftTypeId, request.PlannedServiceIds ?? [], request.AssignedStaffMemberIds ?? [],
+                request.TimeZoneId), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.Schedule);
 

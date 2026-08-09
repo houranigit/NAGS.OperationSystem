@@ -6,6 +6,7 @@ import com.nags.operations.data.ApiException
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.MobileApi
 import com.nags.operations.data.api.MobileCancelFlightRequest
+import com.nags.operations.data.api.MobileFlightReturnToRampRequest
 import com.nags.operations.data.api.MobileReturnToRampRequest
 import com.nags.operations.data.api.MobileScratchWorkOrderRequest
 import com.nags.operations.data.api.MobileWorkOrderWriteRequest
@@ -14,6 +15,7 @@ import com.nags.operations.data.api.WorkOrderSignatureInput
 import com.nags.operations.data.api.WorkOrderTaskAttachmentInput
 import com.nags.operations.data.api.WorkOrderTaskInput
 import com.nags.operations.data.api.WorkOrderTaskResourceInput
+import com.nags.operations.data.api.WorkOrderReturnToRampInput
 import com.nags.operations.data.api.WorkOrderWireRequest
 import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
 import com.nags.operations.data.network.NetworkMonitor
@@ -302,24 +304,45 @@ class OutboxWorker(
                     Outcome.Succeeded(woId)
                 }
                 OutboxPayload.Kind.ReturnToRamp -> {
-                    val woId = row.serverWorkOrderId
-                        ?: return Outcome.Failed("Return-to-ramp row missing server work order id.")
-                    val workOrder = payload.requireWorkOrder()
-                    mobileApi.recordReturnToRamp(
-                        workOrderId = woId,
-                        body = MobileReturnToRampRequest(
-                            clientMutationId = row.clientMutationId,
-                            serviceLines = workOrder.serviceLines.map { line ->
-                                line.toWireServiceLine(
-                                    line.attachments.map { attachment ->
-                                        attachment.toWire(attachmentsDir)
-                                    },
-                                )
-                            },
-                            tasks = workOrder.tasks.map { it.toWire(attachmentsDir) },
-                        ),
-                    )
-                    Outcome.Succeeded(woId)
+                    val occurrence = payload.returnToRamp
+                    if (payload.usesCanonicalFlightReturnToRampRoute()) {
+                        requireNotNull(occurrence)
+                        val response = mobileApi.recordReturnToRampForFlight(
+                            flightId = row.flightId,
+                            body = MobileFlightReturnToRampRequest(
+                                clientMutationId = row.clientMutationId,
+                                fromUtc = occurrence.fromIso,
+                                toUtc = occurrence.toIso,
+                                description = occurrence.description,
+                                serviceLines = occurrence.serviceLines.map { line ->
+                                    line.toWireServiceLine(
+                                        line.attachments.map { attachment -> attachment.toWire(attachmentsDir) },
+                                    )
+                                },
+                                tasks = occurrence.tasks.map { it.toWire(attachmentsDir) },
+                            ),
+                        )
+                        Outcome.Succeeded(response.workOrderId)
+                    } else {
+                        // Queued by a pre-occurrence client. Preserve its work-order target and
+                        // exact legacy fingerprint/route rather than silently changing semantics.
+                        val woId = row.serverWorkOrderId
+                            ?: return Outcome.Failed("Legacy return-to-ramp row missing server work order id.")
+                        val workOrder = payload.requireWorkOrder()
+                        mobileApi.recordReturnToRamp(
+                            workOrderId = woId,
+                            body = MobileReturnToRampRequest(
+                                clientMutationId = row.clientMutationId,
+                                serviceLines = workOrder.serviceLines.map { line ->
+                                    line.toWireServiceLine(
+                                        line.attachments.map { attachment -> attachment.toWire(attachmentsDir) },
+                                    )
+                                },
+                                tasks = workOrder.tasks.map { it.toWire(attachmentsDir) },
+                            ),
+                        )
+                        Outcome.Succeeded(woId)
+                    }
                 }
                 OutboxPayload.Kind.CancelFlight -> {
                     val cancel = payload.cancelFlight
@@ -392,6 +415,22 @@ class OutboxWorker(
                 contentType = "image/png",
             )
         },
+        returnToRamps = returnToRamps.map { it.toWire(attachmentsDir) },
+    )
+
+    private fun OutboxPayload.ReturnToRampInput.toWire(
+        attachmentsDir: File?,
+    ) = WorkOrderReturnToRampInput(
+        id = id,
+        fromUtc = fromIso,
+        toUtc = toIso,
+        description = description,
+        serviceLines = serviceLines.map { line ->
+            line.toWireServiceLine(
+                line.attachments.map { attachment -> attachment.toWire(attachmentsDir) },
+            )
+        },
+        tasks = tasks.map { it.toWire(attachmentsDir) },
     )
 
     private fun OutboxPayload.TaskInput.toWire(attachmentsDir: File?) = WorkOrderTaskInput(
@@ -401,9 +440,30 @@ class OutboxWorker(
         fromUtc = fromIso,
         toUtc = toIso,
         employeeIds = employeeIds,
-        tools = tools.map { WorkOrderTaskResourceInput(toolId = it.itemId, quantity = it.quantity) },
-        materials = materials.map { WorkOrderTaskResourceInput(materialId = it.itemId, quantity = it.quantity) },
-        generalSupports = generalSupports.map { WorkOrderTaskResourceInput(generalSupportId = it.itemId, quantity = it.quantity) },
+        tools = tools.map {
+            WorkOrderTaskResourceInput(
+                toolId = it.itemId,
+                quantity = it.quantity,
+                fromUtc = it.fromIso,
+                toUtc = it.toIso,
+            )
+        },
+        materials = materials.map {
+            WorkOrderTaskResourceInput(
+                materialId = it.itemId,
+                quantity = it.quantity,
+                fromUtc = it.fromIso,
+                toUtc = it.toIso,
+            )
+        },
+        generalSupports = generalSupports.map {
+            WorkOrderTaskResourceInput(
+                generalSupportId = it.itemId,
+                quantity = it.quantity,
+                fromUtc = it.fromIso,
+                toUtc = it.toIso,
+            )
+        },
         attachments = attachments.map { it.toWire(attachmentsDir) },
         isReturnToRamp = isReturnToRamp,
     )

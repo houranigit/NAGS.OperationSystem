@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +58,8 @@ import com.nags.operations.ui.components.SubmitWorkOrderAtdDialog
 import com.nags.operations.ui.components.WorkOrderAtaPickerField
 import com.nags.operations.ui.components.WorkOrderDateTimePickerField
 import com.nags.operations.ui.components.WorkOrderFlightSummaryCard
-import com.nags.operations.ui.util.offsetSameAsFlight
+import com.nags.operations.ui.components.cleanupAllAttachmentPreviews
+import com.nags.operations.ui.util.userTimeZone
 import com.nags.operations.ui.workorder.CreateWorkOrderUiState
 import com.nags.operations.ui.workorder.CreateWorkOrderViewModel
 import com.nags.operations.ui.workorder.DraftSaveResult
@@ -70,6 +72,7 @@ import com.nags.operations.ui.workorder.ServiceLineCard
 import com.nags.operations.ui.workorder.ServiceLinesSectionHeading
 import com.nags.operations.ui.workorder.TaskLineCard
 import com.nags.operations.ui.workorder.TasksSectionHeading
+import com.nags.operations.ui.workorder.ReturnToRampOccurrenceCard
 import com.nags.operations.ui.workorder.fieldErrorSupportingText
 import kotlinx.coroutines.launch
 
@@ -80,10 +83,15 @@ fun CreateWorkOrderScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val previewContext = LocalContext.current.applicationContext
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showExitDialog by remember { mutableStateOf(false) }
     val busy = state.isSavingDraft || state.isSubmitting
+
+    DisposableEffect(previewContext) {
+        onDispose { cleanupAllAttachmentPreviews(previewContext) }
+    }
 
     fun requestExit() {
         if (busy) return
@@ -222,7 +230,7 @@ private fun CreateWorkOrderFormContent(
     onClose: () -> Unit,
 ) {
     val flight = state.flight ?: return
-    val flightOffset = remember(flight.std) { offsetSameAsFlight(flight.std) }
+    val flightOffset = remember { userTimeZone() }
     val scope = rememberCoroutineScope()
     val appCtx = LocalContext.current.applicationContext
     val submitErrs = state.submitFieldErrors
@@ -541,6 +549,78 @@ private fun CreateWorkOrderFormContent(
         }
             }
 
+            WorkOrderWizardStep.ReturnToRamps -> {
+                FormSectionTitle("Return to ramps")
+                Text(
+                    "Optional. Add one occurrence for each separate return to ramp, or continue to skip this step.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                state.form.returnToRamps.forEachIndexed { index, occurrence ->
+                    ReturnToRampOccurrenceCard(
+                        occurrenceNumber = index + 1,
+                        row = occurrence,
+                        errors = submitErrs?.returnToRampsByKey?.get(occurrence.localKey),
+                        flightOffset = flightOffset,
+                        scheduleAnchorIso = flight.sta,
+                        services = state.catalogServices,
+                        employees = state.catalogEmployees,
+                        tools = state.catalogTools,
+                        materials = state.catalogMaterials,
+                        generalSupports = state.catalogGeneralSupports,
+                        onChange = viewModel::replaceReturnToRamp,
+                        onRemove = { viewModel.removeReturnToRamp(occurrence.localKey) },
+                        canRemove = true,
+                        onAddService = { viewModel.addReturnToRampServiceLine(occurrence.localKey) },
+                        onServiceChange = { viewModel.replaceReturnToRampServiceLine(occurrence.localKey, it) },
+                        onServiceRemove = {
+                            viewModel.removeReturnToRampServiceLine(occurrence.localKey, it)
+                        },
+                        onServiceAttachmentAdded = { lineKey, attachment ->
+                            viewModel.addReturnToRampServiceAttachment(
+                                occurrence.localKey,
+                                lineKey,
+                                attachment,
+                            )
+                        },
+                        onServiceAttachmentRemoved = { lineKey, attachment ->
+                            viewModel.removeReturnToRampServiceAttachment(
+                                occurrence.localKey,
+                                lineKey,
+                                attachment,
+                            )
+                        },
+                        onAddTask = { viewModel.addReturnToRampTask(occurrence.localKey) },
+                        onTaskChange = { viewModel.replaceReturnToRampTask(occurrence.localKey, it) },
+                        onTaskRemove = { viewModel.removeReturnToRampTask(occurrence.localKey, it) },
+                        onTaskAttachmentAdded = { taskKey, attachment ->
+                            viewModel.addReturnToRampTaskAttachment(
+                                occurrence.localKey,
+                                taskKey,
+                                attachment,
+                            )
+                        },
+                        onTaskAttachmentRemoved = { taskKey, attachment ->
+                            viewModel.removeReturnToRampTaskAttachment(
+                                occurrence.localKey,
+                                taskKey,
+                                attachment,
+                            )
+                        },
+                    )
+                }
+                Button(
+                    onClick = viewModel::addReturnToRamp,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Add return to ramp")
+                }
+            }
+
             WorkOrderWizardStep.Signature -> {
         FormSectionTitle("Customer signature")
         state.form.existingCustomerSignatureName?.let { name ->
@@ -682,7 +762,7 @@ private fun WorkOrderWizardStepper(
     enabled: Boolean,
     onStepSelected: (WorkOrderWizardStep) -> Unit,
 ) {
-    val labels = listOf("Flight", "Service lines", "Tasks", "Signature")
+    val labels = listOf("Flight", "Services", "Tasks", "Return to ramps", "Signature")
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),

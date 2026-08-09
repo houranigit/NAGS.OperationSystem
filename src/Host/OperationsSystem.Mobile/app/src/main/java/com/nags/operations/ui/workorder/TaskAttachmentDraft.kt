@@ -33,6 +33,42 @@ internal fun TaskFormRow.mergeNonAttachmentEdit(edited: TaskFormRow): TaskFormRo
     existingAttachmentNames = existingAttachmentNames,
 )
 
+/** Retains asynchronously captured nested attachments while applying occurrence/field edits. */
+internal fun ReturnToRampFormRow.mergeNonAttachmentEdit(
+    edited: ReturnToRampFormRow,
+): ReturnToRampFormRow = edited.copy(
+    serviceLines = edited.serviceLines.map { row ->
+        serviceLines.firstOrNull { it.localKey == row.localKey }
+            ?.mergeNonAttachmentEdit(row) ?: row
+    },
+    tasks = edited.tasks.map { row ->
+        tasks.firstOrNull { it.localKey == row.localKey }
+            ?.mergeNonAttachmentEdit(row) ?: row
+    },
+)
+
+internal fun CreateWorkOrderFormState.withReturnToRampServiceLineReplaced(
+    occurrenceKey: Long,
+    row: ServiceLineFormRow,
+): CreateWorkOrderFormState = copy(returnToRamps = returnToRamps.map { occurrence ->
+    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+        serviceLines = occurrence.serviceLines.map { current ->
+            if (current.localKey == row.localKey) current.mergeNonAttachmentEdit(row) else current
+        },
+    )
+})
+
+internal fun CreateWorkOrderFormState.withReturnToRampTaskReplaced(
+    occurrenceKey: Long,
+    row: TaskFormRow,
+): CreateWorkOrderFormState = copy(returnToRamps = returnToRamps.map { occurrence ->
+    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+        tasks = occurrence.tasks.map { current ->
+            if (current.localKey == row.localKey) current.mergeNonAttachmentEdit(row) else current
+        },
+    )
+})
+
 internal fun CreateWorkOrderFormState.withServiceLineAttachmentAdded(
     serviceLineLocalKey: Long,
     attachment: TaskAttachmentDraft,
@@ -99,12 +135,77 @@ internal fun TaskAttachmentDraft.toEnqueueAttachment(): EnqueueAttachment =
         sizeBytes = sizeBytes,
     )
 
+internal fun CreateWorkOrderFormState.withReturnToRampServiceAttachmentAdded(
+    occurrenceKey: Long,
+    lineKey: Long,
+    attachment: TaskAttachmentDraft,
+): CreateWorkOrderFormState = copy(returnToRamps = returnToRamps.map { occurrence ->
+    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+        serviceLines = occurrence.serviceLines.map { line ->
+            if (
+                line.localKey == lineKey &&
+                line.existingAttachmentNames.size + line.attachments.size < WorkOrderFormLimits.ServiceAttachments
+            ) line.copy(attachments = line.attachments + attachment) else line
+        },
+    )
+})
+
+internal fun CreateWorkOrderFormState.withReturnToRampServiceAttachmentRemoved(
+    occurrenceKey: Long,
+    lineKey: Long,
+    attachment: TaskAttachmentDraft,
+): CreateWorkOrderFormState = copy(returnToRamps = returnToRamps.map { occurrence ->
+    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+        serviceLines = occurrence.serviceLines.map { line ->
+            if (line.localKey != lineKey) line else line.copy(
+                attachments = line.attachments.toMutableList().apply { remove(attachment) },
+            )
+        },
+    )
+})
+
+internal fun CreateWorkOrderFormState.withReturnToRampTaskAttachmentAdded(
+    occurrenceKey: Long,
+    taskKey: Long,
+    attachment: TaskAttachmentDraft,
+): CreateWorkOrderFormState = copy(returnToRamps = returnToRamps.map { occurrence ->
+    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+        tasks = occurrence.tasks.map { task ->
+            if (
+                task.localKey == taskKey &&
+                task.existingAttachmentNames.size + task.attachments.size < WorkOrderFormLimits.TaskAttachments
+            ) task.copy(attachments = task.attachments + attachment) else task
+        },
+    )
+})
+
+internal fun CreateWorkOrderFormState.withReturnToRampTaskAttachmentRemoved(
+    occurrenceKey: Long,
+    taskKey: Long,
+    attachment: TaskAttachmentDraft,
+): CreateWorkOrderFormState = copy(returnToRamps = returnToRamps.map { occurrence ->
+    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+        tasks = occurrence.tasks.map { task ->
+            if (task.localKey != taskKey) task else task.copy(
+                attachments = task.attachments.toMutableList().apply { remove(attachment) },
+            )
+        },
+    )
+})
+
 /** Canonical durable-file order: every service line first, followed by every task. */
 internal fun collectAttachmentsForOutbox(
     form: CreateWorkOrderFormState,
 ): List<EnqueueAttachment> =
     form.serviceLines.flatMap { line -> line.attachments.map(TaskAttachmentDraft::toEnqueueAttachment) } +
-        form.tasks.flatMap { task -> task.attachments.map(TaskAttachmentDraft::toEnqueueAttachment) }
+        form.tasks.flatMap { task -> task.attachments.map(TaskAttachmentDraft::toEnqueueAttachment) } +
+        form.returnToRamps.flatMap { occurrence ->
+            occurrence.serviceLines.flatMap { line ->
+                line.attachments.map(TaskAttachmentDraft::toEnqueueAttachment)
+            } + occurrence.tasks.flatMap { task ->
+                task.attachments.map(TaskAttachmentDraft::toEnqueueAttachment)
+            }
+        }
 
 internal fun CreateWorkOrderFormState.withTaskAttachmentRemoved(
     taskLocalKey: Long,

@@ -1,6 +1,7 @@
 package com.nags.operations.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,13 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -34,19 +34,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nags.operations.data.db.entities.allowedPerformedServiceIds
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.WorkOrderFlightSummaryCard
-import com.nags.operations.ui.util.offsetSameAsFlight
-import com.nags.operations.ui.workorder.FormSectionTitle
+import com.nags.operations.ui.components.cleanupAllAttachmentPreviews
+import com.nags.operations.ui.util.userTimeZone
+import com.nags.operations.ui.workorder.ReturnToRampOccurrenceCard
 import com.nags.operations.ui.workorder.ReturnToRampViewModel
-import com.nags.operations.ui.workorder.ServiceLineCard
-import com.nags.operations.ui.workorder.ServiceLinesSectionHeading
 import com.nags.operations.ui.workorder.SubmitOfflineResult
-import com.nags.operations.ui.workorder.TaskLineCard
-import com.nags.operations.ui.workorder.TasksSectionHeading
 import com.nags.operations.ui.workorder.WorkOrderFlightLoadState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,18 +51,18 @@ fun ReturnToRampScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val appCtx = LocalContext.current.applicationContext
+    val appContext = LocalContext.current.applicationContext
 
-    BackHandler {
-        if (!state.isSubmitting) onBack()
+    DisposableEffect(appContext) {
+        onDispose { cleanupAllAttachmentPreviews(appContext) }
     }
+
+    BackHandler { if (!state.isSubmitting) onBack() }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text("Return to ramp", fontWeight = FontWeight.SemiBold)
-                },
+                title = { Text("Record return to ramp", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack, enabled = !state.isSubmitting) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -78,28 +73,25 @@ fun ReturnToRampScreen(
     ) { padding ->
         when (state.flightLoad) {
             WorkOrderFlightLoadState.Loading -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
-            }
+            ) { CircularProgressIndicator() }
+
             is WorkOrderFlightLoadState.Error -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
                 ErrorState(
                     title = "Can't open return to ramp",
                     message = (state.flightLoad as WorkOrderFlightLoadState.Error).message,
-                    onRetry = { viewModel.retryLoadFlight() },
+                    onRetry = viewModel::retryLoadFlight,
                 )
             }
+
             WorkOrderFlightLoadState.Ready -> {
                 val flight = state.flight ?: return@Scaffold
-                val flightOffset = remember(flight.std) { offsetSameAsFlight(flight.std) }
+                val occurrence = state.occurrence ?: return@Scaffold
+                val localZone = remember { userTimeZone() }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -109,8 +101,8 @@ fun ReturnToRampScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(
-                        "Add billable services and/or tasks to record the return-to-ramp portion of this turnaround. " +
-                            "They are stored with the return-to-ramp flag.",
+                        "Record the occurrence window and the services or tasks completed during it. " +
+                            "Each submission remains a separate event in the flight history.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -124,128 +116,49 @@ fun ReturnToRampScreen(
                         aircraftModel = flight.aircraftTypeModel,
                         operationTypeCode = flight.operationTypeName,
                     )
-                    state.formLevelError?.let { msg ->
-                        Text(
-                            msg,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    state.existingAllowanceError?.let { msg ->
-                        Text(
-                            msg,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    ServiceLinesSectionHeading(
-                        performedServicesUnavailable = state.catalogServices.allowedPerformedServiceIds().isEmpty(),
-                        catalogsMissingEmployees = state.catalogEmployees.isEmpty(),
+                    ReturnToRampOccurrenceCard(
+                        occurrenceNumber = 1,
+                        row = occurrence,
+                        errors = state.submitErrors,
+                        flightOffset = localZone,
+                        scheduleAnchorIso = flight.sta,
+                        services = state.catalogServices,
+                        employees = state.catalogEmployees,
+                        tools = state.catalogTools,
+                        materials = state.catalogMaterials,
+                        generalSupports = state.catalogGeneralSupports,
+                        onChange = { updated -> viewModel.updateOccurrence { updated } },
+                        onRemove = {},
+                        canRemove = false,
+                        onAddService = viewModel::addServiceLine,
+                        onServiceChange = viewModel::replaceServiceLine,
+                        onServiceRemove = viewModel::removeServiceLine,
+                        onServiceAttachmentAdded = viewModel::addServiceLineAttachment,
+                        onServiceAttachmentRemoved = viewModel::removeServiceLineAttachment,
+                        onAddTask = viewModel::addTask,
+                        onTaskChange = viewModel::replaceTask,
+                        onTaskRemove = viewModel::removeTask,
+                        onTaskAttachmentAdded = viewModel::addTaskAttachment,
+                        onTaskAttachmentRemoved = viewModel::removeTaskAttachment,
                     )
-                    if (state.form.serviceLines.isEmpty()) {
-                        Text(
-                            "Tap Add service to record a billable line for this return to ramp.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    state.form.serviceLines.forEachIndexed { index, row ->
-                        if (index > 0) Spacer(Modifier.height(12.dp))
-                        ServiceLineCard(
-                            lineNumber = index + 1,
-                            flightOffset = flightOffset,
-                            scheduleAnchorIso = flight.sta,
-                            row = row,
-                            lineErrors = state.submitFieldErrors?.serviceLinesByKey[row.localKey],
-                            services = state.catalogServices,
-                            employees = state.catalogEmployees,
-                            onChange = viewModel::replaceServiceLine,
-                            onAttachmentAdded = {
-                                viewModel.addServiceLineAttachment(row.localKey, it)
-                            },
-                            onAttachmentRemoved = {
-                                viewModel.removeServiceLineAttachment(row.localKey, it)
-                            },
-                            onRemove = { viewModel.removeServiceLine(row.localKey) },
-                            canRemove = true,
-                        )
-                    }
-                    Button(
-                        onClick = { viewModel.addServiceLine() },
-                        enabled = state.catalogServices.allowedPerformedServiceIds().isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(Modifier.width(10.dp))
-                        Text("Add service")
-                    }
-                    FormSectionTitle("Tasks")
-                    TasksSectionHeading(
-                        catalogsMissingEmployees = state.catalogEmployees.isEmpty(),
-                        catalogsMissingTools = state.catalogTools.isEmpty(),
-                        catalogsMissingMaterials = state.catalogMaterials.isEmpty(),
-                        catalogsMissingGeneralSupports = state.catalogGeneralSupports.isEmpty(),
-                    )
-                    if (state.form.tasks.isEmpty()) {
-                        Text(
-                            "Tap Add task when you need corrective actions, photos, or store usage for this return to ramp.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    state.form.tasks.forEachIndexed { index, row ->
-                        if (index > 0) Spacer(Modifier.height(12.dp))
-                        TaskLineCard(
-                            lineNumber = index + 1,
-                            flightOffset = flightOffset,
-                            scheduleAnchorIso = flight.sta,
-                            row = row,
-                            lineErrors = state.submitFieldErrors?.tasksByKey[row.localKey],
-                            employees = state.catalogEmployees,
-                            tools = state.catalogTools,
-                            materials = state.catalogMaterials,
-                            generalSupports = state.catalogGeneralSupports,
-                            onChange = viewModel::replaceTask,
-                            onAttachmentAdded = { viewModel.addTaskAttachment(row.localKey, it) },
-                            onAttachmentRemoved = { viewModel.removeTaskAttachment(row.localKey, it) },
-                            onRemove = { viewModel.removeTask(row.localKey) },
-                            canRemove = true,
-                        )
-                    }
-                    Button(
-                        onClick = { viewModel.addTask() },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(Modifier.width(10.dp))
-                        Text("Add task")
-                    }
                     Button(
                         onClick = {
                             viewModel.submitValidateAndEnqueue(
                                 onEnqueuedNavigate = onBack,
-                                onFinished = { outcome ->
-                                    when (outcome) {
-                                        is SubmitOfflineResult.Enqueued -> { }
-                                        is SubmitOfflineResult.Failed -> {
-                                            Toast.makeText(appCtx, outcome.message, Toast.LENGTH_LONG).show()
-                                        }
+                                onFinished = { result ->
+                                    if (result is SubmitOfflineResult.Failed) {
+                                        Toast.makeText(appContext, result.message, Toast.LENGTH_LONG).show()
                                     }
                                 },
                             )
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
+                        enabled = !state.isSubmitting,
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
-                        enabled = !state.isSubmitting && state.existingAllowanceError == null,
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
                     ) {
-                        Text("Submit")
+                        if (state.isSubmitting) CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                        else Text("Submit return to ramp")
                     }
                     Spacer(Modifier.height(24.dp))
                 }

@@ -1,4 +1,5 @@
 using MasterData.Domain.Tools;
+using MasterData.Contracts.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,13 +9,18 @@ public sealed class ToolConfiguration : IEntityTypeConfiguration<Tool>
 {
     public void Configure(EntityTypeBuilder<Tool> builder)
     {
-        builder.ToTable("tools");
+        builder.ToTable("tools", table =>
+            table.HasCheckConstraint("CK_tools_CalculationType", "[CalculationType] IN (0, 1)"));
         builder.HasKey(t => t.Id);
 
         builder.Property(t => t.Name).HasMaxLength(100).IsRequired();
         builder.HasIndex(t => t.Name).IsUnique();
 
         builder.Property(t => t.Description).HasMaxLength(500);
+        builder.Property(t => t.CalculationType)
+            .HasDefaultValue(ResourceCalculationType.Duration)
+            .ValueGeneratedNever()
+            .IsRequired();
         builder.Property(t => t.IsActive).IsRequired();
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.UpdatedAtUtc);

@@ -60,7 +60,7 @@ public sealed class GetWorkOrdersQueryHandler(IOperationsDbContext db, IOperatio
 
         var ordered = request.Sort?.Equals("approval", StringComparison.OrdinalIgnoreCase) == true
             ? query.OrderBy(w => w.Station.IataCode).ThenBy(w => w.ApprovalSequence)
-            : query.OrderByDescending(w => w.CreatedAtUtc).ThenByDescending(w => w.Id);
+            : query.OrderByDescending(w => w.UpdatedAtUtc ?? w.CreatedAtUtc).ThenByDescending(w => w.Id);
 
         var items = await ordered
             .Skip(paging.Skip).Take(paging.PageSize)
@@ -276,12 +276,72 @@ internal static class WorkOrderDtoMapper
                 task.Window.From,
                 task.Window.To,
                 task.Employees.Select(e => new WorkOrderTaskEmployeeDto(e.Employee.StaffMemberId, e.Employee.FullName, e.Employee.EmployeeId)).ToList(),
-                task.Tools.Select(t => new WorkOrderTaskToolDto(t.Tool.ToolId, t.Tool.Name, t.Quantity.Value)).ToList(),
-                task.Materials.Select(m => new WorkOrderTaskMaterialDto(m.Material.MaterialId, m.Material.Name, m.Quantity.Value)).ToList(),
-                task.GeneralSupports.Select(g => new WorkOrderTaskGeneralSupportDto(g.GeneralSupport.GeneralSupportId, g.GeneralSupport.Name, g.Quantity.Value)).ToList(),
+                task.Tools.Select(t => new WorkOrderTaskToolDto(
+                    t.Tool.ToolId, t.Tool.Name, t.Tool.CalculationType, t.Usage.Quantity, t.Usage.FromUtc, t.Usage.ToUtc)).ToList(),
+                task.Materials.Select(m => new WorkOrderTaskMaterialDto(
+                    m.Material.MaterialId, m.Material.Name, m.Material.CalculationType, m.Usage.Quantity, m.Usage.FromUtc, m.Usage.ToUtc)).ToList(),
+                task.GeneralSupports.Select(g => new WorkOrderTaskGeneralSupportDto(
+                    g.GeneralSupport.GeneralSupportId, g.GeneralSupport.Name, g.GeneralSupport.CalculationType, g.Usage.Quantity, g.Usage.FromUtc, g.Usage.ToUtc)).ToList(),
                 task.Attachments.Select(a => new WorkOrderTaskAttachmentDto(a.Id, a.Kind.ToString(), a.OriginalFileName, a.ContentType, a.Size)).ToList(),
                 task.IsReturnToRamp)).ToList(),
             workOrder.CreatedAtUtc,
             workOrder.UpdatedAtUtc,
-            Convert.ToBase64String(workOrder.RowVersion));
+            Convert.ToBase64String(workOrder.RowVersion),
+            workOrder.ReturnToRamps
+                .OrderBy(item => item.Window.From)
+                .ThenBy(item => item.CreatedAtUtc)
+                .Select(item => new WorkOrderReturnToRampDto(
+                    item.Id,
+                    item.Window.From,
+                    item.Window.To,
+                    item.Description,
+                    item.RecordedByUserId,
+                    item.CreatedAtUtc,
+                    item.ServiceLines.Select(line => new WorkOrderServiceLineDto(
+                        line.Id,
+                        line.Service.ServiceId,
+                        line.Service.Name,
+                        line.PerformedBy.Select(performer => new WorkOrderServiceLinePerformerDto(
+                            performer.StaffMember.StaffMemberId,
+                            performer.StaffMember.FullName,
+                            performer.StaffMember.EmployeeId)).ToList(),
+                        line.Window.From,
+                        line.Window.To,
+                        line.Description,
+                        IsReturnToRamp: true,
+                        line.Attachments.Select(attachment => new WorkOrderServiceLineAttachmentDto(
+                            attachment.Id,
+                            attachment.Kind.ToString(),
+                            attachment.OriginalFileName,
+                            attachment.ContentType,
+                            attachment.Size)).ToList())).ToList(),
+                    item.Tasks.Select(task => new WorkOrderTaskDto(
+                        task.Id,
+                        task.TaskType.ToString(),
+                        task.Description,
+                        task.Window.From,
+                        task.Window.To,
+                        task.Employees.Select(employee => new WorkOrderTaskEmployeeDto(
+                            employee.Employee.StaffMemberId,
+                            employee.Employee.FullName,
+                            employee.Employee.EmployeeId)).ToList(),
+                        task.Tools.Select(tool => new WorkOrderTaskToolDto(
+                            tool.Tool.ToolId, tool.Tool.Name, tool.Tool.CalculationType, tool.Usage.Quantity, tool.Usage.FromUtc, tool.Usage.ToUtc)).ToList(),
+                        task.Materials.Select(material => new WorkOrderTaskMaterialDto(
+                            material.Material.MaterialId, material.Material.Name, material.Material.CalculationType, material.Usage.Quantity, material.Usage.FromUtc, material.Usage.ToUtc)).ToList(),
+                        task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportDto(
+                            support.GeneralSupport.GeneralSupportId,
+                            support.GeneralSupport.Name,
+                            support.GeneralSupport.CalculationType,
+                            support.Usage.Quantity,
+                            support.Usage.FromUtc,
+                            support.Usage.ToUtc)).ToList(),
+                        task.Attachments.Select(attachment => new WorkOrderTaskAttachmentDto(
+                            attachment.Id,
+                            attachment.Kind.ToString(),
+                            attachment.OriginalFileName,
+                            attachment.ContentType,
+                            attachment.Size)).ToList(),
+                        IsReturnToRamp: true)).ToList()))
+                .ToList());
 }

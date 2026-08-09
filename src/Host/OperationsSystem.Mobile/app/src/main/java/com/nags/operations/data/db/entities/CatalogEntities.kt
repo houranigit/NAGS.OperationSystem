@@ -3,6 +3,7 @@ package com.nags.operations.data.db.entities
 import androidx.room.Entity
 import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
+import com.nags.operations.data.ResourceCalculationType
 
 /**
  * Catalog tables — small reference data the mobile UI uses to render pickers.
@@ -40,18 +41,24 @@ fun Iterable<ServiceEntity>.allowedPerformedServiceIds(): Set<String> =
 data class ToolEntity(
     @PrimaryKey val toolId: String,
     val name: String,
+    @ColumnInfo(defaultValue = "'Duration'")
+    val calculationType: ResourceCalculationType = ResourceCalculationType.Duration,
 )
 
 @Entity(tableName = "materials")
 data class MaterialEntity(
     @PrimaryKey val materialId: String,
     val name: String,
+    @ColumnInfo(defaultValue = "'Quantity'")
+    val calculationType: ResourceCalculationType = ResourceCalculationType.Quantity,
 )
 
 @Entity(tableName = "general_supports")
 data class GeneralSupportEntity(
     @PrimaryKey val generalSupportId: String,
     val name: String,
+    @ColumnInfo(defaultValue = "'Quantity'")
+    val calculationType: ResourceCalculationType = ResourceCalculationType.Quantity,
 )
 
 @Entity(tableName = "customers")

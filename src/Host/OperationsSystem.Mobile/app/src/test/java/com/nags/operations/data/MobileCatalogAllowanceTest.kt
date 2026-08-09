@@ -1,6 +1,9 @@
 package com.nags.operations.data
 
 import com.nags.operations.data.sync.toServiceEntities
+import com.nags.operations.data.sync.toGeneralSupportEntities
+import com.nags.operations.data.sync.toMaterialEntities
+import com.nags.operations.data.sync.toToolEntities
 import com.nags.operations.data.db.entities.allowedPerformedServiceOptions
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -50,5 +53,31 @@ class MobileCatalogAllowanceTest {
         assertFalse(rows.single { it.serviceId == "blocked" }.isAllowedPerformedService)
         assertFalse(rows.single { it.serviceId == "per-landing" }.isAllowedPerformedService)
         assertEquals(listOf("allowed"), rows.allowedPerformedServiceOptions().map { it.serviceId })
+    }
+
+    @Test
+    fun resource_calculation_types_reach_room_with_safe_rolling_defaults() {
+        val catalogs = MobileCatalogsDto(
+            tools = listOf(
+                MobileCatalogItemDto("duration-tool", "Duration Tool", ResourceCalculationType.Duration),
+                MobileCatalogItemDto("legacy-tool", "Legacy Tool"),
+            ),
+            materials = listOf(
+                MobileCatalogItemDto("duration-material", "Duration Material", ResourceCalculationType.Duration),
+                MobileCatalogItemDto("legacy-material", "Legacy Material"),
+            ),
+            generalSupports = listOf(MobileCatalogItemDto("legacy-support", "Legacy Support")),
+            generatedAtUtc = "2026-08-08T10:00:00Z",
+        )
+
+        val tools = catalogs.toToolEntities()
+        val materials = catalogs.toMaterialEntities()
+        val supports = catalogs.toGeneralSupportEntities()
+
+        assertEquals(ResourceCalculationType.Duration, tools.single { it.toolId == "duration-tool" }.calculationType)
+        assertEquals(ResourceCalculationType.Duration, tools.single { it.toolId == "legacy-tool" }.calculationType)
+        assertEquals(ResourceCalculationType.Duration, materials.single { it.materialId == "duration-material" }.calculationType)
+        assertEquals(ResourceCalculationType.Quantity, materials.single { it.materialId == "legacy-material" }.calculationType)
+        assertEquals(ResourceCalculationType.Quantity, supports.single().calculationType)
     }
 }

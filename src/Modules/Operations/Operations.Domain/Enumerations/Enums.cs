@@ -26,7 +26,8 @@ public enum FlightTimelineEventType
     WorkOrderSubmitted = 2,
     FlightCompleted = 3,
     FlightCanceled = 4,
-    FlightReopened = 5
+    FlightReopened = 5,
+    ReturnToRampRecorded = 6
 }
 
 public enum WorkOrderStatus
@@ -66,5 +67,6 @@ public enum WorkOrderTimelineEventType
     NumberAssigned = 5,
     Returned = 6,
     NumberReleased = 7,
-    Merged = 8
+    Merged = 8,
+    ReturnToRampRecorded = 9
 }

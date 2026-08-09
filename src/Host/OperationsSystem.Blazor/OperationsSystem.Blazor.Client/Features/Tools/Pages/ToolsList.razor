@@ -40,6 +40,11 @@
                 <RadzenDataGridColumn TItem="ToolListItem" Property="Description" Title="Description" Sortable="false">
                     <Template Context="item">@(string.IsNullOrWhiteSpace(item.Description) ? UiStrings.Common.None : item.Description)</Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="ToolListItem" Property="CalculationType" Title="Usage calculation" Width="170px">
+                    <Template Context="item">
+                        <StatusBadge Label="@item.CalculationType.ToString()" Tone="info" />
+                    </Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="ToolListItem" Property="EquipmentCount" Title="Equipment" Width="120px" />
                 <RadzenDataGridColumn TItem="ToolListItem" Title="Status" Sortable="false" Width="140px">
                     <Template Context="item">

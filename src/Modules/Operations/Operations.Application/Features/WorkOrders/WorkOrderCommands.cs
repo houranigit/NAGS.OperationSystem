@@ -66,7 +66,10 @@ public sealed class SubmitWorkOrderCommandHandler(
             return flightAccess.Error;
 
         var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
-            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            (request.Payload.ServiceLines?.Select(line => line.ServiceId) ?? [])
+                .Concat(request.Payload.ReturnToRamps?.SelectMany(item => item.ServiceLines ?? []).Select(line => line.ServiceId) ?? [])
+                .Distinct()
+                .ToList(),
             scopeResult.Value.ManpowerTypeId,
             scopeResult.Value.IsAdministrator,
             cancellationToken);
@@ -109,6 +112,7 @@ public sealed class SubmitWorkOrderCommandHandler(
             input.Value.Remarks,
             input.Value.ServiceLines,
             input.Value.Tasks,
+            input.Value.ReturnToRamps ?? [],
             now,
             request.WorkOrderId);
         if (workOrder.IsFailure)
@@ -191,7 +195,10 @@ public sealed class UpdateWorkOrderCommandHandler(
             return author.Error;
 
         var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
-            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            (request.Payload.ServiceLines?.Select(line => line.ServiceId) ?? [])
+                .Concat(request.Payload.ReturnToRamps?.SelectMany(item => item.ServiceLines ?? []).Select(line => line.ServiceId) ?? [])
+                .Distinct()
+                .ToList(),
             scopeResult.Value.ManpowerTypeId,
             scopeResult.Value.IsAdministrator,
             cancellationToken);
@@ -199,7 +206,13 @@ public sealed class UpdateWorkOrderCommandHandler(
             return serviceAccess.Error;
 
         var previousType = workOrder.Type;
-        var input = await inputBuilder.BuildAsync(request.Payload, request.Type, workOrder.ActualFlightNumber.Value, workOrder.Station.StationId, cancellationToken);
+        var input = await inputBuilder.BuildAsync(
+            request.Payload,
+            request.Type,
+            workOrder.ActualFlightNumber.Value,
+            workOrder.Station.StationId,
+            cancellationToken,
+            preserveOmittedReturnToRamps: true);
         if (input.IsFailure)
             return input.Error;
 
@@ -217,6 +230,7 @@ public sealed class UpdateWorkOrderCommandHandler(
             input.Value.Remarks,
             input.Value.ServiceLines,
             input.Value.Tasks,
+            input.Value.ReturnToRamps,
             now);
         if (update.IsFailure)
             return update.Error;
@@ -569,7 +583,10 @@ public sealed class MergeWorkOrdersCommandHandler(
             return station.Error;
 
         var serviceAccess = await resolver.EnsurePerformedServicesAllowedAsync(
-            request.Payload.ServiceLines?.Select(line => line.ServiceId).ToList() ?? [],
+            (request.Payload.ServiceLines?.Select(line => line.ServiceId) ?? [])
+                .Concat(request.Payload.ReturnToRamps?.SelectMany(item => item.ServiceLines ?? []).Select(line => line.ServiceId) ?? [])
+                .Distinct()
+                .ToList(),
             scopeResult.Value.ManpowerTypeId,
             scopeResult.Value.IsAdministrator,
             cancellationToken);
@@ -604,7 +621,13 @@ public sealed class MergeWorkOrdersCommandHandler(
         if (alreadyApproved)
             return Error.Conflict("This flight already has an approved work order.", "Operations.WorkOrder.FlightAlreadyApproved");
 
-        var input = await inputBuilder.BuildAsync(request.Payload, request.Type, flight.FlightNumber.Value, flight.Station.StationId, cancellationToken);
+        var input = await inputBuilder.BuildAsync(
+            request.Payload,
+            request.Type,
+            flight.FlightNumber.Value,
+            flight.Station.StationId,
+            cancellationToken,
+            preserveOmittedReturnToRamps: request.Payload.ReturnToRamps is null);
         if (input.IsFailure)
             return input.Error;
 
@@ -631,6 +654,7 @@ public sealed class MergeWorkOrdersCommandHandler(
             input.Value.Remarks,
             input.Value.ServiceLines,
             input.Value.Tasks.Select(task => task with { Id = null }).ToList(),
+            input.Value.ReturnToRamps ?? WorkOrderReturnToRampCloner.Clone(sources),
             now);
         if (generated.IsFailure)
             return generated.Error;
@@ -703,6 +727,14 @@ internal static class WorkOrderLoader
 {
     public static IQueryable<WorkOrder> ForMutation(IQueryable<WorkOrder> query) =>
         query
+            .AsSplitQuery()
+            .Include(w => w.ReturnToRamps).ThenInclude(item => item.ServiceLines).ThenInclude(line => line.PerformedBy)
+            .Include(w => w.ReturnToRamps).ThenInclude(item => item.ServiceLines).ThenInclude(line => line.Attachments)
+            .Include(w => w.ReturnToRamps).ThenInclude(item => item.Tasks).ThenInclude(task => task.Employees)
+            .Include(w => w.ReturnToRamps).ThenInclude(item => item.Tasks).ThenInclude(task => task.Tools)
+            .Include(w => w.ReturnToRamps).ThenInclude(item => item.Tasks).ThenInclude(task => task.Materials)
+            .Include(w => w.ReturnToRamps).ThenInclude(item => item.Tasks).ThenInclude(task => task.GeneralSupports)
+            .Include(w => w.ReturnToRamps).ThenInclude(item => item.Tasks).ThenInclude(task => task.Attachments)
             .Include(w => w.ServiceLines).ThenInclude(line => line.PerformedBy)
             .Include(w => w.ServiceLines).ThenInclude(line => line.Attachments)
             .Include(w => w.Tasks).ThenInclude(t => t.Employees)
@@ -710,6 +742,38 @@ internal static class WorkOrderLoader
             .Include(w => w.Tasks).ThenInclude(t => t.Materials)
             .Include(w => w.Tasks).ThenInclude(t => t.GeneralSupports)
             .Include(w => w.Tasks).ThenInclude(t => t.Attachments);
+}
+
+internal static class WorkOrderReturnToRampCloner
+{
+    public static IReadOnlyList<WorkOrderReturnToRampInput> Clone(IEnumerable<WorkOrder> workOrders) =>
+        workOrders
+            .SelectMany(workOrder => workOrder.ReturnToRamps)
+            .OrderBy(item => item.Window.From)
+            .ThenBy(item => item.CreatedAtUtc)
+            .ThenBy(item => item.Id)
+            .Select(item => new WorkOrderReturnToRampInput(
+                null,
+                item.Window,
+                item.Description,
+                item.ServiceLines.Select(line => new WorkOrderServiceLineInput(
+                    line.Service,
+                    line.PerformedBy.Select(performer => performer.StaffMember).ToList(),
+                    line.Window,
+                    line.Description,
+                    IsReturnToRamp: false,
+                    Id: null)).ToList(),
+                item.Tasks.Select(task => new WorkOrderTaskInput(
+                    null,
+                    task.TaskType,
+                    task.Description,
+                    task.Window,
+                    task.Employees.Select(employee => employee.Employee).ToList(),
+                    task.Tools.Select(tool => new WorkOrderTaskToolInput(tool.Tool, tool.Usage)).ToList(),
+                    task.Materials.Select(material => new WorkOrderTaskMaterialInput(material.Material, material.Usage)).ToList(),
+                    task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportInput(support.GeneralSupport, support.Usage)).ToList(),
+                    IsReturnToRamp: false)).ToList()))
+            .ToList();
 }
 
 internal static class WorkOrderAuthorization

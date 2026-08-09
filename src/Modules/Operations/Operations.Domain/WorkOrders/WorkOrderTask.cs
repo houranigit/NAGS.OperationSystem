@@ -17,18 +17,25 @@ public sealed class WorkOrderTask : Entity<Guid>
 
     private WorkOrderTask() { }
 
-    internal WorkOrderTask(Guid id, Guid workOrderId, WorkOrderTaskInput input)
+    internal WorkOrderTask(
+        Guid id,
+        Guid workOrderId,
+        WorkOrderTaskInput input,
+        Guid? returnToRampId = null)
     {
         Id = id;
         WorkOrderId = workOrderId;
+        ReturnToRampId = returnToRampId;
         Apply(input);
     }
 
     public Guid WorkOrderId { get; private set; }
+    public Guid? ReturnToRampId { get; private set; }
     public TaskType TaskType { get; private set; }
     public string? Description { get; private set; }
     public TimeWindow Window { get; private set; } = null!;
-    public bool IsReturnToRamp { get; private set; }
+    /// <summary>Compatibility alias for clients deployed before occurrence records.</summary>
+    public bool IsReturnToRamp => ReturnToRampId.HasValue;
 
     public IReadOnlyList<WorkOrderTaskEmployee> Employees => _employees.AsReadOnly();
     public IReadOnlyList<WorkOrderTaskTool> Tools => _tools.AsReadOnly();
@@ -83,23 +90,21 @@ public sealed class WorkOrderTask : Entity<Guid>
         TaskType = input.TaskType;
         Description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
         Window = input.Window;
-        IsReturnToRamp = input.IsReturnToRamp;
-
         _employees.Clear();
         foreach (var employee in input.Employees.GroupBy(e => e.StaffMemberId).Select(g => g.First()))
             _employees.Add(new WorkOrderTaskEmployee(Guid.NewGuid(), WorkOrderId, Id, employee));
 
         _tools.Clear();
         foreach (var item in input.Tools.GroupBy(t => t.Tool.ToolId).Select(g => g.First()))
-            _tools.Add(new WorkOrderTaskTool(Guid.NewGuid(), WorkOrderId, Id, item.Tool, item.Quantity));
+            _tools.Add(new WorkOrderTaskTool(Guid.NewGuid(), WorkOrderId, Id, item.Tool, item.Usage));
 
         _materials.Clear();
         foreach (var item in input.Materials.GroupBy(m => m.Material.MaterialId).Select(g => g.First()))
-            _materials.Add(new WorkOrderTaskMaterial(Guid.NewGuid(), WorkOrderId, Id, item.Material, item.Quantity));
+            _materials.Add(new WorkOrderTaskMaterial(Guid.NewGuid(), WorkOrderId, Id, item.Material, item.Usage));
 
         _generalSupports.Clear();
         foreach (var item in input.GeneralSupports.GroupBy(g => g.GeneralSupport.GeneralSupportId).Select(g => g.First()))
-            _generalSupports.Add(new WorkOrderTaskGeneralSupport(Guid.NewGuid(), WorkOrderId, Id, item.GeneralSupport, item.Quantity));
+            _generalSupports.Add(new WorkOrderTaskGeneralSupport(Guid.NewGuid(), WorkOrderId, Id, item.GeneralSupport, item.Usage));
     }
 
     private static string TrimFileName(string fileName)
@@ -130,57 +135,66 @@ public sealed class WorkOrderTaskTool : Entity<Guid>
 {
     private WorkOrderTaskTool() { }
 
-    internal WorkOrderTaskTool(Guid id, Guid workOrderId, Guid workOrderTaskId, ToolSnapshot tool, Quantity quantity)
+    internal WorkOrderTaskTool(Guid id, Guid workOrderId, Guid workOrderTaskId, ToolSnapshot tool, ResourceUsage usage)
     {
         Id = id;
         WorkOrderId = workOrderId;
         WorkOrderTaskId = workOrderTaskId;
         Tool = tool;
-        Quantity = quantity;
+        Usage = usage;
     }
 
     public Guid WorkOrderId { get; private set; }
     public Guid WorkOrderTaskId { get; private set; }
     public ToolSnapshot Tool { get; private set; } = null!;
-    public Quantity Quantity { get; private set; } = null!;
+    public ResourceUsage Usage { get; private set; } = null!;
+    public decimal? Quantity => Usage.Quantity;
+    public DateTimeOffset? FromUtc => Usage.FromUtc;
+    public DateTimeOffset? ToUtc => Usage.ToUtc;
 }
 
 public sealed class WorkOrderTaskMaterial : Entity<Guid>
 {
     private WorkOrderTaskMaterial() { }
 
-    internal WorkOrderTaskMaterial(Guid id, Guid workOrderId, Guid workOrderTaskId, MaterialSnapshot material, Quantity quantity)
+    internal WorkOrderTaskMaterial(Guid id, Guid workOrderId, Guid workOrderTaskId, MaterialSnapshot material, ResourceUsage usage)
     {
         Id = id;
         WorkOrderId = workOrderId;
         WorkOrderTaskId = workOrderTaskId;
         Material = material;
-        Quantity = quantity;
+        Usage = usage;
     }
 
     public Guid WorkOrderId { get; private set; }
     public Guid WorkOrderTaskId { get; private set; }
     public MaterialSnapshot Material { get; private set; } = null!;
-    public Quantity Quantity { get; private set; } = null!;
+    public ResourceUsage Usage { get; private set; } = null!;
+    public decimal? Quantity => Usage.Quantity;
+    public DateTimeOffset? FromUtc => Usage.FromUtc;
+    public DateTimeOffset? ToUtc => Usage.ToUtc;
 }
 
 public sealed class WorkOrderTaskGeneralSupport : Entity<Guid>
 {
     private WorkOrderTaskGeneralSupport() { }
 
-    internal WorkOrderTaskGeneralSupport(Guid id, Guid workOrderId, Guid workOrderTaskId, GeneralSupportSnapshot generalSupport, Quantity quantity)
+    internal WorkOrderTaskGeneralSupport(Guid id, Guid workOrderId, Guid workOrderTaskId, GeneralSupportSnapshot generalSupport, ResourceUsage usage)
     {
         Id = id;
         WorkOrderId = workOrderId;
         WorkOrderTaskId = workOrderTaskId;
         GeneralSupport = generalSupport;
-        Quantity = quantity;
+        Usage = usage;
     }
 
     public Guid WorkOrderId { get; private set; }
     public Guid WorkOrderTaskId { get; private set; }
     public GeneralSupportSnapshot GeneralSupport { get; private set; } = null!;
-    public Quantity Quantity { get; private set; } = null!;
+    public ResourceUsage Usage { get; private set; } = null!;
+    public decimal? Quantity => Usage.Quantity;
+    public DateTimeOffset? FromUtc => Usage.FromUtc;
+    public DateTimeOffset? ToUtc => Usage.ToUtc;
 }
 
 public sealed class WorkOrderTaskAttachment : Entity<Guid>

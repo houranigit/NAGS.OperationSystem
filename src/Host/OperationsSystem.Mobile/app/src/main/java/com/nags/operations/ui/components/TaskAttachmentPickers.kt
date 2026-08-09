@@ -1,7 +1,9 @@
 package com.nags.operations.ui.components
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.net.Uri
@@ -23,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
@@ -384,19 +387,59 @@ fun TaskAttachmentRow(
     attachment: TaskAttachmentDraft,
     onRemove: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isOpening by remember(attachment) { mutableStateOf(false) }
     val (icon, kindLabel) = when (attachment.kind) {
         TaskAttachmentKindValue.Image -> Icons.Default.Image to "Photo"
         TaskAttachmentKindValue.Voice -> Icons.Default.Mic to "Voice"
         TaskAttachmentKindValue.Document -> Icons.Default.PictureAsPdf to "Docs"
         else -> Icons.Default.AttachFile to "File"
     }
+
+    fun openAttachment() {
+        if (isOpening) return
+        isOpening = true
+        scope.launch {
+            val uri = withContext(Dispatchers.IO) {
+                materializeAttachmentPreview(context, attachment)
+            }
+            val opened = uri != null && runCatching {
+                val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, attachment.previewContentType())
+                    clipData = ClipData.newRawUri("attachment", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(
+                    Intent.createChooser(viewIntent, "Open attachment")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                )
+            }.isSuccess
+            if (!opened) {
+                Toast.makeText(
+                    context,
+                    "This attachment could not be opened on this device.",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            isOpening = false
+        }
+    }
+
+    fun removeAttachment() {
+        removeMaterializedAttachmentPreview(context, attachment)
+        onRemove()
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
     ) {
         Row(
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier
+                .clickable(enabled = !isOpening, onClick = ::openAttachment)
+                .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -404,12 +447,15 @@ fun TaskAttachmentRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(attachment.fileName, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                 Text(
-                    "$kindLabel · ${formatAttachmentBytes(attachment.sizeBytes)}",
+                    "$kindLabel · ${formatAttachmentBytes(attachment.sizeBytes)} · Tap to open",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onRemove) {
+            IconButton(onClick = ::openAttachment, enabled = !isOpening) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open attachment")
+            }
+            IconButton(onClick = ::removeAttachment) {
                 Icon(Icons.Default.Close, contentDescription = "Remove attachment")
             }
         }

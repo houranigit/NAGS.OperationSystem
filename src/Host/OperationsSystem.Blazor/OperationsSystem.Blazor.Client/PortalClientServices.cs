@@ -22,6 +22,7 @@ public static class PortalClientServices
 
         services.AddScoped<AuthTokenStore>();
         services.AddScoped<LocaleState>();
+        services.AddScoped<UserTimeZone>();
         services.AddScoped<GridPreferences>();
         services.AddScoped<ClientTokenRefresher>();
         services.AddScoped<BrowserApiClient>();

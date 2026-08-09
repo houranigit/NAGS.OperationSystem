@@ -1,3 +1,4 @@
+using MasterData.Contracts.Resources;
 using MasterData.Domain.AircraftTypes;
 using MasterData.Domain.GeneralSupports;
 using MasterData.Domain.Materials;
@@ -43,18 +44,57 @@ public sealed class CatalogAggregateTests
     }
 
     [Fact]
-    public void Material_and_general_support_start_without_units()
+    public void Resource_catalogs_use_kind_specific_calculation_defaults()
     {
         var material = Material.Create("  Hydraulic Fluid  ", "  Consumable  ", Now);
         var support = GeneralSupport.Create("  Customs Clearance  ", "  One-off support  ", Now);
+        var tool = Tool.Create("  Jack  ", null, Now);
 
         material.IsSuccess.ShouldBeTrue();
         material.Value.Name.ShouldBe("Hydraulic Fluid");
         material.Value.Description.ShouldBe("Consumable");
+        material.Value.CalculationType.ShouldBe(ResourceCalculationType.Quantity);
 
         support.IsSuccess.ShouldBeTrue();
         support.Value.Name.ShouldBe("Customs Clearance");
         support.Value.Description.ShouldBe("One-off support");
+        support.Value.CalculationType.ShouldBe(ResourceCalculationType.Quantity);
+
+        tool.IsSuccess.ShouldBeTrue();
+        tool.Value.CalculationType.ShouldBe(ResourceCalculationType.Duration);
+    }
+
+    [Fact]
+    public void Resource_calculation_type_can_change_and_an_omitted_update_preserves_it()
+    {
+        var material = Material.Create(
+            "Hydraulic Fluid",
+            null,
+            Now,
+            calculationType: ResourceCalculationType.Duration).Value;
+
+        material.Update("Hydraulic Fluid", "Updated", Now.AddHours(1)).IsSuccess.ShouldBeTrue();
+        material.CalculationType.ShouldBe(ResourceCalculationType.Duration);
+
+        material.Update(
+            "Hydraulic Fluid",
+            "Updated again",
+            Now.AddHours(2),
+            ResourceCalculationType.Quantity).IsSuccess.ShouldBeTrue();
+        material.CalculationType.ShouldBe(ResourceCalculationType.Quantity);
+    }
+
+    [Fact]
+    public void Resource_catalog_rejects_an_unknown_calculation_type()
+    {
+        var result = Tool.Create(
+            "Jack",
+            null,
+            Now,
+            calculationType: (ResourceCalculationType)42);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("MasterData.Tool.CalculationTypeInvalid");
     }
 
     [Fact]

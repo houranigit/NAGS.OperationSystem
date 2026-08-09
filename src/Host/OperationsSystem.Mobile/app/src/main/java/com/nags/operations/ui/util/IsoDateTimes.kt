@@ -1,7 +1,9 @@
 package com.nags.operations.ui.util
 
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -17,17 +19,23 @@ fun parseOffsetDateTime(iso: String): OffsetDateTime =
         OffsetDateTime.ofInstant(java.time.Instant.parse(iso), ZoneOffset.UTC)
     }
 
-fun formatIsoForDisplay(iso: String): String =
+fun parseInUserZone(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): ZonedDateTime =
+    parseOffsetDateTime(iso).atZoneSameInstant(zoneId)
+
+fun formatIsoForDisplay(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): String =
     try {
-        parseOffsetDateTime(iso).format(displayFormatter())
+        parseInUserZone(iso, zoneId).format(displayFormatter())
     } catch (_: Exception) {
         iso
     }
 
-/** Prefer the flight schedule row's offset when interpreting plain local datetimes. */
-fun offsetSameAsFlight(baseIso: String): ZoneOffset =
-    try {
-        parseOffsetDateTime(baseIso).offset
-    } catch (_: Exception) {
-        ZoneOffset.UTC
-    }
+/**
+ * The work-order UI always edits wall-clock values in the user's device zone. The argument is
+ * retained for source compatibility with older callers that derived a fixed offset from a flight.
+ * A ZoneId, unlike a ZoneOffset, preserves daylight-saving rules for the picked date.
+ */
+fun userTimeZone(): ZoneId = ZoneId.systemDefault()
+
+@Deprecated("Use userTimeZone(); a flight's serialized offset is not the user's time zone")
+@Suppress("UNUSED_PARAMETER")
+fun offsetSameAsFlight(baseIso: String): ZoneId = userTimeZone()

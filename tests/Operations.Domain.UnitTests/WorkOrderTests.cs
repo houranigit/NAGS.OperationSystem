@@ -299,6 +299,126 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void SubmitNew_PreservesMultipleReturnToRampOccurrencesAndTheirActivityGrouping()
+    {
+        var flight = ScheduleFlight();
+        var first = ReturnToRampInput(10, "First occurrence");
+        var second = ReturnToRampInput(60, "Second occurrence", includeTask: true);
+
+        var result = WorkOrder.SubmitNew(
+            flight,
+            WorkOrderType.Completion,
+            Guid.NewGuid(),
+            TestData.Staff(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            [],
+            [],
+            [first, second],
+            TestData.Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ReturnToRamps.Count.ShouldBe(2);
+        result.Value.ReturnToRamps[0].Description.ShouldBe("First occurrence");
+        result.Value.ReturnToRamps[0].ServiceLines.ShouldHaveSingleItem()
+            .ReturnToRampId.ShouldBe(result.Value.ReturnToRamps[0].Id);
+        result.Value.ReturnToRamps[1].Tasks.ShouldHaveSingleItem()
+            .ReturnToRampId.ShouldBe(result.Value.ReturnToRamps[1].Id);
+        result.Value.ServiceLines.Count(line => line.IsReturnToRamp).ShouldBe(2);
+        result.Value.Tasks.Count(task => task.IsReturnToRamp).ShouldBe(1);
+    }
+
+    [Fact]
+    public void UpdateDetails_OmittedReturnToRampCollectionPreservesServerOwnedOccurrences()
+    {
+        var flight = ScheduleFlight();
+        var submitted = WorkOrder.SubmitNew(
+            flight,
+            WorkOrderType.Completion,
+            Guid.NewGuid(),
+            TestData.Staff(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            [],
+            [],
+            [ReturnToRampInput(10, "Preserve me")],
+            TestData.Now).Value;
+        var occurrenceId = submitted.ReturnToRamps.ShouldHaveSingleItem().Id;
+
+        var update = submitted.UpdateDetails(
+            WorkOrderType.Completion,
+            submitted.ActualFlightNumber,
+            null,
+            null,
+            null,
+            null,
+            "Legacy client update",
+            [],
+            [],
+            returnToRamps: null,
+            TestData.Now.AddMinutes(1));
+
+        update.IsSuccess.ShouldBeTrue();
+        submitted.ReturnToRamps.ShouldHaveSingleItem().Id.ShouldBe(occurrenceId);
+        submitted.ServiceLines.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AppendReturnToRamp_AllowsManyOccurrencesOnApprovedCompletionWhenExplicitlyEnabled()
+    {
+        var workOrder = SubmitApprovedCompletion();
+        var actor = Guid.NewGuid();
+
+        var first = workOrder.AppendReturnToRamp(
+            ReturnToRampInput(90, "After completion one"),
+            actor,
+            TestData.Now.AddHours(2),
+            allowApprovedCompletion: true);
+        var second = workOrder.AppendReturnToRamp(
+            ReturnToRampInput(150, "After completion two"),
+            actor,
+            TestData.Now.AddHours(3),
+            allowApprovedCompletion: true);
+
+        first.IsSuccess.ShouldBeTrue();
+        second.IsSuccess.ShouldBeTrue();
+        workOrder.ReturnToRamps.Count.ShouldBe(2);
+        workOrder.ReturnToRamps.All(item => item.RecordedByUserId == actor).ShouldBeTrue();
+        workOrder.UpdatedAtUtc.ShouldBe(TestData.Now.AddHours(3));
+    }
+
+    [Fact]
+    public void AppendReturnToRamp_RejectsEmptyOrOutsideOccurrenceActivities()
+    {
+        var workOrder = SubmitCompletion(ScheduleFlight());
+        var window = TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(20)).Value;
+
+        var empty = workOrder.AppendReturnToRamp(
+            new WorkOrderReturnToRampInput(null, window, null, [], []),
+            Guid.NewGuid(),
+            TestData.Now);
+        var outsideLine = ServiceLineInput(null, "Outside", startMinute: 15);
+        var outside = workOrder.AppendReturnToRamp(
+            new WorkOrderReturnToRampInput(null, window, null, [outsideLine], []),
+            Guid.NewGuid(),
+            TestData.Now);
+
+        empty.IsFailure.ShouldBeTrue();
+        empty.Error.Code.ShouldBe("Operations.ReturnToRamp.ActivityRequired");
+        outside.IsFailure.ShouldBeTrue();
+        outside.Error.Code.ShouldBe("Operations.ReturnToRamp.ServiceWindowOutsideOccurrence");
+        workOrder.ReturnToRamps.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Approve_CompletionRequiresActualsAndAircraftType()
     {
         var workOrder = SubmitCompletion(ScheduleFlight());
@@ -733,8 +853,58 @@ public sealed class WorkOrderTests
             description,
             TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(30)).Value,
             [TestData.Staff(), TestData.Staff()],
-            [new WorkOrderTaskToolInput(TestData.Tool(), Quantity.Create(1).Value)],
-            [new WorkOrderTaskMaterialInput(TestData.Material(), Quantity.Create(2).Value)],
-            [new WorkOrderTaskGeneralSupportInput(TestData.GeneralSupport(), Quantity.Create(1).Value)],
+            [new WorkOrderTaskToolInput(
+                TestData.Tool(),
+                ResourceUsage.Create(
+                    MasterData.Contracts.Resources.ResourceCalculationType.Duration,
+                    null,
+                    TestData.Now,
+                    TestData.Now.AddMinutes(30)).Value)],
+            [new WorkOrderTaskMaterialInput(
+                TestData.Material(),
+                ResourceUsage.Create(
+                    MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                    2,
+                    null,
+                    null).Value)],
+            [new WorkOrderTaskGeneralSupportInput(
+                TestData.GeneralSupport(),
+                ResourceUsage.Create(
+                    MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                    1,
+                    null,
+                    null).Value)],
             isReturnToRamp);
+
+    private static WorkOrderReturnToRampInput ReturnToRampInput(
+        int startMinute,
+        string description,
+        bool includeTask = false)
+    {
+        var window = TimeWindow.Create(
+            TestData.Now.AddMinutes(startMinute),
+            TestData.Now.AddMinutes(startMinute + 45)).Value;
+        var line = new WorkOrderServiceLineInput(
+            TestData.Service(),
+            [TestData.Staff()],
+            TimeWindow.Create(
+                TestData.Now.AddMinutes(startMinute + 5),
+                TestData.Now.AddMinutes(startMinute + 20)).Value,
+            $"{description} service");
+        var tasks = includeTask
+            ?
+            [new WorkOrderTaskInput(
+                null,
+                TaskType.Minor,
+                $"{description} task",
+                TimeWindow.Create(
+                    TestData.Now.AddMinutes(startMinute + 10),
+                    TestData.Now.AddMinutes(startMinute + 30)).Value,
+                [TestData.Staff()],
+                [],
+                [],
+                [])]
+            : Array.Empty<WorkOrderTaskInput>();
+        return new WorkOrderReturnToRampInput(null, window, description, [line], tasks);
+    }
 }

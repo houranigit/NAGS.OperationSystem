@@ -8,9 +8,38 @@ import org.junit.Test
 class FlightSummaryActionsDecisionTest {
     @Test
     fun completedFlightUsesReturnToRampOnlyDecision() {
+        val decision = deriveFlightSummaryActions(flight(FlightStatusKind.Completed))
+        assertEquals(FlightSummaryActionsDecision.CompletedReturnToRamp, decision)
         assertEquals(
-            FlightSummaryActionsDecision.CompletedReturnToRamp,
-            deriveFlightSummaryActions(flight(FlightStatusKind.Completed)),
+            ReturnToRampActionPlacement.CompletedPrimary,
+            returnToRampActionPlacement(
+                decision = decision,
+                flightStatus = FlightStatusKind.Completed,
+                workOrderEditable = false,
+                myWorkOrderIsCancellation = false,
+            ),
+        )
+    }
+
+    @Test
+    fun completed_and_in_progress_actions_are_mutually_exclusive() {
+        assertEquals(
+            ReturnToRampActionPlacement.InProgressSecondary,
+            returnToRampActionPlacement(
+                decision = FlightSummaryActionsDecision.UpdateOrReturnToRamp,
+                flightStatus = FlightStatusKind.InProgress,
+                workOrderEditable = true,
+                myWorkOrderIsCancellation = false,
+            ),
+        )
+        assertEquals(
+            ReturnToRampActionPlacement.None,
+            returnToRampActionPlacement(
+                decision = FlightSummaryActionsDecision.CompletedReturnToRamp,
+                flightStatus = FlightStatusKind.Completed,
+                workOrderEditable = true,
+                myWorkOrderIsCancellation = true,
+            ),
         )
     }
 

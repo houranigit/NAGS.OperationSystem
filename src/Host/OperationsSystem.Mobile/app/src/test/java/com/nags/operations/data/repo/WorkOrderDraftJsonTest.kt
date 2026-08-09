@@ -3,6 +3,7 @@ package com.nags.operations.data.repo
 import com.nags.operations.ui.workorder.WorkOrderDraftSubmissionMode
 import com.nags.operations.ui.workorder.CreateWorkOrderFormState
 import com.nags.operations.ui.workorder.ServiceLineFormRow
+import com.nags.operations.ui.workorder.ReturnToRampFormRow
 import com.nags.operations.ui.workorder.TaskAttachmentDraft
 import com.nags.operations.ui.workorder.TaskFormRow
 import org.junit.Assert.assertEquals
@@ -42,6 +43,7 @@ class WorkOrderDraftJsonTest {
         assertEquals(listOf("staff-1"), form.serviceLines.single().employeeIds)
         assertTrue(form.serviceLines.single().attachments.isEmpty())
         assertTrue(form.serviceLines.single().existingAttachmentNames.isEmpty())
+        assertTrue(form.returnToRamps.isEmpty())
     }
 
     @Test
@@ -75,6 +77,29 @@ class WorkOrderDraftJsonTest {
                     toIso = "2026-07-11T11:45:00-05:00",
                 ),
             ),
+            returnToRamps = listOf(
+                ReturnToRampFormRow(
+                    localKey = 10,
+                    serverId = "rtr-10",
+                    fromIso = "2026-07-11T13:00:00-05:00",
+                    toIso = "2026-07-11T13:30:00-05:00",
+                    description = "First",
+                    serviceLines = listOf(
+                        ServiceLineFormRow(
+                            localKey = 11,
+                            serverId = "service-11",
+                            serviceId = "service-1",
+                            employeeIds = listOf("staff-1"),
+                        ),
+                    ),
+                ),
+                ReturnToRampFormRow(
+                    localKey = 20,
+                    fromIso = "2026-07-11T14:00:00-05:00",
+                    toIso = "2026-07-11T14:30:00-05:00",
+                    tasks = listOf(TaskFormRow(localKey = 21, serverId = "task-21")),
+                ),
+            ),
         )
 
         val restored = WorkOrderDraftJson.decodeForm(WorkOrderDraftJson.encodeForm(original))
@@ -89,5 +114,8 @@ class WorkOrderDraftJsonTest {
         )
         assertEquals(original.tasks.single().fromIso, restored.tasks.single().fromIso)
         assertEquals(original.tasks.single().toIso, restored.tasks.single().toIso)
+        assertEquals(listOf(10L, 20L), restored.returnToRamps.map { it.localKey })
+        assertEquals("service-11", restored.returnToRamps.first().serviceLines.single().serverId)
+        assertEquals("task-21", restored.returnToRamps.last().tasks.single().serverId)
     }
 }

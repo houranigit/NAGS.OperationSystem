@@ -1,3 +1,4 @@
+using MasterData.Contracts.Resources;
 using Operations.Domain.Enumerations;
 
 namespace Operations.Application.Contracts;
@@ -62,7 +63,53 @@ public sealed record ApprovedWorkOrderExportDto(
     IReadOnlyList<string> ToolNames,
     IReadOnlyList<string> MaterialNames,
     IReadOnlyList<string> GeneralSupportNames,
-    string? Remarks);
+    string? Remarks)
+{
+    public Guid WorkOrderId { get; init; }
+    public string WorkOrderStatus { get; init; } = string.Empty;
+    public IReadOnlyList<string> TaskNames { get; init; } = [];
+    public IReadOnlyList<FlightExportServiceDetailDto> ServiceDetails { get; init; } = [];
+    public IReadOnlyList<FlightExportTaskDetailDto> TaskDetails { get; init; } = [];
+}
+
+public sealed record FlightExportReturnToRampContextDto(
+    Guid Id,
+    int Sequence,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    string? Description);
+
+public sealed record FlightExportServiceDetailDto(
+    Guid Id,
+    string ServiceName,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    IReadOnlyList<string> PerformedByNames,
+    string? Description,
+    FlightExportReturnToRampContextDto? ReturnToRamp);
+
+/// <summary>
+/// Structured resource usage keeps the spreadsheet presentation independent from task ownership
+/// and preserves the calculation type captured with the work order.
+/// </summary>
+public sealed record FlightExportResourceUsageDto(
+    string Name,
+    ResourceCalculationType CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
+
+public sealed record FlightExportTaskDetailDto(
+    Guid Id,
+    string TaskType,
+    string? Description,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    IReadOnlyList<string> PerformedByNames,
+    IReadOnlyList<FlightExportResourceUsageDto> Tools,
+    IReadOnlyList<FlightExportResourceUsageDto> Materials,
+    IReadOnlyList<FlightExportResourceUsageDto> GeneralSupports,
+    FlightExportReturnToRampContextDto? ReturnToRamp);
 
 public sealed record CalendarFlightDto(
     Guid Id,
@@ -267,7 +314,18 @@ public sealed record WorkOrderDetailDto(
     IReadOnlyList<WorkOrderTaskDto> Tasks,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    IReadOnlyList<WorkOrderReturnToRampDto>? ReturnToRamps = null);
+
+public sealed record WorkOrderReturnToRampDto(
+    Guid Id,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    string? Description,
+    Guid RecordedByUserId,
+    DateTimeOffset CreatedAtUtc,
+    IReadOnlyList<WorkOrderServiceLineDto> ServiceLines,
+    IReadOnlyList<WorkOrderTaskDto> Tasks);
 
 public sealed record ApprovedWorkOrderPrintDto(
     WorkOrderDetailDto WorkOrder,
@@ -332,11 +390,29 @@ public sealed record WorkOrderTaskDto(
 
 public sealed record WorkOrderTaskEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);
 
-public sealed record WorkOrderTaskToolDto(Guid ToolId, string Name, decimal Quantity);
+public sealed record WorkOrderTaskToolDto(
+    Guid ToolId,
+    string Name,
+    ResourceCalculationType CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
 
-public sealed record WorkOrderTaskMaterialDto(Guid MaterialId, string Name, decimal Quantity);
+public sealed record WorkOrderTaskMaterialDto(
+    Guid MaterialId,
+    string Name,
+    ResourceCalculationType CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
 
-public sealed record WorkOrderTaskGeneralSupportDto(Guid GeneralSupportId, string Name, decimal Quantity);
+public sealed record WorkOrderTaskGeneralSupportDto(
+    Guid GeneralSupportId,
+    string Name,
+    ResourceCalculationType CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
 
 public sealed record WorkOrderTaskAttachmentDto(
     Guid Id,

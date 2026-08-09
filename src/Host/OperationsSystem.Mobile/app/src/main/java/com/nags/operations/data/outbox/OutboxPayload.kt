@@ -32,6 +32,8 @@ data class OutboxPayload(
     val cancelFlight: CancelFlightInput? = null,
     /** Base64 row version captured with an editable work order; required for safe offline updates. */
     val baseRowVersion: String? = null,
+    /** Present on current standalone RTR rows; null identifies the legacy work-order-scoped shape. */
+    val returnToRamp: ReturnToRampInput? = null,
 ) {
     @Serializable
     enum class Kind {
@@ -71,6 +73,18 @@ data class OutboxPayload(
         val customerSignaturePngBase64: String? = null,
         /** Version 1 means existing service rows carry stable server ids in an update payload. */
         val serviceLineIdentityVersion: Int = 0,
+        /** Canonical grouped occurrences; absent from drafts/outbox rows written by older builds. */
+        val returnToRamps: List<ReturnToRampInput> = emptyList(),
+    )
+
+    @Serializable
+    data class ReturnToRampInput(
+        val id: String? = null,
+        val fromIso: String,
+        val toIso: String,
+        val description: String? = null,
+        val serviceLines: List<ServiceLineInput> = emptyList(),
+        val tasks: List<TaskInput> = emptyList(),
     )
 
     /** Flight-only fields needed by the scratch endpoint that aren't on the work-order body. */
@@ -120,11 +134,13 @@ data class OutboxPayload(
         val isReturnToRamp: Boolean = false,
     )
 
-    /** One resource row (tool/material/general support) with its quantity. */
+    /** One resource row. Old queued JSON contains only [itemId] + [quantity]. */
     @Serializable
     data class ResourceInput(
         val itemId: String,
-        val quantity: Double = 1.0,
+        val quantity: Double? = 1.0,
+        val fromIso: String? = null,
+        val toIso: String? = null,
     )
 
     /**
@@ -143,6 +159,10 @@ data class OutboxPayload(
         val sizeBytes: Long,
     )
 }
+
+/** Null occurrence is the durable discriminator for pre-occurrence queued RTR rows. */
+internal fun OutboxPayload.usesCanonicalFlightReturnToRampRoute(): Boolean =
+    kind == OutboxPayload.Kind.ReturnToRamp && returnToRamp != null
 
 /**
  * Decodes queued payloads while upgrading the pre-multi-performer service-line field in memory.

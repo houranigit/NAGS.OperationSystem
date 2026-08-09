@@ -529,9 +529,9 @@ internal fun OutboxPayload.withDurableAttachmentsInServiceThenTaskOrder(
     durableAttachments: List<OutboxPayload.AttachmentInput>,
 ): OutboxPayload {
     val input = workOrder
-    if (input == null) {
+    if (input == null && returnToRamp == null) {
         require(durableAttachments.isEmpty()) {
-            "Queued attachments require a work-order payload."
+            "Queued attachments require a work-order or return-to-ramp payload."
         }
         return this
     }
@@ -546,17 +546,39 @@ internal fun OutboxPayload.withDurableAttachmentsInServiceThenTaskOrder(
         return slice
     }
 
-    val serviceLines = input.serviceLines.map { line ->
-        line.copy(attachments = takeNext(line.attachments.size))
+    fun stitchOccurrence(
+        occurrence: OutboxPayload.ReturnToRampInput,
+    ): OutboxPayload.ReturnToRampInput = occurrence.copy(
+        serviceLines = occurrence.serviceLines.map { line ->
+            line.copy(attachments = takeNext(line.attachments.size))
+        },
+        tasks = occurrence.tasks.map { task ->
+            task.copy(attachments = takeNext(task.attachments.size))
+        },
+    )
+
+    val stitchedWorkOrder = input?.let { workOrderInput ->
+        val serviceLines = workOrderInput.serviceLines.map { line ->
+            line.copy(attachments = takeNext(line.attachments.size))
+        }
+        val tasks = workOrderInput.tasks.map { task ->
+            task.copy(attachments = takeNext(task.attachments.size))
+        }
+        workOrderInput.copy(
+            serviceLines = serviceLines,
+            tasks = tasks,
+            returnToRamps = workOrderInput.returnToRamps.map(::stitchOccurrence),
+        )
     }
-    val tasks = input.tasks.map { task ->
-        task.copy(attachments = takeNext(task.attachments.size))
-    }
+    val stitchedStandaloneOccurrence = returnToRamp?.let(::stitchOccurrence)
     require(nextIndex == durableAttachments.size) {
         "Queued attachment count does not match the work-order attachment slots."
     }
 
-    return copy(workOrder = input.copy(serviceLines = serviceLines, tasks = tasks))
+    return copy(
+        workOrder = stitchedWorkOrder,
+        returnToRamp = stitchedStandaloneOccurrence,
+    )
 }
 
 /** Strips path-traversal-friendly characters that the OS would otherwise let through. */

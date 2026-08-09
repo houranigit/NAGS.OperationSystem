@@ -6,6 +6,7 @@
 @inject NavigationManager Navigation
 @inject GridPreferences GridPrefs
 @inject AuthSession Auth
+@inject UserTimeZone UserTimeZone
 @using OperationsSystem.Blazor.Client.Features.Operations
 
 <PageTitle>Flights</PageTitle>
@@ -83,7 +84,7 @@
                                         <span class="ofl-per-landing-badge">@serviceBadge.Label</span>
                                     }
                                 </div>
-                                <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span>
+                                <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) @UserTimeZone.Id</span>
                             </div>
                         </div>
                     </Template>
@@ -109,11 +110,13 @@
                     <RowAction Separator="true" />
                     <RowAction Text="Open work order" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                Visible="@CanAuthorWorkOrder(flight)" OnClick="@(() => OpenCompletionWorkOrderAsync(flight))" />
+                    <RowAction Text="Record return to ramp" Icon="u_turn_left" Permission="@OperationsPermissions.WorkOrdersAuthor"
+                               Visible="@CanRecordReturnToRamp(flight)" OnClick="@(() => RecordReturnToRampAsync(flight))" />
                     <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
                                Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@(() => OpenCancellationWorkOrderAsync(flight))" />
                     <RowAction Text="@UiStrings.Flights.PrintWorkOrder" Icon="print" Permission="@OperationsPermissions.WorkOrdersView"
                                Visible="@CanPrintWorkOrder(flight)" OnClick="@(() => PrintWorkOrderAsync(flight))" />
-                    <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
+                    <RowAction Text="Return work order for correction" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
                                Visible="@CanReturnApprovedWorkOrder(flight)" OnClick="@(() => ReturnApprovedWorkOrderAsync(flight))" />
                 </RowActionMenu>
             </RowActions>
@@ -171,6 +174,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await UserTimeZone.InitializeAsync();
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
         await Task.WhenAll(
             LoadStationOptionsAsync(),
@@ -408,11 +412,46 @@
     private static bool CanInviteFlight(FlightListItem flight) => flight.Status is "Scheduled" && !flight.IsPerLanding;
     private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
     private static bool CanAuthorWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
+    private static bool CanRecordReturnToRamp(FlightListItem flight) => ReturnToRampPortalPolicy.CanRecordForFlightStatus(flight.Status);
     private static bool CanPrintWorkOrder(FlightListItem flight) => flight.Status is "Completed";
     private static bool CanReturnApprovedWorkOrder(FlightListItem flight) => flight.Status is "Completed" or "Canceled";
 
     private Task OpenCompletionWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Completion");
     private Task OpenCancellationWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Cancellation");
+
+    private async Task RecordReturnToRampAsync(FlightListItem flight)
+    {
+        try
+        {
+            var detail = await Operations.GetFlightAsync(flight.Id);
+            var draft = new ReturnToRampDraft
+            {
+                FromLocal = UserTimeZone.ToLocalDateTime(detail.ScheduledArrivalUtc),
+                ToLocal = UserTimeZone.ToLocalDateTime(detail.ScheduledDepartureUtc)
+            };
+            var result = await DialogService.OpenAsync<ReturnToRampEditorDialog>(
+                "Record return to ramp",
+                new Dictionary<string, object?>
+                {
+                    [nameof(ReturnToRampEditorDialog.StationId)] = detail.StationId,
+                    [nameof(ReturnToRampEditorDialog.Draft)] = draft
+                },
+                new DialogOptions { Width = "1080px" });
+
+            if (result is not ReturnToRampEditorResult saved)
+                return;
+
+            await Operations.RecordFlightReturnToRampAsync(
+                flight.Id,
+                ReturnToRampDraftMapper.ToRequest(saved.Draft, UserTimeZone));
+            Notifications.Notify(NotificationSeverity.Success, "Return to ramp recorded", "The occurrence and its services and tasks were added to the work order.");
+            await ReloadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Return to ramp unavailable", ex.ToDisplayMessage("Could not record the return to ramp."));
+        }
+    }
 
     private async Task OpenWorkOrderAsync(FlightListItem flight, string type)
     {
@@ -477,7 +516,8 @@
                 DateBoundaryUtc(fromFilter, false),
                 DateBoundaryUtc(toFilter, true),
                 serviceCategoryFilters,
-                currentSort);
+                currentSort,
+                UserTimeZone.Id);
 
             Notifications.Notify(
                 NotificationSeverity.Success,
@@ -533,7 +573,7 @@
         isPrintingWorkOrder = true;
         try
         {
-            await Operations.DownloadApprovedWorkOrderAsync(flight.Id);
+            await Operations.DownloadApprovedWorkOrderAsync(flight.Id, UserTimeZone.Id);
             Notifications.Notify(
                 NotificationSeverity.Success,
                 UiStrings.Flights.WorkOrderDownloadReady,
@@ -591,7 +631,7 @@
         _ => fallback
     };
 
-    private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+    private string DateTimeDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
 
     private static string DurationDisplay(FlightListItem flight)
     {
@@ -621,13 +661,12 @@
         return $"{minutes}m";
     }
 
-    private static DateTimeOffset? DateBoundaryUtc(DateTime? value, bool endOfDay)
+    private DateTimeOffset? DateBoundaryUtc(DateTime? value, bool endOfDay)
     {
         if (value is not { } date)
             return null;
 
-        var boundary = endOfDay ? date.Date.AddDays(1).AddTicks(-1) : date.Date;
-        return new DateTimeOffset(DateTime.SpecifyKind(boundary, DateTimeKind.Utc));
+        return UserTimeZone.DateBoundaryUtc(date, endOfDay);
     }
 
     private static string DisplayFlightNumber(FlightListItem flight) =>

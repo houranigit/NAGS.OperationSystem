@@ -17,6 +17,12 @@
             <label class="mtf-label">Description</label>
             <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="mtf-control" MaxLength="500" />
         </div>
+        <div class="mtf-field-block">
+            <label class="mtf-label">Usage calculation <span>*</span></label>
+            <RadzenDropDown @bind-Value="model.CalculationType" Data="@calculationTypes"
+                            Name="calculationType" class="mtf-control" />
+            <small class="os-muted">Quantity records an amount used. Duration records a from/to usage period, where the end can remain open.</small>
+        </div>
 
         <div class="mtf-section-line"><RadzenIcon Icon="memory" /><span>Equipment</span></div>
         <RadzenStack Gap="0.75rem">
@@ -54,6 +60,7 @@
 @code {
     [Parameter] public Guid? ToolId { get; set; }
 
+    private readonly IReadOnlyList<ResourceCalculationType> calculationTypes = Enum.GetValues<ResourceCalculationType>();
     private ToolModel model = new();
     private string? rowVersion;
     private bool isSubmitting;
@@ -71,6 +78,7 @@
             {
                 Name = detail.Name,
                 Description = detail.Description,
+                CalculationType = detail.CalculationType,
                 Equipments = detail.Equipments
                     .Select(e => new ToolEquipmentModelState
                     {
@@ -123,9 +131,13 @@
             var description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
 
             if (ToolId is { } id)
-                await MasterData.UpdateToolAsync(id, new UpdateToolRequest(name, description, requestRows), rowVersion ?? string.Empty);
+                await MasterData.UpdateToolAsync(
+                    id,
+                    new UpdateToolRequest(name, description, requestRows, model.CalculationType),
+                    rowVersion ?? string.Empty);
             else
-                await MasterData.CreateToolAsync(new CreateToolRequest(name, description, requestRows));
+                await MasterData.CreateToolAsync(
+                    new CreateToolRequest(name, description, requestRows, model.CalculationType));
 
             DialogService.Close(true);
         }
@@ -143,6 +155,7 @@
     {
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
+        public ResourceCalculationType CalculationType { get; set; } = ResourceCalculationType.Duration;
         public List<ToolEquipmentModelState> Equipments { get; set; } = [];
     }
 

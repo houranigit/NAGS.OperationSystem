@@ -99,6 +99,28 @@ public sealed class ReportExportAuthorizationTests(OperationsApiFactory factory)
         dashboardResponse.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task Work_order_print_validates_the_optional_display_time_zone()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var flightId = Guid.NewGuid();
+
+        var invalid = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/{flightId}/work-orders/approved/pdf?timeZoneId=Moon%2FBase");
+        var utc = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/{flightId}/work-orders/approved/pdf?timeZoneId=UTC");
+        var dstZone = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/{flightId}/work-orders/approved/pdf?timeZoneId=America%2FNew_York");
+
+        invalid.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await invalid.Content.ReadAsStringAsync())
+            .ShouldContain("Operations.WorkOrder.PrintTimeZoneInvalid");
+        utc.StatusCode.ShouldBe(HttpStatusCode.NotFound, await utc.Content.ReadAsStringAsync());
+        dstZone.StatusCode.ShouldBe(
+            HttpStatusCode.NotFound,
+            await dstZone.Content.ReadAsStringAsync());
+    }
+
     private async Task<HttpClient> CreateViewerAsync(
         HttpClient admin,
         IReadOnlyList<string> permissions)

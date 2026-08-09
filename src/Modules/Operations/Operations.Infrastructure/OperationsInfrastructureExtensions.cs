@@ -14,6 +14,7 @@ using Operations.Application.Features.WorkOrders;
 using Operations.Infrastructure.BackgroundJobs;
 using Operations.Infrastructure.Persistence;
 using Operations.Infrastructure.Readers;
+using Operations.Contracts;
 
 namespace Operations.Infrastructure;
 
@@ -51,6 +52,7 @@ public static class OperationsInfrastructureExtensions
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddSingleton<IPermissionCatalog, OperationsPermissionCatalog>();
+        services.AddIntegrationEventHandler<WorkOrderFileDeletionRequested, WorkOrderFileDeletionRequestedHandler>();
         services.AddModuleOutbox<OperationsDbContext>();
 
         return services;

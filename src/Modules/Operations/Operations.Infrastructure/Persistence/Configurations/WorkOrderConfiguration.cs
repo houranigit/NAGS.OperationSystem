@@ -1,3 +1,4 @@
+using MasterData.Contracts.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Operations.Domain.Flights;
@@ -86,6 +87,7 @@ public sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
 
         builder.HasMany(w => w.ServiceLines).WithOne().HasForeignKey(l => l.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(w => w.Tasks).WithOne().HasForeignKey(t => t.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(w => w.ReturnToRamps).WithOne().HasForeignKey(item => item.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Flight>().WithMany().HasForeignKey(w => w.FlightId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(w => w.FlightId);
@@ -111,8 +113,8 @@ public sealed class WorkOrderServiceLineConfiguration : IEntityTypeConfiguration
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Id).ValueGeneratedNever();
         builder.Property(l => l.WorkOrderId).IsRequired();
+        builder.Property(l => l.ReturnToRampId);
         builder.Property(l => l.Description).HasMaxLength(2000);
-        builder.Property(l => l.IsReturnToRamp).IsRequired();
 
         builder.OwnsOne(l => l.Service, s =>
         {
@@ -130,6 +132,8 @@ public sealed class WorkOrderServiceLineConfiguration : IEntityTypeConfiguration
         builder.HasMany(l => l.Attachments).WithOne().HasForeignKey(a => a.WorkOrderServiceLineId).OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(l => l.WorkOrderId);
+        builder.HasIndex(l => new { l.ReturnToRampId, l.WorkOrderId });
+        builder.Ignore(l => l.IsReturnToRamp);
         builder.Ignore(l => l.IsAircraftPerLanding);
     }
 }
@@ -182,9 +186,9 @@ public sealed class WorkOrderTaskConfiguration : IEntityTypeConfiguration<WorkOr
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
         builder.Property(t => t.WorkOrderId).IsRequired();
+        builder.Property(t => t.ReturnToRampId);
         builder.Property(t => t.TaskType).HasConversion<int>();
         builder.Property(t => t.Description).HasMaxLength(2000);
-        builder.Property(t => t.IsReturnToRamp).IsRequired();
 
         builder.OwnsOne(t => t.Window, w =>
         {
@@ -199,6 +203,44 @@ public sealed class WorkOrderTaskConfiguration : IEntityTypeConfiguration<WorkOr
         builder.HasMany(t => t.Attachments).WithOne().HasForeignKey(e => e.WorkOrderTaskId).OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(t => t.WorkOrderId);
+        builder.HasIndex(t => new { t.ReturnToRampId, t.WorkOrderId });
+        builder.Ignore(t => t.IsReturnToRamp);
+    }
+}
+
+public sealed class WorkOrderReturnToRampConfiguration : IEntityTypeConfiguration<WorkOrderReturnToRamp>
+{
+    public void Configure(EntityTypeBuilder<WorkOrderReturnToRamp> builder)
+    {
+        builder.ToTable("work_order_return_to_ramps");
+        builder.HasKey(item => item.Id);
+        builder.HasAlternateKey(item => new { item.Id, item.WorkOrderId });
+        builder.Property(item => item.Id).ValueGeneratedNever();
+        builder.Property(item => item.WorkOrderId).IsRequired();
+        builder.Property(item => item.Description).HasMaxLength(WorkOrderReturnToRamp.MaxDescriptionLength);
+        builder.Property(item => item.RecordedByUserId).IsRequired();
+        builder.Property(item => item.CreatedAtUtc).IsRequired();
+
+        builder.OwnsOne(item => item.Window, window =>
+        {
+            window.Property(value => value.From).HasColumnName("FromUtc").IsRequired();
+            window.Property(value => value.To).HasColumnName("ToUtc").IsRequired();
+        });
+
+        // WorkOrderId remains the aggregate delete path. NoAction avoids a second SQL Server
+        // cascade path through ReturnToRampId; aggregate reconciliation explicitly removes rows.
+        builder.HasMany(item => item.ServiceLines)
+            .WithOne()
+            .HasForeignKey(line => new { line.ReturnToRampId, line.WorkOrderId })
+            .HasPrincipalKey(item => new { item.Id, item.WorkOrderId })
+            .OnDelete(DeleteBehavior.NoAction);
+        builder.HasMany(item => item.Tasks)
+            .WithOne()
+            .HasForeignKey(task => new { task.ReturnToRampId, task.WorkOrderId })
+            .HasPrincipalKey(item => new { item.Id, item.WorkOrderId })
+            .OnDelete(DeleteBehavior.NoAction);
+
+        builder.HasIndex(item => item.WorkOrderId);
     }
 }
 
@@ -227,7 +269,9 @@ public sealed class WorkOrderTaskToolConfiguration : IEntityTypeConfiguration<Wo
 {
     public void Configure(EntityTypeBuilder<WorkOrderTaskTool> builder)
     {
-        builder.ToTable("work_order_task_tools");
+        builder.ToTable("work_order_task_tools", table => table.HasCheckConstraint(
+            "CK_work_order_task_tools_ResourceUsage",
+            "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))"));
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
         builder.Property(t => t.WorkOrderId).IsRequired();
@@ -237,10 +281,25 @@ public sealed class WorkOrderTaskToolConfiguration : IEntityTypeConfiguration<Wo
         {
             tool.Property(p => p.ToolId).HasColumnName("ToolId").IsRequired();
             tool.Property(p => p.Name).HasColumnName("ToolName").HasMaxLength(200).IsRequired();
+            tool.Property(p => p.CalculationType)
+                .HasColumnName("CalculationType")
+                .HasConversion<int>()
+                .HasDefaultValue(ResourceCalculationType.Duration)
+                .ValueGeneratedNever()
+                .IsRequired();
         });
 
-        builder.OwnsOne(t => t.Quantity, q =>
-            q.Property(p => p.Value).HasColumnName("Quantity").HasPrecision(18, 2).IsRequired());
+        builder.OwnsOne(t => t.Usage, usage =>
+        {
+            usage.Property(p => p.Quantity).HasColumnName("Quantity").HasPrecision(18, 2);
+            usage.Property(p => p.FromUtc).HasColumnName("FromUtc");
+            usage.Property(p => p.ToUtc).HasColumnName("ToUtc");
+            usage.Ignore(p => p.CalculationType);
+        });
+        builder.Navigation(t => t.Usage).IsRequired();
+        builder.Ignore(t => t.Quantity);
+        builder.Ignore(t => t.FromUtc);
+        builder.Ignore(t => t.ToUtc);
 
         builder.HasIndex(t => t.WorkOrderTaskId);
     }
@@ -250,7 +309,9 @@ public sealed class WorkOrderTaskMaterialConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<WorkOrderTaskMaterial> builder)
     {
-        builder.ToTable("work_order_task_materials");
+        builder.ToTable("work_order_task_materials", table => table.HasCheckConstraint(
+            "CK_work_order_task_materials_ResourceUsage",
+            "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))"));
         builder.HasKey(m => m.Id);
         builder.Property(m => m.Id).ValueGeneratedNever();
         builder.Property(m => m.WorkOrderId).IsRequired();
@@ -260,10 +321,25 @@ public sealed class WorkOrderTaskMaterialConfiguration : IEntityTypeConfiguratio
         {
             material.Property(p => p.MaterialId).HasColumnName("MaterialId").IsRequired();
             material.Property(p => p.Name).HasColumnName("MaterialName").HasMaxLength(200).IsRequired();
+            material.Property(p => p.CalculationType)
+                .HasColumnName("CalculationType")
+                .HasConversion<int>()
+                .HasDefaultValue(ResourceCalculationType.Quantity)
+                .ValueGeneratedNever()
+                .IsRequired();
         });
 
-        builder.OwnsOne(m => m.Quantity, q =>
-            q.Property(p => p.Value).HasColumnName("Quantity").HasPrecision(18, 2).IsRequired());
+        builder.OwnsOne(m => m.Usage, usage =>
+        {
+            usage.Property(p => p.Quantity).HasColumnName("Quantity").HasPrecision(18, 2);
+            usage.Property(p => p.FromUtc).HasColumnName("FromUtc");
+            usage.Property(p => p.ToUtc).HasColumnName("ToUtc");
+            usage.Ignore(p => p.CalculationType);
+        });
+        builder.Navigation(m => m.Usage).IsRequired();
+        builder.Ignore(m => m.Quantity);
+        builder.Ignore(m => m.FromUtc);
+        builder.Ignore(m => m.ToUtc);
 
         builder.HasIndex(m => m.WorkOrderTaskId);
     }
@@ -273,7 +349,9 @@ public sealed class WorkOrderTaskGeneralSupportConfiguration : IEntityTypeConfig
 {
     public void Configure(EntityTypeBuilder<WorkOrderTaskGeneralSupport> builder)
     {
-        builder.ToTable("work_order_task_general_supports");
+        builder.ToTable("work_order_task_general_supports", table => table.HasCheckConstraint(
+            "CK_work_order_task_general_supports_ResourceUsage",
+            "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))"));
         builder.HasKey(g => g.Id);
         builder.Property(g => g.Id).ValueGeneratedNever();
         builder.Property(g => g.WorkOrderId).IsRequired();
@@ -283,10 +361,25 @@ public sealed class WorkOrderTaskGeneralSupportConfiguration : IEntityTypeConfig
         {
             support.Property(p => p.GeneralSupportId).HasColumnName("GeneralSupportId").IsRequired();
             support.Property(p => p.Name).HasColumnName("GeneralSupportName").HasMaxLength(200).IsRequired();
+            support.Property(p => p.CalculationType)
+                .HasColumnName("CalculationType")
+                .HasConversion<int>()
+                .HasDefaultValue(ResourceCalculationType.Quantity)
+                .ValueGeneratedNever()
+                .IsRequired();
         });
 
-        builder.OwnsOne(g => g.Quantity, q =>
-            q.Property(p => p.Value).HasColumnName("Quantity").HasPrecision(18, 2).IsRequired());
+        builder.OwnsOne(g => g.Usage, usage =>
+        {
+            usage.Property(p => p.Quantity).HasColumnName("Quantity").HasPrecision(18, 2);
+            usage.Property(p => p.FromUtc).HasColumnName("FromUtc");
+            usage.Property(p => p.ToUtc).HasColumnName("ToUtc");
+            usage.Ignore(p => p.CalculationType);
+        });
+        builder.Navigation(g => g.Usage).IsRequired();
+        builder.Ignore(g => g.Quantity);
+        builder.Ignore(g => g.FromUtc);
+        builder.Ignore(g => g.ToUtc);
 
         builder.HasIndex(g => g.WorkOrderTaskId);
     }

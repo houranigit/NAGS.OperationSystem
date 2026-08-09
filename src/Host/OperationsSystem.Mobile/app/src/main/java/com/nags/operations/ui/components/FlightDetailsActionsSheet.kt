@@ -46,9 +46,11 @@ import com.nags.operations.data.WorkOrderStatusKind
 import com.nags.operations.data.areMobileActionsAvailable
 import com.nags.operations.data.evaluateMobileWindow
 import com.nags.operations.ui.flights.FlightSummaryActionsDecision
+import com.nags.operations.ui.flights.ReturnToRampActionPlacement
 import com.nags.operations.ui.flights.deriveFlightSummaryActions
+import com.nags.operations.ui.flights.returnToRampActionPlacement
 import com.nags.operations.ui.util.formatIsoForDisplay
-import com.nags.operations.ui.util.offsetSameAsFlight
+import com.nags.operations.ui.util.userTimeZone
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -105,6 +107,15 @@ fun FlightDetailsActionsSheet(
     // the cancellation details (dialog) instead of opening the regular work-order form, and
     // return-to-ramp is meaningless for a cancelled flight.
     val myWorkOrderIsCancellation = effectiveFlight.myWorkOrder?.type == "Cancellation"
+    val flightStatus = FlightStatusKind.fromWire(effectiveFlight.status)
+    val workOrderEditable =
+        WorkOrderStatusKind.fromWire(effectiveFlight.myWorkOrder?.status)?.isEditable == true
+    val returnToRampPlacement = returnToRampActionPlacement(
+        decision,
+        flightStatus,
+        workOrderEditable,
+        myWorkOrderIsCancellation,
+    )
 
     // A notification may be opened before the flight enters the mobile window. That flight is not
     // cached, so this sheet must stay informational until a fresh open/refresh confirms admission;
@@ -217,15 +228,16 @@ fun FlightDetailsActionsSheet(
             when {
                 // This intentionally precedes local-draft handling: even stale local state must
                 // not expose work-order actions once the authoritative flight is Completed.
-                decision == FlightSummaryActionsDecision.CompletedReturnToRamp -> {
+                returnToRampPlacement == ReturnToRampActionPlacement.CompletedPrimary -> {
                     SheetActionButton(
                         icon = Icons.AutoMirrored.Filled.Undo,
                         label = "Return to ramp",
-                        onClick = {},
+                        onClick = {
+                            callbacks.onReturnToRamp(effectiveFlight.id)
+                            onDismiss()
+                        },
                         primary = false,
-                        // Placeholder only. Its distinct completed-flight workflow will be added
-                        // later; for now the visible button deliberately performs no action.
-                        enabled = true,
+                        enabled = actionsInMobileWindow,
                     )
                 }
                 localDraftId != null -> {
@@ -280,11 +292,7 @@ fun FlightDetailsActionsSheet(
                     )
                 }
             }
-            val flightInProgress =
-                FlightStatusKind.fromWire(effectiveFlight.status) == FlightStatusKind.InProgress
-            val workOrderEditable =
-                WorkOrderStatusKind.fromWire(effectiveFlight.myWorkOrder?.status)?.isEditable == true
-            if (flightInProgress && workOrderEditable && !myWorkOrderIsCancellation) {
+            if (returnToRampPlacement == ReturnToRampActionPlacement.InProgressSecondary) {
                 SheetActionButton(
                     icon = Icons.AutoMirrored.Filled.Undo,
                     label = "Return to ramp",
@@ -297,7 +305,6 @@ fun FlightDetailsActionsSheet(
                 )
             }
 
-            val flightStatus = FlightStatusKind.fromWire(effectiveFlight.status)
             val canInvite = showInvite &&
                 decision != FlightSummaryActionsDecision.ReadOnly &&
                 (flightStatus == FlightStatusKind.Scheduled || flightStatus == FlightStatusKind.InProgress)
@@ -355,7 +362,7 @@ fun FlightDetailsActionsSheet(
     if (showCancelDialog) {
         CancelFlightDialog(
             flightStdIso = effectiveFlight.scheduledDepartureUtc,
-            flightOffset = offsetSameAsFlight(effectiveFlight.scheduledDepartureUtc),
+            flightOffset = userTimeZone(),
             initialCanceledAtIso = effectiveFlight.myWorkOrder?.canceledAtUtc,
             initialReason = effectiveFlight.myWorkOrder?.cancellationReason,
             isUpdate = myWorkOrderIsCancellation,

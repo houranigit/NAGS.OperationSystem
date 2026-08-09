@@ -32,7 +32,7 @@ public sealed class GetGeneralSupportsQueryHandler(IMasterDataDbContext db)
         var items = await ApplySort(query, request.Sort)
             .Skip(paging.Skip)
             .Take(paging.PageSize)
-            .Select(g => new GeneralSupportListItemDto(g.Id, g.Name, g.Description, g.IsActive))
+            .Select(g => new GeneralSupportListItemDto(g.Id, g.Name, g.Description, g.IsActive, g.CalculationType))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<GeneralSupportListItemDto>(items, total);
@@ -46,6 +46,7 @@ public sealed class GetGeneralSupportsQueryHandler(IMasterDataDbContext db)
         return spec.Field switch
         {
             "name" => spec.Descending ? query.OrderByDescending(g => g.Name).ThenByDescending(g => g.Id) : query.OrderBy(g => g.Name).ThenBy(g => g.Id),
+            "calculationtype" => spec.Descending ? query.OrderByDescending(g => g.CalculationType).ThenByDescending(g => g.Id) : query.OrderBy(g => g.CalculationType).ThenBy(g => g.Id),
             "isactive" => spec.Descending ? query.OrderByDescending(g => g.IsActive).ThenByDescending(g => g.Id) : query.OrderBy(g => g.IsActive).ThenBy(g => g.Id),
             _ => query.OrderBy(g => g.Name).ThenBy(g => g.Id)
         };
@@ -65,7 +66,8 @@ public sealed class GetGeneralSupportByIdQueryHandler(IMasterDataDbContext db)
 
         return new GeneralSupportDto(
             support.Id, support.Name, support.Description, support.IsActive,
-            support.CreatedAtUtc, support.UpdatedAtUtc, Convert.ToBase64String(support.RowVersion));
+            support.CreatedAtUtc, support.UpdatedAtUtc, Convert.ToBase64String(support.RowVersion),
+            support.CalculationType);
     }
 }
 
@@ -80,7 +82,7 @@ public sealed class GetActiveGeneralSupportOptionsQueryHandler(IMasterDataDbCont
             .Where(g => g.IsActive)
             .OrderBy(g => g.Name)
             .ThenBy(g => g.Id)
-            .Select(g => new GeneralSupportOptionDto(g.Id, g.Name))
+            .Select(g => new GeneralSupportOptionDto(g.Id, g.Name, g.CalculationType))
             .ToListAsync(cancellationToken);
 
         return Result.Success(options);

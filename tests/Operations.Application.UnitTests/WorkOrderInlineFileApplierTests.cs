@@ -108,8 +108,117 @@ public sealed class WorkOrderInlineFileApplierTests
             .ShouldContain("work-order-attachments/service-report.pdf");
     }
 
+    [Fact]
+    public async Task Inline_limits_allow_one_maximum_voice_and_reject_aggregate_overflow_before_storage()
+    {
+        var maximumVoice = new byte[WorkOrderAttachmentPolicy.MaxVoiceBytes];
+        maximumVoice[0] = 0x1A;
+        maximumVoice[1] = 0x45;
+        maximumVoice[2] = 0xDF;
+        maximumVoice[3] = 0xA3;
+        var encodedVoice = Convert.ToBase64String(maximumVoice);
+        var attachment = new WorkOrderTaskAttachmentCommand(
+            TaskAttachmentKind.Voice,
+            encodedVoice,
+            "voice.webm",
+            "audio/webm");
+        var payload = new WorkOrderEditableCommandPayload(
+            ActualFlightNumber: null,
+            AircraftTypeId: null,
+            AircraftTailNumber: null,
+            ActualArrivalUtc: null,
+            ActualDepartureUtc: null,
+            CanceledAtUtc: null,
+            CancellationReason: null,
+            Remarks: null,
+            ServiceLines: [],
+            Tasks:
+            [
+                new WorkOrderTaskCommand(
+                    null,
+                    TaskType.Minor,
+                    "Voice note",
+                    Now,
+                    Now.AddMinutes(5),
+                    [],
+                    [],
+                    [],
+                    [],
+                    [attachment])
+            ]);
+
+        WorkOrderAttachmentPolicy.Validate(
+                attachment.Kind,
+                maximumVoice,
+                attachment.FileName,
+                attachment.ContentType)
+            .IsSuccess.ShouldBeTrue();
+        WorkOrderInlineFilePolicy.Validate(payload).IsSuccess.ShouldBeTrue();
+        WorkOrderInlineFilePolicy.MaxJsonRequestBytes.ShouldBeGreaterThan(encodedVoice.Length);
+
+        var overflow = payload with
+        {
+            CustomerSignature = new WorkOrderSignatureCommand("AA==", "signature.png", "image/png")
+        };
+        var storage = new RecordingFileStorage();
+        var workOrder = CreateEmptyWorkOrder();
+
+        var result = await WorkOrderInlineFileApplier.ApplyAsync(
+            workOrder,
+            overflow,
+            storage,
+            Now,
+            CancellationToken.None);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.WorkOrder.InlineFilesTooLarge");
+        storage.SaveCallCount.ShouldBe(0);
+    }
+
+    private static WorkOrder CreateEmptyWorkOrder()
+    {
+        var service = new ServiceSnapshot(Guid.NewGuid(), "Marshalling");
+        var staff = new StaffMemberSnapshot(Guid.NewGuid(), "Ramp Agent", "EMP-200");
+        var flight = Flight.ScheduleNew(
+            new CustomerSnapshot(Guid.NewGuid(), "RJ", "Royal Jordanian"),
+            new StationSnapshot(Guid.NewGuid(), "AMM", "Amman"),
+            new OperationTypeSnapshot(Guid.NewGuid(), "Turnaround"),
+            FlightNumber.Create("RJ456").Value,
+            ScheduledTime.Create(Now, Now.AddHours(2)).Value,
+            aircraftType: null,
+            plannedServices: [service],
+            assignedEmployees: [staff],
+            contractId: null,
+            contractNumber: null,
+            createdByUserId: Guid.NewGuid(),
+            now: Now).Value;
+
+        return WorkOrder.SubmitNew(
+            flight,
+            WorkOrderType.Completion,
+            Guid.NewGuid(),
+            owner: staff,
+            actualFlightNumber: null,
+            aircraftType: null,
+            aircraftTailNumber: null,
+            actuals: null,
+            cancellation: null,
+            remarks: null,
+            serviceLines:
+            [
+                new WorkOrderServiceLineInput(
+                    service,
+                    [staff],
+                    TimeWindow.Create(Now, Now.AddMinutes(10)).Value,
+                    null)
+            ],
+            tasks: [],
+            Now).Value;
+    }
+
     private sealed class RecordingFileStorage : IFileStorage
     {
+        public int SaveCallCount { get; private set; }
         public string? SavedContainer { get; private set; }
         public byte[]? SavedContent { get; private set; }
 
@@ -120,6 +229,7 @@ public sealed class WorkOrderInlineFileApplierTests
             Stream content,
             CancellationToken cancellationToken = default)
         {
+            SaveCallCount++;
             SavedContainer = container;
             using var memory = new MemoryStream();
             await content.CopyToAsync(memory, cancellationToken);

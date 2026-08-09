@@ -1,0 +1,28 @@
+@inject UserTimeZone UserTimeZone
+
+@if (Value is { } value)
+{
+    <time datetime="@value.ToUniversalTime().ToString("O")" title="@Title(value)">@Display(value)</time>
+}
+else
+{
+    <span>@EmptyText</span>
+}
+
+@code {
+    [Parameter] public DateTimeOffset? Value { get; set; }
+    [Parameter] public string Format { get; set; } = "yyyy-MM-dd HH:mm";
+    [Parameter] public string EmptyText { get; set; } = "—";
+    [Parameter] public bool ShowZone { get; set; }
+
+    protected override async Task OnInitializedAsync() => await UserTimeZone.InitializeAsync();
+
+    private string Display(DateTimeOffset value)
+    {
+        var display = UserTimeZone.Format(value, Format);
+        return ShowZone ? $"{display} ({UserTimeZone.Id})" : display;
+    }
+
+    private string Title(DateTimeOffset value) =>
+        $"{UserTimeZone.Format(value, "yyyy-MM-dd HH:mm:ss")} ({UserTimeZone.Id})";
+}

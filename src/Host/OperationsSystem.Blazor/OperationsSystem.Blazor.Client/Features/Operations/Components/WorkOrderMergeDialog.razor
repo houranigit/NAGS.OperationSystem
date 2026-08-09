@@ -1,6 +1,7 @@
 @inject OperationsApiClient Operations
 @inject DialogService DialogService
 @inject AuthSession Auth
+@inject UserTimeZone UserTimeZone
 
 <div class="owm-form">
     @if (isLoading)
@@ -27,7 +28,7 @@
                 <div class="owm-summary-meta">
                     <span><RadzenIcon Icon="business" />@flight.CustomerName</span>
                     <span><RadzenIcon Icon="flight_takeoff" />@flight.StationIata</span>
-                    <span><RadzenIcon Icon="flight_land" />STA @DateDisplay(flight.ScheduledArrivalUtc) UTC</span>
+                    <span><RadzenIcon Icon="flight_land" />STA @DateDisplay(flight.ScheduledArrivalUtc) @UserTimeZone.Id</span>
                 </div>
             </div>
         </div>
@@ -223,12 +224,16 @@
 
     private IReadOnlyList<ServiceLineSelection> AvailableServiceLines =>
         SelectedSources
-            .SelectMany(source => source.ServiceLines.Select(line => new ServiceLineSelection(source, line, LineKey(source.Id, line.Id))))
+            .SelectMany(source => source.ServiceLines
+                .Where(WorkOrderMergeMapping.IsStandardServiceLine)
+                .Select(line => new ServiceLineSelection(source, line, LineKey(source.Id, line.Id))))
             .ToList();
 
     private IReadOnlyList<TaskSelection> AvailableTasks =>
         SelectedSources
-            .SelectMany(source => source.Tasks.Select(task => new TaskSelection(source, task, TaskKey(source.Id, task.Id))))
+            .SelectMany(source => source.Tasks
+                .Where(WorkOrderMergeMapping.IsStandardTask)
+                .Select(task => new TaskSelection(source, task, TaskKey(source.Id, task.Id))))
             .ToList();
 
     private bool CanMerge =>
@@ -239,7 +244,11 @@
     private int MergeServiceLineCount => IsMergedCompletion ? selectedServiceLineKeys.Count : 0;
     private int MergeTaskCount => IsMergedCompletion ? selectedTaskKeys.Count : 0;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -457,25 +466,16 @@
             completion ? null : cancellationSource.CanceledAtUtc,
             completion ? null : cancellationSource.CancellationReason,
             completion ? remarksSource.Remarks : null,
-            completion ? selectedLines.Select(item => new WorkOrderServiceLineRequestModel(
-                item.Line.ServiceId,
-                item.Line.PerformedBy.Select(performer => performer.StaffMemberId).ToList(),
-                item.Line.FromUtc,
-                item.Line.ToUtc,
-                item.Line.Description,
-                item.Line.IsReturnToRamp)).ToList() : [],
-            completion ? selectedTasks.Select(item => new WorkOrderTaskRequestModel(
-                null,
-                item.Task.TaskType,
-                item.Task.Description,
-                item.Task.FromUtc,
-                item.Task.ToUtc,
-                item.Task.Employees.Select(employee => employee.StaffMemberId).ToList(),
-                item.Task.Tools.Select(tool => new WorkOrderTaskToolRequestModel(tool.ToolId, tool.Quantity)).ToList(),
-                item.Task.Materials.Select(material => new WorkOrderTaskMaterialRequestModel(material.MaterialId, material.Quantity)).ToList(),
-                item.Task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportRequestModel(support.GeneralSupportId, support.Quantity)).ToList(),
-                Attachments: null,
-                IsReturnToRamp: item.Task.IsReturnToRamp)).ToList() : []);
+            completion
+                ? selectedLines.Select(item => WorkOrderMergeMapping.ToRequest(item.Line)).ToList()
+                : [],
+            completion
+                ? selectedTasks.Select(item => WorkOrderMergeMapping.ToRequest(item.Task)).ToList()
+                : [],
+            CustomerSignature: null,
+            ReturnToRamps: completion
+                ? WorkOrderMergeMapping.BuildCanonicalReturnToRamps(SelectedSources)
+                : []);
     }
 
     private WorkOrderDetail? SourceOrNull(Guid? id) =>
@@ -494,8 +494,8 @@
     private static string DisplayWorkOrder(WorkOrderDetail workOrder) =>
         string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;
 
-    private static string DateDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
-    private static string DateDisplay(DateTimeOffset? value) => value?.UtcDateTime.ToString("yyyy-MM-dd HH:mm") ?? "None";
+    private string DateDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
+    private string DateDisplay(DateTimeOffset? value) => value is { } instant ? UserTimeZone.Format(instant) : "None";
     private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
     private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
     private static string LineKey(Guid sourceId, Guid lineId) => $"{sourceId:N}:{lineId:N}";
@@ -504,10 +504,10 @@
     private static string SourceValueMeta(WorkOrderDetail source) =>
         $"Owner {None(source.OwnerName)}";
 
-    private static string ActualTimesValue(WorkOrderDetail source) =>
+    private string ActualTimesValue(WorkOrderDetail source) =>
         $"ATA {DateDisplay(source.ActualArrivalUtc)} · ATD {DateDisplay(source.ActualDepartureUtc)}";
 
-    private static string CancellationValue(WorkOrderDetail source) =>
+    private string CancellationValue(WorkOrderDetail source) =>
         $"{DateDisplay(source.CanceledAtUtc)} · {None(source.CancellationReason)}";
 
     private static string StatusDotClass(string status) => status switch

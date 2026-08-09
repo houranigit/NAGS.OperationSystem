@@ -2,6 +2,7 @@
 @inject OperationsApiClient Operations
 @inject DialogService DialogService
 @inject NotificationService Notifications
+@inject UserTimeZone UserTimeZone
 
 <PageTitle>Extract Per Landing</PageTitle>
 
@@ -44,7 +45,7 @@
                                 <span class="ple-flight-icon"><RadzenIcon Icon="flight" /></span>
                                 <div>
                                     <strong>@DisplayFlightNumber(flight)</strong>
-                                    <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</span>
+                                    <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) @UserTimeZone.Id</span>
                                 </div>
                             </div>
                         </Template>
@@ -84,7 +85,11 @@
             ? "Approve selected"
             : $"Approve selected ({selectedFlightIds.Count})";
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -194,6 +199,6 @@
             ? flight.FlightNumber
             : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
 
-    private static string DateTimeDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+    private string DateTimeDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
 
 }

@@ -2,6 +2,7 @@
 @implements IAsyncDisposable
 @inject AuthSession Auth
 @inject LocaleState Locale
+@inject UserTimeZone UserTimeZone
 @inject NavigationManager Navigation
 @inject NotificationCenterState NotificationCenter
 @inject NotificationsRealtimeClient NotificationsRealtime
@@ -384,7 +385,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await Locale.InitializeAsync();
+        await Task.WhenAll(Locale.InitializeAsync(), UserTimeZone.InitializeAsync());
         Auth.StateChanged += OnStateChanged;
         Locale.Changed += OnStateChanged;
         Navigation.LocationChanged += OnLocationChanged;

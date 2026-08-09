@@ -4,6 +4,7 @@ import android.util.Log
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.MobileCatalogsDto
 import com.nags.operations.data.MobileFlightCache
+import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.api.MobileApi
 import com.nags.operations.data.db.AppDatabase
 import com.nags.operations.data.db.entities.AircraftTypeEntity
@@ -46,6 +47,33 @@ internal fun MobileCatalogsDto.toServiceEntities(): List<ServiceEntity> {
         )
     }
 }
+
+internal fun MobileCatalogsDto.toToolEntities(): List<ToolEntity> =
+    tools.map {
+        ToolEntity(
+            toolId = it.id,
+            name = it.name,
+            calculationType = it.calculationType ?: ResourceCalculationType.Duration,
+        )
+    }
+
+internal fun MobileCatalogsDto.toMaterialEntities(): List<MaterialEntity> =
+    materials.map {
+        MaterialEntity(
+            materialId = it.id,
+            name = it.name,
+            calculationType = it.calculationType ?: ResourceCalculationType.Quantity,
+        )
+    }
+
+internal fun MobileCatalogsDto.toGeneralSupportEntities(): List<GeneralSupportEntity> =
+    generalSupports.map {
+        GeneralSupportEntity(
+            generalSupportId = it.id,
+            name = it.name,
+            calculationType = it.calculationType ?: ResourceCalculationType.Quantity,
+        )
+    }
 
 /**
  * The bridge between the server and the local Room cache. Every screen reads from Room; only
@@ -120,13 +148,13 @@ class SyncCoordinator(
                 db.serviceDao().replaceAll(payload.toServiceEntities())
             }
             timeAndRecord(SyncTable.Tools) {
-                db.toolDao().replaceAll(payload.tools.map { ToolEntity(it.id, it.name) })
+                db.toolDao().replaceAll(payload.toToolEntities())
             }
             timeAndRecord(SyncTable.Materials) {
-                db.materialDao().replaceAll(payload.materials.map { MaterialEntity(it.id, it.name) })
+                db.materialDao().replaceAll(payload.toMaterialEntities())
             }
             timeAndRecord(SyncTable.GeneralSupports) {
-                db.generalSupportDao().replaceAll(payload.generalSupports.map { GeneralSupportEntity(it.id, it.name) })
+                db.generalSupportDao().replaceAll(payload.toGeneralSupportEntities())
             }
             timeAndRecord(SyncTable.Customers) {
                 db.customerDao().replaceAll(payload.customers.map { CustomerEntity(it.id, it.iataCode, it.name) })

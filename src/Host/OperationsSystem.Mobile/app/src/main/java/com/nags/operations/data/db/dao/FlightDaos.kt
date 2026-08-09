@@ -22,7 +22,7 @@ interface FlightDao {
         WHERE isPerLanding = 0
           AND isAdHoc = 0
           AND status IN ('Scheduled', 'InProgress', 'Completed')
-        ORDER BY sta
+        ORDER BY sta DESC
         """,
     )
     fun observeAll(): Flow<List<FlightEntity>>
@@ -92,7 +92,7 @@ interface PerLandingFlightDao {
         WHERE isPerLanding = 1
           AND isAdHoc = 0
           AND status IN ('Scheduled', 'InProgress', 'Completed')
-        ORDER BY sta
+        ORDER BY sta DESC
         """,
     )
     fun observeAll(): Flow<List<PerLandingFlightEntity>>
@@ -146,7 +146,7 @@ interface AdHocFlightDao {
         SELECT * FROM flights_ad_hoc
         WHERE isAdHoc = 1
           AND status IN ('Scheduled', 'InProgress', 'Completed')
-        ORDER BY sta
+        ORDER BY sta DESC
         """,
     )
     fun observeAll(): Flow<List<AdHocFlightEntity>>

@@ -16,18 +16,21 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     private const string PreviousMasterDataMigration = "20260702215825_MasterData_PendingLoginEmail";
     private const string RetireOnCallMigration = "20260718195623_MasterData_RetireOnCallService";
     private const string AllowedServicesMigration = "20260718220554_MasterData_ManpowerTypeAllowedServices";
+    private const string ResourceCalculationTypesMigration = "20260808210652_MasterData_ResourceCalculationTypes";
     private static readonly Guid RetiredOnCallServiceId = new("40000000-0000-0000-0000-000000000002");
 
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record CatalogDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem,
-        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
-    private sealed record CatalogItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
+        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, string? CalculationType = null);
+    private sealed record CatalogItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem,
+        string? CalculationType = null);
     private sealed record ServiceOption(Guid Id, string Name, bool IsAircraftPerLanding);
     private sealed record AircraftTypeDetail(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive,
         DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
     private sealed record AircraftTypeItem(Guid Id, string Manufacturer, string Model, string? Notes, bool IsActive);
     private sealed record ToolDetail(Guid Id, string Name, string? Description, bool IsActive,
-        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, List<ToolEquipment> Equipments);
+        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion,
+        List<ToolEquipment> Equipments, string CalculationType);
     private sealed record ToolEquipment(Guid Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
 
     [Fact]
@@ -120,6 +123,51 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
 
             (await db.ManpowerTypeAllowedServices.AsNoTracking().AnyAsync(allowance =>
                 allowance.ManpowerTypeId == manpowerTypeId && allowance.ServiceId == serviceId)).ShouldBeTrue();
+        }
+        finally
+        {
+            await db.Database.MigrateAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Resource_calculation_migration_backfills_existing_rows_by_catalog_kind()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterDataDbContext>();
+        var migrator = db.Database.GetService<IMigrator>();
+        var toolId = Guid.NewGuid();
+        var materialId = Guid.NewGuid();
+        var supportId = Guid.NewGuid();
+
+        await migrator.MigrateAsync(AllowedServicesMigration);
+        try
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($$"""
+                INSERT INTO [masterdata].[tools]
+                    ([Id], [Name], [Description], [IsActive], [CreatedAtUtc], [UpdatedAtUtc])
+                VALUES
+                    ({{toolId}}, {{"Backfill Tool " + toolId.ToString("N")}}, NULL, 1, SYSUTCDATETIME(), NULL);
+
+                INSERT INTO [masterdata].[materials]
+                    ([Id], [Name], [Description], [IsActive], [CreatedAtUtc], [UpdatedAtUtc])
+                VALUES
+                    ({{materialId}}, {{"Backfill Material " + materialId.ToString("N")}}, NULL, 1, SYSUTCDATETIME(), NULL);
+
+                INSERT INTO [masterdata].[general_supports]
+                    ([Id], [Name], [Description], [IsActive], [CreatedAtUtc], [UpdatedAtUtc])
+                VALUES
+                    ({{supportId}}, {{"Backfill Support " + supportId.ToString("N")}}, NULL, 1, SYSUTCDATETIME(), NULL);
+                """);
+
+            await migrator.MigrateAsync(ResourceCalculationTypesMigration);
+
+            (await db.Tools.AsNoTracking().SingleAsync(item => item.Id == toolId))
+                .CalculationType.ToString().ShouldBe("Duration");
+            (await db.Materials.AsNoTracking().SingleAsync(item => item.Id == materialId))
+                .CalculationType.ToString().ShouldBe("Quantity");
+            (await db.GeneralSupports.AsNoTracking().SingleAsync(item => item.Id == supportId))
+                .CalculationType.ToString().ShouldBe("Quantity");
         }
         finally
         {
@@ -252,6 +300,7 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
 
         var before = await client.GetFromJsonAsync<ToolDetail>($"{Base}/tools/{id}");
         before!.Equipments.Count.ShouldBe(1);
+        before.CalculationType.ShouldBe("Duration");
 
         var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/tools/{id}")
         {
@@ -259,6 +308,7 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
             {
                 name,
                 description = "Updated",
+                calculationType = "Quantity",
                 equipments = new[]
                 {
                     new { id = (Guid?)before.Equipments[0].Id, factoryId = "F-2", serialId = "S-2", calibrationDate = (DateOnly?)new DateOnly(2026, 6, 1) },
@@ -272,8 +322,53 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
 
         var after = await client.GetFromJsonAsync<ToolDetail>($"{Base}/tools/{id}");
         after!.Equipments.Count.ShouldBe(2);
+        after.CalculationType.ShouldBe("Quantity");
         after.Equipments.ShouldContain(e => e.FactoryId == "F-2" && e.SerialId == "S-2" && e.CalibrationDate == new DateOnly(2026, 6, 1));
         after.Equipments.ShouldContain(e => e.FactoryId == "F-3" && e.SerialId == "S-3");
+    }
+
+    [Theory]
+    [InlineData("materials", "Quantity", "Duration")]
+    [InlineData("general-supports", "Quantity", "Duration")]
+    public async Task Resource_catalog_calculation_type_round_trips_and_omitted_update_preserves_it(
+        string route,
+        string defaultCalculationType,
+        string changedCalculationType)
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var name = $"Calculation {route} {Guid.NewGuid():N}";
+
+        var create = await client.PostAsJsonAsync($"{Base}/{route}", new { name, description = "Initial" });
+        create.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var id = await create.Content.ReadFromJsonAsync<Guid>();
+
+        var created = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/{route}/{id}");
+        created!.CalculationType.ShouldBe(defaultCalculationType);
+
+        var change = new HttpRequestMessage(HttpMethod.Put, $"{Base}/{route}/{id}")
+        {
+            Content = JsonContent.Create(new
+            {
+                name,
+                description = "Changed",
+                calculationType = changedCalculationType
+            })
+        };
+        change.Headers.TryAddWithoutValidation("If-Match", created.RowVersion);
+        (await client.SendAsync(change)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var changed = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/{route}/{id}");
+        changed!.CalculationType.ShouldBe(changedCalculationType);
+
+        var preserve = new HttpRequestMessage(HttpMethod.Put, $"{Base}/{route}/{id}")
+        {
+            Content = JsonContent.Create(new { name, description = "Preserved" })
+        };
+        preserve.Headers.TryAddWithoutValidation("If-Match", changed.RowVersion);
+        (await client.SendAsync(preserve)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var preserved = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/{route}/{id}");
+        preserved!.CalculationType.ShouldBe(changedCalculationType);
     }
 
     private static async Task AssertSimpleCatalogRoundTripAsync(HttpClient client, string route, string name)

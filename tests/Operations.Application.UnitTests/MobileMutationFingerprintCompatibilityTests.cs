@@ -148,6 +148,21 @@ public sealed class MobileMutationFingerprintCompatibilityTests
     }
 
     [Fact]
+    public void CompatibleFingerprints_IncludesQuantityOnlyResourceContract()
+    {
+        var input = CurrentEnvelope(
+            Guid.NewGuid(),
+            Payload(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                tools: [new WorkOrderTaskToolCommand(Guid.NewGuid(), 1m)]));
+        var previousContractFingerprint = Fingerprint(PreResourceUsageEnvelope(input));
+
+        MobileMutations.CompatibleFingerprints(input).ShouldContain(previousContractFingerprint);
+        MobileMutations.Fingerprint(input).ShouldNotBe(previousContractFingerprint);
+    }
+
+    [Fact]
     public void CompatibleFingerprints_DoesNotDropNonEmptyServiceLineAttachments()
     {
         var withoutAttachments = CurrentEnvelope(
@@ -249,7 +264,8 @@ public sealed class MobileMutationFingerprintCompatibilityTests
         bool serviceIsReturnToRamp = false,
         bool taskIsReturnToRamp = false,
         string description = "Handled",
-        IReadOnlyList<WorkOrderServiceLineAttachmentCommand>? serviceAttachments = null) =>
+        IReadOnlyList<WorkOrderServiceLineAttachmentCommand>? serviceAttachments = null,
+        IReadOnlyList<WorkOrderTaskToolCommand>? tools = null) =>
         new(
             ActualFlightNumber: "MOB100",
             AircraftTypeId: null,
@@ -280,7 +296,7 @@ public sealed class MobileMutationFingerprintCompatibilityTests
                     FromUtc,
                     FromUtc.AddMinutes(20),
                     EmployeeIds: [],
-                    Tools: [],
+                    Tools: tools ?? [],
                     Materials: [],
                     GeneralSupports: [],
                     Attachments: null,
@@ -373,6 +389,38 @@ public sealed class MobileMutationFingerprintCompatibilityTests
             current.BaseRowVersion,
             current.ServiceLineIdentityVersion);
 
+    private static PreResourceUsageUpdateFingerprintEnvelope PreResourceUsageEnvelope(
+        CurrentUpdateFingerprintEnvelope current) =>
+        new(
+            current.WorkOrderId,
+            current.Type,
+            new PreResourceUsageWorkOrderPayload(
+                current.Payload.ActualFlightNumber,
+                current.Payload.AircraftTypeId,
+                current.Payload.AircraftTailNumber,
+                current.Payload.ActualArrivalUtc,
+                current.Payload.ActualDepartureUtc,
+                current.Payload.CanceledAtUtc,
+                current.Payload.CancellationReason,
+                current.Payload.Remarks,
+                current.Payload.ServiceLines,
+                current.Payload.Tasks.Select(task => new PreResourceUsageTask(
+                    task.Id,
+                    task.TaskType,
+                    task.Description,
+                    task.FromUtc,
+                    task.ToUtc,
+                    task.EmployeeIds,
+                    task.Tools.Select(tool => new PreResourceUsageTool(tool.ToolId, tool.Quantity ?? 1m)).ToList(),
+                    task.Materials.Select(material => new PreResourceUsageMaterial(material.MaterialId, material.Quantity ?? 1m)).ToList(),
+                    task.GeneralSupports.Select(support => new PreResourceUsageGeneralSupport(support.GeneralSupportId, support.Quantity ?? 1m)).ToList(),
+                    task.Attachments,
+                    task.IsReturnToRamp)).ToList(),
+                current.Payload.CustomerSignature,
+                current.Payload.ReturnToRamps),
+            current.BaseRowVersion,
+            current.ServiceLineIdentityVersion);
+
     private static string Fingerprint<T>(T request)
     {
         var json = JsonSerializer.Serialize(request);
@@ -413,6 +461,44 @@ public sealed class MobileMutationFingerprintCompatibilityTests
         PreServiceAttachmentWorkOrderPayload Payload,
         string BaseRowVersion,
         int ServiceLineIdentityVersion);
+
+    private sealed record PreResourceUsageUpdateFingerprintEnvelope(
+        Guid WorkOrderId,
+        WorkOrderType Type,
+        PreResourceUsageWorkOrderPayload Payload,
+        string BaseRowVersion,
+        int ServiceLineIdentityVersion);
+
+    private sealed record PreResourceUsageWorkOrderPayload(
+        string? ActualFlightNumber,
+        Guid? AircraftTypeId,
+        string? AircraftTailNumber,
+        DateTimeOffset? ActualArrivalUtc,
+        DateTimeOffset? ActualDepartureUtc,
+        DateTimeOffset? CanceledAtUtc,
+        string? CancellationReason,
+        string? Remarks,
+        IReadOnlyList<WorkOrderServiceLineCommand> ServiceLines,
+        IReadOnlyList<PreResourceUsageTask> Tasks,
+        WorkOrderSignatureCommand? CustomerSignature = null,
+        IReadOnlyList<WorkOrderReturnToRampCommand>? ReturnToRamps = null);
+
+    private sealed record PreResourceUsageTask(
+        Guid? Id,
+        TaskType TaskType,
+        string? Description,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc,
+        IReadOnlyList<Guid> EmployeeIds,
+        IReadOnlyList<PreResourceUsageTool> Tools,
+        IReadOnlyList<PreResourceUsageMaterial> Materials,
+        IReadOnlyList<PreResourceUsageGeneralSupport> GeneralSupports,
+        IReadOnlyList<WorkOrderTaskAttachmentCommand>? Attachments = null,
+        bool IsReturnToRamp = false);
+
+    private sealed record PreResourceUsageTool(Guid ToolId, decimal Quantity);
+    private sealed record PreResourceUsageMaterial(Guid MaterialId, decimal Quantity);
+    private sealed record PreResourceUsageGeneralSupport(Guid GeneralSupportId, decimal Quantity);
 
     private sealed record PreServiceAttachmentWorkOrderPayload(
         string? ActualFlightNumber,

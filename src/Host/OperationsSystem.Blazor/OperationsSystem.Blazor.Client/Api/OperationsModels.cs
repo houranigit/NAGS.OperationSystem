@@ -226,7 +226,18 @@ public sealed record WorkOrderDetail(
     IReadOnlyList<WorkOrderTaskModel> Tasks,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    IReadOnlyList<WorkOrderReturnToRampModel>? ReturnToRamps = null);
+
+public sealed record WorkOrderReturnToRampModel(
+    Guid Id,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    string? Description,
+    Guid RecordedByUserId,
+    DateTimeOffset CreatedAtUtc,
+    IReadOnlyList<WorkOrderServiceLineModel> ServiceLines,
+    IReadOnlyList<WorkOrderTaskModel> Tasks);
 
 public sealed record WorkOrderServiceLineModel(
     Guid Id,
@@ -258,11 +269,29 @@ public sealed record WorkOrderTaskModel(
 
 public sealed record WorkOrderTaskEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
 
-public sealed record WorkOrderTaskToolModel(Guid ToolId, string Name, decimal Quantity);
+public sealed record WorkOrderTaskToolModel(
+    Guid ToolId,
+    string Name,
+    ResourceCalculationType CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
 
-public sealed record WorkOrderTaskMaterialModel(Guid MaterialId, string Name, decimal Quantity);
+public sealed record WorkOrderTaskMaterialModel(
+    Guid MaterialId,
+    string Name,
+    ResourceCalculationType CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
 
-public sealed record WorkOrderTaskGeneralSupportModel(Guid GeneralSupportId, string Name, decimal Quantity);
+public sealed record WorkOrderTaskGeneralSupportModel(
+    Guid GeneralSupportId,
+    string Name,
+    ResourceCalculationType CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
 
 public sealed record WorkOrderTaskAttachmentModel(Guid Id, string Kind, string OriginalFileName, string ContentType, long Size);
 
@@ -297,7 +326,8 @@ public sealed record ScheduleFlightsRequestModel(
     IReadOnlyList<DateOnly> SelectedDates,
     Guid? AircraftTypeId,
     IReadOnlyList<Guid> PlannedServiceIds,
-    IReadOnlyList<Guid> AssignedStaffMemberIds);
+    IReadOnlyList<Guid> AssignedStaffMemberIds,
+    string? TimeZoneId = null);
 
 public sealed record UpdateScheduledFlightRequestModel(
     Guid CustomerId,
@@ -337,7 +367,8 @@ public sealed record WorkOrderRequestModel(
     string? Remarks,
     IReadOnlyList<WorkOrderServiceLineRequestModel> ServiceLines,
     IReadOnlyList<WorkOrderTaskRequestModel> Tasks,
-    WorkOrderSignatureRequestModel? CustomerSignature = null);
+    WorkOrderSignatureRequestModel? CustomerSignature = null,
+    IReadOnlyList<WorkOrderReturnToRampRequestModel>? ReturnToRamps = null);
 
 public sealed record MergeWorkOrdersRequestModel(
     IReadOnlyList<Guid> SourceWorkOrderIds,
@@ -360,6 +391,14 @@ public sealed record WorkOrderServiceLineAttachmentRequestModel(
     string FileName,
     string ContentType);
 
+public sealed record WorkOrderReturnToRampRequestModel(
+    Guid? Id,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    string? Description,
+    IReadOnlyList<WorkOrderServiceLineRequestModel> ServiceLines,
+    IReadOnlyList<WorkOrderTaskRequestModel> Tasks);
+
 public sealed record WorkOrderTaskRequestModel(
     Guid? Id,
     string TaskType,
@@ -373,11 +412,23 @@ public sealed record WorkOrderTaskRequestModel(
     IReadOnlyList<WorkOrderTaskAttachmentRequestModel>? Attachments = null,
     bool IsReturnToRamp = false);
 
-public sealed record WorkOrderTaskToolRequestModel(Guid ToolId, decimal Quantity);
+public sealed record WorkOrderTaskToolRequestModel(
+    Guid ToolId,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc = null,
+    DateTimeOffset? ToUtc = null);
 
-public sealed record WorkOrderTaskMaterialRequestModel(Guid MaterialId, decimal Quantity);
+public sealed record WorkOrderTaskMaterialRequestModel(
+    Guid MaterialId,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc = null,
+    DateTimeOffset? ToUtc = null);
 
-public sealed record WorkOrderTaskGeneralSupportRequestModel(Guid GeneralSupportId, decimal Quantity);
+public sealed record WorkOrderTaskGeneralSupportRequestModel(
+    Guid GeneralSupportId,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc = null,
+    DateTimeOffset? ToUtc = null);
 
 public sealed record WorkOrderTaskAttachmentRequestModel(
     string Kind,

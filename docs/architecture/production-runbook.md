@@ -54,6 +54,18 @@ development, `Database:ApplyMigrationsOnStartup` may be enabled to apply them au
 production and production-like remote testing, keep it disabled, use reviewed SQL scripts, and take a
 backup first.
 
+### 2026-08 resource usage and return-to-ramp rollout
+
+Apply the MasterData resource-calculation migration before the Operations resource-usage migrations.
+The reviewed order within those two contexts is:
+
+1. `MasterData_ResourceCalculationTypes` — backfills every existing Tool to Duration and every existing Material/General Support record to Quantity.
+2. `Operations_ReturnToRampOccurrences` — creates one clearly labelled synthetic occurrence per work order containing legacy RTR-flagged activity. Historical occurrence boundaries cannot be reconstructed from the old flags, so all flagged rows for that work order are grouped honestly into that single migrated record.
+3. `Operations_ResourceUsageCalculationTypes` — converts existing tool usage to Duration using the owning task window, retains Material/General Support quantities, and adds branch-specific database checks. The tool task-window conversion is the only deterministic temporal backfill available from the old schema.
+4. `Operations_ReturnToRampCompositeOwnership` — enforces that every RTR child and its occurrence belong to the same work order.
+
+Keep the legacy mobile return-to-ramp route and quantity-only tool bridge enabled until supported Android versions have drained their persisted outboxes. New clients use nested occurrence payloads and explicit resource usage; UTC remains the storage/API instant and clients perform local-zone input/display conversion.
+
 ## SQL performance settings
 
 - Keep SQL Server connection pooling enabled. Do not use `Pooling=False` for remote or production-like databases; each EF command would pay for a new physical SQL connection.

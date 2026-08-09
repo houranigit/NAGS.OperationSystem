@@ -1,4 +1,5 @@
 using MasterData.Domain.AircraftTypes;
+using MasterData.Contracts.Resources;
 
 namespace MasterData.Api.Endpoints;
 
@@ -30,16 +31,36 @@ public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer
 
 // Tools
 public sealed record ToolEquipmentRequest(Guid? Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
-public sealed record CreateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest>? Equipments);
-public sealed record UpdateToolRequest(string Name, string? Description, IReadOnlyList<ToolEquipmentRequest>? Equipments);
+public sealed record CreateToolRequest(
+    string Name,
+    string? Description,
+    IReadOnlyList<ToolEquipmentRequest>? Equipments,
+    ResourceCalculationType? CalculationType = null);
+public sealed record UpdateToolRequest(
+    string Name,
+    string? Description,
+    IReadOnlyList<ToolEquipmentRequest>? Equipments,
+    ResourceCalculationType? CalculationType = null);
 
 // Materials
-public sealed record CreateMaterialRequest(string Name, string? Description);
-public sealed record UpdateMaterialRequest(string Name, string? Description);
+public sealed record CreateMaterialRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType? CalculationType = null);
+public sealed record UpdateMaterialRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType? CalculationType = null);
 
 // GeneralSupports
-public sealed record CreateGeneralSupportRequest(string Name, string? Description);
-public sealed record UpdateGeneralSupportRequest(string Name, string? Description);
+public sealed record CreateGeneralSupportRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType? CalculationType = null);
+public sealed record UpdateGeneralSupportRequest(
+    string Name,
+    string? Description,
+    ResourceCalculationType? CalculationType = null);
 
 // Stations
 public sealed record CreateStationRequest(

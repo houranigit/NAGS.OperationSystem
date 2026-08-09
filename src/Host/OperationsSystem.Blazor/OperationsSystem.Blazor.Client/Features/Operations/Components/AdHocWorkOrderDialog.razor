@@ -1,6 +1,7 @@
 @inject OperationsApiClient Operations
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
+@inject UserTimeZone UserTimeZone
 
 <div class="owf-form">
     @if (isLoading)
@@ -17,6 +18,7 @@
                 0 => FlightStep(),
                 1 => ServiceLinesStep(),
                 2 => TasksStep(),
+                CompletionWorkOrderWizard.ReturnToRampsStep => ReturnToRampsStep(),
                 _ => CustomerSignatureStep()
             })
         </div>
@@ -94,9 +96,9 @@
     private IReadOnlyList<AircraftTypeOption> aircraftTypes = [];
     private IReadOnlyList<ServiceOption> actualServices = [];
     private IReadOnlyList<StaffMemberOption> staffOptions = [];
-    private IReadOnlyList<ToolOption> toolOptions = [];
-    private IReadOnlyList<MaterialOption> materialOptions = [];
-    private IReadOnlyList<GeneralSupportOption> supportOptions = [];
+    private IReadOnlyList<ResourceOption> toolOptions = [];
+    private IReadOnlyList<ResourceOption> materialOptions = [];
+    private IReadOnlyList<ResourceOption> supportOptions = [];
     private IReadOnlyList<DuplicateCandidate> duplicates = [];
     private Guid? staffLoadedForStationId;
     private bool isLoading = true;
@@ -109,8 +111,8 @@
 
     private bool IsCompletion => model.Type == "Completion";
     private bool IsCancellation => model.Type == "Cancellation";
-    private int LastStep => IsCompletion ? 3 : 0;
-    private DateTime DefaultWindowStart => model.ActualArrivalUtc ?? model.ScheduledArrivalUtc ?? DateTime.UtcNow;
+    private int LastStep => IsCompletion ? CompletionWorkOrderWizard.SignatureStep : 0;
+    private DateTime DefaultWindowStart => model.ActualArrivalUtc ?? model.ScheduledArrivalUtc ?? UserTimeZone.ToLocal(DateTimeOffset.UtcNow).DateTime;
     private DateTime DefaultWindowEnd => model.ActualDepartureUtc ?? model.ScheduledDepartureUtc ?? DefaultWindowStart.AddHours(1);
     private string SignatureUploadText => model.CustomerSignature is null ? "Upload PNG" : "Replace PNG";
 
@@ -118,7 +120,9 @@
     {
         try
         {
-            model.ScheduledArrivalUtc = DateTime.UtcNow.Date.AddHours(DateTime.UtcNow.Hour);
+            await UserTimeZone.InitializeAsync();
+            var localNow = UserTimeZone.ToLocal(DateTimeOffset.UtcNow).DateTime;
+            model.ScheduledArrivalUtc = localNow.Date.AddHours(localNow.Hour);
             model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
             model.ActualArrivalUtc = model.ScheduledArrivalUtc;
             model.ActualDepartureUtc = model.ScheduledDepartureUtc;
@@ -138,9 +142,9 @@
             stations = stationsTask.Result;
             aircraftTypes = aircraftTask.Result;
             actualServices = servicesTask.Result;
-            toolOptions = toolsTask.Result;
-            materialOptions = materialsTask.Result;
-            supportOptions = supportsTask.Result;
+            toolOptions = toolsTask.Result.Select(item => new ResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+            materialOptions = materialsTask.Result.Select(item => new ResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+            supportOptions = supportsTask.Result.Select(item => new ResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
         }
         catch (ApiException ex)
         {
@@ -241,7 +245,7 @@
                 </div>
             }
             <div class="owf-field-block">
-                <label class="owf-label">STA (UTC) <span class="owf-required">*</span></label>
+                <label class="owf-label">STA (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                 <div class="owf-input-wrap">
                     <RadzenIcon Icon="flight_land" class="owf-field-icon" />
                     <RadzenDatePicker TValue="DateTime?" Value="@model.ScheduledArrivalUtc" Change="@OnScheduledArrivalChanged"
@@ -249,7 +253,7 @@
                 </div>
             </div>
             <div class="owf-field-block">
-                <label class="owf-label">STD (UTC) <span class="owf-required">*</span></label>
+                <label class="owf-label">STD (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                 <div class="owf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="owf-field-icon" />
                     <RadzenDatePicker TValue="DateTime?" Value="@model.ScheduledDepartureUtc" Change="@OnScheduledDepartureChanged"
@@ -259,14 +263,14 @@
             @if (IsCompletion)
             {
                 <div class="owf-field-block">
-                    <label class="owf-label">ATA (UTC) <span class="owf-required">*</span></label>
+                    <label class="owf-label">ATA (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                     <div class="owf-input-wrap">
                         <RadzenIcon Icon="flight_land" class="owf-field-icon" />
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualArrivalUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
                     </div>
                 </div>
                 <div class="owf-field-block">
-                    <label class="owf-label">ATD (UTC) <span class="owf-required">*</span></label>
+                    <label class="owf-label">ATD (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                     <div class="owf-input-wrap">
                         <RadzenIcon Icon="flight_takeoff" class="owf-field-icon" />
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ActualDepartureUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
@@ -280,7 +284,7 @@
             else
             {
                 <div class="owf-field-block">
-                    <label class="owf-label">Canceled at (UTC) <span class="owf-required">*</span></label>
+                    <label class="owf-label">Canceled at (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                     <div class="owf-input-wrap">
                         <RadzenIcon Icon="event_busy" class="owf-field-icon" />
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="model.CanceledAtUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" class="owf-control owf-control-icon" />
@@ -322,21 +326,14 @@
                                         Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     </div>
                     <div class="owf-field-block">
-                        <label class="owf-label">From (UTC) <span class="owf-required">*</span></label>
+                        <label class="owf-label">From (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </div>
                     <div class="owf-field-block">
-                        <label class="owf-label">To (UTC) <span class="owf-required">*</span></label>
+                        <label class="owf-label">To (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
-                    </div>
-                    <div class="owf-rtr-option owf-full @(line.IsReturnToRamp ? "owf-rtr-option-active" : string.Empty)">
-                        <RadzenCheckBox TValue="bool" @bind-Value="line.IsReturnToRamp" Name="@($"owf-rtr-{line.Key}")" />
-                        <div class="owf-rtr-copy">
-                            <RadzenLabel Text="Return to ramp" Component="@($"owf-rtr-{line.Key}")" />
-                            <span>Mark this performed service as part of a return-to-ramp visit.</span>
-                        </div>
                     </div>
                 </div>
                 <div class="owf-row-actions">
@@ -371,12 +368,12 @@
                                         Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
                     </div>
                     <div class="owf-field-block">
-                        <label class="owf-label">From (UTC) <span class="owf-required">*</span></label>
+                        <label class="owf-label">From (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </div>
                     <div class="owf-field-block">
-                        <label class="owf-label">To (UTC) <span class="owf-required">*</span></label>
+                        <label class="owf-label">To (@UserTimeZone.Id) <span class="owf-required">*</span></label>
                         <RadzenDatePicker TValue="DateTime?" @bind-Value="task.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                           Min="@model.ActualArrivalUtc" Max="@model.ActualDepartureUtc" class="owf-control" />
                     </div>
@@ -387,6 +384,39 @@
                 </div>
                 @TaskResourceRows(task)
                 @TaskAttachments(task)
+            </div>
+        }
+    </section>;
+
+    private RenderFragment ReturnToRampsStep() => @<section class="owf-step-content">
+        <div class="owf-step-toolbar">
+            <div>
+                <div class="owf-section-line"><RadzenIcon Icon="u_turn_left" /><span>Return to ramps</span></div>
+                <div class="owf-rtr-step-copy">Optional. Add each occurrence separately or continue to skip this step.</div>
+            </div>
+            <RadzenButton Text="Add return to ramp" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                          ButtonType="ButtonType.Button" Click="@AddReturnToRampAsync" />
+        </div>
+
+        @if (model.ReturnToRamps.Count == 0)
+        {
+            <div class="owf-empty-row"><RadzenIcon Icon="u_turn_left" />No return-to-ramp occurrences. You can skip this step.</div>
+        }
+        @foreach (var occurrence in model.ReturnToRamps)
+        {
+            <div @key="occurrence.Key" class="owf-rtr-card">
+                <div class="owf-rtr-card-icon"><RadzenIcon Icon="u_turn_left" /></div>
+                <div class="owf-rtr-card-main">
+                    <strong>@ReturnToRampWindow(occurrence)</strong>
+                    <span>@(string.IsNullOrWhiteSpace(occurrence.Description) ? "No description" : occurrence.Description)</span>
+                    <small>@occurrence.ServiceLines.Count service(s) · @occurrence.Tasks.Count task(s)</small>
+                </div>
+                <div class="owf-rtr-card-actions">
+                    <RadzenButton Text="Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@(() => EditReturnToRampAsync(occurrence))" />
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@(() => model.ReturnToRamps.Remove(occurrence))" />
+                </div>
             </div>
         }
     </section>;
@@ -420,30 +450,55 @@
     </div>;
 
     private RenderFragment TaskResourceRows(TaskForm task) => @<div class="owf-resource-grid">
-        @ResourceBlock("Tools", "build", task.Tools, AddTool, RemoveTool)
-        @ResourceBlock("Materials", "category", task.Materials, AddMaterial, RemoveMaterial)
-        @ResourceBlock("General support", "headset_mic", task.GeneralSupports, AddSupport, RemoveSupport)
+        @ResourceBlock(task, "Tools", "build", task.Tools, toolOptions, AddTool, RemoveTool)
+        @ResourceBlock(task, "Materials", "category", task.Materials, materialOptions, AddMaterial, RemoveMaterial)
+        @ResourceBlock(task, "General support", "headset_mic", task.GeneralSupports, supportOptions, AddSupport, RemoveSupport)
     </div>;
 
     private RenderFragment ResourceBlock(
+        TaskForm task,
         string title,
         string icon,
         List<ResourceForm> rows,
+        IReadOnlyList<ResourceOption> options,
         Action<TaskForm> add,
         Action<TaskForm, ResourceForm> remove) => @<div class="owf-resource-block">
             <div class="owf-resource-head">
                 <span><RadzenIcon Icon="@icon" />@title</span>
                 <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
-                              ButtonType="ButtonType.Button" Click="@(() => add(CurrentTaskFor(rows)))" />
+                              ButtonType="ButtonType.Button" Click="@(() => add(task))" />
             </div>
             @foreach (var row in rows)
             {
                 <div @key="row.Key" class="owf-resource-row">
-                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@ResourceOptions(title)" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
-                    <RadzenNumeric @bind-Value="row.Quantity" Min="0.01m" Step="0.25m" class="owf-qty" />
+                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@options" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control"
+                                    Change="@((object? value) => OnResourceItemChanged(task, row, value, options))" />
+                    <div class="owf-resource-usage">
+                        <span class="owf-resource-type">@CalculationTypeFor(row, options)</span>
+                        @if (CalculationTypeFor(row, options) == ResourceCalculationType.Quantity)
+                        {
+                            <RadzenNumeric TValue="decimal?" @bind-Value="row.Quantity" Min="0.01m" Step="0.25m"
+                                           Placeholder="Quantity" class="owf-qty" />
+                        }
+                        else
+                        {
+                            <div class="owf-resource-duration">
+                                <div>
+                                    <label>From (@UserTimeZone.Id) <span class="owf-required">*</span></label>
+                                    <RadzenDatePicker TValue="DateTime?" @bind-Value="row.FromUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                                      Min="@task.FromUtc" Max="@task.ToUtc" class="owf-control" />
+                                </div>
+                                <div>
+                                    <label>To (@UserTimeZone.Id) <small>optional</small></label>
+                                    <RadzenDatePicker TValue="DateTime?" @bind-Value="row.ToUtc" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                                      Min="@task.FromUtc" Max="@task.ToUtc" AllowClear="true" class="owf-control" />
+                                </div>
+                            </div>
+                        }
+                    </div>
                     <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
-                                  ButtonType="ButtonType.Button" Click="@(() => remove(CurrentTaskFor(rows), row))" />
+                                  ButtonType="ButtonType.Button" Click="@(() => remove(task, row))" />
                 </div>
             }
             @if (rows.Count == 0)
@@ -651,7 +706,6 @@
                     ToOffset(l.FromUtc)!.Value,
                     ToOffset(l.ToUtc)!.Value,
                     l.Description,
-                    l.IsReturnToRamp,
                     Attachments: l.Attachments.Select(a => new WorkOrderServiceLineAttachmentRequestModel(
                         a.Kind,
                         Convert.ToBase64String(a.Content),
@@ -666,9 +720,21 @@
                     ToOffset(t.FromUtc)!.Value,
                     ToOffset(t.ToUtc)!.Value,
                     t.EmployeeIds.ToList(),
-                    t.Tools.Select(r => new WorkOrderTaskToolRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
-                    t.Materials.Select(r => new WorkOrderTaskMaterialRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
-                    t.GeneralSupports.Select(r => new WorkOrderTaskGeneralSupportRequestModel(r.ItemId!.Value, r.Quantity)).ToList(),
+                    t.Tools.Select(r => new WorkOrderTaskToolRequestModel(
+                        r.ItemId!.Value,
+                        CalculationTypeFor(r, toolOptions) == ResourceCalculationType.Quantity ? r.Quantity : null,
+                        CalculationTypeFor(r, toolOptions) == ResourceCalculationType.Duration ? ToOffset(r.FromUtc) : null,
+                        CalculationTypeFor(r, toolOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null)).ToList(),
+                    t.Materials.Select(r => new WorkOrderTaskMaterialRequestModel(
+                        r.ItemId!.Value,
+                        CalculationTypeFor(r, materialOptions) == ResourceCalculationType.Quantity ? r.Quantity : null,
+                        CalculationTypeFor(r, materialOptions) == ResourceCalculationType.Duration ? ToOffset(r.FromUtc) : null,
+                        CalculationTypeFor(r, materialOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null)).ToList(),
+                    t.GeneralSupports.Select(r => new WorkOrderTaskGeneralSupportRequestModel(
+                        r.ItemId!.Value,
+                        CalculationTypeFor(r, supportOptions) == ResourceCalculationType.Quantity ? r.Quantity : null,
+                        CalculationTypeFor(r, supportOptions) == ResourceCalculationType.Duration ? ToOffset(r.FromUtc) : null,
+                        CalculationTypeFor(r, supportOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null)).ToList(),
                     t.Attachments.Select(a => new WorkOrderTaskAttachmentRequestModel(
                         a.Kind,
                         Convert.ToBase64String(a.Content),
@@ -680,7 +746,8 @@
                 : new WorkOrderSignatureRequestModel(
                     Convert.ToBase64String(model.CustomerSignature.Content),
                     model.CustomerSignature.FileName,
-                    model.CustomerSignature.ContentType));
+                    model.CustomerSignature.ContentType),
+            completion ? ReturnToRampDraftMapper.ToRequests(model.ReturnToRamps, UserTimeZone) : null);
     }
 
     private List<string> ValidateAll()
@@ -688,18 +755,52 @@
         var messages = new List<string>();
         for (var i = 0; i <= LastStep; i++)
             messages.AddRange(ValidateStep(i));
+        AddTimeZoneValidation(messages);
         return messages.Distinct().ToList();
+    }
+
+    private void AddTimeZoneValidation(List<string> messages)
+    {
+        var values = new List<DateTime?>
+        {
+            model.ScheduledArrivalUtc,
+            model.ScheduledDepartureUtc,
+            model.ActualArrivalUtc,
+            model.ActualDepartureUtc,
+            model.CanceledAtUtc
+        };
+        values.AddRange(model.ServiceLines.SelectMany(line => new[] { line.FromUtc, line.ToUtc }));
+        values.AddRange(model.Tasks.SelectMany(task => new[] { task.FromUtc, task.ToUtc }));
+        values.AddRange(model.Tasks.SelectMany(task => task.Tools
+            .Concat(task.Materials)
+            .Concat(task.GeneralSupports)
+            .SelectMany(resource => new[] { resource.FromUtc, resource.ToUtc })));
+
+        foreach (var value in values.Where(value => value.HasValue))
+        {
+            if (!UserTimeZone.TryToUtc(value, out _, out var error) && error is not null)
+                messages.Add(error);
+        }
     }
 
     private List<string> ValidateCurrentStep() => ValidateStep(step);
 
     private List<string> ValidateStep(int index) => index switch
     {
-        0 => ValidateFlight(),
-        1 => ValidateServiceLines(),
-        2 => ValidateTasks(),
+        CompletionWorkOrderWizard.DetailsStep => ValidateFlight(),
+        CompletionWorkOrderWizard.ServiceLinesStep => ValidateServiceLines(),
+        CompletionWorkOrderWizard.TasksStep => ValidateTasks(),
+        CompletionWorkOrderWizard.ReturnToRampsStep => ValidateReturnToRamps(),
         _ => []
     };
+
+    private List<string> ValidateReturnToRamps()
+    {
+        var messages = new List<string>();
+        foreach (var (occurrence, index) in model.ReturnToRamps.Select((item, index) => (item, index + 1)))
+            messages.AddRange(ReturnToRampDraftValidation.Validate(occurrence, UserTimeZone, $"Return to ramp {index}"));
+        return messages.Distinct().ToList();
+    }
 
     private List<string> ValidateFlight()
     {
@@ -770,9 +871,12 @@
         if (model.ActualDepartureUtc is { } atd && model.Tasks.Any(t => !IsMissing(t.ToUtc) && t.ToUtc!.Value > atd))
             messages.Add("Task To time cannot be after ATD.");
 
-        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Tools), "tool");
-        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.Materials), "material");
-        AddResourceValidation(messages, model.Tasks.SelectMany(t => t.GeneralSupports), "general support");
+        foreach (var (task, taskIndex) in model.Tasks.Select((value, index) => (value, index + 1)))
+        {
+            AddResourceValidation(messages, task, task.Tools, toolOptions, "tool", taskIndex);
+            AddResourceValidation(messages, task, task.Materials, materialOptions, "material", taskIndex);
+            AddResourceValidation(messages, task, task.GeneralSupports, supportOptions, "general support", taskIndex);
+        }
         return messages;
     }
 
@@ -892,13 +996,95 @@
 
     private void RemoveTask(TaskForm task) => model.Tasks.Remove(task);
 
-    private TaskForm CurrentTaskFor(List<ResourceForm> rows) => model.Tasks.First(t => ReferenceEquals(t.Tools, rows) || ReferenceEquals(t.Materials, rows) || ReferenceEquals(t.GeneralSupports, rows));
-    private void AddTool(TaskForm task) => task.Tools.Add(new ResourceForm());
+    private Task AddReturnToRampAsync() => OpenReturnToRampEditorAsync(
+        new ReturnToRampDraft { FromLocal = DefaultWindowStart, ToLocal = DefaultWindowEnd },
+        isNew: true);
+
+    private Task EditReturnToRampAsync(ReturnToRampDraft occurrence) =>
+        OpenReturnToRampEditorAsync(occurrence, isNew: false);
+
+    private async Task OpenReturnToRampEditorAsync(ReturnToRampDraft occurrence, bool isNew)
+    {
+        if (model.StationId is not { } stationId)
+        {
+            validationMessages = ["Select a station before adding a return to ramp."];
+            return;
+        }
+
+        await LoadStaffForStationAsync();
+        if (errorMessage is not null)
+            return;
+
+        var result = await DialogService.OpenAsync<ReturnToRampEditorDialog>(
+            isNew ? "Add return to ramp" : "Edit return to ramp",
+            new Dictionary<string, object?>
+            {
+                [nameof(ReturnToRampEditorDialog.StationId)] = stationId,
+                [nameof(ReturnToRampEditorDialog.Draft)] = occurrence
+            },
+            new DialogOptions { Width = "1080px" });
+
+        if (result is not ReturnToRampEditorResult saved)
+            return;
+
+        if (isNew)
+        {
+            model.ReturnToRamps.Add(saved.Draft);
+            return;
+        }
+
+        var index = model.ReturnToRamps.IndexOf(occurrence);
+        if (index >= 0)
+            model.ReturnToRamps[index] = saved.Draft;
+    }
+
+    private string ReturnToRampWindow(ReturnToRampDraft occurrence)
+    {
+        var from = occurrence.FromLocal?.ToString("yyyy-MM-dd HH:mm") ?? "From not set";
+        var to = occurrence.ToLocal?.ToString("yyyy-MM-dd HH:mm") ?? "To not set";
+        return $"{from} – {to} ({UserTimeZone.Id})";
+    }
+
+    private static void AddTool(TaskForm task) => task.Tools.Add(new ResourceForm
+    {
+        CalculationType = ResourceCalculationType.Duration,
+        Quantity = null,
+        FromUtc = task.FromUtc,
+        ToUtc = task.ToUtc
+    });
     private void RemoveTool(TaskForm task, ResourceForm row) => task.Tools.Remove(row);
-    private void AddMaterial(TaskForm task) => task.Materials.Add(new ResourceForm());
+    private static void AddMaterial(TaskForm task) => task.Materials.Add(new ResourceForm());
     private void RemoveMaterial(TaskForm task, ResourceForm row) => task.Materials.Remove(row);
-    private void AddSupport(TaskForm task) => task.GeneralSupports.Add(new ResourceForm());
+    private static void AddSupport(TaskForm task) => task.GeneralSupports.Add(new ResourceForm());
     private void RemoveSupport(TaskForm task, ResourceForm row) => task.GeneralSupports.Remove(row);
+
+    private static ResourceCalculationType CalculationTypeFor(
+        ResourceForm row,
+        IReadOnlyList<ResourceOption> options) =>
+        row.ItemId is { } itemId
+            ? options.FirstOrDefault(option => option.Id == itemId)?.CalculationType ?? row.CalculationType
+            : row.CalculationType;
+
+    private static void OnResourceItemChanged(
+        TaskForm task,
+        ResourceForm row,
+        object? value,
+        IReadOnlyList<ResourceOption> options)
+    {
+        row.ItemId = value is Guid id ? id : null;
+        row.CalculationType = CalculationTypeFor(row, options);
+        if (row.CalculationType == ResourceCalculationType.Quantity)
+        {
+            row.Quantity ??= 1;
+            row.FromUtc = null;
+            row.ToUtc = null;
+            return;
+        }
+
+        row.Quantity = null;
+        row.FromUtc ??= task.FromUtc;
+        row.ToUtc ??= task.ToUtc;
+    }
     private void DeleteAttachment(TaskForm task, AttachmentForm attachment) => task.Attachments.Remove(attachment);
     private void DeleteServiceLineAttachment(ServiceLineForm line, AttachmentForm attachment) => line.Attachments.Remove(attachment);
 
@@ -1018,32 +1204,48 @@
 
     private void DismissValidationMessages() => validationMessages = [];
 
-    private static void AddResourceValidation(List<string> messages, IEnumerable<ResourceForm> rows, string label)
+    private void AddResourceValidation(
+        List<string> messages,
+        TaskForm task,
+        IEnumerable<ResourceForm> rows,
+        IReadOnlyList<ResourceOption> options,
+        string label,
+        int taskIndex)
     {
         var list = rows.ToList();
         if (list.Any(r => r.ItemId is null))
             messages.Add($"Every {label} row needs an item.");
-        if (list.Any(r => r.Quantity <= 0))
-            messages.Add($"{ToTitle(label)} quantities must be greater than zero.");
-    }
+        if (list.Where(row => row.ItemId.HasValue).GroupBy(row => row.ItemId).Any(group => group.Count() > 1))
+            messages.Add($"Duplicate {label} rows are not allowed within task {taskIndex}.");
 
-    private IReadOnlyList<object> ResourceOptions(string title) => title switch
-    {
-        "Tools" => toolOptions.Cast<object>().ToList(),
-        "Materials" => materialOptions.Cast<object>().ToList(),
-        _ => supportOptions.Cast<object>().ToList()
-    };
+        foreach (var (row, resourceIndex) in list.Select((value, index) => (value, index + 1)))
+        {
+            var calculationType = CalculationTypeFor(row, options);
+            var prefix = $"Task {taskIndex} {label} {resourceIndex}";
+            if (calculationType == ResourceCalculationType.Quantity)
+            {
+                if (row.Quantity is null or <= 0)
+                    messages.Add($"{prefix} quantity must be greater than zero.");
+                else if (row.Quantity > 9999999999999999.99m || decimal.Round(row.Quantity.Value, 2) != row.Quantity.Value)
+                    messages.Add($"{prefix} quantity supports up to 16 whole digits and 2 decimal places.");
+                continue;
+            }
+
+            if (IsMissing(row.FromUtc))
+                messages.Add($"{prefix} requires a From time.");
+            if (!IsMissing(row.FromUtc) && !IsMissing(row.ToUtc) && row.ToUtc!.Value < row.FromUtc!.Value)
+                messages.Add($"{prefix} To time cannot be before From time.");
+            if (!IsMissing(task.FromUtc) && !IsMissing(row.FromUtc) && row.FromUtc!.Value < task.FromUtc!.Value)
+                messages.Add($"{prefix} From time cannot be before the task From time.");
+            if (!IsMissing(task.ToUtc) && !IsMissing(row.ToUtc) && row.ToUtc!.Value > task.ToUtc!.Value)
+                messages.Add($"{prefix} To time cannot be after the task To time.");
+        }
+    }
 
     private string StepClass(int index) =>
         index == step ? "owf-step owf-step-active" : index < step ? "owf-step owf-step-complete" : "owf-step";
 
-    private string StepLabel(int index) => index switch
-    {
-        0 => "Flight",
-        1 => "Service lines",
-        2 => "Tasks",
-        _ => "Signature"
-    };
+    private static string StepLabel(int index) => CompletionWorkOrderWizard.AdHocLabels[index];
 
     private string TypeClass(string type) => model.Type == type ? "owf-type-option owf-type-option-active" : "owf-type-option";
     private string? SelectedCustomerIata => customers.FirstOrDefault(customer => customer.Id == model.CustomerId)?.IataCode;
@@ -1052,7 +1254,7 @@
     private string CustomerIataPrefix => HasCustomerIataPrefix ? SelectedCustomerIata!.Trim().ToUpperInvariant() : model.CustomerId is null ? "-" : "N/A";
 
     private static bool IsMissing(DateTime? value) => value is null || value.Value == default;
-    private static DateTimeOffset? ToOffset(DateTime? value) => value is null ? null : new DateTimeOffset(DateTime.SpecifyKind(value.Value, DateTimeKind.Utc));
+    private DateTimeOffset? ToOffset(DateTime? value) => UserTimeZone.ToUtc(value);
     private static string NoResourceText(string title) => $"No {title.ToLowerInvariant()} added";
     private static string ToTitle(string value) => string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
 
@@ -1100,6 +1302,7 @@
     };
 
     private sealed record SelectOption(string Label, string Value);
+    private sealed record ResourceOption(Guid Id, string Name, ResourceCalculationType CalculationType);
 
     private sealed class AdHocForm
     {
@@ -1119,6 +1322,7 @@
         public PendingFileForm? CustomerSignature { get; set; }
         public List<ServiceLineForm> ServiceLines { get; } = [];
         public List<TaskForm> Tasks { get; } = [];
+        public List<ReturnToRampDraft> ReturnToRamps { get; } = [];
     }
 
     private sealed class ServiceLineForm
@@ -1129,7 +1333,6 @@
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
-        public bool IsReturnToRamp { get; set; }
         public List<AttachmentForm> Attachments { get; } = [];
     }
 
@@ -1151,7 +1354,10 @@
     {
         public Guid Key { get; } = Guid.NewGuid();
         public Guid? ItemId { get; set; }
-        public decimal Quantity { get; set; } = 1;
+        public ResourceCalculationType CalculationType { get; set; } = ResourceCalculationType.Quantity;
+        public decimal? Quantity { get; set; } = 1;
+        public DateTime? FromUtc { get; set; }
+        public DateTime? ToUtc { get; set; }
     }
 
     private sealed class AttachmentForm

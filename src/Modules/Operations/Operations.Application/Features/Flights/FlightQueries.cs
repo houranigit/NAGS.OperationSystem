@@ -3,6 +3,7 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Readers;
+using MasterData.Contracts.Resources;
 using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
@@ -229,9 +230,96 @@ internal static class FlightExportProjection
         List<FlightExportResourceNameRow> generalSupportRows = selectedWorkOrderIds.Count == 0
             ? []
             : await GeneralSupportRowsQuery(db, selectedWorkOrderIds).ToListAsync(cancellationToken);
+        List<FlightExportServiceDetailRow> serviceDetailRows = selectedWorkOrderIds.Count == 0
+            ? []
+            : await ServiceDetailRowsQuery(db, selectedWorkOrderIds).ToListAsync(cancellationToken);
+        List<FlightExportTaskDetailRow> taskDetailRows = selectedWorkOrderIds.Count == 0
+            ? []
+            : await TaskDetailRowsQuery(db, selectedWorkOrderIds).ToListAsync(cancellationToken);
+        List<FlightExportReturnToRampRow> returnToRampRows = selectedWorkOrderIds.Count == 0
+            ? []
+            : await ReturnToRampRowsQuery(db, selectedWorkOrderIds).ToListAsync(cancellationToken);
+        List<WorkOrder> activityPerformerGraphs = selectedWorkOrderIds.Count == 0
+            ? []
+            : await WorkOrderLoader.ForMutation(db.WorkOrders.AsNoTracking())
+                .Where(workOrder => selectedWorkOrderIds.Contains(workOrder.Id))
+                .ToListAsync(cancellationToken);
         var toolNamesByWorkOrder = toolRows.ToLookup(row => row.WorkOrderId, row => row.Name);
         var materialNamesByWorkOrder = materialRows.ToLookup(row => row.WorkOrderId, row => row.Name);
         var generalSupportNamesByWorkOrder = generalSupportRows.ToLookup(row => row.WorkOrderId, row => row.Name);
+        var servicePerformersByLine = activityPerformerGraphs
+            .SelectMany(workOrder => workOrder.ServiceLines
+                .Concat(workOrder.ReturnToRamps.SelectMany(item => item.ServiceLines)))
+            .SelectMany(
+                line => line.PerformedBy.Where(performer => performer.StaffMember != null),
+                (line, performer) => new { line.WorkOrderId, ActivityId = line.Id, performer.StaffMember.FullName })
+            .ToLookup(row => (row.WorkOrderId, row.ActivityId), row => row.FullName);
+        var taskPerformersByTask = activityPerformerGraphs
+            .SelectMany(workOrder => workOrder.Tasks
+                .Concat(workOrder.ReturnToRamps.SelectMany(item => item.Tasks)))
+            .SelectMany(
+                task => task.Employees.Where(performer => performer.Employee != null),
+                (task, performer) => new { task.WorkOrderId, ActivityId = task.Id, performer.Employee.FullName })
+            .ToLookup(row => (row.WorkOrderId, row.ActivityId), row => row.FullName);
+        var toolsByTask = toolRows.ToLookup(row => (row.WorkOrderId, row.TaskId));
+        var materialsByTask = materialRows.ToLookup(row => (row.WorkOrderId, row.TaskId));
+        var generalSupportsByTask = generalSupportRows.ToLookup(row => (row.WorkOrderId, row.TaskId));
+
+        var returnToRampContextsById = returnToRampRows
+            .GroupBy(row => row.WorkOrderId)
+            .SelectMany(group => group
+                .OrderBy(row => row.FromUtc)
+                .ThenBy(row => row.CreatedAtUtc)
+                .ThenBy(row => row.Id)
+                .Select((row, index) => new KeyValuePair<Guid, FlightExportReturnToRampContextDto>(
+                    row.Id,
+                    new FlightExportReturnToRampContextDto(
+                        row.Id,
+                        index + 1,
+                        row.FromUtc,
+                        row.ToUtc,
+                        row.Description))))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        var serviceDetailsByWorkOrder = serviceDetailRows
+            .OrderBy(row => row.FromUtc)
+            .ThenBy(row => row.ToUtc)
+            .ThenBy(row => row.ServiceName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.Id)
+            .Select(row => new
+            {
+                row.WorkOrderId,
+                Detail = new FlightExportServiceDetailDto(
+                    row.Id,
+                    row.ServiceName,
+                    row.FromUtc,
+                    row.ToUtc,
+                    NormalizeNames(servicePerformersByLine[(row.WorkOrderId, row.Id)]),
+                    row.Description,
+                    ResolveReturnToRamp(row.ReturnToRampId, returnToRampContextsById))
+            })
+            .ToLookup(row => row.WorkOrderId, row => row.Detail);
+
+        var taskDetailsByWorkOrder = taskDetailRows
+            .OrderBy(row => row.FromUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(row => row.ToUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(row => row.Id)
+            .Select(row => new
+            {
+                row.WorkOrderId,
+                Detail = new FlightExportTaskDetailDto(
+                    row.Id,
+                    row.TaskType?.ToString() ?? string.Empty,
+                    row.Description,
+                    row.FromUtc ?? DateTimeOffset.MinValue,
+                    row.ToUtc ?? row.FromUtc ?? DateTimeOffset.MinValue,
+                    NormalizeNames(taskPerformersByTask[(row.WorkOrderId, row.Id)]),
+                    NormalizeResources(toolsByTask[(row.WorkOrderId, row.Id)]),
+                    NormalizeResources(materialsByTask[(row.WorkOrderId, row.Id)]),
+                    NormalizeResources(generalSupportsByTask[(row.WorkOrderId, row.Id)]),
+                    ResolveReturnToRamp(row.ReturnToRampId, returnToRampContextsById))
+            })
+            .ToLookup(row => row.WorkOrderId, row => row.Detail);
 
         IReadOnlyList<FlightExportRowDto> items = flightRows.Select(f =>
         {
@@ -250,7 +338,14 @@ internal static class FlightExportProjection
                     NormalizeNames(toolNamesByWorkOrder[selectedWorkOrder.Id]),
                     NormalizeNames(materialNamesByWorkOrder[selectedWorkOrder.Id]),
                     NormalizeNames(generalSupportNamesByWorkOrder[selectedWorkOrder.Id]),
-                    selectedWorkOrder.Remarks);
+                    selectedWorkOrder.Remarks)
+                {
+                    WorkOrderId = selectedWorkOrder.Id,
+                    WorkOrderStatus = selectedWorkOrder.Status.ToString(),
+                    TaskNames = BuildTaskNames(taskDetailsByWorkOrder[selectedWorkOrder.Id]),
+                    ServiceDetails = serviceDetailsByWorkOrder[selectedWorkOrder.Id].ToList(),
+                    TaskDetails = taskDetailsByWorkOrder[selectedWorkOrder.Id].ToList()
+                };
 
             return new FlightExportRowDto(
                 f.Id,
@@ -280,7 +375,14 @@ internal static class FlightExportProjection
         where workOrderIds.Contains(workOrder.Id)
         from task in workOrder.Tasks
         from tool in task.Tools
-        select new FlightExportResourceNameRow(workOrder.Id, tool.Tool.Name);
+        select new FlightExportResourceNameRow(
+            workOrder.Id,
+            task.Id,
+            tool.Tool.Name,
+            (ResourceCalculationType?)tool.Tool.CalculationType,
+            tool.Usage.Quantity,
+            tool.Usage.FromUtc,
+            tool.Usage.ToUtc);
 
     internal static IQueryable<FlightExportResourceNameRow> MaterialRowsQuery(
         IOperationsDbContext db,
@@ -289,7 +391,14 @@ internal static class FlightExportProjection
         where workOrderIds.Contains(workOrder.Id)
         from task in workOrder.Tasks
         from material in task.Materials
-        select new FlightExportResourceNameRow(workOrder.Id, material.Material.Name);
+        select new FlightExportResourceNameRow(
+            workOrder.Id,
+            task.Id,
+            material.Material.Name,
+            (ResourceCalculationType?)material.Material.CalculationType,
+            material.Usage.Quantity,
+            material.Usage.FromUtc,
+            material.Usage.ToUtc);
 
     internal static IQueryable<FlightExportResourceNameRow> GeneralSupportRowsQuery(
         IOperationsDbContext db,
@@ -298,7 +407,73 @@ internal static class FlightExportProjection
         where workOrderIds.Contains(workOrder.Id)
         from task in workOrder.Tasks
         from support in task.GeneralSupports
-        select new FlightExportResourceNameRow(workOrder.Id, support.GeneralSupport.Name);
+        select new FlightExportResourceNameRow(
+            workOrder.Id,
+            task.Id,
+            support.GeneralSupport.Name,
+            (ResourceCalculationType?)support.GeneralSupport.CalculationType,
+            support.Usage.Quantity,
+            support.Usage.FromUtc,
+            support.Usage.ToUtc);
+
+    internal static IQueryable<FlightExportServiceDetailRow> ServiceDetailRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        db.WorkOrderServiceLines.AsNoTracking()
+            .Where(line => workOrderIds.Contains(line.WorkOrderId))
+            .Select(line => new FlightExportServiceDetailRow(
+                line.WorkOrderId,
+                line.Id,
+                line.ReturnToRampId,
+                line.Service.Name,
+                line.Window.From,
+                line.Window.To,
+                line.Description));
+
+    internal static IQueryable<FlightExportActivityPersonRow> ServicePerformerRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        from line in db.WorkOrderServiceLines.AsNoTracking()
+        where workOrderIds.Contains(line.WorkOrderId)
+        from performer in line.PerformedBy
+        select new FlightExportActivityPersonRow(line.WorkOrderId, line.Id, performer.StaffMember.FullName);
+
+    internal static IQueryable<FlightExportTaskDetailRow> TaskDetailRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        from workOrder in db.WorkOrders.AsNoTracking()
+        where workOrderIds.Contains(workOrder.Id)
+        from task in workOrder.Tasks
+        select new FlightExportTaskDetailRow(
+            workOrder.Id,
+            task.Id,
+            task.ReturnToRampId,
+            (TaskType?)task.TaskType,
+            task.Description,
+            (DateTimeOffset?)task.Window.From,
+            (DateTimeOffset?)task.Window.To);
+
+    internal static IQueryable<FlightExportActivityPersonRow> TaskPerformerRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        from workOrder in db.WorkOrders.AsNoTracking()
+        where workOrderIds.Contains(workOrder.Id)
+        from task in workOrder.Tasks
+        from performer in task.Employees
+        select new FlightExportActivityPersonRow(workOrder.Id, task.Id, performer.Employee.FullName);
+
+    internal static IQueryable<FlightExportReturnToRampRow> ReturnToRampRowsQuery(
+        IOperationsDbContext db,
+        IReadOnlyList<Guid> workOrderIds) =>
+        db.WorkOrderReturnToRamps.AsNoTracking()
+            .Where(item => workOrderIds.Contains(item.WorkOrderId))
+            .Select(item => new FlightExportReturnToRampRow(
+                item.WorkOrderId,
+                item.Id,
+                item.Window.From,
+                item.Window.To,
+                item.Description,
+                item.CreatedAtUtc));
 
     private static IReadOnlyList<string> NormalizeNames(IEnumerable<string> names) =>
         names
@@ -308,9 +483,90 @@ internal static class FlightExportProjection
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(name => name, StringComparer.Ordinal)
             .ToList();
+
+    private static IReadOnlyList<string> BuildTaskNames(IEnumerable<FlightExportTaskDetailDto> tasks) =>
+        tasks
+            .Select(task =>
+            {
+                var type = task.TaskType.Trim();
+                var description = task.Description?.Trim();
+                return (type, description) switch
+                {
+                    (not "", not null and not "") => $"{type}: {description}",
+                    (not "", _) => type,
+                    (_, not null and not "") => description,
+                    _ => string.Empty
+                };
+            })
+            .Where(name => name.Length > 0)
+            .ToList();
+
+    private static IReadOnlyList<FlightExportResourceUsageDto> NormalizeResources(
+        IEnumerable<FlightExportResourceNameRow> resources) =>
+        resources
+            .Where(resource => !string.IsNullOrWhiteSpace(resource.Name))
+            .Select(resource => new FlightExportResourceUsageDto(
+                resource.Name.Trim(),
+                // SQL stores a required calculation-type snapshot. Some non-relational providers
+                // surface enum zero (Quantity) as null through an optional-owned projection;
+                // GetValueOrDefault preserves that enum value without inferring from usage fields.
+                resource.CalculationType.GetValueOrDefault(),
+                resource.Quantity,
+                resource.FromUtc,
+                resource.ToUtc))
+            .OrderBy(resource => resource.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(resource => resource.Name, StringComparer.Ordinal)
+            .ThenBy(resource => resource.CalculationType)
+            .ThenBy(resource => resource.Quantity)
+            .ThenBy(resource => resource.FromUtc)
+            .ThenBy(resource => resource.ToUtc)
+            .ToList();
+
+    private static FlightExportReturnToRampContextDto? ResolveReturnToRamp(
+        Guid? returnToRampId,
+        IReadOnlyDictionary<Guid, FlightExportReturnToRampContextDto> contexts) =>
+        returnToRampId is { } id && contexts.TryGetValue(id, out var context) ? context : null;
 }
 
-internal sealed record FlightExportResourceNameRow(Guid WorkOrderId, string Name);
+internal sealed record FlightExportResourceNameRow(
+    Guid WorkOrderId,
+    Guid TaskId,
+    string Name,
+    ResourceCalculationType? CalculationType,
+    decimal? Quantity,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
+
+internal sealed record FlightExportServiceDetailRow(
+    Guid WorkOrderId,
+    Guid Id,
+    Guid? ReturnToRampId,
+    string ServiceName,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    string? Description);
+
+internal sealed record FlightExportTaskDetailRow(
+    Guid WorkOrderId,
+    Guid Id,
+    Guid? ReturnToRampId,
+    TaskType? TaskType,
+    string? Description,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc);
+
+internal sealed record FlightExportActivityPersonRow(
+    Guid WorkOrderId,
+    Guid ActivityId,
+    string Name);
+
+internal sealed record FlightExportReturnToRampRow(
+    Guid WorkOrderId,
+    Guid Id,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    string? Description,
+    DateTimeOffset CreatedAtUtc);
 
 public sealed class GetPerLandingExtractionQueryHandler(IOperationsDbContext db, IOperationsScope scope)
     : IQueryHandler<GetPerLandingExtractionQuery, IReadOnlyList<PerLandingExtractionItemDto>>
@@ -535,7 +791,7 @@ public sealed class GetSchedulerCalendarQueryHandler(IOperationsDbContext db, IO
 
         var query = db.Flights.AsNoTracking()
             .Where(f => f.Status != FlightStatus.Merged)
-            .Where(f => f.Schedule.Sta >= request.FromUtc && f.Schedule.Sta <= request.ToUtc);
+            .Where(f => f.Schedule.Sta >= request.FromUtc && f.Schedule.Sta < request.ToUtc);
 
         if (!scopeResult.Value.HasGlobalReadAccess && scopeResult.Value.StationId is { } stationId)
         {

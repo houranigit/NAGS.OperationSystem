@@ -13,3 +13,5 @@ public sealed record WorkOrderApproved(Guid WorkOrderId, string ApprovalNumber) 
 public sealed record WorkOrderReturned(Guid WorkOrderId) : DomainEvent;
 
 public sealed record WorkOrderMerged(Guid WorkOrderId, Guid GeneratedWorkOrderId) : DomainEvent;
+
+public sealed record WorkOrderReturnToRampRecorded(Guid WorkOrderId, Guid ReturnToRampId) : DomainEvent;

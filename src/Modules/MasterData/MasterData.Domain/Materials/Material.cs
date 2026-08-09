@@ -1,21 +1,28 @@
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Resources;
 
 namespace MasterData.Domain.Materials;
 
-/// <summary>Material catalog item. Unit metadata is intentionally deferred.</summary>
+/// <summary>Material catalog item with configurable quantity or duration usage.</summary>
 public sealed class Material : AggregateRoot<Guid>
 {
     private Material() { }
 
     public string Name { get; private set; } = null!;
     public string? Description { get; private set; }
+    public ResourceCalculationType CalculationType { get; private set; } = ResourceCalculationType.Quantity;
     public bool IsActive { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
-    public static Result<Material> Create(string? name, string? description, DateTimeOffset now, Guid? id = null)
+    public static Result<Material> Create(
+        string? name,
+        string? description,
+        DateTimeOffset now,
+        Guid? id = null,
+        ResourceCalculationType calculationType = ResourceCalculationType.Quantity)
     {
         var nameCheck = ValidateName(name);
         if (nameCheck.IsFailure)
@@ -24,18 +31,27 @@ public sealed class Material : AggregateRoot<Guid>
         var descriptionCheck = ValidateDescription(description);
         if (descriptionCheck.IsFailure)
             return descriptionCheck.Error;
+
+        var calculationTypeCheck = ValidateCalculationType(calculationType);
+        if (calculationTypeCheck.IsFailure)
+            return calculationTypeCheck.Error;
 
         return new Material
         {
             Id = id ?? Guid.NewGuid(),
             Name = nameCheck.Value,
             Description = descriptionCheck.Value,
+            CalculationType = calculationTypeCheck.Value,
             IsActive = true,
             CreatedAtUtc = now
         };
     }
 
-    public Result Update(string? name, string? description, DateTimeOffset now)
+    public Result Update(
+        string? name,
+        string? description,
+        DateTimeOffset now,
+        ResourceCalculationType? calculationType = null)
     {
         var nameCheck = ValidateName(name);
         if (nameCheck.IsFailure)
@@ -45,8 +61,13 @@ public sealed class Material : AggregateRoot<Guid>
         if (descriptionCheck.IsFailure)
             return descriptionCheck.Error;
 
+        var calculationTypeCheck = ValidateCalculationType(calculationType ?? CalculationType);
+        if (calculationTypeCheck.IsFailure)
+            return calculationTypeCheck.Error;
+
         Name = nameCheck.Value;
         Description = descriptionCheck.Value;
+        CalculationType = calculationTypeCheck.Value;
         UpdatedAtUtc = now;
         return Result.Success();
     }
@@ -94,4 +115,11 @@ public sealed class Material : AggregateRoot<Guid>
 
         return Result.Success<string?>(trimmed);
     }
+
+    private static Result<ResourceCalculationType> ValidateCalculationType(ResourceCalculationType calculationType) =>
+        calculationType is ResourceCalculationType.Quantity or ResourceCalculationType.Duration
+            ? calculationType
+            : Error.Validation(
+                "Calculation type must be Quantity or Duration.",
+                "MasterData.Material.CalculationTypeInvalid");
 }

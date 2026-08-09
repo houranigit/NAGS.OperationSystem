@@ -6,6 +6,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
+using Operations.Contracts;
 using Operations.Domain.Enumerations;
 using Operations.Domain.WorkOrders;
 
@@ -62,18 +63,31 @@ public sealed class UploadWorkOrderTaskAttachmentCommandHandler(
         if (author.IsFailure)
             return author.Error;
 
+        var task = WorkOrderAttachmentTargets.FindTask(workOrder, request.TaskId);
+        if (task is null)
+            return Error.NotFound("Task not found.", "Operations.WorkOrder.TaskNotFound");
+
         await using var content = new MemoryStream(request.Content);
         var stored = await storage.SaveAsync("work-order-attachments", request.FileName, request.ContentType, content, cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
-        var added = workOrder.AddTaskAttachment(
-            request.TaskId,
-            request.Kind,
-            stored.StorageKey,
-            request.FileName,
-            stored.ContentType,
-            stored.SizeBytes,
-            timeProvider.GetUtcNow());
+        var added = task.ReturnToRampId.HasValue
+            ? workOrder.AddReturnToRampTaskAttachment(
+                request.TaskId,
+                request.Kind,
+                stored.StorageKey,
+                request.FileName,
+                stored.ContentType,
+                stored.SizeBytes,
+                timeProvider.GetUtcNow())
+            : workOrder.AddTaskAttachment(
+                request.TaskId,
+                request.Kind,
+                stored.StorageKey,
+                request.FileName,
+                stored.ContentType,
+                stored.SizeBytes,
+                timeProvider.GetUtcNow());
         if (added.IsFailure)
         {
             await storage.DeleteAsync(stored.StorageKey, cancellationToken);
@@ -122,7 +136,6 @@ public sealed class DeleteWorkOrderTaskAttachmentCommandValidator : AbstractVali
 public sealed class DeleteWorkOrderTaskAttachmentCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
-    IFileStorage storage,
     IWorkOrderTimelineWriter timeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<DeleteWorkOrderTaskAttachmentCommand>
@@ -144,13 +157,25 @@ public sealed class DeleteWorkOrderTaskAttachmentCommandHandler(
         if (author.IsFailure)
             return author.Error;
 
+        var task = WorkOrderAttachmentTargets.FindTask(workOrder, request.TaskId);
+        if (task is null)
+            return Error.NotFound("Task not found.", "Operations.WorkOrder.TaskNotFound");
+
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
-        var storageReference = workOrder.RemoveTaskAttachment(request.TaskId, request.AttachmentId, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var storageReference = task.ReturnToRampId.HasValue
+            ? workOrder.RemoveReturnToRampTaskAttachment(request.TaskId, request.AttachmentId, now)
+            : workOrder.RemoveTaskAttachment(request.TaskId, request.AttachmentId, now);
         if (storageReference.IsFailure)
             return storageReference.Error;
 
-        await timeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Updated, timeProvider.GetUtcNow(),
+        await timeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Updated, now,
             details: $"Attachment removed: {request.AttachmentId}", cancellationToken: cancellationToken);
+        db.Enqueue(new WorkOrderFileDeletionRequested
+        {
+            StorageReference = storageReference.Value,
+            OccurredOnUtc = now
+        });
 
         try
         {
@@ -161,7 +186,6 @@ public sealed class DeleteWorkOrderTaskAttachmentCommandHandler(
             return ConcurrencyErrors.Stale;
         }
 
-        await storage.DeleteAsync(storageReference.Value, cancellationToken);
         return Result.Success();
     }
 }
@@ -217,18 +241,31 @@ public sealed class UploadWorkOrderServiceLineAttachmentCommandHandler(
         if (author.IsFailure)
             return author.Error;
 
+        var serviceLine = WorkOrderAttachmentTargets.FindServiceLine(workOrder, request.ServiceLineId);
+        if (serviceLine is null)
+            return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
+
         await using var content = new MemoryStream(request.Content);
         var stored = await storage.SaveAsync("work-order-attachments", request.FileName, request.ContentType, content, cancellationToken);
 
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
-        var added = workOrder.AddServiceLineAttachment(
-            request.ServiceLineId,
-            request.Kind,
-            stored.StorageKey,
-            request.FileName,
-            stored.ContentType,
-            stored.SizeBytes,
-            timeProvider.GetUtcNow());
+        var added = serviceLine.ReturnToRampId.HasValue
+            ? workOrder.AddReturnToRampServiceLineAttachment(
+                request.ServiceLineId,
+                request.Kind,
+                stored.StorageKey,
+                request.FileName,
+                stored.ContentType,
+                stored.SizeBytes,
+                timeProvider.GetUtcNow())
+            : workOrder.AddServiceLineAttachment(
+                request.ServiceLineId,
+                request.Kind,
+                stored.StorageKey,
+                request.FileName,
+                stored.ContentType,
+                stored.SizeBytes,
+                timeProvider.GetUtcNow());
         if (added.IsFailure)
         {
             await storage.DeleteAsync(stored.StorageKey, cancellationToken);
@@ -277,7 +314,6 @@ public sealed class DeleteWorkOrderServiceLineAttachmentCommandValidator : Abstr
 public sealed class DeleteWorkOrderServiceLineAttachmentCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
-    IFileStorage storage,
     IWorkOrderTimelineWriter timeline,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<DeleteWorkOrderServiceLineAttachmentCommand>
@@ -299,16 +335,25 @@ public sealed class DeleteWorkOrderServiceLineAttachmentCommandHandler(
         if (author.IsFailure)
             return author.Error;
 
+        var serviceLine = WorkOrderAttachmentTargets.FindServiceLine(workOrder, request.ServiceLineId);
+        if (serviceLine is null)
+            return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
+
         db.SetOriginalRowVersion(workOrder, request.RowVersion);
-        var storageReference = workOrder.RemoveServiceLineAttachment(
-            request.ServiceLineId,
-            request.AttachmentId,
-            timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var storageReference = serviceLine.ReturnToRampId.HasValue
+            ? workOrder.RemoveReturnToRampServiceLineAttachment(request.ServiceLineId, request.AttachmentId, now)
+            : workOrder.RemoveServiceLineAttachment(request.ServiceLineId, request.AttachmentId, now);
         if (storageReference.IsFailure)
             return storageReference.Error;
 
-        await timeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Updated, timeProvider.GetUtcNow(),
+        await timeline.AppendAsync(workOrder.Id, WorkOrderTimelineEventType.Updated, now,
             details: $"Attachment removed: {request.AttachmentId}", cancellationToken: cancellationToken);
+        db.Enqueue(new WorkOrderFileDeletionRequested
+        {
+            StorageReference = storageReference.Value,
+            OccurredOnUtc = now
+        });
 
         try
         {
@@ -319,7 +364,6 @@ public sealed class DeleteWorkOrderServiceLineAttachmentCommandHandler(
             return ConcurrencyErrors.Stale;
         }
 
-        await storage.DeleteAsync(storageReference.Value, cancellationToken);
         return Result.Success();
     }
 }
@@ -425,8 +469,10 @@ public static class WorkOrderAttachmentPolicy
             return (content[0] == 0x49 && content[1] == 0x44 && content[2] == 0x33) || (content[0] == 0xFF && (content[1] & 0xE0) == 0xE0);
         if (contentType.Equals("audio/mp4", StringComparison.OrdinalIgnoreCase) || contentType.Equals("audio/m4a", StringComparison.OrdinalIgnoreCase))
             return content.Length >= 12 && content[4] == 0x66 && content[5] == 0x74 && content[6] == 0x79 && content[7] == 0x70;
+        if (contentType.Equals("audio/webm", StringComparison.OrdinalIgnoreCase))
+            return content[0] == 0x1A && content[1] == 0x45 && content[2] == 0xDF && content[3] == 0xA3;
 
-        return contentType.Equals("audio/webm", StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 }
 

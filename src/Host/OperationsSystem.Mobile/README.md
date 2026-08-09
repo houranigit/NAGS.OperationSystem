@@ -20,6 +20,10 @@ shape and business rules.
   wake-up across process death and device reboot, while a shared drain lock prevents the foreground
   and background uploaders from submitting the same row. Every mutation carries a
   `clientMutationId` so server retries are idempotent.
+* **Local-time work-order entry** — the UI converts server UTC instants through the device IANA
+  time zone, including daylight-saving rules, while queued and transmitted values remain UTC.
+  Resource rows follow their catalog calculation type: Quantity stores an amount; Duration stores
+  a required From and optional/open To.
 * **Screens** — My Flights / Per Landing / Ad Hoc tabs, create/update work order (planned services
   seed the form as service lines to complete or remove — never Per Landing), return-to-ramp,
   invite teammates (online-only), cancel flight (time + reason), local drafts, and the Sync Center
@@ -39,6 +43,9 @@ alerts use FCM and the Notifications API under `/api/v1/notifications`.
 * One active work order per user per flight; approval locks the work order and settles the flight.
 * Service lines are clear-and-rebuild on update; tasks keep their stable server ids so uploaded
   attachments survive edits.
+* Return-to-ramp work is stored as separate occurrences, each with its own window, optional
+  description, services, tasks, resources, and attachments. The older flag-only wire shape remains
+  readable only so already-persisted outbox rows can drain safely.
 * Statuses are the server enum names: flights `Scheduled/InProgress/Completed/Canceled/Merged`,
   work orders `Submitted/Returned/Approved/Merged` (drafts are local-only).
 
@@ -49,7 +56,7 @@ app/src/main/java/com/nags/operations/
   AppGraph.kt                       — hand-rolled DI: TokenStore, Db, repos, sync, outbox, realtime
   MainActivity.kt                   — single Compose activity, hosts the NavHost
   data/api/                         — Ktor HTTP: AuthApi (mobile auth), MobileApi (/api/v1/mobile)
-  data/db/                          — Room database (v11), entities, DAOs, converters
+  data/db/                          — Room database (v15), entities, DAOs, converters
   data/outbox/                      — durable queue + foreground/WorkManager delivery
   data/realtime/                    — SignalR channel + change envelope
   data/notifications/               — notification wire models and typed push payload

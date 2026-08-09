@@ -1,5 +1,6 @@
 @inject OperationsApiClient Operations
 @inject DialogService DialogService
+@inject UserTimeZone UserTimeZone
 
 <div class="ofm-dialog">
     @if (isLoading)
@@ -67,7 +68,11 @@
     private FlightDetail? Survivor => flights.FirstOrDefault(x => x.Id == survivorId);
     private FlightDetail? Loser => flights.FirstOrDefault(x => x.Id == loserId);
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -159,8 +164,7 @@
         }
     }
 
-    private static string DateTimeDisplay(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+    private string DateTimeDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
 
     private sealed record FlightChoice(Guid Id, string Label);
 }

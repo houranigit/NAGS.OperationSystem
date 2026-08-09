@@ -32,6 +32,23 @@ window.operationsSystem.storage = {
   },
 };
 
+window.operationsSystem.timeZone = {
+  get() {
+    let id = null;
+    try {
+      id = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch {
+      // Older browsers may expose only the current numeric offset.
+    }
+
+    return {
+      id,
+      // JavaScript reports minutes west of UTC; the .NET fallback expects minutes east.
+      offsetMinutes: -new Date().getTimezoneOffset(),
+    };
+  },
+};
+
 window.operationsSystem.api = {
   async request(method, path, body, accessToken, language, ifMatch) {
     const execute = async () => {

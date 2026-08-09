@@ -1,0 +1,747 @@
+@inject OperationsApiClient Operations
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject UserTimeZone UserTimeZone
+
+<div class="rtr-editor">
+    @if (isLoading)
+    {
+        <LoadingCard />
+    }
+    else
+    {
+        <section class="rtr-card rtr-window-card">
+            <div class="rtr-section-title">
+                <span><RadzenIcon Icon="u_turn_left" />Occurrence window</span>
+                <small>All times use @UserTimeZone.Id</small>
+            </div>
+            <div class="rtr-grid-2">
+                <div class="rtr-field">
+                    <label>From <span class="rtr-required">*</span></label>
+                    <RadzenDatePicker TValue="DateTime?" @bind-Value="model.FromLocal" DateFormat="yyyy-MM-dd HH:mm"
+                                      ShowTime="true" Disabled="@ViewOnly" class="rtr-control" />
+                </div>
+                <div class="rtr-field">
+                    <label>To <span class="rtr-required">*</span></label>
+                    <RadzenDatePicker TValue="DateTime?" @bind-Value="model.ToLocal" DateFormat="yyyy-MM-dd HH:mm"
+                                      ShowTime="true" Min="@model.FromLocal" Disabled="@ViewOnly" class="rtr-control" />
+                </div>
+                <div class="rtr-field rtr-full">
+                    <label>Description <small>optional</small></label>
+                    <RadzenTextArea @bind-Value="model.Description" Rows="3" MaxLength="2000"
+                                    Disabled="@ViewOnly" class="rtr-control" />
+                </div>
+            </div>
+        </section>
+
+        <section class="rtr-card">
+            <div class="rtr-section-title">
+                <span><RadzenIcon Icon="checklist" />Services</span>
+                @if (!ViewOnly)
+                {
+                    <RadzenButton Text="Add service" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@AddService" />
+                }
+            </div>
+            @if (model.ServiceLines.Count == 0)
+            {
+                <div class="rtr-empty">No services in this return to ramp.</div>
+            }
+            @foreach (var line in model.ServiceLines)
+            {
+                <article @key="line.Key" class="rtr-child-card">
+                    <div class="rtr-child-head">
+                        <strong>Service @(model.ServiceLines.IndexOf(line) + 1)</strong>
+                        @if (!ViewOnly)
+                        {
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                          ButtonType="ButtonType.Button" Click="@(() => model.ServiceLines.Remove(line))" />
+                        }
+                    </div>
+                    <div class="rtr-grid-2">
+                        <div class="rtr-field">
+                            <label>Service <span class="rtr-required">*</span></label>
+                            <RadzenDropDown TValue="Guid?" @bind-Value="line.ServiceId" Data="@ServiceChoices(line)"
+                                            TextProperty="Name" ValueProperty="Id" AllowFiltering="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly"
+                                            Change="@((object? value) => OnServiceChanged(line, value))" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>Performed by <span class="rtr-required">*</span></label>
+                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Data="@StaffChoices(line)"
+                                            TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowFiltering="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>From <span class="rtr-required">*</span></label>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="line.FromLocal" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                              Min="@model.FromLocal" Max="@model.ToLocal" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>To <span class="rtr-required">*</span></label>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToLocal" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                              Min="@line.FromLocal" Max="@model.ToLocal" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field rtr-full">
+                            <label>Description <small>optional</small></label>
+                            <RadzenTextBox @bind-Value="line.Description" MaxLength="2000" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                    </div>
+                    @AttachmentEditor(line)
+                </article>
+            }
+        </section>
+
+        <section class="rtr-card">
+            <div class="rtr-section-title">
+                <span><RadzenIcon Icon="task_alt" />Tasks</span>
+                @if (!ViewOnly)
+                {
+                    <RadzenButton Text="Add task" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@AddTask" />
+                }
+            </div>
+            @if (model.Tasks.Count == 0)
+            {
+                <div class="rtr-empty">No tasks in this return to ramp.</div>
+            }
+            @foreach (var task in model.Tasks)
+            {
+                <article @key="task.Key" class="rtr-child-card">
+                    <div class="rtr-child-head">
+                        <strong>Task @(model.Tasks.IndexOf(task) + 1)</strong>
+                        @if (!ViewOnly)
+                        {
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                          ButtonType="ButtonType.Button" Click="@(() => model.Tasks.Remove(task))" />
+                        }
+                    </div>
+                    <div class="rtr-grid-2">
+                        <div class="rtr-field">
+                            <label>Major / Minor <span class="rtr-required">*</span></label>
+                            <RadzenDropDown @bind-Value="task.TaskType" Data="@taskTypes" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>Performed by <span class="rtr-required">*</span></label>
+                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Data="@StaffChoices(task)"
+                                            TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowFiltering="true"
+                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field rtr-full">
+                            <label>Description <small>optional</small></label>
+                            <RadzenTextBox @bind-Value="task.Description" MaxLength="2000" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>From <span class="rtr-required">*</span></label>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="task.FromLocal" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                              Min="@model.FromLocal" Max="@model.ToLocal" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>To <span class="rtr-required">*</span></label>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="task.ToLocal" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                              Min="@task.FromLocal" Max="@model.ToLocal" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                    </div>
+                    <div class="rtr-resource-grid">
+                        @ResourceRows(task, "Tools", "build", task.Tools, ToolChoices(task), ResourceCalculationType.Duration)
+                        @ResourceRows(task, "Materials", "category", task.Materials, MaterialChoices(task), ResourceCalculationType.Quantity)
+                        @ResourceRows(task, "General support", "headset_mic", task.GeneralSupports, SupportChoices(task), ResourceCalculationType.Quantity)
+                    </div>
+                    @AttachmentEditor(task)
+                </article>
+            }
+        </section>
+
+        @if (validationMessages.Count > 0)
+        {
+            <div class="rtr-errors" role="alert">
+                <RadzenIcon Icon="error_outline" />
+                <div>
+                    <strong>Please fix these return-to-ramp details</strong>
+                    <ul>
+                        @foreach (var message in validationMessages)
+                        {
+                            <li>@message</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+                @errorMessage
+            </DismissibleDialogMessage>
+        }
+
+        <div class="rtr-actions">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button"
+                          Click="@(() => DialogService.Close(null))" />
+            @if (!ViewOnly)
+            {
+                <RadzenButton Text="Save occurrence" Icon="check" ButtonStyle="ButtonStyle.Primary"
+                              ButtonType="ButtonType.Button" Disabled="@isAttachmentBusy" Click="@Save" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid StationId { get; set; }
+    [Parameter] public ReturnToRampDraft? Draft { get; set; }
+    [Parameter] public Guid? WorkOrderId { get; set; }
+    [Parameter] public string? WorkOrderRowVersion { get; set; }
+    [Parameter] public EventCallback<string> WorkOrderRowVersionChanged { get; set; }
+    [Parameter] public bool ViewOnly { get; set; }
+
+    private ReturnToRampDraft model = new();
+    private IReadOnlyList<ServiceOption> services = [];
+    private IReadOnlyList<StaffMemberOption> staff = [];
+    private IReadOnlyList<ReturnToRampResourceOption> tools = [];
+    private IReadOnlyList<ReturnToRampResourceOption> materials = [];
+    private IReadOnlyList<ReturnToRampResourceOption> supports = [];
+    private readonly IReadOnlyList<string> taskTypes = ["Major", "Minor"];
+    private List<string> validationMessages = [];
+    private string? errorMessage;
+    private string? currentRowVersion;
+    private bool isLoading = true;
+    private bool isAttachmentBusy;
+    private bool initialized;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (initialized)
+            return;
+
+        initialized = true;
+        await UserTimeZone.InitializeAsync();
+        model = Draft?.Clone() ?? NewDraft();
+        currentRowVersion = WorkOrderRowVersion;
+
+        try
+        {
+            var servicesTask = MasterData.GetPerformedServiceOptionsAsync();
+            var staffTask = MasterData.GetStaffMemberOptionsAsync(StationId);
+            var toolsTask = MasterData.GetToolOptionsAsync();
+            var materialsTask = MasterData.GetMaterialOptionsAsync();
+            var supportsTask = MasterData.GetGeneralSupportOptionsAsync();
+            await Task.WhenAll(servicesTask, staffTask, toolsTask, materialsTask, supportsTask);
+            services = servicesTask.Result;
+            staff = staffTask.Result;
+            tools = toolsTask.Result.Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+            materials = materialsTask.Result.Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+            supports = supportsTask.Result.Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load return-to-ramp options.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private ReturnToRampDraft NewDraft()
+    {
+        var localNow = UserTimeZone.ToLocal(DateTimeOffset.UtcNow).DateTime;
+        var start = new DateTime(localNow.Year, localNow.Month, localNow.Day, localNow.Hour, localNow.Minute, 0);
+        return new ReturnToRampDraft { FromLocal = start, ToLocal = start.AddHours(1) };
+    }
+
+    private void AddService() => model.ServiceLines.Add(new ReturnToRampServiceDraft
+    {
+        FromLocal = model.FromLocal,
+        ToLocal = model.ToLocal
+    });
+
+    private void AddTask() => model.Tasks.Add(new ReturnToRampTaskDraft
+    {
+        FromLocal = model.FromLocal,
+        ToLocal = model.ToLocal
+    });
+
+    private void Save()
+    {
+        validationMessages = ReturnToRampDraftValidation.Validate(model, UserTimeZone);
+        validationMessages.AddRange(ReturnToRampAttachmentValidation.Validate(model));
+        if (validationMessages.Count > 0)
+            return;
+
+        DialogService.Close(new ReturnToRampEditorResult(model.Clone(), currentRowVersion));
+    }
+
+    private IReadOnlyList<ServiceChoice> ServiceChoices(ReturnToRampServiceDraft line)
+    {
+        var choices = services.Select(item => new ServiceChoice(item.Id, item.Name)).ToList();
+        if (line.ServiceId is { } id)
+        {
+            var saved = new ServiceChoice(id, line.ServiceName ?? "Saved service");
+            var index = choices.FindIndex(item => item.Id == id);
+            if (index >= 0)
+                choices[index] = saved;
+            else
+                choices.Add(saved);
+        }
+        return choices;
+    }
+
+    private void OnServiceChanged(ReturnToRampServiceDraft line, object? value)
+    {
+        if (value is Guid id)
+            line.ServiceName = services.FirstOrDefault(item => item.Id == id)?.Name ?? line.ServiceName;
+    }
+
+    private IReadOnlyList<StaffChoice> StaffChoices(ReturnToRampServiceDraft line) =>
+        MergeStaffChoices(line.PerformerSnapshots);
+
+    private IReadOnlyList<StaffChoice> StaffChoices(ReturnToRampTaskDraft task) =>
+        MergeStaffChoices(task.EmployeeSnapshots);
+
+    private IReadOnlyList<StaffChoice> MergeStaffChoices(IEnumerable<ReturnToRampPersonSnapshot> snapshots)
+    {
+        var choices = staff.Select(item => new StaffChoice(item.Id, item.FullName, item.EmployeeId)).ToList();
+        foreach (var snapshot in snapshots)
+        {
+            var saved = new StaffChoice(snapshot.Id, snapshot.FullName, snapshot.EmployeeId);
+            var index = choices.FindIndex(item => item.Id == snapshot.Id);
+            if (index >= 0)
+                choices[index] = saved;
+            else
+                choices.Add(saved);
+        }
+        return choices;
+    }
+
+    private IReadOnlyList<ReturnToRampResourceOption> ToolChoices(ReturnToRampTaskDraft task) =>
+        MergeResourceChoices(tools, task.Tools);
+
+    private IReadOnlyList<ReturnToRampResourceOption> MaterialChoices(ReturnToRampTaskDraft task) =>
+        MergeResourceChoices(materials, task.Materials);
+
+    private IReadOnlyList<ReturnToRampResourceOption> SupportChoices(ReturnToRampTaskDraft task) =>
+        MergeResourceChoices(supports, task.GeneralSupports);
+
+    private static IReadOnlyList<ReturnToRampResourceOption> MergeResourceChoices(
+        IReadOnlyList<ReturnToRampResourceOption> options,
+        IEnumerable<ReturnToRampResourceDraft> saved)
+    {
+        var choices = options.ToList();
+        foreach (var row in saved.Where(row => row.ItemId.HasValue))
+        {
+            var snapshot = new ReturnToRampResourceOption(row.ItemId!.Value, row.Name ?? "Saved item", row.CalculationType);
+            var index = choices.FindIndex(item => item.Id == row.ItemId);
+            if (index >= 0)
+                choices[index] = snapshot;
+            else
+                choices.Add(snapshot);
+        }
+        return choices;
+    }
+
+    private RenderFragment ResourceRows(
+        ReturnToRampTaskDraft task,
+        string title,
+        string icon,
+        List<ReturnToRampResourceDraft> rows,
+        IReadOnlyList<ReturnToRampResourceOption> options,
+        ResourceCalculationType defaultType) => @<div class="rtr-resource-block">
+        <div class="rtr-resource-head">
+            <span><RadzenIcon Icon="@icon" />@title</span>
+            @if (!ViewOnly)
+            {
+                <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                              Click="@(() => AddResource(task, rows, defaultType))" />
+            }
+        </div>
+        @if (rows.Count == 0)
+        {
+            <div class="rtr-resource-empty">No @title.ToLowerInvariant()</div>
+        }
+        @foreach (var row in rows)
+        {
+            <div @key="row.Key" class="rtr-resource-row">
+                <div class="rtr-resource-top">
+                    <RadzenDropDown TValue="Guid?" @bind-Value="row.ItemId" Data="@options" TextProperty="Name" ValueProperty="Id"
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly"
+                                    Change="@((object? value) => OnResourceChanged(task, row, value, options))" class="rtr-control" />
+                    @if (!ViewOnly)
+                    {
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                      Click="@(() => rows.Remove(row))" />
+                    }
+                </div>
+                <span class="rtr-resource-type">@row.CalculationType</span>
+                @if (row.CalculationType == ResourceCalculationType.Quantity)
+                {
+                    <RadzenNumeric TValue="decimal?" @bind-Value="row.Quantity" Min="0.01m" Step="0.25m"
+                                   Placeholder="Quantity" Disabled="@ViewOnly" class="rtr-control" />
+                }
+                else
+                {
+                    <div class="rtr-grid-2">
+                        <div class="rtr-field">
+                            <label>From <span class="rtr-required">*</span></label>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="row.FromLocal" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                              Min="@task.FromLocal" Max="@task.ToLocal" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>To <small>optional</small></label>
+                            <RadzenDatePicker TValue="DateTime?" @bind-Value="row.ToLocal" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
+                                              Min="@task.FromLocal" Max="@task.ToLocal" AllowClear="true" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
+    private static void AddResource(
+        ReturnToRampTaskDraft task,
+        ICollection<ReturnToRampResourceDraft> rows,
+        ResourceCalculationType calculationType)
+    {
+        rows.Add(new ReturnToRampResourceDraft
+        {
+            CalculationType = calculationType,
+            Quantity = calculationType == ResourceCalculationType.Quantity ? 1 : null,
+            FromLocal = calculationType == ResourceCalculationType.Duration ? task.FromLocal : null,
+            ToLocal = calculationType == ResourceCalculationType.Duration ? task.ToLocal : null
+        });
+    }
+
+    private static void OnResourceChanged(
+        ReturnToRampTaskDraft task,
+        ReturnToRampResourceDraft row,
+        object? value,
+        IReadOnlyList<ReturnToRampResourceOption> options)
+    {
+        if (value is not Guid id || options.FirstOrDefault(item => item.Id == id) is not { } option)
+            return;
+        row.Name = option.Name;
+        row.CalculationType = option.CalculationType;
+        row.Quantity = option.CalculationType == ResourceCalculationType.Quantity ? row.Quantity ?? 1 : null;
+        row.FromLocal = option.CalculationType == ResourceCalculationType.Duration ? row.FromLocal ?? task.FromLocal : null;
+        row.ToLocal = option.CalculationType == ResourceCalculationType.Duration ? row.ToLocal ?? task.ToLocal : null;
+    }
+
+    private RenderFragment AttachmentEditor(ReturnToRampServiceDraft line) => @AttachmentSection(
+        line.Attachments,
+        (kind, args) => UploadAttachmentAsync(line.Attachments, kind, args),
+        attachment => ToggleServiceAttachmentPreviewAsync(line, attachment),
+        attachment => DeleteServiceAttachmentAsync(line, attachment));
+
+    private RenderFragment AttachmentEditor(ReturnToRampTaskDraft task) => @AttachmentSection(
+        task.Attachments,
+        (kind, args) => UploadAttachmentAsync(task.Attachments, kind, args),
+        attachment => ToggleTaskAttachmentPreviewAsync(task, attachment),
+        attachment => DeleteTaskAttachmentAsync(task, attachment));
+
+    private RenderFragment AttachmentSection(
+        List<ReturnToRampAttachmentDraft> attachments,
+        Func<string, InputFileChangeEventArgs, Task> upload,
+        Func<ReturnToRampAttachmentDraft, Task> preview,
+        Func<ReturnToRampAttachmentDraft, Task> delete) => @<div class="rtr-attachments">
+        <div class="rtr-attachments-head">
+            <span><RadzenIcon Icon="attach_file" />Attachments</span>
+            @if (!ViewOnly)
+            {
+                <div class="rtr-upload-actions">
+                    <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => upload("Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
+                    <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => upload("Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
+                    <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => upload("Document", args))" accept="application/pdf" /></label>
+                </div>
+            }
+        </div>
+        @if (attachments.Count == 0)
+        {
+            <div class="rtr-resource-empty">No attachments</div>
+        }
+        @foreach (var attachment in attachments)
+        {
+            <div @key="attachment.Key" class="rtr-attachment-item">
+                <div class="rtr-attachment-row">
+                    <RadzenIcon Icon="@AttachmentIcon(attachment.Kind)" />
+                    <span class="rtr-attachment-name"><strong>@attachment.OriginalFileName</strong><small>@attachment.Kind · @(attachment.IsPending ? "Pending · " : string.Empty)@FormatFileSize(attachment.Size)</small></span>
+                    <RadzenButton Text="@(attachment.IsPreviewOpen ? "Close" : "Preview")" Icon="@(attachment.IsPreviewOpen ? "close" : "visibility")"
+                                  ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                  Disabled="@isAttachmentBusy" Click="@(() => preview(attachment))" />
+                    @if (!ViewOnly)
+                    {
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" ButtonType="ButtonType.Button"
+                                      Disabled="@isAttachmentBusy" Click="@(() => delete(attachment))" />
+                    }
+                </div>
+                @if (attachment.IsPreviewOpen && !string.IsNullOrWhiteSpace(attachment.DownloadUrl))
+                {
+                    @AttachmentPreview(attachment)
+                }
+            </div>
+        }
+    </div>;
+
+    private RenderFragment AttachmentPreview(ReturnToRampAttachmentDraft attachment) => @<div class="rtr-preview">
+        @if (IsImage(attachment))
+        {
+            <img src="@attachment.DownloadUrl" alt="Preview of @attachment.OriginalFileName" />
+        }
+        else if (IsAudio(attachment))
+        {
+            <audio controls preload="metadata" src="@attachment.DownloadUrl">Audio preview is not supported by this browser.</audio>
+        }
+        else if (IsPdf(attachment))
+        {
+            <iframe src="@attachment.DownloadUrl" title="Preview of @attachment.OriginalFileName"></iframe>
+        }
+        else
+        {
+            <a href="@attachment.DownloadUrl" download="@attachment.OriginalFileName">Open attachment</a>
+        }
+    </div>;
+
+    private async Task UploadAttachmentAsync(
+        List<ReturnToRampAttachmentDraft> attachments,
+        string kind,
+        InputFileChangeEventArgs args)
+    {
+        if (attachments.Count >= ReturnToRampAttachmentValidation.MaxAttachments)
+        {
+            errorMessage = "A service or task can have at most 10 attachments.";
+            return;
+        }
+
+        var file = args.File;
+        var contentType = ResolveContentType(file.Name, file.ContentType);
+        if (!IsAllowedContentType(kind, contentType))
+        {
+            errorMessage = $"The selected file type is not allowed for {kind.ToLowerInvariant()} attachments.";
+            return;
+        }
+        var maxBytes = MaxAttachmentBytes(kind);
+        if (file.Size <= 0 || file.Size > maxBytes)
+        {
+            errorMessage = file.Size <= 0
+                ? "The attachment file is empty."
+                : $"{kind} attachments must be at most {FormatFileSize(maxBytes)}.";
+            return;
+        }
+
+        isAttachmentBusy = true;
+        errorMessage = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            var content = memory.ToArray();
+            attachments.Add(new ReturnToRampAttachmentDraft
+            {
+                Kind = kind,
+                OriginalFileName = file.Name,
+                ContentType = contentType,
+                Size = file.Size,
+                Content = content,
+                DownloadUrl = CreateDataUrl(contentType, content)
+            });
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            errorMessage = "Could not read the selected attachment.";
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task ToggleTaskAttachmentPreviewAsync(ReturnToRampTaskDraft task, ReturnToRampAttachmentDraft attachment)
+    {
+        if (attachment.IsPreviewOpen)
+        {
+            attachment.IsPreviewOpen = false;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(attachment.DownloadUrl))
+        {
+            if (attachment.Content is { } content)
+                attachment.DownloadUrl = CreateDataUrl(attachment.ContentType, content);
+            else if (WorkOrderId is { } workOrderId && task.Id is { } taskId && attachment.Id is { } attachmentId)
+                await LoadTaskAttachmentAsync(workOrderId, taskId, attachmentId, attachment);
+        }
+        attachment.IsPreviewOpen = !string.IsNullOrWhiteSpace(attachment.DownloadUrl);
+    }
+
+    private async Task ToggleServiceAttachmentPreviewAsync(ReturnToRampServiceDraft line, ReturnToRampAttachmentDraft attachment)
+    {
+        if (attachment.IsPreviewOpen)
+        {
+            attachment.IsPreviewOpen = false;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(attachment.DownloadUrl))
+        {
+            if (attachment.Content is { } content)
+                attachment.DownloadUrl = CreateDataUrl(attachment.ContentType, content);
+            else if (WorkOrderId is { } workOrderId && line.Id is { } lineId && attachment.Id is { } attachmentId)
+                await LoadServiceAttachmentAsync(workOrderId, lineId, attachmentId, attachment);
+        }
+        attachment.IsPreviewOpen = !string.IsNullOrWhiteSpace(attachment.DownloadUrl);
+    }
+
+    private async Task LoadTaskAttachmentAsync(Guid workOrderId, Guid taskId, Guid attachmentId, ReturnToRampAttachmentDraft attachment)
+    {
+        isAttachmentBusy = true;
+        try
+        {
+            var file = await Operations.DownloadWorkOrderAttachmentAsync(workOrderId, taskId, attachmentId);
+            attachment.ContentType = ResolveContentType(attachment.OriginalFileName, file.ContentType);
+            attachment.DownloadUrl = CreateDataUrl(attachment.ContentType, file.Base64);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not open the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task LoadServiceAttachmentAsync(Guid workOrderId, Guid lineId, Guid attachmentId, ReturnToRampAttachmentDraft attachment)
+    {
+        isAttachmentBusy = true;
+        try
+        {
+            var file = await Operations.DownloadWorkOrderServiceLineAttachmentAsync(workOrderId, lineId, attachmentId);
+            attachment.ContentType = ResolveContentType(attachment.OriginalFileName, file.ContentType);
+            attachment.DownloadUrl = CreateDataUrl(attachment.ContentType, file.Base64);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not open the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DeleteTaskAttachmentAsync(ReturnToRampTaskDraft task, ReturnToRampAttachmentDraft attachment)
+    {
+        if (attachment.IsPending)
+        {
+            task.Attachments.Remove(attachment);
+            return;
+        }
+        if (!CanDeletePersisted(task.Id, attachment.Id))
+            return;
+
+        isAttachmentBusy = true;
+        try
+        {
+            await Operations.DeleteWorkOrderAttachmentAsync(WorkOrderId!.Value, task.Id!.Value, attachment.Id!.Value, currentRowVersion!);
+            task.Attachments.Remove(attachment);
+            currentRowVersion = (await Operations.GetWorkOrderAsync(WorkOrderId.Value)).RowVersion;
+            await WorkOrderRowVersionChanged.InvokeAsync(currentRowVersion);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not delete the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private async Task DeleteServiceAttachmentAsync(ReturnToRampServiceDraft line, ReturnToRampAttachmentDraft attachment)
+    {
+        if (attachment.IsPending)
+        {
+            line.Attachments.Remove(attachment);
+            return;
+        }
+        if (!CanDeletePersisted(line.Id, attachment.Id))
+            return;
+
+        isAttachmentBusy = true;
+        try
+        {
+            await Operations.DeleteWorkOrderServiceLineAttachmentAsync(WorkOrderId!.Value, line.Id!.Value, attachment.Id!.Value, currentRowVersion!);
+            line.Attachments.Remove(attachment);
+            currentRowVersion = (await Operations.GetWorkOrderAsync(WorkOrderId.Value)).RowVersion;
+            await WorkOrderRowVersionChanged.InvokeAsync(currentRowVersion);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not delete the attachment.");
+        }
+        finally
+        {
+            isAttachmentBusy = false;
+        }
+    }
+
+    private bool CanDeletePersisted(Guid? childId, Guid? attachmentId)
+    {
+        if (WorkOrderId.HasValue && childId.HasValue && attachmentId.HasValue && !string.IsNullOrWhiteSpace(currentRowVersion))
+            return true;
+        errorMessage = "Save the work order before changing this stored attachment.";
+        return false;
+    }
+
+    private static bool IsAllowedContentType(string kind, string contentType) =>
+        ReturnToRampAttachmentValidation.IsAllowedContentType(kind, contentType);
+
+    private static long MaxAttachmentBytes(string kind) =>
+        ReturnToRampAttachmentValidation.MaxBytes(kind);
+
+    private static string ResolveContentType(string fileName, string? contentType)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType) && contentType != "application/octet-stream")
+            return contentType.Trim().ToLowerInvariant();
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".m4a" => "audio/mp4",
+            ".mp3" => "audio/mpeg",
+            ".ogg" => "audio/ogg",
+            ".webm" => "audio/webm",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream"
+        };
+    }
+
+    private static string CreateDataUrl(string contentType, byte[] content) =>
+        $"data:{contentType};base64,{Convert.ToBase64String(content)}";
+
+    private static string CreateDataUrl(string contentType, string base64) =>
+        $"data:{contentType};base64,{base64}";
+
+    private static bool IsImage(ReturnToRampAttachmentDraft item) => item.Kind == "Image" || item.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+    private static bool IsAudio(ReturnToRampAttachmentDraft item) => item.Kind == "Voice" || item.ContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
+    private static bool IsPdf(ReturnToRampAttachmentDraft item) => item.Kind == "Document" || item.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase);
+
+    private static string AttachmentIcon(string kind) => kind switch
+    {
+        "Image" => "image",
+        "Voice" => "graphic_eq",
+        "Document" => "description",
+        _ => "attach_file"
+    };
+
+    private static string FormatFileSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / 1024m / 1024m:0.#} MB",
+        >= 1024 => $"{bytes / 1024m:0.#} KB",
+        _ => $"{bytes} B"
+    };
+
+    private sealed record ServiceChoice(Guid Id, string Name);
+    private sealed record StaffChoice(Guid Id, string FullName, string EmployeeId)
+    {
+        public string DisplayName => $"{FullName} ({EmployeeId})";
+    }
+}

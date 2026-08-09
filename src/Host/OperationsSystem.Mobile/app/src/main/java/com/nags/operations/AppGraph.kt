@@ -32,6 +32,7 @@ import com.nags.operations.notifications.DeviceTokenManager
 import com.nags.operations.notifications.NotificationNavigationCoordinator
 import com.nags.operations.notifications.SystemNotificationManager
 import com.nags.operations.data.notifications.NotificationPushPayload
+import com.nags.operations.ui.components.cleanupAttachmentPreviews
 
 /**
  * Tiny hand-rolled DI container so screens / ViewModels can resolve everything
@@ -155,6 +156,9 @@ class AppGraph private constructor(context: Context) {
     )
 
     init {
+        appScope.launch(Dispatchers.IO) {
+            cleanupAttachmentPreviews(context.applicationContext)
+        }
         appScope.launch {
             tokenStore.initializeSecureStorage()
             secureStorageReady = true

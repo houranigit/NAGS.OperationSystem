@@ -5,6 +5,7 @@
 @inject NotificationService Notifications
 @inject GridPreferences GridPrefs
 @inject AuthSession Auth
+@inject UserTimeZone UserTimeZone
 
 <PageTitle>Work orders</PageTitle>
 
@@ -56,7 +57,7 @@
                     <Template Context="workOrder"><StatusBadge Label="@workOrder.Status" Tone="@StatusTone(workOrder.Status)" /></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="WorkOrderListItem" Title="Schedule" Width="150px">
-                    <Template Context="workOrder">@DateDisplay(workOrder.ScheduledArrivalUtc) UTC</Template>
+                    <Template Context="workOrder">@DateDisplay(workOrder.ScheduledArrivalUtc) @UserTimeZone.Id</Template>
                 </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="workOrder">
@@ -118,6 +119,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await UserTimeZone.InitializeAsync();
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
         await LoadStationsAsync();
         await FetchAsync();
@@ -200,7 +202,7 @@
                 stationFilter,
                 statusFilter,
                 typeFilter,
-                sort: statusFilter == "Approved" ? "approval" : null);
+                sort: null);
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -349,7 +351,7 @@
             ? workOrder.PlannedFlightNumber
             : $"{workOrder.CustomerIataCode.Trim().ToUpperInvariant()}-{workOrder.PlannedFlightNumber}";
 
-    private static string DateDisplay(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm");
+    private string DateDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
     private static string None(string? value) => string.IsNullOrWhiteSpace(value) ? "None" : value;
     private static string ShortId(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
     private static string TypeIcon(string type) => type == "Cancellation" ? "cancel" : "task_alt";

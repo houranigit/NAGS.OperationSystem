@@ -2,6 +2,7 @@
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
 @inject AuthSession Auth
+@inject UserTimeZone UserTimeZone
 
 <RadzenTemplateForm TItem="FlightFormModel" Data="@model" Submit="@SubmitAsync">
     <div class="opf-form">
@@ -233,7 +234,7 @@
 
         <div class="opf-grid-2">
             <div class="opf-field-block">
-                <label class="opf-label">Scheduled arrival (UTC) <span class="opf-required">*</span></label>
+                <label class="opf-label">Scheduled arrival (@UserTimeZone.Id) <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="flight_land" class="opf-field-icon" />
                     <RadzenDatePicker @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
@@ -241,7 +242,7 @@
                 </div>
             </div>
             <div class="opf-field-block">
-                <label class="opf-label">Scheduled departure (UTC) <span class="opf-required">*</span></label>
+                <label class="opf-label">Scheduled departure (@UserTimeZone.Id) <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
                     <RadzenDatePicker @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
@@ -284,7 +285,7 @@
 
         <div class="opf-grid-2">
             <div class="opf-field-block">
-                <label class="opf-label">STA time (UTC) <span class="opf-required">*</span></label>
+                <label class="opf-label">STA time (@UserTimeZone.Id) <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="schedule" class="opf-field-icon" />
                     <RadzenDatePicker @bind-Value="model.ScheduledArrivalTimeUtc" DateFormat="HH:mm" ShowTime="true"
@@ -292,7 +293,7 @@
                 </div>
             </div>
             <div class="opf-field-block">
-                <label class="opf-label">STD time (UTC) <span class="opf-required">*</span></label>
+                <label class="opf-label">STD time (@UserTimeZone.Id) <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="schedule" class="opf-field-icon" />
                     <RadzenDatePicker @bind-Value="model.ScheduledDepartureTimeUtc" DateFormat="HH:mm" ShowTime="true"
@@ -497,6 +498,7 @@
     {
         try
         {
+            await UserTimeZone.InitializeAsync();
             var customersTask = MasterData.GetCustomerOptionsAsync();
             var stationsTask = MasterData.GetStationOptionsAsync();
             var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
@@ -525,15 +527,15 @@
                     StationId = detail.StationId,
                     OperationTypeId = detail.OperationTypeId,
                     AircraftTypeId = detail.AircraftTypeId,
-                    ScheduledArrivalUtc = detail.ScheduledArrivalUtc.UtcDateTime,
-                    ScheduledDepartureUtc = detail.ScheduledDepartureUtc.UtcDateTime,
+                    ScheduledArrivalUtc = UserTimeZone.ToLocalDateTime(detail.ScheduledArrivalUtc),
+                    ScheduledDepartureUtc = UserTimeZone.ToLocalDateTime(detail.ScheduledDepartureUtc),
                     PlannedServiceIds = detail.PlannedServices.Select(x => x.ServiceId).ToHashSet(),
                     AssignedStaffMemberIds = detail.AssignedEmployees.Select(x => x.StaffMemberId).ToHashSet()
                 };
             }
             else
             {
-                var now = DateTime.UtcNow;
+                var now = UserTimeZone.ToLocal(DateTimeOffset.UtcNow).DateTime;
                 if (IsBulkCreate)
                 {
                     var today = now.Date;
@@ -544,7 +546,7 @@
                 }
                 else
                 {
-                    model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
+                    model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Unspecified).AddHours(1);
                     model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
                 }
             }
@@ -907,7 +909,8 @@
             SelectedScheduleDates,
             model.AircraftTypeId,
             model.PlannedServiceIds.ToList(),
-            AssignmentIdsForSave()));
+            AssignmentIdsForSave(),
+            UserTimeZone.Id));
 
         return ids.Count;
     }
@@ -983,7 +986,11 @@
         }
         if (model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
             return "Scheduled arrival and departure are required.";
-        if (model.ScheduledDepartureUtc <= model.ScheduledArrivalUtc)
+        if (!UserTimeZone.TryToUtc(model.ScheduledArrivalUtc, out var arrivalUtc, out var arrivalError))
+            return arrivalError;
+        if (!UserTimeZone.TryToUtc(model.ScheduledDepartureUtc, out var departureUtc, out var departureError))
+            return departureError;
+        if (departureUtc <= arrivalUtc)
             return "Scheduled departure must be after scheduled arrival.";
         return null;
     }
@@ -1030,11 +1037,7 @@
             : null;
     }
 
-    private static DateTimeOffset ToUtc(DateTime value)
-    {
-        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
-        return new DateTimeOffset(utc);
-    }
+    private DateTimeOffset ToUtc(DateTime value) => UserTimeZone.ToUtc(value)!.Value;
 
     private sealed class FlightFormModel
     {

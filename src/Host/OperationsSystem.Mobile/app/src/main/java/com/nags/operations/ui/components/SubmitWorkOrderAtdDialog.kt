@@ -27,16 +27,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.time.Clock
 import java.time.OffsetDateTime
-import java.time.ZoneOffset
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 internal fun initialSubmitAtdIso(
     restoredAtdIso: String?,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     clock: Clock,
 ): String = restoredAtdIso?.takeIf { it.isNotBlank() }
     ?: OffsetDateTime.now(clock)
-        .withOffsetSameInstant(flightOffset)
+        .atZoneSameInstant(flightOffset)
+        .toOffsetDateTime()
         .truncatedTo(ChronoUnit.MINUTES)
         .toString()
 
@@ -48,7 +49,7 @@ internal fun initialSubmitAtdIso(
  * configuration changes, while dismissing the dialog still does not commit it.
  *
  * @param defaultAtdIso Current form ATD, when restored from an existing work order or draft.
- * @param flightOffset Zone offset used to create and edit flight-local timestamps.
+ * @param flightOffset User zone used to create and edit local timestamps, including DST rules.
  * @param isBusy True while either action is being persisted; editing and repeat actions are disabled.
  * @param atdValidationError Final-submission validation error shown with the ATD field.
  * @param onAtdIsoChanged Called after the employee picks another ATD so stale validation can be cleared.
@@ -60,7 +61,7 @@ internal fun initialSubmitAtdIso(
 @Composable
 fun SubmitWorkOrderAtdDialog(
     defaultAtdIso: String?,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     isBusy: Boolean = false,
     atdValidationError: String? = null,
     onAtdIsoChanged: () -> Unit = {},

@@ -1,6 +1,7 @@
 package com.nags.operations.ui.workorder
 
 import com.nags.operations.data.TaskTypeKind
+import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.WellKnownMasterDataIds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -145,6 +146,12 @@ class WorkOrderFormValidationTest {
                     taskType = "Unknown",
                     description = "D".repeat(WorkOrderFormLimits.LineDescription + 1),
                     toolQuantities = mapOf("tool-1" to 0.0),
+                    toolUsages = mapOf(
+                        "tool-1" to ResourceUsageForm(
+                            calculationType = ResourceCalculationType.Quantity,
+                            quantity = 0.0,
+                        ),
+                    ),
                 ),
             ),
         )
@@ -252,6 +259,70 @@ class WorkOrderFormValidationTest {
                 current = mapOf("tool-1" to 2.5, "removed" to 9.0),
             ),
         )
+    }
+
+    @Test
+    fun legacy_quantity_only_tool_is_bridged_to_task_duration() {
+        val usage = resourceUsage(
+            itemId = "tool-1",
+            usages = emptyMap(),
+            legacyQuantities = mapOf("tool-1" to 2.5),
+            calculationType = ResourceCalculationType.Duration,
+            taskFromIso = "2026-07-11T10:15:00Z",
+            taskToIso = "2026-07-11T11:30:00Z",
+        )
+
+        assertEquals(ResourceCalculationType.Duration, usage.calculationType)
+        assertNull(usage.quantity)
+        assertEquals("2026-07-11T10:15:00Z", usage.fromIso)
+        assertEquals("2026-07-11T11:30:00Z", usage.toIso)
+    }
+
+    @Test
+    fun duration_resource_allows_open_to_but_must_stay_inside_task() {
+        val task = validForm().tasks.single()
+        val openUsage = ResourceUsageForm(
+            calculationType = ResourceCalculationType.Duration,
+            quantity = null,
+            fromIso = "2026-07-11T10:30:00Z",
+            toIso = null,
+        )
+        val valid = validForm().copy(
+            tasks = listOf(task.copy(toolUsages = mapOf("tool-1" to openUsage))),
+        )
+
+        assertNull(
+            computeCreateWorkOrderSubmitErrors(
+                form = valid,
+                dialogAtdIso = null,
+                validationPhase = WorkOrderValidationPhase.Submission,
+                isAdHocScratch = false,
+                selectedCustomerId = null,
+                allowedPerformedServiceIds = setOf("service-1"),
+            ),
+        )
+
+        val outside = valid.copy(
+            tasks = listOf(task.copy(
+                toolUsages = mapOf("tool-1" to openUsage.copy(fromIso = "2026-07-11T10:00:00Z")),
+            )),
+        )
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = outside,
+            dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
+            isAdHocScratch = false,
+            selectedCustomerId = null,
+            allowedPerformedServiceIds = setOf("service-1"),
+        )
+        assertNotNull(errors?.tasksByKey?.get(2L)?.tools)
+    }
+
+    @Test
+    fun resource_quantity_enforces_decimal_18_2_shape() {
+        assertTrue(isValidResourceQuantity(12.25))
+        assertFalse(isValidResourceQuantity(1.001))
+        assertFalse(isValidResourceQuantity(10_000_000_000_000_000.0))
     }
 
     @Test
@@ -549,6 +620,67 @@ class WorkOrderFormValidationTest {
 
         assertTrue(errors.tasksByKey.getValue(2L).from.orEmpty().contains("before actual arrival"))
         assertTrue(errors.tasksByKey.getValue(2L).to.orEmpty().contains("after departure"))
+    }
+
+    @Test
+    fun wizard_places_skippable_return_to_ramps_before_signature() {
+        assertEquals(
+            listOf(
+                WorkOrderWizardStep.Flight,
+                WorkOrderWizardStep.ServiceLines,
+                WorkOrderWizardStep.Tasks,
+                WorkOrderWizardStep.ReturnToRamps,
+                WorkOrderWizardStep.Signature,
+            ),
+            WorkOrderWizardStep.entries,
+        )
+        assertNull(validationErrors(validForm().copy(returnToRamps = emptyList())))
+    }
+
+    @Test
+    fun multiple_occurrences_validate_independently_with_nested_rows() {
+        val first = ReturnToRampFormRow(
+            localKey = 10,
+            fromIso = "2026-07-11T12:30:00Z",
+            toIso = "2026-07-11T13:00:00Z",
+            description = "First occurrence",
+            serviceLines = listOf(
+                ServiceLineFormRow(
+                    localKey = 11,
+                    serviceId = "service-1",
+                    employeeIds = listOf("employee-1"),
+                    fromIso = "2026-07-11T12:30:00Z",
+                    toIso = "2026-07-11T12:45:00Z",
+                ),
+            ),
+        )
+        val second = ReturnToRampFormRow(
+            localKey = 20,
+            fromIso = "2026-07-11T14:00:00Z",
+            toIso = "2026-07-11T15:00:00Z",
+            description = "Second occurrence",
+            tasks = listOf(
+                TaskFormRow(
+                    localKey = 21,
+                    employeeIds = listOf("employee-2"),
+                    fromIso = "2026-07-11T14:10:00Z",
+                    toIso = "2026-07-11T14:50:00Z",
+                ),
+            ),
+        )
+        assertNull(validationErrors(validForm().copy(returnToRamps = listOf(first, second))))
+
+        val escaped = second.copy(
+            tasks = listOf(second.tasks.single().copy(toIso = "2026-07-11T15:01:00Z")),
+        )
+        val errors = requireNotNull(
+            validationErrors(validForm().copy(returnToRamps = listOf(first, escaped))),
+        )
+        assertTrue(
+            errors.returnToRampsByKey.getValue(20).tasksByKey.getValue(21).to
+                .orEmpty().contains("return-to-ramp To"),
+        )
+        assertNotNull(submitErrorsForWizardStep(errors, WorkOrderWizardStep.ReturnToRamps))
     }
 
     private fun validationErrors(

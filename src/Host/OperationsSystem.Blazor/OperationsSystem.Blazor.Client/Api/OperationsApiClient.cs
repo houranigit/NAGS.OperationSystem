@@ -105,6 +105,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         DateTimeOffset? toUtc = null,
         IReadOnlyList<string>? serviceCategories = null,
         string? sort = null,
+        string? timeZoneId = null,
         CancellationToken ct = default)
     {
         var query = new QueryBuilder()
@@ -118,6 +119,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             .Add("toUtc", toUtc)
             .Add("serviceCategory", JoinValues(serviceCategories))
             .Add("sort", sort)
+            .Add("timeZoneId", timeZoneId)
             .Build();
         return api.DownloadFileAsync($"/operations/flights/export{query}", cancellationToken: ct);
     }
@@ -231,6 +233,15 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<Guid> SubmitWorkOrderAsync(Guid flightId, WorkOrderRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<WorkOrderRequestModel, Guid>($"/operations/flights/{flightId}/work-orders", request, ct);
 
+    public Task<Guid> RecordFlightReturnToRampAsync(
+        Guid flightId,
+        WorkOrderReturnToRampRequestModel request,
+        CancellationToken ct = default) =>
+        api.PostAsync<WorkOrderReturnToRampRequestModel, Guid>(
+            $"/operations/flights/{flightId}/return-to-ramps",
+            request,
+            ct);
+
     public Task<Guid> MergeWorkOrdersAsync(Guid flightId, MergeWorkOrdersRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<MergeWorkOrdersRequestModel, Guid>($"/operations/flights/{flightId}/work-orders/merge", request, ct);
 
@@ -238,8 +249,13 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         api.GetAsync<WorkOrderSummaryModel?>($"/operations/flights/{flightId}/work-orders/mine", ct);
 
     public Task DownloadApprovedWorkOrderAsync(Guid flightId, CancellationToken ct = default) =>
+        DownloadApprovedWorkOrderAsync(flightId, null, ct);
+
+    public Task DownloadApprovedWorkOrderAsync(Guid flightId, string? timeZoneId, CancellationToken ct = default) =>
         api.DownloadFileAsync(
-            $"/operations/flights/{flightId}/work-orders/approved/pdf",
+            string.IsNullOrWhiteSpace(timeZoneId)
+                ? $"/operations/flights/{flightId}/work-orders/approved/pdf"
+                : $"/operations/flights/{flightId}/work-orders/approved/pdf?timeZoneId={Uri.EscapeDataString(timeZoneId)}",
             fallbackFileName: "approved-work-order.pdf",
             cancellationToken: ct);
 
@@ -283,6 +299,15 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task UpdateWorkOrderAsync(Guid id, WorkOrderRequestModel request, string rowVersion, CancellationToken ct = default) =>
         api.PutAsync($"/operations/work-orders/{id}", request, rowVersion, ct);
+
+    public Task<Guid> RecordWorkOrderReturnToRampAsync(
+        Guid workOrderId,
+        WorkOrderReturnToRampRequestModel request,
+        CancellationToken ct = default) =>
+        api.PostAsync<WorkOrderReturnToRampRequestModel, Guid>(
+            $"/operations/work-orders/{workOrderId}/return-to-ramps",
+            request,
+            ct);
 
     public Task DeleteWorkOrderAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.DeleteAsync($"/operations/work-orders/{id}", rowVersion, ct);

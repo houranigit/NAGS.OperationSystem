@@ -21,11 +21,20 @@ data class MobileMeDto(
     val manpowerTypeName: String? = null,
 )
 
-/** One id+name catalog row (tools, materials, general supports). */
+/** How work-order usage is entered for a tool, material, or general-support item. */
+@Serializable
+enum class ResourceCalculationType {
+    Quantity,
+    Duration,
+}
+
+/** One resource catalog row (tools, materials, general supports). */
 @Serializable
 data class MobileCatalogItemDto(
     val id: String,
     val name: String,
+    /** Nullable only so a new app can safely read a rolling-deployment response from an older API. */
+    val calculationType: ResourceCalculationType? = null,
 )
 
 /**

@@ -81,19 +81,19 @@ public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
     public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
         db.Tools.AsNoTracking()
             .Where(t => t.Id == id)
-            .Select(t => new ToolReadSnapshot(t.Id, t.Name, t.IsActive))
+            .Select(t => new ToolReadSnapshot(t.Id, t.Name, t.IsActive, t.CalculationType))
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken cancellationToken) =>
         db.Materials.AsNoTracking()
             .Where(m => m.Id == id)
-            .Select(m => new MaterialReadSnapshot(m.Id, m.Name, m.IsActive))
+            .Select(m => new MaterialReadSnapshot(m.Id, m.Name, m.IsActive, m.CalculationType))
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken cancellationToken) =>
         db.GeneralSupports.AsNoTracking()
             .Where(g => g.Id == id)
-            .Select(g => new GeneralSupportReadSnapshot(g.Id, g.Name, g.IsActive))
+            .Select(g => new GeneralSupportReadSnapshot(g.Id, g.Name, g.IsActive, g.CalculationType))
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken) =>
@@ -134,21 +134,21 @@ public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
         await db.Tools.AsNoTracking()
             .Where(t => t.IsActive)
             .OrderBy(t => t.Name)
-            .Select(t => new ToolReadSnapshot(t.Id, t.Name, t.IsActive))
+            .Select(t => new ToolReadSnapshot(t.Id, t.Name, t.IsActive, t.CalculationType))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<MaterialReadSnapshot>> GetActiveMaterialsAsync(CancellationToken cancellationToken) =>
         await db.Materials.AsNoTracking()
             .Where(m => m.IsActive)
             .OrderBy(m => m.Name)
-            .Select(m => new MaterialReadSnapshot(m.Id, m.Name, m.IsActive))
+            .Select(m => new MaterialReadSnapshot(m.Id, m.Name, m.IsActive, m.CalculationType))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<GeneralSupportReadSnapshot>> GetActiveGeneralSupportsAsync(CancellationToken cancellationToken) =>
         await db.GeneralSupports.AsNoTracking()
             .Where(g => g.IsActive)
             .OrderBy(g => g.Name)
-            .Select(g => new GeneralSupportReadSnapshot(g.Id, g.Name, g.IsActive))
+            .Select(g => new GeneralSupportReadSnapshot(g.Id, g.Name, g.IsActive, g.CalculationType))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<CustomerReadSnapshot>> GetActiveCustomersAsync(CancellationToken cancellationToken) =>

@@ -139,4 +139,64 @@ class OutboxPayloadCompatibilityTest {
 
         assertTrue(decoded.isReturnToRamp)
     }
+
+    @Test
+    fun persisted_legacy_return_to_ramp_keeps_work_order_route() {
+        val payload = decodeOutboxPayload(
+            json,
+            """{
+              "kind":"ReturnToRamp",
+              "workOrder":{
+                "type":"Completion",
+                "actualFlightNumber":null,
+                "aircraftTypeId":null,
+                "aircraftTailNumber":null,
+                "ataIso":null,
+                "atdIso":null,
+                "remarks":null,
+                "serviceLines":[],
+                "tasks":[{
+                  "taskType":"Minor",
+                  "description":null,
+                  "fromIso":"2026-08-08T10:00:00Z",
+                  "toIso":"2026-08-08T10:30:00Z",
+                  "employeeIds":["staff-1"],
+                  "isReturnToRamp":true
+                }]
+              }
+            }""".trimIndent(),
+        )
+
+        assertNull(payload.returnToRamp)
+        assertFalse(payload.usesCanonicalFlightReturnToRampRoute())
+        assertTrue(payload.workOrder!!.tasks.single().isReturnToRamp)
+    }
+
+    @Test
+    fun current_return_to_ramp_uses_grouped_flight_route() {
+        val payload = OutboxPayload(
+            kind = OutboxPayload.Kind.ReturnToRamp,
+            returnToRamp = OutboxPayload.ReturnToRampInput(
+                fromIso = "2026-08-08T10:00:00Z",
+                toIso = "2026-08-08T10:30:00Z",
+                description = "Occurrence",
+                tasks = listOf(
+                    OutboxPayload.TaskInput(
+                        taskType = "Minor",
+                        description = null,
+                        fromIso = "2026-08-08T10:05:00Z",
+                        toIso = "2026-08-08T10:25:00Z",
+                        employeeIds = listOf("staff-1"),
+                    ),
+                ),
+            ),
+        )
+
+        val decoded = json.decodeFromString<OutboxPayload>(
+            json.encodeToString(OutboxPayload.serializer(), payload),
+        )
+        assertTrue(decoded.usesCanonicalFlightReturnToRampRoute())
+        assertNull(decoded.workOrder)
+        assertEquals("Occurrence", decoded.returnToRamp?.description)
+    }
 }

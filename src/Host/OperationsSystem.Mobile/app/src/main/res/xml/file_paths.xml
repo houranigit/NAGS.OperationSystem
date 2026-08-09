@@ -2,4 +2,5 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="images" path="images/" />
     <cache-path name="voice" path="voice/" />
+    <cache-path name="attachment_previews" path="attachment-previews/" />
 </paths>

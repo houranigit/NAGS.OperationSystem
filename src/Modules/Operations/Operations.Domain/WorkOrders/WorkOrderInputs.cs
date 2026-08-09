@@ -22,8 +22,19 @@ public sealed record WorkOrderTaskInput(
     IReadOnlyList<WorkOrderTaskGeneralSupportInput> GeneralSupports,
     bool IsReturnToRamp = false);
 
-public sealed record WorkOrderTaskToolInput(ToolSnapshot Tool, Quantity Quantity);
+/// <summary>
+/// One distinct return-to-ramp occurrence. Service lines and tasks belong to this occurrence and
+/// are no longer classified by independent Boolean flags.
+/// </summary>
+public sealed record WorkOrderReturnToRampInput(
+    Guid? Id,
+    TimeWindow Window,
+    string? Description,
+    IReadOnlyList<WorkOrderServiceLineInput> ServiceLines,
+    IReadOnlyList<WorkOrderTaskInput> Tasks);
 
-public sealed record WorkOrderTaskMaterialInput(MaterialSnapshot Material, Quantity Quantity);
+public sealed record WorkOrderTaskToolInput(ToolSnapshot Tool, ResourceUsage Usage);
 
-public sealed record WorkOrderTaskGeneralSupportInput(GeneralSupportSnapshot GeneralSupport, Quantity Quantity);
+public sealed record WorkOrderTaskMaterialInput(MaterialSnapshot Material, ResourceUsage Usage);
+
+public sealed record WorkOrderTaskGeneralSupportInput(GeneralSupportSnapshot GeneralSupport, ResourceUsage Usage);

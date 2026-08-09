@@ -3,12 +3,16 @@ using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
+using MasterData.Contracts.Resources;
 using MasterData.Domain.GeneralSupports;
 using Microsoft.EntityFrameworkCore;
 
 namespace MasterData.Application.Features.GeneralSupports;
 
-public sealed record CreateGeneralSupportCommand(string Name, string? Description) : ICommand<Guid>;
+public sealed record CreateGeneralSupportCommand(
+    string Name,
+    string? Description,
+    ResourceCalculationType? CalculationType = null) : ICommand<Guid>;
 
 public sealed class CreateGeneralSupportCommandValidator : AbstractValidator<CreateGeneralSupportCommand>
 {
@@ -16,6 +20,9 @@ public sealed class CreateGeneralSupportCommandValidator : AbstractValidator<Cre
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Description).MaximumLength(500);
+        RuleFor(x => x.CalculationType)
+            .Must(type => type is null or ResourceCalculationType.Quantity or ResourceCalculationType.Duration)
+            .WithMessage("Calculation type must be Quantity or Duration.");
     }
 }
 
@@ -24,7 +31,11 @@ public sealed class CreateGeneralSupportCommandHandler(IMasterDataDbContext db, 
 {
     public async Task<Result<Guid>> Handle(CreateGeneralSupportCommand request, CancellationToken cancellationToken)
     {
-        var result = GeneralSupport.Create(request.Name, request.Description, timeProvider.GetUtcNow());
+        var result = GeneralSupport.Create(
+            request.Name,
+            request.Description,
+            timeProvider.GetUtcNow(),
+            calculationType: request.CalculationType ?? ResourceCalculationType.Quantity);
         if (result.IsFailure)
             return result.Error;
 
@@ -38,7 +49,12 @@ public sealed class CreateGeneralSupportCommandHandler(IMasterDataDbContext db, 
     }
 }
 
-public sealed record UpdateGeneralSupportCommand(Guid Id, string Name, string? Description, byte[] RowVersion) : ICommand;
+public sealed record UpdateGeneralSupportCommand(
+    Guid Id,
+    string Name,
+    string? Description,
+    byte[] RowVersion,
+    ResourceCalculationType? CalculationType = null) : ICommand;
 
 public sealed class UpdateGeneralSupportCommandValidator : AbstractValidator<UpdateGeneralSupportCommand>
 {
@@ -47,6 +63,9 @@ public sealed class UpdateGeneralSupportCommandValidator : AbstractValidator<Upd
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Description).MaximumLength(500);
+        RuleFor(x => x.CalculationType)
+            .Must(type => type is null or ResourceCalculationType.Quantity or ResourceCalculationType.Duration)
+            .WithMessage("Calculation type must be Quantity or Duration.");
         RuleFor(x => x.RowVersion).NotEmpty();
     }
 }
@@ -64,7 +83,11 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
         if (await db.GeneralSupports.AnyAsync(g => g.Name == trimmedName && g.Id != request.Id, cancellationToken))
             return Error.Conflict("A general support item with this name already exists.", "MasterData.GeneralSupport.DuplicateName");
 
-        var result = support.Update(request.Name, request.Description, timeProvider.GetUtcNow());
+        var result = support.Update(
+            request.Name,
+            request.Description,
+            timeProvider.GetUtcNow(),
+            request.CalculationType);
         if (result.IsFailure)
             return result.Error;
 

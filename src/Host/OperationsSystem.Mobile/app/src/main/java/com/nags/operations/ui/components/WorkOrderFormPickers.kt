@@ -22,6 +22,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
@@ -47,7 +48,7 @@ import com.nags.operations.ui.util.parseOffsetDateTime
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 
 /** Same flight banner as [FlightDetailsActionsSheet] / [FlightOverviewBanner] for a consistent look. */
@@ -82,7 +83,7 @@ fun WorkOrderDateTimePickerField(
     iso: String,
     label: String,
     placeholder: String,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     /** When [iso] is blank, the dialog opens seeded from this value (e.g. STA). */
     defaultInitialIso: String,
     onIsoConfirmed: (String) -> Unit,
@@ -142,7 +143,7 @@ fun WorkOrderDateTimePickerField(
 fun WorkOrderAtaPickerField(
     ataIso: String,
     staIso: String,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     onAtaConfirmed: (String) -> Unit,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
@@ -165,27 +166,32 @@ fun WorkOrderAtaPickerField(
 @Composable
 private fun WorkOrderOffsetDateTimePickerDialog(
     initialIso: String,
-    flightOffset: ZoneOffset,
+    flightOffset: ZoneId,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    val initialOdt = remember(initialIso) {
+    val initialZoned = remember(initialIso, flightOffset) {
         try {
-            parseOffsetDateTime(initialIso)
+            parseOffsetDateTime(initialIso).atZoneSameInstant(flightOffset)
         } catch (_: Exception) {
-            OffsetDateTime.now(flightOffset)
+            java.time.ZonedDateTime.now(flightOffset)
         }
     }
 
-    val initialMillis = remember(initialOdt) { initialOdt.toInstant().toEpochMilli() }
+    // Material's DatePicker represents a calendar date as UTC midnight, not as the selected
+    // instant. Seeding it this way prevents positive/negative zones from shifting the date.
+    val initialMillis = remember(initialZoned) {
+        initialZoned.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    }
     val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
     val timePickerState = rememberTimePickerState(
-        initialHour = initialOdt.hour,
-        initialMinute = initialOdt.minute,
+        initialHour = initialZoned.hour,
+        initialMinute = initialZoned.minute,
         is24Hour = false,
     )
 
     var tabIndex by remember { mutableIntStateOf(0) }
+    var timeZoneError by remember { mutableStateOf<String?>(null) }
 
     DatePickerDialog(
         onDismissRequest = onDismiss,
@@ -198,8 +204,12 @@ private fun WorkOrderOffsetDateTimePickerDialog(
                         .toLocalDate()
                     val pickedTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
                     val combined = LocalDateTime.of(pickedDate, pickedTime)
-                    val odt = combined.atOffset(flightOffset)
-                    onConfirm(odt.toString())
+                    val validOffsets = flightOffset.rules.getValidOffsets(combined)
+                    when (validOffsets.size) {
+                        0 -> timeZoneError = "That local time does not exist because the clock moves forward. Choose another time."
+                        1 -> onConfirm(combined.atOffset(validOffsets.single()).toString())
+                        else -> timeZoneError = "That local time occurs twice because the clock moves back. Choose a time outside the repeated hour."
+                    }
                 },
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -244,6 +254,14 @@ private fun WorkOrderOffsetDateTimePickerDialog(
                 ) {
                     TimePicker(state = timePickerState)
                 }
+            }
+            timeZoneError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
             }
         }
     }

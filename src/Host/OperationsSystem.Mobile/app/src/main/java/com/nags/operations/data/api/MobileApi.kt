@@ -163,6 +163,16 @@ class MobileApi(
             contentType(ContentType.Application.Json)
             setBody(body)
         }.bodyOrThrow()
+
+    /** Record one canonical occurrence against a flight (supports InProgress and Completed). */
+    suspend fun recordReturnToRampForFlight(
+        flightId: String,
+        body: MobileFlightReturnToRampRequest,
+    ): MobileWriteResult =
+        client.post(url("api/v1/mobile/flights/$flightId/return-to-ramps")) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.bodyOrThrow()
 }
 
 // --- Wire request/response shapes (mirror Operations.Api.Mobile.MobileWriteEndpoints) ---
@@ -190,6 +200,17 @@ data class WorkOrderWireRequest(
     val serviceLines: List<WorkOrderServiceLineInput> = emptyList(),
     val tasks: List<WorkOrderTaskInput> = emptyList(),
     val customerSignature: WorkOrderSignatureInput? = null,
+    val returnToRamps: List<WorkOrderReturnToRampInput> = emptyList(),
+)
+
+@Serializable
+data class WorkOrderReturnToRampInput(
+    val id: String? = null,
+    val fromUtc: String,
+    val toUtc: String,
+    val description: String? = null,
+    val serviceLines: List<WorkOrderServiceLineInput> = emptyList(),
+    val tasks: List<WorkOrderTaskInput> = emptyList(),
 )
 
 @Serializable
@@ -229,7 +250,10 @@ data class WorkOrderTaskResourceInput(
     val toolId: String? = null,
     val materialId: String? = null,
     val generalSupportId: String? = null,
-    val quantity: Double = 1.0,
+    /** Nullable fields keep old quantity-only queued JSON readable during rolling deployment. */
+    val quantity: Double? = null,
+    val fromUtc: String? = null,
+    val toUtc: String? = null,
 )
 
 @Serializable
@@ -273,6 +297,16 @@ data class MobileScratchWorkOrderRequest(
 @Serializable
 data class MobileReturnToRampRequest(
     val clientMutationId: String,
+    val serviceLines: List<WorkOrderServiceLineInput> = emptyList(),
+    val tasks: List<WorkOrderTaskInput> = emptyList(),
+)
+
+@Serializable
+data class MobileFlightReturnToRampRequest(
+    val clientMutationId: String,
+    val fromUtc: String,
+    val toUtc: String,
+    val description: String? = null,
     val serviceLines: List<WorkOrderServiceLineInput> = emptyList(),
     val tasks: List<WorkOrderTaskInput> = emptyList(),
 )

@@ -1,9 +1,11 @@
 package com.nags.operations.ui.workorder
 
 import com.nags.operations.data.TaskTypeKind
+import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.WellKnownMasterDataIds
 import com.nags.operations.ui.util.parseOffsetDateTime
 import java.time.OffsetDateTime
+import java.math.BigDecimal
 
 internal object WorkOrderFormLimits {
     const val FlightNumber = 12
@@ -32,6 +34,7 @@ enum class WorkOrderWizardStep {
     Flight,
     ServiceLines,
     Tasks,
+    ReturnToRamps,
     Signature,
 }
 
@@ -48,7 +51,52 @@ internal fun quantitiesForSelection(
     current: Map<String, Double>,
 ): Map<String, Double> = selectedIds.associateWith { id -> resourceQuantity(current, id) }
 
-internal fun isValidResourceQuantity(value: Double): Boolean = value.isFinite() && value > 0.0
+internal fun resourceUsage(
+    itemId: String,
+    usages: Map<String, ResourceUsageForm>,
+    legacyQuantities: Map<String, Double>,
+    calculationType: ResourceCalculationType,
+    taskFromIso: String,
+    taskToIso: String,
+): ResourceUsageForm = usages[itemId] ?: when (calculationType) {
+    ResourceCalculationType.Quantity -> ResourceUsageForm(
+        calculationType = calculationType,
+        quantity = resourceQuantity(legacyQuantities, itemId),
+    )
+    ResourceCalculationType.Duration -> ResourceUsageForm(
+        calculationType = calculationType,
+        quantity = null,
+        fromIso = taskFromIso,
+        toIso = taskToIso.takeIf { it.isNotBlank() },
+    )
+}
+
+internal fun usagesForSelection(
+    selectedIds: List<String>,
+    current: Map<String, ResourceUsageForm>,
+    legacyQuantities: Map<String, Double>,
+    calculationTypes: Map<String, ResourceCalculationType>,
+    defaultCalculationType: ResourceCalculationType,
+    taskFromIso: String,
+    taskToIso: String,
+): Map<String, ResourceUsageForm> = selectedIds.associateWith { id ->
+    resourceUsage(
+        id,
+        current,
+        legacyQuantities,
+        calculationTypes[id] ?: defaultCalculationType,
+        taskFromIso,
+        taskToIso,
+    )
+}
+
+internal fun isValidResourceQuantity(value: Double): Boolean {
+    if (!value.isFinite() || value <= 0.0) return false
+    val decimal = BigDecimal.valueOf(value).stripTrailingZeros()
+    val scale = maxOf(decimal.scale(), 0)
+    val wholeDigits = decimal.precision() - decimal.scale()
+    return scale <= 2 && wholeDigits <= 16
+}
 
 internal fun isBlankOrUnknownCustomer(customerId: String?): Boolean {
     val normalized = customerId?.trim()
@@ -70,6 +118,8 @@ internal fun computeWorkOrderLineErrors(
     ataIso: String?,
     atdIso: String?,
     allowedPerformedServiceIds: Set<String>,
+    lowerBoundLabel: String = "actual arrival (ATA)",
+    upperBoundLabel: String = "departure (ATD)",
 ): WorkOrderLineValidation {
     val ataDt = safeParseOffset(ataIso)
     val atdDt = safeParseOffset(atdIso)
@@ -105,10 +155,10 @@ internal fun computeWorkOrderLineErrors(
             to = mergeValidationMessage(to, "Must be on or after From.")
         }
         if (ataDt != null && fromDt != null && fromDt.isBefore(ataDt)) {
-            from = mergeValidationMessage(from, "Can't be before actual arrival (ATA).")
+            from = mergeValidationMessage(from, "Can't be before $lowerBoundLabel.")
         }
         if (atdDt != null && toDt != null && toDt.isAfter(atdDt)) {
-            to = mergeValidationMessage(to, "Can't be after departure (ATD).")
+            to = mergeValidationMessage(to, "Can't be after $upperBoundLabel.")
         }
 
         if (
@@ -139,12 +189,32 @@ internal fun computeWorkOrderLineErrors(
         val description = if (row.description.trim().length > WorkOrderFormLimits.LineDescription) {
             "Description must be at most ${WorkOrderFormLimits.LineDescription} characters."
         } else null
-        val tools = resourceRowsError(row.toolIds, row.toolQuantities, "Tool")
-        val materials = resourceRowsError(row.materialIds, row.materialQuantities, "Material")
+        val tools = resourceRowsError(
+            row.toolIds,
+            row.toolUsages,
+            row.toolQuantities,
+            ResourceCalculationType.Duration,
+            "Tool",
+            row.fromIso,
+            row.toIso,
+        )
+        val materials = resourceRowsError(
+            row.materialIds,
+            row.materialUsages,
+            row.materialQuantities,
+            ResourceCalculationType.Quantity,
+            "Material",
+            row.fromIso,
+            row.toIso,
+        )
         val generalSupports = resourceRowsError(
             row.generalSupportIds,
+            row.generalSupportUsages,
             row.generalSupportQuantities,
+            ResourceCalculationType.Quantity,
             "General support",
+            row.fromIso,
+            row.toIso,
         )
         val attachments = if (
             row.existingAttachmentNames.size + row.attachments.size > WorkOrderFormLimits.TaskAttachments
@@ -160,10 +230,10 @@ internal fun computeWorkOrderLineErrors(
             to = mergeValidationMessage(to, "Must be on or after From.")
         }
         if (ataDt != null && fromDt != null && fromDt.isBefore(ataDt)) {
-            from = mergeValidationMessage(from, "Can't be before actual arrival (ATA).")
+            from = mergeValidationMessage(from, "Can't be before $lowerBoundLabel.")
         }
         if (atdDt != null && toDt != null && toDt.isAfter(atdDt)) {
-            to = mergeValidationMessage(to, "Can't be after departure (ATD).")
+            to = mergeValidationMessage(to, "Can't be after $upperBoundLabel.")
         }
 
         if (
@@ -185,6 +255,51 @@ internal fun computeWorkOrderLineErrors(
     }
 
     return WorkOrderLineValidation(serviceMap, taskMap)
+}
+
+internal fun computeReturnToRampErrors(
+    row: ReturnToRampFormRow,
+    allowedPerformedServiceIds: Set<String>,
+): ReturnToRampSubmitFieldErrors? {
+    var from = if (row.fromIso.isBlank()) "From date and time is required." else null
+    var to = if (row.toIso.isBlank()) "To date and time is required." else null
+    val fromDt = safeParseOffset(row.fromIso)
+    val toDt = safeParseOffset(row.toIso)
+    if (row.fromIso.isNotBlank() && fromDt == null) from = "Invalid From date or time."
+    if (row.toIso.isNotBlank() && toDt == null) to = "Invalid To date or time."
+    if (fromDt != null && toDt != null && toDt.isBefore(fromDt)) {
+        to = mergeValidationMessage(to, "Must be on or after From.")
+    }
+    val description = if (row.description.trim().length > WorkOrderFormLimits.LineDescription) {
+        "Description must be at most ${WorkOrderFormLimits.LineDescription} characters."
+    } else null
+    val activity = if (row.serviceLines.isEmpty() && row.tasks.isEmpty()) {
+        "Add at least one service or task."
+    } else null
+    val nested = computeWorkOrderLineErrors(
+        form = CreateWorkOrderFormState(
+            serviceLines = row.serviceLines,
+            tasks = row.tasks,
+        ),
+        ataIso = row.fromIso,
+        atdIso = row.toIso,
+        allowedPerformedServiceIds = allowedPerformedServiceIds,
+        lowerBoundLabel = "return-to-ramp From",
+        upperBoundLabel = "return-to-ramp To",
+    )
+    if (
+        from == null && to == null && description == null && activity == null &&
+        nested.services.isEmpty() && nested.tasks.isEmpty()
+    ) return null
+
+    return ReturnToRampSubmitFieldErrors(
+        from = from,
+        to = to,
+        description = description,
+        activity = activity,
+        serviceLinesByKey = nested.services,
+        tasksByKey = nested.tasks,
+    )
 }
 
 internal fun computeCreateWorkOrderSubmitErrors(
@@ -260,6 +375,10 @@ internal fun computeCreateWorkOrderSubmitErrors(
         atdIso = if (validationPhase == WorkOrderValidationPhase.Submission) rawAtd else null,
         allowedPerformedServiceIds = allowedPerformedServiceIds,
     )
+    val returnToRampErrors = form.returnToRamps.mapNotNull { occurrence ->
+        computeReturnToRampErrors(occurrence, allowedPerformedServiceIds)
+            ?.let { occurrence.localKey to it }
+    }.toMap()
     val hasLineEndingAfterAtd = atdDt?.let { departure ->
         form.serviceLines.any { row -> safeParseOffset(row.toIso)?.isAfter(departure) == true } ||
             form.tasks.any { row -> safeParseOffset(row.toIso)?.isAfter(departure) == true }
@@ -281,7 +400,7 @@ internal fun computeCreateWorkOrderSubmitErrors(
 
     val hasProblems = flightNumber != null || aircraft != null || tail != null ||
         scheduledArrival != null || scheduledDeparture != null || ata != null || atd != null || remarks != null ||
-        lineErrors.services.isNotEmpty() || lineErrors.tasks.isNotEmpty()
+        lineErrors.services.isNotEmpty() || lineErrors.tasks.isNotEmpty() || returnToRampErrors.isNotEmpty()
     if (!hasProblems) return null
 
     return CreateWorkOrderSubmitFieldErrors(
@@ -295,6 +414,7 @@ internal fun computeCreateWorkOrderSubmitErrors(
         remarks = remarks,
         serviceLinesByKey = lineErrors.services,
         tasksByKey = lineErrors.tasks,
+        returnToRampsByKey = returnToRampErrors,
     )
 }
 
@@ -302,7 +422,8 @@ internal fun isBlankSubmitErrors(errors: CreateWorkOrderSubmitFieldErrors): Bool
     errors.customer == null && errors.flightNumber == null && errors.aircraftType == null &&
         errors.aircraftTailNumber == null && errors.scheduledArrival == null &&
         errors.scheduledDeparture == null && errors.ata == null && errors.atd == null &&
-        errors.remarks == null && errors.serviceLinesByKey.isEmpty() && errors.tasksByKey.isEmpty()
+        errors.remarks == null && errors.serviceLinesByKey.isEmpty() && errors.tasksByKey.isEmpty() &&
+        errors.returnToRampsByKey.isEmpty()
 
 /** Keeps only errors rendered on the requested wizard step. */
 internal fun submitErrorsForWizardStep(
@@ -314,12 +435,16 @@ internal fun submitErrorsForWizardStep(
         WorkOrderWizardStep.Flight -> errors.copy(
             serviceLinesByKey = emptyMap(),
             tasksByKey = emptyMap(),
+            returnToRampsByKey = emptyMap(),
         )
         WorkOrderWizardStep.ServiceLines -> CreateWorkOrderSubmitFieldErrors(
             serviceLinesByKey = errors.serviceLinesByKey,
         )
         WorkOrderWizardStep.Tasks -> CreateWorkOrderSubmitFieldErrors(
             tasksByKey = errors.tasksByKey,
+        )
+        WorkOrderWizardStep.ReturnToRamps -> CreateWorkOrderSubmitFieldErrors(
+            returnToRampsByKey = errors.returnToRampsByKey,
         )
         WorkOrderWizardStep.Signature -> return null
     }
@@ -343,11 +468,43 @@ private fun mergeValidationMessage(existing: String?, next: String): String = wh
 
 private fun resourceRowsError(
     selectedIds: List<String>,
+    usages: Map<String, ResourceUsageForm>,
     quantities: Map<String, Double>,
+    defaultCalculationType: ResourceCalculationType,
     label: String,
-): String? = when {
-    selectedIds.any { it.isBlank() } -> "Every ${label.lowercase()} row needs an item."
-    selectedIds.any { !isValidResourceQuantity(resourceQuantity(quantities, it)) } ->
-        "$label quantities must be greater than zero."
-    else -> null
+    taskFromIso: String,
+    taskToIso: String,
+): String? {
+    if (selectedIds.any { it.isBlank() }) return "Every ${label.lowercase()} row needs an item."
+    if (selectedIds.distinct().size != selectedIds.size) return "Duplicate ${label.lowercase()} rows are not allowed."
+
+    val taskFrom = safeParseOffset(taskFromIso)
+    val taskTo = safeParseOffset(taskToIso)
+    selectedIds.forEach { id ->
+        val usage = resourceUsage(
+            id,
+            usages,
+            quantities,
+            usages[id]?.calculationType ?: defaultCalculationType,
+            taskFromIso,
+            taskToIso,
+        )
+        if (usage.calculationType == ResourceCalculationType.Quantity) {
+            val quantity = usage.quantity
+            if (quantity == null || !isValidResourceQuantity(quantity))
+                return "$label quantities must be positive with at most 16 whole digits and 2 decimal places."
+            if (usage.fromIso.isNotBlank() || !usage.toIso.isNullOrBlank())
+                return "$label quantity usage cannot include duration times."
+        } else {
+            if (usage.quantity != null) return "$label duration usage cannot include a quantity."
+            val from = safeParseOffset(usage.fromIso)
+                ?: return "$label duration From date and time is required."
+            val to = safeParseOffset(usage.toIso)
+            if (!usage.toIso.isNullOrBlank() && to == null) return "$label duration To date or time is invalid."
+            if (to != null && to.isBefore(from)) return "$label duration To must be on or after From."
+            if (taskFrom != null && from.isBefore(taskFrom)) return "$label duration cannot start before its task."
+            if (taskTo != null && to != null && to.isAfter(taskTo)) return "$label duration cannot end after its task."
+        }
+    }
+    return null
 }

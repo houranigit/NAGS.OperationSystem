@@ -3,6 +3,7 @@ package com.nags.operations.ui.workorder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.TaskTypeKind
+import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.WorkOrderStatusKind
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.CustomerEntity
@@ -30,6 +31,7 @@ import com.nags.operations.ui.util.normalizeWorkOrderFlightNumberInput
 import com.nags.operations.ui.util.parseOffsetDateTime
 import java.time.Clock
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -82,6 +84,14 @@ data class ServiceLineFormRow(
  * attachments; new tasks leave it null.
  */
 @Serializable
+data class ResourceUsageForm(
+    val calculationType: ResourceCalculationType = ResourceCalculationType.Quantity,
+    val quantity: Double? = null,
+    val fromIso: String = "",
+    val toIso: String? = null,
+)
+
+@Serializable
 data class TaskFormRow(
     val localKey: Long,
     val serverId: String? = null,
@@ -91,12 +101,16 @@ data class TaskFormRow(
     val toolIds: List<String> = emptyList(),
     /** Quantity keyed by tool id. Missing keys from legacy drafts mean the portal default of 1. */
     val toolQuantities: Map<String, Double> = emptyMap(),
+    /** Authoritative resource usages. Empty in drafts created by quantity-only app versions. */
+    val toolUsages: Map<String, ResourceUsageForm> = emptyMap(),
     val materialIds: List<String> = emptyList(),
     /** Quantity keyed by material id. Missing keys from legacy drafts mean the portal default of 1. */
     val materialQuantities: Map<String, Double> = emptyMap(),
+    val materialUsages: Map<String, ResourceUsageForm> = emptyMap(),
     val generalSupportIds: List<String> = emptyList(),
     /** Quantity keyed by general-support id. Missing keys from legacy drafts mean the portal default of 1. */
     val generalSupportQuantities: Map<String, Double> = emptyMap(),
+    val generalSupportUsages: Map<String, ResourceUsageForm> = emptyMap(),
     val description: String = "",
     val fromIso: String = "",
     val toIso: String = "",
@@ -105,6 +119,19 @@ data class TaskFormRow(
     val existingAttachmentNames: List<String> = emptyList(),
     /** True when the task originated from a return-to-ramp submission. */
     val returnToRamp: Boolean = false,
+)
+
+/** One independently auditable return-to-ramp occurrence and its nested work. */
+@Serializable
+data class ReturnToRampFormRow(
+    val localKey: Long,
+    /** Stable server identity when an editable cached work order is hydrated. */
+    val serverId: String? = null,
+    val fromIso: String = "",
+    val toIso: String = "",
+    val description: String = "",
+    val serviceLines: List<ServiceLineFormRow> = emptyList(),
+    val tasks: List<TaskFormRow> = emptyList(),
 )
 
 @Serializable
@@ -121,6 +148,8 @@ data class CreateWorkOrderFormState(
     val remarks: String = "",
     val serviceLines: List<ServiceLineFormRow> = emptyList(),
     val tasks: List<TaskFormRow> = emptyList(),
+    /** Grouped occurrences. Defaults empty so drafts from pre-occurrence builds still decode. */
+    val returnToRamps: List<ReturnToRampFormRow> = emptyList(),
     /** Base64-encoded PNG of customer signature; optional until submit supports it. */
     val customerSignaturePng: String? = null,
     /** Read-only signature name already stored by the server when editing. */
@@ -156,6 +185,15 @@ data class TaskLineSubmitFieldErrors(
     val attachments: String? = null,
 )
 
+data class ReturnToRampSubmitFieldErrors(
+    val from: String? = null,
+    val to: String? = null,
+    val description: String? = null,
+    val activity: String? = null,
+    val serviceLinesByKey: Map<Long, ServiceLineSubmitFieldErrors> = emptyMap(),
+    val tasksByKey: Map<Long, TaskLineSubmitFieldErrors> = emptyMap(),
+)
+
 data class CreateWorkOrderSubmitFieldErrors(
     val customer: String? = null,
     val flightNumber: String? = null,
@@ -169,6 +207,7 @@ data class CreateWorkOrderSubmitFieldErrors(
     val remarks: String? = null,
     val serviceLinesByKey: Map<Long, ServiceLineSubmitFieldErrors> = emptyMap(),
     val tasksByKey: Map<Long, TaskLineSubmitFieldErrors> = emptyMap(),
+    val returnToRampsByKey: Map<Long, ReturnToRampSubmitFieldErrors> = emptyMap(),
 )
 
 data class WorkOrderEditState(
@@ -301,12 +340,15 @@ internal fun serviceLinesToPrefill(
         }
 }
 
-internal fun currentWorkOrderTimestamp(clock: Clock, flightAnchorIso: String?): String {
-    val offset = flightAnchorIso
-        ?.let { runCatching { parseOffsetDateTime(it).offset }.getOrNull() }
-        ?: ZoneOffset.UTC
+@Suppress("UNUSED_PARAMETER")
+internal fun currentWorkOrderTimestamp(
+    clock: Clock,
+    flightAnchorIso: String?,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String {
     return OffsetDateTime.now(clock)
-        .withOffsetSameInstant(offset)
+        .atZoneSameInstant(zoneId)
+        .toOffsetDateTime()
         .truncatedTo(ChronoUnit.MINUTES)
         .toString()
 }
@@ -324,6 +366,19 @@ internal fun initializeBlankFromTimes(
     WorkOrderWizardStep.Tasks -> form.copy(
         tasks = form.tasks.map { row ->
             if (row.fromIso.isBlank()) row.copy(fromIso = timestampIso) else row
+        },
+    )
+    WorkOrderWizardStep.ReturnToRamps -> form.copy(
+        returnToRamps = form.returnToRamps.map { occurrence ->
+            occurrence.copy(
+                fromIso = occurrence.fromIso.ifBlank { timestampIso },
+                serviceLines = occurrence.serviceLines.map { row ->
+                    if (row.fromIso.isBlank()) row.copy(fromIso = occurrence.fromIso.ifBlank { timestampIso }) else row
+                },
+                tasks = occurrence.tasks.map { row ->
+                    if (row.fromIso.isBlank()) row.copy(fromIso = occurrence.fromIso.ifBlank { timestampIso }) else row
+                },
+            )
         },
     )
     WorkOrderWizardStep.Flight,
@@ -344,6 +399,20 @@ internal fun finalizeBlankToTimes(
     WorkOrderWizardStep.Tasks -> form.copy(
         tasks = form.tasks.map { row ->
             if (row.toIso.isBlank()) row.copy(toIso = timestampIso) else row
+        },
+    )
+    WorkOrderWizardStep.ReturnToRamps -> form.copy(
+        returnToRamps = form.returnToRamps.map { occurrence ->
+            val occurrenceTo = occurrence.toIso.ifBlank { timestampIso }
+            occurrence.copy(
+                toIso = occurrenceTo,
+                serviceLines = occurrence.serviceLines.map { row ->
+                    if (row.toIso.isBlank()) row.copy(toIso = occurrenceTo) else row
+                },
+                tasks = occurrence.tasks.map { row ->
+                    if (row.toIso.isBlank()) row.copy(toIso = occurrenceTo) else row
+                },
+            )
         },
     )
     WorkOrderWizardStep.Flight,
@@ -369,6 +438,15 @@ internal fun newTaskAt(
 ): TaskFormRow = TaskFormRow(
     localKey = localKey,
     employeeIds = employeeIds,
+    fromIso = timestampIso,
+    toIso = "",
+)
+
+internal fun newReturnToRampAt(
+    localKey: Long,
+    timestampIso: String,
+): ReturnToRampFormRow = ReturnToRampFormRow(
+    localKey = localKey,
     fromIso = timestampIso,
     toIso = "",
 )
@@ -491,7 +569,11 @@ class CreateWorkOrderViewModel(
         }
         if (
             advanced &&
-            (nextStep == WorkOrderWizardStep.ServiceLines || nextStep == WorkOrderWizardStep.Tasks) &&
+            (
+                nextStep == WorkOrderWizardStep.ServiceLines ||
+                    nextStep == WorkOrderWizardStep.Tasks ||
+                    nextStep == WorkOrderWizardStep.ReturnToRamps
+                ) &&
             initializedFromSteps.add(nextStep)
         ) {
             onWizardStepEntered(nextStep)
@@ -1025,7 +1107,15 @@ class CreateWorkOrderViewModel(
     }
 
     private fun reconcileNextLocalKeyFromForm(form: CreateWorkOrderFormState) {
-        val keys = form.serviceLines.map { it.localKey } + form.tasks.map { it.localKey }
+        val keys = buildList {
+            addAll(form.serviceLines.map { it.localKey })
+            addAll(form.tasks.map { it.localKey })
+            form.returnToRamps.forEach { occurrence ->
+                add(occurrence.localKey)
+                addAll(occurrence.serviceLines.map { it.localKey })
+                addAll(occurrence.tasks.map { it.localKey })
+            }
+        }
         val maxKey = keys.maxOrNull() ?: 0L
         nextLocalKey = maxOf(maxKey + 1, nextLocalKey)
     }
@@ -1045,11 +1135,26 @@ class CreateWorkOrderViewModel(
             val newTasks = s.form.tasks.map { task ->
                 if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId)) else task
             }
+            val newReturnToRamps = s.form.returnToRamps.map { occurrence ->
+                occurrence.copy(
+                    serviceLines = occurrence.serviceLines.map { line ->
+                        if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId)) else line
+                    },
+                    tasks = occurrence.tasks.map { task ->
+                        if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId)) else task
+                    },
+                )
+            }
             val linesChanged = newLines != s.form.serviceLines
             val tasksChanged = newTasks != s.form.tasks
-            if (!linesChanged && !tasksChanged) return@update s
+            val returnToRampsChanged = newReturnToRamps != s.form.returnToRamps
+            if (!linesChanged && !tasksChanged && !returnToRampsChanged) return@update s
             s.copy(
-                form = s.form.copy(serviceLines = newLines, tasks = newTasks),
+                form = s.form.copy(
+                    serviceLines = newLines,
+                    tasks = newTasks,
+                    returnToRamps = newReturnToRamps,
+                ),
                 submitFieldErrors = null,
             )
         }
@@ -1210,6 +1315,119 @@ class CreateWorkOrderViewModel(
     fun removeTaskAttachment(localKey: Long, attachment: TaskAttachmentDraft) {
         updateForm { f -> f.withTaskAttachmentRemoved(localKey, attachment) }
     }
+
+    fun addReturnToRamp() {
+        val from = currentTimestamp()
+        updateForm { form ->
+            form.copy(
+                returnToRamps = form.returnToRamps + newReturnToRampAt(allocKey(), from),
+            )
+        }
+    }
+
+    fun removeReturnToRamp(localKey: Long) {
+        updateForm { form ->
+            form.copy(returnToRamps = form.returnToRamps.filterNot { it.localKey == localKey })
+        }
+    }
+
+    fun replaceReturnToRamp(row: ReturnToRampFormRow) {
+        updateForm { form ->
+            form.copy(
+                returnToRamps = form.returnToRamps.map { current ->
+                    if (current.localKey == row.localKey) current.mergeNonAttachmentEdit(row) else current
+                },
+            )
+        }
+    }
+
+    fun addReturnToRampServiceLine(occurrenceKey: Long) {
+        val presetEmployees = defaultEmployeeIdsFromState()
+        updateForm { form ->
+            form.copy(
+                returnToRamps = form.returnToRamps.map { occurrence ->
+                    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+                        serviceLines = occurrence.serviceLines + ServiceLineFormRow(
+                            localKey = allocKey(),
+                            employeeIds = presetEmployees,
+                            fromIso = occurrence.fromIso,
+                            toIso = occurrence.toIso,
+                        ),
+                    )
+                },
+            )
+        }
+    }
+
+    fun addReturnToRampTask(occurrenceKey: Long) {
+        val presetEmployees = defaultEmployeeIdsFromState()
+        updateForm { form ->
+            form.copy(
+                returnToRamps = form.returnToRamps.map { occurrence ->
+                    if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+                        tasks = occurrence.tasks + TaskFormRow(
+                            localKey = allocKey(),
+                            employeeIds = presetEmployees,
+                            fromIso = occurrence.fromIso,
+                            toIso = occurrence.toIso,
+                        ),
+                    )
+                },
+            )
+        }
+    }
+
+    fun replaceReturnToRampServiceLine(occurrenceKey: Long, row: ServiceLineFormRow) {
+        updateForm { it.withReturnToRampServiceLineReplaced(occurrenceKey, row) }
+    }
+
+    fun removeReturnToRampServiceLine(occurrenceKey: Long, localKey: Long) {
+        updateForm { form ->
+            form.copy(returnToRamps = form.returnToRamps.map { occurrence ->
+                if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+                    serviceLines = occurrence.serviceLines.filterNot { it.localKey == localKey },
+                )
+            })
+        }
+    }
+
+    fun replaceReturnToRampTask(occurrenceKey: Long, row: TaskFormRow) {
+        updateForm { it.withReturnToRampTaskReplaced(occurrenceKey, row) }
+    }
+
+    fun removeReturnToRampTask(occurrenceKey: Long, localKey: Long) {
+        updateForm { form ->
+            form.copy(returnToRamps = form.returnToRamps.map { occurrence ->
+                if (occurrence.localKey != occurrenceKey) occurrence else occurrence.copy(
+                    tasks = occurrence.tasks.filterNot { it.localKey == localKey },
+                )
+            })
+        }
+    }
+
+    fun addReturnToRampServiceAttachment(
+        occurrenceKey: Long,
+        lineKey: Long,
+        attachment: TaskAttachmentDraft,
+    ) = updateForm { it.withReturnToRampServiceAttachmentAdded(occurrenceKey, lineKey, attachment) }
+
+    fun removeReturnToRampServiceAttachment(
+        occurrenceKey: Long,
+        lineKey: Long,
+        attachment: TaskAttachmentDraft,
+    ) = updateForm { it.withReturnToRampServiceAttachmentRemoved(occurrenceKey, lineKey, attachment) }
+
+    fun addReturnToRampTaskAttachment(
+        occurrenceKey: Long,
+        taskKey: Long,
+        attachment: TaskAttachmentDraft,
+    ) = updateForm { it.withReturnToRampTaskAttachmentAdded(occurrenceKey, taskKey, attachment) }
+
+    fun removeReturnToRampTaskAttachment(
+        occurrenceKey: Long,
+        taskKey: Long,
+        attachment: TaskAttachmentDraft,
+    ) = updateForm { it.withReturnToRampTaskAttachmentRemoved(occurrenceKey, taskKey, attachment) }
 
     /**
      * Validates the form against the ATD chosen in the submit dialog. Returns
@@ -1405,51 +1623,20 @@ class CreateWorkOrderViewModel(
             ataIso = ataIso,
             atdIso = atdIso,
             remarks = form.remarks.takeIf { it.isNotBlank() },
-            serviceLines = form.serviceLines.map { row ->
-                OutboxPayload.ServiceLineInput(
-                    id = row.serverId,
-                    serviceId = row.serviceId
-                        ?: error("Service line missing serviceId — validation should have caught this"),
-                    performedByStaffMemberIds = row.employeeIds,
-                    fromIso = row.fromIso,
-                    toIso = row.toIso,
-                    description = row.description.takeIf { it.isNotBlank() },
-                    // The repository replaces these slots with durable file-path references.
-                    attachments = row.attachments.map { attachment ->
-                        attachment.toOutboxPlaceholder()
-                    },
-                    isReturnToRamp = row.returnToRamp,
-                )
-            },
-            // attachments inside each task are replaced by the outbox repository with
-            // the persisted file-path versions; we ship empty here as a placeholder.
-            tasks = form.tasks.map { task ->
-                OutboxPayload.TaskInput(
-                    id = task.serverId,
-                    taskType = task.taskType,
-                    description = task.description.takeIf { it.isNotBlank() },
-                    fromIso = task.fromIso,
-                    toIso = task.toIso,
-                    employeeIds = task.employeeIds,
-                    tools = task.toolIds.map {
-                        OutboxPayload.ResourceInput(it, resourceQuantity(task.toolQuantities, it))
-                    },
-                    materials = task.materialIds.map {
-                        OutboxPayload.ResourceInput(it, resourceQuantity(task.materialQuantities, it))
-                    },
-                    generalSupports = task.generalSupportIds.map {
-                        OutboxPayload.ResourceInput(it, resourceQuantity(task.generalSupportQuantities, it))
-                    },
-                    // Each task carries `task.attachments.size` slots; the repository
-                    // re-stitches them after writing the durable copies to disk.
-                    attachments = task.attachments.map { attachment ->
-                        attachment.toOutboxPlaceholder()
-                    },
-                    isReturnToRamp = task.returnToRamp,
-                )
-            },
+            serviceLines = form.serviceLines.map { it.toOutboxInput() },
+            tasks = form.tasks.map { it.toOutboxInput(snapshot) },
             customerSignaturePngBase64 = form.customerSignaturePng,
             serviceLineIdentityVersion = if (isUpdateExisting) form.serviceLineIdentityVersion else 0,
+            returnToRamps = form.returnToRamps.map { occurrence ->
+                OutboxPayload.ReturnToRampInput(
+                    id = occurrence.serverId,
+                    fromIso = occurrence.fromIso,
+                    toIso = occurrence.toIso,
+                    description = occurrence.description.takeIf { it.isNotBlank() },
+                    serviceLines = occurrence.serviceLines.map { it.toOutboxInput() },
+                    tasks = occurrence.tasks.map { it.toOutboxInput(snapshot) },
+                )
+            },
         )
 
         val scratch = if (isScratch) {
@@ -1477,6 +1664,75 @@ class CreateWorkOrderViewModel(
             } else null,
         )
     }
+
+    private fun ServiceLineFormRow.toOutboxInput() = OutboxPayload.ServiceLineInput(
+        id = serverId,
+        serviceId = serviceId
+            ?: error("Service line missing serviceId — validation should have caught this"),
+        performedByStaffMemberIds = employeeIds,
+        fromIso = fromIso,
+        toIso = toIso,
+        description = description.takeIf { it.isNotBlank() },
+        attachments = attachments.map(TaskAttachmentDraft::toOutboxPlaceholder),
+        // Compatibility alias stays false for canonical grouped rows.
+        isReturnToRamp = false,
+    )
+
+    private fun TaskFormRow.toOutboxInput(snapshot: CreateWorkOrderUiState) = OutboxPayload.TaskInput(
+        id = serverId,
+        taskType = taskType,
+        description = description.takeIf { it.isNotBlank() },
+        fromIso = fromIso,
+        toIso = toIso,
+        employeeIds = employeeIds,
+        tools = toolIds.map { id ->
+            resourceUsage(
+                id,
+                toolUsages,
+                toolQuantities,
+                snapshot.catalogTools.firstOrNull { it.toolId == id }?.calculationType
+                    ?: ResourceCalculationType.Duration,
+                fromIso,
+                toIso,
+            ).toOutboxInput(id)
+        },
+        materials = materialIds.map { id ->
+            resourceUsage(
+                id,
+                materialUsages,
+                materialQuantities,
+                snapshot.catalogMaterials.firstOrNull { it.materialId == id }?.calculationType
+                    ?: ResourceCalculationType.Quantity,
+                fromIso,
+                toIso,
+            ).toOutboxInput(id)
+        },
+        generalSupports = generalSupportIds.map { id ->
+            resourceUsage(
+                id,
+                generalSupportUsages,
+                generalSupportQuantities,
+                snapshot.catalogGeneralSupports.firstOrNull { it.generalSupportId == id }?.calculationType
+                    ?: ResourceCalculationType.Quantity,
+                fromIso,
+                toIso,
+            ).toOutboxInput(id)
+        },
+        attachments = attachments.map(TaskAttachmentDraft::toOutboxPlaceholder),
+        isReturnToRamp = false,
+    )
+
+    private fun ResourceUsageForm.toOutboxInput(itemId: String): OutboxPayload.ResourceInput =
+        if (calculationType == ResourceCalculationType.Quantity) {
+            OutboxPayload.ResourceInput(itemId = itemId, quantity = quantity)
+        } else {
+            OutboxPayload.ResourceInput(
+                itemId = itemId,
+                quantity = null,
+                fromIso = fromIso,
+                toIso = toIso?.takeIf { it.isNotBlank() },
+            )
+        }
 
     private fun collectAttachmentsInServiceThenTaskOrder(
         form: CreateWorkOrderFormState,

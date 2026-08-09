@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using MasterData.Contracts.Resources;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
@@ -32,12 +33,18 @@ internal static class WorkOrderPrintDocumentFactory
     private const string AlternateRowColor = "#F8FAFC";
     private const string WhiteColor = "#FFFFFF";
 
-    public static WorkOrderPrintFile Create(ApprovedWorkOrderPrintDto source)
+    public static WorkOrderPrintFile Create(ApprovedWorkOrderPrintDto source) =>
+        Create(source, FlightExportTimeZoneResolver.ResolveDefault());
+
+    public static WorkOrderPrintFile Create(
+        ApprovedWorkOrderPrintDto source,
+        TimeZoneInfo displayTimeZone)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(displayTimeZone);
         PdfDocumentAssets.EnsureFontResolver();
 
-        var document = BuildDocument(source);
+        var document = BuildDocument(source, displayTimeZone);
         var renderer = new PdfDocumentRenderer { Document = document };
         renderer.RenderDocument();
 
@@ -46,8 +53,16 @@ internal static class WorkOrderPrintDocumentFactory
         return new WorkOrderPrintFile(output.ToArray(), BuildFileName(source.WorkOrder.ApprovalNumber));
     }
 
-    private static Document BuildDocument(ApprovedWorkOrderPrintDto source)
+    internal static Document BuildDocument(ApprovedWorkOrderPrintDto source) =>
+        BuildDocument(source, FlightExportTimeZoneResolver.ResolveDefault());
+
+    internal static Document BuildDocument(
+        ApprovedWorkOrderPrintDto source,
+        TimeZoneInfo displayTimeZone)
     {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(displayTimeZone);
+
         var workOrder = source.WorkOrder;
         var document = new Document();
         document.Info.Title = $"Work Order {DisplayValue(workOrder.ApprovalNumber)}";
@@ -71,41 +86,45 @@ internal static class WorkOrderPrintDocumentFactory
         section.PageSetup.DifferentFirstPageHeaderFooter = false;
         section.PageSetup.FooterDistance = Unit.FromCentimeter(0.45);
 
-        AddDocumentFooter(section.Footers.Primary, workOrder);
-        AddFirstPageTitle(section, source);
+        AddDocumentFooter(section.Footers.Primary, workOrder, displayTimeZone);
+        AddFirstPageTitle(section, source, displayTimeZone);
         AddFlightOverview(section, source);
-        AddFlightTimes(section, workOrder);
+        AddFlightTimes(section, workOrder, displayTimeZone);
         AddPlannedFlightServices(section, source);
-        AddPerformedServices(section, workOrder);
-        AddReturnToRamp(section, workOrder);
+        AddPerformedServices(section, workOrder, displayTimeZone);
+        AddReturnToRamp(section, workOrder, displayTimeZone);
         AddWorkOrderSummary(section, source);
 
         AddRemarks(section, workOrder);
         AddTableSpacing(section);
-        AddCorrectiveActions(section, source);
+        AddCorrectiveActions(section, source, displayTimeZone);
         AddResourceRegister(
             section,
             "Materials Used",
-            BuildResourceLines(workOrder, ResourceKind.Material));
+            BuildResourceLines(workOrder, ResourceKind.Material),
+            displayTimeZone);
         AddResourceRegister(
             section,
             "Tools Used",
-            BuildResourceLines(workOrder, ResourceKind.Tool));
+            BuildResourceLines(workOrder, ResourceKind.Tool),
+            displayTimeZone);
         AddResourceRegister(
             section,
             "General Support",
-            BuildResourceLines(workOrder, ResourceKind.GeneralSupport));
-        AddStaffUtilization(section, source);
+            BuildResourceLines(workOrder, ResourceKind.GeneralSupport),
+            displayTimeZone);
+        AddStaffUtilization(section, source, displayTimeZone);
         AddAttachmentRegister(section, workOrder);
-        AddCustomerAcceptance(section, source);
-        AddDocumentControl(section, workOrder);
+        AddCustomerAcceptance(section, source, displayTimeZone);
+        AddDocumentControl(section, workOrder, displayTimeZone);
 
         return document;
     }
 
     private static void AddFirstPageTitle(
         Section section,
-        ApprovedWorkOrderPrintDto source)
+        ApprovedWorkOrderPrintDto source,
+        TimeZoneInfo displayTimeZone)
     {
         var table = ConfigureTable(section.AddTable(), 14.7, 3.5);
         table.Borders.Width = Unit.Zero;
@@ -135,6 +154,14 @@ internal static class WorkOrderPrintDocumentFactory
         subtitle.Format.Font.Color = Color.Parse(MutedTextColor);
         subtitle.Format.SpaceBefore = Unit.FromPoint(1);
 
+        var timeZone = row.Cells[0].AddParagraph(
+            $"TIMES SHOWN IN {FormatTimeZoneLabel(displayTimeZone).ToUpperInvariant()}");
+        timeZone.Format.Alignment = ParagraphAlignment.Left;
+        timeZone.Format.Font.Size = Unit.FromPoint(6.2);
+        timeZone.Format.Font.Bold = true;
+        timeZone.Format.Font.Color = Color.Parse(BrandColor);
+        timeZone.Format.SpaceBefore = Unit.FromPoint(1);
+
         var logoContainer = row.Cells[1].AddParagraph();
         logoContainer.Format.Alignment = ParagraphAlignment.Right;
         var logo = logoContainer.AddImage(GetLogoDataUri());
@@ -145,7 +172,10 @@ internal static class WorkOrderPrintDocumentFactory
         AddTableSpacing(section, 10);
     }
 
-    private static void AddDocumentFooter(HeaderFooter footer, WorkOrderDetailDto workOrder)
+    private static void AddDocumentFooter(
+        HeaderFooter footer,
+        WorkOrderDetailDto workOrder,
+        TimeZoneInfo displayTimeZone)
     {
         var table = ConfigureTable(footer.AddTable(), 6.0, 6.2, 6.0);
         table.Borders.Width = Unit.Zero;
@@ -160,7 +190,8 @@ internal static class WorkOrderPrintDocumentFactory
         var left = row.Cells[0].AddParagraph($"WO {DisplayValue(workOrder.ApprovalNumber)}");
         left.Format.Alignment = ParagraphAlignment.Left;
 
-        var center = row.Cells[1].AddParagraph("CONTROLLED RECORD  |  ALL TIMES UTC");
+        var center = row.Cells[1].AddParagraph(
+            $"CONTROLLED RECORD  |  {FormatTimeZoneLabel(displayTimeZone)}");
         center.Format.Alignment = ParagraphAlignment.Center;
 
         var right = row.Cells[2].AddParagraph();
@@ -248,7 +279,10 @@ internal static class WorkOrderPrintDocumentFactory
                 ? "Service basis: On Call"
                 : "Service basis: Per Landing";
 
-    private static void AddFlightTimes(Section section, WorkOrderDetailDto workOrder)
+    private static void AddFlightTimes(
+        Section section,
+        WorkOrderDetailDto workOrder,
+        TimeZoneInfo displayTimeZone)
     {
         var table = CreateContentTable(section, 2.2, 5.1, 5.1, 5.8);
         table.KeepTogether = true;
@@ -259,12 +293,14 @@ internal static class WorkOrderPrintDocumentFactory
             table,
             "Arrival",
             workOrder.ScheduledArrivalUtc,
-            workOrder.ActualArrivalUtc);
+            workOrder.ActualArrivalUtc,
+            displayTimeZone);
         AddTimeRow(
             table,
             "Departure",
             workOrder.ScheduledDepartureUtc,
-            workOrder.ActualDepartureUtc);
+            workOrder.ActualDepartureUtc,
+            displayTimeZone);
 
         KeepRowsTogether(table);
         AddTableSpacing(section);
@@ -274,12 +310,13 @@ internal static class WorkOrderPrintDocumentFactory
         Table table,
         string eventName,
         DateTimeOffset scheduled,
-        DateTimeOffset? actual)
+        DateTimeOffset? actual,
+        TimeZoneInfo displayTimeZone)
     {
         var row = AddDataRow(table);
         AddCellText(row.Cells[0], eventName, bold: true);
-        AddCellText(row.Cells[1], FormatTimestamp(scheduled));
-        AddCellText(row.Cells[2], FormatTimestamp(actual));
+        AddCellText(row.Cells[1], FormatTimestamp(scheduled, displayTimeZone));
+        AddCellText(row.Cells[2], FormatTimestamp(actual, displayTimeZone));
         AddCellText(
             row.Cells[3],
             FormatVariance(scheduled, actual),
@@ -337,7 +374,10 @@ internal static class WorkOrderPrintDocumentFactory
         AddTableSpacing(section);
     }
 
-    private static void AddPerformedServices(Section section, WorkOrderDetailDto workOrder)
+    private static void AddPerformedServices(
+        Section section,
+        WorkOrderDetailDto workOrder,
+        TimeZoneInfo displayTimeZone)
     {
         var serviceLines = workOrder.ServiceLines;
         var table = CreateContentTable(section, 0.8, 5.4, 8.0, 4.0);
@@ -346,7 +386,7 @@ internal static class WorkOrderPrintDocumentFactory
             table,
             "#",
             "SERVICE",
-            "WORK WINDOW (UTC)",
+            "WORK WINDOW",
             "TIME");
 
         if (serviceLines.Count == 0)
@@ -362,7 +402,9 @@ internal static class WorkOrderPrintDocumentFactory
                 row.KeepWith = 1;
                 AddCellText(row.Cells[0], (index + 1).ToString(CultureInfo.InvariantCulture), bold: true);
                 AddServiceIdentity(row.Cells[1], service);
-                AddCellText(row.Cells[2], FormatCompactWindow(service.FromUtc, service.ToUtc));
+                AddCellText(
+                    row.Cells[2],
+                    FormatCompactWindow(service.FromUtc, service.ToUtc, displayTimeZone));
                 AddCellText(
                     row.Cells[3],
                     FormatDuration(PositiveDuration(service.FromUtc, service.ToUtc)),
@@ -470,7 +512,10 @@ internal static class WorkOrderPrintDocumentFactory
         returnToRamp.Format.SpaceBefore = Unit.FromPoint(2);
     }
 
-    private static void AddReturnToRamp(Section section, WorkOrderDetailDto workOrder)
+    private static void AddReturnToRamp(
+        Section section,
+        WorkOrderDetailDto workOrder,
+        TimeZoneInfo displayTimeZone)
     {
         var activities = BuildReturnToRampActivities(workOrder);
 
@@ -487,8 +532,14 @@ internal static class WorkOrderPrintDocumentFactory
             {
                 var activity = activities[index];
                 var row = AddDataRow(table, alternate: index % 2 == 1);
-                AddCellText(row.Cells[0], FormatTimestamp(activity.FromUtc), bold: true);
-                AddCellText(row.Cells[1], FormatTimestamp(activity.ToUtc), bold: true);
+                AddCellText(
+                    row.Cells[0],
+                    FormatTimestamp(activity.FromUtc, displayTimeZone),
+                    bold: true);
+                AddCellText(
+                    row.Cells[1],
+                    FormatTimestamp(activity.ToUtc, displayTimeZone),
+                    bold: true);
                 AddCellText(
                     row.Cells[2],
                     FormatDuration(PositiveDuration(activity.FromUtc, activity.ToUtc)),
@@ -517,8 +568,23 @@ internal static class WorkOrderPrintDocumentFactory
     }
 
     private static IReadOnlyList<ReturnToRampActivity> BuildReturnToRampActivities(
-        WorkOrderDetailDto workOrder) =>
-        workOrder.ServiceLines
+        WorkOrderDetailDto workOrder)
+    {
+        if (workOrder.ReturnToRamps is { Count: > 0 })
+        {
+            return workOrder.ReturnToRamps
+                .OrderBy(item => item.FromUtc)
+                .ThenBy(item => item.CreatedAtUtc)
+                .Select(item => new ReturnToRampActivity(
+                    item.FromUtc,
+                    item.ToUtc,
+                    BuildReturnToRampLabel(item)))
+                .ToList();
+        }
+
+        // Rolling-deployment fallback for approved work orders read before the occurrence backfill
+        // has run. Once all databases are migrated this branch only serves old serialized fixtures.
+        return workOrder.ServiceLines
             .Where(service => service.IsReturnToRamp)
             .Select(service => new ReturnToRampActivity(
                 service.FromUtc,
@@ -534,6 +600,22 @@ internal static class WorkOrderPrintDocumentFactory
             .OrderBy(activity => activity.FromUtc)
             .ThenBy(activity => activity.ToUtc)
             .ToList();
+    }
+
+    private static string BuildReturnToRampLabel(WorkOrderReturnToRampDto item)
+    {
+        var activities = item.ServiceLines
+            .Select(service => service.ServiceName)
+            .Concat(item.Tasks.Select(task =>
+                string.IsNullOrWhiteSpace(task.Description)
+                    ? task.TaskType
+                    : $"{task.TaskType}: {task.Description}"))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(item.Description))
+            activities.Insert(0, item.Description.Trim());
+        return activities.Count == 0 ? "Recorded return to ramp" : string.Join("; ", activities);
+    }
 
     internal static TimeSpan CalculateReturnToRampDuration(WorkOrderDetailDto workOrder)
     {
@@ -566,6 +648,9 @@ internal static class WorkOrderPrintDocumentFactory
 
     internal static DateTimeOffset? ResolveHeaderTo(WorkOrderDetailDto workOrder)
     {
+        if (workOrder.ReturnToRamps is { Count: > 0 })
+            return workOrder.ReturnToRamps.Max(item => (DateTimeOffset?)item.ToUtc) ?? workOrder.ActualDepartureUtc;
+
         var returnToRampEnd = workOrder.ServiceLines
             .Where(line => line.IsReturnToRamp)
             .Select(line => (DateTimeOffset?)line.ToUtc)
@@ -632,7 +717,10 @@ internal static class WorkOrderPrintDocumentFactory
             fontSize: 8.2);
     }
 
-    private static void AddCorrectiveActions(Section section, ApprovedWorkOrderPrintDto source)
+    private static void AddCorrectiveActions(
+        Section section,
+        ApprovedWorkOrderPrintDto source,
+        TimeZoneInfo displayTimeZone)
     {
         var tasks = source.WorkOrder.Tasks;
         if (tasks.Count == 0)
@@ -646,7 +734,7 @@ internal static class WorkOrderPrintDocumentFactory
 
         for (var index = 0; index < tasks.Count; index++)
         {
-            AddCorrectiveAction(section, source, tasks[index], index);
+            AddCorrectiveAction(section, source, tasks[index], index, displayTimeZone);
             AddTableSpacing(section, 5);
         }
     }
@@ -655,7 +743,8 @@ internal static class WorkOrderPrintDocumentFactory
         Section section,
         ApprovedWorkOrderPrintDto source,
         WorkOrderTaskDto task,
-        int index)
+        int index,
+        TimeZoneInfo displayTimeZone)
     {
         var table = CreateContentTable(section, 6.0, 3.5, 4.2, 4.5);
         var keepTogether = task.Employees.Count <= 12 &&
@@ -702,7 +791,7 @@ internal static class WorkOrderPrintDocumentFactory
         AddFactCell(
             facts.Cells[0],
             "Work Period",
-            FormatCompactWindow(task.FromUtc, task.ToUtc));
+            FormatCompactWindow(task.FromUtc, task.ToUtc, displayTimeZone));
         AddFactCell(
             facts.Cells[1],
             "Duration",
@@ -722,7 +811,7 @@ internal static class WorkOrderPrintDocumentFactory
             "STAFF MEMBER",
             "EMPLOYEE ID",
             "MANPOWER TYPE",
-            "WORK WINDOW (UTC)");
+            "WORK WINDOW");
         if (task.Employees.Count == 0)
         {
             AddEmptyRow(table, "No staff were assigned to this corrective action.");
@@ -743,7 +832,9 @@ internal static class WorkOrderPrintDocumentFactory
                 AddCellText(
                     row.Cells[2],
                     DisplayValue(manpowerByStaffId.GetValueOrDefault(employee.StaffMemberId)));
-                AddCellText(row.Cells[3], FormatCompactWindow(task.FromUtc, task.ToUtc));
+                AddCellText(
+                    row.Cells[3],
+                    FormatCompactWindow(task.FromUtc, task.ToUtc, displayTimeZone));
             }
         }
 
@@ -781,15 +872,33 @@ internal static class WorkOrderPrintDocumentFactory
             {
                 case ResourceKind.Material:
                     lines.AddRange(task.Materials.Select(resource =>
-                        new ResourceLine(action, resource.Name, resource.Quantity)));
+                        new ResourceLine(
+                            action,
+                            resource.Name,
+                            resource.CalculationType,
+                            resource.Quantity,
+                            resource.FromUtc,
+                            resource.ToUtc)));
                     break;
                 case ResourceKind.Tool:
                     lines.AddRange(task.Tools.Select(resource =>
-                        new ResourceLine(action, resource.Name, resource.Quantity)));
+                        new ResourceLine(
+                            action,
+                            resource.Name,
+                            resource.CalculationType,
+                            resource.Quantity,
+                            resource.FromUtc,
+                            resource.ToUtc)));
                     break;
                 case ResourceKind.GeneralSupport:
                     lines.AddRange(task.GeneralSupports.Select(resource =>
-                        new ResourceLine(action, resource.Name, resource.Quantity)));
+                        new ResourceLine(
+                            action,
+                            resource.Name,
+                            resource.CalculationType,
+                            resource.Quantity,
+                            resource.FromUtc,
+                            resource.ToUtc)));
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown resource kind.");
@@ -802,12 +911,13 @@ internal static class WorkOrderPrintDocumentFactory
     private static void AddResourceRegister(
         Section section,
         string title,
-        IReadOnlyList<ResourceLine> resources)
+        IReadOnlyList<ResourceLine> resources,
+        TimeZoneInfo displayTimeZone)
     {
         var table = CreateContentTable(section, 2.3, 12.2, 3.7);
         table.KeepTogether = resources.Count <= 12;
         AddSectionHeaderRow(table, $"{title} ({resources.Count})");
-        AddColumnHeaderRow(table, "ACTION", "ITEM", "QUANTITY");
+        AddColumnHeaderRow(table, "ACTION", "ITEM", "USAGE");
 
         if (resources.Count == 0)
         {
@@ -823,7 +933,7 @@ internal static class WorkOrderPrintDocumentFactory
                 AddCellText(row.Cells[1], resource.Name);
                 AddCellText(
                     row.Cells[2],
-                    resource.Quantity.ToString("0.##", CultureInfo.InvariantCulture),
+                    FormatResourceUsage(resource, displayTimeZone),
                     bold: true,
                     alignment: ParagraphAlignment.Center);
             }
@@ -834,7 +944,25 @@ internal static class WorkOrderPrintDocumentFactory
         AddTableSpacing(section);
     }
 
-    private static void AddStaffUtilization(Section section, ApprovedWorkOrderPrintDto source)
+    private static string FormatResourceUsage(
+        ResourceLine resource,
+        TimeZoneInfo displayTimeZone)
+    {
+        if (resource.CalculationType == ResourceCalculationType.Quantity)
+            return resource.Quantity?.ToString("0.##", CultureInfo.InvariantCulture) ?? "Not recorded";
+
+        if (resource.FromUtc is not { } fromUtc)
+            return "Duration not recorded";
+
+        return resource.ToUtc is { } toUtc
+            ? FormatCompactWindow(fromUtc, toUtc, displayTimeZone)
+            : $"{FormatTimestamp(fromUtc, displayTimeZone)} - Open";
+    }
+
+    private static void AddStaffUtilization(
+        Section section,
+        ApprovedWorkOrderPrintDto source,
+        TimeZoneInfo displayTimeZone)
     {
         var windows = MergeWorkerWindows(BuildWorkerWindows(source))
             .OrderBy(window => window.FromUtc)
@@ -849,7 +977,7 @@ internal static class WorkOrderPrintDocumentFactory
             "STAFF MEMBER",
             "EMPLOYEE ID",
             "MANPOWER TYPE",
-            "WORK WINDOW (UTC)",
+            "WORK WINDOW",
             "TIME");
 
         if (windows.Count == 0)
@@ -865,7 +993,9 @@ internal static class WorkOrderPrintDocumentFactory
                 AddCellText(row.Cells[0], window.Name, bold: true);
                 AddCellText(row.Cells[1], DisplayValue(window.EmployeeId));
                 AddCellText(row.Cells[2], DisplayValue(window.ManpowerTypeName));
-                AddCellText(row.Cells[3], FormatCompactWindow(window.FromUtc, window.ToUtc));
+                AddCellText(
+                    row.Cells[3],
+                    FormatCompactWindow(window.FromUtc, window.ToUtc, displayTimeZone));
                 AddCellText(
                     row.Cells[4],
                     FormatDuration(PositiveDuration(window.FromUtc, window.ToUtc)),
@@ -1016,7 +1146,10 @@ internal static class WorkOrderPrintDocumentFactory
         AddTableSpacing(section);
     }
 
-    private static void AddCustomerAcceptance(Section section, ApprovedWorkOrderPrintDto source)
+    private static void AddCustomerAcceptance(
+        Section section,
+        ApprovedWorkOrderPrintDto source,
+        TimeZoneInfo displayTimeZone)
     {
         var workOrder = source.WorkOrder;
         var table = CreateContentTable(section, 7.0, 5.6, 5.6);
@@ -1039,7 +1172,7 @@ internal static class WorkOrderPrintDocumentFactory
         AddFactCell(
             signatureRow.Cells[1],
             "Customer Signed At",
-            FormatTimestamp(workOrder.CustomerSignature?.SignedAtUtc));
+            FormatTimestamp(workOrder.CustomerSignature?.SignedAtUtc, displayTimeZone));
         AddFactCell(
             signatureRow.Cells[2],
             "Approval Number",
@@ -1053,7 +1186,7 @@ internal static class WorkOrderPrintDocumentFactory
         AddFactCell(
             approvalRow.Cells[1],
             "Approved At",
-            FormatTimestamp(workOrder.ApprovedAtUtc));
+            FormatTimestamp(workOrder.ApprovedAtUtc, displayTimeZone));
         AddFactCell(
             approvalRow.Cells[2],
             "Record ID",
@@ -1084,7 +1217,10 @@ internal static class WorkOrderPrintDocumentFactory
         image.Height = Unit.FromCentimeter(1.15);
     }
 
-    private static void AddDocumentControl(Section section, WorkOrderDetailDto workOrder)
+    private static void AddDocumentControl(
+        Section section,
+        WorkOrderDetailDto workOrder,
+        TimeZoneInfo displayTimeZone)
     {
         var table = CreateContentTable(section, 4.55, 4.55, 4.55, 4.55);
         table.KeepTogether = true;
@@ -1092,7 +1228,7 @@ internal static class WorkOrderPrintDocumentFactory
         var row = AddFactRow(table);
         AddFactCell(row.Cells[0], "Template", "WO-FLIGHT-02");
         AddFactCell(row.Cells[1], "Revision", "1");
-        AddFactCell(row.Cells[2], "Time Zone", "UTC");
+        AddFactCell(row.Cells[2], "Time Zone", FormatTimeZoneLabel(displayTimeZone));
         AddFactCell(
             row.Cells[3],
             "Approved Record",
@@ -1290,20 +1426,40 @@ internal static class WorkOrderPrintDocumentFactory
         return cleanName.Length == 0 ? cleanCode : $"{cleanCode} - {cleanName}";
     }
 
-    private static string FormatTimestamp(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("dd MMM yyyy HH:mm 'UTC'", CultureInfo.InvariantCulture);
-
-    private static string FormatTimestamp(DateTimeOffset? value) =>
-        value.HasValue ? FormatTimestamp(value.Value) : "Not recorded";
-
-    private static string FormatCompactWindow(DateTimeOffset from, DateTimeOffset to)
+    internal static string FormatTimestamp(
+        DateTimeOffset value,
+        TimeZoneInfo displayTimeZone)
     {
-        var utcFrom = from.UtcDateTime;
-        var utcTo = to.UtcDateTime;
-        return utcFrom.Date == utcTo.Date
-            ? $"{utcFrom:dd MMM yyyy HH:mm} - {utcTo:HH:mm}"
-            : $"{utcFrom:dd MMM HH:mm} - {utcTo:dd MMM HH:mm}";
+        ArgumentNullException.ThrowIfNull(displayTimeZone);
+        var local = TimeZoneInfo.ConvertTime(value, displayTimeZone);
+        return local.ToString("dd MMM yyyy HH:mm zzz", CultureInfo.InvariantCulture);
     }
+
+    private static string FormatTimestamp(
+        DateTimeOffset? value,
+        TimeZoneInfo displayTimeZone) =>
+        value.HasValue ? FormatTimestamp(value.Value, displayTimeZone) : "Not recorded";
+
+    internal static string FormatCompactWindow(
+        DateTimeOffset from,
+        DateTimeOffset to,
+        TimeZoneInfo displayTimeZone)
+    {
+        ArgumentNullException.ThrowIfNull(displayTimeZone);
+        var localFrom = TimeZoneInfo.ConvertTime(from, displayTimeZone);
+        var localTo = TimeZoneInfo.ConvertTime(to, displayTimeZone);
+        if (localFrom.Date == localTo.Date && localFrom.Offset == localTo.Offset)
+        {
+            return $"{localFrom:dd MMM yyyy HH:mm} - {localTo:HH:mm} ({localFrom:zzz})";
+        }
+
+        return localFrom.Date == localTo.Date
+            ? $"{localFrom:dd MMM yyyy HH:mm zzz} - {localTo:HH:mm zzz}"
+            : $"{localFrom:dd MMM HH:mm zzz} - {localTo:dd MMM HH:mm zzz}";
+    }
+
+    private static string FormatTimeZoneLabel(TimeZoneInfo displayTimeZone) =>
+        displayTimeZone.Id;
 
     private static string FormatVariance(DateTimeOffset scheduled, DateTimeOffset? actual)
     {
@@ -1444,7 +1600,13 @@ internal static class WorkOrderPrintDocumentFactory
         DateTimeOffset ToUtc,
         string Label);
 
-    private sealed record ResourceLine(string Action, string Name, decimal Quantity);
+    private sealed record ResourceLine(
+        string Action,
+        string Name,
+        ResourceCalculationType CalculationType,
+        decimal? Quantity,
+        DateTimeOffset? FromUtc,
+        DateTimeOffset? ToUtc);
 
     private sealed record AttachmentLine(
         string Source,

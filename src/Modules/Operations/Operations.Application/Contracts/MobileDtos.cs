@@ -1,3 +1,5 @@
+using MasterData.Contracts.Resources;
+
 namespace Operations.Application.Contracts;
 
 // Wire shapes for the dedicated mobile surface (/api/v1/mobile). The mobile client mirrors
@@ -15,7 +17,10 @@ public sealed record MobileMeDto(
     Guid ManpowerTypeId,
     string? ManpowerTypeName);
 
-public sealed record MobileCatalogItemDto(Guid Id, string Name);
+public sealed record MobileCatalogItemDto(
+    Guid Id,
+    string Name,
+    ResourceCalculationType CalculationType);
 
 /// <summary>
 /// A service catalog row. <see cref="IsAircraftPerLanding"/> marks the well-known Aircraft Per

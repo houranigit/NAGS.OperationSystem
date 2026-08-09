@@ -17,6 +17,15 @@
             <label class="mtf-label">Description</label>
             <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="mtf-control" MaxLength="500" />
         </div>
+        @if (SupportsCalculationType)
+        {
+            <div class="mtf-field-block">
+                <label class="mtf-label">Usage calculation <span>*</span></label>
+                <RadzenDropDown @bind-Value="model.CalculationType" Data="@calculationTypes"
+                                Name="calculationType" class="mtf-control" />
+                <small class="os-muted">Quantity records an amount used. Duration records a from/to usage period, where the end can remain open.</small>
+            </div>
+        }
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
@@ -38,22 +47,32 @@
     [Parameter] public SimpleCatalogKind Kind { get; set; }
     [Parameter] public Guid? EntityId { get; set; }
 
+    private readonly IReadOnlyList<ResourceCalculationType> calculationTypes = Enum.GetValues<ResourceCalculationType>();
     private SimpleCatalogModel model = new();
     private string? rowVersion;
     private bool isSubmitting;
     private string? errorMessage;
 
     private int NameMaxLength => Kind is SimpleCatalogKind.Materials or SimpleCatalogKind.GeneralSupports ? 200 : 100;
+    private bool SupportsCalculationType => Kind is SimpleCatalogKind.Materials or SimpleCatalogKind.GeneralSupports;
 
     protected override async Task OnInitializedAsync()
     {
         if (EntityId is not { } id)
+        {
+            model.CalculationType = ResourceCalculationType.Quantity;
             return;
+        }
 
         try
         {
             var detail = await LoadDetailAsync(id);
-            model = new SimpleCatalogModel { Name = detail.Name, Description = detail.Description };
+            model = new SimpleCatalogModel
+            {
+                Name = detail.Name,
+                Description = detail.Description,
+                CalculationType = detail.CalculationType ?? ResourceCalculationType.Quantity
+            };
             rowVersion = detail.RowVersion;
         }
         catch (ApiException ex)
@@ -98,8 +117,10 @@
     {
         SimpleCatalogKind.Services => MasterData.CreateServiceAsync(new CreateServiceRequest(name, description)),
         SimpleCatalogKind.OperationTypes => MasterData.CreateOperationTypeAsync(new CreateOperationTypeRequest(name, description)),
-        SimpleCatalogKind.Materials => MasterData.CreateMaterialAsync(new CreateMaterialRequest(name, description)),
-        SimpleCatalogKind.GeneralSupports => MasterData.CreateGeneralSupportAsync(new CreateGeneralSupportRequest(name, description)),
+        SimpleCatalogKind.Materials => MasterData.CreateMaterialAsync(
+            new CreateMaterialRequest(name, description, model.CalculationType)),
+        SimpleCatalogKind.GeneralSupports => MasterData.CreateGeneralSupportAsync(
+            new CreateGeneralSupportRequest(name, description, model.CalculationType)),
         _ => Task.CompletedTask
     };
 
@@ -107,8 +128,10 @@
     {
         SimpleCatalogKind.Services => MasterData.UpdateServiceAsync(id, new UpdateServiceRequest(name, description), rowVersion ?? string.Empty),
         SimpleCatalogKind.OperationTypes => MasterData.UpdateOperationTypeAsync(id, new UpdateOperationTypeRequest(name, description), rowVersion ?? string.Empty),
-        SimpleCatalogKind.Materials => MasterData.UpdateMaterialAsync(id, new UpdateMaterialRequest(name, description), rowVersion ?? string.Empty),
-        SimpleCatalogKind.GeneralSupports => MasterData.UpdateGeneralSupportAsync(id, new UpdateGeneralSupportRequest(name, description), rowVersion ?? string.Empty),
+        SimpleCatalogKind.Materials => MasterData.UpdateMaterialAsync(
+            id, new UpdateMaterialRequest(name, description, model.CalculationType), rowVersion ?? string.Empty),
+        SimpleCatalogKind.GeneralSupports => MasterData.UpdateGeneralSupportAsync(
+            id, new UpdateGeneralSupportRequest(name, description, model.CalculationType), rowVersion ?? string.Empty),
         _ => Task.CompletedTask
     };
 
@@ -122,20 +145,25 @@
     };
 
     private static SimpleCatalogDetail ToDetail(ServiceDetail value) =>
-        new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+        new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem,
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null);
 
     private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) =>
-        new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+        new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem,
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null);
 
     private static SimpleCatalogDetail ToDetail(MaterialDetail value) =>
-        new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+        new(value.Id, value.Name, value.Description, value.IsActive, false,
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType);
 
     private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) =>
-        new(value.Id, value.Name, value.Description, value.IsActive, false, value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion);
+        new(value.Id, value.Name, value.Description, value.IsActive, false,
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType);
 
     private sealed class SimpleCatalogModel
     {
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
+        public ResourceCalculationType CalculationType { get; set; } = ResourceCalculationType.Quantity;
     }
 }

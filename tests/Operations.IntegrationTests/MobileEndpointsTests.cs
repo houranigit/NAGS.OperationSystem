@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using MasterData.Contracts.Seeding;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Operations.Infrastructure.Persistence;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -76,6 +79,24 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
         var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var suffix = Guid.NewGuid().ToString("N");
+        var toolId = await PostForIdAsync(admin, $"{MasterDataBase}/tools", new
+        {
+            name = $"Duration Tool {suffix}",
+            description = (string?)null,
+            equipments = Array.Empty<object>()
+        });
+        var materialId = await PostForIdAsync(admin, $"{MasterDataBase}/materials", new
+        {
+            name = $"Duration Material {suffix}",
+            description = (string?)null,
+            calculationType = "Duration"
+        });
+        var supportId = await PostForIdAsync(admin, $"{MasterDataBase}/general-supports", new
+        {
+            name = $"Quantity Support {suffix}",
+            description = (string?)null
+        });
 
         // The mobile surface is for station staff; an admin has no staff link and is denied.
         (await admin.GetAsync($"{MobileBase}/me")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -91,6 +112,9 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         catalogs.AllowedPerformedServiceIds.ShouldContain(refs.ServiceId);
         catalogs.Services.ShouldNotContain(s => s.Id == RetiredOnCallServiceId);
         catalogs.Customers.ShouldContain(c => c.Id == refs.CustomerId);
+        catalogs.Tools.ShouldContain(item => item.Id == toolId && item.CalculationType == "Duration");
+        catalogs.Materials.ShouldContain(item => item.Id == materialId && item.CalculationType == "Duration");
+        catalogs.GeneralSupports.ShouldContain(item => item.Id == supportId && item.CalculationType == "Quantity");
 
         var roster = await staff.Client.GetFromJsonAsync<List<MobileStaffMember>>($"{MobileBase}/employees/at-my-station");
         roster!.ShouldContain(m => m.StaffMemberId == staff.StaffId);
@@ -109,7 +133,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     }
 
     [Fact]
-    public async Task Mobile_catalog_and_work_order_writes_enforce_the_staff_manpower_type_allowances()
+    public async Task Mobile_writes_reject_new_disallowed_services_without_invalidating_historical_rows()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -160,7 +184,9 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         submit.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await submit.Content.ReadAsStringAsync());
         (await submit.Content.ReadAsStringAsync()).ShouldContain("Operations.WorkOrder.ServiceNotAllowed");
 
-        var returnToRamp = await staff.Client.PostAsJsonAsync(
+        var occurrenceFrom = DateTimeOffset.UtcNow.AddMinutes(-20);
+        var occurrenceTo = DateTimeOffset.UtcNow.AddMinutes(20);
+        var taskOnlyReturnToRamp = await staff.Client.PostAsJsonAsync(
             $"{MobileBase}/work-orders/{existingWorkOrder!.WorkOrderId}/return-to-ramp",
             new
             {
@@ -173,8 +199,8 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
                         id = (Guid?)null,
                         taskType = "Major",
                         description = "Ramp inspection",
-                        fromUtc = DateTimeOffset.UtcNow.AddMinutes(-20),
-                        toUtc = DateTimeOffset.UtcNow.AddMinutes(20),
+                        fromUtc = occurrenceFrom,
+                        toUtc = occurrenceTo,
                         employeeIds = new[] { staff.StaffId },
                         tools = Array.Empty<object>(),
                         materials = Array.Empty<object>(),
@@ -182,12 +208,66 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
                     }
                 }
             });
-        returnToRamp.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await returnToRamp.Content.ReadAsStringAsync());
-        (await returnToRamp.Content.ReadAsStringAsync()).ShouldContain("Operations.WorkOrder.ServiceNotAllowed");
+        taskOnlyReturnToRamp.StatusCode.ShouldBe(
+            HttpStatusCode.OK,
+            await taskOnlyReturnToRamp.Content.ReadAsStringAsync());
+
+        var legacyNewDisallowedService = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/{existingWorkOrder.WorkOrderId}/return-to-ramp",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                serviceLines = new[]
+                {
+                    new
+                    {
+                        serviceId = refs.ServiceId,
+                        performedByStaffMemberIds = new[] { staff.StaffId },
+                        fromUtc = occurrenceFrom,
+                        toUtc = occurrenceTo,
+                        description = "New disallowed legacy service"
+                    }
+                },
+                tasks = Array.Empty<object>()
+            });
+        legacyNewDisallowedService.StatusCode.ShouldBe(
+            HttpStatusCode.BadRequest,
+            await legacyNewDisallowedService.Content.ReadAsStringAsync());
+        (await legacyNewDisallowedService.Content.ReadAsStringAsync())
+            .ShouldContain("Operations.WorkOrder.ServiceNotAllowed");
+
+        var canonicalNewDisallowedService = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{existingFlightId}/return-to-ramps",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                fromUtc = occurrenceFrom,
+                toUtc = occurrenceTo,
+                description = "New disallowed canonical occurrence",
+                serviceLines = new[]
+                {
+                    new
+                    {
+                        serviceId = refs.ServiceId,
+                        performedByStaffMemberIds = new[] { staff.StaffId },
+                        fromUtc = occurrenceFrom,
+                        toUtc = occurrenceTo,
+                        description = "New disallowed canonical service"
+                    }
+                },
+                tasks = Array.Empty<object>()
+            });
+        canonicalNewDisallowedService.StatusCode.ShouldBe(
+            HttpStatusCode.BadRequest,
+            await canonicalNewDisallowedService.Content.ReadAsStringAsync());
+        (await canonicalNewDisallowedService.Content.ReadAsStringAsync())
+            .ShouldContain("Operations.WorkOrder.ServiceNotAllowed");
 
         var historical = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
             $"{MobileBase}/work-orders/{existingWorkOrder.WorkOrderId}");
         historical!.ServiceLines.ShouldContain(line => line.ServiceId == refs.ServiceId);
+        historical.ReturnToRamps!.Count.ShouldBe(1);
+        historical.ReturnToRamps.Single().Tasks.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -219,6 +299,199 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         var performers = detail!.ServiceLines.ShouldHaveSingleItem().PerformedBy;
         performers.Select(performer => performer.StaffMemberId)
             .ShouldBe([author.StaffId, coworker.StaffId], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task Mobile_work_order_round_trips_snapshotted_resource_usage_for_normal_and_return_to_ramp_tasks()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var suffix = Guid.NewGuid().ToString("N");
+        var toolId = await PostForIdAsync(admin, $"{MasterDataBase}/tools", new
+        {
+            name = $"Open duration tool {suffix}",
+            description = (string?)null,
+            equipments = Array.Empty<object>()
+        });
+        var materialId = await PostForIdAsync(admin, $"{MasterDataBase}/materials", new
+        {
+            name = $"Quantity material {suffix}",
+            description = (string?)null
+        });
+        var supportId = await PostForIdAsync(admin, $"{MasterDataBase}/general-supports", new
+        {
+            name = $"Quantity support {suffix}",
+            description = (string?)null
+        });
+        var flightId = await ScheduleFlightAsync(admin, refs, "MOB112", [staff.StaffId]);
+        var taskFrom = DateTimeOffset.UtcNow.AddMinutes(-20);
+        var taskTo = taskFrom.AddMinutes(30);
+
+        var submit = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = new
+                {
+                    type = "Completion",
+                    actualFlightNumber = "MOB112",
+                    aircraftTypeId = refs.AircraftTypeId,
+                    aircraftTailNumber = "HZ-TEST",
+                    actualArrivalUtc = taskFrom.AddHours(-1),
+                    actualDepartureUtc = taskTo.AddHours(1),
+                    remarks = "Resource usage round trip",
+                    serviceLines = new[]
+                    {
+                        new
+                        {
+                            serviceId = refs.ServiceId,
+                            performedByStaffMemberIds = new[] { staff.StaffId },
+                            fromUtc = taskFrom,
+                            toUtc = taskTo,
+                            description = "Handled"
+                        }
+                    },
+                    tasks = new[]
+                    {
+                        new
+                        {
+                            id = (Guid?)null,
+                            taskType = "Minor",
+                            description = "Normal task resources",
+                            fromUtc = taskFrom,
+                            toUtc = taskTo,
+                            employeeIds = new[] { staff.StaffId },
+                            tools = new[]
+                            {
+                                new
+                                {
+                                    toolId,
+                                    quantity = (decimal?)null,
+                                    fromUtc = (DateTimeOffset?)taskFrom,
+                                    toUtc = (DateTimeOffset?)null
+                                }
+                            },
+                            materials = new[]
+                            {
+                                new
+                                {
+                                    materialId,
+                                    quantity = (decimal?)2.25m,
+                                    fromUtc = (DateTimeOffset?)null,
+                                    toUtc = (DateTimeOffset?)null
+                                }
+                            },
+                            generalSupports = new[]
+                            {
+                                new
+                                {
+                                    generalSupportId = supportId,
+                                    quantity = (decimal?)3m,
+                                    fromUtc = (DateTimeOffset?)null,
+                                    toUtc = (DateTimeOffset?)null
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        submit.StatusCode.ShouldBe(HttpStatusCode.Created, await submit.Content.ReadAsStringAsync());
+        var created = await submit.Content.ReadFromJsonAsync<MobileWriteResult>();
+
+        var detail = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{created!.WorkOrderId}");
+        AssertResourceUsage(detail!.Tasks.ShouldHaveSingleItem(), taskFrom, toolId, materialId, supportId);
+
+        var rtrFrom = taskFrom.AddMinutes(2);
+        var rtrTo = taskTo.AddMinutes(-2);
+        var rtr = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}/return-to-ramp",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                serviceLines = Array.Empty<object>(),
+                tasks = new[]
+                {
+                    new
+                    {
+                        id = (Guid?)null,
+                        taskType = "Major",
+                        description = "RTR task resources",
+                        fromUtc = rtrFrom,
+                        toUtc = rtrTo,
+                        employeeIds = new[] { staff.StaffId },
+                        tools = new[]
+                        {
+                            new
+                            {
+                                toolId,
+                                quantity = (decimal?)null,
+                                fromUtc = (DateTimeOffset?)rtrFrom,
+                                toUtc = (DateTimeOffset?)null
+                            }
+                        },
+                        materials = new[]
+                        {
+                            new
+                            {
+                                materialId,
+                                quantity = (decimal?)2.25m,
+                                fromUtc = (DateTimeOffset?)null,
+                                toUtc = (DateTimeOffset?)null
+                            }
+                        },
+                        generalSupports = new[]
+                        {
+                            new
+                            {
+                                generalSupportId = supportId,
+                                quantity = (decimal?)3m,
+                                fromUtc = (DateTimeOffset?)null,
+                                toUtc = (DateTimeOffset?)null
+                            }
+                        }
+                    }
+                }
+            });
+        rtr.StatusCode.ShouldBe(HttpStatusCode.OK, await rtr.Content.ReadAsStringAsync());
+
+        detail = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{created.WorkOrderId}");
+        var occurrence = detail!.ReturnToRamps!.ShouldHaveSingleItem();
+        occurrence.FromUtc.ShouldBe(rtrFrom);
+        occurrence.ToUtc.ShouldBe(rtrTo);
+        AssertResourceUsage(occurrence.Tasks.ShouldHaveSingleItem(), rtrFrom, toolId, materialId, supportId);
+    }
+
+    private static void AssertResourceUsage(
+        TaskLine task,
+        DateTimeOffset expectedToolFrom,
+        Guid toolId,
+        Guid materialId,
+        Guid supportId)
+    {
+        var tool = task.Tools.ShouldHaveSingleItem();
+        tool.ResourceId.ShouldBe(toolId);
+        tool.CalculationType.ShouldBe("Duration");
+        tool.Quantity.ShouldBeNull();
+        tool.FromUtc.ShouldBe(expectedToolFrom);
+        tool.ToUtc.ShouldBeNull();
+
+        var material = task.Materials.ShouldHaveSingleItem();
+        material.ResourceId.ShouldBe(materialId);
+        material.CalculationType.ShouldBe("Quantity");
+        material.Quantity.ShouldBe(2.25m);
+        material.FromUtc.ShouldBeNull();
+        material.ToUtc.ShouldBeNull();
+
+        var support = task.GeneralSupports.ShouldHaveSingleItem();
+        support.ResourceId.ShouldBe(supportId);
+        support.CalculationType.ShouldBe("Quantity");
+        support.Quantity.ShouldBe(3m);
+        support.FromUtc.ShouldBeNull();
+        support.ToUtc.ShouldBeNull();
     }
 
     [Fact]
@@ -344,6 +617,95 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         flight.MyWorkOrder.ShouldNotBeNull();
         flight.MyWorkOrder!.Id.ShouldBe(created.WorkOrderId);
         flight.MyWorkOrder.ServiceLines.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Canonical_mobile_return_to_ramp_commits_bound_mutation_and_replays_same_ids()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var flightId = await ScheduleFlightAsync(admin, refs, "MOB201", [staff.StaffId]);
+        var submittedResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/work-orders",
+            new
+            {
+                clientMutationId = Guid.NewGuid().ToString(),
+                workOrder = CompletionWorkOrderBody(refs, staff.StaffId)
+            });
+        submittedResponse.StatusCode.ShouldBe(HttpStatusCode.Created, await submittedResponse.Content.ReadAsStringAsync());
+        var submitted = await submittedResponse.Content.ReadFromJsonAsync<MobileWriteResult>();
+
+        var occurrenceFrom = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var occurrenceTo = DateTimeOffset.UtcNow.AddMinutes(15);
+        var clientMutationId = Guid.NewGuid().ToString();
+        var request = new
+        {
+            clientMutationId,
+            fromUtc = occurrenceFrom,
+            toUtc = occurrenceTo,
+            description = "Canonical mobile occurrence",
+            serviceLines = new[]
+            {
+                new
+                {
+                    serviceId = refs.ServiceId,
+                    performedByStaffMemberIds = new[] { staff.StaffId },
+                    fromUtc = occurrenceFrom,
+                    toUtc = occurrenceTo,
+                    description = "Marshaller returned"
+                }
+            },
+            tasks = new[]
+            {
+                new
+                {
+                    id = (Guid?)null,
+                    taskType = "Minor",
+                    description = "Inspect stand",
+                    fromUtc = occurrenceFrom,
+                    toUtc = occurrenceTo,
+                    employeeIds = new[] { staff.StaffId },
+                    tools = Array.Empty<object>(),
+                    materials = Array.Empty<object>(),
+                    generalSupports = Array.Empty<object>(),
+                    attachments = Array.Empty<object>()
+                }
+            }
+        };
+
+        var firstResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/return-to-ramps", request);
+        firstResponse.StatusCode.ShouldBe(HttpStatusCode.OK, await firstResponse.Content.ReadAsStringAsync());
+        var first = await firstResponse.Content.ReadFromJsonAsync<MobileWriteResult>();
+        first!.Idempotent.ShouldBeFalse();
+        first.WorkOrderId.ShouldBe(submitted!.WorkOrderId);
+        first.FlightId.ShouldBe(flightId);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            var committed = await db.MobileMutations.AsNoTracking()
+                .SingleAsync(item => item.ClientMutationId == clientMutationId);
+            committed.WorkOrderId.ShouldBe(first.WorkOrderId);
+            committed.WorkOrderId.ShouldNotBe(Guid.Empty);
+            committed.FlightId.ShouldBe(flightId);
+        }
+
+        var replayResponse = await staff.Client.PostAsJsonAsync(
+            $"{MobileBase}/flights/{flightId}/return-to-ramps", request);
+        replayResponse.StatusCode.ShouldBe(HttpStatusCode.OK, await replayResponse.Content.ReadAsStringAsync());
+        var replay = await replayResponse.Content.ReadFromJsonAsync<MobileWriteResult>();
+        replay!.Idempotent.ShouldBeTrue();
+        replay.WorkOrderId.ShouldBe(first.WorkOrderId);
+        replay.FlightId.ShouldBe(first.FlightId);
+
+        var detail = await staff.Client.GetFromJsonAsync<WorkOrderDetail>(
+            $"{MobileBase}/work-orders/{first.WorkOrderId}");
+        var occurrence = detail!.ReturnToRamps!.ShouldHaveSingleItem();
+        occurrence.Description.ShouldBe("Canonical mobile occurrence");
+        occurrence.ServiceLines.ShouldHaveSingleItem();
+        occurrence.Tasks.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -1034,7 +1396,7 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
     private sealed record CatalogService(Guid Id, string Name, bool IsAircraftPerLanding);
     private sealed record ConcurrencyDetail(string RowVersion);
-    private sealed record CatalogItem(Guid Id, string Name);
+    private sealed record CatalogItem(Guid Id, string Name, string CalculationType);
     private sealed record CatalogCustomer(Guid Id, string? IataCode, string Name);
     private sealed record CatalogAircraftType(Guid Id, string Manufacturer, string Model);
 
@@ -1052,7 +1414,16 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     private sealed record WorkOrderDetail(
         Guid Id, Guid FlightId, string Type, string Status,
         Guid CustomerId, string CustomerName,
-        string? CancellationReason, string? Remarks, List<ServiceLine> ServiceLines, List<TaskLine> Tasks, string RowVersion);
+        string? CancellationReason, string? Remarks, List<ServiceLine> ServiceLines, List<TaskLine> Tasks, string RowVersion,
+        List<ReturnToRampLine>? ReturnToRamps = null);
+
+    private sealed record ReturnToRampLine(
+        Guid Id,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc,
+        string? Description,
+        List<ServiceLine> ServiceLines,
+        List<TaskLine> Tasks);
 
     private sealed record ServiceLine(
         Guid Id,
@@ -1084,7 +1455,43 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
         DateTimeOffset FromUtc,
         DateTimeOffset ToUtc,
         List<TaskEmployee> Employees,
+        List<TaskTool> Tools,
+        List<TaskMaterial> Materials,
+        List<TaskGeneralSupport> GeneralSupports,
         bool IsReturnToRamp);
+
+    private sealed record TaskTool(
+        Guid ToolId,
+        string Name,
+        string CalculationType,
+        decimal? Quantity,
+        DateTimeOffset? FromUtc,
+        DateTimeOffset? ToUtc)
+    {
+        public Guid ResourceId => ToolId;
+    }
+
+    private sealed record TaskMaterial(
+        Guid MaterialId,
+        string Name,
+        string CalculationType,
+        decimal? Quantity,
+        DateTimeOffset? FromUtc,
+        DateTimeOffset? ToUtc)
+    {
+        public Guid ResourceId => MaterialId;
+    }
+
+    private sealed record TaskGeneralSupport(
+        Guid GeneralSupportId,
+        string Name,
+        string CalculationType,
+        decimal? Quantity,
+        DateTimeOffset? FromUtc,
+        DateTimeOffset? ToUtc)
+    {
+        public Guid ResourceId => GeneralSupportId;
+    }
 
     private sealed record TaskEmployee(Guid StaffMemberId);
 

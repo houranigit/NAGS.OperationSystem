@@ -4,6 +4,7 @@ using BuildingBlocks.Domain.Results;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
+using Operations.Domain.WorkOrders;
 
 namespace Operations.Application.Features.WorkOrders;
 
@@ -33,7 +34,7 @@ public sealed class GetWorkOrderTaskAttachmentContentQueryHandler(
         if (access.IsFailure)
             return access.Error;
 
-        var task = workOrder.Tasks.FirstOrDefault(t => t.Id == request.TaskId);
+        var task = WorkOrderAttachmentTargets.FindTask(workOrder, request.TaskId);
         if (task is null)
             return Error.NotFound("Task not found.", "Operations.WorkOrder.TaskNotFound");
 
@@ -77,7 +78,7 @@ public sealed class GetWorkOrderServiceLineAttachmentContentQueryHandler(
         if (access.IsFailure)
             return access.Error;
 
-        var serviceLine = workOrder.ServiceLines.FirstOrDefault(line => line.Id == request.ServiceLineId);
+        var serviceLine = WorkOrderAttachmentTargets.FindServiceLine(workOrder, request.ServiceLineId);
         if (serviceLine is null)
             return Error.NotFound("Service line not found.", "Operations.WorkOrder.ServiceLineNotFound");
 
@@ -93,6 +94,26 @@ public sealed class GetWorkOrderServiceLineAttachmentContentQueryHandler(
         await stream.CopyToAsync(memory, cancellationToken);
         return new WorkOrderAttachmentContent(memory.ToArray(), attachment.ContentType, attachment.OriginalFileName);
     }
+}
+
+/// <summary>
+/// Resolves both standard work-order activities and canonical return-to-ramp children. The
+/// explicit occurrence traversal is important for no-tracking queries, where the same database
+/// child can be materialized independently for the WorkOrder and ReturnToRamp navigations.
+/// </summary>
+internal static class WorkOrderAttachmentTargets
+{
+    public static WorkOrderTask? FindTask(WorkOrder workOrder, Guid taskId) =>
+        workOrder.Tasks.FirstOrDefault(task => task.Id == taskId && task.ReturnToRampId is null)
+        ?? workOrder.ReturnToRamps
+            .SelectMany(item => item.Tasks)
+            .FirstOrDefault(task => task.Id == taskId);
+
+    public static WorkOrderServiceLine? FindServiceLine(WorkOrder workOrder, Guid serviceLineId) =>
+        workOrder.ServiceLines.FirstOrDefault(line => line.Id == serviceLineId && line.ReturnToRampId is null)
+        ?? workOrder.ReturnToRamps
+            .SelectMany(item => item.ServiceLines)
+            .FirstOrDefault(line => line.Id == serviceLineId);
 }
 
 public sealed record GetWorkOrderSignatureContentQuery(Guid Id) : IQuery<WorkOrderAttachmentContent>;
