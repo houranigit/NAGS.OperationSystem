@@ -86,6 +86,68 @@ class TaskAttachmentPreviewTest {
         }
     }
 
+    @Test
+    fun exactPreviewCleanup_removesOnlyTheOwnedPrivateFile() {
+        val root = java.nio.file.Files.createTempDirectory("attachment-preview-owner-test").toFile()
+        val directory = java.io.File(root, "attachment-previews").apply { mkdirs() }
+        val owned = java.io.File(directory, "preview-owned.pdf").apply { writeBytes(byteArrayOf(1)) }
+        val other = java.io.File(directory, "preview-other.pdf").apply { writeBytes(byteArrayOf(2)) }
+        try {
+            deleteMaterializedAttachmentPreview(owned)
+
+            assertFalse(owned.exists())
+            assertTrue(other.exists())
+            assertTrue(directory.exists())
+
+            deleteMaterializedAttachmentPreview(other)
+            assertFalse(directory.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun previewKind_routesEverySupportedAttachment_toItsInAppViewer() {
+        val bytes = byteArrayOf(1)
+
+        assertEquals(
+            AttachmentPreviewKind.Image,
+            draft(TaskAttachmentKindValue.Image, "image/jpeg", "photo.jpg", bytes)
+                .attachmentPreviewKind(),
+        )
+        assertEquals(
+            AttachmentPreviewKind.Voice,
+            draft(TaskAttachmentKindValue.Voice, "audio/mp4", "voice.m4a", bytes)
+                .attachmentPreviewKind(),
+        )
+        assertEquals(
+            AttachmentPreviewKind.Pdf,
+            draft(TaskAttachmentKindValue.Document, "application/pdf", "report.pdf", bytes)
+                .attachmentPreviewKind(),
+        )
+        assertEquals(
+            AttachmentPreviewKind.Unsupported,
+            draft("Unknown", "application/octet-stream", "file.bin", bytes)
+                .attachmentPreviewKind(),
+        )
+    }
+
+    @Test
+    fun previewMetadata_formatting_isCompactAndStable() {
+        assertEquals("0 B", formatAttachmentBytes(-1))
+        assertEquals("900 B", formatAttachmentBytes(900))
+        assertEquals("2 KB", formatAttachmentBytes(2_048))
+        assertEquals("1.5 MB", formatAttachmentBytes(1_572_864))
+        assertEquals("0:00", formatAttachmentDuration(-1))
+        assertEquals("1:05", formatAttachmentDuration(65_999))
+    }
+
+    @Test
+    fun pdfRenderSize_preservesAspectRatio_andCapsTallPages() {
+        assertEquals(1_000 to 1_500, scaledPdfPreviewSize(2, 3, 1_000))
+        assertEquals(800 to 3_200, scaledPdfPreviewSize(1, 4, 1_000))
+    }
+
     private fun draft(
         kind: String,
         contentType: String,

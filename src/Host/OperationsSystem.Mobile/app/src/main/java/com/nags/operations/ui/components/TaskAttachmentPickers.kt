@@ -1,9 +1,7 @@
 package com.nags.operations.ui.components
 
 import android.Manifest
-import android.content.ClipData
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.net.Uri
@@ -25,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
@@ -36,6 +33,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -288,9 +287,15 @@ fun DocumentAttachmentButton(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
-            captureAttachmentInternal(context, uri, TaskAttachmentKindValue.Document)?.let(onAttachment)
+            scope.launch {
+                val attachment = withContext(Dispatchers.IO) {
+                    captureAttachmentInternal(context, uri, TaskAttachmentKindValue.Document)
+                }
+                attachment?.let(onAttachment)
+            }
         }
     }
     AttachmentActionTile(
@@ -388,42 +393,19 @@ fun TaskAttachmentRow(
     onRemove: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var isOpening by remember(attachment) { mutableStateOf(false) }
+    var showPreview by remember(attachment) { mutableStateOf(false) }
     val (icon, kindLabel) = when (attachment.kind) {
         TaskAttachmentKindValue.Image -> Icons.Default.Image to "Photo"
-        TaskAttachmentKindValue.Voice -> Icons.Default.Mic to "Voice"
-        TaskAttachmentKindValue.Document -> Icons.Default.PictureAsPdf to "Docs"
+        TaskAttachmentKindValue.Voice -> Icons.Default.Mic to "Voice note"
+        TaskAttachmentKindValue.Document -> Icons.Default.PictureAsPdf to "PDF document"
         else -> Icons.Default.AttachFile to "File"
     }
 
-    fun openAttachment() {
-        if (isOpening) return
-        isOpening = true
-        scope.launch {
-            val uri = withContext(Dispatchers.IO) {
-                materializeAttachmentPreview(context, attachment)
-            }
-            val opened = uri != null && runCatching {
-                val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, attachment.previewContentType())
-                    clipData = ClipData.newRawUri("attachment", uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                context.startActivity(
-                    Intent.createChooser(viewIntent, "Open attachment")
-                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                )
-            }.isSuccess
-            if (!opened) {
-                Toast.makeText(
-                    context,
-                    "This attachment could not be opened on this device.",
-                    Toast.LENGTH_LONG,
-                ).show()
-            }
-            isOpening = false
-        }
+    if (showPreview) {
+        TaskAttachmentPreviewDialog(
+            attachment = attachment,
+            onDismiss = { showPreview = false },
+        )
     }
 
     fun removeAttachment() {
@@ -438,34 +420,61 @@ fun TaskAttachmentRow(
     ) {
         Row(
             modifier = Modifier
-                .clickable(enabled = !isOpening, onClick = ::openAttachment)
-                .padding(8.dp),
+                .clickable(
+                    onClickLabel = "Preview attachment",
+                    onClick = { showPreview = true },
+                )
+                .padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(attachment.fileName, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                 Text(
-                    "$kindLabel · ${formatAttachmentBytes(attachment.sizeBytes)} · Tap to open",
+                    attachment.fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "$kindLabel · ${formatAttachmentBytes(attachment.sizeBytes)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    if (attachment.kind == TaskAttachmentKindValue.Voice) {
+                        "Tap to listen in app"
+                    } else {
+                        "Tap to preview in app"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
-            IconButton(onClick = ::openAttachment, enabled = !isOpening) {
-                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open attachment")
-            }
+            Icon(
+                Icons.Default.Visibility,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(12.dp),
+            )
             IconButton(onClick = ::removeAttachment) {
                 Icon(Icons.Default.Close, contentDescription = "Remove attachment")
             }
         }
     }
-}
-
-private fun formatAttachmentBytes(size: Long): String = when {
-    size < 1024 -> "$size B"
-    size < 1024 * 1024 -> "${size / 1024} KB"
-    else -> "%.1f MB".format(size / (1024.0 * 1024.0))
 }
 
 private fun hasCameraPermission(context: Context): Boolean =

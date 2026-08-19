@@ -526,7 +526,11 @@ class CreateWorkOrderViewModel(
             if (
                 current.persistenceState.canStartWrite() &&
                 !current.isAtdDialogVisible &&
-                step.ordinal < current.wizardStep.ordinal
+                isEarlierWorkOrderWizardStep(
+                    candidate = step,
+                    currentStep = current.wizardStep,
+                    includeReturnToRamps = current.isUpdatingCachedUnderReviewWorkOrder,
+                )
             ) {
                 current.copy(wizardStep = step)
             } else {
@@ -537,14 +541,16 @@ class CreateWorkOrderViewModel(
 
     fun moveToPreviousWizardStep() {
         _state.update { current ->
+            val previousStep = previousWorkOrderWizardStep(
+                currentStep = current.wizardStep,
+                includeReturnToRamps = current.isUpdatingCachedUnderReviewWorkOrder,
+            )
             if (
                 current.persistenceState.canStartWrite() &&
                 !current.isAtdDialogVisible &&
-                current.wizardStep != WorkOrderWizardStep.Flight
+                previousStep != null
             ) {
-                current.copy(
-                    wizardStep = WorkOrderWizardStep.entries[current.wizardStep.ordinal - 1],
-                )
+                current.copy(wizardStep = previousStep)
             } else {
                 current
             }
@@ -552,23 +558,27 @@ class CreateWorkOrderViewModel(
     }
 
     fun advanceWizardStepAfterCheckpoint(fromStep: WorkOrderWizardStep) {
-        if (fromStep == WorkOrderWizardStep.Signature) return
-        val nextStep = WorkOrderWizardStep.entries[fromStep.ordinal + 1]
-        var advanced = false
+        var advancedTo: WorkOrderWizardStep? = null
         _state.update { current ->
+            advancedTo = null
+            val nextStep = nextWorkOrderWizardStep(
+                currentStep = fromStep,
+                includeReturnToRamps = current.isUpdatingCachedUnderReviewWorkOrder,
+            )
             if (
                 current.persistenceState.canStartWrite() &&
                 current.wizardStep == fromStep &&
-                !current.isAtdDialogVisible
+                !current.isAtdDialogVisible &&
+                nextStep != null
             ) {
-                advanced = true
+                advancedTo = nextStep
                 current.copy(wizardStep = nextStep)
             } else {
                 current
             }
         }
+        val nextStep = advancedTo ?: return
         if (
-            advanced &&
             (
                 nextStep == WorkOrderWizardStep.ServiceLines ||
                     nextStep == WorkOrderWizardStep.Tasks ||
@@ -604,9 +614,12 @@ class CreateWorkOrderViewModel(
     }
 
     fun routeToFirstWizardError(errors: CreateWorkOrderSubmitFieldErrors) {
-        _state.update {
-            it.copy(
-                wizardStep = firstWizardStepWithErrors(errors),
+        _state.update { current ->
+            current.copy(
+                wizardStep = firstWizardStepWithErrors(
+                    errors,
+                    includeReturnToRamps = current.isUpdatingCachedUnderReviewWorkOrder,
+                ),
                 isAtdDialogVisible = false,
             )
         }
@@ -755,15 +768,18 @@ class CreateWorkOrderViewModel(
         viewModelScope.launch {
             try {
                 val normalizedForm = normalizedFormIdentifiers(
-                    initial.form.copy(
-                        draftSubmissionMode = when {
-                            initial.isAdHocScratch -> WorkOrderDraftSubmissionMode.ScratchAdHoc
-                            initial.isUpdatingCachedUnderReviewWorkOrder -> WorkOrderDraftSubmissionMode.UpdateExisting
-                            else -> WorkOrderDraftSubmissionMode.ForFlight
-                        },
-                        draftCustomerId = initial.selectedCustomerId,
-                        draftWorkOrderId = initial.updatingWorkOrderId,
-                        draftWorkOrderRowVersion = initial.updatingWorkOrderRowVersion,
+                    formForWorkOrderWizardMode(
+                        form = initial.form.copy(
+                            draftSubmissionMode = when {
+                                initial.isAdHocScratch -> WorkOrderDraftSubmissionMode.ScratchAdHoc
+                                initial.isUpdatingCachedUnderReviewWorkOrder -> WorkOrderDraftSubmissionMode.UpdateExisting
+                                else -> WorkOrderDraftSubmissionMode.ForFlight
+                            },
+                            draftCustomerId = initial.selectedCustomerId,
+                            draftWorkOrderId = initial.updatingWorkOrderId,
+                            draftWorkOrderRowVersion = initial.updatingWorkOrderRowVersion,
+                        ),
+                        includeReturnToRamps = initial.isUpdatingCachedUnderReviewWorkOrder,
                     ),
                 )
                 val normalizedFn = normalizeWorkOrderFlightNumberInput(normalizedForm.flightNumber)
@@ -878,6 +894,17 @@ class CreateWorkOrderViewModel(
                 tasks = emptyList(),
                 draftSubmissionMode = WorkOrderDraftSubmissionMode.ForFlight,
             )
+        }
+        if (underReview && returnToRampRowsNeedIdentityResolution(formBase)) {
+            _state.update {
+                it.copy(
+                    flightLoad = WorkOrderFlightLoadState.Error(
+                        "This work order uses older Return to Ramp data. Refresh the flight list " +
+                            "before editing it so existing records and attachments stay intact.",
+                    ),
+                )
+            }
+            return
         }
         val formNormalized = normalizedFormIdentifiers(formBase)
         if (underReview) {
@@ -1050,22 +1077,58 @@ class CreateWorkOrderViewModel(
         val isScratch = inferredMode == WorkOrderDraftSubmissionMode.ScratchAdHoc
         val updateWorkOrderId = form.draftWorkOrderId ?: cachedEditableWorkOrder?.id
         val updateRowVersion = form.draftWorkOrderRowVersion ?: cachedEditableWorkOrder?.rowVersion
+        var sourceForm = form
+        if (
+            inferredMode == WorkOrderDraftSubmissionMode.UpdateExisting &&
+            returnToRampRowsNeedIdentityResolution(sourceForm)
+        ) {
+            val currentFlight = serverFlightStillExists
+                ?: flightsRepository.findWorkOrderFlight(flight.id)
+            val currentWorkOrder = currentFlight?.cachedMyWorkOrder?.takeIf { workOrder ->
+                workOrder.id == updateWorkOrderId &&
+                    WorkOrderStatusKind.fromWire(workOrder.status)?.isEditable == true
+            }
+            val canonicalOccurrences = currentWorkOrder
+                ?.takeIf { it.returnToRamps.isNotEmpty() }
+                ?.toPrefilledCreateFormState(::allocKey)
+                ?.returnToRamps
+                .orEmpty()
+            val reconciled = reconcileLegacyReturnToRampRows(
+                form = sourceForm,
+                canonicalOccurrences = canonicalOccurrences,
+            )
+            if (reconciled == null) {
+                _state.update {
+                    it.copy(
+                        flightLoad = WorkOrderFlightLoadState.Error(
+                            "This draft was saved by an older app version. Refresh the flight list " +
+                                "to safely restore its Return to Ramp records, then reopen the draft.",
+                        ),
+                    )
+                }
+                return
+            }
+            sourceForm = reconciled
+        }
 
         val schedule = normalizedSchedule(
-            arrivalIso = form.scheduledArrivalIso.ifBlank { flight.sta },
-            departureIso = form.scheduledDepartureIso.ifBlank { flight.std },
+            arrivalIso = sourceForm.scheduledArrivalIso.ifBlank { flight.sta },
+            departureIso = sourceForm.scheduledDepartureIso.ifBlank { flight.std },
             requirePositiveWindow = isScratch,
         )
         val formNormalized = normalizedFormIdentifiers(
-            form.copy(
-                scheduledArrivalIso = schedule.first,
-                scheduledDepartureIso = schedule.second,
-                ataIso = form.ataIso.ifBlank { schedule.first },
-                atdIso = form.atdIso,
-                draftSubmissionMode = inferredMode,
-                draftCustomerId = form.draftCustomerId,
-                draftWorkOrderId = updateWorkOrderId,
-                draftWorkOrderRowVersion = updateRowVersion,
+            formForWorkOrderWizardMode(
+                form = sourceForm.copy(
+                    scheduledArrivalIso = schedule.first,
+                    scheduledDepartureIso = schedule.second,
+                    ataIso = sourceForm.ataIso.ifBlank { schedule.first },
+                    atdIso = sourceForm.atdIso,
+                    draftSubmissionMode = inferredMode,
+                    draftCustomerId = sourceForm.draftCustomerId,
+                    draftWorkOrderId = updateWorkOrderId,
+                    draftWorkOrderRowVersion = updateRowVersion,
+                ),
+                includeReturnToRamps = inferredMode == WorkOrderDraftSubmissionMode.UpdateExisting,
             ),
         )
         val hydratedFlight = flight.copy(sta = schedule.first, std = schedule.second)
@@ -1081,7 +1144,7 @@ class CreateWorkOrderViewModel(
                 isUpdatingCachedUnderReviewWorkOrder = inferredMode == WorkOrderDraftSubmissionMode.UpdateExisting,
                 updatingWorkOrderId = updateWorkOrderId,
                 updatingWorkOrderRowVersion = updateRowVersion,
-                selectedCustomerId = form.draftCustomerId,
+                selectedCustomerId = sourceForm.draftCustomerId,
                 submitFieldErrors = null,
                 submitValidationResult = null,
             )
@@ -1440,8 +1503,13 @@ class CreateWorkOrderViewModel(
      * is frozen for the duration of the modal.
      */
     fun validateBeforeAtdDialog(): CreateWorkOrderSubmitFieldErrors? {
-        val f = normalizedFormIdentifiers(_state.value.form)
         val snap = _state.value
+        val f = normalizedFormIdentifiers(
+            formForWorkOrderWizardMode(
+                form = snap.form,
+                includeReturnToRamps = snap.isUpdatingCachedUnderReviewWorkOrder,
+            ),
+        )
         val errors = computeCreateWorkOrderSubmitErrors(
             form = f,
             dialogAtdIso = null,
@@ -1461,8 +1529,13 @@ class CreateWorkOrderViewModel(
     }
 
     fun confirmSubmitWithAtd(atdIso: String): CreateWorkOrderSubmitFieldErrors? {
-        val f = normalizedFormIdentifiers(_state.value.form)
         val snap = _state.value
+        val f = normalizedFormIdentifiers(
+            formForWorkOrderWizardMode(
+                form = snap.form,
+                includeReturnToRamps = snap.isUpdatingCachedUnderReviewWorkOrder,
+            ),
+        )
         val errors = computeCreateWorkOrderSubmitErrors(
             f,
             atdIso,
@@ -1474,11 +1547,22 @@ class CreateWorkOrderViewModel(
         if (errors == null) {
             val confirmedAtd = atdIso.trim()
             updateForm { current ->
-                normalizedFormIdentifiers(current).copy(atdIso = confirmedAtd)
+                normalizedFormIdentifiers(
+                    formForWorkOrderWizardMode(
+                        form = current,
+                        includeReturnToRamps = snap.isUpdatingCachedUnderReviewWorkOrder,
+                    ),
+                ).copy(atdIso = confirmedAtd)
             }
             return null
         }
-        _state.update { it.copy(submitFieldErrors = errors, submitValidationResult = null) }
+        _state.update {
+            it.copy(
+                form = f,
+                submitFieldErrors = errors,
+                submitValidationResult = null,
+            )
+        }
         return errors
     }
 
@@ -1512,24 +1596,45 @@ class CreateWorkOrderViewModel(
             onFinished(SubmitOfflineResult.Failed("Finish loading the flight before submitting."))
             return
         }
+        val isScratch = snapshot.isAdHocScratch
+        val isUpdateExisting = snapshot.isUpdatingCachedUnderReviewWorkOrder && !isScratch
+        if (isUpdateExisting && returnToRampRowsNeedIdentityResolution(snapshot.form)) {
+            onFinished(
+                SubmitOfflineResult.Failed(
+                    "Refresh this flight before updating its older Return to Ramp records.",
+                ),
+            )
+            return
+        }
+        val submissionForm = normalizedFormIdentifiers(
+            formForWorkOrderWizardMode(
+                form = snapshot.form,
+                includeReturnToRamps = isUpdateExisting,
+            ),
+        )
+        val submissionSnapshot = snapshot.copy(form = submissionForm)
         val currentErrors = computeCreateWorkOrderSubmitErrors(
-            form = normalizedFormIdentifiers(snapshot.form),
-            dialogAtdIso = snapshot.form.atdIso,
+            form = submissionForm,
+            dialogAtdIso = submissionForm.atdIso,
             validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = snapshot.isAdHocScratch,
             selectedCustomerId = snapshot.selectedCustomerId,
             allowedPerformedServiceIds = snapshot.catalogServices.allowedPerformedServiceIds(),
         )
         if (currentErrors != null) {
-            _state.update { it.copy(submitFieldErrors = currentErrors, submitValidationResult = null) }
+            _state.update {
+                it.copy(
+                    form = submissionForm,
+                    submitFieldErrors = currentErrors,
+                    submitValidationResult = null,
+                )
+            }
             onFinished(SubmitOfflineResult.Failed("Fix the highlighted fields before submitting."))
             return
         }
 
         val mutationId = UUID.randomUUID().toString()
-        val isScratch = snapshot.isAdHocScratch
         val flightKind = flightKindOverride ?: resolveFlightKind(snapshot, flight)
-        val isUpdateExisting = snapshot.isUpdatingCachedUnderReviewWorkOrder && !isScratch
         val knownServerWorkOrderId = if (isUpdateExisting) {
             snapshot.updatingWorkOrderId ?: flight.cachedMyWorkOrder?.id
                 ?: run {
@@ -1554,12 +1659,12 @@ class CreateWorkOrderViewModel(
             return
         }
         val payload = try {
-            buildOutboxPayload(snapshot, flight, isScratch, isUpdateExisting)
+            buildOutboxPayload(submissionSnapshot, flight, isScratch, isUpdateExisting)
         } catch (e: IllegalStateException) {
             onFinished(SubmitOfflineResult.Failed(e.message ?: "Could not prepare submission."))
             return
         }
-        val attachmentsToPersist = collectAttachmentsInServiceThenTaskOrder(snapshot.form)
+        val attachmentsToPersist = collectAttachmentsInServiceThenTaskOrder(submissionForm)
         val request = EnqueueRequest(
             clientMutationId = mutationId,
             flightId = flight.id,
@@ -1571,7 +1676,12 @@ class CreateWorkOrderViewModel(
             draftIdToDelete = snapshot.activeDraftId,
         )
         workflowGeneration += 1
-        _state.update { it.copy(persistenceState = WorkOrderPersistenceState.Submitting) }
+        _state.update {
+            it.copy(
+                form = submissionForm,
+                persistenceState = WorkOrderPersistenceState.Submitting,
+            )
+        }
 
         applicationScope.launch(Dispatchers.IO) {
             try {
@@ -1609,7 +1719,12 @@ class CreateWorkOrderViewModel(
         isScratch: Boolean,
         isUpdateExisting: Boolean,
     ): OutboxPayload {
-        val form = normalizedFormIdentifiers(snapshot.form)
+        val form = normalizedFormIdentifiers(
+            formForWorkOrderWizardMode(
+                form = snapshot.form,
+                includeReturnToRamps = isUpdateExisting,
+            ),
+        )
         val ataIso = form.ataIso.trim().takeIf { it.isNotEmpty() }
         val atdIso = form.atdIso.trim().takeIf { it.isNotEmpty() }
 
@@ -1753,7 +1868,12 @@ class CreateWorkOrderViewModel(
     /** Validates only the fields visible on one portal-equivalent wizard step. */
     internal fun validateWizardStep(step: WorkOrderWizardStep): Boolean {
         _state.update { s ->
-            val nextForm = normalizedFormIdentifiers(s.form)
+            val nextForm = normalizedFormIdentifiers(
+                formForWorkOrderWizardMode(
+                    form = s.form,
+                    includeReturnToRamps = s.isUpdatingCachedUnderReviewWorkOrder,
+                ),
+            )
             if (nextForm == s.form) s else s.copy(form = nextForm, submitFieldErrors = null)
         }
         val snap = _state.value
@@ -1780,7 +1900,12 @@ class CreateWorkOrderViewModel(
      */
     fun submitDryRunValidate() {
         _state.update { s ->
-            val nextForm = normalizedFormIdentifiers(s.form)
+            val nextForm = normalizedFormIdentifiers(
+                formForWorkOrderWizardMode(
+                    form = s.form,
+                    includeReturnToRamps = s.isUpdatingCachedUnderReviewWorkOrder,
+                ),
+            )
             if (nextForm == s.form) {
                 s
             } else {

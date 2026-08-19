@@ -623,7 +623,16 @@ class WorkOrderFormValidationTest {
     }
 
     @Test
-    fun wizard_places_skippable_return_to_ramps_before_signature() {
+    fun wizard_sequences_omit_return_to_ramps_for_creation_and_keep_it_for_update() {
+        assertEquals(
+            listOf(
+                WorkOrderWizardStep.Flight,
+                WorkOrderWizardStep.ServiceLines,
+                WorkOrderWizardStep.Tasks,
+                WorkOrderWizardStep.Signature,
+            ),
+            workOrderWizardSteps(includeReturnToRamps = false),
+        )
         assertEquals(
             listOf(
                 WorkOrderWizardStep.Flight,
@@ -632,9 +641,328 @@ class WorkOrderFormValidationTest {
                 WorkOrderWizardStep.ReturnToRamps,
                 WorkOrderWizardStep.Signature,
             ),
-            WorkOrderWizardStep.entries,
+            workOrderWizardSteps(includeReturnToRamps = true),
         )
         assertNull(validationErrors(validForm().copy(returnToRamps = emptyList())))
+    }
+
+    @Test
+    fun wizard_navigation_skips_hidden_step_only_for_creation() {
+        assertEquals(
+            WorkOrderWizardStep.Signature,
+            nextWorkOrderWizardStep(
+                WorkOrderWizardStep.Tasks,
+                includeReturnToRamps = false,
+            ),
+        )
+        assertEquals(
+            WorkOrderWizardStep.Tasks,
+            previousWorkOrderWizardStep(
+                WorkOrderWizardStep.Signature,
+                includeReturnToRamps = false,
+            ),
+        )
+        assertFalse(
+            isEarlierWorkOrderWizardStep(
+                candidate = WorkOrderWizardStep.ReturnToRamps,
+                currentStep = WorkOrderWizardStep.Signature,
+                includeReturnToRamps = false,
+            ),
+        )
+
+        assertEquals(
+            WorkOrderWizardStep.ReturnToRamps,
+            nextWorkOrderWizardStep(
+                WorkOrderWizardStep.Tasks,
+                includeReturnToRamps = true,
+            ),
+        )
+        assertEquals(
+            WorkOrderWizardStep.ReturnToRamps,
+            previousWorkOrderWizardStep(
+                WorkOrderWizardStep.Signature,
+                includeReturnToRamps = true,
+            ),
+        )
+        assertTrue(
+            isEarlierWorkOrderWizardStep(
+                candidate = WorkOrderWizardStep.ReturnToRamps,
+                currentStep = WorkOrderWizardStep.Signature,
+                includeReturnToRamps = true,
+            ),
+        )
+    }
+
+    @Test
+    fun wizard_error_routing_does_not_target_hidden_creation_step() {
+        val errors = CreateWorkOrderSubmitFieldErrors(
+            returnToRampsByKey = mapOf(
+                10L to ReturnToRampSubmitFieldErrors(activity = "Add at least one service or task."),
+            ),
+        )
+
+        assertEquals(
+            WorkOrderWizardStep.Signature,
+            firstWizardStepWithErrors(errors, includeReturnToRamps = false),
+        )
+        assertEquals(
+            WorkOrderWizardStep.ReturnToRamps,
+            firstWizardStepWithErrors(errors, includeReturnToRamps = true),
+        )
+    }
+
+    @Test
+    fun creation_mode_discards_hidden_return_to_ramp_data_while_update_preserves_it() {
+        val occurrence = ReturnToRampFormRow(localKey = 10L)
+        val form = validForm().copy(returnToRamps = listOf(occurrence))
+
+        val creationForm = formForWorkOrderWizardMode(
+            form,
+            includeReturnToRamps = false,
+        )
+        val updateForm = formForWorkOrderWizardMode(
+            form,
+            includeReturnToRamps = true,
+        )
+
+        assertTrue(creationForm.returnToRamps.isEmpty())
+        assertEquals(form, updateForm)
+        assertNull(validationErrors(creationForm))
+        assertNotNull(validationErrors(updateForm))
+    }
+
+    @Test
+    fun legacy_flat_return_to_ramp_rows_are_dropped_for_creation_and_grouped_for_update() {
+        val normalService = validForm().serviceLines.single()
+        val legacyService = ServiceLineFormRow(
+            localKey = 10L,
+            serverId = "legacy-service",
+            serviceId = "service-1",
+            employeeIds = listOf("employee-1"),
+            fromIso = "2026-07-11T13:00:00Z",
+            toIso = "2026-07-11T13:20:00Z",
+            existingAttachmentNames = listOf("ramp-photo.jpg"),
+            returnToRamp = true,
+        )
+        val legacyTask = TaskFormRow(
+            localKey = 11L,
+            serverId = "legacy-task",
+            employeeIds = listOf("employee-1"),
+            fromIso = "2026-07-11T12:55:00Z",
+            toIso = "2026-07-11T13:30:00Z",
+            returnToRamp = true,
+        )
+        val legacyForm = validForm().copy(
+            serviceLines = listOf(normalService, legacyService),
+            tasks = listOf(legacyTask),
+            returnToRamps = emptyList(),
+        )
+
+        val creation = formForWorkOrderWizardMode(
+            legacyForm,
+            includeReturnToRamps = false,
+        )
+        assertEquals(listOf(normalService), creation.serviceLines)
+        assertTrue(creation.tasks.isEmpty())
+        assertTrue(creation.returnToRamps.isEmpty())
+
+        assertTrue(returnToRampRowsNeedIdentityResolution(legacyForm))
+        val canonicalOccurrence = ReturnToRampFormRow(
+            localKey = 20L,
+            serverId = "occurrence-20",
+            fromIso = "2026-07-11T12:50:00Z",
+            toIso = "2026-07-11T13:35:00Z",
+            serviceLines = listOf(ServiceLineFormRow(localKey = 21L, serverId = "legacy-service")),
+            tasks = listOf(TaskFormRow(localKey = 22L, serverId = "legacy-task")),
+        )
+        val reconciled = requireNotNull(
+            reconcileLegacyReturnToRampRows(legacyForm, listOf(canonicalOccurrence)),
+        )
+        val update = formForWorkOrderWizardMode(reconciled, includeReturnToRamps = true)
+        assertEquals(listOf(normalService), update.serviceLines)
+        assertTrue(update.tasks.isEmpty())
+        val occurrence = update.returnToRamps.single()
+        assertEquals("occurrence-20", occurrence.serverId)
+        assertEquals("2026-07-11T12:50:00Z", occurrence.fromIso)
+        assertEquals("2026-07-11T13:35:00Z", occurrence.toIso)
+        assertEquals("legacy-service", occurrence.serviceLines.single().serverId)
+        assertEquals(
+            listOf("ramp-photo.jpg"),
+            occurrence.serviceLines.single().existingAttachmentNames,
+        )
+        assertFalse(occurrence.serviceLines.single().returnToRamp)
+        assertEquals("legacy-task", occurrence.tasks.single().serverId)
+        assertFalse(occurrence.tasks.single().returnToRamp)
+    }
+
+    @Test
+    fun legacy_flat_update_rows_fail_identity_reconciliation_when_cache_cannot_match_them() {
+        val form = validForm().copy(
+            serviceLines = validForm().serviceLines + ServiceLineFormRow(
+                localKey = 50L,
+                serverId = "missing-service",
+                returnToRamp = true,
+                existingAttachmentNames = listOf("must-not-be-lost.pdf"),
+            ),
+        )
+        val canonical = ReturnToRampFormRow(
+            localKey = 60L,
+            serverId = "occurrence-60",
+            serviceLines = listOf(ServiceLineFormRow(localKey = 61L, serverId = "different-service")),
+        )
+
+        assertNull(reconcileLegacyReturnToRampRows(form, listOf(canonical)))
+        assertEquals(form, formForWorkOrderWizardMode(form, includeReturnToRamps = true))
+    }
+
+    @Test
+    fun grouped_legacy_update_occurrence_restores_parent_identity_and_keeps_attachment_metadata() {
+        val legacyOccurrence = ReturnToRampFormRow(
+            localKey = 70L,
+            serverId = null,
+            fromIso = "2026-07-11T14:00:00Z",
+            toIso = "2026-07-11T14:20:00Z",
+            description = "Returned after pushback",
+            serviceLines = listOf(
+                ServiceLineFormRow(
+                    localKey = 71L,
+                    serverId = "legacy-grouped-service",
+                    serviceId = "service-1",
+                    employeeIds = listOf("employee-1"),
+                    existingAttachmentNames = listOf("existing-ramp-photo.jpg"),
+                ),
+            ),
+            tasks = listOf(
+                TaskFormRow(
+                    localKey = 72L,
+                    serverId = "legacy-grouped-task",
+                    employeeIds = listOf("employee-1"),
+                    existingAttachmentNames = listOf("existing-ramp-note.pdf"),
+                ),
+            ),
+        )
+        val form = validForm().copy(returnToRamps = listOf(legacyOccurrence))
+        val canonical = ReturnToRampFormRow(
+            localKey = 80L,
+            serverId = "canonical-occurrence",
+            fromIso = "2026-07-11T13:55:00Z",
+            toIso = "2026-07-11T14:25:00Z",
+            serviceLines = listOf(
+                ServiceLineFormRow(localKey = 81L, serverId = "legacy-grouped-service"),
+            ),
+            tasks = listOf(
+                TaskFormRow(localKey = 82L, serverId = "legacy-grouped-task"),
+            ),
+        )
+
+        assertTrue(returnToRampRowsNeedIdentityResolution(form))
+        assertEquals(form, formForWorkOrderWizardMode(form, includeReturnToRamps = true))
+
+        val reconciled = requireNotNull(
+            reconcileLegacyReturnToRampRows(form, listOf(canonical)),
+        )
+        val occurrence = reconciled.returnToRamps.single()
+        assertEquals("canonical-occurrence", occurrence.serverId)
+        assertEquals("2026-07-11T13:55:00Z", occurrence.fromIso)
+        assertEquals("2026-07-11T14:25:00Z", occurrence.toIso)
+        assertEquals(
+            listOf("existing-ramp-photo.jpg"),
+            occurrence.serviceLines.single().existingAttachmentNames,
+        )
+        assertEquals(
+            listOf("existing-ramp-note.pdf"),
+            occurrence.tasks.single().existingAttachmentNames,
+        )
+        assertNull(reconcileLegacyReturnToRampRows(form, emptyList()))
+    }
+
+    @Test
+    fun grouped_update_occurrences_win_over_legacy_flat_compatibility_aliases() {
+        val alias = validForm().serviceLines.single().copy(
+            localKey = 21L,
+            serverId = "compatibility-alias",
+            returnToRamp = true,
+        )
+        val grouped = ReturnToRampFormRow(
+            localKey = 20L,
+            serverId = "occurrence-20",
+            fromIso = "2026-07-11T13:00:00Z",
+            toIso = "2026-07-11T13:30:00Z",
+            serviceLines = listOf(alias.copy(localKey = 22L, returnToRamp = false)),
+        )
+        val form = validForm().copy(
+            serviceLines = validForm().serviceLines + alias,
+            returnToRamps = listOf(grouped),
+        )
+
+        val normalized = formForWorkOrderWizardMode(form, includeReturnToRamps = true)
+
+        assertEquals(validForm().serviceLines, normalized.serviceLines)
+        assertEquals(listOf(grouped), normalized.returnToRamps)
+    }
+
+    @Test
+    fun mixed_new_group_and_unmatched_flat_server_row_require_identity_resolution() {
+        val protectedFlatRow = validForm().serviceLines.single().copy(
+            localKey = 90L,
+            serverId = "server-rtr-service",
+            returnToRamp = true,
+            existingAttachmentNames = listOf("do-not-drop.pdf"),
+        )
+        val newOccurrence = ReturnToRampFormRow(
+            localKey = 91L,
+            serverId = null,
+            description = "New unsaved occurrence",
+        )
+        val form = validForm().copy(
+            serviceLines = validForm().serviceLines + protectedFlatRow,
+            returnToRamps = listOf(newOccurrence),
+        )
+
+        assertTrue(returnToRampRowsNeedIdentityResolution(form))
+        assertEquals(form, formForWorkOrderWizardMode(form, includeReturnToRamps = true))
+        assertNull(reconcileLegacyReturnToRampRows(form, emptyList()))
+    }
+
+    @Test
+    fun idless_flat_return_to_ramp_row_is_grouped_without_losing_its_new_attachment() {
+        val newAttachment = TaskAttachmentDraft(
+            kind = "Image",
+            contentType = "image/jpeg",
+            fileName = "new-ramp-photo.jpg",
+            base64 = "AQID",
+            capturedAtIso = "2026-07-11T14:05:00Z",
+            sizeBytes = 3L,
+        )
+        val idlessFlatRow = ServiceLineFormRow(
+            localKey = 101L,
+            serviceId = "service-1",
+            employeeIds = listOf("employee-1"),
+            fromIso = "2026-07-11T14:00:00Z",
+            toIso = "2026-07-11T14:10:00Z",
+            attachments = listOf(newAttachment),
+            returnToRamp = true,
+        )
+        val canonicalOccurrence = ReturnToRampFormRow(
+            localKey = 102L,
+            serverId = "existing-occurrence",
+            fromIso = "2026-07-11T13:00:00Z",
+            toIso = "2026-07-11T13:15:00Z",
+        )
+        val form = validForm().copy(
+            serviceLines = validForm().serviceLines + idlessFlatRow,
+            returnToRamps = listOf(canonicalOccurrence),
+        )
+
+        assertFalse(returnToRampRowsNeedIdentityResolution(form))
+        val normalized = formForWorkOrderWizardMode(form, includeReturnToRamps = true)
+
+        assertEquals(validForm().serviceLines, normalized.serviceLines)
+        assertEquals(canonicalOccurrence, normalized.returnToRamps.first())
+        val migrated = normalized.returnToRamps.last()
+        assertNull(migrated.serverId)
+        assertEquals(listOf(newAttachment), migrated.serviceLines.single().attachments)
+        assertFalse(migrated.serviceLines.single().returnToRamp)
     }
 
     @Test

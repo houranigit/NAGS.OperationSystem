@@ -74,6 +74,7 @@ import com.nags.operations.ui.workorder.TaskLineCard
 import com.nags.operations.ui.workorder.TasksSectionHeading
 import com.nags.operations.ui.workorder.ReturnToRampOccurrenceCard
 import com.nags.operations.ui.workorder.fieldErrorSupportingText
+import com.nags.operations.ui.workorder.workOrderWizardSteps
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -236,6 +237,11 @@ private fun CreateWorkOrderFormContent(
     val submitErrs = state.submitFieldErrors
     val busy = state.isSavingDraft || state.isSubmitting
     val currentStep = state.wizardStep
+    val wizardSteps = remember(state.isUpdatingCachedUnderReviewWorkOrder) {
+        workOrderWizardSteps(
+            includeReturnToRamps = state.isUpdatingCachedUnderReviewWorkOrder,
+        )
+    }
     val scrollState = rememberScrollState()
     val remarksRequiredForCustomer =
         state.isAdHocScratch && isBlankOrUnknownCustomer(state.selectedCustomerId)
@@ -320,6 +326,7 @@ private fun CreateWorkOrderFormContent(
     ) {
         WorkOrderWizardStepper(
             currentStep = currentStep,
+            steps = wizardSteps,
             enabled = !busy,
             onStepSelected = viewModel::selectCompletedWizardStep,
         )
@@ -759,17 +766,18 @@ private fun CreateWorkOrderFormContent(
 @Composable
 private fun WorkOrderWizardStepper(
     currentStep: WorkOrderWizardStep,
+    steps: List<WorkOrderWizardStep>,
     enabled: Boolean,
     onStepSelected: (WorkOrderWizardStep) -> Unit,
 ) {
-    val labels = listOf("Flight", "Services", "Tasks", "Return to ramps", "Signature")
+    val currentIndex = steps.indexOf(currentStep)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        WorkOrderWizardStep.entries.forEachIndexed { index, step ->
+        steps.forEachIndexed { index, step ->
             val active = step == currentStep
-            val completed = step.ordinal < currentStep.ordinal
+            val completed = currentIndex >= 0 && index < currentIndex
             TextButton(
                 onClick = { onStepSelected(step) },
                 enabled = completed && enabled,
@@ -790,7 +798,13 @@ private fun WorkOrderWizardStepper(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = labels[index],
+                        text = when (step) {
+                            WorkOrderWizardStep.Flight -> "Flight"
+                            WorkOrderWizardStep.ServiceLines -> "Services"
+                            WorkOrderWizardStep.Tasks -> "Tasks"
+                            WorkOrderWizardStep.ReturnToRamps -> "Return to ramps"
+                            WorkOrderWizardStep.Signature -> "Signature"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 2,

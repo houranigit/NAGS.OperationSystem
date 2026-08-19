@@ -1,12 +1,11 @@
 package com.nags.operations.ui.components
 
 import android.content.Context
-import android.net.Uri
-import androidx.core.content.FileProvider
 import com.nags.operations.data.TaskAttachmentKindValue
 import com.nags.operations.ui.workorder.TaskAttachmentDraft
 import java.io.File
 import java.util.Base64
+import java.util.Locale
 import java.util.UUID
 
 private const val PreviewDirectory = "attachment-previews"
@@ -14,18 +13,21 @@ private const val PreviewDirectory = "attachment-previews"
 internal fun materializeAttachmentPreview(
     context: Context,
     attachment: TaskAttachmentDraft,
-): Uri? = runCatching {
-    val content = attachment.decodePreviewContent() ?: return@runCatching null
-    val directory = File(context.cacheDir, PreviewDirectory).apply { mkdirs() }
-    // Never expose the employee's original filename or a content-derived fingerprint in cache.
-    val file = File(directory, attachment.previewFileName())
-    file.outputStream().use { output -> output.write(content) }
-    FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file,
-    )
-}.getOrNull()
+): File? {
+    var pendingFile: File? = null
+    return runCatching {
+        val content = attachment.decodePreviewContent() ?: return@runCatching null
+        val directory = File(context.cacheDir, PreviewDirectory).apply { mkdirs() }
+        // Never expose the employee's original filename or a content-derived fingerprint in cache.
+        File(directory, attachment.previewFileName()).also { file ->
+            pendingFile = file
+            file.outputStream().use { output -> output.write(content) }
+        }
+    }.getOrElse {
+        pendingFile?.let(::deleteMaterializedAttachmentPreview)
+        null
+    }
+}
 
 internal fun removeMaterializedAttachmentPreview(
     context: Context,
@@ -33,6 +35,13 @@ internal fun removeMaterializedAttachmentPreview(
     attachment: TaskAttachmentDraft,
 ) {
     cleanupAllAttachmentPreviews(context)
+}
+
+internal fun deleteMaterializedAttachmentPreview(file: File) {
+    val directory = file.parentFile ?: return
+    if (directory.name != PreviewDirectory || !file.name.startsWith("preview-")) return
+    file.delete()
+    if (directory.listFiles().orEmpty().isEmpty()) directory.delete()
 }
 
 internal fun cleanupAttachmentPreviews(
@@ -107,4 +116,39 @@ internal fun TaskAttachmentDraft.previewFileName(
     val safeToken = randomToken.replace(Regex("[^A-Za-z0-9_-]"), "").take(64)
     require(safeToken.isNotBlank()) { "Preview token is required." }
     return "preview-$safeToken$suffix"
+}
+
+internal enum class AttachmentPreviewKind {
+    Image,
+    Voice,
+    Pdf,
+    Unsupported,
+}
+
+internal fun TaskAttachmentDraft.attachmentPreviewKind(): AttachmentPreviewKind = when (kind) {
+    TaskAttachmentKindValue.Image -> AttachmentPreviewKind.Image
+    TaskAttachmentKindValue.Voice -> AttachmentPreviewKind.Voice
+    TaskAttachmentKindValue.Document -> AttachmentPreviewKind.Pdf
+    else -> AttachmentPreviewKind.Unsupported
+}
+
+internal fun TaskAttachmentDraft.attachmentKindLabel(): String = when (attachmentPreviewKind()) {
+    AttachmentPreviewKind.Image -> "Photo"
+    AttachmentPreviewKind.Voice -> "Voice note"
+    AttachmentPreviewKind.Pdf -> "PDF document"
+    AttachmentPreviewKind.Unsupported -> "Attachment"
+}
+
+internal fun formatAttachmentBytes(size: Long): String {
+    val safeSize = size.coerceAtLeast(0L)
+    return when {
+        safeSize < 1_024L -> "$safeSize B"
+        safeSize < 1_024L * 1_024L -> "${safeSize / 1_024L} KB"
+        else -> String.format(Locale.US, "%.1f MB", safeSize / (1_024.0 * 1_024.0))
+    }
+}
+
+internal fun formatAttachmentDuration(positionMs: Int): String {
+    val totalSeconds = positionMs.coerceAtLeast(0) / 1_000
+    return "%d:%02d".format(Locale.US, totalSeconds / 60, totalSeconds % 60)
 }

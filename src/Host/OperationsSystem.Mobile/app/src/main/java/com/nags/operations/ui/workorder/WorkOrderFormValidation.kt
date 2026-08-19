@@ -4,8 +4,9 @@ import com.nags.operations.data.TaskTypeKind
 import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.WellKnownMasterDataIds
 import com.nags.operations.ui.util.parseOffsetDateTime
-import java.time.OffsetDateTime
 import java.math.BigDecimal
+import java.time.Instant
+import java.time.OffsetDateTime
 
 internal object WorkOrderFormLimits {
     const val FlightNumber = 12
@@ -37,6 +38,271 @@ enum class WorkOrderWizardStep {
     ReturnToRamps,
     Signature,
 }
+
+/**
+ * Return-to-ramp occurrences are authored from the dedicated mobile flow after creation. Existing
+ * editable work orders retain the step so their already-recorded occurrences remain reviewable.
+ */
+internal fun workOrderWizardSteps(
+    includeReturnToRamps: Boolean,
+): List<WorkOrderWizardStep> = if (includeReturnToRamps) {
+    WorkOrderWizardStep.entries
+} else {
+    WorkOrderWizardStep.entries.filterNot { it == WorkOrderWizardStep.ReturnToRamps }
+}
+
+internal fun nextWorkOrderWizardStep(
+    currentStep: WorkOrderWizardStep,
+    includeReturnToRamps: Boolean,
+): WorkOrderWizardStep? {
+    val steps = workOrderWizardSteps(includeReturnToRamps)
+    val currentIndex = steps.indexOf(currentStep)
+    return if (currentIndex < 0) null else steps.getOrNull(currentIndex + 1)
+}
+
+internal fun previousWorkOrderWizardStep(
+    currentStep: WorkOrderWizardStep,
+    includeReturnToRamps: Boolean,
+): WorkOrderWizardStep? {
+    val steps = workOrderWizardSteps(includeReturnToRamps)
+    val currentIndex = steps.indexOf(currentStep)
+    return if (currentIndex <= 0) null else steps[currentIndex - 1]
+}
+
+internal fun isEarlierWorkOrderWizardStep(
+    candidate: WorkOrderWizardStep,
+    currentStep: WorkOrderWizardStep,
+    includeReturnToRamps: Boolean,
+): Boolean {
+    val steps = workOrderWizardSteps(includeReturnToRamps)
+    val candidateIndex = steps.indexOf(candidate)
+    val currentIndex = steps.indexOf(currentStep)
+    return candidateIndex >= 0 && currentIndex >= 0 && candidateIndex < currentIndex
+}
+
+private fun ServiceLineFormRow.isExactCanonicalAliasOf(
+    occurrences: List<ReturnToRampFormRow>,
+): Boolean {
+    val identity = serverId?.takeIf { it.isNotBlank() } ?: return false
+    val matches = occurrences
+        .filterNot { it.serverId.isNullOrBlank() }
+        .flatMap(ReturnToRampFormRow::serviceLines)
+        .filter { it.serverId == identity }
+    if (matches.size != 1) return false
+    val canonical = matches.single()
+    return copy(localKey = canonical.localKey, returnToRamp = false) ==
+        canonical.copy(returnToRamp = false)
+}
+
+private fun TaskFormRow.isExactCanonicalAliasOf(
+    occurrences: List<ReturnToRampFormRow>,
+): Boolean {
+    val identity = serverId?.takeIf { it.isNotBlank() } ?: return false
+    val matches = occurrences
+        .filterNot { it.serverId.isNullOrBlank() }
+        .flatMap(ReturnToRampFormRow::tasks)
+        .filter { it.serverId == identity }
+    if (matches.size != 1) return false
+    val canonical = matches.single()
+    return copy(localKey = canonical.localKey, returnToRamp = false) ==
+        canonical.copy(returnToRamp = false)
+}
+
+/**
+ * Normalizes both the current grouped model and drafts from the former flat `returnToRamp` model.
+ * Creation drops all hidden RTR activity. Update mode removes compatibility aliases; idless
+ * unsaved legacy rows can be grouped locally, while server-owned rows require canonical identity
+ * reconciliation before this function is called.
+ */
+internal fun formForWorkOrderWizardMode(
+    form: CreateWorkOrderFormState,
+    includeReturnToRamps: Boolean,
+): CreateWorkOrderFormState {
+    val legacyServiceLines = form.serviceLines.filter(ServiceLineFormRow::returnToRamp)
+    val legacyTasks = form.tasks.filter(TaskFormRow::returnToRamp)
+    val normalServiceLines = form.serviceLines.filterNot(ServiceLineFormRow::returnToRamp)
+    val normalTasks = form.tasks.filterNot(TaskFormRow::returnToRamp)
+
+    if (!includeReturnToRamps) {
+        if (
+            form.returnToRamps.isEmpty() &&
+            legacyServiceLines.isEmpty() &&
+            legacyTasks.isEmpty()
+        ) return form
+        return form.copy(
+            serviceLines = normalServiceLines,
+            tasks = normalTasks,
+            returnToRamps = emptyList(),
+        )
+    }
+
+    if (returnToRampRowsNeedIdentityResolution(form)) return form
+
+    // Exact flat duplicates came from a short-lived compatibility response and can be removed.
+    // Any remaining idless rows are unsaved work and must be grouped rather than discarded.
+    val legacyServiceLinesToGroup = legacyServiceLines.filterNot {
+        it.isExactCanonicalAliasOf(form.returnToRamps)
+    }
+    val legacyTasksToGroup = legacyTasks.filterNot {
+        it.isExactCanonicalAliasOf(form.returnToRamps)
+    }
+    val normalizedOccurrences = form.returnToRamps.map { occurrence ->
+        occurrence.copy(
+            serviceLines = occurrence.serviceLines.map { it.copy(returnToRamp = false) },
+            tasks = occurrence.tasks.map { it.copy(returnToRamp = false) },
+        )
+    }
+    if (legacyServiceLinesToGroup.isEmpty() && legacyTasksToGroup.isEmpty()) {
+        val normalized = form.copy(
+            serviceLines = normalServiceLines,
+            tasks = normalTasks,
+            returnToRamps = normalizedOccurrences,
+        )
+        return if (normalized == form) form else normalized
+    }
+
+    val fromFallback = form.ataIso.ifBlank { form.scheduledArrivalIso }
+    val toFallback = form.atdIso.ifBlank { form.scheduledDepartureIso }.ifBlank { fromFallback }
+    val usedKeys = buildSet {
+        addAll(form.serviceLines.map(ServiceLineFormRow::localKey))
+        addAll(form.tasks.map(TaskFormRow::localKey))
+        form.returnToRamps.forEach { occurrence ->
+            add(occurrence.localKey)
+            addAll(occurrence.serviceLines.map(ServiceLineFormRow::localKey))
+            addAll(occurrence.tasks.map(TaskFormRow::localKey))
+        }
+    }
+    val occurrenceKey = ((usedKeys.maxOrNull() ?: 0L) + 1L)
+        .takeUnless { it in usedKeys }
+        ?: -1L
+    val fromCandidates = legacyServiceLinesToGroup.map(ServiceLineFormRow::fromIso) +
+        legacyTasksToGroup.map(TaskFormRow::fromIso)
+    val toCandidates = legacyServiceLinesToGroup.map(ServiceLineFormRow::toIso) +
+        legacyTasksToGroup.map(TaskFormRow::toIso)
+    val migratedOccurrence = ReturnToRampFormRow(
+        localKey = occurrenceKey,
+        fromIso = earliestWorkOrderTimestamp(fromCandidates, fromFallback),
+        toIso = latestWorkOrderTimestamp(toCandidates, toFallback),
+        serviceLines = legacyServiceLinesToGroup.map { it.copy(returnToRamp = false) },
+        tasks = legacyTasksToGroup.map { it.copy(returnToRamp = false) },
+    )
+    return form.copy(
+        serviceLines = normalServiceLines,
+        tasks = normalTasks,
+        returnToRamps = normalizedOccurrences + migratedOccurrence,
+    )
+}
+
+internal fun returnToRampRowsNeedIdentityResolution(
+    form: CreateWorkOrderFormState,
+): Boolean {
+    val unresolvedFlatServiceLine = form.serviceLines.any { row ->
+        row.returnToRamp &&
+            (row.serverId != null || row.existingAttachmentNames.isNotEmpty()) &&
+            !row.isExactCanonicalAliasOf(form.returnToRamps)
+    }
+    val unresolvedFlatTask = form.tasks.any { row ->
+        row.returnToRamp &&
+            (row.serverId != null || row.existingAttachmentNames.isNotEmpty()) &&
+            !row.isExactCanonicalAliasOf(form.returnToRamps)
+    }
+    val unresolvedGroupedOccurrence = form.returnToRamps.any { occurrence ->
+        occurrence.serverId.isNullOrBlank() && (
+            occurrence.serviceLines.any { row ->
+                row.serverId != null || row.existingAttachmentNames.isNotEmpty()
+            } ||
+                occurrence.tasks.any { row ->
+                    row.serverId != null || row.existingAttachmentNames.isNotEmpty()
+                }
+            )
+    }
+    return unresolvedFlatServiceLine || unresolvedFlatTask || unresolvedGroupedOccurrence
+}
+
+/**
+ * Restores parent occurrence ids for drafts written by the former flat RTR model. Returns null
+ * unless every legacy child can be matched to exactly one current canonical occurrence.
+ */
+internal fun reconcileLegacyReturnToRampRows(
+    form: CreateWorkOrderFormState,
+    canonicalOccurrences: List<ReturnToRampFormRow>,
+): CreateWorkOrderFormState? {
+    if (!returnToRampRowsNeedIdentityResolution(form)) return form
+    if (canonicalOccurrences.isEmpty() || canonicalOccurrences.any { it.serverId.isNullOrBlank() }) {
+        return null
+    }
+
+    val unsafeGroupedOccurrences = form.returnToRamps.filter { occurrence ->
+        occurrence.serverId.isNullOrBlank()
+    }
+    val hasServerOwnedFlatRows =
+        form.serviceLines.any { row ->
+            row.returnToRamp && (row.serverId != null || row.existingAttachmentNames.isNotEmpty())
+        } ||
+            form.tasks.any { row ->
+                row.returnToRamp && (row.serverId != null || row.existingAttachmentNames.isNotEmpty())
+            }
+    if (
+        form.returnToRamps.any { !it.serverId.isNullOrBlank() } &&
+        (unsafeGroupedOccurrences.isNotEmpty() || hasServerOwnedFlatRows)
+    ) return null
+    val legacyServiceLines = form.serviceLines.filter(ServiceLineFormRow::returnToRamp) +
+        unsafeGroupedOccurrences.flatMap(ReturnToRampFormRow::serviceLines)
+    val legacyTasks = form.tasks.filter(TaskFormRow::returnToRamp) +
+        unsafeGroupedOccurrences.flatMap(ReturnToRampFormRow::tasks)
+    val legacyServiceIds = legacyServiceLines.mapNotNull(ServiceLineFormRow::serverId)
+    val legacyTaskIds = legacyTasks.mapNotNull(TaskFormRow::serverId)
+    if (
+        legacyServiceIds.size != legacyServiceLines.size ||
+        legacyTaskIds.size != legacyTasks.size ||
+        legacyServiceIds.distinct().size != legacyServiceIds.size ||
+        legacyTaskIds.distinct().size != legacyTaskIds.size
+    ) return null
+
+    val canonicalServiceIdList = canonicalOccurrences.flatMap { occurrence ->
+        occurrence.serviceLines.mapNotNull(ServiceLineFormRow::serverId)
+    }
+    val canonicalTaskIdList = canonicalOccurrences.flatMap { occurrence ->
+        occurrence.tasks.mapNotNull(TaskFormRow::serverId)
+    }
+    if (
+        canonicalServiceIdList.distinct().size != canonicalServiceIdList.size ||
+        canonicalTaskIdList.distinct().size != canonicalTaskIdList.size
+    ) return null
+    val canonicalServiceIds = canonicalServiceIdList.toSet()
+    val canonicalTaskIds = canonicalTaskIdList.toSet()
+    if (!canonicalServiceIds.containsAll(legacyServiceIds) || !canonicalTaskIds.containsAll(legacyTaskIds)) {
+        return null
+    }
+
+    val reconciledOccurrences = canonicalOccurrences.map { occurrence ->
+        val serviceIds = occurrence.serviceLines.mapNotNull(ServiceLineFormRow::serverId).toSet()
+        val taskIds = occurrence.tasks.mapNotNull(TaskFormRow::serverId).toSet()
+        occurrence.copy(
+            serviceLines = legacyServiceLines
+                .filter { it.serverId in serviceIds }
+                .map { it.copy(returnToRamp = false) },
+            tasks = legacyTasks
+                .filter { it.serverId in taskIds }
+                .map { it.copy(returnToRamp = false) },
+        )
+    }
+    return form.copy(
+        serviceLines = form.serviceLines.filterNot(ServiceLineFormRow::returnToRamp),
+        tasks = form.tasks.filterNot(TaskFormRow::returnToRamp),
+        returnToRamps = reconciledOccurrences,
+    )
+}
+
+private fun earliestWorkOrderTimestamp(values: List<String>, fallback: String): String =
+    values.filter(String::isNotBlank).minByOrNull { value ->
+        safeParseOffset(value)?.toInstant() ?: Instant.MAX
+    } ?: fallback
+
+private fun latestWorkOrderTimestamp(values: List<String>, fallback: String): String =
+    values.filter(String::isNotBlank).maxByOrNull { value ->
+        safeParseOffset(value)?.toInstant() ?: Instant.MIN
+    } ?: fallback
 
 internal enum class WorkOrderValidationPhase {
     BeforeAtd,
@@ -453,7 +719,8 @@ internal fun submitErrorsForWizardStep(
 
 internal fun firstWizardStepWithErrors(
     errors: CreateWorkOrderSubmitFieldErrors,
-): WorkOrderWizardStep = WorkOrderWizardStep.entries.firstOrNull {
+    includeReturnToRamps: Boolean = true,
+): WorkOrderWizardStep = workOrderWizardSteps(includeReturnToRamps).firstOrNull {
     submitErrorsForWizardStep(errors, it) != null
 } ?: WorkOrderWizardStep.Signature
 

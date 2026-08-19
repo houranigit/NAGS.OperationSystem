@@ -126,4 +126,52 @@ class TaskAttachmentMutationTest {
             collectAttachmentsForOutbox(form).map { it.fileName },
         )
     }
+
+    @Test
+    fun wizardModeKeepsAttachmentOrderAlignedWithTheSanitizedPayload() {
+        fun named(name: String) = attachment.copy(fileName = name)
+        val form = CreateWorkOrderFormState(
+            serviceLines = listOf(
+                ServiceLineFormRow(localKey = 1, attachments = listOf(named("normal-service.jpg"))),
+            ),
+            tasks = listOf(
+                TaskFormRow(localKey = 2, attachments = listOf(named("normal-task.jpg"))),
+            ),
+            returnToRamps = listOf(
+                ReturnToRampFormRow(
+                    localKey = 3,
+                    serviceLines = listOf(
+                        ServiceLineFormRow(localKey = 4, attachments = listOf(named("rtr-service.jpg"))),
+                    ),
+                    tasks = listOf(
+                        TaskFormRow(localKey = 5, attachments = listOf(named("rtr-task.jpg"))),
+                    ),
+                ),
+                ReturnToRampFormRow(
+                    localKey = 6,
+                    tasks = listOf(
+                        TaskFormRow(localKey = 7, attachments = listOf(named("second-rtr-task.jpg"))),
+                    ),
+                ),
+            ),
+        )
+
+        val creation = formForWorkOrderWizardMode(form, includeReturnToRamps = false)
+        val update = formForWorkOrderWizardMode(form, includeReturnToRamps = true)
+
+        assertEquals(
+            listOf("normal-service.jpg", "normal-task.jpg"),
+            collectAttachmentsForOutbox(creation).map { it.fileName },
+        )
+        assertEquals(
+            listOf(
+                "normal-service.jpg",
+                "normal-task.jpg",
+                "rtr-service.jpg",
+                "rtr-task.jpg",
+                "second-rtr-task.jpg",
+            ),
+            collectAttachmentsForOutbox(update).map { it.fileName },
+        )
+    }
 }
