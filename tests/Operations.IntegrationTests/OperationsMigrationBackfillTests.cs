@@ -72,8 +72,8 @@ public sealed class OperationsMigrationBackfillTests(OperationsApiFactory factor
                 .Include(item => item.ReturnToRamps)
                     .ThenInclude(item => item.Tasks)
                         .ThenInclude(item => item.GeneralSupports)
-                .Include(item => item.ServiceLines)
-                .Include(item => item.Tasks)
+                .Include(item => item.ServiceLines).ThenInclude(line => line.PerformedBy)
+                .Include(item => item.Tasks).ThenInclude(task => task.Employees)
                 .SingleAsync(item => item.Id == workOrderId);
             var occurrence = migrated.ReturnToRamps.ShouldHaveSingleItem();
 
@@ -87,6 +87,17 @@ public sealed class OperationsMigrationBackfillTests(OperationsApiFactory factor
             occurrence.Tasks.ShouldAllBe(task => task.ReturnToRampId == occurrence.Id);
             migrated.ServiceLines.Count(line => line.ReturnToRampId == null).ShouldBe(1);
             migrated.Tasks.Count(task => task.ReturnToRampId == null).ShouldBe(1);
+
+            foreach (var service in migrated.ServiceLines)
+            {
+                service.PerformedBy.ShouldNotBeEmpty();
+                service.PerformedBy.ShouldAllBe(employee => employee.Window.From == service.Window.From && employee.Window.To == service.Window.To);
+            }
+            foreach (var task in migrated.Tasks)
+            {
+                task.Employees.ShouldNotBeEmpty();
+                task.Employees.ShouldAllBe(employee => employee.Window.From == task.Window.From && employee.Window.To == task.Window.To);
+            }
 
             var migratedTask = occurrence.Tasks.Single(task => task.Description == "First legacy task");
             var tool = migratedTask.Tools.ShouldHaveSingleItem();

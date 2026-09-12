@@ -244,7 +244,9 @@ private fun CreateWorkOrderFormContent(
     }
     val scrollState = rememberScrollState()
     val remarksRequiredForCustomer =
-        state.isAdHocScratch && isBlankOrUnknownCustomer(state.selectedCustomerId)
+        (state.isAdHocScratch && isBlankOrUnknownCustomer(state.selectedCustomerId)) ||
+            (state.selectedCustomerId ?: state.flight?.customerId ?: state.flight?.cachedMyWorkOrder?.customerId)
+                .equals(com.nags.operations.data.WellKnownMasterDataIds.UnknownCustomer, true)
 
     BackHandler(
         enabled = currentStep != WorkOrderWizardStep.Flight && !busy && !state.isAtdDialogVisible,

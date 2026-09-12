@@ -149,6 +149,10 @@ fun PerLandingFlightsTab(
             flight = f,
             localDraftId = state.draftIdByFlightId[f.id],
             callbacks = FlightSheetCallbacks(
+                onOpenWorkOrder = { id ->
+                    sheetFlight = null
+                    sheetCallbacks.onOpenWorkOrder(id)
+                },
                 onCreateWorkOrder = { id ->
                     sheetFlight = null
                     sheetCallbacks.onCreateWorkOrder(id)

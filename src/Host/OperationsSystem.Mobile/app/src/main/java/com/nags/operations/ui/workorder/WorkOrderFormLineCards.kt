@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nags.operations.data.WellKnownMasterDataIds
 import com.nags.operations.data.TaskTypeKind
 import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.db.entities.EmployeeEntity
@@ -308,7 +309,11 @@ fun ServiceLineCard(
                     isError = lineErrors?.performer != null,
                     supportingText = fieldErrorSupportingText(lineErrors?.performer),
                     onSelectionChange = { keys ->
-                        onChange(row.copy(employeeIds = idsPreservingCatalogOrder(keys, employeeOrderedIds)))
+                        val ids = idsPreservingCatalogOrder(keys, employeeOrderedIds)
+                        onChange(row.copy(
+                            employeeIds = ids,
+                            employeePeriods = employeePeriodsForSelection(ids, row.employeePeriods),
+                        ))
                     },
                 )
                 if (employees.isEmpty()) {
@@ -345,6 +350,17 @@ fun ServiceLineCard(
                         supportingText = fieldErrorSupportingText(lineErrors?.to),
                     )
                 }
+
+                EmployeePeriodFields(
+                    employeeIds = row.employeeIds,
+                    periods = row.employeePeriods,
+                    employees = employees,
+                    lineFromIso = row.fromIso,
+                    lineToIso = row.toIso,
+                    flightOffset = flightOffset,
+                    scheduleAnchorIso = scheduleAnchorIso,
+                    onPeriodChanged = { id, period -> onChange(row.copy(employeePeriods = row.employeePeriods + (id to period))) },
+                )
 
                 Text(
                     text = "Attachments (${row.existingAttachmentNames.size + row.attachments.size}/${WorkOrderFormLimits.ServiceAttachments})",
@@ -420,8 +436,8 @@ fun ServiceLineCard(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = fieldShape,
-                    label = { Text("Notes (optional)") },
-                    placeholder = { Text("Optional detail for this service") },
+                    label = { Text(if (row.serviceId.equals(WellKnownMasterDataIds.UnknownService, true)) "Notes (required)" else "Notes (optional)") },
+                    placeholder = { Text("Describe the service performed") },
                     minLines = 2,
                     maxLines = 4,
                     isError = lineErrors?.description != null,
@@ -598,8 +614,22 @@ fun TaskLineCard(
                     isError = lineErrors?.performers != null,
                     supportingText = fieldErrorSupportingText(lineErrors?.performers),
                     onSelectionChange = { keys ->
-                        onChange(row.copy(employeeIds = idsPreservingCatalogOrder(keys, employeeOrderedIds)))
+                        val ids = idsPreservingCatalogOrder(keys, employeeOrderedIds)
+                        onChange(row.copy(
+                            employeeIds = ids,
+                            employeePeriods = employeePeriodsForSelection(ids, row.employeePeriods),
+                        ))
                     },
+                )
+                EmployeePeriodFields(
+                    employeeIds = row.employeeIds,
+                    periods = row.employeePeriods,
+                    employees = employees,
+                    lineFromIso = row.fromIso,
+                    lineToIso = row.toIso,
+                    flightOffset = flightOffset,
+                    scheduleAnchorIso = scheduleAnchorIso,
+                    onPeriodChanged = { id, period -> onChange(row.copy(employeePeriods = row.employeePeriods + (id to period))) },
                 )
                 if (employees.isEmpty()) {
                     Text(
@@ -881,6 +911,17 @@ private fun ResourceUsageFields(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (WellKnownMasterDataIds.isUnknownResource(id) || usage.description.isNotBlank()) {
+                    OutlinedTextField(
+                        value = usage.description,
+                        onValueChange = { onUsageChanged(id, usage.copy(description = it.take(WorkOrderFormLimits.LineDescription))) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (WellKnownMasterDataIds.isUnknownResource(id)) "Notes (required)" else "Notes") },
+                        placeholder = { Text("Describe this item") },
+                        minLines = 2,
+                        isError = error != null && WellKnownMasterDataIds.isUnknownResource(id) && usage.description.isBlank(),
+                    )
+                }
                 if (calculationType == ResourceCalculationType.Quantity) {
                     val quantity = usage.quantity ?: resourceQuantity(legacyQuantities, id)
                     var quantityText by remember(id, quantity) { mutableStateOf(formatQuantity(quantity)) }
@@ -891,7 +932,7 @@ private fun ResourceUsageFields(
                                 quantityText = raw
                                 onUsageChanged(
                                     id,
-                                    ResourceUsageForm(
+                                    usage.copy(
                                         calculationType = ResourceCalculationType.Quantity,
                                         quantity = raw.toDoubleOrNull() ?: 0.0,
                                     ),
@@ -979,3 +1020,49 @@ private fun ResourceUsageFields(
 
 private fun formatQuantity(value: Double): String =
     if (value.isFinite() && value % 1.0 == 0.0) value.toLong().toString() else value.toString()
+
+@Composable
+private fun EmployeePeriodFields(
+    employeeIds: List<String>,
+    periods: Map<String, EmployeePeriodForm>,
+    employees: List<EmployeeEntity>,
+    lineFromIso: String,
+    lineToIso: String,
+    flightOffset: ZoneId,
+    scheduleAnchorIso: String,
+    onPeriodChanged: (String, EmployeePeriodForm) -> Unit,
+) {
+    if (employeeIds.isEmpty()) return
+    Text("Employee work periods", style = MaterialTheme.typography.labelLarge)
+    Text("Set each employee's From and To within the service or task period.", style = MaterialTheme.typography.bodySmall)
+    employeeIds.forEach { id ->
+        val period = employeePeriod(id, periods, lineFromIso, lineToIso)
+        val error = employeePeriodsError(listOf(id), mapOf(id to period), lineFromIso, lineToIso)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(employees.firstOrNull { it.staffMemberId == id }?.workOrderPickerDisplayLine() ?: "Selected employee")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WorkOrderDateTimePickerField(
+                    iso = period.fromIso,
+                    label = "Employee From",
+                    placeholder = "Required",
+                    flightOffset = flightOffset,
+                    defaultInitialIso = lineFromIso.ifBlank { scheduleAnchorIso },
+                    onIsoConfirmed = { onPeriodChanged(id, period.copy(fromIso = it)) },
+                    modifier = Modifier.weight(1f),
+                    isError = error != null,
+                )
+                WorkOrderDateTimePickerField(
+                    iso = period.toIso,
+                    label = "Employee To",
+                    placeholder = "Required",
+                    flightOffset = flightOffset,
+                    defaultInitialIso = lineToIso.ifBlank { period.fromIso.ifBlank { scheduleAnchorIso } },
+                    onIsoConfirmed = { onPeriodChanged(id, period.copy(toIso = it)) },
+                    modifier = Modifier.weight(1f),
+                    isError = error != null,
+                )
+            }
+            error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        }
+    }
+}

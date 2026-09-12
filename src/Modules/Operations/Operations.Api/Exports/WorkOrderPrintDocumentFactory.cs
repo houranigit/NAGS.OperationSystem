@@ -418,7 +418,7 @@ internal static class WorkOrderPrintDocumentFactory
                         : string.Join(
                             ", ",
                             service.PerformedBy.Select(performer =>
-                                FormatPerson(performer.FullName, performer.EmployeeId))),
+                                $"{FormatPerson(performer.FullName, performer.EmployeeId)}: {FormatCompactWindow(performer.FromUtc ?? service.FromUtc, performer.ToUtc ?? service.ToUtc, displayTimeZone)}")),
                     alternate: index % 2 == 1);
 
                 if (!string.IsNullOrWhiteSpace(service.Description))
@@ -834,7 +834,7 @@ internal static class WorkOrderPrintDocumentFactory
                     DisplayValue(manpowerByStaffId.GetValueOrDefault(employee.StaffMemberId)));
                 AddCellText(
                     row.Cells[3],
-                    FormatCompactWindow(task.FromUtc, task.ToUtc, displayTimeZone));
+                    FormatCompactWindow(employee.FromUtc ?? task.FromUtc, employee.ToUtc ?? task.ToUtc, displayTimeZone));
             }
         }
 
@@ -878,7 +878,8 @@ internal static class WorkOrderPrintDocumentFactory
                             resource.CalculationType,
                             resource.Quantity,
                             resource.FromUtc,
-                            resource.ToUtc)));
+                            resource.ToUtc,
+                            resource.Description)));
                     break;
                 case ResourceKind.Tool:
                     lines.AddRange(task.Tools.Select(resource =>
@@ -888,7 +889,8 @@ internal static class WorkOrderPrintDocumentFactory
                             resource.CalculationType,
                             resource.Quantity,
                             resource.FromUtc,
-                            resource.ToUtc)));
+                            resource.ToUtc,
+                            resource.Description)));
                     break;
                 case ResourceKind.GeneralSupport:
                     lines.AddRange(task.GeneralSupports.Select(resource =>
@@ -898,7 +900,8 @@ internal static class WorkOrderPrintDocumentFactory
                             resource.CalculationType,
                             resource.Quantity,
                             resource.FromUtc,
-                            resource.ToUtc)));
+                            resource.ToUtc,
+                            resource.Description)));
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown resource kind.");
@@ -936,6 +939,10 @@ internal static class WorkOrderPrintDocumentFactory
                     FormatResourceUsage(resource, displayTimeZone),
                     bold: true,
                     alignment: ParagraphAlignment.Center);
+                if (!string.IsNullOrWhiteSpace(resource.Description))
+                {
+                    AddServiceDetailRows(table, "NOTES", resource.Description, alternate: index % 2 == 1);
+                }
             }
         }
 
@@ -1042,16 +1049,16 @@ internal static class WorkOrderPrintDocumentFactory
                 performer.StaffMemberId,
                 performer.FullName,
                 manpowerByStaffId.GetValueOrDefault(performer.StaffMemberId, string.Empty),
-                line.FromUtc,
-                line.ToUtc,
+                performer.FromUtc ?? line.FromUtc,
+                performer.ToUtc ?? line.ToUtc,
                 performer.EmployeeId)))
             .Concat(workOrder.Tasks.SelectMany(task => task.Employees.Select(employee =>
                 new WorkerWindow(
                     employee.StaffMemberId,
                     employee.FullName,
                     manpowerByStaffId.GetValueOrDefault(employee.StaffMemberId, string.Empty),
-                    task.FromUtc,
-                    task.ToUtc,
+                    employee.FromUtc ?? task.FromUtc,
+                    employee.ToUtc ?? task.ToUtc,
                     employee.EmployeeId))))
             .Where(window => !string.IsNullOrWhiteSpace(window.Name))
             .ToList();
@@ -1606,7 +1613,8 @@ internal static class WorkOrderPrintDocumentFactory
         ResourceCalculationType CalculationType,
         decimal? Quantity,
         DateTimeOffset? FromUtc,
-        DateTimeOffset? ToUtc);
+        DateTimeOffset? ToUtc,
+        string? Description);
 
     private sealed record AttachmentLine(
         string Source,

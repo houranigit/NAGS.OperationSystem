@@ -250,7 +250,7 @@ public sealed record WorkOrderServiceLineModel(
     bool IsReturnToRamp = false,
     IReadOnlyList<WorkOrderServiceLineAttachmentModel>? Attachments = null);
 
-public sealed record WorkOrderServiceLinePerformerModel(Guid StaffMemberId, string FullName, string EmployeeId);
+public sealed record WorkOrderServiceLinePerformerModel(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 
 public sealed record WorkOrderServiceLineAttachmentModel(Guid Id, string Kind, string OriginalFileName, string ContentType, long Size);
 
@@ -267,7 +267,7 @@ public sealed record WorkOrderTaskModel(
     IReadOnlyList<WorkOrderTaskAttachmentModel> Attachments,
     bool IsReturnToRamp = false);
 
-public sealed record WorkOrderTaskEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
+public sealed record WorkOrderTaskEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 
 public sealed record WorkOrderTaskToolModel(
     Guid ToolId,
@@ -275,7 +275,8 @@ public sealed record WorkOrderTaskToolModel(
     ResourceCalculationType CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    string? Description = null);
 
 public sealed record WorkOrderTaskMaterialModel(
     Guid MaterialId,
@@ -283,7 +284,8 @@ public sealed record WorkOrderTaskMaterialModel(
     ResourceCalculationType CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    string? Description = null);
 
 public sealed record WorkOrderTaskGeneralSupportModel(
     Guid GeneralSupportId,
@@ -291,7 +293,8 @@ public sealed record WorkOrderTaskGeneralSupportModel(
     ResourceCalculationType CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    string? Description = null);
 
 public sealed record WorkOrderTaskAttachmentModel(Guid Id, string Kind, string OriginalFileName, string ContentType, long Size);
 
@@ -383,7 +386,8 @@ public sealed record WorkOrderServiceLineRequestModel(
     string? Description,
     bool IsReturnToRamp = false,
     Guid? Id = null,
-    IReadOnlyList<WorkOrderServiceLineAttachmentRequestModel>? Attachments = null);
+    IReadOnlyList<WorkOrderServiceLineAttachmentRequestModel>? Attachments = null,
+    IReadOnlyList<WorkOrderEmployeeAssignmentRequestModel>? EmployeeAssignments = null);
 
 public sealed record WorkOrderServiceLineAttachmentRequestModel(
     string Kind,
@@ -410,25 +414,29 @@ public sealed record WorkOrderTaskRequestModel(
     IReadOnlyList<WorkOrderTaskMaterialRequestModel> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportRequestModel> GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentRequestModel>? Attachments = null,
-    bool IsReturnToRamp = false);
+    bool IsReturnToRamp = false,
+    IReadOnlyList<WorkOrderEmployeeAssignmentRequestModel>? EmployeeAssignments = null);
 
 public sealed record WorkOrderTaskToolRequestModel(
     Guid ToolId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskMaterialRequestModel(
     Guid MaterialId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskGeneralSupportRequestModel(
     Guid GeneralSupportId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskAttachmentRequestModel(
     string Kind,
@@ -442,3 +450,5 @@ public sealed record WorkOrderSignatureRequestModel(
     string ContentType);
 
 public sealed record ReturnWorkOrderRequestModel(string Reason);
+
+public sealed record WorkOrderEmployeeAssignmentRequestModel(Guid StaffMemberId, DateTimeOffset FromUtc, DateTimeOffset ToUtc);

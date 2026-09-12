@@ -6,6 +6,25 @@ namespace Operations.Application.UnitTests;
 
 public sealed class WorkOrderAttachmentPolicyTests
 {
+    [Theory]
+    [InlineData(2 * 1024 * 1024, true)]
+    [InlineData(2 * 1024 * 1024 + 1, false)]
+    public void Validate_EnforcesTwoMegabyteDocumentLimit(int size, bool allowed)
+    {
+        var content = new byte[size];
+        "%PDF-"u8.CopyTo(content);
+
+        var result = WorkOrderAttachmentPolicy.Validate(
+            TaskAttachmentKind.Document, content, "report.pdf", "application/pdf");
+
+        result.IsSuccess.ShouldBe(allowed);
+        if (!allowed)
+        {
+            result.Error.Code.ShouldBe("Operations.WorkOrder.AttachmentTooLarge");
+            result.Error.Description.ShouldContain("2 MB");
+        }
+    }
+
     [Fact]
     public void Validate_AllowsExpectedAttachmentKinds()
     {

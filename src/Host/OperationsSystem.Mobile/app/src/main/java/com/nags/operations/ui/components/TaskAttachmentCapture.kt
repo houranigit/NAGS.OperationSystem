@@ -21,7 +21,7 @@ internal fun captureAttachmentInternal(context: Context, uri: Uri, kind: String)
         val maxBytes = when (kind) {
             TaskAttachmentKindValue.Image -> 5L * 1024 * 1024
             TaskAttachmentKindValue.Voice -> 2L * 1024 * 1024
-            TaskAttachmentKindValue.Document -> 10L * 1024 * 1024
+            TaskAttachmentKindValue.Document -> 2L * 1024 * 1024
             else -> 5L * 1024 * 1024
         }
         val bytes = resolver.openInputStream(uri)?.use { input ->

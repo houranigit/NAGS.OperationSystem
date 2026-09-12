@@ -9,6 +9,53 @@ namespace Operations.IntegrationTests;
 public sealed class OperationsRequestMappingTests
 {
     [Fact]
+    public void WorkOrderRequest_PreservesEmployeePeriodsAndResourceNotesIncludingReturnToRamp()
+    {
+        var now = new DateTimeOffset(2026, 9, 12, 10, 0, 0, TimeSpan.Zero);
+        var employeeId = Guid.NewGuid();
+        var assignments = new[]
+        {
+            new WorkOrderEmployeeAssignmentRequest(employeeId, now.AddMinutes(10), now.AddMinutes(20))
+        };
+        var service = new WorkOrderServiceLineRequest(
+            Guid.NewGuid(), [employeeId], now, now.AddHours(1), "Unlisted service",
+            EmployeeAssignments: assignments);
+        var task = new WorkOrderTaskRequest(
+            null, TaskType.Major, "Corrective action", now, now.AddHours(1), [employeeId],
+            [new WorkOrderTaskToolRequest(Guid.NewGuid(), 1, Description: "Unlisted tool")],
+            [new WorkOrderTaskMaterialRequest(Guid.NewGuid(), 2, Description: "Unlisted material")],
+            [new WorkOrderTaskGeneralSupportRequest(Guid.NewGuid(), 1, Description: "Unlisted support")],
+            EmployeeAssignments: assignments);
+        var request = new WorkOrderRequest(
+            WorkOrderType.Completion, "MOB100", null, null, now, now.AddHours(1), null, null, "Customer note",
+            [service], [task], ReturnToRamps:
+            [new WorkOrderReturnToRampRequest(null, now, now.AddHours(1), null, [service], [task])]);
+
+        // Exercise the actual web wire shape used by both clients before mapping to commands.
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var payload = JsonSerializer.Deserialize<WorkOrderRequest>(JsonSerializer.Serialize(request, options), options)!
+            .ToPayload();
+        var returnToRamp = payload.ReturnToRamps.ShouldHaveSingleItem();
+        foreach (var line in payload.ServiceLines.Concat(returnToRamp.ServiceLines!))
+        {
+            var assignment = line.EmployeeAssignments.ShouldHaveSingleItem();
+            assignment.StaffMemberId.ShouldBe(employeeId);
+            assignment.FromUtc.ShouldBe(now.AddMinutes(10));
+            assignment.ToUtc.ShouldBe(now.AddMinutes(20));
+        }
+        foreach (var line in payload.Tasks.Concat(returnToRamp.Tasks!))
+        {
+            var assignment = line.EmployeeAssignments.ShouldHaveSingleItem();
+            assignment.StaffMemberId.ShouldBe(employeeId);
+            assignment.FromUtc.ShouldBe(now.AddMinutes(10));
+            assignment.ToUtc.ShouldBe(now.AddMinutes(20));
+            line.Tools.ShouldHaveSingleItem().Description.ShouldBe("Unlisted tool");
+            line.Materials.ShouldHaveSingleItem().Description.ShouldBe("Unlisted material");
+            line.GeneralSupports.ShouldHaveSingleItem().Description.ShouldBe("Unlisted support");
+        }
+    }
+
+    [Fact]
     public void WorkOrderRequest_MapsLegacySingularServicePerformerIntoCurrentCollection()
     {
         var performerId = Guid.NewGuid();

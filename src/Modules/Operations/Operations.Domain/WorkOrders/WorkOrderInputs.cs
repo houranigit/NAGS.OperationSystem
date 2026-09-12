@@ -9,7 +9,8 @@ public sealed record WorkOrderServiceLineInput(
     TimeWindow Window,
     string? Description,
     bool IsReturnToRamp = false,
-    Guid? Id = null);
+    Guid? Id = null,
+    IReadOnlyList<WorkOrderEmployeeAssignmentInput>? EmployeeAssignments = null);
 
 public sealed record WorkOrderTaskInput(
     Guid? Id,
@@ -20,7 +21,10 @@ public sealed record WorkOrderTaskInput(
     IReadOnlyList<WorkOrderTaskToolInput> Tools,
     IReadOnlyList<WorkOrderTaskMaterialInput> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportInput> GeneralSupports,
-    bool IsReturnToRamp = false);
+    bool IsReturnToRamp = false,
+    IReadOnlyList<WorkOrderEmployeeAssignmentInput>? EmployeeAssignments = null);
+
+public sealed record WorkOrderEmployeeAssignmentInput(Guid StaffMemberId, TimeWindow Window);
 
 /// <summary>
 /// One distinct return-to-ramp occurrence. Service lines and tasks belong to this occurrence and
@@ -33,8 +37,8 @@ public sealed record WorkOrderReturnToRampInput(
     IReadOnlyList<WorkOrderServiceLineInput> ServiceLines,
     IReadOnlyList<WorkOrderTaskInput> Tasks);
 
-public sealed record WorkOrderTaskToolInput(ToolSnapshot Tool, ResourceUsage Usage);
+public sealed record WorkOrderTaskToolInput(ToolSnapshot Tool, ResourceUsage Usage, string? Description = null);
 
-public sealed record WorkOrderTaskMaterialInput(MaterialSnapshot Material, ResourceUsage Usage);
+public sealed record WorkOrderTaskMaterialInput(MaterialSnapshot Material, ResourceUsage Usage, string? Description = null);
 
-public sealed record WorkOrderTaskGeneralSupportInput(GeneralSupportSnapshot GeneralSupport, ResourceUsage Usage);
+public sealed record WorkOrderTaskGeneralSupportInput(GeneralSupportSnapshot GeneralSupport, ResourceUsage Usage, string? Description = null);

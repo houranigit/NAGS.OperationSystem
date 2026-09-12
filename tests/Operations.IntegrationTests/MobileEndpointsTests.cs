@@ -35,6 +35,87 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     // --- Mobile auth -------------------------------------------------------------
 
     [Fact]
+    public async Task Unknown_lines_require_notes_and_employee_periods_round_trip_to_completed_flight_pdf()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, MobileStaffPermissions);
+        var flightId = await ScheduleFlightAsync(admin, refs, "MOB113", [staff.StaffId]);
+        var start = DateTimeOffset.UtcNow.AddHours(-2);
+        var end = start.AddHours(1);
+        var assignment = new Operations.Api.Endpoints.WorkOrderEmployeeAssignmentRequest(
+            staff.StaffId, start.AddMinutes(10), end.AddMinutes(-10));
+        var service = new Operations.Api.Endpoints.WorkOrderServiceLineRequest(
+            WellKnownMasterDataIds.UnknownService, [staff.StaffId], start, end, "Unlisted cabin support",
+            EmployeeAssignments: [assignment]);
+        var task = new Operations.Api.Endpoints.WorkOrderTaskRequest(
+            null, Operations.Domain.Enumerations.TaskType.Minor, "Special support", start, end, [staff.StaffId],
+            [new(WellKnownMasterDataIds.UnknownTool, null, start, end, "Borrowed inspection tool")],
+            [new(WellKnownMasterDataIds.UnknownMaterial, 2, Description: "Unlisted sealant")],
+            [new(WellKnownMasterDataIds.UnknownGeneralSupport, 1, Description: "External support crew")],
+            EmployeeAssignments: [assignment]);
+        var body = new Operations.Api.Endpoints.WorkOrderRequest(
+            Operations.Domain.Enumerations.WorkOrderType.Completion, "MOB113", refs.AircraftTypeId,
+            "HZ-TEST", start, end, null, null, "Completed", [service], [task]);
+
+        var invalidBodies = new[]
+        {
+            body with { ServiceLines = [service with { Description = " " }] },
+            body with { Tasks = [task with { Tools = [task.Tools![0] with { Description = null }] }] },
+            body with { Tasks = [task with { Materials = [task.Materials![0] with { Description = " " }] }] },
+            body with { Tasks = [task with { GeneralSupports = [task.GeneralSupports![0] with { Description = null }] }] },
+            body with { ServiceLines = [service with { EmployeeAssignments = [assignment with { FromUtc = start.AddMinutes(-1) }] }] },
+            body with { Tasks = [task with { EmployeeAssignments = [assignment with { ToUtc = end.AddMinutes(1) }] }] }
+        };
+        foreach (var invalidBody in invalidBodies)
+        {
+            var invalid = await staff.Client.PostAsJsonAsync($"{MobileBase}/flights/{flightId}/work-orders",
+                new { clientMutationId = Guid.NewGuid().ToString(), workOrder = invalidBody });
+            invalid.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await invalid.Content.ReadAsStringAsync());
+        }
+
+        var response = await staff.Client.PostAsJsonAsync($"{MobileBase}/flights/{flightId}/work-orders",
+            new { clientMutationId = Guid.NewGuid().ToString(), workOrder = body });
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        var write = (await response.Content.ReadFromJsonAsync<MobileWriteResult>())!;
+        var path = $"{OperationsApiFactory.Base}/work-orders/{write.WorkOrderId}";
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        jsonOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        var detail = (await staff.Client.GetFromJsonAsync<Operations.Application.Contracts.WorkOrderDetailDto>(path, jsonOptions))!;
+        detail.ServiceLines.ShouldHaveSingleItem().PerformedBy.ShouldHaveSingleItem().FromUtc.ShouldBe(assignment.FromUtc);
+        detail.Tasks.ShouldHaveSingleItem().Employees.ShouldHaveSingleItem().ToUtc.ShouldBe(assignment.ToUtc);
+        detail.Tasks[0].Tools.ShouldHaveSingleItem().Description.ShouldBe("Borrowed inspection tool");
+        detail.Tasks[0].Materials.ShouldHaveSingleItem().Description.ShouldBe("Unlisted sealant");
+        detail.Tasks[0].GeneralSupports.ShouldHaveSingleItem().Description.ShouldBe("External support crew");
+
+        // Check the multipart endpoint before approval; exactly one byte over the document limit.
+        using var upload = new MultipartFormDataContent();
+        upload.Add(new StringContent("Document"), "kind");
+        var documentBytes = new byte[2 * 1024 * 1024 + 1];
+        "%PDF-"u8.CopyTo(documentBytes);
+        using var file = new ByteArrayContent(documentBytes);
+        file.Headers.ContentType = new("application/pdf");
+        upload.Add(file, "file", "large.pdf");
+        using var uploadRequest = new HttpRequestMessage(HttpMethod.Post,
+            $"{path}/tasks/{detail.Tasks[0].Id}/attachments") { Content = upload };
+        uploadRequest.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+        var tooLarge = await staff.Client.SendAsync(uploadRequest);
+        tooLarge.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await tooLarge.Content.ReadAsStringAsync());
+        (await tooLarge.Content.ReadAsStringAsync()).ShouldContain("2 MB");
+
+        using var approve = new HttpRequestMessage(HttpMethod.Post, $"{path}/approve");
+        approve.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+        var approval = await admin.SendAsync(approve);
+        approval.StatusCode.ShouldBe(HttpStatusCode.NoContent, await approval.Content.ReadAsStringAsync());
+        (await staff.Client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var pdf = await staff.Client.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/{flightId}/work-orders/approved/pdf?timeZoneId=UTC");
+        pdf.StatusCode.ShouldBe(HttpStatusCode.OK, pdf.IsSuccessStatusCode ? null : await pdf.Content.ReadAsStringAsync());
+        pdf.Content.Headers.ContentType!.MediaType.ShouldBe("application/pdf");
+        Encoding.ASCII.GetString(await pdf.Content.ReadAsByteArrayAsync(), 0, 4).ShouldBe("%PDF");
+    }
+
+    [Fact]
     public async Task Mobile_login_returns_refresh_token_in_body_and_refresh_rotates_the_session()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();

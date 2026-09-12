@@ -29,6 +29,7 @@ data class WorkOrderFlightRow(
     val isAdHoc: Boolean,
     val plannedServices: List<FlightServiceSummary>,
     val cachedMyWorkOrder: WorkOrderDetailWireDto? = null,
+    val customerId: String? = null,
 )
 
 internal fun FlightEntity.toWorkOrderFlightRow(): WorkOrderFlightRow =
@@ -41,6 +42,7 @@ internal fun FlightEntity.toWorkOrderFlightRow(): WorkOrderFlightRow =
         aircraftTypeId = aircraftTypeId,
         aircraftTypeModel = aircraftTypeModel,
         customerName = customerName,
+        customerId = customerId,
         customerIataCode = customerIataCode,
         stationIata = stationIata,
         isPerLanding = isPerLanding,
@@ -59,6 +61,7 @@ internal fun PerLandingFlightEntity.toWorkOrderFlightRow(): WorkOrderFlightRow =
         aircraftTypeId = aircraftTypeId,
         aircraftTypeModel = aircraftTypeModel,
         customerName = customerName,
+        customerId = customerId,
         customerIataCode = customerIataCode,
         stationIata = stationIata,
         isPerLanding = isPerLanding,
@@ -77,6 +80,7 @@ internal fun AdHocFlightEntity.toWorkOrderFlightRow(): WorkOrderFlightRow =
         aircraftTypeId = aircraftTypeId,
         aircraftTypeModel = aircraftTypeModel,
         customerName = customerName,
+        customerId = customerId,
         customerIataCode = customerIataCode,
         stationIata = stationIata,
         isPerLanding = isPerLanding,

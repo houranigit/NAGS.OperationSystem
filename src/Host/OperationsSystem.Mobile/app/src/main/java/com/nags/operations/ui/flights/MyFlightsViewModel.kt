@@ -309,7 +309,7 @@ internal fun cancelFlightInternal(
                     baseRowVersion = cancelWo.rowVersion,
                     canceledAtIso = canceledAtIso,
                     reason = reason,
-                    remarks = cancelWo.remarks,
+                    remarks = cancellationRemarksForCustomer(cancelWo.customerId, cancelWo.remarks, reason),
                 )
             } else {
                 outboxRepository.enqueueCancel(
@@ -330,3 +330,8 @@ internal fun cancelFlightInternal(
         onFinished(true, null)
     }
 }
+
+internal fun cancellationRemarksForCustomer(customerId: String, remarks: String?, reason: String): String? =
+    if (customerId.equals(com.nags.operations.data.WellKnownMasterDataIds.UnknownCustomer, true) && remarks.isNullOrBlank()) {
+        reason
+    } else remarks

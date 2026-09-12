@@ -57,6 +57,9 @@ private fun WorkOrderServiceLineWireDto.toFormRow(nextKey: () -> Long) = Service
     serviceId = serviceId,
     serviceName = serviceName,
     employeeIds = effectivePerformedBy.map { it.staffMemberId },
+    employeePeriods = effectivePerformedBy.associate {
+        it.staffMemberId to EmployeePeriodForm(it.fromUtc ?: fromUtc, it.toUtc ?: toUtc)
+    },
     fromIso = fromUtc,
     toIso = toUtc,
     description = description.orEmpty(),
@@ -70,6 +73,9 @@ private fun WorkOrderTaskWireDto.toFormRow(nextKey: () -> Long) = TaskFormRow(
     serverId = id,
     taskType = taskType,
     employeeIds = employees.map { it.staffMemberId },
+    employeePeriods = employees.associate {
+        it.staffMemberId to EmployeePeriodForm(it.fromUtc ?: fromUtc, it.toUtc ?: toUtc)
+    },
     toolIds = tools.map { it.resourceId },
     toolQuantities = tools.mapNotNull { resource ->
         resource.quantity?.let { resource.resourceId to it }
@@ -79,6 +85,7 @@ private fun WorkOrderTaskWireDto.toFormRow(nextKey: () -> Long) = TaskFormRow(
         val legacyQuantityOnlyDuration = calculationType == ResourceCalculationType.Duration &&
             resource.fromUtc.isNullOrBlank() && resource.quantity != null
         resource.resourceId to ResourceUsageForm(
+            description = resource.description.orEmpty(),
             calculationType = calculationType,
             quantity = if (calculationType == ResourceCalculationType.Quantity) resource.quantity else null,
             fromIso = if (legacyQuantityOnlyDuration) fromUtc else resource.fromUtc.orEmpty(),
@@ -91,6 +98,7 @@ private fun WorkOrderTaskWireDto.toFormRow(nextKey: () -> Long) = TaskFormRow(
     }.toMap(),
     materialUsages = materials.associate { resource ->
         resource.resourceId to ResourceUsageForm(
+            description = resource.description.orEmpty(),
             calculationType = resource.calculationType ?: ResourceCalculationType.Quantity,
             quantity = resource.quantity,
             fromIso = resource.fromUtc.orEmpty(),
@@ -103,6 +111,7 @@ private fun WorkOrderTaskWireDto.toFormRow(nextKey: () -> Long) = TaskFormRow(
     }.toMap(),
     generalSupportUsages = generalSupports.associate { resource ->
         resource.resourceId to ResourceUsageForm(
+            description = resource.description.orEmpty(),
             calculationType = resource.calculationType ?: ResourceCalculationType.Quantity,
             quantity = resource.quantity,
             fromIso = resource.fromUtc.orEmpty(),

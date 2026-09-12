@@ -12,6 +12,53 @@ namespace Operations.IntegrationTests;
 public sealed class WorkOrderPrintDocumentFactoryTests
 {
     [Fact]
+    public void PrintPresentation_UsesEmployeePeriodsAndIncludesResourceNotes()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var service = baseline.WorkOrder.ServiceLines[0];
+        var task = baseline.WorkOrder.Tasks[0];
+        var source = baseline with
+        {
+            WorkOrder = baseline.WorkOrder with
+            {
+                ServiceLines = [service with
+                {
+                    PerformedBy = [service.PerformedBy[0] with
+                    {
+                        FromUtc = now.AddMinutes(12), ToUtc = now.AddMinutes(19)
+                    }]
+                }],
+                Tasks = [task with
+                {
+                    Employees = [task.Employees[0] with
+                    {
+                        FromUtc = now.AddMinutes(27), ToUtc = now.AddMinutes(36)
+                    }],
+                    Tools = [new WorkOrderTaskToolDto(Guid.NewGuid(), "Unknown",
+                        MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                        1, null, null, "Special towbar borrowed from stand 4")],
+                    Materials = [task.Materials[0] with { Description = "Unlisted sealant cartridge" }],
+                    GeneralSupports = [new WorkOrderTaskGeneralSupportDto(Guid.NewGuid(), "Unknown",
+                        MasterData.Contracts.Resources.ResourceCalculationType.Quantity,
+                        1, null, null, "External ground power unit")]
+                }]
+            }
+        };
+
+        var ddl = DdlWriter.WriteToString(WorkOrderPrintDocumentFactory.BuildDocument(source, TimeZoneInfo.Utc));
+
+        ddl.ShouldContain("20 Jul 2026 18:12 - 18:19 (+00:00)");
+        ddl.ShouldContain("20 Jul 2026 18:27 - 18:36 (+00:00)");
+        var utilization = Between(ddl, "Staff Utilization (1)", "Attachment Register");
+        utilization.ShouldContain("16m");
+        utilization.ShouldNotContain("45m");
+        ddl.ShouldContain("Special towbar borrowed from stand 4");
+        ddl.ShouldContain("Unlisted sealant cartridge");
+        ddl.ShouldContain("External ground power unit");
+    }
+
+    [Fact]
     public void Create_ReturnsBrandedMultipageA4Pdf()
     {
         var source = CreateSource(includeCompletionDetails: true);

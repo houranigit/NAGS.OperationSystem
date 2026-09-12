@@ -40,7 +40,7 @@ public sealed class GetPerformedServiceOptionsQueryHandler(IMasterDataDbContext 
             if (!manpowerTypeActive)
                 return ScopeDenied();
 
-            query = query.Where(service => db.ManpowerTypeAllowedServices.Any(allowance =>
+            query = query.Where(service => service.Id == WellKnownMasterDataIds.UnknownService || db.ManpowerTypeAllowedServices.Any(allowance =>
                 allowance.ManpowerTypeId == manpowerTypeId.Value && allowance.ServiceId == service.Id));
         }
         else if (user.UserType is not (UserType.SystemAdministrator or UserType.ViewerOnly))

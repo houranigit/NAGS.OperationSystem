@@ -68,7 +68,7 @@
                         </div>
                         <div class="rtr-field">
                             <label>Performed by <span class="rtr-required">*</span></label>
-                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Data="@StaffChoices(line)"
+                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Change="@((object? _) => line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(line.PerformedByStaffMemberIds, line.EmployeeAssignments))" Data="@StaffChoices(line)"
                                             TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowFiltering="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
@@ -83,10 +83,12 @@
                                               Min="@line.FromLocal" Max="@model.ToLocal" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
                         <div class="rtr-field rtr-full">
-                            <label>Description <small>optional</small></label>
+                            <label>Description @if (WorkOrderEntryRules.RequiresServiceDescription(line.ServiceId)) { <span class="rtr-required">*</span> } else { <small>optional</small> }</label>
                             <RadzenTextBox @bind-Value="line.Description" MaxLength="2000" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
                     </div>
+                    <EmployeePeriodsEditor @bind-Assignments="line.EmployeeAssignments" StaffOptions="@staff" EmployeeSnapshots="@line.PerformerSnapshots"
+                                           FromLocal="@line.FromLocal" ToLocal="@line.ToLocal" ViewOnly="@ViewOnly" />
                     @AttachmentEditor(line)
                 </article>
             }
@@ -123,7 +125,7 @@
                         </div>
                         <div class="rtr-field">
                             <label>Performed by <span class="rtr-required">*</span></label>
-                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Data="@StaffChoices(task)"
+                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Change="@((object? _) => task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(task.EmployeeIds, task.EmployeeAssignments))" Data="@StaffChoices(task)"
                                             TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowFiltering="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
@@ -147,6 +149,8 @@
                         @ResourceRows(task, "Materials", "category", task.Materials, MaterialChoices(task), ResourceCalculationType.Quantity)
                         @ResourceRows(task, "General support", "headset_mic", task.GeneralSupports, SupportChoices(task), ResourceCalculationType.Quantity)
                     </div>
+                    <EmployeePeriodsEditor @bind-Assignments="task.EmployeeAssignments" StaffOptions="@staff" EmployeeSnapshots="@task.EmployeeSnapshots"
+                                           FromLocal="@task.FromLocal" ToLocal="@task.ToLocal" ViewOnly="@ViewOnly" />
                     @AttachmentEditor(task)
                 </article>
             }
@@ -371,6 +375,14 @@
                                       Click="@(() => rows.Remove(row))" />
                     }
                 </div>
+                @if (WorkOrderEntryRules.IsUnknownResource(row.ItemId) || !string.IsNullOrWhiteSpace(row.Description))
+                {
+                    <div class="rtr-field">
+                        <label>Description @if (WorkOrderEntryRules.IsUnknownResource(row.ItemId)) { <span class="rtr-required">*</span> }</label>
+                        <RadzenTextArea @bind-Value="row.Description" Rows="2" MaxLength="2000" Placeholder="Describe the Unknown item"
+                                        Disabled="@ViewOnly" class="rtr-control" />
+                    </div>
+                }
                 <span class="rtr-resource-type">@row.CalculationType</span>
                 @if (row.CalculationType == ResourceCalculationType.Quantity)
                 {
@@ -449,7 +461,7 @@
                 <div class="rtr-upload-actions">
                     <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => upload("Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
                     <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => upload("Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
-                    <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => upload("Document", args))" accept="application/pdf" /></label>
+                    <label><RadzenIcon Icon="description" /><span>PDF (max 2 MB)</span><InputFile OnChange="@((args) => upload("Document", args))" accept="application/pdf" /></label>
                 </div>
             }
         </div>

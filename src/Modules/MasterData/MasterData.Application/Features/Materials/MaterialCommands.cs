@@ -4,6 +4,7 @@ using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Contracts.Resources;
+using MasterData.Contracts.Seeding;
 using MasterData.Domain.Materials;
 using Microsoft.EntityFrameworkCore;
 
@@ -78,6 +79,8 @@ public sealed class UpdateMaterialCommandHandler(IMasterDataDbContext db, TimePr
         var material = await db.Materials.FirstOrDefaultAsync(m => m.Id == request.Id, cancellationToken);
         if (material is null)
             return Error.NotFound("Material not found.", "MasterData.Material.NotFound");
+        if (material.Id == WellKnownMasterDataIds.UnknownMaterial)
+            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.Material.SystemRecord");
 
         var trimmedName = request.Name.Trim();
         if (await db.Materials.AnyAsync(m => m.Name == trimmedName && m.Id != request.Id, cancellationToken))
@@ -142,6 +145,8 @@ public sealed class DeactivateMaterialCommandHandler(IMasterDataDbContext db, Ti
         var material = await db.Materials.FirstOrDefaultAsync(m => m.Id == request.Id, cancellationToken);
         if (material is null)
             return Error.NotFound("Material not found.", "MasterData.Material.NotFound");
+        if (material.Id == WellKnownMasterDataIds.UnknownMaterial)
+            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.Material.SystemRecord");
 
         material.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(material, request.RowVersion);

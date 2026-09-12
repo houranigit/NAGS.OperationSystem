@@ -372,7 +372,7 @@ public static class WorkOrderAttachmentPolicy
 {
     public const int MaxImageBytes = 10 * 1024 * 1024;
     public const int MaxVoiceBytes = 25 * 1024 * 1024;
-    public const int MaxDocumentBytes = 20 * 1024 * 1024;
+    public const int MaxDocumentBytes = 2 * 1024 * 1024;
     public const int MaxUploadBytes = MaxVoiceBytes;
 
     private static readonly HashSet<string> ImageContentTypes =
@@ -389,7 +389,7 @@ public static class WorkOrderAttachmentPolicy
         if (content.Length == 0)
             return Error.Validation("The attachment file is empty.", "Operations.WorkOrder.AttachmentEmpty");
         if (content.Length > MaxBytes(kind))
-            return Error.Validation($"The {kind.ToString().ToLowerInvariant()} attachment exceeds the size limit.", "Operations.WorkOrder.AttachmentTooLarge");
+            return Error.Validation($"The {kind.ToString().ToLowerInvariant()} attachment must be at most {MaxBytes(kind) / (1024 * 1024)} MB.", "Operations.WorkOrder.AttachmentTooLarge");
 
         var normalizedContentType = string.IsNullOrWhiteSpace(contentType) ? ContentTypeFromFileName(fileName) : contentType.Trim();
         if (!AllowedContentTypes(kind).Contains(normalizedContentType))
@@ -400,7 +400,7 @@ public static class WorkOrderAttachmentPolicy
         return Result.Success();
     }
 
-    private static int MaxBytes(TaskAttachmentKind kind) => kind switch
+    public static int MaxBytes(TaskAttachmentKind kind) => kind switch
     {
         TaskAttachmentKind.Image => MaxImageBytes,
         TaskAttachmentKind.Voice => MaxVoiceBytes,

@@ -107,6 +107,8 @@ data class WorkOrderServiceLinePerformerWireDto(
     val staffMemberId: String,
     val fullName: String,
     val employeeId: String,
+    val fromUtc: String? = null,
+    val toUtc: String? = null,
 )
 
 /** Mirrors server `WorkOrderTaskDto`. Task ids are stable — resend them to keep attachments. */
@@ -130,6 +132,8 @@ data class WorkOrderTaskEmployeeWireDto(
     val staffMemberId: String,
     val fullName: String,
     val employeeId: String,
+    val fromUtc: String? = null,
+    val toUtc: String? = null,
 )
 
 /**
@@ -147,6 +151,7 @@ data class WorkOrderTaskResourceWireDto(
     val quantity: Double? = 1.0,
     val fromUtc: String? = null,
     val toUtc: String? = null,
+    val description: String? = null,
 ) {
     val resourceId: String get() = toolId ?: materialId ?: generalSupportId ?: ""
 }

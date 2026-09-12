@@ -93,7 +93,8 @@ public sealed class WorkOrderServiceLine : Entity<Guid>
                 Guid.NewGuid(),
                 WorkOrderId,
                 Id,
-                performer));
+                performer,
+                input.EmployeeAssignments?.Single(assignment => assignment.StaffMemberId == performer.StaffMemberId).Window ?? input.Window));
         }
     }
 
@@ -115,17 +116,20 @@ public sealed class WorkOrderServiceLinePerformer : Entity<Guid>
         Guid id,
         Guid workOrderId,
         Guid workOrderServiceLineId,
-        StaffMemberSnapshot staffMember)
+        StaffMemberSnapshot staffMember,
+        TimeWindow window)
     {
         Id = id;
         WorkOrderId = workOrderId;
         WorkOrderServiceLineId = workOrderServiceLineId;
         StaffMember = staffMember;
+        Window = TimeWindow.Create(window.From, window.To).Value;
     }
 
     public Guid WorkOrderId { get; private set; }
     public Guid WorkOrderServiceLineId { get; private set; }
     public StaffMemberSnapshot StaffMember { get; private set; } = null!;
+    public TimeWindow Window { get; private set; } = null!;
 }
 
 public sealed class WorkOrderServiceLineAttachment : Entity<Guid>

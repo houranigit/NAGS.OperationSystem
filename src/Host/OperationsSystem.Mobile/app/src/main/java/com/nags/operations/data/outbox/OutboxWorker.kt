@@ -13,6 +13,7 @@ import com.nags.operations.data.api.MobileWorkOrderWriteRequest
 import com.nags.operations.data.api.WorkOrderServiceLineInput
 import com.nags.operations.data.api.WorkOrderSignatureInput
 import com.nags.operations.data.api.WorkOrderTaskAttachmentInput
+import com.nags.operations.data.api.WorkOrderEmployeeAssignmentInput
 import com.nags.operations.data.api.WorkOrderTaskInput
 import com.nags.operations.data.api.WorkOrderTaskResourceInput
 import com.nags.operations.data.api.WorkOrderReturnToRampInput
@@ -440,9 +441,11 @@ class OutboxWorker(
         fromUtc = fromIso,
         toUtc = toIso,
         employeeIds = employeeIds,
+        employeeAssignments = employeeAssignments.toWireAssignments(),
         tools = tools.map {
             WorkOrderTaskResourceInput(
                 toolId = it.itemId,
+                description = it.description,
                 quantity = it.quantity,
                 fromUtc = it.fromIso,
                 toUtc = it.toIso,
@@ -451,6 +454,7 @@ class OutboxWorker(
         materials = materials.map {
             WorkOrderTaskResourceInput(
                 materialId = it.itemId,
+                description = it.description,
                 quantity = it.quantity,
                 fromUtc = it.fromIso,
                 toUtc = it.toIso,
@@ -459,6 +463,7 @@ class OutboxWorker(
         generalSupports = generalSupports.map {
             WorkOrderTaskResourceInput(
                 generalSupportId = it.itemId,
+                description = it.description,
                 quantity = it.quantity,
                 fromUtc = it.fromIso,
                 toUtc = it.toIso,
@@ -555,6 +560,7 @@ internal fun OutboxPayload.ServiceLineInput.toWireServiceLine(
     id = id,
     serviceId = serviceId,
     performedByStaffMemberIds = performedByStaffMemberIds,
+    employeeAssignments = employeeAssignments.toWireAssignments(),
     fromUtc = fromIso,
     toUtc = toIso,
     description = description,
@@ -592,3 +598,7 @@ internal fun backgroundDrainDecision(
     sawRetryable || pendingRemaining -> PersistentDrainResult.Retry
     else -> PersistentDrainResult.Complete
 }
+
+/** Preserve missing assignments so retried pre-upgrade mutations retain their original fingerprint. */
+internal fun List<OutboxPayload.EmployeeAssignmentInput>?.toWireAssignments(): List<WorkOrderEmployeeAssignmentInput>? =
+    this?.map { WorkOrderEmployeeAssignmentInput(it.staffMemberId, it.fromIso, it.toIso) }

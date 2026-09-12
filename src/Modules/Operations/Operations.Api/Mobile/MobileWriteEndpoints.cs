@@ -80,7 +80,8 @@ internal static class MobileWriteEndpoints
                                 a.Kind,
                                 a.Base64Content,
                                 a.FileName,
-                                a.ContentType)).ToList() ?? [])).ToList() ?? [],
+                                a.ContentType)).ToList() ?? [],
+                        EmployeeAssignments: l.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
                     request.Tasks?.Select(t => new Operations.Application.Features.WorkOrders.WorkOrderTaskCommand(
                         null,
                         t.TaskType,
@@ -88,12 +89,13 @@ internal static class MobileWriteEndpoints
                         t.FromUtc,
                         t.ToUtc,
                         t.EmployeeIds ?? [],
-                        t.Tools?.Select(tool => new Operations.Application.Features.WorkOrders.WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity, tool.FromUtc, tool.ToUtc)).ToList() ?? [],
-                        t.Materials?.Select(m => new Operations.Application.Features.WorkOrders.WorkOrderTaskMaterialCommand(m.MaterialId, m.Quantity, m.FromUtc, m.ToUtc)).ToList() ?? [],
-                        t.GeneralSupports?.Select(g => new Operations.Application.Features.WorkOrders.WorkOrderTaskGeneralSupportCommand(g.GeneralSupportId, g.Quantity, g.FromUtc, g.ToUtc)).ToList() ?? [],
+                        t.Tools?.Select(tool => new Operations.Application.Features.WorkOrders.WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity, tool.FromUtc, tool.ToUtc, tool.Description)).ToList() ?? [],
+                        t.Materials?.Select(m => new Operations.Application.Features.WorkOrders.WorkOrderTaskMaterialCommand(m.MaterialId, m.Quantity, m.FromUtc, m.ToUtc, m.Description)).ToList() ?? [],
+                        t.GeneralSupports?.Select(g => new Operations.Application.Features.WorkOrders.WorkOrderTaskGeneralSupportCommand(g.GeneralSupportId, g.Quantity, g.FromUtc, g.ToUtc, g.Description)).ToList() ?? [],
                         t.Attachments?.Select(a => new Operations.Application.Features.WorkOrders.WorkOrderTaskAttachmentCommand(
                             a.Kind, a.Base64Content, a.FileName, a.ContentType)).ToList() ?? [],
-                        IsReturnToRamp: false)).ToList() ?? [],
+                        IsReturnToRamp: false,
+                        EmployeeAssignments: t.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
                     request.ClientMutationId), ct);
                 return ToWriteResult(result, created: false);
             }).RequirePermission(OperationsPermissions.WorkOrders.Author)

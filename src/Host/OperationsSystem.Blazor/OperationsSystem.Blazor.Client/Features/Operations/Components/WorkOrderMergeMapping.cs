@@ -9,6 +9,24 @@ namespace OperationsSystem.Blazor.Client.Features.Operations.Components;
 /// </summary>
 internal static class WorkOrderMergeMapping
 {
+    internal static string? ResolveRemarks(
+        Guid? customerId,
+        bool isCompletion,
+        string? sourceRemarks,
+        string? customerRemarksOverride) =>
+        WorkOrderEntryRules.RequiresCustomerDescription(customerId)
+            ? (customerRemarksOverride ?? sourceRemarks)?.Trim()
+            : isCompletion ? sourceRemarks : null;
+
+    internal static string? ValidateRemarks(Guid? customerId, string? remarks)
+    {
+        if (WorkOrderEntryRules.RequiresCustomerDescription(customerId) && string.IsNullOrWhiteSpace(remarks))
+            return "Describe the Unknown customer before merging the work orders.";
+        if (remarks?.Trim().Length > 2000)
+            return "Remarks must be at most 2000 characters.";
+        return null;
+    }
+
     internal static bool IsStandardServiceLine(WorkOrderServiceLineModel line) =>
         !line.IsReturnToRamp;
 
@@ -25,7 +43,9 @@ internal static class WorkOrderMergeMapping
             line.Description,
             IsReturnToRamp: false,
             Id: null,
-            Attachments: null);
+            Attachments: null,
+            EmployeeAssignments: line.PerformedBy.Select(item => new WorkOrderEmployeeAssignmentRequestModel(
+                item.StaffMemberId, item.FromUtc ?? line.FromUtc, item.ToUtc ?? line.ToUtc)).ToList());
 
     internal static WorkOrderTaskRequestModel ToRequest(WorkOrderTaskModel task) =>
         new(
@@ -39,19 +59,24 @@ internal static class WorkOrderMergeMapping
                 tool.ToolId,
                 tool.Quantity,
                 tool.FromUtc,
-                tool.ToUtc)).ToList(),
+                tool.ToUtc,
+                tool.Description)).ToList(),
             task.Materials.Select(material => new WorkOrderTaskMaterialRequestModel(
                 material.MaterialId,
                 material.Quantity,
                 material.FromUtc,
-                material.ToUtc)).ToList(),
+                material.ToUtc,
+                material.Description)).ToList(),
             task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportRequestModel(
                 support.GeneralSupportId,
                 support.Quantity,
                 support.FromUtc,
-                support.ToUtc)).ToList(),
+                support.ToUtc,
+                support.Description)).ToList(),
             Attachments: null,
-            IsReturnToRamp: false);
+            IsReturnToRamp: false,
+            EmployeeAssignments: task.Employees.Select(item => new WorkOrderEmployeeAssignmentRequestModel(
+                item.StaffMemberId, item.FromUtc ?? task.FromUtc, item.ToUtc ?? task.ToUtc)).ToList());
 
     internal static IReadOnlyList<WorkOrderReturnToRampRequestModel>? BuildCanonicalReturnToRamps(
         IReadOnlyList<WorkOrderDetail> sources)

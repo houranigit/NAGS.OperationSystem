@@ -132,10 +132,10 @@ class ReturnToRampViewModel(
         updateOccurrenceInternal { occurrence ->
             occurrence.copy(
                 serviceLines = occurrence.serviceLines.map { line ->
-                    if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(employeeId)) else line
+                    if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(employeeId), employeePeriods = mapOf(employeeId to EmployeePeriodForm())) else line
                 },
                 tasks = occurrence.tasks.map { task ->
-                    if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(employeeId)) else task
+                    if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(employeeId), employeePeriods = mapOf(employeeId to EmployeePeriodForm())) else task
                 },
             )
         }
@@ -165,6 +165,7 @@ class ReturnToRampViewModel(
             serviceLines = occurrence.serviceLines + ServiceLineFormRow(
                 localKey = allocKey(),
                 employeeIds = defaultEmployeeIds(),
+                employeePeriods = defaultEmployeeIds().associateWith { EmployeePeriodForm() },
                 fromIso = occurrence.fromIso,
                 toIso = occurrence.toIso,
             ),
@@ -204,6 +205,7 @@ class ReturnToRampViewModel(
             tasks = occurrence.tasks + TaskFormRow(
                 localKey = allocKey(),
                 employeeIds = defaultEmployeeIds(),
+                employeePeriods = defaultEmployeeIds().associateWith { EmployeePeriodForm() },
                 fromIso = occurrence.fromIso,
                 toIso = occurrence.toIso,
             ),
@@ -311,6 +313,7 @@ class ReturnToRampViewModel(
             OutboxPayload.ServiceLineInput(
                 serviceId = row.serviceId ?: error("Service line missing serviceId"),
                 performedByStaffMemberIds = row.employeeIds,
+                employeeAssignments = row.employeePeriods.toOutboxAssignments(row.employeeIds, row.fromIso, row.toIso),
                 fromIso = row.fromIso,
                 toIso = row.toIso,
                 description = row.description.takeIf { it.isNotBlank() },
@@ -327,6 +330,7 @@ class ReturnToRampViewModel(
         fromIso = fromIso,
         toIso = toIso,
         employeeIds = employeeIds,
+        employeeAssignments = employeePeriods.toOutboxAssignments(employeeIds, fromIso, toIso),
         tools = toolIds.map { id ->
             resourceUsage(
                 id,
@@ -366,10 +370,11 @@ class ReturnToRampViewModel(
 
     private fun ResourceUsageForm.toOutboxInput(itemId: String) =
         if (calculationType == ResourceCalculationType.Quantity) {
-            OutboxPayload.ResourceInput(itemId = itemId, quantity = quantity)
+            OutboxPayload.ResourceInput(itemId = itemId, quantity = quantity, description = description.trim().takeIf { it.isNotBlank() })
         } else {
             OutboxPayload.ResourceInput(
                 itemId = itemId,
+                description = description.trim().takeIf { it.isNotBlank() },
                 quantity = null,
                 fromIso = fromIso,
                 toIso = toIso?.takeIf { it.isNotBlank() },

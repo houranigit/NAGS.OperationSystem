@@ -167,6 +167,13 @@ public sealed class WorkOrderServiceLinePerformerConfiguration : IEntityTypeConf
         builder.Property(p => p.WorkOrderId).IsRequired();
         builder.Property(p => p.WorkOrderServiceLineId).IsRequired();
 
+        builder.OwnsOne(p => p.Window, window =>
+        {
+            window.Property(value => value.From).HasColumnName("FromUtc").IsRequired();
+            window.Property(value => value.To).HasColumnName("ToUtc").IsRequired();
+        });
+        builder.Navigation(p => p.Window).IsRequired();
+
         builder.OwnsOne(p => p.StaffMember, s =>
         {
             s.Property(p => p.StaffMemberId).HasColumnName("StaffMemberId").IsRequired();
@@ -254,6 +261,13 @@ public sealed class WorkOrderTaskEmployeeConfiguration : IEntityTypeConfiguratio
         builder.Property(e => e.WorkOrderId).IsRequired();
         builder.Property(e => e.WorkOrderTaskId).IsRequired();
 
+        builder.OwnsOne(e => e.Window, window =>
+        {
+            window.Property(value => value.From).HasColumnName("FromUtc").IsRequired();
+            window.Property(value => value.To).HasColumnName("ToUtc").IsRequired();
+        });
+        builder.Navigation(e => e.Window).IsRequired();
+
         builder.OwnsOne(e => e.Employee, s =>
         {
             s.Property(p => p.StaffMemberId).HasColumnName("StaffMemberId").IsRequired();
@@ -276,6 +290,7 @@ public sealed class WorkOrderTaskToolConfiguration : IEntityTypeConfiguration<Wo
         builder.Property(t => t.Id).ValueGeneratedNever();
         builder.Property(t => t.WorkOrderId).IsRequired();
         builder.Property(t => t.WorkOrderTaskId).IsRequired();
+        builder.Property(t => t.Description).HasMaxLength(2000);
 
         builder.OwnsOne(t => t.Tool, tool =>
         {
@@ -316,6 +331,7 @@ public sealed class WorkOrderTaskMaterialConfiguration : IEntityTypeConfiguratio
         builder.Property(m => m.Id).ValueGeneratedNever();
         builder.Property(m => m.WorkOrderId).IsRequired();
         builder.Property(m => m.WorkOrderTaskId).IsRequired();
+        builder.Property(m => m.Description).HasMaxLength(2000);
 
         builder.OwnsOne(m => m.Material, material =>
         {
@@ -356,6 +372,7 @@ public sealed class WorkOrderTaskGeneralSupportConfiguration : IEntityTypeConfig
         builder.Property(g => g.Id).ValueGeneratedNever();
         builder.Property(g => g.WorkOrderId).IsRequired();
         builder.Property(g => g.WorkOrderTaskId).IsRequired();
+        builder.Property(g => g.Description).HasMaxLength(2000);
 
         builder.OwnsOne(g => g.GeneralSupport, support =>
         {

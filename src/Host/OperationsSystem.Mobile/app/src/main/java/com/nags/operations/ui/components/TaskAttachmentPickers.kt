@@ -294,7 +294,9 @@ fun DocumentAttachmentButton(
                 val attachment = withContext(Dispatchers.IO) {
                     captureAttachmentInternal(context, uri, TaskAttachmentKindValue.Document)
                 }
-                attachment?.let(onAttachment)
+                if (attachment != null) onAttachment(attachment) else {
+                    android.widget.Toast.makeText(context, "Choose a valid PDF document of 2 MB or less.", android.widget.Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

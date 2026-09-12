@@ -191,6 +191,10 @@ internal static class WorkOrderEndpoints
             var kindValue = form["kind"].FirstOrDefault();
             if (!Enum.TryParse<TaskAttachmentKind>(kindValue, ignoreCase: true, out var kind))
                 return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("Attachment kind is required.", "Operations.WorkOrder.AttachmentKindRequired"));
+            if (file.Length > WorkOrderAttachmentPolicy.MaxBytes(kind))
+                return ApiResults.Problem(Error.Validation(
+                    $"The {kind.ToString().ToLowerInvariant()} attachment must be at most {WorkOrderAttachmentPolicy.MaxBytes(kind) / (1024 * 1024)} MB.",
+                    "Operations.WorkOrder.AttachmentTooLarge"));
 
             using var memory = new MemoryStream();
             await file.CopyToAsync(memory, ct);
@@ -245,6 +249,10 @@ internal static class WorkOrderEndpoints
             var kindValue = form["kind"].FirstOrDefault();
             if (!Enum.TryParse<TaskAttachmentKind>(kindValue, ignoreCase: true, out var kind))
                 return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("Attachment kind is required.", "Operations.WorkOrder.AttachmentKindRequired"));
+            if (file.Length > WorkOrderAttachmentPolicy.MaxBytes(kind))
+                return ApiResults.Problem(Error.Validation(
+                    $"The {kind.ToString().ToLowerInvariant()} attachment must be at most {WorkOrderAttachmentPolicy.MaxBytes(kind) / (1024 * 1024)} MB.",
+                    "Operations.WorkOrder.AttachmentTooLarge"));
 
             using var memory = new MemoryStream();
             await file.CopyToAsync(memory, ct);

@@ -258,7 +258,7 @@ internal static class WorkOrderDtoMapper
                 line.PerformedBy.Select(performer => new WorkOrderServiceLinePerformerDto(
                     performer.StaffMember.StaffMemberId,
                     performer.StaffMember.FullName,
-                    performer.StaffMember.EmployeeId)).ToList(),
+                    performer.StaffMember.EmployeeId, performer.Window.From, performer.Window.To)).ToList(),
                 line.Window.From,
                 line.Window.To,
                 line.Description,
@@ -275,13 +275,13 @@ internal static class WorkOrderDtoMapper
                 task.Description,
                 task.Window.From,
                 task.Window.To,
-                task.Employees.Select(e => new WorkOrderTaskEmployeeDto(e.Employee.StaffMemberId, e.Employee.FullName, e.Employee.EmployeeId)).ToList(),
+                task.Employees.Select(e => new WorkOrderTaskEmployeeDto(e.Employee.StaffMemberId, e.Employee.FullName, e.Employee.EmployeeId, e.Window.From, e.Window.To)).ToList(),
                 task.Tools.Select(t => new WorkOrderTaskToolDto(
-                    t.Tool.ToolId, t.Tool.Name, t.Tool.CalculationType, t.Usage.Quantity, t.Usage.FromUtc, t.Usage.ToUtc)).ToList(),
+                    t.Tool.ToolId, t.Tool.Name, t.Tool.CalculationType, t.Usage.Quantity, t.Usage.FromUtc, t.Usage.ToUtc, t.Description)).ToList(),
                 task.Materials.Select(m => new WorkOrderTaskMaterialDto(
-                    m.Material.MaterialId, m.Material.Name, m.Material.CalculationType, m.Usage.Quantity, m.Usage.FromUtc, m.Usage.ToUtc)).ToList(),
+                    m.Material.MaterialId, m.Material.Name, m.Material.CalculationType, m.Usage.Quantity, m.Usage.FromUtc, m.Usage.ToUtc, m.Description)).ToList(),
                 task.GeneralSupports.Select(g => new WorkOrderTaskGeneralSupportDto(
-                    g.GeneralSupport.GeneralSupportId, g.GeneralSupport.Name, g.GeneralSupport.CalculationType, g.Usage.Quantity, g.Usage.FromUtc, g.Usage.ToUtc)).ToList(),
+                    g.GeneralSupport.GeneralSupportId, g.GeneralSupport.Name, g.GeneralSupport.CalculationType, g.Usage.Quantity, g.Usage.FromUtc, g.Usage.ToUtc, g.Description)).ToList(),
                 task.Attachments.Select(a => new WorkOrderTaskAttachmentDto(a.Id, a.Kind.ToString(), a.OriginalFileName, a.ContentType, a.Size)).ToList(),
                 task.IsReturnToRamp)).ToList(),
             workOrder.CreatedAtUtc,
@@ -304,7 +304,7 @@ internal static class WorkOrderDtoMapper
                         line.PerformedBy.Select(performer => new WorkOrderServiceLinePerformerDto(
                             performer.StaffMember.StaffMemberId,
                             performer.StaffMember.FullName,
-                            performer.StaffMember.EmployeeId)).ToList(),
+                            performer.StaffMember.EmployeeId, performer.Window.From, performer.Window.To)).ToList(),
                         line.Window.From,
                         line.Window.To,
                         line.Description,
@@ -324,18 +324,18 @@ internal static class WorkOrderDtoMapper
                         task.Employees.Select(employee => new WorkOrderTaskEmployeeDto(
                             employee.Employee.StaffMemberId,
                             employee.Employee.FullName,
-                            employee.Employee.EmployeeId)).ToList(),
+                            employee.Employee.EmployeeId, employee.Window.From, employee.Window.To)).ToList(),
                         task.Tools.Select(tool => new WorkOrderTaskToolDto(
-                            tool.Tool.ToolId, tool.Tool.Name, tool.Tool.CalculationType, tool.Usage.Quantity, tool.Usage.FromUtc, tool.Usage.ToUtc)).ToList(),
+                            tool.Tool.ToolId, tool.Tool.Name, tool.Tool.CalculationType, tool.Usage.Quantity, tool.Usage.FromUtc, tool.Usage.ToUtc, tool.Description)).ToList(),
                         task.Materials.Select(material => new WorkOrderTaskMaterialDto(
-                            material.Material.MaterialId, material.Material.Name, material.Material.CalculationType, material.Usage.Quantity, material.Usage.FromUtc, material.Usage.ToUtc)).ToList(),
+                            material.Material.MaterialId, material.Material.Name, material.Material.CalculationType, material.Usage.Quantity, material.Usage.FromUtc, material.Usage.ToUtc, material.Description)).ToList(),
                         task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportDto(
                             support.GeneralSupport.GeneralSupportId,
                             support.GeneralSupport.Name,
                             support.GeneralSupport.CalculationType,
                             support.Usage.Quantity,
                             support.Usage.FromUtc,
-                            support.Usage.ToUtc)).ToList(),
+                            support.Usage.ToUtc, support.Description)).ToList(),
                         task.Attachments.Select(attachment => new WorkOrderTaskAttachmentDto(
                             attachment.Id,
                             attachment.Kind.ToString(),

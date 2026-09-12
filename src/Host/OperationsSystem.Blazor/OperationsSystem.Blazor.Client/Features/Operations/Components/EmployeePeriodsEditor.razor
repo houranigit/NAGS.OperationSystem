@@ -1,0 +1,45 @@
+@inject UserTimeZone UserTimeZone
+
+@if (Assignments.Count > 0)
+{
+    <div class="employee-periods">
+        <div class="employee-periods-heading">Employee working periods</div>
+        <p>Set the From and To date/time for each selected employee within the service or task period.</p>
+        @foreach (var assignment in Assignments)
+        {
+            <div @key="assignment.StaffMemberId" class="employee-period-row">
+                <strong>@EmployeeName(assignment.StaffMemberId)</strong>
+                <div class="employee-period-field">
+                    <label>From (@UserTimeZone.Id) *</label>
+                    <RadzenDatePicker TValue="DateTime?" Value="@assignment.FromLocal"
+                                      Change="@(value => UpdateAsync(assignment with { FromLocal = value }))"
+                                      DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" Min="@FromLocal" Max="@ToLocal"
+                                      Disabled="@ViewOnly" class="employee-period-control" />
+                </div>
+                <div class="employee-period-field">
+                    <label>To (@UserTimeZone.Id) *</label>
+                    <RadzenDatePicker TValue="DateTime?" Value="@assignment.ToLocal"
+                                      Change="@(value => UpdateAsync(assignment with { ToLocal = value }))"
+                                      DateFormat="yyyy-MM-dd HH:mm" ShowTime="true" Min="@(assignment.FromLocal ?? FromLocal)" Max="@ToLocal"
+                                      Disabled="@ViewOnly" class="employee-period-control" />
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<EmployeeAssignmentDraft> Assignments { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<EmployeeAssignmentDraft>> AssignmentsChanged { get; set; }
+    [Parameter] public IReadOnlyList<StaffMemberOption> StaffOptions { get; set; } = [];
+    [Parameter] public IReadOnlyList<ReturnToRampPersonSnapshot> EmployeeSnapshots { get; set; } = [];
+    [Parameter] public DateTime? FromLocal { get; set; }
+    [Parameter] public DateTime? ToLocal { get; set; }
+    [Parameter] public bool ViewOnly { get; set; }
+
+    private string EmployeeName(Guid id) => StaffOptions.FirstOrDefault(item => item.Id == id)?.FullName
+        ?? EmployeeSnapshots.FirstOrDefault(item => item.Id == id)?.FullName ?? "Saved employee";
+
+    private Task UpdateAsync(EmployeeAssignmentDraft assignment) => AssignmentsChanged.InvokeAsync(
+        Assignments.Select(item => item.StaffMemberId == assignment.StaffMemberId ? assignment : item).ToList());
+}

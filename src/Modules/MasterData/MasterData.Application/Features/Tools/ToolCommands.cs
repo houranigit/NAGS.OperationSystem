@@ -4,6 +4,7 @@ using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Contracts.Resources;
+using MasterData.Contracts.Seeding;
 using MasterData.Domain.Tools;
 using Microsoft.EntityFrameworkCore;
 
@@ -103,6 +104,8 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
             .FirstOrDefaultAsync(t => t.Id == request.Id, cancellationToken);
         if (tool is null)
             return Error.NotFound("Tool not found.", "MasterData.Tool.NotFound");
+        if (tool.Id == WellKnownMasterDataIds.UnknownTool)
+            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.Tool.SystemRecord");
 
         var trimmedName = request.Name.Trim();
         if (await db.Tools.AnyAsync(t => t.Name == trimmedName && t.Id != request.Id, cancellationToken))
@@ -194,6 +197,8 @@ public sealed class DeactivateToolCommandHandler(IMasterDataDbContext db, TimePr
         var tool = await db.Tools.FirstOrDefaultAsync(t => t.Id == request.Id, cancellationToken);
         if (tool is null)
             return Error.NotFound("Tool not found.", "MasterData.Tool.NotFound");
+        if (tool.Id == WellKnownMasterDataIds.UnknownTool)
+            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.Tool.SystemRecord");
 
         tool.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(tool, request.RowVersion);

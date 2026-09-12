@@ -206,6 +206,7 @@ public sealed class ReturnToRampPortalTests
                 ServiceId = serviceId,
                 ServiceName = "Inspection",
                 PerformedByStaffMemberIds = [performerId],
+                EmployeeAssignments = [new(performerId, new DateTime(2026, 8, 8, 10, 0, 0), new DateTime(2026, 8, 8, 11, 0, 0))],
                 FromLocal = new DateTime(2026, 8, 8, 10, 0, 0),
                 ToLocal = new DateTime(2026, 8, 8, 11, 0, 0)
             }

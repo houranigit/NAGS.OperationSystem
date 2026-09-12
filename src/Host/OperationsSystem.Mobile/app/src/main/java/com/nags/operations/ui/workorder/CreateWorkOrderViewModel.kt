@@ -68,6 +68,7 @@ data class ServiceLineFormRow(
     val serviceName: String? = null,
     /** StaffMember ids of everyone credited with performing this service. */
     val employeeIds: List<String> = emptyList(),
+    val employeePeriods: Map<String, EmployeePeriodForm> = emptyMap(),
     val fromIso: String = "",
     val toIso: String = "",
     val description: String = "",
@@ -84,11 +85,18 @@ data class ServiceLineFormRow(
  * attachments; new tasks leave it null.
  */
 @Serializable
+data class EmployeePeriodForm(
+    val fromIso: String = "",
+    val toIso: String = "",
+)
+
+@Serializable
 data class ResourceUsageForm(
     val calculationType: ResourceCalculationType = ResourceCalculationType.Quantity,
     val quantity: Double? = null,
     val fromIso: String = "",
     val toIso: String? = null,
+    val description: String = "",
 )
 
 @Serializable
@@ -98,6 +106,7 @@ data class TaskFormRow(
     /** `Major` / `Minor` (`TaskType` enum names on the server). */
     val taskType: String = TaskTypeKind.Major,
     val employeeIds: List<String> = emptyList(),
+    val employeePeriods: Map<String, EmployeePeriodForm> = emptyMap(),
     val toolIds: List<String> = emptyList(),
     /** Quantity keyed by tool id. Missing keys from legacy drafts mean the portal default of 1. */
     val toolQuantities: Map<String, Double> = emptyMap(),
@@ -427,6 +436,7 @@ internal fun newServiceLineAt(
 ): ServiceLineFormRow = ServiceLineFormRow(
     localKey = localKey,
     employeeIds = employeeIds,
+    employeePeriods = employeeIds.associateWith { EmployeePeriodForm() },
     fromIso = timestampIso,
     toIso = "",
 )
@@ -438,6 +448,7 @@ internal fun newTaskAt(
 ): TaskFormRow = TaskFormRow(
     localKey = localKey,
     employeeIds = employeeIds,
+    employeePeriods = employeeIds.associateWith { EmployeePeriodForm() },
     fromIso = timestampIso,
     toIso = "",
 )
@@ -1131,7 +1142,12 @@ class CreateWorkOrderViewModel(
                 includeReturnToRamps = inferredMode == WorkOrderDraftSubmissionMode.UpdateExisting,
             ),
         )
-        val hydratedFlight = flight.copy(sta = schedule.first, std = schedule.second)
+        val hydratedFlight = flight.copy(
+            sta = schedule.first,
+            std = schedule.second,
+            customerId = flight.customerId ?: flight.cachedMyWorkOrder?.customerId
+                ?: if (!isScratch) flightsRepository.findWorkOrderFlight(flight.id)?.customerId else null,
+        )
         reconcileNextLocalKeyFromForm(formNormalized)
         _state.update {
             it.copy(
@@ -1193,18 +1209,18 @@ class CreateWorkOrderViewModel(
         val presetId = resolvedDefaultPerformingEmployeeId(snapshot) ?: return
         _state.update { s ->
             val newLines = s.form.serviceLines.map { line ->
-                if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId)) else line
+                if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else line
             }
             val newTasks = s.form.tasks.map { task ->
-                if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId)) else task
+                if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else task
             }
             val newReturnToRamps = s.form.returnToRamps.map { occurrence ->
                 occurrence.copy(
                     serviceLines = occurrence.serviceLines.map { line ->
-                        if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId)) else line
+                        if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else line
                     },
                     tasks = occurrence.tasks.map { task ->
-                        if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId)) else task
+                        if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else task
                     },
                 )
             }
@@ -1413,6 +1429,7 @@ class CreateWorkOrderViewModel(
                         serviceLines = occurrence.serviceLines + ServiceLineFormRow(
                             localKey = allocKey(),
                             employeeIds = presetEmployees,
+                            employeePeriods = presetEmployees.associateWith { EmployeePeriodForm() },
                             fromIso = occurrence.fromIso,
                             toIso = occurrence.toIso,
                         ),
@@ -1431,6 +1448,7 @@ class CreateWorkOrderViewModel(
                         tasks = occurrence.tasks + TaskFormRow(
                             localKey = allocKey(),
                             employeeIds = presetEmployees,
+                            employeePeriods = presetEmployees.associateWith { EmployeePeriodForm() },
                             fromIso = occurrence.fromIso,
                             toIso = occurrence.toIso,
                         ),
@@ -1515,7 +1533,7 @@ class CreateWorkOrderViewModel(
             dialogAtdIso = null,
             validationPhase = WorkOrderValidationPhase.BeforeAtd,
             isAdHocScratch = snap.isAdHocScratch,
-            selectedCustomerId = snap.selectedCustomerId,
+            selectedCustomerId = snap.selectedCustomerId ?: snap.flight?.customerId ?: snap.flight?.cachedMyWorkOrder?.customerId,
             allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         _state.update {
@@ -1541,7 +1559,7 @@ class CreateWorkOrderViewModel(
             atdIso,
             validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = snap.isAdHocScratch,
-            selectedCustomerId = snap.selectedCustomerId,
+            selectedCustomerId = snap.selectedCustomerId ?: snap.flight?.customerId ?: snap.flight?.cachedMyWorkOrder?.customerId,
             allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         if (errors == null) {
@@ -1618,7 +1636,7 @@ class CreateWorkOrderViewModel(
             dialogAtdIso = submissionForm.atdIso,
             validationPhase = WorkOrderValidationPhase.Submission,
             isAdHocScratch = snapshot.isAdHocScratch,
-            selectedCustomerId = snapshot.selectedCustomerId,
+            selectedCustomerId = snapshot.selectedCustomerId ?: snapshot.flight?.customerId ?: snapshot.flight?.cachedMyWorkOrder?.customerId,
             allowedPerformedServiceIds = snapshot.catalogServices.allowedPerformedServiceIds(),
         )
         if (currentErrors != null) {
@@ -1785,6 +1803,7 @@ class CreateWorkOrderViewModel(
         serviceId = serviceId
             ?: error("Service line missing serviceId — validation should have caught this"),
         performedByStaffMemberIds = employeeIds,
+        employeeAssignments = employeePeriods.toOutboxAssignments(employeeIds, fromIso, toIso),
         fromIso = fromIso,
         toIso = toIso,
         description = description.takeIf { it.isNotBlank() },
@@ -1800,6 +1819,7 @@ class CreateWorkOrderViewModel(
         fromIso = fromIso,
         toIso = toIso,
         employeeIds = employeeIds,
+        employeeAssignments = employeePeriods.toOutboxAssignments(employeeIds, fromIso, toIso),
         tools = toolIds.map { id ->
             resourceUsage(
                 id,
@@ -1839,10 +1859,11 @@ class CreateWorkOrderViewModel(
 
     private fun ResourceUsageForm.toOutboxInput(itemId: String): OutboxPayload.ResourceInput =
         if (calculationType == ResourceCalculationType.Quantity) {
-            OutboxPayload.ResourceInput(itemId = itemId, quantity = quantity)
+            OutboxPayload.ResourceInput(itemId = itemId, quantity = quantity, description = description.trim().takeIf { it.isNotBlank() })
         } else {
             OutboxPayload.ResourceInput(
                 itemId = itemId,
+                description = description.trim().takeIf { it.isNotBlank() },
                 quantity = null,
                 fromIso = fromIso,
                 toIso = toIso?.takeIf { it.isNotBlank() },
@@ -1882,7 +1903,7 @@ class CreateWorkOrderViewModel(
             dialogAtdIso = null,
             validationPhase = WorkOrderValidationPhase.BeforeAtd,
             isAdHocScratch = snap.isAdHocScratch,
-            selectedCustomerId = snap.selectedCustomerId,
+            selectedCustomerId = snap.selectedCustomerId ?: snap.flight?.customerId ?: snap.flight?.cachedMyWorkOrder?.customerId,
             allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         val stepErrors = submitErrorsForWizardStep(allErrors, step)
@@ -1919,7 +1940,7 @@ class CreateWorkOrderViewModel(
             dialogAtdIso = null,
             validationPhase = WorkOrderValidationPhase.BeforeAtd,
             isAdHocScratch = snap.isAdHocScratch,
-            selectedCustomerId = snap.selectedCustomerId,
+            selectedCustomerId = snap.selectedCustomerId ?: snap.flight?.customerId ?: snap.flight?.cachedMyWorkOrder?.customerId,
             allowedPerformedServiceIds = snap.catalogServices.allowedPerformedServiceIds(),
         )
         val hasProblems = errors != null

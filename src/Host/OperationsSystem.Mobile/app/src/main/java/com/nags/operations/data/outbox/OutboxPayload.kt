@@ -110,6 +110,7 @@ data class OutboxPayload(
         val id: String? = null,
         val serviceId: String,
         val performedByStaffMemberIds: List<String> = emptyList(),
+        val employeeAssignments: List<EmployeeAssignmentInput>? = null,
         val fromIso: String,
         val toIso: String,
         val description: String?,
@@ -127,11 +128,19 @@ data class OutboxPayload(
         val fromIso: String,
         val toIso: String,
         val employeeIds: List<String>,
+        val employeeAssignments: List<EmployeeAssignmentInput>? = null,
         val tools: List<ResourceInput> = emptyList(),
         val materials: List<ResourceInput> = emptyList(),
         val generalSupports: List<ResourceInput> = emptyList(),
         val attachments: List<AttachmentInput> = emptyList(),
         val isReturnToRamp: Boolean = false,
+    )
+
+    @Serializable
+    data class EmployeeAssignmentInput(
+        val staffMemberId: String,
+        val fromIso: String,
+        val toIso: String,
     )
 
     /** One resource row. Old queued JSON contains only [itemId] + [quantity]. */
@@ -141,6 +150,7 @@ data class OutboxPayload(
         val quantity: Double? = 1.0,
         val fromIso: String? = null,
         val toIso: String? = null,
+        val description: String? = null,
     )
 
     /**

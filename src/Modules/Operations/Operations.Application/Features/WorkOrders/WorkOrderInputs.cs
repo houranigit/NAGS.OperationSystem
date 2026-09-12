@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Resources;
+using MasterData.Contracts.Seeding;
 using Operations.Domain.Enumerations;
 using Operations.Domain.ValueObjects;
 using Operations.Domain.WorkOrders;
@@ -28,7 +29,8 @@ public sealed record WorkOrderServiceLineCommand(
     string? Description,
     bool IsReturnToRamp = false,
     Guid? Id = null,
-    IReadOnlyList<WorkOrderServiceLineAttachmentCommand>? Attachments = null);
+    IReadOnlyList<WorkOrderServiceLineAttachmentCommand>? Attachments = null,
+    IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? EmployeeAssignments = null);
 
 public sealed record WorkOrderTaskCommand(
     Guid? Id,
@@ -41,7 +43,13 @@ public sealed record WorkOrderTaskCommand(
     IReadOnlyList<WorkOrderTaskMaterialCommand> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportCommand> GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentCommand>? Attachments = null,
-    bool IsReturnToRamp = false);
+    bool IsReturnToRamp = false,
+    IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? EmployeeAssignments = null);
+
+public sealed record WorkOrderEmployeeAssignmentCommand(
+    Guid StaffMemberId,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc);
 
 public sealed record WorkOrderReturnToRampCommand(
     Guid? Id,
@@ -55,19 +63,22 @@ public sealed record WorkOrderTaskToolCommand(
     Guid ToolId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskMaterialCommand(
     Guid MaterialId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskGeneralSupportCommand(
     Guid GeneralSupportId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskAttachmentCommand(
     TaskAttachmentKind Kind,
@@ -408,6 +419,13 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var results = new List<WorkOrderServiceLineInput>(lines.Count);
         foreach (var line in lines)
         {
+            var description = WorkOrderInputValidation.Description(line.ServiceId, WellKnownMasterDataIds.UnknownService, line.Description, "Service");
+            if (description.IsFailure)
+                return description.Error;
+            var assignments = BuildEmployeeAssignments(line.PerformedByStaffMemberIds ?? [], line.EmployeeAssignments, line.FromUtc, line.ToUtc);
+            if (assignments.IsFailure)
+                return assignments.Error;
+
             var service = await resolver.ServiceAsync(line.ServiceId, cancellationToken);
             if (service.IsFailure)
                 return service.Error;
@@ -426,7 +444,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 window.Value,
                 line.Description,
                 line.IsReturnToRamp,
-                line.Id));
+                line.Id,
+                assignments.Value));
         }
 
         return results;
@@ -440,6 +459,10 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var results = new List<WorkOrderTaskInput>(tasks.Count);
         foreach (var task in tasks)
         {
+            var assignments = BuildEmployeeAssignments(task.EmployeeIds ?? [], task.EmployeeAssignments, task.FromUtc, task.ToUtc);
+            if (assignments.IsFailure)
+                return assignments.Error;
+
             var window = TimeWindow.Create(task.FromUtc, task.ToUtc);
             if (window.IsFailure)
                 return window.Error;
@@ -469,7 +492,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 tools.Value,
                 materials.Value,
                 supports.Value,
-                task.IsReturnToRamp));
+                task.IsReturnToRamp,
+                assignments.Value));
         }
 
         return results;
@@ -554,6 +578,10 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var results = new List<WorkOrderTaskToolInput>(items.Count);
         foreach (var item in items)
         {
+            var description = WorkOrderInputValidation.Description(item.ToolId, WellKnownMasterDataIds.UnknownTool, item.Description, "Tool");
+            if (description.IsFailure)
+                return description.Error;
+
             var tool = await resolver.ToolAsync(item.ToolId, cancellationToken);
             if (tool.IsFailure)
                 return tool.Error;
@@ -567,7 +595,7 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             if (usage.IsFailure)
                 return usage.Error;
 
-            results.Add(new WorkOrderTaskToolInput(tool.Value, usage.Value));
+            results.Add(new WorkOrderTaskToolInput(tool.Value, usage.Value, item.Description));
         }
 
         return results;
@@ -581,6 +609,10 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var results = new List<WorkOrderTaskMaterialInput>(items.Count);
         foreach (var item in items)
         {
+            var description = WorkOrderInputValidation.Description(item.MaterialId, WellKnownMasterDataIds.UnknownMaterial, item.Description, "Material");
+            if (description.IsFailure)
+                return description.Error;
+
             var material = await resolver.MaterialAsync(item.MaterialId, cancellationToken);
             if (material.IsFailure)
                 return material.Error;
@@ -594,7 +626,7 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             if (usage.IsFailure)
                 return usage.Error;
 
-            results.Add(new WorkOrderTaskMaterialInput(material.Value, usage.Value));
+            results.Add(new WorkOrderTaskMaterialInput(material.Value, usage.Value, item.Description));
         }
 
         return results;
@@ -608,6 +640,10 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var results = new List<WorkOrderTaskGeneralSupportInput>(items.Count);
         foreach (var item in items)
         {
+            var description = WorkOrderInputValidation.Description(item.GeneralSupportId, WellKnownMasterDataIds.UnknownGeneralSupport, item.Description, "General Support");
+            if (description.IsFailure)
+                return description.Error;
+
             var support = await resolver.GeneralSupportAsync(item.GeneralSupportId, cancellationToken);
             if (support.IsFailure)
                 return support.Error;
@@ -621,10 +657,38 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             if (usage.IsFailure)
                 return usage.Error;
 
-            results.Add(new WorkOrderTaskGeneralSupportInput(support.Value, usage.Value));
+            results.Add(new WorkOrderTaskGeneralSupportInput(support.Value, usage.Value, item.Description));
         }
 
         return results;
+    }
+
+    private static Result<IReadOnlyList<WorkOrderEmployeeAssignmentInput>?> BuildEmployeeAssignments(
+        IReadOnlyList<Guid> selectedStaffIds,
+        IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? assignments,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc)
+    {
+        if (assignments is null)
+            return Result.Success<IReadOnlyList<WorkOrderEmployeeAssignmentInput>?>(null);
+
+        var parentWindow = TimeWindow.Create(fromUtc, toUtc);
+        if (parentWindow.IsFailure)
+            return parentWindow.Error;
+        var results = new List<WorkOrderEmployeeAssignmentInput>(assignments.Count);
+        foreach (var assignment in assignments)
+        {
+            if (assignment.FromUtc == default || assignment.ToUtc == default)
+                return Error.Validation("Every employee needs From and To times.", "Operations.WorkOrder.EmployeeWindowRequired");
+            var window = TimeWindow.Create(assignment.FromUtc, assignment.ToUtc);
+            if (window.IsFailure)
+                return window.Error;
+            results.Add(new WorkOrderEmployeeAssignmentInput(assignment.StaffMemberId, window.Value));
+        }
+        var validation = WorkOrderInputValidation.EmployeeAssignments(selectedStaffIds, results, parentWindow.Value);
+        return validation.IsFailure
+            ? validation.Error
+            : Result.Success<IReadOnlyList<WorkOrderEmployeeAssignmentInput>?>(results);
     }
 
     private static Result<ResourceUsage> BuildResourceUsage(

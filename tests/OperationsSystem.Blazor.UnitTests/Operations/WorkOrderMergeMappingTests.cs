@@ -45,6 +45,55 @@ public sealed class WorkOrderMergeMappingTests
             .ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Unknown_customer_merge_requires_notes_and_accepts_correction_of_legacy_blank_sources(bool isCompletion)
+    {
+        var customerId = WorkOrderEntryRules.UnknownCustomer;
+        var source = Source("Legacy") with { CustomerId = customerId, Remarks = "   " };
+
+        var remarks = WorkOrderMergeMapping.ResolveRemarks(customerId, isCompletion, source.Remarks, null);
+        WorkOrderMergeMapping.ValidateRemarks(customerId, remarks)
+            .ShouldBe("Describe the Unknown customer before merging the work orders.");
+
+        var corrected = WorkOrderMergeMapping.ResolveRemarks(customerId, isCompletion, source.Remarks, "  Charter customer: Gulf Wings  ");
+        corrected.ShouldBe("Charter customer: Gulf Wings");
+        WorkOrderMergeMapping.ValidateRemarks(customerId, corrected).ShouldBeNull();
+        source.Remarks.ShouldBe("   ");
+    }
+
+    [Fact]
+    public void Clearing_unknown_customer_notes_does_not_silently_restore_the_selected_source_notes()
+    {
+        var customerId = WorkOrderEntryRules.UnknownCustomer;
+        var remarks = WorkOrderMergeMapping.ResolveRemarks(customerId, true, "Known description", "");
+
+        remarks.ShouldBeEmpty();
+        WorkOrderMergeMapping.ValidateRemarks(customerId, remarks).ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void Unknown_customer_merge_defaults_to_selected_source_and_limits_override_length()
+    {
+        var customerId = WorkOrderEntryRules.UnknownCustomer;
+        WorkOrderMergeMapping.ResolveRemarks(customerId, true, "Existing customer description", null)
+            .ShouldBe("Existing customer description");
+        WorkOrderMergeMapping.ValidateRemarks(customerId, new string('x', 2001))
+            .ShouldBe("Remarks must be at most 2000 characters.");
+    }
+
+    [Fact]
+    public void Known_customer_merge_keeps_optional_source_remarks_without_applying_customer_override()
+    {
+        var customerId = Guid.NewGuid();
+        WorkOrderMergeMapping.ResolveRemarks(customerId, true, "Source remarks", "Override")
+            .ShouldBe("Source remarks");
+        WorkOrderMergeMapping.ResolveRemarks(customerId, false, "Source remarks", "Override")
+            .ShouldBeNull();
+        WorkOrderMergeMapping.ValidateRemarks(customerId, null).ShouldBeNull();
+    }
+
     private static WorkOrderDetail Source(string prefix, params int[] occurrenceOffsets)
     {
         var standardService = Service($"{prefix} Standard Service", Now, isReturnToRamp: false);

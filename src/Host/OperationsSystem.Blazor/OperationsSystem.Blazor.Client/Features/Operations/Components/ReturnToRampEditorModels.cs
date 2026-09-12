@@ -35,6 +35,7 @@ public sealed class ReturnToRampServiceDraft
     public Guid? ServiceId { get; set; }
     public string? ServiceName { get; set; }
     public IEnumerable<Guid> PerformedByStaffMemberIds { get; set; } = [];
+    public IReadOnlyList<EmployeeAssignmentDraft> EmployeeAssignments { get; set; } = [];
     public List<ReturnToRampPersonSnapshot> PerformerSnapshots { get; set; } = [];
     public DateTime? FromLocal { get; set; }
     public DateTime? ToLocal { get; set; }
@@ -47,6 +48,7 @@ public sealed class ReturnToRampServiceDraft
         ServiceId = ServiceId,
         ServiceName = ServiceName,
         PerformedByStaffMemberIds = PerformedByStaffMemberIds.ToList(),
+        EmployeeAssignments = EmployeeAssignments.ToList(),
         PerformerSnapshots = PerformerSnapshots.ToList(),
         FromLocal = FromLocal,
         ToLocal = ToLocal,
@@ -64,6 +66,7 @@ public sealed class ReturnToRampTaskDraft
     public DateTime? FromLocal { get; set; }
     public DateTime? ToLocal { get; set; }
     public IEnumerable<Guid> EmployeeIds { get; set; } = [];
+    public IReadOnlyList<EmployeeAssignmentDraft> EmployeeAssignments { get; set; } = [];
     public List<ReturnToRampPersonSnapshot> EmployeeSnapshots { get; set; } = [];
     public List<ReturnToRampResourceDraft> Tools { get; set; } = [];
     public List<ReturnToRampResourceDraft> Materials { get; set; } = [];
@@ -78,6 +81,7 @@ public sealed class ReturnToRampTaskDraft
         FromLocal = FromLocal,
         ToLocal = ToLocal,
         EmployeeIds = EmployeeIds.ToList(),
+        EmployeeAssignments = EmployeeAssignments.ToList(),
         EmployeeSnapshots = EmployeeSnapshots.ToList(),
         Tools = Tools.Select(item => item.Clone()).ToList(),
         Materials = Materials.Select(item => item.Clone()).ToList(),
@@ -91,6 +95,7 @@ public sealed class ReturnToRampResourceDraft
     public Guid Key { get; } = Guid.NewGuid();
     public Guid? ItemId { get; set; }
     public string? Name { get; set; }
+    public string? Description { get; set; }
     public ResourceCalculationType CalculationType { get; set; } = ResourceCalculationType.Quantity;
     public decimal? Quantity { get; set; } = 1;
     public DateTime? FromLocal { get; set; }
@@ -100,6 +105,7 @@ public sealed class ReturnToRampResourceDraft
     {
         ItemId = ItemId,
         Name = Name,
+        Description = Description,
         CalculationType = CalculationType,
         Quantity = Quantity,
         FromLocal = FromLocal,
@@ -181,6 +187,8 @@ internal static class ReturnToRampDraftMapper
         ServiceId = source.ServiceId,
         ServiceName = source.ServiceName,
         PerformedByStaffMemberIds = source.PerformedBy.Select(item => item.StaffMemberId).ToList(),
+        EmployeeAssignments = source.PerformedBy.Select(item => new EmployeeAssignmentDraft(item.StaffMemberId,
+            timeZone.ToLocalDateTime(item.FromUtc ?? source.FromUtc), timeZone.ToLocalDateTime(item.ToUtc ?? source.ToUtc))).ToList(),
         PerformerSnapshots = source.PerformedBy
             .Select(item => new ReturnToRampPersonSnapshot(item.StaffMemberId, item.FullName, item.EmployeeId))
             .ToList(),
@@ -198,15 +206,17 @@ internal static class ReturnToRampDraftMapper
         FromLocal = timeZone.ToLocalDateTime(source.FromUtc),
         ToLocal = timeZone.ToLocalDateTime(source.ToUtc),
         EmployeeIds = source.Employees.Select(item => item.StaffMemberId).ToList(),
+        EmployeeAssignments = source.Employees.Select(item => new EmployeeAssignmentDraft(item.StaffMemberId,
+            timeZone.ToLocalDateTime(item.FromUtc ?? source.FromUtc), timeZone.ToLocalDateTime(item.ToUtc ?? source.ToUtc))).ToList(),
         EmployeeSnapshots = source.Employees
             .Select(item => new ReturnToRampPersonSnapshot(item.StaffMemberId, item.FullName, item.EmployeeId))
             .ToList(),
         Tools = source.Tools.Select(item => FromResource(
-            item.ToolId, item.Name, item.CalculationType, item.Quantity, item.FromUtc, item.ToUtc, timeZone)).ToList(),
+            item.ToolId, item.Name, item.CalculationType, item.Quantity, item.FromUtc, item.ToUtc, item.Description, timeZone)).ToList(),
         Materials = source.Materials.Select(item => FromResource(
-            item.MaterialId, item.Name, item.CalculationType, item.Quantity, item.FromUtc, item.ToUtc, timeZone)).ToList(),
+            item.MaterialId, item.Name, item.CalculationType, item.Quantity, item.FromUtc, item.ToUtc, item.Description, timeZone)).ToList(),
         GeneralSupports = source.GeneralSupports.Select(item => FromResource(
-            item.GeneralSupportId, item.Name, item.CalculationType, item.Quantity, item.FromUtc, item.ToUtc, timeZone)).ToList(),
+            item.GeneralSupportId, item.Name, item.CalculationType, item.Quantity, item.FromUtc, item.ToUtc, item.Description, timeZone)).ToList(),
         Attachments = source.Attachments.Select(FromAttachment).ToList()
     };
 
@@ -217,10 +227,12 @@ internal static class ReturnToRampDraftMapper
         decimal? quantity,
         DateTimeOffset? fromUtc,
         DateTimeOffset? toUtc,
+        string? description,
         UserTimeZone timeZone) => new()
     {
         ItemId = id,
         Name = name,
+        Description = description,
         CalculationType = calculationType,
         Quantity = quantity,
         FromLocal = timeZone.ToLocalDateTime(fromUtc),
@@ -254,6 +266,7 @@ internal static class ReturnToRampDraftMapper
         timeZone.ToUtc(source.ToLocal)!.Value,
         source.Description,
         Id: source.Id,
+        EmployeeAssignments: WorkOrderEntryRules.ToRequests(source.EmployeeAssignments, timeZone),
         Attachments: source.Attachments.Where(item => item.IsPending).Select(item => new WorkOrderServiceLineAttachmentRequestModel(
             item.Kind,
             Convert.ToBase64String(item.Content!),
@@ -273,22 +286,26 @@ internal static class ReturnToRampDraftMapper
             item.ItemId!.Value,
             item.CalculationType == ResourceCalculationType.Quantity ? item.Quantity : null,
             item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.FromLocal) : null,
-            item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.ToLocal) : null)).ToList(),
+            item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.ToLocal) : null,
+            item.Description)).ToList(),
         source.Materials.Where(item => item.ItemId.HasValue).Select(item => new WorkOrderTaskMaterialRequestModel(
             item.ItemId!.Value,
             item.CalculationType == ResourceCalculationType.Quantity ? item.Quantity : null,
             item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.FromLocal) : null,
-            item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.ToLocal) : null)).ToList(),
+            item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.ToLocal) : null,
+            item.Description)).ToList(),
         source.GeneralSupports.Where(item => item.ItemId.HasValue).Select(item => new WorkOrderTaskGeneralSupportRequestModel(
             item.ItemId!.Value,
             item.CalculationType == ResourceCalculationType.Quantity ? item.Quantity : null,
             item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.FromLocal) : null,
-            item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.ToLocal) : null)).ToList(),
+            item.CalculationType == ResourceCalculationType.Duration ? timeZone.ToUtc(item.ToLocal) : null,
+            item.Description)).ToList(),
         source.Attachments.Where(item => item.IsPending).Select(item => new WorkOrderTaskAttachmentRequestModel(
             item.Kind,
             Convert.ToBase64String(item.Content!),
             item.OriginalFileName,
-            item.ContentType)).ToList());
+            item.ContentType)).ToList(),
+        EmployeeAssignments: WorkOrderEntryRules.ToRequests(source.EmployeeAssignments, timeZone));
 }
 
 internal static class ReturnToRampDraftValidation
@@ -319,6 +336,9 @@ internal static class ReturnToRampDraftValidation
                 messages.Add($"{label} To time cannot be before From time.");
             if (!string.IsNullOrWhiteSpace(service.Description) && service.Description.Trim().Length > 2000)
                 messages.Add($"{label} description must be at most 2000 characters.");
+            if (WorkOrderEntryRules.RequiresServiceDescription(service.ServiceId) && string.IsNullOrWhiteSpace(service.Description))
+                messages.Add($"{label} requires a description for the Unknown service.");
+            messages.AddRange(WorkOrderEntryRules.ValidateAssignments(service.PerformedByStaffMemberIds, service.EmployeeAssignments, service.FromLocal, service.ToLocal, timeZone, label));
             ValidateInsideOccurrence(messages, label, service.FromLocal, service.ToLocal, draft);
             AddZoneValidation(messages, $"{label} From", service.FromLocal, timeZone);
             AddZoneValidation(messages, $"{label} To", service.ToLocal, timeZone);
@@ -336,6 +356,7 @@ internal static class ReturnToRampDraftValidation
                 messages.Add($"{label} To time cannot be before From time.");
             if (!string.IsNullOrWhiteSpace(task.Description) && task.Description.Trim().Length > 2000)
                 messages.Add($"{label} description must be at most 2000 characters.");
+            messages.AddRange(WorkOrderEntryRules.ValidateAssignments(task.EmployeeIds, task.EmployeeAssignments, task.FromLocal, task.ToLocal, timeZone, label));
             ValidateInsideOccurrence(messages, label, task.FromLocal, task.ToLocal, draft);
             AddZoneValidation(messages, $"{label} From", task.FromLocal, timeZone);
             AddZoneValidation(messages, $"{label} To", task.ToLocal, timeZone);
@@ -363,6 +384,10 @@ internal static class ReturnToRampDraftValidation
         foreach (var (resource, index) in resources.Select((item, index) => (item, index + 1)))
         {
             var label = $"{taskLabel} {resourceLabel} {index}";
+            if (WorkOrderEntryRules.IsUnknownResource(resource.ItemId) && string.IsNullOrWhiteSpace(resource.Description))
+                messages.Add($"{label} requires a description for the Unknown item.");
+            if (resource.Description?.Trim().Length > 2000)
+                messages.Add($"{label} description must be at most 2000 characters.");
             if (resource.CalculationType == ResourceCalculationType.Quantity)
             {
                 if (resource.Quantity is null or <= 0)
@@ -482,6 +507,6 @@ internal static class ReturnToRampAttachmentValidation
     {
         "Image" => 10 * 1024 * 1024,
         "Voice" => 25 * 1024 * 1024,
-        _ => 20 * 1024 * 1024
+        _ => 2 * 1024 * 1024
     };
 }

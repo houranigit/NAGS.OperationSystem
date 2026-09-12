@@ -366,7 +366,7 @@ public sealed record WorkOrderServiceLineDto(
     public string PerformedByName => PerformedBy.FirstOrDefault()?.FullName ?? string.Empty;
 }
 
-public sealed record WorkOrderServiceLinePerformerDto(Guid StaffMemberId, string FullName, string EmployeeId);
+public sealed record WorkOrderServiceLinePerformerDto(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 
 public sealed record WorkOrderServiceLineAttachmentDto(
     Guid Id,
@@ -388,7 +388,7 @@ public sealed record WorkOrderTaskDto(
     IReadOnlyList<WorkOrderTaskAttachmentDto> Attachments,
     bool IsReturnToRamp);
 
-public sealed record WorkOrderTaskEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);
+public sealed record WorkOrderTaskEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 
 public sealed record WorkOrderTaskToolDto(
     Guid ToolId,
@@ -396,7 +396,8 @@ public sealed record WorkOrderTaskToolDto(
     ResourceCalculationType CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    string? Description = null);
 
 public sealed record WorkOrderTaskMaterialDto(
     Guid MaterialId,
@@ -404,7 +405,8 @@ public sealed record WorkOrderTaskMaterialDto(
     ResourceCalculationType CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    string? Description = null);
 
 public sealed record WorkOrderTaskGeneralSupportDto(
     Guid GeneralSupportId,
@@ -412,7 +414,8 @@ public sealed record WorkOrderTaskGeneralSupportDto(
     ResourceCalculationType CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    string? Description = null);
 
 public sealed record WorkOrderTaskAttachmentDto(
     Guid Id,

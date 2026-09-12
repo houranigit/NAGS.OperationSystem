@@ -762,17 +762,19 @@ internal static class WorkOrderReturnToRampCloner
                     line.Window,
                     line.Description,
                     IsReturnToRamp: false,
-                    Id: null)).ToList(),
+                    Id: null,
+                    EmployeeAssignments: line.PerformedBy.Select(performer => new WorkOrderEmployeeAssignmentInput(performer.StaffMember.StaffMemberId, performer.Window)).ToList())).ToList(),
                 item.Tasks.Select(task => new WorkOrderTaskInput(
                     null,
                     task.TaskType,
                     task.Description,
                     task.Window,
                     task.Employees.Select(employee => employee.Employee).ToList(),
-                    task.Tools.Select(tool => new WorkOrderTaskToolInput(tool.Tool, tool.Usage)).ToList(),
-                    task.Materials.Select(material => new WorkOrderTaskMaterialInput(material.Material, material.Usage)).ToList(),
-                    task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportInput(support.GeneralSupport, support.Usage)).ToList(),
-                    IsReturnToRamp: false)).ToList()))
+                    task.Tools.Select(tool => new WorkOrderTaskToolInput(tool.Tool, tool.Usage, tool.Description)).ToList(),
+                    task.Materials.Select(material => new WorkOrderTaskMaterialInput(material.Material, material.Usage, material.Description)).ToList(),
+                    task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportInput(support.GeneralSupport, support.Usage, support.Description)).ToList(),
+                    IsReturnToRamp: false,
+                    EmployeeAssignments: task.Employees.Select(employee => new WorkOrderEmployeeAssignmentInput(employee.Employee.StaffMemberId, employee.Window)).ToList())).ToList()))
             .ToList();
 }
 

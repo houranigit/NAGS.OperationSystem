@@ -400,18 +400,22 @@ internal fun computeWorkOrderLineErrors(
         }
         val performer = if (row.employeeIds.isEmpty() || row.employeeIds.any { it.isBlank() }) {
             "Choose at least one person."
-        } else null
+        } else employeePeriodsError(row.employeeIds, row.employeePeriods, row.fromIso, row.toIso)
         var from = if (row.fromIso.isBlank()) "From date and time is required." else null
         var to = if (row.toIso.isBlank()) "To date and time is required." else null
-        val description = if (row.description.trim().length > WorkOrderFormLimits.LineDescription) {
-            "Description must be at most ${WorkOrderFormLimits.LineDescription} characters."
-        } else null
+        val description = when {
+            row.description.trim().length > WorkOrderFormLimits.LineDescription ->
+                "Description must be at most ${WorkOrderFormLimits.LineDescription} characters."
+            row.serviceId.equals(WellKnownMasterDataIds.UnknownService, true) && row.description.isBlank() ->
+                "Notes are required for Unknown service."
+            else -> null
+        }
         val attachments = if (
             row.existingAttachmentNames.size + row.attachments.size >
             WorkOrderFormLimits.ServiceAttachments
         ) {
             "A service can have at most ${WorkOrderFormLimits.ServiceAttachments} attachments."
-        } else null
+        } else documentAttachmentError(row.attachments)
 
         val fromDt = safeParseOffset(row.fromIso)
         val toDt = safeParseOffset(row.toIso)
@@ -449,7 +453,7 @@ internal fun computeWorkOrderLineErrors(
         } else null
         val performers = if (row.employeeIds.isEmpty() || row.employeeIds.any { it.isBlank() }) {
             "Choose at least one person."
-        } else null
+        } else employeePeriodsError(row.employeeIds, row.employeePeriods, row.fromIso, row.toIso)
         var from = if (row.fromIso.isBlank()) "From date and time is required." else null
         var to = if (row.toIso.isBlank()) "To date and time is required." else null
         val description = if (row.description.trim().length > WorkOrderFormLimits.LineDescription) {
@@ -486,7 +490,7 @@ internal fun computeWorkOrderLineErrors(
             row.existingAttachmentNames.size + row.attachments.size > WorkOrderFormLimits.TaskAttachments
         ) {
             "A task can have at most ${WorkOrderFormLimits.TaskAttachments} attachments."
-        } else null
+        } else documentAttachmentError(row.attachments)
 
         val fromDt = safeParseOffset(row.fromIso)
         val toDt = safeParseOffset(row.toIso)
@@ -591,7 +595,8 @@ internal fun computeCreateWorkOrderSubmitErrors(
     val remarks = when {
         normalizedRemarks.length > WorkOrderFormLimits.Remarks ->
             "Remarks must be at most ${WorkOrderFormLimits.Remarks} characters."
-        isAdHocScratch && isBlankOrUnknownCustomer(selectedCustomerId) && normalizedRemarks.isBlank() ->
+        (isAdHocScratch && isBlankOrUnknownCustomer(selectedCustomerId) ||
+            selectedCustomerId.equals(WellKnownMasterDataIds.UnknownCustomer, true)) && normalizedRemarks.isBlank() ->
             "Remarks are required when the customer is blank or Unknown Customer."
         else -> null
     }
@@ -756,6 +761,10 @@ private fun resourceRowsError(
             taskFromIso,
             taskToIso,
         )
+        if (usage.description.length > WorkOrderFormLimits.LineDescription)
+            return "$label notes must be at most ${WorkOrderFormLimits.LineDescription} characters."
+        if (WellKnownMasterDataIds.isUnknownResource(id) && usage.description.isBlank())
+            return "Notes are required for Unknown ${label.lowercase()}."
         if (usage.calculationType == ResourceCalculationType.Quantity) {
             val quantity = usage.quantity
             if (quantity == null || !isValidResourceQuantity(quantity))
@@ -775,3 +784,50 @@ private fun resourceRowsError(
     }
     return null
 }
+
+/** Legacy drafts default to the complete line period; explicit employee periods stay independent. */
+internal fun employeePeriod(
+    id: String,
+    periods: Map<String, EmployeePeriodForm>,
+    fromIso: String,
+    toIso: String,
+): EmployeePeriodForm = periods[id] ?: EmployeePeriodForm(fromIso, toIso)
+
+internal fun employeePeriodsForSelection(
+    ids: List<String>,
+    periods: Map<String, EmployeePeriodForm>,
+): Map<String, EmployeePeriodForm> = ids.associateWith { periods[it] ?: EmployeePeriodForm() }
+
+internal fun employeePeriodsError(
+    ids: List<String>,
+    periods: Map<String, EmployeePeriodForm>,
+    fromIso: String,
+    toIso: String,
+): String? {
+    if (ids.distinct().size != ids.size) return "Choose each employee only once."
+    val lineFrom = safeParseOffset(fromIso)
+    val lineTo = safeParseOffset(toIso)
+    ids.forEach { id ->
+        val period = employeePeriod(id, periods, fromIso, toIso)
+        val from = safeParseOffset(period.fromIso) ?: return "Set the From date and time for every employee."
+        val to = safeParseOffset(period.toIso) ?: return "Set the To date and time for every employee."
+        if (to.isBefore(from)) return "Employee To must be on or after From."
+        if (lineFrom != null && from.isBefore(lineFrom)) return "Employee work cannot start before its service or task."
+        if (lineTo != null && to.isAfter(lineTo)) return "Employee work cannot end after its service or task."
+    }
+    return null
+}
+
+internal fun Map<String, EmployeePeriodForm>.toOutboxAssignments(
+    ids: List<String>,
+    fromIso: String,
+    toIso: String,
+): List<com.nags.operations.data.outbox.OutboxPayload.EmployeeAssignmentInput> = ids.map { id ->
+    val period = employeePeriod(id, this, fromIso, toIso)
+    com.nags.operations.data.outbox.OutboxPayload.EmployeeAssignmentInput(id, period.fromIso, period.toIso)
+}
+
+private fun documentAttachmentError(attachments: List<TaskAttachmentDraft>): String? =
+    if (attachments.any { it.kind == "Document" && it.sizeBytes > 2L * 1024 * 1024 }) {
+        "Documents must be 2 MB or less. Remove or replace the oversized document."
+    } else null

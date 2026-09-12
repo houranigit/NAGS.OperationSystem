@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package com.nags.operations.data.api
 
 import com.nags.operations.data.MobileCatalogsDto
@@ -8,6 +10,7 @@ import com.nags.operations.data.TokenStore
 import com.nags.operations.data.WorkOrderDetailWireDto
 import com.nags.operations.data.api.HttpClientFactory.bodyOrThrow
 import com.nags.operations.data.realtime.MobileSyncChangeDto
+import io.ktor.client.call.body
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
@@ -74,6 +77,27 @@ class MobileApi(
         val text = response.bodyAsText()
         if (text.isBlank() || text == "null") return null
         return HttpClientFactory.json.decodeFromString(WorkOrderDetailWireDto.serializer(), text)
+    }
+
+    /** Same visibility rules and PDF generator as the portal. Read access does not require an editable flight. */
+    suspend fun workOrdersForFlight(flightId: String, page: Int = 1): WorkOrderPageWireDto =
+        client.get(url("api/v1/operations/work-orders/")) {
+            parameter("flightId", flightId)
+            parameter("page", page)
+            parameter("pageSize", 100)
+        }.bodyOrThrow()
+
+    suspend fun workOrderById(workOrderId: String): WorkOrderDetailWireDto =
+        client.get(url("api/v1/operations/work-orders/$workOrderId")).bodyOrThrow()
+
+    suspend fun approvedWorkOrderPdf(flightId: String, timeZoneId: String): ByteArray {
+        val response = client.get(url("api/v1/operations/flights/$flightId/work-orders/approved/pdf")) {
+            parameter("timeZoneId", timeZoneId)
+        }
+        if (!response.status.isSuccess()) {
+            throw com.nags.operations.data.ApiException(response.status.value, response.bodyAsText())
+        }
+        return response.body()
     }
 
     /**
@@ -218,6 +242,8 @@ data class WorkOrderServiceLineInput(
     val id: String? = null,
     val serviceId: String,
     val performedByStaffMemberIds: List<String> = emptyList(),
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val employeeAssignments: List<WorkOrderEmployeeAssignmentInput>? = null,
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
@@ -234,6 +260,8 @@ data class WorkOrderTaskInput(
     val fromUtc: String,
     val toUtc: String,
     val employeeIds: List<String> = emptyList(),
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val employeeAssignments: List<WorkOrderEmployeeAssignmentInput>? = null,
     val tools: List<WorkOrderTaskResourceInput> = emptyList(),
     val materials: List<WorkOrderTaskResourceInput> = emptyList(),
     val generalSupports: List<WorkOrderTaskResourceInput> = emptyList(),
@@ -246,6 +274,13 @@ data class WorkOrderTaskInput(
  * sets exactly one of [toolId]/[materialId]/[generalSupportId] per list.
  */
 @Serializable
+data class WorkOrderEmployeeAssignmentInput(
+    val staffMemberId: String,
+    val fromUtc: String,
+    val toUtc: String,
+)
+
+@Serializable
 data class WorkOrderTaskResourceInput(
     val toolId: String? = null,
     val materialId: String? = null,
@@ -254,6 +289,7 @@ data class WorkOrderTaskResourceInput(
     val quantity: Double? = null,
     val fromUtc: String? = null,
     val toUtc: String? = null,
+    val description: String? = null,
 )
 
 @Serializable
@@ -327,4 +363,21 @@ data class MobileWriteResult(
     val workOrderId: String,
     val flightId: String,
     val idempotent: Boolean = false,
+)
+
+@Serializable
+data class WorkOrderPageWireDto(
+    val items: List<WorkOrderListItemWireDto> = emptyList(),
+    val page: Int = 1,
+    val totalCount: Long = 0,
+)
+
+@Serializable
+data class WorkOrderListItemWireDto(
+    val id: String,
+    val status: String,
+    val type: String,
+    val ownerName: String? = null,
+    val approvalNumber: String? = null,
+    val createdAtUtc: String,
 )

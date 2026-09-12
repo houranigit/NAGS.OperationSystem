@@ -38,7 +38,7 @@ public sealed class GetServicesQueryHandler(IMasterDataDbContext db)
                 s.Name,
                 s.Description,
                 s.IsActive,
-                s.Id == WellKnownMasterDataIds.AircraftPerLandingService))
+                (s.Id == WellKnownMasterDataIds.AircraftPerLandingService || s.Id == WellKnownMasterDataIds.UnknownService)))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<ServiceListItemDto>(items, total);
@@ -78,7 +78,7 @@ public sealed class GetServiceByIdQueryHandler(IMasterDataDbContext db)
 internal static class ServiceSystemRecords
 {
     public static bool IsSystem(Guid id) =>
-        id == WellKnownMasterDataIds.AircraftPerLandingService;
+        id == WellKnownMasterDataIds.AircraftPerLandingService || id == WellKnownMasterDataIds.UnknownService;
 }
 
 public sealed record GetActiveServiceOptionsQuery : IQuery<IReadOnlyList<ServiceOptionDto>>;

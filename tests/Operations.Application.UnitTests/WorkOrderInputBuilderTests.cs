@@ -1,5 +1,6 @@
 using MasterData.Contracts.Readers;
 using MasterData.Contracts.Resources;
+using MasterData.Contracts.Seeding;
 using Operations.Application.Common;
 using Operations.Application.Features.WorkOrders;
 using Operations.Domain.Enumerations;
@@ -391,6 +392,61 @@ public sealed class WorkOrderInputBuilderTests
 
         outsideTask.IsFailure.ShouldBeTrue();
         outsideTask.Error.Code.ShouldBe("Operations.ResourceUsage.ToAfterTask");
+    }
+
+    [Theory]
+    [InlineData("missing", "Operations.WorkOrder.EmployeeWindowRequired")]
+    [InlineData("reversed", "Operations.TimeWindow.Invalid")]
+    [InlineData("before", "Operations.WorkOrder.EmployeeFromBeforeLine")]
+    [InlineData("after", "Operations.WorkOrder.EmployeeToAfterLine")]
+    [InlineData("unselected", "Operations.WorkOrder.EmployeeAssignmentsRequired")]
+    [InlineData("empty", "Operations.WorkOrder.EmployeeAssignmentsRequired")]
+    public async Task BuildReturnToRamp_rejects_invalid_employee_periods_on_services_and_tasks(string scenario, string errorCode)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var staffId = Guid.NewGuid();
+        var stationId = Guid.NewGuid();
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+        var assignments = scenario == "empty" ? Array.Empty<WorkOrderEmployeeAssignmentCommand>() : new[]
+        {
+            new WorkOrderEmployeeAssignmentCommand(scenario == "unselected" ? Guid.NewGuid() : staffId,
+                scenario == "missing" ? default : scenario == "before" ? now.AddMinutes(-1) : scenario == "reversed" ? now.AddMinutes(40) : now,
+                scenario == "after" ? now.AddMinutes(61) : now.AddMinutes(30))
+        };
+        var service = new WorkOrderServiceLineCommand(Guid.NewGuid(), [staffId], now, now.AddHours(1), null, EmployeeAssignments: assignments);
+        var task = new WorkOrderTaskCommand(null, TaskType.Minor, null, now, now.AddHours(1), [staffId], [], [], [], EmployeeAssignments: assignments);
+
+        var serviceResult = await builder.BuildReturnToRampAsync(new(null, now, now.AddHours(1), null, [service], []), stationId, CancellationToken.None);
+        var taskResult = await builder.BuildReturnToRampAsync(new(null, now, now.AddHours(1), null, [], [task]), stationId, CancellationToken.None);
+
+        serviceResult.IsFailure.ShouldBeTrue();
+        serviceResult.Error.Code.ShouldBe(errorCode);
+        taskResult.IsFailure.ShouldBeTrue();
+        taskResult.Error.Code.ShouldBe(errorCode);
+    }
+
+    [Fact]
+    public async Task BuildReturnToRamp_preserves_employee_periods_and_unknown_resource_descriptions()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var staffId = Guid.NewGuid();
+        var stationId = Guid.NewGuid();
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+        var assignment = new WorkOrderEmployeeAssignmentCommand(staffId, now.AddMinutes(10), now.AddMinutes(50));
+        var service = new WorkOrderServiceLineCommand(WellKnownMasterDataIds.UnknownService, [staffId], now, now.AddHours(1), "Special service", EmployeeAssignments: [assignment]);
+        var task = new WorkOrderTaskCommand(null, TaskType.Minor, null, now, now.AddHours(1), [staffId],
+            [new(WellKnownMasterDataIds.UnknownTool, null, now, now.AddHours(1), "Special tool")],
+            [new(WellKnownMasterDataIds.UnknownMaterial, 1, Description: "Special material")],
+            [new(WellKnownMasterDataIds.UnknownGeneralSupport, 1, Description: "Special support")], EmployeeAssignments: [assignment]);
+
+        var result = await builder.BuildReturnToRampAsync(new(null, now, now.AddHours(1), null, [service], [task]), stationId, CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ServiceLines.Single().EmployeeAssignments!.Single().Window.From.ShouldBe(assignment.FromUtc);
+        result.Value.Tasks.Single().EmployeeAssignments!.Single().Window.To.ShouldBe(assignment.ToUtc);
+        result.Value.Tasks.Single().Tools.Single().Description.ShouldBe("Special tool");
+        result.Value.Tasks.Single().Materials.Single().Description.ShouldBe("Special material");
+        result.Value.Tasks.Single().GeneralSupports.Single().Description.ShouldBe("Special support");
     }
 
     private static WorkOrderEditableCommandPayload CompletionPayload(

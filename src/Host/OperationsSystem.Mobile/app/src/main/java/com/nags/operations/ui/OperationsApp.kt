@@ -27,6 +27,7 @@ import com.nags.operations.ui.login.LoginScreen
 import com.nags.operations.ui.login.LoginViewModel
 import com.nags.operations.ui.screens.CreateWorkOrderScreen
 import com.nags.operations.ui.screens.ReturnToRampScreen
+import com.nags.operations.ui.screens.FlightWorkOrdersScreen
 import com.nags.operations.ui.sync.SyncCenterScreen
 import com.nags.operations.ui.sync.SyncCenterViewModel
 import com.nags.operations.ui.workorder.CreateWorkOrderLaunchMode
@@ -40,6 +41,7 @@ private object Routes {
     const val Login = "login"
     const val Main = "main"
     const val SyncCenter = "sync-center"
+    const val FlightWorkOrders = "flight-work-orders/{flightId}"
     const val CreateWorkOrder = "create-work-order/{flightId}"
     const val ReturnToRamp = "return-to-ramp/{flightId}"
     const val CreateAdHocFlight = "create-ad-hoc-flight"
@@ -130,6 +132,17 @@ fun OperationsApp() {
                 },
             )
         }
+        composable(
+            route = Routes.FlightWorkOrders,
+            arguments = listOf(navArgument("flightId") { type = NavType.StringType }),
+        ) { entry ->
+            FlightWorkOrdersScreen(
+                flightId = requireNotNull(entry.arguments?.getString("flightId")),
+                api = graph.mobileApi,
+                flightsRepository = graph.flightsRepository,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.Main) {
             MainShellScreen(
                 tokenStore = graph.tokenStore,
@@ -141,6 +154,9 @@ fun OperationsApp() {
                 notificationOpenRequest = pendingNotificationOpen,
                 onNotificationHandled = graph.notificationNavigation::consume,
                 flightSheetCallbacks = FlightSheetCallbacks(
+                    onOpenWorkOrder = { flightId ->
+                        navController.navigate("flight-work-orders/$flightId")
+                    },
                     onCreateWorkOrder = { flightId ->
                         navController.navigate("create-work-order/$flightId")
                     },

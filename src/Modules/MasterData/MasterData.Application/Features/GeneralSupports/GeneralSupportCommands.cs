@@ -4,6 +4,7 @@ using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Contracts.Resources;
+using MasterData.Contracts.Seeding;
 using MasterData.Domain.GeneralSupports;
 using Microsoft.EntityFrameworkCore;
 
@@ -78,6 +79,8 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
         var support = await db.GeneralSupports.FirstOrDefaultAsync(g => g.Id == request.Id, cancellationToken);
         if (support is null)
             return Error.NotFound("General support item not found.", "MasterData.GeneralSupport.NotFound");
+        if (support.Id == WellKnownMasterDataIds.UnknownGeneralSupport)
+            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.GeneralSupport.SystemRecord");
 
         var trimmedName = request.Name.Trim();
         if (await db.GeneralSupports.AnyAsync(g => g.Name == trimmedName && g.Id != request.Id, cancellationToken))
@@ -142,6 +145,8 @@ public sealed class DeactivateGeneralSupportCommandHandler(IMasterDataDbContext 
         var support = await db.GeneralSupports.FirstOrDefaultAsync(g => g.Id == request.Id, cancellationToken);
         if (support is null)
             return Error.NotFound("General support item not found.", "MasterData.GeneralSupport.NotFound");
+        if (support.Id == WellKnownMasterDataIds.UnknownGeneralSupport)
+            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.GeneralSupport.SystemRecord");
 
         support.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(support, request.RowVersion);

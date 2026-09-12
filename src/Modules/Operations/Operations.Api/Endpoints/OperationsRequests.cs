@@ -112,7 +112,8 @@ public sealed record WorkOrderRequest(
                     attachment.Kind,
                     attachment.Base64Content,
                     attachment.FileName,
-                    attachment.ContentType)).ToList() ?? [])).ToList() ?? [],
+                    attachment.ContentType)).ToList() ?? [],
+                l.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
             Tasks?.Select(t => new WorkOrderTaskCommand(
                 t.Id,
                 t.TaskType,
@@ -120,15 +121,16 @@ public sealed record WorkOrderRequest(
                 t.FromUtc,
                 t.ToUtc,
                 t.EmployeeIds ?? [],
-                t.Tools?.Select(tool => new WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity, tool.FromUtc, tool.ToUtc)).ToList() ?? [],
-                t.Materials?.Select(material => new WorkOrderTaskMaterialCommand(material.MaterialId, material.Quantity, material.FromUtc, material.ToUtc)).ToList() ?? [],
-                t.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity, support.FromUtc, support.ToUtc)).ToList() ?? [],
+                t.Tools?.Select(tool => new WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity, tool.FromUtc, tool.ToUtc, tool.Description)).ToList() ?? [],
+                t.Materials?.Select(material => new WorkOrderTaskMaterialCommand(material.MaterialId, material.Quantity, material.FromUtc, material.ToUtc, material.Description)).ToList() ?? [],
+                t.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity, support.FromUtc, support.ToUtc, support.Description)).ToList() ?? [],
                 t.Attachments?.Select(attachment => new WorkOrderTaskAttachmentCommand(
                     attachment.Kind,
                     attachment.Base64Content,
                     attachment.FileName,
                     attachment.ContentType)).ToList() ?? [],
-                t.IsReturnToRamp)).ToList() ?? [],
+                t.IsReturnToRamp,
+                t.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
             CustomerSignature is null
                 ? null
                 : new WorkOrderSignatureCommand(
@@ -161,7 +163,8 @@ public sealed record WorkOrderServiceLineRequest(
     bool IsReturnToRamp = false,
     Guid? Id = null,
     Guid? PerformedByStaffMemberId = null,
-    IReadOnlyList<WorkOrderServiceLineAttachmentRequest>? Attachments = null)
+    IReadOnlyList<WorkOrderServiceLineAttachmentRequest>? Attachments = null,
+    IReadOnlyList<WorkOrderEmployeeAssignmentRequest>? EmployeeAssignments = null)
 {
     public IReadOnlyList<Guid> ResolvePerformedByStaffMemberIds() =>
         PerformedByStaffMemberIds is { Count: > 0 }
@@ -169,6 +172,14 @@ public sealed record WorkOrderServiceLineRequest(
             : PerformedByStaffMemberId is { } legacyPerformerId
                 ? [legacyPerformerId]
                 : [];
+}
+
+public sealed record WorkOrderEmployeeAssignmentRequest(
+    Guid StaffMemberId,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc)
+{
+    public WorkOrderEmployeeAssignmentCommand ToCommand() => new(StaffMemberId, FromUtc, ToUtc);
 }
 
 public sealed record WorkOrderServiceLineAttachmentRequest(
@@ -188,7 +199,8 @@ public sealed record WorkOrderTaskRequest(
     IReadOnlyList<WorkOrderTaskMaterialRequest>? Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportRequest>? GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentRequest>? Attachments = null,
-    bool IsReturnToRamp = false);
+    bool IsReturnToRamp = false,
+    IReadOnlyList<WorkOrderEmployeeAssignmentRequest>? EmployeeAssignments = null);
 
 public sealed record WorkOrderReturnToRampRequest(
     Guid? Id,
@@ -215,7 +227,8 @@ public sealed record WorkOrderReturnToRampRequest(
                 attachment.Kind,
                 attachment.Base64Content,
                 attachment.FileName,
-                attachment.ContentType)).ToList() ?? [])).ToList() ?? [],
+                attachment.ContentType)).ToList() ?? [],
+            line.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
         Tasks?.Select(task => new WorkOrderTaskCommand(
             task.Id,
             task.TaskType,
@@ -223,34 +236,38 @@ public sealed record WorkOrderReturnToRampRequest(
             task.FromUtc,
             task.ToUtc,
             task.EmployeeIds ?? [],
-            task.Tools?.Select(tool => new WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity, tool.FromUtc, tool.ToUtc)).ToList() ?? [],
-            task.Materials?.Select(material => new WorkOrderTaskMaterialCommand(material.MaterialId, material.Quantity, material.FromUtc, material.ToUtc)).ToList() ?? [],
-            task.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity, support.FromUtc, support.ToUtc)).ToList() ?? [],
+            task.Tools?.Select(tool => new WorkOrderTaskToolCommand(tool.ToolId, tool.Quantity, tool.FromUtc, tool.ToUtc, tool.Description)).ToList() ?? [],
+            task.Materials?.Select(material => new WorkOrderTaskMaterialCommand(material.MaterialId, material.Quantity, material.FromUtc, material.ToUtc, material.Description)).ToList() ?? [],
+            task.GeneralSupports?.Select(support => new WorkOrderTaskGeneralSupportCommand(support.GeneralSupportId, support.Quantity, support.FromUtc, support.ToUtc, support.Description)).ToList() ?? [],
             task.Attachments?.Select(attachment => new WorkOrderTaskAttachmentCommand(
                 attachment.Kind,
                 attachment.Base64Content,
                 attachment.FileName,
                 attachment.ContentType)).ToList() ?? [],
-            IsReturnToRamp: false)).ToList() ?? []);
+            IsReturnToRamp: false,
+            EmployeeAssignments: task.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? []);
 }
 
 public sealed record WorkOrderTaskToolRequest(
     Guid ToolId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskMaterialRequest(
     Guid MaterialId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskGeneralSupportRequest(
     Guid GeneralSupportId,
     decimal? Quantity,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    string? Description = null);
 
 public sealed record WorkOrderTaskAttachmentRequest(
     TaskAttachmentKind Kind,

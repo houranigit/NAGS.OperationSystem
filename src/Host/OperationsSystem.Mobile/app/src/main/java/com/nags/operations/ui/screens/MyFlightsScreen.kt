@@ -250,6 +250,10 @@ fun MyFlightsTab(
                 null
             },
             callbacks = FlightSheetCallbacks(
+                onOpenWorkOrder = { id ->
+                    sheetFlight = null
+                    sheetCallbacks.onOpenWorkOrder(id)
+                },
                 onCreateWorkOrder = { id ->
                     closeSheet()
                     sheetCallbacks.onCreateWorkOrder(id)

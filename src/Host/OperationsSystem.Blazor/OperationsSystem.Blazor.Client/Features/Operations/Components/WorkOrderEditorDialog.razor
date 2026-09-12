@@ -105,6 +105,7 @@
 
     private readonly IReadOnlyList<SelectOption> taskTypeOptions = [new("Major", "Major"), new("Minor", "Minor")];
 
+    private bool RequiresCustomerDescription => WorkOrderEntryRules.RequiresCustomerDescription(flight?.CustomerId);
     private bool IsCompletion => model.Type == "Completion";
     private bool IsCancellation => model.Type == "Cancellation";
     private string EmptyServiceLinesText => flight?.IsPerLanding == true
@@ -272,7 +273,7 @@
             </div>
         </div>
         <div class="owo-field-block owo-full">
-            <label class="owo-label">Remarks</label>
+            <label class="owo-label">@(RequiresCustomerDescription ? "Describe the Unknown customer" : "Remarks") @if (RequiresCustomerDescription) { <span class="owo-required">*</span> }</label>
             <RadzenTextArea @bind-Value="model.Remarks" Rows="4" MaxLength="2000" Disabled="@ViewOnly" class="owo-control" />
         </div>
     </section>;
@@ -288,6 +289,13 @@
                                       Disabled="@ViewOnly" class="owo-control owo-control-icon" />
                 </div>
             </div>
+            @if (RequiresCustomerDescription)
+            {
+                <div class="owo-field-block owo-full">
+                    <label class="owo-label">Describe the Unknown customer <span class="owo-required">*</span></label>
+                    <RadzenTextArea @bind-Value="model.Remarks" Rows="3" MaxLength="2000" Disabled="@ViewOnly" class="owo-control" />
+                </div>
+            }
             <div class="owo-field-block owo-full">
                 <label class="owo-label">Cancellation reason</label>
                 <RadzenTextArea @bind-Value="model.CancellationReason" Immediate="true" Rows="4" MaxLength="1000" Disabled="@ViewOnly" class="owo-control" />
@@ -328,7 +336,7 @@
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">Performed by <span class="owo-required">*</span></label>
-                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Change="@((object? _) => line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(line.PerformedByStaffMemberIds, line.EmployeeAssignments))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
                                         Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                         Disabled="@ViewOnly" class="owo-control" />
                     </div>
@@ -345,6 +353,12 @@
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                 </div>
+                <EmployeePeriodsEditor @bind-Assignments="line.EmployeeAssignments" StaffOptions="@staffOptions" EmployeeSnapshots="@line.EmployeeSnapshots"
+                                       FromLocal="@line.FromUtc" ToLocal="@line.ToUtc" ViewOnly="@ViewOnly" />
+                @if (WorkOrderEntryRules.RequiresServiceDescription(line.ServiceId))
+                {
+                    <label class="owo-label">Describe the Unknown service <span class="owo-required">*</span></label>
+                }
                 <div class="owo-row-actions">
                     <RadzenTextBox @bind-Value="line.Description" MaxLength="2000" Placeholder="Description" Disabled="@ViewOnly" class="owo-control" />
                     @if (!ViewOnly)
@@ -382,7 +396,7 @@
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">Employees <span class="owo-required">*</span></label>
-                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Change="@((object? _) => task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(task.EmployeeIds, task.EmployeeAssignments))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
                                         Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                         Disabled="@ViewOnly" class="owo-control" />
                     </div>
@@ -399,6 +413,8 @@
                                           Disabled="@ViewOnly" class="owo-control" />
                     </div>
                 </div>
+                <EmployeePeriodsEditor @bind-Assignments="task.EmployeeAssignments" StaffOptions="@staffOptions" EmployeeSnapshots="@task.EmployeeSnapshots"
+                                       FromLocal="@task.FromUtc" ToLocal="@task.ToUtc" ViewOnly="@ViewOnly" />
                 <div class="owo-row-actions">
                     <RadzenTextBox @bind-Value="task.Description" MaxLength="2000" Placeholder="Description" Disabled="@ViewOnly" class="owo-control" />
                     @if (!ViewOnly)
@@ -567,7 +583,7 @@
                     <div class="owo-attachment-upload">
                         <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
                         <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
-                        <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Document", args))" accept="application/pdf" /></label>
+                        <label><RadzenIcon Icon="description" /><span>PDF (max 2 MB)</span><InputFile OnChange="@((args) => UploadAttachmentAsync(task, "Document", args))" accept="application/pdf" /></label>
                     </div>
                 }
                 else
@@ -622,7 +638,7 @@
                     <div class="owo-attachment-upload">
                         <label><RadzenIcon Icon="image" /><span>Image</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Image", args))" accept="image/png,image/jpeg,image/webp" /></label>
                         <label><RadzenIcon Icon="graphic_eq" /><span>Voice</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Voice", args))" accept="audio/mp4,audio/m4a,audio/mpeg,audio/mp3,audio/ogg,audio/webm" /></label>
-                        <label><RadzenIcon Icon="description" /><span>PDF</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Document", args))" accept="application/pdf" /></label>
+                        <label><RadzenIcon Icon="description" /><span>PDF (max 2 MB)</span><InputFile OnChange="@((args) => UploadServiceLineAttachmentAsync(line, "Document", args))" accept="application/pdf" /></label>
                     </div>
                 }
                 else
@@ -747,6 +763,13 @@
                                       ButtonType="ButtonType.Button" Click="@(() => remove(task, row))" />
                     }
                 </div>
+                @if (WorkOrderEntryRules.IsUnknownResource(row.ItemId) || !string.IsNullOrWhiteSpace(row.Description))
+                {
+                    <div class="owo-field-block">
+                        <label class="owo-label">Description @if (WorkOrderEntryRules.IsUnknownResource(row.ItemId)) { <span class="owo-required">*</span> }</label>
+                        <RadzenTextArea @bind-Value="row.Description" Rows="2" MaxLength="2000" Placeholder="Describe the Unknown item" Disabled="@ViewOnly" class="owo-control" />
+                    </div>
+                }
             }
             @if (rows.Count == 0)
             {
@@ -1341,7 +1364,7 @@
 
     private List<string> ValidateCurrentStep()
     {
-        if (!IsCompletion)
+        if (ViewOnly || !IsCompletion)
             return [];
 
         return step switch
@@ -1359,6 +1382,8 @@
         if (IsCancellation)
         {
             var cancellationMessages = new List<string>();
+            if (RequiresCustomerDescription && string.IsNullOrWhiteSpace(model.Remarks))
+                cancellationMessages.Add("Describe the Unknown customer in Remarks.");
             if (IsMissing(model.CanceledAtUtc))
                 cancellationMessages.Add("Cancellation work orders require a cancellation time.");
             if (string.IsNullOrWhiteSpace(model.CancellationReason))
@@ -1385,6 +1410,8 @@
     private List<string> ValidateDetailsStep()
     {
         var messages = new List<string>();
+        if (RequiresCustomerDescription && string.IsNullOrWhiteSpace(model.Remarks))
+            messages.Add("Describe the Unknown customer in Remarks.");
         if (string.IsNullOrWhiteSpace(model.ActualFlightNumber))
             messages.Add("Flight number is required.");
         else if (model.ActualFlightNumber.Trim().Length > 12)
@@ -1422,6 +1449,12 @@
             AddTimeZoneValidation(messages, $"Service line {index} From", line.FromUtc);
             AddTimeZoneValidation(messages, $"Service line {index} To", line.ToUtc);
         }
+        foreach (var (line, lineIndex) in model.ServiceLines.Select((value, index) => (value, index + 1)))
+        {
+            if (WorkOrderEntryRules.RequiresServiceDescription(line.ServiceId) && string.IsNullOrWhiteSpace(line.Description))
+                messages.Add($"Service line {lineIndex} requires a description for the Unknown service.");
+            messages.AddRange(WorkOrderEntryRules.ValidateAssignments(line.PerformedByStaffMemberIds, line.EmployeeAssignments, line.FromUtc, line.ToUtc, UserTimeZone, $"Service line {lineIndex}"));
+        }
         return messages;
     }
 
@@ -1449,6 +1482,7 @@
 
         foreach (var (task, taskIndex) in model.Tasks.Select((value, index) => (value, index + 1)))
         {
+            messages.AddRange(WorkOrderEntryRules.ValidateAssignments(task.EmployeeIds, task.EmployeeAssignments, task.FromUtc, task.ToUtc, UserTimeZone, $"Task {taskIndex}"));
             AddResourceValidation(messages, task, task.Tools, toolOptions, "tool", taskIndex);
             AddResourceValidation(messages, task, task.Materials, materialOptions, "material", taskIndex);
             AddResourceValidation(messages, task, task.GeneralSupports, supportOptions, "general support", taskIndex);
@@ -1474,6 +1508,8 @@
         {
             var calculationType = CalculationTypeFor(row, options);
             var prefix = $"Task {taskIndex} {label} {resourceIndex}";
+            if (WorkOrderEntryRules.IsUnknownResource(row.ItemId) && string.IsNullOrWhiteSpace(row.Description))
+                messages.Add($"{prefix} requires a description for the Unknown item.");
             if (calculationType == ResourceCalculationType.Quantity)
             {
                 if (row.Quantity is null or <= 0)
@@ -1523,7 +1559,7 @@
             completion ? ToOffset(model.ActualDepartureUtc) : null,
             cancellation ? ToOffset(model.CanceledAtUtc) : null,
             cancellation ? model.CancellationReason : null,
-            completion ? model.Remarks : null,
+            completion || RequiresCustomerDescription ? model.Remarks : null,
             completion
                 ? model.ServiceLines.Select(l => new WorkOrderServiceLineRequestModel(
                     l.ServiceId!.Value,
@@ -1531,6 +1567,7 @@
                     ToOffset(l.FromUtc)!.Value,
                     ToOffset(l.ToUtc)!.Value,
                     l.Description,
+                    EmployeeAssignments: WorkOrderEntryRules.ToRequests(l.EmployeeAssignments, UserTimeZone),
                     Id: l.Id,
                     Attachments: l.Attachments.Where(a => a.IsPending).Select(a => new WorkOrderServiceLineAttachmentRequestModel(
                         a.Kind,
@@ -1550,22 +1587,26 @@
                         r.ItemId!.Value,
                         CalculationTypeFor(r, toolOptions) == ResourceCalculationType.Quantity ? r.Quantity : null,
                         CalculationTypeFor(r, toolOptions) == ResourceCalculationType.Duration ? ToOffset(r.FromUtc) : null,
-                        CalculationTypeFor(r, toolOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null)).ToList(),
+                        CalculationTypeFor(r, toolOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null,
+                        r.Description)).ToList(),
                     t.Materials.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskMaterialRequestModel(
                         r.ItemId!.Value,
                         CalculationTypeFor(r, materialOptions) == ResourceCalculationType.Quantity ? r.Quantity : null,
                         CalculationTypeFor(r, materialOptions) == ResourceCalculationType.Duration ? ToOffset(r.FromUtc) : null,
-                        CalculationTypeFor(r, materialOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null)).ToList(),
+                        CalculationTypeFor(r, materialOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null,
+                        r.Description)).ToList(),
                     t.GeneralSupports.Where(r => r.ItemId.HasValue).Select(r => new WorkOrderTaskGeneralSupportRequestModel(
                         r.ItemId!.Value,
                         CalculationTypeFor(r, supportOptions) == ResourceCalculationType.Quantity ? r.Quantity : null,
                         CalculationTypeFor(r, supportOptions) == ResourceCalculationType.Duration ? ToOffset(r.FromUtc) : null,
-                        CalculationTypeFor(r, supportOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null)).ToList(),
+                        CalculationTypeFor(r, supportOptions) == ResourceCalculationType.Duration ? ToOffset(r.ToUtc) : null,
+                        r.Description)).ToList(),
                     t.Attachments.Where(a => a.IsPending).Select(a => new WorkOrderTaskAttachmentRequestModel(
                         a.Kind,
                         Convert.ToBase64String(a.Content!),
                         a.OriginalFileName,
-                        a.ContentType)).ToList())).ToList()
+                        a.ContentType)).ToList(),
+                    EmployeeAssignments: WorkOrderEntryRules.ToRequests(t.EmployeeAssignments, UserTimeZone))).ToList()
                 : [],
             !completion || model.CustomerSignature is null
                 ? null
@@ -1624,6 +1665,9 @@
             ServiceId = l.ServiceId,
             ServiceName = l.ServiceName,
             PerformedByStaffMemberIds = l.PerformedBy.Select(performer => performer.StaffMemberId).ToList(),
+            EmployeeSnapshots = l.PerformedBy.Select(item => new ReturnToRampPersonSnapshot(item.StaffMemberId, item.FullName, item.EmployeeId)).ToList(),
+            EmployeeAssignments = l.PerformedBy.Select(item => new EmployeeAssignmentDraft(item.StaffMemberId,
+                UserTimeZone.ToLocalDateTime(item.FromUtc ?? l.FromUtc), UserTimeZone.ToLocalDateTime(item.ToUtc ?? l.ToUtc))).ToList(),
             FromUtc = UserTimeZone.ToLocalDateTime(l.FromUtc),
             ToUtc = UserTimeZone.ToLocalDateTime(l.ToUtc),
             Description = l.Description,
@@ -1644,11 +1688,15 @@
             FromUtc = UserTimeZone.ToLocalDateTime(t.FromUtc),
             ToUtc = UserTimeZone.ToLocalDateTime(t.ToUtc),
             EmployeeIds = t.Employees.Select(e => e.StaffMemberId).ToList(),
+            EmployeeSnapshots = t.Employees.Select(item => new ReturnToRampPersonSnapshot(item.StaffMemberId, item.FullName, item.EmployeeId)).ToList(),
+            EmployeeAssignments = t.Employees.Select(item => new EmployeeAssignmentDraft(item.StaffMemberId,
+                UserTimeZone.ToLocalDateTime(item.FromUtc ?? t.FromUtc), UserTimeZone.ToLocalDateTime(item.ToUtc ?? t.ToUtc))).ToList(),
             Tools = t.Tools.Select(x => new ResourceForm
             {
                 ItemId = x.ToolId,
                 CalculationType = x.CalculationType,
                 Quantity = x.Quantity,
+                Description = x.Description,
                 FromUtc = UserTimeZone.ToLocalDateTime(x.FromUtc),
                 ToUtc = UserTimeZone.ToLocalDateTime(x.ToUtc)
             }).ToList(),
@@ -1657,6 +1705,7 @@
                 ItemId = x.MaterialId,
                 CalculationType = x.CalculationType,
                 Quantity = x.Quantity,
+                Description = x.Description,
                 FromUtc = UserTimeZone.ToLocalDateTime(x.FromUtc),
                 ToUtc = UserTimeZone.ToLocalDateTime(x.ToUtc)
             }).ToList(),
@@ -1665,6 +1714,7 @@
                 ItemId = x.GeneralSupportId,
                 CalculationType = x.CalculationType,
                 Quantity = x.Quantity,
+                Description = x.Description,
                 FromUtc = UserTimeZone.ToLocalDateTime(x.FromUtc),
                 ToUtc = UserTimeZone.ToLocalDateTime(x.ToUtc)
             }).ToList(),
@@ -1698,12 +1748,7 @@
 
     private string DateDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
 
-    private static long MaxAttachmentBytes(string kind) => kind switch
-    {
-        "Image" => 10 * 1024 * 1024,
-        "Voice" => 25 * 1024 * 1024,
-        _ => 20 * 1024 * 1024
-    };
+    private static long MaxAttachmentBytes(string kind) => ReturnToRampAttachmentValidation.MaxBytes(kind);
 
     private static string ResolveAttachmentContentType(string fileName, string? contentType)
     {
@@ -1813,6 +1858,8 @@
         public Guid? ServiceId { get; set; }
         public string? ServiceName { get; set; }
         public IEnumerable<Guid> PerformedByStaffMemberIds { get; set; } = [];
+        public IReadOnlyList<EmployeeAssignmentDraft> EmployeeAssignments { get; set; } = [];
+        public IReadOnlyList<ReturnToRampPersonSnapshot> EmployeeSnapshots { get; set; } = [];
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
@@ -1828,6 +1875,8 @@
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public IEnumerable<Guid> EmployeeIds { get; set; } = [];
+        public IReadOnlyList<EmployeeAssignmentDraft> EmployeeAssignments { get; set; } = [];
+        public IReadOnlyList<ReturnToRampPersonSnapshot> EmployeeSnapshots { get; set; } = [];
         public List<ResourceForm> Tools { get; set; } = [];
         public List<ResourceForm> Materials { get; set; } = [];
         public List<ResourceForm> GeneralSupports { get; set; } = [];
@@ -1838,6 +1887,7 @@
     {
         public Guid Key { get; } = Guid.NewGuid();
         public Guid? ItemId { get; set; }
+        public string? Description { get; set; }
         public ResourceCalculationType CalculationType { get; set; } = ResourceCalculationType.Quantity;
         public decimal? Quantity { get; set; } = 1;
         public DateTime? FromUtc { get; set; }

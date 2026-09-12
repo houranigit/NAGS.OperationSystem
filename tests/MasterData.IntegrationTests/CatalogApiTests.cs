@@ -47,10 +47,35 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         aircraftPerLanding.IsSystem.ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task Unknown_catalog_seeds_are_idempotent_and_remain_active()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var seeder = scope.ServiceProvider.GetRequiredService<MasterData.Infrastructure.Seeding.MasterDataDataSeeder>();
+        await seeder.SeedAsync();
+        await seeder.SeedAsync();
+
+        foreach (var (route, id, name) in new[]
+        {
+            ("services", WellKnownMasterDataIds.UnknownService, "Unknown Service"),
+            ("tools", WellKnownMasterDataIds.UnknownTool, "Unknown Tool"),
+            ("materials", WellKnownMasterDataIds.UnknownMaterial, "Unknown Material"),
+            ("general-supports", WellKnownMasterDataIds.UnknownGeneralSupport, "Unknown General Support")
+        })
+        {
+            var detail = await client.GetFromJsonAsync<CatalogDetail>($"{Base}/{route}/{id}");
+            detail.ShouldNotBeNull();
+            detail.Name.ShouldBe(name);
+            detail.IsActive.ShouldBeTrue();
+        }
+    }
+
     public static IEnumerable<object[]> SeededCatalogRoutes()
     {
         yield return ["operation-types", WellKnownMasterDataIds.AdHocOperationType];
         yield return ["services", WellKnownMasterDataIds.AircraftPerLandingService];
+        yield return ["services", WellKnownMasterDataIds.UnknownService];
     }
 
     [Fact]

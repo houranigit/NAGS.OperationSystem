@@ -10,7 +10,9 @@ shape and business rules.
   JSON body (`/api/v1/identity/auth/mobile/*`), persisted across launches with automatic refresh.
 * **Local-first cache** — Room mirrors ten server tables (services, tools, materials, general
   supports, customers, aircraft types, station staff, my flights, Per Landing flights, Ad Hoc
-  flights). Every screen reads from Room; only the sync coordinator writes the synced tables.
+  flights). Flight lists and work-order forms read from Room; only the sync coordinator writes
+  the synced tables. Work-order review refreshes visible records online and can display the cached
+  personal work order when offline.
 * **Real-time sync** — SignalR channel on `/hubs/mobile-sync` applies `change` envelopes
   (upsert / delete / refresh per logical table); a REST catch-up (`GET /api/v1/mobile/sync/changes`)
   reconciles after every reconnect, and a 5-minute foreground poll is the safety net.
@@ -23,11 +25,15 @@ shape and business rules.
 * **Local-time work-order entry** — the UI converts server UTC instants through the device IANA
   time zone, including daylight-saving rules, while queued and transmitted values remain UTC.
   Resource rows follow their catalog calculation type: Quantity stores an amount; Duration stores
-  a required From and optional/open To.
+  a required From and optional/open To. Each selected service/task employee has a required From/To
+  period contained within that service or task. Periods and resource notes survive drafts and outbox delivery.
 * **Screens** — My Flights / Per Landing / Ad Hoc tabs, create/update work order (planned services
   seed the form as service lines to complete or remove — never Per Landing), return-to-ramp,
-  invite teammates (online-only), cancel flight (time + reason), local drafts, and the Sync Center
-  diagnostics screen.
+  read-only flight work orders (including completed flights), invite teammates (online-only),
+  cancel flight (time + reason), local drafts, and the Sync Center diagnostics screen. Completed
+  flights expose **Print approved WO PDF**, using the same authenticated PDF endpoint as the portal
+  and Android's print dialog / Save as PDF. Viewing remains available after the authoring window ends;
+  refreshing and printing require a connection and the existing server visibility permissions.
 * **Notifications** — persisted bilingual inbox, unread bell badge, read/archive actions, and
   high-priority FCM flight-assignment alerts. Notification taps select My Flights and open the
   same flight action sheet used by flight cards; cold starts and warm `singleTask` intents share
@@ -41,8 +47,18 @@ alerts use FCM and the Notifications API under `/api/v1/notifications`.
 * Planned services are copied into the create-work-order form; the user completes each line's
   performer or removes it. Per Landing is a flight designation, never a performable service line.
 * One active work order per user per flight; approval locks the work order and settles the flight.
-* Service lines are clear-and-rebuild on update; tasks keep their stable server ids so uploaded
-  attachments survive edits.
+* Service lines and tasks keep their stable server ids so uploaded attachments survive edits.
+* The seeded Unknown customer requires work-order remarks on both scratch and existing-flight forms.
+  Unknown service requires service notes. Unknown tools, materials, and general supports reveal a
+  required note on the individual resource row; ordinary resource notes stay hidden unless present.
+  Cancellation reasons supply the required customer note when an Unknown customer has no remarks.
+* New selected employees must enter their own From/To period. Equal service/task boundaries are
+  allowed, but missing times, reversed periods, and work outside the parent period block progression
+  and submission, including return-to-ramp work. Legacy drafts retain the original whole-line period;
+  pre-upgrade queued requests preserve missing assignments for safe idempotent retries.
+* Newly uploaded work-order PDF documents are limited to **2 MB (2,097,152 bytes)** per file.
+  The picker explains rejected files, and form validation also checks saved drafts. Existing document
+  previews remain readable; image and voice limits are unchanged.
 * Return-to-ramp work is stored as separate occurrences, each with its own window, optional
   description, services, tasks, resources, and attachments. The older flag-only wire shape remains
   readable only so already-persisted outbox rows can drain safely.

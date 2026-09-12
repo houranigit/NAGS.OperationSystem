@@ -111,13 +111,12 @@ public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
         if (!manpowerTypeActive)
             return new HashSet<Guid>();
 
-        var serviceIds = await db.ManpowerTypeAllowedServices.AsNoTracking()
-            .Where(allowance => allowance.ManpowerTypeId == manpowerTypeId)
-            .Where(allowance => db.Services.Any(service =>
-                service.Id == allowance.ServiceId &&
-                service.IsActive &&
-                service.Id != MasterData.Contracts.Seeding.WellKnownMasterDataIds.AircraftPerLandingService))
-            .Select(allowance => allowance.ServiceId)
+        var serviceIds = await db.Services.AsNoTracking()
+            .Where(service => service.IsActive &&
+                service.Id != MasterData.Contracts.Seeding.WellKnownMasterDataIds.AircraftPerLandingService &&
+                (service.Id == MasterData.Contracts.Seeding.WellKnownMasterDataIds.UnknownService ||
+                 db.ManpowerTypeAllowedServices.Any(allowance => allowance.ServiceId == service.Id && allowance.ManpowerTypeId == manpowerTypeId)))
+            .Select(service => service.Id)
             .ToListAsync(cancellationToken);
 
         return serviceIds.ToHashSet();

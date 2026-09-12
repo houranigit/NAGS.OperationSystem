@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Features.Mobile;
 using Operations.Application.Features.WorkOrders;
@@ -253,6 +254,33 @@ public sealed class MobileMutationFingerprintCompatibilityTests
         }
     }
 
+    [Fact]
+    public void CompatibleFingerprints_never_drop_employee_periods_or_resource_descriptions()
+    {
+        var payload = Payload(Guid.NewGuid(), Guid.NewGuid(), tools: [new(Guid.NewGuid(), 1)]);
+        var original = CurrentEnvelope(Guid.NewGuid(), payload);
+        var legacyFingerprint = Fingerprint(PreResourceUsageEnvelope(original));
+        var assignment = new WorkOrderEmployeeAssignmentCommand(payload.ServiceLines[0].PerformedByStaffMemberIds[0], FromUtc, FromUtc.AddMinutes(15));
+        var changedService = original with
+        {
+            Payload = payload with { ServiceLines = [payload.ServiceLines[0] with { EmployeeAssignments = [assignment] }] }
+        };
+        var changedTask = original with
+        {
+            Payload = payload with { Tasks = [payload.Tasks[0] with { EmployeeAssignments = [assignment] }] }
+        };
+        var changedDescription = original with
+        {
+            Payload = payload with { Tasks = [payload.Tasks[0] with { Tools = [payload.Tasks[0].Tools[0] with { Description = "Specific tool" }] }] }
+        };
+
+        foreach (var changed in new[] { changedService, changedTask, changedDescription })
+        {
+            MobileMutations.CompatibleFingerprints(changed).ShouldNotContain(legacyFingerprint);
+            MobileMutations.CompatibleFingerprints(changed).ShouldNotContain(MobileMutations.Fingerprint(original));
+        }
+    }
+
     private static CurrentUpdateFingerprintEnvelope CurrentEnvelope(
         Guid workOrderId,
         WorkOrderEditableCommandPayload payload) =>
@@ -423,7 +451,22 @@ public sealed class MobileMutationFingerprintCompatibilityTests
 
     private static string Fingerprint<T>(T request)
     {
-        var json = JsonSerializer.Serialize(request);
+        // These fixtures describe historical deployments; current command types reused inside
+        // envelopes must not introduce newly appended nullable properties into their old JSON.
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(typeInfo =>
+        {
+            foreach (var property in typeInfo.Properties.ToList())
+            {
+                if (property.Name == "EmployeeAssignments" ||
+                    (property.Name == "Description" &&
+                     (typeInfo.Type == typeof(WorkOrderTaskToolCommand) ||
+                      typeInfo.Type == typeof(WorkOrderTaskMaterialCommand) ||
+                      typeInfo.Type == typeof(WorkOrderTaskGeneralSupportCommand))))
+                    typeInfo.Properties.Remove(property);
+            }
+        });
+        var json = JsonSerializer.Serialize(request, new JsonSerializerOptions { TypeInfoResolver = resolver });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 

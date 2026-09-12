@@ -3,6 +3,9 @@ using MasterData.Domain.Countries;
 using MasterData.Domain.Customers;
 using MasterData.Domain.OperationTypes;
 using MasterData.Domain.Services;
+using MasterData.Domain.Tools;
+using MasterData.Domain.Materials;
+using MasterData.Domain.GeneralSupports;
 using MasterData.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -95,6 +98,42 @@ public sealed class MasterDataDataSeeder(
             {
                 logger.LogWarning("Skipped seeding Aircraft Per Landing service: {Error}", result.Error.Description);
             }
+        }
+
+        if (!await db.Services.AnyAsync(item => item.Id == WellKnownMasterDataIds.UnknownService, cancellationToken))
+        {
+            var result = Service.Create("Unknown Service", "Specify the item in the work order description.", now, WellKnownMasterDataIds.UnknownService);
+            if (result.IsFailure)
+                throw new InvalidOperationException(result.Error.Description);
+            db.Services.Add(result.Value);
+            changed = true;
+        }
+
+        if (!await db.Tools.AnyAsync(item => item.Id == WellKnownMasterDataIds.UnknownTool, cancellationToken))
+        {
+            var result = Tool.Create("Unknown Tool", "Specify the item in the work order description.", now, WellKnownMasterDataIds.UnknownTool);
+            if (result.IsFailure)
+                throw new InvalidOperationException(result.Error.Description);
+            db.Tools.Add(result.Value);
+            changed = true;
+        }
+
+        if (!await db.Materials.AnyAsync(item => item.Id == WellKnownMasterDataIds.UnknownMaterial, cancellationToken))
+        {
+            var result = Material.Create("Unknown Material", "Specify the item in the work order description.", now, WellKnownMasterDataIds.UnknownMaterial);
+            if (result.IsFailure)
+                throw new InvalidOperationException(result.Error.Description);
+            db.Materials.Add(result.Value);
+            changed = true;
+        }
+
+        if (!await db.GeneralSupports.AnyAsync(item => item.Id == WellKnownMasterDataIds.UnknownGeneralSupport, cancellationToken))
+        {
+            var result = GeneralSupport.Create("Unknown General Support", "Specify the item in the work order description.", now, WellKnownMasterDataIds.UnknownGeneralSupport);
+            if (result.IsFailure)
+                throw new InvalidOperationException(result.Error.Description);
+            db.GeneralSupports.Add(result.Value);
+            changed = true;
         }
 
         if (changed)

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -225,6 +226,21 @@ fun FlightDetailsActionsSheet(
                 )
             }
 
+            if (effectiveFlight.myWorkOrder != null || effectiveFlight.otherWorkOrdersExist ||
+                flightStatus == FlightStatusKind.Completed || flightStatus == FlightStatusKind.Canceled
+            ) {
+                SheetActionButton(
+                    icon = Icons.Default.Description,
+                    label = "View work orders",
+                    onClick = {
+                        callbacks.onOpenWorkOrder(effectiveFlight.id)
+                        onDismiss()
+                    },
+                    primary = false,
+                    enabled = true,
+                )
+            }
+
             when {
                 // This intentionally precedes local-draft handling: even stale local state must
                 // not expose work-order actions once the authoritative flight is Completed.
@@ -252,7 +268,7 @@ fun FlightDetailsActionsSheet(
                 decision == FlightSummaryActionsDecision.ReadOnly -> {
                     SectionHeader(
                         title = "This flight is closed",
-                        subtitle = "No further actions are available from the mobile app.",
+                        subtitle = "Available work orders can still be viewed.",
                         icon = Icons.Default.Lock,
                     )
                 }

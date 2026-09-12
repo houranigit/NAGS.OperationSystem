@@ -222,6 +222,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (flight.Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
             return Error.Conflict("Work orders can only be submitted for scheduled or in-progress flights.", "Operations.WorkOrder.FlightNotOpen");
 
+        if (flight.Customer.CustomerId == WellKnownMasterDataIds.UnknownCustomer && string.IsNullOrWhiteSpace(remarks))
+            return Error.Validation("Remarks are required when the customer is unknown.", "Operations.WorkOrder.UnknownCustomerRemarksRequired");
+
         var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps);
         if (validate.IsFailure)
             return validate.Error;
@@ -310,6 +313,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         if (type == WorkOrderType.Cancellation && returnToRamps is null && _returnToRamps.Count > 0)
             return Error.Validation("Cancellation work orders cannot include return-to-ramp records.", "Operations.ReturnToRamp.CancellationNotAllowed");
+
+        if (Customer.CustomerId == WellKnownMasterDataIds.UnknownCustomer && string.IsNullOrWhiteSpace(remarks))
+            return Error.Validation("Remarks are required when the customer is unknown.", "Operations.WorkOrder.UnknownCustomerRemarksRequired");
 
         var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps ?? []);
         if (validate.IsFailure)
@@ -881,6 +887,12 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         foreach (var line in serviceLines)
         {
+            var description = WorkOrderInputValidation.Description(line.Service.ServiceId, WellKnownMasterDataIds.UnknownService, line.Description, "Service");
+            if (description.IsFailure)
+                return description.Error;
+            var assignments = WorkOrderInputValidation.EmployeeAssignments(line.PerformedBy.Select(staff => staff.StaffMemberId), line.EmployeeAssignments, line.Window);
+            if (assignments.IsFailure)
+                return assignments.Error;
             if (line.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
                 return Error.Validation("Aircraft Per Landing cannot be selected as a work order service line.", "Operations.WorkOrder.PerLandingLineNotAllowed");
             if (line.PerformedBy is not { Count: > 0 })
@@ -921,6 +933,12 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         foreach (var line in input.ServiceLines ?? [])
         {
+            var description = WorkOrderInputValidation.Description(line.Service.ServiceId, WellKnownMasterDataIds.UnknownService, line.Description, "Service");
+            if (description.IsFailure)
+                return description.Error;
+            var assignments = WorkOrderInputValidation.EmployeeAssignments(line.PerformedBy.Select(staff => staff.StaffMemberId), line.EmployeeAssignments, line.Window);
+            if (assignments.IsFailure)
+                return assignments.Error;
             if (line.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
                 return Error.Validation("Aircraft Per Landing cannot be selected as a return-to-ramp service.", "Operations.WorkOrder.PerLandingLineNotAllowed");
             if (line.PerformedBy is not { Count: > 0 })
@@ -949,6 +967,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
     private static Result ValidateTaskResources(WorkOrderTaskInput task)
     {
+        var assignments = WorkOrderInputValidation.EmployeeAssignments(task.Employees.Select(staff => staff.StaffMemberId), task.EmployeeAssignments, task.Window);
+        if (assignments.IsFailure)
+            return assignments.Error;
         if ((task.Tools ?? []).Select(item => item.Tool.ToolId).Distinct().Count() != (task.Tools?.Count ?? 0))
             return Error.Validation("Duplicate tool rows are not allowed within one task.", "Operations.ResourceUsage.ToolDuplicate");
         if ((task.Materials ?? []).Select(item => item.Material.MaterialId).Distinct().Count() != (task.Materials?.Count ?? 0))
@@ -958,6 +979,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         foreach (var item in task.Tools ?? [])
         {
+            var description = WorkOrderInputValidation.Description(item.Tool.ToolId, WellKnownMasterDataIds.UnknownTool, item.Description, "Tool");
+            if (description.IsFailure)
+                return description.Error;
             if (item.Usage is null || item.Tool.CalculationType != item.Usage.CalculationType)
                 return Error.Validation(
                     $"Tool '{item.Tool.Name}' usage does not match its calculation type.",
@@ -969,6 +993,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         foreach (var item in task.Materials ?? [])
         {
+            var description = WorkOrderInputValidation.Description(item.Material.MaterialId, WellKnownMasterDataIds.UnknownMaterial, item.Description, "Material");
+            if (description.IsFailure)
+                return description.Error;
             if (item.Usage is null || item.Material.CalculationType != item.Usage.CalculationType)
                 return Error.Validation(
                     $"Material '{item.Material.Name}' usage does not match its calculation type.",
@@ -980,6 +1007,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         foreach (var item in task.GeneralSupports ?? [])
         {
+            var description = WorkOrderInputValidation.Description(item.GeneralSupport.GeneralSupportId, WellKnownMasterDataIds.UnknownGeneralSupport, item.Description, "General Support");
+            if (description.IsFailure)
+                return description.Error;
             if (item.Usage is null || item.GeneralSupport.CalculationType != item.Usage.CalculationType)
                 return Error.Validation(
                     $"General support '{item.GeneralSupport.Name}' usage does not match its calculation type.",

@@ -33,6 +33,8 @@ public sealed record MobileWriteResultDto(Guid WorkOrderId, Guid FlightId, bool 
 /// </summary>
 internal static class MobileMutations
 {
+    private static readonly JsonSerializerOptions PreEmployeeAssignmentsFingerprintOptions =
+        CreatePreEmployeeAssignmentsFingerprintOptions();
     private static readonly JsonSerializerOptions PreReturnToRampFingerprintOptions =
         CreatePreReturnToRampFingerprintOptions();
     private static readonly JsonSerializerOptions PreServiceLineAttachmentsFingerprintOptions =
@@ -66,7 +68,10 @@ internal static class MobileMutations
     /// </summary>
     public static IReadOnlyList<string> CompatibleFingerprints<T>(T request)
     {
-        var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+        var fingerprints = new HashSet<string>(StringComparer.Ordinal)
+        {
+            Fingerprint(request, PreEmployeeAssignmentsFingerprintOptions)
+        };
         // The immediately preceding mobile contract serialized resource rows as id + quantity.
         // Removing the new nullable duration fields reproduces fingerprints already persisted by
         // the server for an offline request that is retried after this deployment.
@@ -153,6 +158,7 @@ internal static class MobileMutations
     private static JsonSerializerOptions CreatePreReturnToRampFingerprintOptions()
     {
         var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(OmitAbsentNewWorkOrderFields);
         resolver.Modifiers.Add(static typeInfo =>
         {
             // The identity-awareness marker was added to the update fingerprint envelope with the
@@ -180,6 +186,7 @@ internal static class MobileMutations
     private static JsonSerializerOptions CreatePreServiceLineAttachmentsFingerprintOptions()
     {
         var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(OmitAbsentNewWorkOrderFields);
         resolver.Modifiers.Add(static typeInfo =>
         {
             if (typeInfo.Type == typeof(WorkOrderEditableCommandPayload))
@@ -194,6 +201,7 @@ internal static class MobileMutations
     private static JsonSerializerOptions CreatePreResourceUsageFingerprintOptions()
     {
         var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(OmitAbsentNewWorkOrderFields);
         resolver.Modifiers.Add(static typeInfo =>
         {
             if (typeInfo.Type == typeof(WorkOrderTaskToolCommand) ||
@@ -219,6 +227,7 @@ internal static class MobileMutations
         else
         {
             var resolver = new DefaultJsonTypeInfoResolver();
+            resolver.Modifiers.Add(OmitAbsentNewWorkOrderFields);
             resolver.Modifiers.Add(static typeInfo =>
             {
                 if (typeInfo.Type == typeof(WorkOrderEditableCommandPayload))
@@ -244,6 +253,8 @@ internal static class MobileMutations
             WorkOrderServiceLineCommand value,
             JsonSerializerOptions options)
         {
+            if (value.EmployeeAssignments is not null)
+                throw new JsonException("Employee working periods cannot be represented by the legacy contract.");
             if (value.PerformedByStaffMemberIds is not { Count: 1 })
                 throw new JsonException("The singular performer contract requires exactly one performer.");
 
@@ -268,6 +279,29 @@ internal static class MobileMutations
 
             writer.WriteEndObject();
         }
+    }
+
+    private static JsonSerializerOptions CreatePreEmployeeAssignmentsFingerprintOptions()
+    {
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(OmitAbsentNewWorkOrderFields);
+        return new JsonSerializerOptions { TypeInfoResolver = resolver };
+    }
+
+    private static void OmitAbsentNewWorkOrderFields(JsonTypeInfo typeInfo)
+    {
+        var propertyName = typeInfo.Type == typeof(WorkOrderServiceLineCommand) || typeInfo.Type == typeof(WorkOrderTaskCommand)
+            ? "EmployeeAssignments"
+            : typeInfo.Type == typeof(WorkOrderTaskToolCommand) ||
+              typeInfo.Type == typeof(WorkOrderTaskMaterialCommand) ||
+              typeInfo.Type == typeof(WorkOrderTaskGeneralSupportCommand)
+                ? "Description"
+                : null;
+        if (propertyName is null)
+            return;
+        var property = typeInfo.Properties.FirstOrDefault(property => property.Name == propertyName);
+        if (property is not null)
+            property.ShouldSerialize = (_, value) => value is not null;
     }
 
     private static void RemoveProperty(JsonTypeInfo typeInfo, string propertyName)
@@ -924,6 +958,9 @@ public sealed class MobileCancelFlightCommandHandler(
         if (actionWindow.IsFailure)
             return actionWindow.Error;
 
+        var hasUnknownCustomer = await db.Flights.AsNoTracking()
+            .AnyAsync(flight => flight.Id == request.FlightId && flight.Customer.CustomerId == WellKnownMasterDataIds.UnknownCustomer, cancellationToken);
+
         var payload = new WorkOrderEditableCommandPayload(
             ActualFlightNumber: null,
             AircraftTypeId: null,
@@ -932,7 +969,7 @@ public sealed class MobileCancelFlightCommandHandler(
             ActualDepartureUtc: null,
             CanceledAtUtc: request.CanceledAtUtc,
             CancellationReason: request.Reason,
-            Remarks: null,
+            Remarks: hasUnknownCustomer ? request.Reason : null,
             ServiceLines: [],
             Tasks: []);
 

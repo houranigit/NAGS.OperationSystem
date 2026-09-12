@@ -1011,6 +1011,111 @@ class WorkOrderFormValidationTest {
         assertNotNull(submitErrorsForWizardStep(errors, WorkOrderWizardStep.ReturnToRamps))
     }
 
+    @Test
+    fun employee_periods_must_be_complete_ordered_and_contained_for_services_and_tasks() {
+        val from = "2026-07-11T10:00:00Z"
+        val to = "2026-07-11T11:00:00Z"
+        val invalidPeriods = listOf(
+            EmployeePeriodForm("", to),
+            EmployeePeriodForm(from, ""),
+            EmployeePeriodForm("invalid", to),
+            EmployeePeriodForm(to, from),
+            EmployeePeriodForm("2026-07-11T09:59:00Z", to),
+            EmployeePeriodForm(from, "2026-07-11T11:01:00Z"),
+        )
+        invalidPeriods.forEach { period ->
+            val errors = validationErrors(validForm().copy(
+                serviceLines = listOf(validForm().serviceLines.single().copy(
+                    employeePeriods = mapOf("employee-1" to period),
+                )),
+                tasks = listOf(validForm().tasks.single().copy(
+                    fromIso = from,
+                    toIso = to,
+                    toolIds = emptyList(),
+                    employeePeriods = mapOf("employee-1" to period),
+                )),
+            ))
+            assertNotNull("Service accepted $period", errors?.serviceLinesByKey?.get(1L)?.performer)
+            assertNotNull("Task accepted $period", errors?.tasksByKey?.get(2L)?.performers)
+        }
+        // Inclusive bounds, compared as instants even when employee uses a different UTC offset.
+        assertNull(employeePeriodsError(
+            listOf("employee-1"),
+            mapOf("employee-1" to EmployeePeriodForm("2026-07-11T05:00:00-05:00", "2026-07-11T06:00:00-05:00")),
+            from, to,
+        ))
+    }
+
+    @Test
+    fun new_employee_selection_requires_period_entry_and_preserves_existing_employee_periods() {
+        val period = EmployeePeriodForm("2026-07-11T10:00:00Z", "2026-07-11T11:00:00Z")
+        val selected = employeePeriodsForSelection(listOf("first", "new"), mapOf("first" to period, "removed" to period))
+        assertEquals(period, selected["first"])
+        assertEquals(EmployeePeriodForm(), selected["new"])
+        assertFalse(selected.containsKey("removed"))
+    }
+
+    @Test
+    fun unknown_customer_on_existing_flight_requires_remarks() {
+        val errors = computeCreateWorkOrderSubmitErrors(
+            form = validForm(), dialogAtdIso = null,
+            validationPhase = WorkOrderValidationPhase.Submission,
+            isAdHocScratch = false, selectedCustomerId = WellKnownMasterDataIds.UnknownCustomer,
+            allowedPerformedServiceIds = setOf("service-1"),
+        )
+        assertNotNull(errors?.remarks)
+    }
+
+    @Test
+    fun unknown_service_and_each_unknown_resource_require_their_own_notes() {
+        val unknownTool = WellKnownMasterDataIds.UnknownTool
+        val unknownMaterial = WellKnownMasterDataIds.UnknownMaterial
+        val unknownSupport = WellKnownMasterDataIds.UnknownGeneralSupport
+        val unknownService = WellKnownMasterDataIds.UnknownService
+        val base = validForm()
+        val task = base.tasks.single().copy(
+            toolIds = listOf(unknownTool), materialIds = listOf(unknownMaterial), generalSupportIds = listOf(unknownSupport),
+            description = "Task notes do not replace item notes",
+        )
+        val form = base.copy(
+            serviceLines = listOf(base.serviceLines.single().copy(serviceId = unknownService, description = "  ")),
+            tasks = listOf(task),
+        )
+        val errors = computeWorkOrderLineErrors(form, form.ataIso, form.atdIso, setOf(unknownService))
+        assertNotNull(errors.services[1L]?.description)
+        assertNotNull(errors.tasks[2L]?.tools)
+        assertNotNull(errors.tasks[2L]?.materials)
+        assertNotNull(errors.tasks[2L]?.generalSupports)
+        val described = form.copy(
+            serviceLines = listOf(form.serviceLines.single().copy(description = "Specific service")),
+            tasks = listOf(task.copy(
+                toolUsages = mapOf(unknownTool to ResourceUsageForm(
+                    calculationType = ResourceCalculationType.Duration,
+                    fromIso = task.fromIso, toIso = task.toIso, description = "Specific tool",
+                )),
+                materialUsages = mapOf(unknownMaterial to ResourceUsageForm(quantity = 1.0, description = "Specific material")),
+                generalSupportUsages = mapOf(unknownSupport to ResourceUsageForm(quantity = 1.0, description = "Specific support")),
+            )),
+        )
+        val valid = computeWorkOrderLineErrors(described, form.ataIso, form.atdIso, setOf(unknownService))
+        assertTrue(valid.services.isEmpty())
+        assertTrue(valid.tasks.isEmpty())
+    }
+
+    @Test
+    fun documents_have_inclusive_two_mb_limit_on_service_and_task_rows() {
+        fun attachment(size: Long) = TaskAttachmentDraft("Document", "application/pdf", "document.pdf", "", "", size)
+        val base = validForm()
+        fun withDocument(size: Long) = base.copy(
+            serviceLines = listOf(base.serviceLines.single().copy(attachments = listOf(attachment(size)))),
+            tasks = listOf(base.tasks.single().copy(attachments = listOf(attachment(size)))),
+        )
+        assertNull(validationErrors(withDocument(2L * 1024 * 1024)))
+        val errors = validationErrors(withDocument(2L * 1024 * 1024 + 1))
+        assertNotNull(errors?.serviceLinesByKey?.get(1L)?.attachments)
+        assertNotNull(errors?.tasksByKey?.get(2L)?.attachments)
+    }
+
     private fun validationErrors(
         form: CreateWorkOrderFormState,
         phase: WorkOrderValidationPhase = WorkOrderValidationPhase.Submission,

@@ -171,6 +171,37 @@ class CachedWorkOrderFormMappingTest {
         assertEquals("nested-task", form.returnToRamps.last().tasks.single().serverId)
     }
 
+    @Test
+    fun employee_periods_and_resource_notes_survive_cached_hydration_and_saved_drafts() {
+        val from = "2026-08-08T10:00:00Z"
+        val to = "2026-08-08T11:00:00Z"
+        val employeeFrom = "2026-08-08T10:15:00Z"
+        val employeeTo = "2026-08-08T10:45:00Z"
+        val workOrder = basicWorkOrder().copy(
+            serviceLines = listOf(WorkOrderServiceLineWireDto(
+                id = "line", serviceId = "service", serviceName = "Service", fromUtc = from, toUtc = to,
+                performedBy = listOf(WorkOrderServiceLinePerformerWireDto("employee", "Employee", "E1", employeeFrom, employeeTo)),
+            )),
+            tasks = listOf(WorkOrderTaskWireDto(
+                id = "task", taskType = "Minor", fromUtc = from, toUtc = to,
+                employees = listOf(com.nags.operations.data.WorkOrderTaskEmployeeWireDto("employee", "Employee", "E1", employeeFrom, employeeTo)),
+                tools = listOf(WorkOrderTaskResourceWireDto(toolId = "tool", name = "Tool", description = "Tool note")),
+                materials = listOf(WorkOrderTaskResourceWireDto(materialId = "material", name = "Material", description = "Material note")),
+                generalSupports = listOf(WorkOrderTaskResourceWireDto(generalSupportId = "support", name = "Support", description = "Support note")),
+            )),
+        )
+        var key = 0L
+        val form = workOrder.toPrefilledCreateFormState { ++key }
+        val restored = com.nags.operations.data.repo.WorkOrderDraftJson.decodeForm(
+            com.nags.operations.data.repo.WorkOrderDraftJson.encodeForm(form),
+        )
+        assertEquals(EmployeePeriodForm(employeeFrom, employeeTo), restored.serviceLines.single().employeePeriods["employee"])
+        assertEquals(EmployeePeriodForm(employeeFrom, employeeTo), restored.tasks.single().employeePeriods["employee"])
+        assertEquals("Tool note", restored.tasks.single().toolUsages["tool"]?.description)
+        assertEquals("Material note", restored.tasks.single().materialUsages["material"]?.description)
+        assertEquals("Support note", restored.tasks.single().generalSupportUsages["support"]?.description)
+    }
+
     private fun basicWorkOrder() = WorkOrderDetailWireDto(
         id = "work-order",
         flightId = "flight",

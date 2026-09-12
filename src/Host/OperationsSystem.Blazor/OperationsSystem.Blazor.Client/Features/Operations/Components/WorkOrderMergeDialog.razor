@@ -79,11 +79,24 @@
                         @ValueSourceField("Aircraft type", "flight", aircraftSourceId, id => aircraftSourceId = id, source => source.AircraftTypeModel)
                         @ValueSourceField("Tail number", "confirmation_number", tailSourceId, id => tailSourceId = id, source => source.AircraftTailNumber)
                         @ValueSourceField("ATA / ATD", "flight_land", actualTimesSourceId, id => actualTimesSourceId = id, ActualTimesValue)
-                        @ValueSourceField("Remarks", "notes", remarksSourceId, id => remarksSourceId = id, source => source.Remarks)
+                        @ValueSourceField(RequiresCustomerDescription ? "Customer remarks source" : "Remarks", "notes", remarksSourceId, SelectRemarksSource, source => source.Remarks)
                     }
                     else
                     {
                         @ValueSourceField("Cancellation", "event_busy", cancellationSourceId, id => cancellationSourceId = id, CancellationValue)
+                        @if (RequiresCustomerDescription)
+                        {
+                            @ValueSourceField("Customer remarks source", "notes", remarksSourceId, SelectRemarksSource, source => source.Remarks)
+                        }
+                    }
+                    @if (RequiresCustomerDescription)
+                    {
+                        <div class="owm-field-block">
+                            <label class="owm-label">Describe the Unknown customer (required)</label>
+                            <RadzenTextArea Value="@MergedRemarks" ValueChanged="@((string value) => customerRemarksOverride = value)"
+                                            Rows="3" MaxLength="2000" Immediate="true" Disabled="@isSubmitting" class="owm-control" />
+                            <small>Review or complete the customer details for the merged work order.</small>
+                        </div>
                     }
                     @if (CanApproveImmediately)
                     {
@@ -204,6 +217,7 @@
     private Guid? tailSourceId;
     private Guid? actualTimesSourceId;
     private Guid? remarksSourceId;
+    private string? customerRemarksOverride;
     private Guid? cancellationSourceId;
     private bool approveImmediately;
     private bool isLoading = true;
@@ -216,6 +230,9 @@
         SelectedSources.FirstOrDefault();
 
     private bool IsMergedCompletion => TypeSource?.Type != "Cancellation";
+    private bool RequiresCustomerDescription => WorkOrderEntryRules.RequiresCustomerDescription(flight?.CustomerId);
+    private string? MergedRemarks => WorkOrderMergeMapping.ResolveRemarks(
+        flight?.CustomerId, IsMergedCompletion, (SourceOrNull(remarksSourceId) ?? TypeSource)?.Remarks, customerRemarksOverride);
 
     private IReadOnlyList<WorkOrderDetail> SelectedSources =>
         sources.Where(source => selectedSourceIds.Contains(source.Id)).ToList();
@@ -327,7 +344,14 @@
         tailSourceId = null;
         actualTimesSourceId = null;
         remarksSourceId = null;
+        customerRemarksOverride = null;
         cancellationSourceId = null;
+    }
+
+    private void SelectRemarksSource(Guid id)
+    {
+        remarksSourceId = id;
+        customerRemarksOverride = null;
     }
 
     private void SyncMergeSelections(bool selectMissingLinesAndTasks)
@@ -423,13 +447,21 @@
             return;
         }
 
+        var mergedWorkOrder = BuildMergedWorkOrder(typeSource);
+        var remarksError = WorkOrderMergeMapping.ValidateRemarks(flight.CustomerId, mergedWorkOrder.Remarks);
+        if (remarksError is not null)
+        {
+            errorMessage = remarksError;
+            return;
+        }
+
         isSubmitting = true;
         errorMessage = null;
         try
         {
             var request = new MergeWorkOrdersRequestModel(
                 selectedSourceIds.ToList(),
-                BuildMergedWorkOrder(typeSource),
+                mergedWorkOrder,
                 CanApproveImmediately && approveImmediately);
             await Operations.MergeWorkOrdersAsync(flight.Id, request);
             DialogService.Close(true);
@@ -465,7 +497,7 @@
             completion ? actualTimesSource.ActualDepartureUtc : null,
             completion ? null : cancellationSource.CanceledAtUtc,
             completion ? null : cancellationSource.CancellationReason,
-            completion ? remarksSource.Remarks : null,
+            WorkOrderMergeMapping.ResolveRemarks(flight?.CustomerId, completion, remarksSource.Remarks, customerRemarksOverride),
             completion
                 ? selectedLines.Select(item => WorkOrderMergeMapping.ToRequest(item.Line)).ToList()
                 : [],
