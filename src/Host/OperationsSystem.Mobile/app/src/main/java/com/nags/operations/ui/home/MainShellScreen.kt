@@ -64,6 +64,7 @@ fun MainShellScreen(
     onOpenWorkOrderDraft: (draftId: String) -> Unit,
     onOpenCreateAdHocFlight: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onOpenAccount: () -> Unit,
     notificationOpenRequest: NotificationOpenRequest? = null,
     onNotificationHandled: (String?) -> Unit = {},
     flightSheetCallbacks: FlightSheetCallbacks = FlightSheetCallbacks(),
@@ -149,6 +150,7 @@ fun MainShellScreen(
                 isOnline = isOnline,
                 isSyncing = isSyncing,
                 onNotificationsClick = onOpenNotifications,
+                onProfileClick = onOpenAccount,
                 unreadNotifications = unreadNotifications,
             )
             NavHost(

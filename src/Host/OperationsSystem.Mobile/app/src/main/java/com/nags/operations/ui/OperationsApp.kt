@@ -35,6 +35,8 @@ import com.nags.operations.ui.workorder.CreateWorkOrderViewModel
 import com.nags.operations.ui.workorder.ReturnToRampViewModel
 import com.nags.operations.ui.notifications.NotificationsScreen
 import com.nags.operations.ui.notifications.NotificationsViewModel
+import com.nags.operations.ui.account.AccountScreen
+import com.nags.operations.ui.account.AccountViewModel
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -48,6 +50,7 @@ private object Routes {
     const val WorkOrderDraft = "work-order-draft/{draftId}"
     const val InviteEmployees = "invite/{flightId}"
     const val Notifications = "notifications"
+    const val Account = "account"
 }
 
 private const val NavAnimMs = 220
@@ -151,6 +154,7 @@ fun OperationsApp() {
                 onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) },
                 onOpenCreateAdHocFlight = { navController.navigate(Routes.CreateAdHocFlight) },
                 onOpenNotifications = { navController.navigate(Routes.Notifications) },
+                onOpenAccount = { navController.navigate(Routes.Account) },
                 notificationOpenRequest = pendingNotificationOpen,
                 onNotificationHandled = graph.notificationNavigation::consume,
                 flightSheetCallbacks = FlightSheetCallbacks(
@@ -173,6 +177,19 @@ fun OperationsApp() {
                 onOpenWorkOrderDraft = { draftId ->
                     navController.navigate("work-order-draft/$draftId")
                 },
+                onLogout = {
+                    coroutineScope.launch {
+                        graph.signOut()
+                        navigateToLogin()
+                    }
+                },
+            )
+        }
+        composable(Routes.Account) {
+            val vm: AccountViewModel = viewModel(factory = factory)
+            AccountScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
                 onLogout = {
                     coroutineScope.launch {
                         graph.signOut()

@@ -24,6 +24,8 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
 
     public Email Email { get; private set; } = null!;
     public string DisplayName { get; private set; } = null!;
+    /// <summary>Opt-in delivery of the user's submitted work orders, including their PDF.</summary>
+    public bool ReceiveWorkOrderSubmissionEmails { get; private set; }
     public string? PasswordHash { get; private set; }
     public UserStatus Status { get; private set; }
     public Guid RoleId { get; private set; }
@@ -406,6 +408,20 @@ public sealed class User : AggregateRoot<Guid>, IAuditable
             return nameCheck.Error;
 
         DisplayName = nameCheck.Value;
+        UpdatedAtUtc = now;
+        RaiseDomainEvent(new UserProfileUpdatedEvent(Id));
+        return Result.Success();
+    }
+
+    public Result SetWorkOrderEmailPreference(bool enabled, DateTimeOffset now)
+    {
+        if (Status != UserStatus.Active || LoginEmailReleased)
+            return Error.Conflict("Only an active account can update email preferences.", "Identity.User.NotActive");
+
+        if (ReceiveWorkOrderSubmissionEmails == enabled)
+            return Result.Success();
+
+        ReceiveWorkOrderSubmissionEmails = enabled;
         UpdatedAtUtc = now;
         RaiseDomainEvent(new UserProfileUpdatedEvent(Id));
         return Result.Success();

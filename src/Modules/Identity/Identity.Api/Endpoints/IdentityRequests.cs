@@ -31,4 +31,5 @@ public sealed record UpdateRoleAndPermissionsRequest(string Name, string? Descri
 // Users
 public sealed record InviteUserRequest(string Email, string DisplayName, Guid? RoleId = null);
 public sealed record UpdateUserRequest(string DisplayName);
+public sealed record UpdateWorkOrderEmailPreferenceRequest(bool Enabled);
 public sealed record AssignRoleRequest(Guid RoleId);

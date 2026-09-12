@@ -17,6 +17,9 @@ public sealed record EmailDeliveryRequested : IntegrationEvent
     /// <summary>Data-Protection-encrypted HTML body. Decrypted only at the moment of sending.</summary>
     public required string ProtectedBody { get; init; }
 
+    /// <summary>Encrypted serialized file contents captured when the email was enqueued.</summary>
+    public string? ProtectedAttachments { get; init; }
+
     /// <summary>Non-sensitive classification (e.g. "invitation", "password-reset") for diagnostics.</summary>
     public string? Kind { get; init; }
 }

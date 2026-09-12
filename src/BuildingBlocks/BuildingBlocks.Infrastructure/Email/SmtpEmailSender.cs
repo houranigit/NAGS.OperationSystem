@@ -33,6 +33,14 @@ public sealed class SmtpEmailSender(IOptions<EmailOptions> options, ILogger<Smtp
             IsBodyHtml = true
         };
         mail.To.Add(new MailAddress(message.ToEmail, message.ToName));
+        foreach (var attachment in message.Attachments ?? [])
+        {
+            // MailMessage owns the attachment streams and disposes them after delivery.
+            mail.Attachments.Add(new Attachment(
+                new MemoryStream(attachment.Content, writable: false),
+                attachment.FileName,
+                attachment.ContentType));
+        }
 
         using var client = new SmtpClient(_options.Host, _options.Port)
         {

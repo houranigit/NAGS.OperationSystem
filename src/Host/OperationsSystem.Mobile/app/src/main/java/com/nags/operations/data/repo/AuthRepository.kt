@@ -1,6 +1,7 @@
 package com.nags.operations.data.repo
 
 import com.nags.operations.data.MobileTokensResponse
+import com.nags.operations.data.AuthenticatedUser
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.AuthApi
 import kotlinx.coroutines.CancellationException
@@ -25,6 +26,10 @@ class AuthRepository(
     private val onAccountSwitch: suspend (previousSubject: String, newSubject: String) -> Unit = { _, _ -> },
     private val onSessionPublished: suspend () -> Unit = {},
 ) {
+    suspend fun profile(): AuthenticatedUser = api.me()
+
+    suspend fun setWorkOrderEmailPreference(enabled: Boolean) = api.setWorkOrderEmailPreference(enabled)
+
     suspend fun login(email: String, password: String): LoginOutcome {
         val response = api.login(email, password)
 

@@ -42,6 +42,7 @@ public sealed class SubmitWorkOrderCommandHandler(
     IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
     IWorkOrderTimelineWriter workOrderTimeline,
+    IWorkOrderSubmissionEmailQueue submissionEmails,
     IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<SubmitWorkOrderCommand, Guid>
@@ -134,6 +135,13 @@ public sealed class SubmitWorkOrderCommandHandler(
         await flightTimeline.AppendAsync(flight.Id, FlightTimelineEventType.WorkOrderSubmitted, now, details: workOrder.Value.Id.ToString(), cancellationToken: cancellationToken);
 
         MobileFlightSync.EnqueueUpsert(mobileSync, flight, request.ClientMutationId);
+
+        var email = await submissionEmails.EnqueueAsync(workOrder.Value, flight, ownerUserId, cancellationToken);
+        if (email.IsFailure)
+        {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
+            return email.Error;
+        }
 
         try
         {

@@ -997,4 +997,28 @@
   <data name="Errors.NotFound" xml:space="preserve"><value>The requested item was not found.</value></data>
   <data name="Errors.LoadFailed" xml:space="preserve"><value>We couldn't load this. Please try again.</value></data>
   <data name="Errors.ReferenceLookupsForbidden" xml:space="preserve"><value>Your role does not include permission to load form lookups. Ask an administrator to add the "View options" reference permission to your role.</value></data>
+  <data name="Account.WorkOrderEmailPreference" xml:space="preserve">
+    <value>Email me submitted work orders</value>
+  </data>
+  <data name="Account.WorkOrderEmailPreferenceHint" xml:space="preserve">
+    <value>When enabled, each work order you submit is emailed with its PDF to</value>
+  </data>
+  <data name="Account.EmailPreferenceSaving" xml:space="preserve">
+    <value>Saving email preference…</value>
+  </data>
+  <data name="Account.EmailPreferenceSaved" xml:space="preserve">
+    <value>Email preference saved.</value>
+  </data>
+  <data name="Account.EmailPreferenceLoading" xml:space="preserve">
+    <value>Loading your saved email preference…</value>
+  </data>
+  <data name="Account.EmailPreferenceLoadFailed" xml:space="preserve">
+    <value>Could not load your current email preference. Refresh to try again.</value>
+  </data>
+  <data name="Account.EmailPreferenceRefresh" xml:space="preserve">
+    <value>Refresh setting</value>
+  </data>
+  <data name="Account.EmailPreferenceSaveUnconfirmed" xml:space="preserve">
+    <value>Could not confirm this change. The last confirmed setting is shown. Refresh to check the saved setting.</value>
+  </data>
 </root>

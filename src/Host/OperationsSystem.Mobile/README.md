@@ -38,6 +38,11 @@ shape and business rules.
   high-priority FCM flight-assignment alerts. Notification taps select My Flights and open the
   same flight action sheet used by flight cards; cold starts and warm `singleTask` intents share
   one durable navigation handoff.
+* **My profile** — the account icon in the home header opens the employee name/email, sign-out,
+  and **Email me submitted work orders** switch. The preference defaults to off, is saved to the
+  signed-in Identity account, and applies to both the portal and mobile app. Enabled accounts
+  receive their submitted work order with its PDF. The setting refreshes on opening/resuming the
+  profile and reconnecting; changes need an online server confirmation and are never queued offline.
 
 The mobile-sync SignalR hub remains data synchronization only. User-facing closed/background app
 alerts use FCM and the Notifications API under `/api/v1/notifications`.

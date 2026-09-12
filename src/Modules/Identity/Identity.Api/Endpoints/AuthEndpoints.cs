@@ -200,6 +200,13 @@ internal static class AuthEndpoints
             var result = await sender.Send(new GetCurrentUserQuery(), ct);
             return result.ToOk();
         }).RequireAuthorization().WithTags("Identity.Auth");
+
+        group.MapPut("/me/work-order-email-preference", async (
+            UpdateWorkOrderEmailPreferenceRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new UpdateWorkOrderEmailPreferenceCommand(request.Enabled), ct);
+            return result.ToNoContent();
+        }).RequireAuthorization().WithTags("Identity.Auth");
     }
 
     private static MobileTokensResponse ToMobileTokens(Identity.Application.Contracts.AuthTokensDto tokens) =>

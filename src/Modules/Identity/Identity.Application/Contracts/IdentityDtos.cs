@@ -30,7 +30,8 @@ public sealed record AuthenticatedUserDto(
     string PortalSource,
     bool MfaEnabled,
     bool MfaEnrollmentRequired,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions,
+    bool ReceiveWorkOrderSubmissionEmails = false);
 
 public sealed record RoleListItemDto(
     Guid Id,

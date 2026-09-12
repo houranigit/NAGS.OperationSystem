@@ -6,6 +6,7 @@ using Identity.Application;
 using Identity.Application.Abstractions;
 using Identity.Application.Authorization;
 using Identity.Application.Features.PortalAccess;
+using Identity.Contracts;
 using Identity.Infrastructure.Notifications;
 using MasterData.Contracts;
 using Identity.Infrastructure.Persistence;
@@ -58,6 +59,7 @@ public static class IdentityInfrastructureExtensions
         services.AddScoped<IInvitationNotifier, EmailInvitationNotifier>();
         services.AddScoped<IPasswordResetNotifier, EmailPasswordResetNotifier>();
         services.AddScoped<ILinkedEmailVerificationNotifier, EmailLinkedEmailVerificationNotifier>();
+        services.AddScoped<IWorkOrderEmailRecipientReader, WorkOrderEmailRecipientReader>();
 
         // Contribute Identity's permissions to the composed cross-module registry.
         services.AddSingleton<IPermissionCatalog, IdentityPermissionCatalog>();

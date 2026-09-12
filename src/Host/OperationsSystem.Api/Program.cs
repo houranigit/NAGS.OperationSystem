@@ -113,6 +113,8 @@ builder.Services.AddMasterDataModule(builder.Configuration);
 builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddNotificationsApi();
 builder.Services.AddOperationsModule(builder.Configuration);
+builder.Services.AddScoped<Operations.Application.Features.WorkOrders.WorkOrderPrintSourceBuilder>();
+builder.Services.AddSingleton<Operations.Application.Abstractions.IWorkOrderPdfRenderer, Operations.Api.Exports.WorkOrderPdfRenderer>();
 
 // Mobile offline-sync: SignalR hub + per-request change broadcaster.
 builder.Services.AddMobileSync();

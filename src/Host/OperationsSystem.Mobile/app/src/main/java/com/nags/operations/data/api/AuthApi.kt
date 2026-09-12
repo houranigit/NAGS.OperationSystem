@@ -7,15 +7,20 @@ import com.nags.operations.data.MobileLoginResponse
 import com.nags.operations.data.MobileLogoutRequest
 import com.nags.operations.data.MobileTokensResponse
 import com.nags.operations.data.TokenStore
+import com.nags.operations.data.WorkOrderEmailPreferenceRequest
+import com.nags.operations.data.ApiException
 import com.nags.operations.data.api.HttpClientFactory.bodyOrThrow
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.auth.authProvider
 import io.ktor.client.plugins.auth.providers.BearerAuthProvider
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 
 /**
  * Thin wrapper over the Identity module's mobile auth endpoints
@@ -51,6 +56,17 @@ class AuthApi(
     suspend fun me(): AuthenticatedUser {
         val response = client.get(url("api/v1/identity/me"))
         return response.bodyOrThrow()
+    }
+
+    /** Saved on the signed-in account, shared with the portal; never queued offline. */
+    suspend fun setWorkOrderEmailPreference(enabled: Boolean) {
+        val response = client.put(url("api/v1/identity/me/work-order-email-preference")) {
+            contentType(ContentType.Application.Json)
+            setBody(WorkOrderEmailPreferenceRequest(enabled))
+        }
+        if (!response.status.isSuccess()) {
+            throw ApiException(response.status.value, response.bodyAsText())
+        }
     }
 
     /** Best-effort server-side session revocation; local state is cleared regardless. */

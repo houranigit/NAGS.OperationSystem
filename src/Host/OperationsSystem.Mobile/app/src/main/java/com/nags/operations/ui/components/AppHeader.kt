@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -55,7 +56,7 @@ import com.nags.operations.ui.theme.BrandRedLight
 /**
  * Branded top header shown on every authenticated screen. Renders a
  * brand-red gradient panel, either an initials avatar or a tappable sync
- * status control, a two-line greeting, and a single logout affordance on the
+ * status control, a two-line greeting, and a profile (or logout) affordance on the
  * right.
  *
  * The gradient draws **behind** the status bar; icons stay readable via the
@@ -81,6 +82,7 @@ fun AppHeader(
     isSyncing: Boolean = false,
     onNotificationsClick: (() -> Unit)? = null,
     unreadNotifications: Int = 0,
+    onProfileClick: (() -> Unit)? = null,
 ) {
     val brandGradient = Brush.verticalGradient(
         colors = listOf(BrandRedDark, BrandRed, BrandRedLight),
@@ -135,7 +137,23 @@ fun AppHeader(
                     onClick = onNotificationsClick,
                 )
             }
-            LogoutButton(onClick = onLogout)
+            if (onProfileClick != null) {
+                IconButton(
+                    onClick = onProfileClick,
+                    modifier = Modifier.size(44.dp).clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape),
+                ) {
+                    Icon(
+                        Icons.Default.AccountCircle,
+                        contentDescription = stringResource(R.string.account_open),
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            } else {
+                LogoutButton(onClick = onLogout)
+            }
         }
     }
 }

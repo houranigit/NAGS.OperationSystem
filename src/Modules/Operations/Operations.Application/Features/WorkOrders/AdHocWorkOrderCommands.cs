@@ -54,6 +54,7 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
     IFileStorage storage,
     IFlightTimelineWriter flightTimeline,
     IWorkOrderTimelineWriter workOrderTimeline,
+    IWorkOrderSubmissionEmailQueue submissionEmails,
     IMobileSyncBroadcaster mobileSync,
     IUserContext user,
     IAuditContext auditContext,
@@ -197,6 +198,13 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
             auditContext,
             now);
         MobileFlightSync.EnqueueUpsert(mobileSync, flight.Value, request.ClientMutationId);
+
+        var email = await submissionEmails.EnqueueAsync(workOrder.Value, flight.Value, ownerUserId, cancellationToken);
+        if (email.IsFailure)
+        {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
+            return email.Error;
+        }
 
         try
         {

@@ -997,4 +997,28 @@
   <data name="Errors.NotFound" xml:space="preserve"><value>لم يتم العثور على العنصر المطلوب.</value></data>
   <data name="Errors.LoadFailed" xml:space="preserve"><value>لم نتمكن من تحميل هذا. يرجى المحاولة مرة أخرى.</value></data>
   <data name="Errors.ReferenceLookupsForbidden" xml:space="preserve"><value>لا يتضمن دورك صلاحية تحميل قوائم الاختيار في النماذج. اطلب من المسؤول إضافة صلاحية «عرض الخيارات» المرجعية إلى دورك.</value></data>
+  <data name="Account.WorkOrderEmailPreference" xml:space="preserve">
+    <value>إرسال أوامر العمل المقدمة إلى بريدي الإلكتروني</value>
+  </data>
+  <data name="Account.WorkOrderEmailPreferenceHint" xml:space="preserve">
+    <value>عند التفعيل، يُرسل كل أمر عمل تقدمه مع ملف PDF إلى</value>
+  </data>
+  <data name="Account.EmailPreferenceSaving" xml:space="preserve">
+    <value>جارٍ حفظ تفضيل البريد الإلكتروني…</value>
+  </data>
+  <data name="Account.EmailPreferenceSaved" xml:space="preserve">
+    <value>تم حفظ تفضيل البريد الإلكتروني.</value>
+  </data>
+  <data name="Account.EmailPreferenceLoading" xml:space="preserve">
+    <value>جارٍ تحميل تفضيل البريد الإلكتروني المحفوظ…</value>
+  </data>
+  <data name="Account.EmailPreferenceLoadFailed" xml:space="preserve">
+    <value>تعذر تحميل تفضيل البريد الإلكتروني الحالي. حدّث للمحاولة مرة أخرى.</value>
+  </data>
+  <data name="Account.EmailPreferenceRefresh" xml:space="preserve">
+    <value>تحديث الإعداد</value>
+  </data>
+  <data name="Account.EmailPreferenceSaveUnconfirmed" xml:space="preserve">
+    <value>تعذر تأكيد هذا التغيير. يظهر آخر إعداد مؤكد. حدّث للتحقق من الإعداد المحفوظ.</value>
+  </data>
 </root>

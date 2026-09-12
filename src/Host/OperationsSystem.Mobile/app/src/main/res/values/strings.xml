@@ -37,4 +37,17 @@
         <item quantity="one">%d unread notification</item>
         <item quantity="other">%d unread notifications</item>
     </plurals>
+    <string name="account_title">My profile</string>
+    <string name="account_open">Open my profile</string>
+    <string name="account_back">Back</string>
+    <string name="account_sign_out">Sign out</string>
+    <string name="account_email_work_orders">Email me submitted work orders</string>
+    <string name="account_email_work_orders_description">Receive an email with the work order PDF when you submit a work order. This setting applies to your account in both the portal and mobile app.</string>
+    <string name="account_loading">Loading your saved setting…</string>
+    <string name="account_saving">Saving…</string>
+    <string name="account_saved">Setting saved.</string>
+    <string name="account_load_failed">Could not load your current setting. Refresh to try again.</string>
+    <string name="account_save_unconfirmed">Could not confirm this change. The last confirmed setting is shown. Refresh to check the saved setting.</string>
+    <string name="account_refresh">Refresh setting</string>
+    <string name="account_offline">Connect to the internet to refresh or change this setting. Changes are not saved offline.</string>
 </resources>

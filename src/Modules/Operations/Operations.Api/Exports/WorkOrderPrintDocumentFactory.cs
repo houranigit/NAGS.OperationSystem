@@ -50,7 +50,9 @@ internal static class WorkOrderPrintDocumentFactory
 
         using var output = new MemoryStream();
         renderer.Save(output, closeStream: false);
-        return new WorkOrderPrintFile(output.ToArray(), BuildFileName(source.WorkOrder.ApprovalNumber));
+        return new WorkOrderPrintFile(output.ToArray(), IsApproved(source.WorkOrder)
+            ? BuildFileName(source.WorkOrder.ApprovalNumber)
+            : $"work-order-submitted-{source.WorkOrder.Id:D}.pdf");
     }
 
     internal static Document BuildDocument(ApprovedWorkOrderPrintDto source) =>
@@ -65,8 +67,8 @@ internal static class WorkOrderPrintDocumentFactory
 
         var workOrder = source.WorkOrder;
         var document = new Document();
-        document.Info.Title = $"Work Order {DisplayValue(workOrder.ApprovalNumber)}";
-        document.Info.Subject = "Approved flight work order";
+        document.Info.Title = $"Work Order {PrintReference(workOrder)}";
+        document.Info.Subject = IsApproved(workOrder) ? "Approved flight work order" : "Submitted flight work order";
         document.Info.Author = "National Aviation Ground Support";
 
         var normal = document.Styles[StyleNames.Normal]!;
@@ -90,6 +92,8 @@ internal static class WorkOrderPrintDocumentFactory
         AddFirstPageTitle(section, source, displayTimeZone);
         AddFlightOverview(section, source);
         AddFlightTimes(section, workOrder, displayTimeZone);
+        if (workOrder.Type.Equals("Cancellation", StringComparison.OrdinalIgnoreCase))
+            AddCancellationDetails(section, workOrder, displayTimeZone);
         AddPlannedFlightServices(section, source);
         AddPerformedServices(section, workOrder, displayTimeZone);
         AddReturnToRamp(section, workOrder, displayTimeZone);
@@ -143,7 +147,7 @@ internal static class WorkOrderPrintDocumentFactory
         var titleText = title.AddFormattedText("WORK ORDER", TextFormat.Bold);
         titleText.Font.Size = Unit.FromPoint(19);
         var numberText = title.AddFormattedText(
-            $"  {DisplayValue(source.WorkOrder.ApprovalNumber)}",
+            $"  {PrintReference(source.WorkOrder)}",
             TextFormat.Bold);
         numberText.Font.Size = Unit.FromPoint(11.5);
         numberText.Font.Color = Color.Parse(BrandColor);
@@ -153,6 +157,15 @@ internal static class WorkOrderPrintDocumentFactory
         subtitle.Format.Font.Size = Unit.FromPoint(7.2);
         subtitle.Format.Font.Color = Color.Parse(MutedTextColor);
         subtitle.Format.SpaceBefore = Unit.FromPoint(1);
+
+        if (!IsApproved(source.WorkOrder))
+        {
+            var status = row.Cells[0].AddParagraph("SUBMISSION RECEIPT - AWAITING APPROVAL");
+            status.Format.Font.Size = Unit.FromPoint(7.2);
+            status.Format.Font.Bold = true;
+            status.Format.Font.Color = Color.Parse(BrandColor);
+            status.Format.SpaceBefore = Unit.FromPoint(2);
+        }
 
         var timeZone = row.Cells[0].AddParagraph(
             $"TIMES SHOWN IN {FormatTimeZoneLabel(displayTimeZone).ToUpperInvariant()}");
@@ -187,11 +200,11 @@ internal static class WorkOrderPrintDocumentFactory
 
         var row = table.AddRow();
         row.TopPadding = Unit.FromPoint(4);
-        var left = row.Cells[0].AddParagraph($"WO {DisplayValue(workOrder.ApprovalNumber)}");
+        var left = row.Cells[0].AddParagraph($"WO {PrintReference(workOrder)}");
         left.Format.Alignment = ParagraphAlignment.Left;
 
         var center = row.Cells[1].AddParagraph(
-            $"CONTROLLED RECORD  |  {FormatTimeZoneLabel(displayTimeZone)}");
+            $"{(IsApproved(workOrder) ? "CONTROLLED RECORD" : "SUBMISSION COPY")}  |  {FormatTimeZoneLabel(displayTimeZone)}");
         center.Format.Alignment = ParagraphAlignment.Center;
 
         var right = row.Cells[2].AddParagraph();
@@ -303,6 +316,19 @@ internal static class WorkOrderPrintDocumentFactory
             displayTimeZone);
 
         KeepRowsTogether(table);
+        AddTableSpacing(section);
+    }
+
+    private static void AddCancellationDetails(
+        Section section,
+        WorkOrderDetailDto workOrder,
+        TimeZoneInfo displayTimeZone)
+    {
+        var table = CreateContentTable(section, ContentWidthCentimeters);
+        AddSectionHeaderRow(table, "Cancellation Details");
+        var row = AddFactRow(table);
+        AddFactCell(row.Cells[0], "Canceled At", FormatTimestamp(workOrder.CanceledAtUtc, displayTimeZone));
+        AddServiceDetailRows(table, "REASON", workOrder.CancellationReason ?? "Not recorded", alternate: false);
         AddTableSpacing(section);
     }
 
@@ -1161,7 +1187,8 @@ internal static class WorkOrderPrintDocumentFactory
         var workOrder = source.WorkOrder;
         var table = CreateContentTable(section, 7.0, 5.6, 5.6);
         table.KeepTogether = true;
-        AddSectionHeaderRow(table, "Approval and Customer Acceptance");
+        var approved = IsApproved(workOrder);
+        AddSectionHeaderRow(table, approved ? "Approval and Customer Acceptance" : "Submission and Customer Acceptance");
 
         var statementRow = table.AddRow();
         statementRow.Cells[0].MergeRight = 2;
@@ -1169,7 +1196,9 @@ internal static class WorkOrderPrintDocumentFactory
         statementRow.BottomPadding = Unit.FromPoint(6);
         AddCellText(
             statementRow.Cells[0],
-            "The customer signature confirms that the work described in this work order was completed and accepted.",
+            approved
+                ? "The customer signature confirms that the work described in this work order was completed and accepted."
+                : "This receipt records the submitted work order. It has not been approved.",
             fontSize: 7.6);
 
         var signatureRow = table.AddRow();
@@ -1182,8 +1211,8 @@ internal static class WorkOrderPrintDocumentFactory
             FormatTimestamp(workOrder.CustomerSignature?.SignedAtUtc, displayTimeZone));
         AddFactCell(
             signatureRow.Cells[2],
-            "Approval Number",
-            DisplayValue(workOrder.ApprovalNumber));
+            approved ? "Approval Number" : "Status",
+            approved ? DisplayValue(workOrder.ApprovalNumber) : workOrder.Status);
 
         var approvalRow = AddFactRow(table);
         AddFactCell(
@@ -1192,8 +1221,8 @@ internal static class WorkOrderPrintDocumentFactory
             DisplayValue(workOrder.OwnerName));
         AddFactCell(
             approvalRow.Cells[1],
-            "Approved At",
-            FormatTimestamp(workOrder.ApprovedAtUtc, displayTimeZone));
+            approved ? "Approved At" : "Submitted At",
+            FormatTimestamp(approved ? workOrder.ApprovedAtUtc : workOrder.CreatedAtUtc, displayTimeZone));
         AddFactCell(
             approvalRow.Cells[2],
             "Record ID",
@@ -1238,8 +1267,8 @@ internal static class WorkOrderPrintDocumentFactory
         AddFactCell(row.Cells[2], "Time Zone", FormatTimeZoneLabel(displayTimeZone));
         AddFactCell(
             row.Cells[3],
-            "Approved Record",
-            DisplayValue(workOrder.ApprovalNumber));
+            IsApproved(workOrder) ? "Approved Record" : "Submitted Record",
+            PrintReference(workOrder));
         KeepRowsTogether(table);
     }
 
@@ -1584,6 +1613,13 @@ internal static class WorkOrderPrintDocumentFactory
             return null;
         }
     }
+
+    private static bool IsApproved(WorkOrderDetailDto workOrder) =>
+        workOrder.Status.Equals("Approved", StringComparison.OrdinalIgnoreCase);
+
+    private static string PrintReference(WorkOrderDetailDto workOrder) => IsApproved(workOrder)
+        ? DisplayValue(workOrder.ApprovalNumber)
+        : $"SUB-{workOrder.Id.ToString("N")[..8].ToUpperInvariant()}";
 
     private static string BuildFileName(string? approvalNumber)
     {

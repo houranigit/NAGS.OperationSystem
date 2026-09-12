@@ -11,6 +11,47 @@ namespace Operations.IntegrationTests;
 
 public sealed class WorkOrderPrintDocumentFactoryTests
 {
+    [Theory]
+    [InlineData("Completion")]
+    [InlineData("Cancellation")]
+    public void SubmissionReceipt_UsesSubmittedIdentityAndNeverClaimsApproval(string type)
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var source = baseline with
+        {
+            WorkOrder = baseline.WorkOrder with
+            {
+                Type = type,
+                Status = "Submitted",
+                ApprovalNumber = null,
+                ApprovalSequence = null,
+                ApprovedAtUtc = null,
+                ApprovedByUserId = null,
+                CanceledAtUtc = type == "Cancellation" ? baseline.WorkOrder.CreatedAtUtc : null,
+                CancellationReason = type == "Cancellation" ? "Operator canceled the flight before arrival." : null
+            }
+        };
+
+        var document = WorkOrderPrintDocumentFactory.BuildDocument(source, TimeZoneInfo.Utc);
+        var ddl = DdlWriter.WriteToString(document);
+        ddl.ShouldContain("SUBMISSION RECEIPT - AWAITING APPROVAL");
+        ddl.ShouldContain("Submitted At");
+        ddl.ShouldContain("Submitted Record");
+        ddl.ShouldContain(source.WorkOrder.Id.ToString("D"));
+        ddl.ShouldNotContain("Approved Record");
+        ddl.ShouldNotContain("Approved At");
+        ddl.ShouldNotContain("Approval Number");
+        if (type == "Cancellation")
+        {
+            ddl.ShouldContain("Cancellation Details");
+            ddl.ShouldContain(source.WorkOrder.CancellationReason!);
+        }
+        document.Info.Subject.ShouldBe("Submitted flight work order");
+        var file = WorkOrderPrintDocumentFactory.Create(source);
+        file.FileName.ShouldBe($"work-order-submitted-{source.WorkOrder.Id:D}.pdf");
+        Encoding.ASCII.GetString(file.Content, 0, 4).ShouldBe("%PDF");
+    }
+
     [Fact]
     public void PrintPresentation_UsesEmployeePeriodsAndIncludesResourceNotes()
     {

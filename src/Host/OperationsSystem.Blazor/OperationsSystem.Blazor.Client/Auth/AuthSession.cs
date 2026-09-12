@@ -147,6 +147,37 @@ public sealed class AuthSession
         StateChanged?.Invoke();
     }
 
+    public async Task UpdateWorkOrderEmailPreferenceAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (Status != AuthStatus.Authenticated || User is not { } user)
+            return;
+
+        await apiClient.PutAsync("/identity/me/work-order-email-preference",
+            new UpdateWorkOrderEmailPreferenceRequest(enabled), cancellationToken);
+
+        // Only update the session that initiated the request, after the server has saved it.
+        if (User?.Id == user.Id)
+        {
+            User = User with { ReceiveWorkOrderSubmissionEmails = enabled };
+            StateChanged?.Invoke();
+        }
+    }
+
+    /// <summary>Refreshes profile settings without rotating credentials or restoring an old account.</summary>
+    public async Task<AuthenticatedUser?> RefreshProfileAsync(CancellationToken cancellationToken = default)
+    {
+        if (Status != AuthStatus.Authenticated || User is not { } user)
+            return null;
+
+        var profile = await apiClient.GetAsync<AuthenticatedUser>("/identity/me", cancellationToken);
+        if (Status != AuthStatus.Authenticated || User?.Id != user.Id || profile.Id != user.Id)
+            return null;
+
+        User = profile;
+        StateChanged?.Invoke();
+        return profile;
+    }
+
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         try

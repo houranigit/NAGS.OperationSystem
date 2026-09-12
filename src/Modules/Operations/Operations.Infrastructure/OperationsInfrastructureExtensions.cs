@@ -42,6 +42,7 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IFlightReminderEligibilityReader, FlightReminderEligibilityReader>();
         services.AddScoped<WorkOrderInputBuilder>();
         services.AddScoped<IWorkOrderTimelineWriter, WorkOrderTimelineWriter>();
+        services.AddScoped<IWorkOrderSubmissionEmailQueue, WorkOrderSubmissionEmailQueue>();
         services.AddScoped<IWorkOrderNumberAllocator, WorkOrderNumberAllocator>();
         services.AddScoped<FlightDuplicateDetector>();
         services.Configure<AutoWorkOrderOptions>(configuration.GetSection(AutoWorkOrderOptions.SectionName));

@@ -45,4 +45,17 @@
         <item quantity="many">%d إشعارًا غير مقروء</item>
         <item quantity="other">%d إشعار غير مقروء</item>
     </plurals>
+    <string name="account_title">ملفي الشخصي</string>
+    <string name="account_open">فتح ملفي الشخصي</string>
+    <string name="account_back">رجوع</string>
+    <string name="account_sign_out">تسجيل الخروج</string>
+    <string name="account_email_work_orders">إرسال أوامر العمل المقدمة إلى بريدي الإلكتروني</string>
+    <string name="account_email_work_orders_description">استلم رسالة بريد إلكتروني تتضمن ملف PDF لأمر العمل عند تقديمه. ينطبق هذا الإعداد على حسابك في البوابة وتطبيق الجوال.</string>
+    <string name="account_loading">جارٍ تحميل الإعداد المحفوظ…</string>
+    <string name="account_saving">جارٍ الحفظ…</string>
+    <string name="account_saved">تم حفظ الإعداد.</string>
+    <string name="account_load_failed">تعذر تحميل الإعداد الحالي. حدّث للمحاولة مرة أخرى.</string>
+    <string name="account_save_unconfirmed">تعذر تأكيد التغيير. يظهر آخر إعداد مؤكد. حدّث للتحقق من الإعداد المحفوظ.</string>
+    <string name="account_refresh">تحديث الإعداد</string>
+    <string name="account_offline">اتصل بالإنترنت لتحديث هذا الإعداد أو تغييره. لا تُحفظ التغييرات دون اتصال.</string>
 </resources>

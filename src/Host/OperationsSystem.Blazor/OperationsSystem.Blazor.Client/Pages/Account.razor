@@ -51,6 +51,39 @@
                 </div>
             </section>
 
+            <section class="account-panel">
+                <div class="account-panel-head account-panel-head--split">
+                    <div class="account-panel-title">
+                        <span class="account-panel-icon"><RadzenIcon Icon="mail" /></span>
+                        <div>
+                            <h3><RadzenLabel Text="@UiStrings.Account.WorkOrderEmailPreference" Component="workOrderEmailPreference" /></h3>
+                            <p class="os-muted">@UiStrings.Account.WorkOrderEmailPreferenceHint @user.Email</p>
+                        </div>
+                    </div>
+                    @if (emailPreferenceLoadedForUserId == user.Id && !isLoadingEmailPreference)
+                    {
+                        <RadzenSwitch Name="workOrderEmailPreference" Value="@user.ReceiveWorkOrderSubmissionEmails"
+                                      Change="@UpdateWorkOrderEmailPreferenceAsync" Disabled="@(isSavingEmailPreference || emailPreferenceError is not null)" />
+                    }
+                </div>
+                @if (isLoadingEmailPreference)
+                {
+                    <p class="os-muted">@UiStrings.Account.EmailPreferenceLoading</p>
+                }
+                else if (isSavingEmailPreference)
+                {
+                    <p class="os-muted">@UiStrings.Account.EmailPreferenceSaving</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(emailPreferenceError))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" AllowClose="false">
+                        @emailPreferenceError
+                    </RadzenAlert>
+                    <RadzenButton ButtonStyle="ButtonStyle.Light" Text="@UiStrings.Account.EmailPreferenceRefresh"
+                                  Click="@LoadEmailPreferenceAsync" Disabled="@(isLoadingEmailPreference || isSavingEmailPreference)" />
+                }
+            </section>
+
             <div class="account-security-grid">
                 <section class="account-panel">
                     <div class="account-panel-head">
@@ -324,6 +357,12 @@
     private readonly PasswordModel password = new();
     private readonly MfaConfirmModel mfaConfirm = new();
     private bool isChangingPassword;
+    private bool isSavingEmailPreference;
+    private bool isLoadingEmailPreference = true;
+    private Guid? emailPreferenceLoadAttemptedForUserId;
+    private Guid? emailPreferenceLoadedForUserId;
+    private int emailPreferenceLoadVersion;
+    private string? emailPreferenceError;
     private string? passwordError;
     private bool isStartingMfa;
     private bool isConfirmingMfa;
@@ -344,8 +383,45 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        var loadPreference = Auth.User is { } user && emailPreferenceLoadAttemptedForUserId != user.Id;
         if (firstRender)
-            await LoadSessionsAsync();
+            await Task.WhenAll(LoadSessionsAsync(), loadPreference ? LoadEmailPreferenceAsync() : Task.CompletedTask);
+        else if (loadPreference)
+            await LoadEmailPreferenceAsync();
+    }
+
+    private async Task LoadEmailPreferenceAsync()
+    {
+        if (Auth.User is not { } user || isSavingEmailPreference)
+            return;
+
+        emailPreferenceLoadAttemptedForUserId = user.Id;
+        var loadVersion = ++emailPreferenceLoadVersion;
+        emailPreferenceLoadedForUserId = null;
+        isLoadingEmailPreference = true;
+        emailPreferenceError = null;
+        StateHasChanged();
+        try
+        {
+            var profile = await Auth.RefreshProfileAsync();
+            if (emailPreferenceLoadVersion == loadVersion)
+                emailPreferenceLoadedForUserId = profile?.Id;
+        }
+        catch (Exception ex) when (ex is ApiException or JSException)
+        {
+            if (emailPreferenceLoadVersion == loadVersion)
+                emailPreferenceError = ex is ApiException apiError
+                    ? apiError.ToDisplayMessage(UiStrings.Account.EmailPreferenceLoadFailed)
+                    : UiStrings.Account.EmailPreferenceLoadFailed;
+        }
+        finally
+        {
+            if (emailPreferenceLoadVersion == loadVersion)
+            {
+                isLoadingEmailPreference = false;
+                StateHasChanged();
+            }
+        }
     }
 
     private async Task LoadSessionsAsync()
@@ -373,7 +449,7 @@
             sessions = result.Items;
             sessionsTotalCount = (int)result.TotalCount;
         }
-        catch (ApiException)
+        catch (Exception ex) when (ex is ApiException or JSException)
         {
             sessionsError = true;
             sessions = [];
@@ -418,6 +494,31 @@
         finally
         {
             isChangingPassword = false;
+        }
+    }
+
+    private async Task UpdateWorkOrderEmailPreferenceAsync(bool enabled)
+    {
+        if (isSavingEmailPreference || isLoadingEmailPreference || emailPreferenceError is not null ||
+            Auth.User?.Id != emailPreferenceLoadedForUserId)
+            return;
+
+        isSavingEmailPreference = true;
+        emailPreferenceError = null;
+        try
+        {
+            await Auth.UpdateWorkOrderEmailPreferenceAsync(enabled);
+            Notifications.Notify(NotificationSeverity.Success, UiStrings.Account.EmailPreferenceSaved);
+        }
+        catch (Exception ex) when (ex is ApiException or JSException)
+        {
+            emailPreferenceError = ex is ApiException apiError
+                ? apiError.ToDisplayMessage(UiStrings.Account.EmailPreferenceSaveUnconfirmed)
+                : UiStrings.Account.EmailPreferenceSaveUnconfirmed;
+        }
+        finally
+        {
+            isSavingEmailPreference = false;
         }
     }
 

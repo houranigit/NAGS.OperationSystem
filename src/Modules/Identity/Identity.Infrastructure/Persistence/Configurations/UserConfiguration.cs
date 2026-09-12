@@ -35,6 +35,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Navigation(u => u.Email).IsRequired();
 
         builder.Property(u => u.DisplayName).HasMaxLength(150).IsRequired();
+        builder.Property(u => u.ReceiveWorkOrderSubmissionEmails).IsRequired().HasDefaultValue(false);
         builder.Property(u => u.PasswordHash).HasMaxLength(512);
         builder.Property(u => u.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(u => u.RoleId).IsRequired();

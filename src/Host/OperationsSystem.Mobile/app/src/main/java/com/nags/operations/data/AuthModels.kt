@@ -51,4 +51,8 @@ data class AuthenticatedUser(
     val userType: String,
     val externalReferenceId: String? = null,
     val permissions: List<String> = emptyList(),
+    val receiveWorkOrderSubmissionEmails: Boolean = false,
 )
+
+@Serializable
+data class WorkOrderEmailPreferenceRequest(val enabled: Boolean)

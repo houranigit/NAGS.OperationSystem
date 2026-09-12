@@ -35,6 +35,104 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
     // --- Mobile auth -------------------------------------------------------------
 
     [Fact]
+    public async Task Submission_email_preference_controls_portal_and_mobile_receipts_with_immutable_pdf()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var account = await CreateActivatedStaffAccountAsync(admin, refs, MobileStaffPermissions);
+        var client = await factory.CreateAuthenticatedClientAsync(account.Email, account.Password);
+        var profile = await client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{IdentityBase}/me");
+        profile.GetProperty("receiveWorkOrderSubmissionEmails").GetBoolean().ShouldBeFalse();
+
+        var firstFlight = await ScheduleFlightAsync(admin, refs, "MAIL100", [account.StaffId]);
+        var disabledSubmission = await client.PostAsJsonAsync(
+            $"{OperationsApiFactory.Base}/flights/{firstFlight}/work-orders", CompletionWorkOrderBody(refs, account.StaffId));
+        disabledSubmission.StatusCode.ShouldBe(HttpStatusCode.Created, await disabledSubmission.Content.ReadAsStringAsync());
+        await factory.DrainOutboxesAsync();
+        Receipts().ShouldBeEmpty();
+
+        (await client.PutAsJsonAsync($"{IdentityBase}/me/work-order-email-preference", new { enabled = true }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        profile = await client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{IdentityBase}/me");
+        profile.GetProperty("receiveWorkOrderSubmissionEmails").GetBoolean().ShouldBeTrue();
+
+        var secondFlight = await ScheduleFlightAsync(admin, refs, "MAIL200", [account.StaffId]);
+        var request = new
+        {
+            clientMutationId = Guid.NewGuid().ToString(),
+            workOrder = CompletionWorkOrderBody(refs, account.StaffId, remarks: "Original submitted copy")
+        };
+        var submission = await client.PostAsJsonAsync($"{MobileBase}/flights/{secondFlight}/work-orders", request);
+        submission.StatusCode.ShouldBe(HttpStatusCode.Created, await submission.Content.ReadAsStringAsync());
+        var write = (await submission.Content.ReadFromJsonAsync<MobileWriteResult>())!;
+        var replay = await client.PostAsJsonAsync($"{MobileBase}/flights/{secondFlight}/work-orders", request);
+        replay.IsSuccessStatusCode.ShouldBeTrue(await replay.Content.ReadAsStringAsync());
+        (await replay.Content.ReadFromJsonAsync<MobileWriteResult>())!.Idempotent.ShouldBeTrue();
+
+        byte[] queuedPdf;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            var queued = await db.OutboxMessages.Where(message =>
+                message.Content.Contains(account.Email) && message.Content.Contains("work-order-submission")).ToListAsync();
+            var message = queued.ShouldHaveSingleItem();
+            message.ProcessedOnUtc.ShouldBeNull();
+            message.Content.ShouldNotContain("Original submitted copy");
+            var delivery = System.Text.Json.JsonSerializer.Deserialize<BuildingBlocks.Contracts.Email.EmailDeliveryRequested>(message.Content)!;
+            var protector = scope.ServiceProvider.GetRequiredService<BuildingBlocks.Application.Email.IEmailContentProtector>();
+            var attachments = System.Text.Json.JsonSerializer.Deserialize<List<BuildingBlocks.Application.Abstractions.EmailAttachment>>(
+                protector.Unprotect(delivery.ProtectedAttachments!))!;
+            queuedPdf = attachments.ShouldHaveSingleItem().Content;
+            Encoding.ASCII.GetString(queuedPdf, 0, 4).ShouldBe("%PDF");
+        }
+
+        var path = $"{OperationsApiFactory.Base}/work-orders/{write.WorkOrderId}";
+        var detail = (await client.GetFromJsonAsync<ConcurrencyDetail>(path))!;
+        using (var edit = new HttpRequestMessage(HttpMethod.Put, path)
+        {
+            Content = JsonContent.Create(CompletionWorkOrderBody(refs, account.StaffId, remarks: "Edited after submission"))
+        })
+        {
+            edit.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+            var edited = await client.SendAsync(edit);
+            edited.StatusCode.ShouldBe(HttpStatusCode.NoContent, await edited.Content.ReadAsStringAsync());
+        }
+
+        await factory.DrainOutboxesAsync();
+        var receipt = Receipts().ShouldHaveSingleItem();
+        receipt.HtmlBody.ShouldContain(write.WorkOrderId.ToString());
+        var attachment = receipt.Attachments.ShouldHaveSingleItem();
+        attachment.ContentType.ShouldBe("application/pdf");
+        attachment.FileName.ShouldBe($"work-order-submitted-{write.WorkOrderId:D}.pdf");
+        attachment.Content.ShouldBe(queuedPdf);
+        await factory.DrainOutboxesAsync();
+        Receipts().ShouldHaveSingleItem();
+
+        // Portal cancellation submission uses the same owner preference and receipt pipeline.
+        var cancellationFlight = await ScheduleFlightAsync(admin, refs, "MAIL300", [account.StaffId]);
+        var cancellation = await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights/{cancellationFlight}/work-orders", new
+        {
+            type = "Cancellation", canceledAtUtc = DateTimeOffset.UtcNow,
+            cancellationReason = "Operator canceled before arrival.", remarks = "Cancellation receipt"
+        });
+        cancellation.StatusCode.ShouldBe(HttpStatusCode.Created, await cancellation.Content.ReadAsStringAsync());
+        await factory.DrainOutboxesAsync();
+        Receipts().Count.ShouldBe(2);
+
+        (await client.PutAsJsonAsync($"{IdentityBase}/me/work-order-email-preference", new { enabled = false }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var fourthFlight = await ScheduleFlightAsync(admin, refs, "MAIL400", [account.StaffId]);
+        var afterDisable = await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights/{fourthFlight}/work-orders",
+            CompletionWorkOrderBody(refs, account.StaffId));
+        afterDisable.StatusCode.ShouldBe(HttpStatusCode.Created, await afterDisable.Content.ReadAsStringAsync());
+        await factory.DrainOutboxesAsync();
+        Receipts().Count.ShouldBe(2);
+
+        IReadOnlyList<BuildingBlocks.Application.Abstractions.EmailMessage> Receipts() => factory.Emails.Messages
+            .Where(message => message.ToEmail == account.Email && message.Attachments is { Count: > 0 }).ToList();
+    }
+
+    [Fact]
     public async Task Unknown_lines_require_notes_and_employee_periods_round_trip_to_completed_flight_pdf()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();

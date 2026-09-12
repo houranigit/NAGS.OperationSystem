@@ -11,12 +11,16 @@ namespace Operations.IntegrationTests;
 public sealed partial class CapturingEmailSender : IEmailSender
 {
     private readonly ConcurrentDictionary<string, string> _bodiesByEmail = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentQueue<EmailMessage> _messages = new();
+
+    public IReadOnlyList<EmailMessage> Messages => _messages.ToArray();
 
     public bool IsEnabled => true;
 
     public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         _bodiesByEmail[message.ToEmail] = message.HtmlBody;
+        _messages.Enqueue(message);
         return Task.CompletedTask;
     }
 

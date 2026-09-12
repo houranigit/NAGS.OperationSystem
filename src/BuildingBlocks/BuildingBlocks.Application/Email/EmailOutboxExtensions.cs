@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Contracts.Email;
+using System.Text.Json;
 
 namespace BuildingBlocks.Application.Email;
 
@@ -23,6 +24,9 @@ public static class EmailOutboxExtensions
             ToName = message.ToName,
             Subject = message.Subject,
             ProtectedBody = protector.Protect(message.HtmlBody),
+            ProtectedAttachments = message.Attachments is { Count: > 0 }
+                ? protector.Protect(JsonSerializer.Serialize(message.Attachments))
+                : null,
             Kind = kind
         });
     }

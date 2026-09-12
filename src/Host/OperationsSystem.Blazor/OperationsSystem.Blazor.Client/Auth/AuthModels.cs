@@ -21,7 +21,8 @@ public sealed record AuthenticatedUser(
     string PortalSource,
     bool MfaEnabled,
     bool MfaEnrollmentRequired,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions,
+    bool ReceiveWorkOrderSubmissionEmails = false);
 
 public sealed record LoginRequest(string Email, string Password);
 public sealed record LoginMfaRequest(string MfaToken, string Code);

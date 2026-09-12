@@ -20,14 +20,14 @@ Provide via environment variables or a secrets store (never in source control):
 | `Identity:Jwt:Issuer`, `Identity:Jwt:Audience` | Required. |
 | `Identity:Admin:Email`, `Identity:Admin:DisplayName` | Bootstrap administrator. **Leave `Identity:Admin:Password` unset in production** — the admin is then created as an emailed invitation (no default password). |
 | `Identity:ActivationUrlBase`, `Identity:PasswordResetUrlBase`, `Identity:EmailChangeConfirmUrlBase` | Public portal URLs for emailed activation, reset-password, and linked-email verification links. |
-| `EmailSettings:*` with `EnableEmailNotifications=true` | SMTP host/port/credentials/from. Invitations, password reset, email verification, and MFA flows depend on durable email delivery. |
+| `EmailSettings:*` with `EnableEmailNotifications=true` | SMTP host/port/credentials/from. Invitations, password reset, email verification, MFA, and opted-in work-order submission receipts depend on durable email delivery. |
 | `Security:RateLimit:AnonymousAuthPermitLimit` / `...WindowSeconds` | Defaults 10/60. Tune per environment. |
 | `FileStorage:RootPath` | Persistent volume for customer logos (object/file storage, not the served path). |
 | `Notifications:Fcm:Enabled` | Set `true` in environments that deliver Android alerts. The persisted inbox and SignalR remain active when false. |
 | `Notifications:Fcm:Required` | Production defaults this to `true`, making startup fail until FCM is enabled and configured. Keep `false` only in local/test environments. |
 | `Notifications:Fcm:ProjectId` | Firebase project id; required when FCM is enabled. |
 | `Notifications:Fcm:ServiceAccountJsonPath` or `...ServiceAccountJson` | Optional explicit Firebase Admin credential. Configure exactly one through a mounted secret or secrets store. When neither is supplied the service uses Application Default Credentials/workload identity. Never commit service-account JSON. |
-| Data Protection key ring | Persisted to a shared, backed-up location (see below). Encrypts MFA secrets and durable email bodies. |
+| Data Protection key ring | Persisted to a shared, backed-up location (see below). Encrypts MFA secrets and durable email bodies and attachments. |
 
 For local developer overrides, use `appsettings.{Environment}.local.json`, .NET user-secrets, or
 environment variables. The `.local.json` pattern is intentionally ignored by Git and has lower
@@ -42,7 +42,7 @@ Application Default Credentials/workload identity.
 
 ## Data Protection
 
-MFA secrets and queued email bodies are encrypted with ASP.NET Core Data Protection. In production,
+MFA secrets and queued email bodies and attachments are encrypted with ASP.NET Core Data Protection. In production,
 persist the key ring to a durable, access-controlled location (e.g. a mounted volume or a key vault)
 so keys survive restarts and are shared across instances. With ephemeral keys, undelivered encrypted
 emails and stored MFA secrets become unreadable after a restart.
@@ -53,6 +53,26 @@ Apply database migrations in dependency order: **Audit -> Identity -> MasterData
 development, `Database:ApplyMigrationsOnStartup` may be enabled to apply them automatically. For
 production and production-like remote testing, keep it disabled, use reviewed SQL scripts, and take a
 backup first.
+
+### 2026-09 work-order submission emails
+
+Apply `20260912201828_Identity_WorkOrderEmailPreference` before deploying the updated API and clients.
+It adds the per-account preference, defaulting to off for existing and new users. Employees can change
+**Email me submitted work orders** in the portal account page or the mobile profile; both use the same
+Identity setting.
+
+With SMTP and outbox dispatch enabled, initial work-order submissions from either client queue a
+receipt for the opted-in submitting employee, including completion, cancellation, and ad-hoc work
+orders. The attached PDF uses the existing print layout and is marked as awaiting approval. Its
+contents are captured with the submission, so later edits do not change the receipt. Editing,
+approving, or merging an existing work order does not create another submission receipt. Preference
+changes affect future submissions; receipts already queued retain their original recipient and PDF.
+
+Receipt preparation and work-order persistence succeed together; a PDF preparation failure leaves
+the submission unsaved. SMTP failures retry through the existing outbox after submission. Delivery
+is at least once: a process crash after SMTP acceptance can cause a retry to resend the message.
+Disabling `EnableEmailNotifications` keeps the existing development behavior of logging and
+consuming queued emails without sending them; it is not a delivery pause.
 
 ### 2026-08 resource usage and return-to-ramp rollout
 

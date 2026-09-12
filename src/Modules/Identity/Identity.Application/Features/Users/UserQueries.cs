@@ -147,7 +147,7 @@ public sealed class GetCurrentUserQueryHandler(
             user.RoleId, role?.Name ?? string.Empty,
             user.UserType.ToString(), user.ExternalReferenceId, PortalSource.For(user.UserType),
             user.MfaEnabled, user.MfaRequired && !user.MfaEnabled,
-            permissions.Value);
+            permissions.Value, user.ReceiveWorkOrderSubmissionEmails);
     }
 }
 

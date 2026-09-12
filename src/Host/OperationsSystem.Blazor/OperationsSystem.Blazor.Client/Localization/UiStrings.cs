@@ -412,6 +412,14 @@ public static class UiStrings
         public static string Permissions => UiText.Get("Account.Permissions", "Permissions");
         public static string DisplayName => UiText.Get("Account.DisplayName", "Display name");
         public static string ProfileUpdated => UiText.Get("Account.ProfileUpdated", "Your profile has been updated.");
+        public static string WorkOrderEmailPreference => UiText.Get("Account.WorkOrderEmailPreference", "Email me submitted work orders");
+        public static string WorkOrderEmailPreferenceHint => UiText.Get("Account.WorkOrderEmailPreferenceHint", "When enabled, each work order you submit is emailed with its PDF to");
+        public static string EmailPreferenceSaving => UiText.Get("Account.EmailPreferenceSaving", "Saving email preference…");
+        public static string EmailPreferenceSaved => UiText.Get("Account.EmailPreferenceSaved", "Email preference saved.");
+        public static string EmailPreferenceLoading => UiText.Get("Account.EmailPreferenceLoading", "Loading your saved email preference…");
+        public static string EmailPreferenceLoadFailed => UiText.Get("Account.EmailPreferenceLoadFailed", "Could not load your current email preference. Refresh to try again.");
+        public static string EmailPreferenceRefresh => UiText.Get("Account.EmailPreferenceRefresh", "Refresh setting");
+        public static string EmailPreferenceSaveUnconfirmed => UiText.Get("Account.EmailPreferenceSaveUnconfirmed", "Could not confirm this change. The last confirmed setting is shown. Refresh to check the saved setting.");
         public static string ChangePassword => UiText.Get("Account.ChangePassword", "Change password");
         public static string CurrentPassword => UiText.Get("Account.CurrentPassword", "Current password");
         public static string PasswordChanged => UiText.Get("Account.PasswordChanged", "Your password has been changed. Please sign in again.");

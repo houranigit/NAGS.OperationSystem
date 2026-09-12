@@ -1,7 +1,14 @@
 namespace BuildingBlocks.Application.Abstractions;
 
-/// <summary>A single outbound email message (HTML body).</summary>
-public sealed record EmailMessage(string ToEmail, string ToName, string Subject, string HtmlBody);
+/// <summary>A single outbound email message with an HTML body and optional file attachments.</summary>
+public sealed record EmailMessage(
+    string ToEmail,
+    string ToName,
+    string Subject,
+    string HtmlBody,
+    IReadOnlyList<EmailAttachment>? Attachments = null);
+
+public sealed record EmailAttachment(string FileName, string ContentType, byte[] Content);
 
 /// <summary>
 /// Transport-agnostic email delivery. v1.0.0 ships an SMTP sender and a no-op sender selected by

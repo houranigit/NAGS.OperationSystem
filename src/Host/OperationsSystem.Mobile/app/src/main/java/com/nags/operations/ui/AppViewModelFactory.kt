@@ -10,6 +10,7 @@ import com.nags.operations.ui.login.LoginViewModel
 import com.nags.operations.ui.sync.SyncCenterViewModel
 import com.nags.operations.ui.workorder.WorkOrderDraftsViewModel
 import com.nags.operations.ui.notifications.NotificationsViewModel
+import com.nags.operations.ui.account.AccountViewModel
 
 /**
  * Resolves ViewModels from [AppGraph]. Routes use this through Compose's
@@ -20,6 +21,7 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when (modelClass) {
+            AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
             LoginViewModel::class.java -> LoginViewModel(graph.authRepository)
             MyFlightsViewModel::class.java -> MyFlightsViewModel(
                 repository = graph.flightsRepository,
