@@ -32,7 +32,10 @@
     <string name="notifications_permission_body">Allow notifications to receive flight assignments when the app is closed.</string>
     <string name="notifications_permission_allow">Allow</string>
     <string name="notifications_permission_not_now">Not now</string>
-    <string name="notifications_flight_unavailable">This flight could not be opened. Refresh and try again.</string>
+    <string name="notifications_flight_unavailable">This flight is no longer available to your account.</string>
+    <string name="notifications_flight_session_error">Your session could not be verified. Try again or sign in again.</string>
+    <string name="notifications_flight_connection_error">Could not connect to open this flight. Check your connection and try again.</string>
+    <string name="notifications_flight_temporary_error">The flight could not be loaded right now. Please try again shortly.</string>
     <plurals name="notifications_unread_count">
         <item quantity="one">%d unread notification</item>
         <item quantity="other">%d unread notifications</item>

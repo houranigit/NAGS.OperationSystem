@@ -2,6 +2,7 @@ package com.nags.operations.notifications
 
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import com.nags.operations.data.notifications.NotificationKinds
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.data.notifications.NotificationPushPayload
@@ -9,15 +10,30 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class NotificationNavigationCoordinator(context: Context) {
-    private val preferences = context.getSharedPreferences("notification_navigation", Context.MODE_PRIVATE)
+class NotificationNavigationCoordinator internal constructor(private val preferences: SharedPreferences) {
+    constructor(context: Context) : this(context.getSharedPreferences("notification_navigation", Context.MODE_PRIVATE))
     private val _pending = MutableStateFlow(readPending())
     val pending: StateFlow<NotificationOpenRequest?> = _pending.asStateFlow()
 
-    fun acceptIntent(intent: Intent?) {
+    fun acceptIntent(intent: Intent?, restoringActivity: Boolean = false) {
         if (intent == null) return
         val data = intent.extras?.keySet()?.associateWith { key -> intent.extras?.getString(key).orEmpty() }
             .orEmpty()
+        acceptIntentData(data, restoringActivity) {
+            NAVIGATION_EXTRA_KEYS.forEach(intent::removeExtra)
+        }
+    }
+
+    /** The durable pending handoff is the restoration source; a saved launch intent is not a new tap. */
+    internal fun acceptIntentData(
+        data: Map<String, String>,
+        restoringActivity: Boolean = false,
+        clearIntentData: () -> Unit,
+    ) {
+        if (restoringActivity) {
+            clearIntentData()
+            return
+        }
         val parsed = NotificationPushPayload.fromData(data)?.openRequest()
             ?: run {
                 // A reminder carrying expiry metadata that failed parsing/expiry validation must
@@ -36,29 +52,43 @@ class NotificationNavigationCoordinator(context: Context) {
                     leadTimeMinutes = data[EXTRA_LEAD_TIME_MINUTES]?.toIntOrNull(),
                 )
             }
-        parsed?.let(::publish)
+        if (parsed != null && persistAndPublish(parsed)) {
+            // The same Intent is retained by MainActivity and can otherwise replay on recreation.
+            // Persist first so clearing its extras cannot lose an unfinished navigation request.
+            clearIntentData()
+        }
     }
 
     fun publish(request: NotificationOpenRequest) {
-        preferences.edit()
+        persistAndPublish(request)
+    }
+
+    private fun persistAndPublish(request: NotificationOpenRequest): Boolean {
+        val persisted = preferences.edit()
             .putString(KEY_NOTIFICATION_ID, request.notificationId)
             .putString(KEY_FLIGHT_ID, request.flightId)
             .putString(KEY_RECIPIENT_ID, request.recipientUserId)
             .putString(KEY_KIND, request.kind)
             .putString(KEY_SCHEDULED_ARRIVAL_UTC, request.scheduledArrivalUtc)
             .putString(KEY_LEAD_TIME_MINUTES, request.leadTimeMinutes?.toString())
-            .apply()
+            .commit()
         _pending.value = request
+        return persisted
     }
 
     fun consume(notificationId: String?) {
         val current = _pending.value ?: return
         if (notificationId != null && current.notificationId != notificationId) return
-        preferences.edit().clear().apply()
-        _pending.value = null
+        clearForSessionEnd()
     }
 
     fun discardForWrongAccount() = consume(_pending.value?.notificationId)
+
+    /** Explicit logout/account switching ends the old account's navigation, even if opening failed. */
+    fun clearForSessionEnd() {
+        preferences.edit().clear().commit()
+        _pending.value = null
+    }
 
     private fun readPending(): NotificationOpenRequest? {
         val notificationId = preferences.getString(KEY_NOTIFICATION_ID, null)?.takeIf(String::isNotBlank)
@@ -87,6 +117,11 @@ class NotificationNavigationCoordinator(context: Context) {
         const val EXTRA_KIND = "kind"
         const val EXTRA_SCHEDULED_ARRIVAL_UTC = "scheduledArrivalUtc"
         const val EXTRA_LEAD_TIME_MINUTES = "leadTimeMinutes"
+
+        private val NAVIGATION_EXTRA_KEYS = setOf(
+            EXTRA_NOTIFICATION_ID, EXTRA_FLIGHT_ID, EXTRA_RECIPIENT_USER_ID, EXTRA_KIND,
+            EXTRA_SCHEDULED_ARRIVAL_UTC, EXTRA_LEAD_TIME_MINUTES, "id", "payloadJson",
+        )
 
         private const val KEY_NOTIFICATION_ID = "notification_id"
         private const val KEY_FLIGHT_ID = "flight_id"

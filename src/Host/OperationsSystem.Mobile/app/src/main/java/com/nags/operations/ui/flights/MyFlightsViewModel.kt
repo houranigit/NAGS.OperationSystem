@@ -1,7 +1,9 @@
 package com.nags.operations.ui.flights
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nags.operations.BuildConfig
 import com.nags.operations.data.FlightStatusKind
 import com.nags.operations.data.MobileFlightDto
 import com.nags.operations.data.WorkOrderTypeKind
@@ -55,7 +57,7 @@ class MyFlightsViewModel(
         val requestedFlight: MobileFlightDto? = null,
         /** Exact notification request whose by-id fetch produced [requestedFlight]/error. */
         val requestedFlightRequest: NotificationOpenRequest? = null,
-        val requestedFlightError: String? = null,
+        val requestedFlightError: FlightOpenFailure? = null,
         val isOpeningRequestedFlight: Boolean = false,
     )
 
@@ -165,6 +167,10 @@ class MyFlightsViewModel(
                 throw error
             } catch (error: Exception) {
                 if (activeRequestedFlightRequest != request) return@launch
+                if (BuildConfig.DEBUG) {
+                    val reason = if (error is ApiException) "HTTP ${error.statusCode}" else error.javaClass.simpleName
+                    Log.w("MyFlightsViewModel", "Notification flight lookup failed ($reason).")
+                }
                 val fallback = cached
                     ?.takeIf {
                         shouldUseInformationalFlightFallback(
@@ -176,7 +182,7 @@ class MyFlightsViewModel(
                     it.copy(
                         requestedFlight = fallback,
                         requestedFlightRequest = request,
-                        requestedFlightError = if (fallback == null) error.userMessage() else null,
+                        requestedFlightError = if (fallback == null) flightOpenFailure(error) else null,
                         isOpeningRequestedFlight = false,
                     )
                 }

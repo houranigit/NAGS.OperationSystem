@@ -174,6 +174,7 @@ class AppGraph private constructor(context: Context) {
      */
     suspend fun signOut() {
         sessionTransitionMutex.withLock {
+            notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
             pauseSessionServices()
             deviceTokenManager.revokeBeforeLogout()
@@ -207,6 +208,7 @@ class AppGraph private constructor(context: Context) {
 
     private suspend fun prepareForAccountSwitch() {
         sessionTransitionMutex.withLock {
+            notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
             pauseSessionServices()
             deviceTokenManager.revokeBeforeLogout()

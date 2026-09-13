@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -44,6 +45,7 @@ import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.components.FlightDetailsActionsSheet
 import com.nags.operations.ui.components.FlightSheetCallbacks
 import com.nags.operations.ui.flights.FlightNotificationTab
+import com.nags.operations.ui.flights.FlightOpenFailure
 import com.nags.operations.ui.flights.MyFlightsViewModel
 import com.nags.operations.ui.flights.notificationFlightTab
 
@@ -67,7 +69,12 @@ fun MyFlightsTab(
     var sheetRequest by remember { mutableStateOf<NotificationOpenRequest?>(null) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val openErrorMessage = stringResource(R.string.notifications_flight_unavailable)
+    val openErrorMessage = stringResource(when (state.requestedFlightError) {
+        FlightOpenFailure.Unavailable -> R.string.notifications_flight_unavailable
+        FlightOpenFailure.Session -> R.string.notifications_flight_session_error
+        FlightOpenFailure.Connection -> R.string.notifications_flight_connection_error
+        FlightOpenFailure.Temporary, null -> R.string.notifications_flight_temporary_error
+    })
     val retryLabel = stringResource(R.string.notifications_retry)
     LaunchedEffect(Unit) {
         viewModel.refresh(userInitiated = false)
@@ -116,11 +123,19 @@ fun MyFlightsTab(
         requestedFlightRequest,
     ) {
         val failedRequest = state.requestedFlightRequest
-        if (state.requestedFlightError != null &&
+        val failure = state.requestedFlightError
+        if (failure != null &&
             failedRequest != null &&
             failedRequest == requestedFlightRequest
         ) {
-            val result = snackbarHostState.showSnackbar(openErrorMessage, retryLabel)
+            // An action label defaults to an indefinite snackbar. Bound its lifetime and provide
+            // dismissal so a stale notification cannot remain pending every time this tab opens.
+            val result = snackbarHostState.showSnackbar(
+                message = openErrorMessage,
+                actionLabel = if (failure.canRetry) retryLabel else null,
+                withDismissAction = true,
+                duration = SnackbarDuration.Long,
+            )
             if (result == SnackbarResult.ActionPerformed) {
                 viewModel.openRequestedFlight(failedRequest, force = true)
             } else {

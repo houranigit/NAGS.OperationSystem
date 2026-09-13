@@ -52,18 +52,7 @@ class SystemNotificationManager(private val context: Context) {
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(NotificationNavigationCoordinator.EXTRA_NOTIFICATION_ID, payload.id)
-            putExtra(NotificationNavigationCoordinator.EXTRA_KIND, payload.kind)
-            payload.flightId?.let { putExtra(NotificationNavigationCoordinator.EXTRA_FLIGHT_ID, it) }
-            payload.recipientUserId?.let {
-                putExtra(NotificationNavigationCoordinator.EXTRA_RECIPIENT_USER_ID, it)
-            }
-            payload.scheduledArrivalUtc?.let {
-                putExtra(NotificationNavigationCoordinator.EXTRA_SCHEDULED_ARRIVAL_UTC, it)
-            }
-            payload.leadTimeMinutes?.let {
-                putExtra(NotificationNavigationCoordinator.EXTRA_LEAD_TIME_MINUTES, it.toString())
-            }
+            systemNotificationIntentData(payload, recipientUserId).forEach { (key, value) -> putExtra(key, value) }
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
@@ -124,3 +113,14 @@ class SystemNotificationManager(private val context: Context) {
         private const val ACCOUNT_PREFIX = "account:"
     }
 }
+
+/** Bind the tap to the verified account that received the alert, including older payloads. */
+internal fun systemNotificationIntentData(payload: NotificationPushPayload, recipientUserId: String): Map<String, String> =
+    buildMap {
+        put(NotificationNavigationCoordinator.EXTRA_NOTIFICATION_ID, payload.id)
+        put(NotificationNavigationCoordinator.EXTRA_KIND, payload.kind)
+        put(NotificationNavigationCoordinator.EXTRA_RECIPIENT_USER_ID, recipientUserId)
+        payload.flightId?.let { put(NotificationNavigationCoordinator.EXTRA_FLIGHT_ID, it) }
+        payload.scheduledArrivalUtc?.let { put(NotificationNavigationCoordinator.EXTRA_SCHEDULED_ARRIVAL_UTC, it) }
+        payload.leadTimeMinutes?.let { put(NotificationNavigationCoordinator.EXTRA_LEAD_TIME_MINUTES, it.toString()) }
+    }

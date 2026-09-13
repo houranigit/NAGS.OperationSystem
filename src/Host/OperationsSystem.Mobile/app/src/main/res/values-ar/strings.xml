@@ -36,7 +36,10 @@
     <string name="notifications_permission_body">اسمح بالإشعارات لاستلام تعيينات الرحلات عند إغلاق التطبيق.</string>
     <string name="notifications_permission_allow">سماح</string>
     <string name="notifications_permission_not_now">ليس الآن</string>
-    <string name="notifications_flight_unavailable">تعذر فتح هذه الرحلة. حدّث الصفحة وحاول مرة أخرى.</string>
+    <string name="notifications_flight_unavailable">لم تعد هذه الرحلة متاحة لحسابك.</string>
+    <string name="notifications_flight_session_error">تعذر التحقق من جلستك. حاول مرة أخرى أو سجّل الدخول مجددًا.</string>
+    <string name="notifications_flight_connection_error">تعذر الاتصال لفتح هذه الرحلة. تحقق من اتصالك وحاول مرة أخرى.</string>
+    <string name="notifications_flight_temporary_error">تعذر تحميل الرحلة حاليًا. يرجى المحاولة بعد قليل.</string>
     <plurals name="notifications_unread_count">
         <item quantity="zero">لا توجد إشعارات غير مقروءة</item>
         <item quantity="one">إشعار واحد غير مقروء</item>

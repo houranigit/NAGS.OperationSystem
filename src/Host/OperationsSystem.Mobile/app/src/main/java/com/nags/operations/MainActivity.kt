@@ -21,7 +21,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        AppGraph.get(applicationContext).notificationNavigation.acceptIntent(intent)
+        AppGraph.get(applicationContext).notificationNavigation.acceptIntent(
+            intent,
+            restoringActivity = savedInstanceState != null,
+        )
         SystemNotificationManager(applicationContext).ensureChannel()
 
         // Transparent scrim + light status icons so clocks/notifications read on red headers.
