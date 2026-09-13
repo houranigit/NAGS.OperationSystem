@@ -9,7 +9,7 @@ public static class UiStrings
     {
         public static string Name => UiText.Get("App.Name", "Operations System");
         public static string Portal => UiText.Get("App.Portal", "");
-        public static string Version => UiText.Get("App.Version", "v1.0.6");
+        public static string Version => UiText.Get("App.Version", "v1.0.8");
     }
 
     public static class Common
