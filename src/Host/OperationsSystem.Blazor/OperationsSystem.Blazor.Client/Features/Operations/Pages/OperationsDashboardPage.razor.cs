@@ -79,6 +79,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     [Inject] private OperationsDashboardRealtimeClient Realtime { get; set; } = default!;
     [Inject] private NotificationService Notifications { get; set; } = default!;
     [Inject] private GridPreferences GridPrefs { get; set; } = default!;
+    [Inject] private UserTimeZone UserTimeZone { get; set; } = default!;
 
     private int FlightTotalCount => flightTotalCount > int.MaxValue ? int.MaxValue : (int)flightTotalCount;
     private bool CanExport => Auth.HasPermission(OperationsPermissions.DashboardExport);
@@ -98,7 +99,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
         : UiStrings.OperationsDashboard.LiveConnecting;
     private string LastUpdatedLabel => dashboard is null
         ? "—"
-        : dashboard.GeneratedAtUtc.UtcDateTime.ToString("HH:mm:ss 'UTC'", CultureInfo.CurrentCulture);
+        : $"{UserTimeZone.Format(dashboard.GeneratedAtUtc, "HH:mm:ss")} {UserTimeZone.Id}";
     private string TrendRangeKey =>
         $"{displayedFilter.FromUtc:O}|{displayedFilter.ToUtc:O}";
 
@@ -158,6 +159,7 @@ public partial class OperationsDashboardPage : IAsyncDisposable
     {
         try
         {
+            await UserTimeZone.InitializeAsync();
             currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
             if (await LoadDashboardAsync(cancellationToken))
                 await ReloadFlightsAsync();
