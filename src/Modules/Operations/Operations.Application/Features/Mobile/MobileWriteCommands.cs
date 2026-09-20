@@ -33,6 +33,8 @@ public sealed record MobileWriteResultDto(Guid WorkOrderId, Guid FlightId, bool 
 /// </summary>
 internal static class MobileMutations
 {
+    private static readonly JsonSerializerOptions PreReturnToRampSignaturesFingerprintOptions =
+        CreatePreReturnToRampSignaturesFingerprintOptions();
     private static readonly JsonSerializerOptions PreEmployeeAssignmentsFingerprintOptions =
         CreatePreEmployeeAssignmentsFingerprintOptions();
     private static readonly JsonSerializerOptions PreReturnToRampFingerprintOptions =
@@ -70,6 +72,7 @@ internal static class MobileMutations
     {
         var fingerprints = new HashSet<string>(StringComparer.Ordinal)
         {
+            Fingerprint(request, PreReturnToRampSignaturesFingerprintOptions),
             Fingerprint(request, PreEmployeeAssignmentsFingerprintOptions)
         };
         // The immediately preceding mobile contract serialized resource rows as id + quantity.
@@ -288,8 +291,26 @@ internal static class MobileMutations
         return new JsonSerializerOptions { TypeInfoResolver = resolver };
     }
 
+    private static JsonSerializerOptions CreatePreReturnToRampSignaturesFingerprintOptions()
+    {
+        var resolver = new DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(OmitAbsentReturnToRampSignatureFields);
+        return new JsonSerializerOptions { TypeInfoResolver = resolver };
+    }
+
+    private static void OmitAbsentReturnToRampSignatureFields(JsonTypeInfo typeInfo)
+    {
+        if (typeInfo.Type != typeof(WorkOrderReturnToRampCommand))
+            return;
+        foreach (var property in typeInfo.Properties.Where(property =>
+                     property.Name is nameof(WorkOrderReturnToRampCommand.CustomerSignature) or nameof(WorkOrderReturnToRampCommand.RemoveCustomerSignature)))
+            property.ShouldSerialize = (_, value) => value is not null and not false;
+    }
+
     private static void OmitAbsentNewWorkOrderFields(JsonTypeInfo typeInfo)
     {
+        OmitAbsentReturnToRampSignatureFields(typeInfo);
+
         var propertyName = typeInfo.Type == typeof(WorkOrderServiceLineCommand) || typeInfo.Type == typeof(WorkOrderTaskCommand)
             ? "EmployeeAssignments"
             : typeInfo.Type == typeof(WorkOrderTaskToolCommand) ||
@@ -758,7 +779,8 @@ public sealed class MobileRecordReturnToRampForFlightCommandHandler(
             expectedWorkOrderId: null,
             expectedFlightId: request.FlightId,
             expectedClientFlightId: null,
-            cancellationToken);
+            cancellationToken,
+            MobileMutations.CompatibleFingerprints(fingerprintInput));
         if (replay.IsFailure)
             return replay.Error;
         if (replay.Value is { } prior)

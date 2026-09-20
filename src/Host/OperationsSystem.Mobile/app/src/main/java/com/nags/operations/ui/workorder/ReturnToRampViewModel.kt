@@ -322,6 +322,7 @@ class ReturnToRampViewModel(
             )
         },
         tasks = tasks.map { it.toOutboxInput(snapshot) },
+        customerSignaturePngBase64 = customerSignaturePng,
     )
 
     private fun TaskFormRow.toOutboxInput(snapshot: ReturnToRampUiState) = OutboxPayload.TaskInput(

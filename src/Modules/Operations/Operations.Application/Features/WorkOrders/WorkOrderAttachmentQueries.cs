@@ -152,3 +152,37 @@ public sealed class GetWorkOrderSignatureContentQueryHandler(
             workOrder.CustomerSignatureFileName ?? "customer-signature.png");
     }
 }
+
+
+public sealed record GetReturnToRampSignatureContentQuery(Guid Id, Guid ReturnToRampId) : IQuery<WorkOrderAttachmentContent>;
+
+public sealed class GetReturnToRampSignatureContentQueryHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IFileStorage storage) : IQueryHandler<GetReturnToRampSignatureContentQuery, WorkOrderAttachmentContent>
+{
+    public async Task<Result<WorkOrderAttachmentContent>> Handle(GetReturnToRampSignatureContentQuery request, CancellationToken cancellationToken)
+    {
+        var workOrder = await WorkOrderLoader.ForMutation(db.WorkOrders.AsNoTracking())
+            .FirstOrDefaultAsync(item => item.Id == request.Id, cancellationToken);
+        if (workOrder is null)
+            return Error.NotFound("Work order not found.", "Operations.WorkOrder.NotFound");
+        var scopeResult = await scope.ResolveAsync(cancellationToken);
+        if (scopeResult.IsFailure)
+            return scopeResult.Error;
+        var access = scopeResult.Value.EnsureWorkOrderAccess(workOrder);
+        if (access.IsFailure)
+            return access.Error;
+        var occurrence = workOrder.ReturnToRamps.FirstOrDefault(item => item.Id == request.ReturnToRampId);
+        if (occurrence is null)
+            return Error.NotFound("Return-to-ramp record not found.", "Operations.ReturnToRamp.NotFound");
+        if (string.IsNullOrWhiteSpace(occurrence.CustomerSignatureReference))
+            return Error.NotFound("Customer signature not found.", "Operations.ReturnToRamp.SignatureNotFound");
+        await using var stream = await storage.OpenAsync(occurrence.CustomerSignatureReference, cancellationToken);
+        if (stream is null)
+            return Error.NotFound("Customer signature file not found.", "Operations.ReturnToRamp.SignatureFileNotFound");
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        return new WorkOrderAttachmentContent(memory.ToArray(), occurrence.CustomerSignatureContentType ?? "image/png", occurrence.CustomerSignatureFileName ?? "customer-signature.png");
+    }
+}

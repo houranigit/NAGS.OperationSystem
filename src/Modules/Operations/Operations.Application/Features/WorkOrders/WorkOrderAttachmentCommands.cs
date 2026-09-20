@@ -486,6 +486,7 @@ internal static class WorkOrderAttachmentStorage
                 .SelectMany(task => task.Attachments)
                 .Select(attachment => attachment.StorageReference))
             .Concat([workOrder.CustomerSignatureReference])
+            .Concat(workOrder.ReturnToRamps.Select(item => item.CustomerSignatureReference))
             .Where(reference => !string.IsNullOrWhiteSpace(reference))
             .Select(reference => reference!)
             .Distinct(StringComparer.OrdinalIgnoreCase)

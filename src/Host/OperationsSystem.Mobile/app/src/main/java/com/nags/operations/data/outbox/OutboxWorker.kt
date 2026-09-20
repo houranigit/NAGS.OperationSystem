@@ -321,6 +321,7 @@ class OutboxWorker(
                                     )
                                 },
                                 tasks = occurrence.tasks.map { it.toWire(attachmentsDir) },
+                                customerSignature = occurrence.customerSignaturePngBase64.toSignatureInput(),
                             ),
                         )
                         Outcome.Succeeded(response.workOrderId)
@@ -432,6 +433,8 @@ class OutboxWorker(
             )
         },
         tasks = tasks.map { it.toWire(attachmentsDir) },
+        customerSignature = customerSignaturePngBase64.toSignatureInput(),
+        removeCustomerSignature = removeCustomerSignature,
     )
 
     private fun OutboxPayload.TaskInput.toWire(attachmentsDir: File?) = WorkOrderTaskInput(

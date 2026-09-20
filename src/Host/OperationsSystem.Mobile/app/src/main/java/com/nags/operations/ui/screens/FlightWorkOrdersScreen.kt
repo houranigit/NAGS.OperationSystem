@@ -1,5 +1,8 @@
 package com.nags.operations.ui.screens
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,8 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.nags.operations.data.WorkOrderSignatureWireDto
 import com.nags.operations.data.WorkOrderDetailWireDto
 import com.nags.operations.data.WorkOrderServiceLineWireDto
 import com.nags.operations.data.WorkOrderTaskResourceWireDto
@@ -176,13 +182,13 @@ fun FlightWorkOrdersScreen(
                 Text("Print or save the approved flight work order as a PDF.", style = MaterialTheme.typography.bodySmall)
             }
             if (detailLoading) CircularProgressIndicator()
-            selected?.let { WorkOrderReadOnlyDetails(it) }
+            selected?.let { WorkOrderReadOnlyDetails(it, api) }
         }
     }
 }
 
 @Composable
-private fun WorkOrderReadOnlyDetails(order: WorkOrderDetailWireDto) {
+private fun WorkOrderReadOnlyDetails(order: WorkOrderDetailWireDto, api: MobileApi) {
     HorizontalDivider()
     Text(order.approvalNumber ?: "Work order", style = MaterialTheme.typography.headlineSmall)
     Text("${order.status} · ${order.type}")
@@ -196,16 +202,71 @@ private fun WorkOrderReadOnlyDetails(order: WorkOrderDetailWireDto) {
     order.remarks?.takeIf(String::isNotBlank)?.let { Text("Remarks: $it") }
     WorkOrderActivity(order.serviceLines.filterNot { it.isReturnToRamp }, order.tasks.filterNot { it.isReturnToRamp })
     order.returnToRamps.forEachIndexed { index, occurrence ->
-        Text("Return to ramp ${index + 1}", style = MaterialTheme.typography.titleMedium)
+        Text("RTR no. ${occurrence.sequence.takeIf { it > 0 } ?: (index + 1)}", style = MaterialTheme.typography.titleMedium)
         PeriodText(occurrence.fromUtc, occurrence.toUtc)
         occurrence.description?.takeIf(String::isNotBlank)?.let { Text(it) }
         WorkOrderActivity(occurrence.serviceLines, occurrence.tasks)
+        occurrence.customerSignature?.let { signature ->
+            StoredCustomerSignature(order.id, occurrence.id, signature, api)
+        } ?: Text("Customer signature: not provided")
     }
     // Old server responses may include only flat return-to-ramp rows.
     if (order.returnToRamps.isEmpty()) {
-        WorkOrderActivity(order.serviceLines.filter { it.isReturnToRamp }, order.tasks.filter { it.isReturnToRamp })
+        val legacyServices = order.serviceLines.filter { it.isReturnToRamp }
+        val legacyTasks = order.tasks.filter { it.isReturnToRamp }
+        if (legacyServices.isNotEmpty() || legacyTasks.isNotEmpty()) {
+            Text("RTR no. 1", style = MaterialTheme.typography.titleMedium)
+            WorkOrderActivity(legacyServices, legacyTasks)
+        }
     }
-    order.customerSignature?.let { Text("Customer signed: ${formatIsoForDisplay(it.signedAtUtc)}") }
+    order.customerSignature?.let { signature ->
+        Text("Work order signature", style = MaterialTheme.typography.titleMedium)
+        StoredCustomerSignature(order.id, null, signature, api)
+    }
+}
+
+@Composable
+private fun StoredCustomerSignature(
+    workOrderId: String,
+    returnToRampId: String?,
+    signature: WorkOrderSignatureWireDto,
+    api: MobileApi,
+) {
+    val scope = rememberCoroutineScope()
+    var image by remember(workOrderId, returnToRampId, signature) { mutableStateOf<ImageBitmap?>(null) }
+    var loading by remember(workOrderId, returnToRampId, signature) { mutableStateOf(false) }
+    var error by remember(workOrderId, returnToRampId, signature) { mutableStateOf<String?>(null) }
+    Text("Customer signed: ${formatIsoForDisplay(signature.signedAtUtc)}")
+    image?.let {
+        Image(
+            bitmap = it,
+            contentDescription = if (returnToRampId == null) "Work order customer signature" else "RTR customer signature",
+            modifier = Modifier.fillMaxWidth().aspectRatio(2.5f),
+        )
+    }
+    if (image == null) {
+        TextButton(
+            enabled = !loading,
+            onClick = {
+                loading = true
+                error = null
+                scope.launch {
+                    try {
+                        val bytes = api.workOrderSignature(workOrderId, returnToRampId)
+                        image = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                        if (image == null) error = "The signature image could not be displayed."
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (exception: Exception) {
+                        error = exception.userMessage()
+                    } finally {
+                        loading = false
+                    }
+                }
+            },
+        ) { Text(if (loading) "Loading signature…" else "View signature") }
+    }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 }
 
 @Composable

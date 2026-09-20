@@ -81,6 +81,9 @@ class WorkOrderDraftJsonTest {
                 ReturnToRampFormRow(
                     localKey = 10,
                     serverId = "rtr-10",
+                    sequence = 4,
+                    existingCustomerSignatureName = "rtr-4.png",
+                    removeCustomerSignature = true,
                     fromIso = "2026-07-11T13:00:00-05:00",
                     toIso = "2026-07-11T13:30:00-05:00",
                     description = "First",
@@ -95,6 +98,7 @@ class WorkOrderDraftJsonTest {
                 ),
                 ReturnToRampFormRow(
                     localKey = 20,
+                    customerSignaturePng = "AQID",
                     fromIso = "2026-07-11T14:00:00-05:00",
                     toIso = "2026-07-11T14:30:00-05:00",
                     tasks = listOf(TaskFormRow(localKey = 21, serverId = "task-21")),
@@ -117,5 +121,10 @@ class WorkOrderDraftJsonTest {
         assertEquals(listOf(10L, 20L), restored.returnToRamps.map { it.localKey })
         assertEquals("service-11", restored.returnToRamps.first().serviceLines.single().serverId)
         assertEquals("task-21", restored.returnToRamps.last().tasks.single().serverId)
+        assertEquals(4, restored.returnToRamps.first().sequence)
+        assertEquals("rtr-4.png", restored.returnToRamps.first().existingCustomerSignatureName)
+        assertTrue(restored.returnToRamps.first().removeCustomerSignature)
+        assertEquals("AQID", restored.returnToRamps.last().customerSignaturePng)
+        assertEquals(null, restored.customerSignaturePng)
     }
 }

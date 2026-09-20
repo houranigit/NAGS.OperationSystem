@@ -206,6 +206,7 @@ public sealed class RecordReturnToRampOnWorkOrderCommandHandler(
             cancellationToken);
         if (inlineFiles.IsFailure)
             return inlineFiles.Error;
+        await using var pendingFiles = new PendingWorkOrderFiles(storage, inlineFiles.Value);
 
         var details = $"{append.Value.Id}; {append.Value.Window.From:O} - {append.Value.Window.To:O}";
         await workOrderTimeline.AppendAsync(
@@ -225,10 +226,10 @@ public sealed class RecordReturnToRampOnWorkOrderCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            pendingFiles.MarkPersisted();
         }
         catch (DbUpdateException)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return Error.Conflict("Return to ramp conflicted with another update. Reload and try again.", "Operations.ReturnToRamp.Conflict");
         }
 

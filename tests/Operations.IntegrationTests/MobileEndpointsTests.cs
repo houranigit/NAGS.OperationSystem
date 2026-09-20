@@ -1309,14 +1309,14 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
         var detail = await author.Client.GetFromJsonAsync<WorkOrderDetail>(
             $"{MobileBase}/work-orders/{submitted.WorkOrderId}");
-        detail!.ServiceLines.Count.ShouldBe(2);
-        detail.ServiceLines.Count(line => line.IsReturnToRamp).ShouldBe(1);
-        detail.ServiceLines.Single(line => line.Description == "Handled").IsReturnToRamp.ShouldBeFalse();
-        detail.ServiceLines.Single(line => line.Description == "Return to ramp").IsReturnToRamp.ShouldBeTrue();
-        detail.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        detail!.ServiceLines.ShouldHaveSingleItem().Description.ShouldBe("Handled");
+        detail.ServiceLines.ShouldAllBe(line => !line.IsReturnToRamp);
+        detail.Tasks.ShouldBeEmpty();
+        var recordedOccurrence = detail.ReturnToRamps.ShouldNotBeNull().ShouldHaveSingleItem();
+        recordedOccurrence.ServiceLines.ShouldHaveSingleItem().Description.ShouldBe("Return to ramp");
+        recordedOccurrence.Tasks.ShouldHaveSingleItem().Description.ShouldBe("Ramp inspection");
 
-        // The update screen sends the full line collections back. Echoing each source flag must
-        // keep the RTR service and task distinguishable after the aggregate applies the edit.
+        // A legacy update without the occurrence collection must preserve its stored activities.
         var update = await author.Client.PutAsJsonAsync(
             $"{MobileBase}/work-orders/{submitted.WorkOrderId}",
             new
@@ -1376,11 +1376,15 @@ public sealed class MobileEndpointsTests(OperationsApiFactory factory) : IClassF
 
         var updatedDetail = await author.Client.GetFromJsonAsync<WorkOrderDetail>(
             $"{MobileBase}/work-orders/{submitted.WorkOrderId}");
-        updatedDetail!.ServiceLines.Count(line => line.IsReturnToRamp).ShouldBe(1);
-        updatedDetail.ServiceLines.Single(line => line.Description == "Return to ramp").IsReturnToRamp.ShouldBeTrue();
+        updatedDetail!.ServiceLines.Count.ShouldBe(2);
+        updatedDetail.ServiceLines.ShouldAllBe(line => !line.IsReturnToRamp);
         updatedDetail.ServiceLines.Single(line => line.Description == "Handled").IsReturnToRamp.ShouldBeFalse();
         updatedDetail.ServiceLines.Single(line => line.Description == "Normal update addition").IsReturnToRamp.ShouldBeFalse();
-        updatedDetail.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        updatedDetail.Tasks.ShouldBeEmpty();
+        var retainedOccurrence = updatedDetail.ReturnToRamps.ShouldNotBeNull().ShouldHaveSingleItem();
+        retainedOccurrence.Id.ShouldBe(recordedOccurrence.Id);
+        retainedOccurrence.ServiceLines.ShouldHaveSingleItem().Description.ShouldBe("Return to ramp");
+        retainedOccurrence.Tasks.ShouldHaveSingleItem().Description.ShouldBe("Ramp inspection");
     }
 
     // --- Helpers -------------------------------------------------------------------

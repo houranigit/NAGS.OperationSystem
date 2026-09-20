@@ -37,6 +37,8 @@ public sealed class ReturnToRampPersistenceTests
             returnToRamps: [Occurrence(0, "First"), Occurrence(60, "Second")],
             now: Now).Value;
 
+        var signedOccurrence = workOrder.ReturnToRamps[1];
+        workOrder.SetReturnToRampCustomerSignature(signedOccurrence.Id, "rtr-signature", "signature.png", "image/png", 100, Now).IsSuccess.ShouldBeTrue();
         db.Flights.Add(flight);
         db.WorkOrders.Add(workOrder);
         await db.SaveChangesAsync();
@@ -46,6 +48,14 @@ public sealed class ReturnToRampPersistenceTests
             .SingleAsync(item => item.Id == workOrder.Id);
 
         reloaded.ReturnToRamps.Count.ShouldBe(2);
+        reloaded.LastReturnToRampSequence.ShouldBe(2);
+        reloaded.ReturnToRamps.OrderBy(item => item.Sequence).Select(item => item.Sequence).ShouldBe([1, 2]);
+        reloaded.ReturnToRamps.Single(item => item.Sequence == 2).CustomerSignatureReference.ShouldBe("rtr-signature");
+        var detail = WorkOrderDtoMapper.Detail(reloaded);
+        detail.ServiceLines.ShouldBeEmpty();
+        detail.Tasks.ShouldBeEmpty();
+        detail.ReturnToRamps.ShouldNotBeNull().Select(item => item.Sequence).ShouldBe([1, 2]);
+        detail.ReturnToRamps![1].CustomerSignature.ShouldNotBeNull().FileName.ShouldBe("signature.png");
         reloaded.ReturnToRamps.Select(item => item.Description).ShouldBe(["First", "Second"]);
         foreach (var occurrence in reloaded.ReturnToRamps)
         {
@@ -71,7 +81,12 @@ public sealed class ReturnToRampPersistenceTests
         first.ServiceLines.Count(item => item.IsReturnToRamp).ShouldBe(2);
         first.Tasks.Count(item => item.IsReturnToRamp).ShouldBe(2);
 
+        first.SetReturnToRampCustomerSignature(first.ReturnToRamps[0].Id, "original-signature", "original.png", "image/png", 100, Now).IsSuccess.ShouldBeTrue();
         var cloned = WorkOrderReturnToRampCloner.Clone([first, second]);
+        var merged = CreateWorkOrder(flight, cloned);
+        merged.ReturnToRamps.ShouldAllBe(item => item.CustomerSignatureReference == null);
+        merged.ReturnToRamps.Select(item => item.Sequence).ShouldBe([1, 2, 3]);
+        first.ReturnToRamps[0].CustomerSignatureReference.ShouldBe("original-signature");
 
         cloned.Select(item => item.Description).ShouldBe(["First", "Second", "Third"]);
         cloned.SelectMany(item => item.ServiceLines).Count().ShouldBe(3);
@@ -108,6 +123,31 @@ public sealed class ReturnToRampPersistenceTests
 
         AssertCompositeOwnershipForeignKey<WorkOrderServiceLine>(db);
         AssertCompositeOwnershipForeignKey<WorkOrderTask>(db);
+    }
+
+    [Fact]
+    public void Occurrence_numbers_survive_edits_and_are_not_reused_after_removal()
+    {
+        var first = Occurrence(0, "First");
+        var second = Occurrence(60, "Second");
+        var workOrder = CreateWorkOrder(CreateFlight(), [first, second]);
+        var firstId = workOrder.ReturnToRamps[0].Id;
+        var edited = first with { Id = firstId, Description = "Edited", Window = TimeWindow.Create(Now.AddHours(-1), Now.AddHours(1)).Value };
+        workOrder.UpdateDetails(WorkOrderType.Completion, workOrder.ActualFlightNumber, null, null, null, null, null, [], [], [edited], Now).IsSuccess.ShouldBeTrue();
+        workOrder.ReturnToRamps.ShouldHaveSingleItem().Sequence.ShouldBe(1);
+        var appended = workOrder.AppendReturnToRamp(Occurrence(120, "Third"), Guid.NewGuid(), Now);
+        appended.IsSuccess.ShouldBeTrue();
+        appended.Value.Sequence.ShouldBe(3);
+        workOrder.LastReturnToRampSequence.ShouldBe(3);
+    }
+
+    [Fact]
+    public void Model_requires_unique_occurrence_numbers_per_work_order()
+    {
+        using var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
+            .UseSqlServer("Server=localhost;Database=operations-model;Integrated Security=true;TrustServerCertificate=true").Options);
+        var entity = db.Model.FindEntityType(typeof(WorkOrderReturnToRamp)).ShouldNotBeNull();
+        entity.GetIndexes().ShouldContain(index => index.IsUnique && index.Properties.Select(property => property.Name).SequenceEqual(new[] { "WorkOrderId", "Sequence" }));
     }
 
     private static Flight CreateFlight() => Flight.ScheduleNew(

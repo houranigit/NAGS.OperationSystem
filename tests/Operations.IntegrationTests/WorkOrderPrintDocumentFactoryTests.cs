@@ -395,7 +395,8 @@ public sealed class WorkOrderPrintDocumentFactoryTests
             Guid.NewGuid(),
             now.AddMinutes(130),
             [],
-            [task]);
+            [task],
+            Sequence: 1);
         var source = baseline with
         {
             WorkOrder = baseline.WorkOrder with
@@ -407,10 +408,47 @@ public sealed class WorkOrderPrintDocumentFactoryTests
 
         var ddl = DdlWriter.WriteToString(WorkOrderPrintDocumentFactory.BuildDocument(source));
         var toolRegister = Between(ddl, "Tools Used (1)", "General Support (0)");
-        var attachmentRegister = Between(ddl, "Attachment Register (1)", "Approval and Customer Acceptance");
+        var attachmentRegister = Between(ddl, "Attachment Register (1)", "RTR no. 1 - Customer Acceptance");
 
         CountOccurrences(toolRegister, toolName).ShouldBe(1);
         CountOccurrences(attachmentRegister, attachmentName).ShouldBe(1);
+        CountOccurrences(ddl, "CA-01  CORRECTIVE ACTION").ShouldBe(2); // One normal action and one in the RTR section.
+    }
+
+    [Fact]
+    public void Print_KeepsNumberedReturnActivitiesAndOptionalSignaturesSeparateFromWorkOrder()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var now = baseline.WorkOrder.ScheduledArrivalUtc;
+        var firstId = Guid.NewGuid();
+        var signature = baseline.CustomerSignatureContent!;
+        var first = new WorkOrderReturnToRampDto(
+            firstId, now.AddHours(4), now.AddHours(5), "First recorded return", Guid.NewGuid(), now,
+            [baseline.WorkOrder.ServiceLines[0] with { Id = Guid.NewGuid(), ServiceName = "RTR ONLY SERVICE" }],
+            [], Sequence: 1,
+            CustomerSignature: new WorkOrderSignatureDto("return.png", "image/png", signature.Length, now.AddHours(5)));
+        var second = new WorkOrderReturnToRampDto(
+            Guid.NewGuid(), now.AddHours(2), now.AddHours(3), "Second recorded return", Guid.NewGuid(), now,
+            [], [baseline.WorkOrder.Tasks[0] with { Id = Guid.NewGuid(), Description = "RTR ONLY TASK" }],
+            Sequence: 2);
+        var source = baseline with
+        {
+            WorkOrder = baseline.WorkOrder with { ReturnToRamps = [second, first] },
+            ReturnToRampSignatures = new Dictionary<Guid, byte[]> { [firstId] = signature }
+        };
+
+        var ddl = DdlWriter.WriteToString(WorkOrderPrintDocumentFactory.BuildDocument(source, TimeZoneInfo.Utc));
+        var firstSection = Between(ddl, "RTR no. 1\n", "RTR no. 2\n");
+        firstSection.ShouldContain("RTR ONLY SERVICE");
+        firstSection.ShouldNotContain("RTR ONLY TASK");
+        firstSection.ShouldContain("RTR no. 1 - Customer Acceptance (Optional)");
+        firstSection.ShouldContain("23:00 +00:00");
+        firstSection.ShouldContain("base64:");
+        var secondSection = ddl[ddl.IndexOf("RTR no. 2\n", StringComparison.Ordinal)..];
+        secondSection.ShouldContain("RTR ONLY TASK");
+        secondSection.ShouldNotContain("RTR ONLY SERVICE");
+        secondSection.ShouldNotContain("base64:");
+        WorkOrderPrintDocumentFactory.Create(source).Content.Length.ShouldBeGreaterThan(20_000);
     }
 
     [Fact]

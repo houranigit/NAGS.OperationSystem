@@ -325,7 +325,9 @@ public sealed record WorkOrderReturnToRampDto(
     Guid RecordedByUserId,
     DateTimeOffset CreatedAtUtc,
     IReadOnlyList<WorkOrderServiceLineDto> ServiceLines,
-    IReadOnlyList<WorkOrderTaskDto> Tasks);
+    IReadOnlyList<WorkOrderTaskDto> Tasks,
+    int Sequence = 0,
+    WorkOrderSignatureDto? CustomerSignature = null);
 
 public sealed record ApprovedWorkOrderPrintDto(
     WorkOrderDetailDto WorkOrder,
@@ -334,7 +336,8 @@ public sealed record ApprovedWorkOrderPrintDto(
     string? ContractNumber,
     IReadOnlyList<WorkOrderPrintStaffDto> Staff,
     byte[]? CustomerSignatureContent,
-    string? CustomerSignatureContentType);
+    string? CustomerSignatureContentType,
+    IReadOnlyDictionary<Guid, byte[]>? ReturnToRampSignatures = null);
 
 public sealed record WorkOrderPrintFlightDto(
     string CurrentFlightNumber,

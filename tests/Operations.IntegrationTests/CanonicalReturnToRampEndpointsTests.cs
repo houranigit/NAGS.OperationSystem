@@ -44,7 +44,10 @@ public sealed class CanonicalReturnToRampEndpointsTests(OperationsApiFactory fac
             now.AddMinutes(-20),
             now.AddMinutes(20),
             "First occurrence",
-            attachmentBytes);
+            attachmentBytes) with
+        {
+            CustomerSignature = new WorkOrderSignatureRequest(Convert.ToBase64String([0x89, 0x50, 0x4e, 0x47]), "rtr-signature.png", "image/png")
+        };
         var firstResponse = await author.Client.PostAsJsonAsync(
             $"{Base}/flights/{flightId}/return-to-ramps",
             firstRequest);
@@ -75,21 +78,27 @@ public sealed class CanonicalReturnToRampEndpointsTests(OperationsApiFactory fac
         occurrences.Select(item => item.Id).ShouldBe([firstId, secondId]);
         occurrences.Select(item => item.Description).ShouldBe(["First occurrence", "Second occurrence"]);
 
+        occurrences.Select(item => item.Sequence).ShouldBe([1, 2]);
+        occurrences[0].CustomerSignature.ShouldNotBeNull().FileName.ShouldBe("rtr-signature.png");
+        occurrences[1].CustomerSignature.ShouldBeNull();
+        var signatureResponse = await author.Client.GetAsync($"{Base}/work-orders/{workOrderId}/return-to-ramps/{firstId}/signature");
+        signatureResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await signatureResponse.Content.ReadAsByteArrayAsync()).ShouldBe(new byte[] { 0x89, 0x50, 0x4e, 0x47 });
+        (await author.Client.GetAsync($"{Base}/work-orders/{workOrderId}/return-to-ramps/{secondId}/signature")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         var first = occurrences[0];
         var second = occurrences[1];
-        first.ServiceLines.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        first.ServiceLines.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeFalse();
         first.Tasks.ShouldBeEmpty();
         second.ServiceLines.ShouldBeEmpty();
-        second.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeTrue();
+        second.Tasks.ShouldHaveSingleItem().IsReturnToRamp.ShouldBeFalse();
 
-        // The top-level collections remain a rolling-client compatibility view. Every canonical
-        // nested activity must occur there exactly once, never once per Include branch.
+        // Canonical activities belong only to their occurrence, outside the standard collections.
         var nestedServiceIds = occurrences.SelectMany(item => item.ServiceLines).Select(item => item.Id).ToList();
         var nestedTaskIds = occurrences.SelectMany(item => item.Tasks).Select(item => item.Id).ToList();
         nestedServiceIds.Count.ShouldBe(nestedServiceIds.Distinct().Count());
         nestedTaskIds.Count.ShouldBe(nestedTaskIds.Distinct().Count());
-        detail.ServiceLines.Where(item => item.IsReturnToRamp).Select(item => item.Id).ShouldBe(nestedServiceIds);
-        detail.Tasks.Where(item => item.IsReturnToRamp).Select(item => item.Id).ShouldBe(nestedTaskIds);
+        detail.ServiceLines.Select(item => item.Id).Intersect(nestedServiceIds).ShouldBeEmpty();
+        detail.Tasks.Select(item => item.Id).Intersect(nestedTaskIds).ShouldBeEmpty();
 
         var nestedService = first.ServiceLines.ShouldHaveSingleItem();
         var nestedAttachment = nestedService.Attachments.ShouldNotBeNull().ShouldHaveSingleItem();
@@ -182,7 +191,7 @@ public sealed class CanonicalReturnToRampEndpointsTests(OperationsApiFactory fac
         recorded.Id.ShouldBe(occurrenceId);
         recorded.Description.ShouldBe("After approval");
         var nestedTask = recorded.Tasks.ShouldHaveSingleItem();
-        nestedTask.IsReturnToRamp.ShouldBeTrue();
+        nestedTask.IsReturnToRamp.ShouldBeFalse();
         var nestedAttachment = nestedTask.Attachments.ShouldNotBeNull().ShouldHaveSingleItem();
 
         using (var deleteAttachment = new HttpRequestMessage(

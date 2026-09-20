@@ -85,6 +85,8 @@ data class OutboxPayload(
         val description: String? = null,
         val serviceLines: List<ServiceLineInput> = emptyList(),
         val tasks: List<TaskInput> = emptyList(),
+        val customerSignaturePngBase64: String? = null,
+        val removeCustomerSignature: Boolean = false,
     )
 
     /** Flight-only fields needed by the scratch endpoint that aren't on the work-order body. */
@@ -211,3 +213,13 @@ private fun migrateLegacyOutboxServiceLinePerformers(root: JsonElement): JsonEle
         rootObject + ("workOrder" to JsonObject(workOrder + ("serviceLines" to migratedLines))),
     )
 }
+
+/** Shared by both RTR submission routes so offline signatures retain the same PNG contract. */
+internal fun String?.toSignatureInput(): com.nags.operations.data.api.WorkOrderSignatureInput? =
+    this?.let {
+        com.nags.operations.data.api.WorkOrderSignatureInput(
+            base64Content = it,
+            fileName = "customer-signature.png",
+            contentType = "image/png",
+        )
+    }

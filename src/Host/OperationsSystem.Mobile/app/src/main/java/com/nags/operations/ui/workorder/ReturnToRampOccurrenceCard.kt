@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,13 +31,14 @@ import com.nags.operations.data.db.entities.MaterialEntity
 import com.nags.operations.data.db.entities.ServiceEntity
 import com.nags.operations.data.db.entities.ToolEntity
 import com.nags.operations.data.db.entities.allowedPerformedServiceIds
+import com.nags.operations.ui.components.SignatureField
 import com.nags.operations.ui.components.WorkOrderDateTimePickerField
 import java.time.ZoneId
 
 /** Full nested editor shared by the work-order wizard and standalone flight action. */
 @Composable
 fun ReturnToRampOccurrenceCard(
-    occurrenceNumber: Int,
+    occurrenceNumber: Int?,
     row: ReturnToRampFormRow,
     errors: ReturnToRampSubmitFieldErrors?,
     flightOffset: ZoneId,
@@ -74,7 +76,7 @@ fun ReturnToRampOccurrenceCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Return to ramp $occurrenceNumber",
+                    occurrenceNumber?.let { "RTR no. $it" } ?: "New RTR",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
@@ -84,6 +86,14 @@ fun ReturnToRampOccurrenceCard(
                         Icon(Icons.Default.DeleteOutline, contentDescription = "Remove return to ramp")
                     }
                 }
+            }
+
+            if (occurrenceNumber == null) {
+                Text(
+                    "The RTR number is assigned when this record syncs.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             WorkOrderDateTimePickerField(
@@ -190,6 +200,38 @@ fun ReturnToRampOccurrenceCard(
                 Spacer(Modifier.width(10.dp))
                 Text("Add task")
             }
+
+            FormSectionTitle("Customer signature (optional)")
+            row.existingCustomerSignatureName?.let { name ->
+                Text(
+                    when {
+                        row.customerSignaturePng != null -> "The new signature will replace $name."
+                        row.removeCustomerSignature -> "The saved signature will be removed when you submit."
+                        else -> "Saved signature: $name. Add a new signature to replace it."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(
+                    onClick = {
+                        onChange(row.copy(
+                            customerSignaturePng = null,
+                            removeCustomerSignature = !row.removeCustomerSignature,
+                        ))
+                    },
+                ) {
+                    Text(if (row.removeCustomerSignature) "Keep saved signature" else "Remove saved signature")
+                }
+            }
+            SignatureField(
+                signaturePng = row.customerSignaturePng,
+                onChange = { png ->
+                    onChange(row.copy(
+                        customerSignaturePng = png,
+                        removeCustomerSignature = if (png != null) false else row.removeCustomerSignature,
+                    ))
+                },
+            )
         }
     }
 }

@@ -20,6 +20,36 @@ public sealed class ApprovedWorkOrderPrintQueryTests
     private static readonly DateTimeOffset Now = new(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task PrintSource_LoadsEachReturnSignatureIndependentlyAndKeepsActivitiesNested()
+    {
+        var flight = CreateFlight();
+        var owner = Guid.NewGuid();
+        var workOrder = CreateCompletionWorkOrder(flight, owner, approve: false);
+        var staff = workOrder.ServiceLines.Single().PerformedBy.Single().StaffMember;
+        var window = TimeWindow.Create(Now.AddHours(3), Now.AddHours(4)).Value;
+        var input = new WorkOrderReturnToRampInput(null, window, "Ramp inspection",
+            [new WorkOrderServiceLineInput(new ServiceSnapshot(Guid.NewGuid(), "RTR Service"), [staff], window, null)], []);
+        var first = workOrder.AppendReturnToRamp(input, owner, Now.AddHours(3)).Value;
+        var second = workOrder.AppendReturnToRamp(input, owner, Now.AddHours(4)).Value;
+        workOrder.SetReturnToRampCustomerSignature(first.Id, "signatures/rtr-one.png", "rtr-one.png", "image/png", 4, Now.AddHours(4))
+            .IsSuccess.ShouldBeTrue();
+        byte[] signature = [0x89, 0x50, 0x4E, 0x47];
+        var storage = new TestFileStorage(signature);
+
+        var result = await new WorkOrderPrintSourceBuilder(storage, new TestMasterDataReader())
+            .BuildAsync(workOrder, flight, CancellationToken.None);
+
+        result.WorkOrder.ServiceLines.ShouldHaveSingleItem().ServiceName.ShouldBe("Deicing");
+        result.WorkOrder.ReturnToRamps!.Select(item => item.Sequence).ShouldBe([1, 2]);
+        result.WorkOrder.ReturnToRamps!.ShouldAllBe(item => item.ServiceLines.Count == 1);
+        result.CustomerSignatureContent.ShouldBeNull();
+        result.ReturnToRampSignatures!.Count.ShouldBe(1);
+        result.ReturnToRampSignatures[first.Id].ShouldBe(signature);
+        result.ReturnToRampSignatures.ContainsKey(second.Id).ShouldBeFalse();
+        storage.OpenedStorageKey.ShouldBe("signatures/rtr-one.png");
+    }
+
+    [Fact]
     public async Task Handle_ProjectsApprovedCompletionWithFullDetailAndOptionalSignature()
     {
         await using var db = NewDb();

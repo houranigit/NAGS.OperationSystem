@@ -21,12 +21,14 @@ public sealed class WorkOrderReturnToRamp : Entity<Guid>
     internal WorkOrderReturnToRamp(
         Guid id,
         Guid workOrderId,
+        int sequence,
         WorkOrderReturnToRampInput input,
         Guid recordedByUserId,
         DateTimeOffset createdAtUtc)
     {
         Id = id;
         WorkOrderId = workOrderId;
+        Sequence = sequence;
         RecordedByUserId = recordedByUserId;
         CreatedAtUtc = createdAtUtc.ToUniversalTime();
         ApplyMetadata(input);
@@ -38,6 +40,35 @@ public sealed class WorkOrderReturnToRamp : Entity<Guid>
     }
 
     public Guid WorkOrderId { get; private set; }
+    public int Sequence { get; private set; }
+    public string? CustomerSignatureReference { get; private set; }
+    public string? CustomerSignatureFileName { get; private set; }
+    public string? CustomerSignatureContentType { get; private set; }
+    public long? CustomerSignatureSize { get; private set; }
+    public DateTimeOffset? CustomerSignedAtUtc { get; private set; }
+
+    internal Result SetCustomerSignature(string storageReference, string fileName, string contentType, long size, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(storageReference) || string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(contentType) || size <= 0)
+            return Error.Validation("A valid signature file is required.", "Operations.ReturnToRamp.SignatureInvalid");
+        CustomerSignatureReference = storageReference.Trim();
+        var trimmedFileName = Path.GetFileName(fileName.Trim());
+        CustomerSignatureFileName = trimmedFileName.Length <= 255 ? trimmedFileName : trimmedFileName[..255];
+        CustomerSignatureContentType = contentType.Trim();
+        CustomerSignatureSize = size;
+        CustomerSignedAtUtc = now.ToUniversalTime();
+        return Result.Success();
+    }
+
+    internal void RemoveCustomerSignature()
+    {
+        CustomerSignatureReference = null;
+        CustomerSignatureFileName = null;
+        CustomerSignatureContentType = null;
+        CustomerSignatureSize = null;
+        CustomerSignedAtUtc = null;
+    }
+
     public TimeWindow Window { get; private set; } = null!;
     public string? Description { get; private set; }
     public Guid RecordedByUserId { get; private set; }

@@ -7,6 +7,13 @@ public sealed class ReturnToRampDraft
 {
     public Guid Key { get; } = Guid.NewGuid();
     public Guid? Id { get; set; }
+    public int Sequence { get; set; }
+    public WorkOrderSignatureModel? CustomerSignature { get; set; }
+    public ReturnToRampSignatureDraft? PendingCustomerSignature { get; set; }
+    public bool RemoveCustomerSignature { get; set; }
+    public string Label => Sequence > 0 ? $"RTR no. {Sequence}" : "New RTR";
+    public bool HasCustomerSignature => PendingCustomerSignature is not null || (CustomerSignature is not null && !RemoveCustomerSignature);
+    public string SignatureStatus => PendingCustomerSignature is not null ? "Signature pending" : HasCustomerSignature ? "Signed" : "No signature";
     public DateTime? FromLocal { get; set; }
     public DateTime? ToLocal { get; set; }
     public string? Description { get; set; }
@@ -18,6 +25,10 @@ public sealed class ReturnToRampDraft
     public ReturnToRampDraft Clone() => new()
     {
         Id = Id,
+        Sequence = Sequence,
+        CustomerSignature = CustomerSignature,
+        PendingCustomerSignature = PendingCustomerSignature?.Clone(),
+        RemoveCustomerSignature = RemoveCustomerSignature,
         FromLocal = FromLocal,
         ToLocal = ToLocal,
         Description = Description,
@@ -25,6 +36,20 @@ public sealed class ReturnToRampDraft
         CreatedAtUtc = CreatedAtUtc,
         ServiceLines = ServiceLines.Select(item => item.Clone()).ToList(),
         Tasks = Tasks.Select(item => item.Clone()).ToList()
+    };
+}
+
+public sealed class ReturnToRampSignatureDraft
+{
+    public string FileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = "image/png";
+    public byte[] Content { get; set; } = [];
+
+    public ReturnToRampSignatureDraft Clone() => new()
+    {
+        FileName = FileName,
+        ContentType = ContentType,
+        Content = Content.ToArray()
     };
 }
 
@@ -150,6 +175,8 @@ internal static class ReturnToRampDraftMapper
     public static ReturnToRampDraft FromModel(WorkOrderReturnToRampModel source, UserTimeZone timeZone) => new()
     {
         Id = source.Id,
+        Sequence = source.Sequence,
+        CustomerSignature = source.CustomerSignature,
         FromLocal = timeZone.ToLocalDateTime(source.FromUtc),
         ToLocal = timeZone.ToLocalDateTime(source.ToUtc),
         Description = source.Description,
@@ -174,7 +201,11 @@ internal static class ReturnToRampDraftMapper
         timeZone.ToUtc(source.ToLocal)!.Value,
         source.Description,
         source.ServiceLines.Select(item => ToServiceRequest(item, timeZone)).ToList(),
-        source.Tasks.Select(item => ToTaskRequest(item, timeZone)).ToList());
+        source.Tasks.Select(item => ToTaskRequest(item, timeZone)).ToList(),
+        source.PendingCustomerSignature is { } signature
+            ? new WorkOrderSignatureRequestModel(Convert.ToBase64String(signature.Content), signature.FileName, signature.ContentType)
+            : null,
+        source.PendingCustomerSignature is null && source.RemoveCustomerSignature);
 
     public static IReadOnlyList<WorkOrderReturnToRampRequestModel> ToRequests(
         IEnumerable<ReturnToRampDraft> source,
@@ -321,6 +352,8 @@ internal static class ReturnToRampDraftValidation
             messages.Add($"{prefix} description must be at most 2000 characters.");
         if (draft.ServiceLines.Count == 0 && draft.Tasks.Count == 0)
             messages.Add($"{prefix} requires at least one service or task.");
+        if (draft.PendingCustomerSignature is { } signature && ReturnToRampSignatureValidation.Validate(signature) is { } signatureError)
+            messages.Add($"{prefix}: {signatureError}");
         AddZoneValidation(messages, $"{prefix} From", draft.FromLocal, timeZone);
         AddZoneValidation(messages, $"{prefix} To", draft.ToLocal, timeZone);
 
@@ -434,6 +467,21 @@ internal static class ReturnToRampDraftValidation
     }
 
     private static bool IsMissing(DateTime? value) => value is null || value.Value == default;
+}
+
+internal static class ReturnToRampSignatureValidation
+{
+    public const long MaxBytes = 2 * 1024 * 1024;
+
+    public static string? Validate(ReturnToRampSignatureDraft signature)
+    {
+        if (signature.Content.Length == 0 || signature.Content.Length > MaxBytes)
+            return "Customer signature must be a non-empty PNG image of at most 2 MB.";
+        if (!string.Equals(signature.ContentType, "image/png", StringComparison.OrdinalIgnoreCase) ||
+            !signature.Content.AsSpan().StartsWith(new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a }))
+            return "Customer signature must be a PNG image.";
+        return null;
+    }
 }
 
 internal static class CompletionWorkOrderWizard

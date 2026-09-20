@@ -12,7 +12,7 @@
     {
         <section class="rtr-card rtr-window-card">
             <div class="rtr-section-title">
-                <span><RadzenIcon Icon="u_turn_left" />Occurrence window</span>
+                <span><RadzenIcon Icon="u_turn_left" />@model.Label</span>
                 <small>All times use @UserTimeZone.Id</small>
             </div>
             <div class="rtr-grid-2">
@@ -156,6 +156,56 @@
             }
         </section>
 
+        <section class="rtr-card">
+            <div class="rtr-section-title">
+                <span><RadzenIcon Icon="draw" />Customer signature <small>optional</small></span>
+                @if (!ViewOnly)
+                {
+                    <div class="rtr-upload-actions">
+                        <label><RadzenIcon Icon="upload" /><span>@(model.HasCustomerSignature ? "Replace PNG" : "Upload PNG")</span><InputFile OnChange="@UploadSignatureAsync" accept="image/png" disabled="@isAttachmentBusy" /></label>
+                    </div>
+                }
+            </div>
+            @if (model.PendingCustomerSignature is { } pendingSignature)
+            {
+                <div class="rtr-attachment-row">
+                    <span class="rtr-attachment-name"><strong>@pendingSignature.FileName</strong><small>Pending · @FormatFileSize(pendingSignature.Content.LongLength)</small></span>
+                    @if (!ViewOnly)
+                    {
+                        <RadzenButton Text="Clear upload" Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      ButtonType="ButtonType.Button" Disabled="@isAttachmentBusy" Click="@ClearPendingSignature" />
+                    }
+                </div>
+                <div class="rtr-preview"><img src="@PendingSignaturePreview" alt="Customer signature for @model.Label" /></div>
+            }
+            else if (model.CustomerSignature is { } signature && !model.RemoveCustomerSignature)
+            {
+                <div class="rtr-attachment-row">
+                    <span class="rtr-attachment-name"><strong>@signature.FileName</strong><small>Signed @UserTimeZone.ToLocal(signature.SignedAtUtc).ToString("yyyy-MM-dd HH:mm") · @FormatFileSize(signature.Size)</small></span>
+                    <RadzenButton Text="View signature" Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Disabled="@isAttachmentBusy" Click="@LoadSignatureAsync" />
+                    @if (!ViewOnly)
+                    {
+                        <RadzenButton Text="Remove" Icon="delete" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      ButtonType="ButtonType.Button" Disabled="@isAttachmentBusy" Click="@RemoveSignature" />
+                    }
+                </div>
+                @if (signaturePreviewUrl is not null)
+                {
+                    <div class="rtr-preview"><img src="@signaturePreviewUrl" alt="Customer signature for @model.Label" /></div>
+                }
+            }
+            else
+            {
+                <div class="rtr-empty">@(model.RemoveCustomerSignature ? "The signature will be removed when the work order is saved." : "No customer signature. You can save this RTR without one.")</div>
+                @if (model.RemoveCustomerSignature && !ViewOnly)
+                {
+                    <RadzenButton Text="Keep saved signature" Icon="undo" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  ButtonType="ButtonType.Button" Click="@KeepSavedSignature" />
+                }
+            }
+        </section>
+
         @if (validationMessages.Count > 0)
         {
             <div class="rtr-errors" role="alert">
@@ -230,11 +280,11 @@
             var materialsTask = MasterData.GetMaterialOptionsAsync();
             var supportsTask = MasterData.GetGeneralSupportOptionsAsync();
             await Task.WhenAll(servicesTask, staffTask, toolsTask, materialsTask, supportsTask);
-            services = servicesTask.Result;
-            staff = staffTask.Result;
-            tools = toolsTask.Result.Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
-            materials = materialsTask.Result.Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
-            supports = supportsTask.Result.Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+            services = await servicesTask;
+            staff = await staffTask;
+            tools = (await toolsTask).Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+            materials = (await materialsTask).Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
+            supports = (await supportsTask).Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();
         }
         catch (ApiException ex)
         {

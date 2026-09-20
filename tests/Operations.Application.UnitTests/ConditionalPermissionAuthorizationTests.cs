@@ -147,6 +147,7 @@ public sealed class ConditionalPermissionAuthorizationTests
             inputBuilder: null!,
             resolver: null!,
             allocator: null!,
+            storage: null!,
             workOrderTimeline: null!,
             flightTimeline: null!,
             mobileSync: null!,

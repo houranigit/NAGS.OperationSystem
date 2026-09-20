@@ -216,8 +216,89 @@ public sealed class WorkOrderInlineFileApplierTests
             Now).Value;
     }
 
+    [Fact]
+    public async Task Occurrence_signatures_are_optional_and_independent_and_support_replace_and_remove()
+    {
+        var workOrder = CreateEmptyWorkOrder();
+        var first = AppendOccurrence(workOrder);
+        var second = AppendOccurrence(workOrder);
+        var storage = new RecordingFileStorage();
+        var signature = new WorkOrderSignatureCommand(Convert.ToBase64String([0x89, 0x50, 0x4e, 0x47]), "rtr-one.png", "image/png");
+        var payload = OccurrencePayload(first with { CustomerSignature = signature }, second);
+        var applied = await WorkOrderInlineFileApplier.ApplyAsync(workOrder, payload, storage, Now, CancellationToken.None);
+        applied.IsSuccess.ShouldBeTrue();
+        workOrder.ReturnToRamps[0].CustomerSignatureReference.ShouldBe("work-order-signatures/rtr-one.png");
+        workOrder.ReturnToRamps[1].CustomerSignatureReference.ShouldBeNull();
+        workOrder.CustomerSignatureReference.ShouldBeNull();
+        WorkOrderAttachmentStorage.References(workOrder).ShouldContain("work-order-signatures/rtr-one.png");
+
+        // Omitting the signature on an occurrence leaves the existing file attached.
+        (await WorkOrderInlineFileApplier.ApplyAsync(workOrder, OccurrencePayload(first, second), storage, Now, CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        workOrder.ReturnToRamps[0].CustomerSignatureReference.ShouldBe("work-order-signatures/rtr-one.png");
+        storage.SaveCallCount.ShouldBe(1);
+
+        (await WorkOrderInlineFileApplier.ApplyAsync(workOrder, OccurrencePayload(first with { CustomerSignature = signature with { FileName = "replacement.png" } }, second), storage, Now, CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        workOrder.ReturnToRamps[0].CustomerSignatureReference.ShouldBe("work-order-signatures/replacement.png");
+        WorkOrderAttachmentStorage.References(workOrder).ShouldNotContain("work-order-signatures/rtr-one.png");
+        (await WorkOrderInlineFileApplier.ApplyAsync(workOrder, OccurrencePayload(first with { RemoveCustomerSignature = true }, second), storage, Now, CancellationToken.None)).IsSuccess.ShouldBeTrue();
+        workOrder.ReturnToRamps[0].CustomerSignatureReference.ShouldBeNull();
+        workOrder.ReturnToRamps[0].CustomerSignedAtUtc.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Invalid_later_occurrence_signature_cleans_up_previously_stored_files()
+    {
+        var workOrder = CreateEmptyWorkOrder();
+        var first = AppendOccurrence(workOrder);
+        var second = AppendOccurrence(workOrder);
+        var storage = new RecordingFileStorage();
+        var valid = new WorkOrderSignatureCommand(Convert.ToBase64String([0x89, 0x50, 0x4e, 0x47]), "valid.png", "image/png");
+        var invalid = valid with { Base64Content = Convert.ToBase64String([1, 2, 3, 4]), FileName = "invalid.png" };
+        var result = await WorkOrderInlineFileApplier.ApplyAsync(workOrder,
+            OccurrencePayload(first with { CustomerSignature = valid }, second with { CustomerSignature = invalid }), storage, Now, CancellationToken.None);
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.WorkOrder.SignatureInvalidSignature");
+        storage.DeletedReferences.ShouldBe(["work-order-signatures/valid.png"]);
+    }
+
+    [Fact]
+    public async Task New_occurrence_signatures_match_creation_sequence_when_timestamps_are_equal()
+    {
+        var workOrder = CreateEmptyWorkOrder();
+        var first = AppendOccurrence(workOrder) with { Id = null };
+        var second = AppendOccurrence(workOrder) with { Id = null };
+        var signature = new WorkOrderSignatureCommand(Convert.ToBase64String([0x89, 0x50, 0x4e, 0x47]), "first.png", "image/png");
+        var result = await WorkOrderInlineFileApplier.ApplyAsync(workOrder,
+            OccurrencePayload(first with { CustomerSignature = signature }, second with { CustomerSignature = signature with { FileName = "second.png" } }), new RecordingFileStorage(), Now, CancellationToken.None);
+        result.IsSuccess.ShouldBeTrue();
+        workOrder.ReturnToRamps.Single(item => item.Sequence == 1).CustomerSignatureFileName.ShouldBe("first.png");
+        workOrder.ReturnToRamps.Single(item => item.Sequence == 2).CustomerSignatureFileName.ShouldBe("second.png");
+    }
+
+    [Fact]
+    public void Inline_aggregate_limit_includes_occurrence_signatures()
+    {
+        var signature = new WorkOrderSignatureCommand(Convert.ToBase64String(new byte[WorkOrderInlineFilePolicy.MaxAggregateBytes + 1]), "large.png", "image/png");
+        var occurrence = new WorkOrderReturnToRampCommand(null, Now, Now.AddMinutes(10), null, [], [], signature);
+        WorkOrderInlineFilePolicy.Validate(OccurrencePayload(occurrence)).Error.Code.ShouldBe("Operations.WorkOrder.InlineFilesTooLarge");
+    }
+
+    private static WorkOrderReturnToRampCommand AppendOccurrence(WorkOrder workOrder)
+    {
+        var service = workOrder.ServiceLines[0];
+        var input = new WorkOrderReturnToRampInput(null, service.Window, "Return to ramp",
+            [new WorkOrderServiceLineInput(service.Service, service.PerformedBy.Select(item => item.StaffMember).ToList(), service.Window, null)], []);
+        var occurrence = workOrder.AppendReturnToRamp(input, Guid.NewGuid(), Now).Value;
+        return new WorkOrderReturnToRampCommand(occurrence.Id, occurrence.Window.From, occurrence.Window.To, occurrence.Description,
+            [new WorkOrderServiceLineCommand(service.Service.ServiceId, service.PerformedBy.Select(item => item.StaffMember.StaffMemberId).ToList(), service.Window.From, service.Window.To, null, Id: occurrence.ServiceLines[0].Id)], []);
+    }
+
+    private static WorkOrderEditableCommandPayload OccurrencePayload(params WorkOrderReturnToRampCommand[] occurrences) =>
+        new(null, null, null, null, null, null, null, null, [], [], ReturnToRamps: occurrences);
+
     private sealed class RecordingFileStorage : IFileStorage
     {
+        public List<string> DeletedReferences { get; } = [];
         public int SaveCallCount { get; private set; }
         public string? SavedContainer { get; private set; }
         public byte[]? SavedContent { get; private set; }
@@ -247,7 +328,10 @@ public sealed class WorkOrderInlineFileApplierTests
 
         public Task DeleteAsync(
             string storageKey,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            DeletedReferences.Add(storageKey);
+            return Task.CompletedTask;
+        }
     }
 }

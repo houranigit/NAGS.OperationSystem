@@ -180,6 +180,7 @@ class OutboxPayloadCompatibilityTest {
                 fromIso = "2026-08-08T10:00:00Z",
                 toIso = "2026-08-08T10:30:00Z",
                 description = "Occurrence",
+                customerSignaturePngBase64 = "AQID",
                 tasks = listOf(
                     OutboxPayload.TaskInput(
                         taskType = "Minor",
@@ -198,5 +199,31 @@ class OutboxPayloadCompatibilityTest {
         assertTrue(decoded.usesCanonicalFlightReturnToRampRoute())
         assertNull(decoded.workOrder)
         assertEquals("Occurrence", decoded.returnToRamp?.description)
+        assertEquals("AQID", decoded.returnToRamp?.customerSignaturePngBase64)
+        assertEquals(false, decoded.returnToRamp?.removeCustomerSignature)
     }
+    @Test
+    fun grouped_rtr_payload_from_older_build_preserves_existing_signature_by_default() {
+        val occurrence = json.decodeFromString<OutboxPayload.ReturnToRampInput>(
+            """{"id":"rtr-1","fromIso":"2026-08-08T10:00:00Z","toIso":"2026-08-08T10:30:00Z"}""",
+        )
+        assertNull(occurrence.customerSignaturePngBase64)
+        assertFalse(occurrence.removeCustomerSignature)
+    }
+
+    @Test
+    fun queued_rtr_signature_removal_survives_offline_round_trip() {
+        val occurrence = OutboxPayload.ReturnToRampInput(
+            id = "rtr-1",
+            fromIso = "2026-08-08T10:00:00Z",
+            toIso = "2026-08-08T10:30:00Z",
+            removeCustomerSignature = true,
+        )
+        val decoded = json.decodeFromString<OutboxPayload.ReturnToRampInput>(
+            json.encodeToString(OutboxPayload.ReturnToRampInput.serializer(), occurrence),
+        )
+        assertTrue(decoded.removeCustomerSignature)
+        assertNull(decoded.customerSignaturePngBase64)
+    }
+
 }

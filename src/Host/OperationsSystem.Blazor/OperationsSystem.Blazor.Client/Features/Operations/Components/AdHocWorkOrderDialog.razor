@@ -408,9 +408,9 @@
         <div class="owf-step-toolbar">
             <div>
                 <div class="owf-section-line"><RadzenIcon Icon="u_turn_left" /><span>Return to ramps</span></div>
-                <div class="owf-rtr-step-copy">Optional. Add each occurrence separately or continue to skip this step.</div>
+                <div class="owf-rtr-step-copy">Optional. Each RTR has its own number, services, tasks, and customer signature.</div>
             </div>
-            <RadzenButton Text="Add return to ramp" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+            <RadzenButton Text="Add RTR" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
                           ButtonType="ButtonType.Button" Click="@AddReturnToRampAsync" />
         </div>
 
@@ -423,9 +423,10 @@
             <div @key="occurrence.Key" class="owf-rtr-card">
                 <div class="owf-rtr-card-icon"><RadzenIcon Icon="u_turn_left" /></div>
                 <div class="owf-rtr-card-main">
-                    <strong>@ReturnToRampWindow(occurrence)</strong>
+                    <strong>@occurrence.Label</strong>
+                    <span>@ReturnToRampWindow(occurrence)</span>
                     <span>@(string.IsNullOrWhiteSpace(occurrence.Description) ? "No description" : occurrence.Description)</span>
-                    <small>@occurrence.ServiceLines.Count service(s) · @occurrence.Tasks.Count task(s)</small>
+                    <small>@occurrence.ServiceLines.Count service(s) · @occurrence.Tasks.Count task(s) · @occurrence.SignatureStatus</small>
                 </div>
                 <div class="owf-rtr-card-actions">
                     <RadzenButton Text="Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
@@ -825,8 +826,8 @@
     private List<string> ValidateReturnToRamps()
     {
         var messages = new List<string>();
-        foreach (var (occurrence, index) in model.ReturnToRamps.Select((item, index) => (item, index + 1)))
-            messages.AddRange(ReturnToRampDraftValidation.Validate(occurrence, UserTimeZone, $"Return to ramp {index}"));
+        foreach (var occurrence in model.ReturnToRamps)
+            messages.AddRange(ReturnToRampDraftValidation.Validate(occurrence, UserTimeZone, occurrence.Label));
         return messages.Distinct().ToList();
     }
 
@@ -1053,7 +1054,7 @@
             return;
 
         var result = await DialogService.OpenAsync<ReturnToRampEditorDialog>(
-            isNew ? "Add return to ramp" : "Edit return to ramp",
+            isNew ? "Add RTR" : $"Edit {occurrence.Label}",
             new Dictionary<string, object?>
             {
                 [nameof(ReturnToRampEditorDialog.StationId)] = stationId,

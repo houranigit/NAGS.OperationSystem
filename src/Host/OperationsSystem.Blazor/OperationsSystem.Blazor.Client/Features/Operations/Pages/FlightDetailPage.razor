@@ -645,7 +645,7 @@
                 ToLocal = UserTimeZone.ToLocalDateTime(flight.ScheduledDepartureUtc)
             };
             var result = await DialogService.OpenAsync<ReturnToRampEditorDialog>(
-                "Record return to ramp",
+                "Add RTR",
                 new Dictionary<string, object?>
                 {
                     [nameof(ReturnToRampEditorDialog.StationId)] = flight.StationId,
@@ -659,7 +659,7 @@
             await Operations.RecordFlightReturnToRampAsync(
                 flight.Id,
                 ReturnToRampDraftMapper.ToRequest(saved.Draft, UserTimeZone));
-            Notifications.Notify(NotificationSeverity.Success, "Return to ramp recorded", "The occurrence and its services and tasks were added to the work order.");
+            Notifications.Notify(NotificationSeverity.Success, "RTR recorded", "The RTR, its services and tasks, and any customer signature were saved in the work order's RTR collection.");
             await LoadAsync();
         }
         catch (ApiException ex)

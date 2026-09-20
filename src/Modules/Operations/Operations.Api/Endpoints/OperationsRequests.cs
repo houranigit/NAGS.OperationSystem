@@ -208,7 +208,9 @@ public sealed record WorkOrderReturnToRampRequest(
     DateTimeOffset ToUtc,
     string? Description,
     IReadOnlyList<WorkOrderServiceLineRequest>? ServiceLines,
-    IReadOnlyList<WorkOrderTaskRequest>? Tasks)
+    IReadOnlyList<WorkOrderTaskRequest>? Tasks,
+    WorkOrderSignatureRequest? CustomerSignature = null,
+    bool RemoveCustomerSignature = false)
 {
     public WorkOrderReturnToRampCommand ToCommand() => new(
         Id,
@@ -245,7 +247,9 @@ public sealed record WorkOrderReturnToRampRequest(
                 attachment.FileName,
                 attachment.ContentType)).ToList() ?? [],
             IsReturnToRamp: false,
-            EmployeeAssignments: task.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? []);
+            EmployeeAssignments: task.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
+        CustomerSignature is null ? null : new WorkOrderSignatureCommand(CustomerSignature.Base64Content, CustomerSignature.FileName, CustomerSignature.ContentType),
+        RemoveCustomerSignature);
 }
 
 public sealed record WorkOrderTaskToolRequest(

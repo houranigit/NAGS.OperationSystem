@@ -122,11 +122,11 @@ public sealed class SubmitWorkOrderCommandHandler(
         var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(workOrder.Value, request.Payload, storage, now, cancellationToken);
         if (inlineFiles.IsFailure)
             return inlineFiles.Error;
+        await using var pendingFiles = new PendingWorkOrderFiles(storage, inlineFiles.Value);
 
         var flightState = flight.OnWorkOrderSubmitted(now);
         if (flightState.IsFailure)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return flightState.Error;
         }
 
@@ -139,17 +139,16 @@ public sealed class SubmitWorkOrderCommandHandler(
         var email = await submissionEmails.EnqueueAsync(workOrder.Value, flight, ownerUserId, cancellationToken);
         if (email.IsFailure)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return email.Error;
         }
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            pendingFiles.MarkPersisted();
         }
         catch (DbUpdateException)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return Error.Conflict("A work order conflict occurred. Reload and try again.", "Operations.WorkOrder.Conflict");
         }
 
@@ -246,6 +245,7 @@ public sealed class UpdateWorkOrderCommandHandler(
         var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(workOrder, request.Payload, storage, now, cancellationToken);
         if (inlineFiles.IsFailure)
             return inlineFiles.Error;
+        await using var pendingFiles = new PendingWorkOrderFiles(storage, inlineFiles.Value);
 
         var timelineType = previousType == request.Type
             ? WorkOrderTimelineEventType.Updated
@@ -266,15 +266,14 @@ public sealed class UpdateWorkOrderCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            pendingFiles.MarkPersisted();
         }
         catch (DbUpdateConcurrencyException)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return ConcurrencyErrors.Stale;
         }
         catch (DbUpdateException)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return Error.Conflict("Work order update conflicted with another update. Reload and try again.", "Operations.WorkOrder.UpdateConflict");
         }
 
@@ -553,6 +552,7 @@ public sealed class MergeWorkOrdersCommandHandler(
     WorkOrderInputBuilder inputBuilder,
     MasterDataResolver resolver,
     IWorkOrderNumberAllocator allocator,
+    IFileStorage storage,
     IWorkOrderTimelineWriter workOrderTimeline,
     IFlightTimelineWriter flightTimeline,
     IMobileSyncBroadcaster mobileSync,
@@ -667,6 +667,13 @@ public sealed class MergeWorkOrdersCommandHandler(
         if (generated.IsFailure)
             return generated.Error;
 
+        // New signatures may be supplied for the merged draft. Existing source signatures are
+        // deliberately retained only on their original occurrence and are never cloned.
+        var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(generated.Value, request.Payload, storage, now, cancellationToken);
+        if (inlineFiles.IsFailure)
+            return inlineFiles.Error;
+        await using var pendingFiles = new PendingWorkOrderFiles(storage, inlineFiles.Value);
+
         db.WorkOrders.Add(generated.Value);
 
         var flightState = flight.OnWorkOrderSubmitted(now);
@@ -721,6 +728,7 @@ public sealed class MergeWorkOrdersCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            pendingFiles.MarkPersisted();
         }
         catch (DbUpdateException)
         {

@@ -58,6 +58,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
     public IReadOnlyList<WorkOrderServiceLine> ServiceLines => _serviceLines.AsReadOnly();
     public IReadOnlyList<WorkOrderTask> Tasks => _tasks.AsReadOnly();
+    public int LastReturnToRampSequence { get; private set; }
     public IReadOnlyList<WorkOrderReturnToRamp> ReturnToRamps => _returnToRamps.AsReadOnly();
     public bool IsEditable => Status is WorkOrderStatus.Submitted or WorkOrderStatus.Returned;
 
@@ -618,13 +619,43 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (_returnToRamps.Any(item => item.Id == id))
             return Error.Conflict("The return-to-ramp id already belongs to this work order.", "Operations.ReturnToRamp.IdDuplicate");
 
-        var record = new WorkOrderReturnToRamp(id, Id, input, recordedByUserId, now);
+        var record = new WorkOrderReturnToRamp(id, Id, ++LastReturnToRampSequence, input, recordedByUserId, now);
         _returnToRamps.Add(record);
         _serviceLines.AddRange(record.ServiceLines);
         _tasks.AddRange(record.Tasks);
         UpdatedAtUtc = now.ToUniversalTime();
         RaiseDomainEvent(new WorkOrderReturnToRampRecorded(Id, record.Id));
         return record;
+    }
+
+    public Result SetReturnToRampCustomerSignature(
+        Guid returnToRampId, string storageReference, string fileName, string contentType, long size, DateTimeOffset now)
+    {
+        var record = _returnToRamps.FirstOrDefault(item => item.Id == returnToRampId);
+        if (record is null)
+            return Error.NotFound("Return-to-ramp record not found.", "Operations.ReturnToRamp.NotFound");
+        if (Type != WorkOrderType.Completion || (!IsEditable && Status != WorkOrderStatus.Approved))
+            return Error.Conflict("This work order cannot accept return-to-ramp signatures.", "Operations.ReturnToRamp.WorkOrderLocked");
+        var result = record.SetCustomerSignature(storageReference, fileName, contentType, size, now);
+        if (result.IsFailure)
+            return result.Error;
+        UpdatedAtUtc = now.ToUniversalTime();
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return Result.Success();
+    }
+
+    public Result RemoveReturnToRampCustomerSignature(Guid returnToRampId, DateTimeOffset now)
+    {
+        var editable = EnsureEditable();
+        if (editable.IsFailure)
+            return editable.Error;
+        var record = _returnToRamps.FirstOrDefault(item => item.Id == returnToRampId);
+        if (record is null)
+            return Error.NotFound("Return-to-ramp record not found.", "Operations.ReturnToRamp.NotFound");
+        record.RemoveCustomerSignature();
+        UpdatedAtUtc = now.ToUniversalTime();
+        RaiseDomainEvent(new WorkOrderUpdated(Id));
+        return Result.Success();
     }
 
     public Result<WorkOrderServiceLineAttachment> AddReturnToRampServiceLineAttachment(
@@ -801,7 +832,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         foreach (var input in returnToRamps)
         {
             var id = input.Id is { } requestedId && requestedId != Guid.Empty ? requestedId : Guid.NewGuid();
-            var record = new WorkOrderReturnToRamp(id, Id, input, recordedByUserId, now);
+            var record = new WorkOrderReturnToRamp(id, Id, ++LastReturnToRampSequence, input, recordedByUserId, now);
             _returnToRamps.Add(record);
             _serviceLines.AddRange(record.ServiceLines);
             _tasks.AddRange(record.Tasks);
@@ -845,7 +876,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
                 continue;
             }
 
-            var added = new WorkOrderReturnToRamp(Guid.NewGuid(), Id, input, recordedByUserId, now);
+            var added = new WorkOrderReturnToRamp(Guid.NewGuid(), Id, ++LastReturnToRampSequence, input, recordedByUserId, now);
             _returnToRamps.Add(added);
             _serviceLines.AddRange(added.ServiceLines);
             _tasks.AddRange(added.Tasks);

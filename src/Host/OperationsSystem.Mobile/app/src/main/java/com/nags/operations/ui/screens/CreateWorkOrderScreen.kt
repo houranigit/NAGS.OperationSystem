@@ -567,7 +567,8 @@ private fun CreateWorkOrderFormContent(
                 )
                 state.form.returnToRamps.forEachIndexed { index, occurrence ->
                     ReturnToRampOccurrenceCard(
-                        occurrenceNumber = index + 1,
+                        occurrenceNumber = occurrence.sequence.takeIf { it > 0 }
+                            ?: (index + 1).takeIf { occurrence.serverId != null },
                         row = occurrence,
                         errors = submitErrs?.returnToRampsByKey?.get(occurrence.localKey),
                         flightOffset = flightOffset,

@@ -176,7 +176,9 @@ public sealed record MobileFlightReturnToRampRequest(
     DateTimeOffset ToUtc,
     string? Description,
     IReadOnlyList<WorkOrderServiceLineRequest>? ServiceLines,
-    IReadOnlyList<WorkOrderTaskRequest>? Tasks)
+    IReadOnlyList<WorkOrderTaskRequest>? Tasks,
+    WorkOrderSignatureRequest? CustomerSignature = null,
+    bool RemoveCustomerSignature = false)
 {
     public WorkOrderReturnToRampCommand ToCommand() => new WorkOrderReturnToRampRequest(
         Id: null,
@@ -184,7 +186,9 @@ public sealed record MobileFlightReturnToRampRequest(
         ToUtc: ToUtc,
         Description: Description,
         ServiceLines: ServiceLines,
-        Tasks: Tasks).ToCommand();
+        Tasks: Tasks,
+        CustomerSignature: CustomerSignature,
+        RemoveCustomerSignature: RemoveCustomerSignature).ToCommand();
 }
 
 public sealed record MobileCancelFlightRequest(

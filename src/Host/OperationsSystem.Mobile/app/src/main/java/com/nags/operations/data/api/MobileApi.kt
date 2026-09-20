@@ -90,6 +90,20 @@ class MobileApi(
     suspend fun workOrderById(workOrderId: String): WorkOrderDetailWireDto =
         client.get(url("api/v1/operations/work-orders/$workOrderId")).bodyOrThrow()
 
+    /** Uses the same authenticated visibility rules as the work order details. */
+    suspend fun workOrderSignature(workOrderId: String, returnToRampId: String? = null): ByteArray {
+        val path = if (returnToRampId == null) {
+            "api/v1/operations/work-orders/$workOrderId/signature"
+        } else {
+            "api/v1/operations/work-orders/$workOrderId/return-to-ramps/$returnToRampId/signature"
+        }
+        val response = client.get(url(path))
+        if (!response.status.isSuccess()) {
+            throw com.nags.operations.data.ApiException(response.status.value, response.bodyAsText())
+        }
+        return response.body()
+    }
+
     suspend fun approvedWorkOrderPdf(flightId: String, timeZoneId: String): ByteArray {
         val response = client.get(url("api/v1/operations/flights/$flightId/work-orders/approved/pdf")) {
             parameter("timeZoneId", timeZoneId)
@@ -235,6 +249,8 @@ data class WorkOrderReturnToRampInput(
     val description: String? = null,
     val serviceLines: List<WorkOrderServiceLineInput> = emptyList(),
     val tasks: List<WorkOrderTaskInput> = emptyList(),
+    val customerSignature: WorkOrderSignatureInput? = null,
+    val removeCustomerSignature: Boolean = false,
 )
 
 @Serializable
@@ -248,6 +264,7 @@ data class WorkOrderServiceLineInput(
     val toUtc: String,
     val description: String? = null,
     val attachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val isReturnToRamp: Boolean = false,
 )
 
@@ -266,6 +283,7 @@ data class WorkOrderTaskInput(
     val materials: List<WorkOrderTaskResourceInput> = emptyList(),
     val generalSupports: List<WorkOrderTaskResourceInput> = emptyList(),
     val attachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val isReturnToRamp: Boolean = false,
 )
 
@@ -345,6 +363,7 @@ data class MobileFlightReturnToRampRequest(
     val description: String? = null,
     val serviceLines: List<WorkOrderServiceLineInput> = emptyList(),
     val tasks: List<WorkOrderTaskInput> = emptyList(),
+    val customerSignature: WorkOrderSignatureInput? = null,
 )
 
 @Serializable

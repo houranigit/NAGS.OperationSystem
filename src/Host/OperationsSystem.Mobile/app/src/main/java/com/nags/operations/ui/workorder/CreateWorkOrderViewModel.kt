@@ -75,7 +75,7 @@ data class ServiceLineFormRow(
     val attachments: List<TaskAttachmentDraft> = emptyList(),
     /** Read-only names of attachments already uploaded on the server (edit mode). */
     val existingAttachmentNames: List<String> = emptyList(),
-    /** True when the line originated from a return-to-ramp submission. */
+    /** Legacy draft marker, migrated into returnToRamps before submission. */
     val returnToRamp: Boolean = false,
 )
 
@@ -126,7 +126,7 @@ data class TaskFormRow(
     val attachments: List<TaskAttachmentDraft> = emptyList(),
     /** Read-only names of attachments already uploaded on the server (edit mode). */
     val existingAttachmentNames: List<String> = emptyList(),
-    /** True when the task originated from a return-to-ramp submission. */
+    /** Legacy draft marker, migrated into returnToRamps before submission. */
     val returnToRamp: Boolean = false,
 )
 
@@ -141,6 +141,11 @@ data class ReturnToRampFormRow(
     val description: String = "",
     val serviceLines: List<ServiceLineFormRow> = emptyList(),
     val tasks: List<TaskFormRow> = emptyList(),
+    /** Server-assigned, stable RTR number; zero means a new or legacy occurrence. */
+    val sequence: Int = 0,
+    val customerSignaturePng: String? = null,
+    val existingCustomerSignatureName: String? = null,
+    val removeCustomerSignature: Boolean = false,
 )
 
 @Serializable
@@ -1768,6 +1773,8 @@ class CreateWorkOrderViewModel(
                     description = occurrence.description.takeIf { it.isNotBlank() },
                     serviceLines = occurrence.serviceLines.map { it.toOutboxInput() },
                     tasks = occurrence.tasks.map { it.toOutboxInput(snapshot) },
+                    customerSignaturePngBase64 = occurrence.customerSignaturePng,
+                    removeCustomerSignature = occurrence.removeCustomerSignature,
                 )
             },
         )

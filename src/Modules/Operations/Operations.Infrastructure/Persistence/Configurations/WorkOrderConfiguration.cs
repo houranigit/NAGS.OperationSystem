@@ -224,6 +224,11 @@ public sealed class WorkOrderReturnToRampConfiguration : IEntityTypeConfiguratio
         builder.HasAlternateKey(item => new { item.Id, item.WorkOrderId });
         builder.Property(item => item.Id).ValueGeneratedNever();
         builder.Property(item => item.WorkOrderId).IsRequired();
+        builder.Property(item => item.Sequence).IsRequired();
+        builder.Property(item => item.CustomerSignatureReference).HasMaxLength(500);
+        builder.Property(item => item.CustomerSignatureFileName).HasMaxLength(255);
+        builder.Property(item => item.CustomerSignatureContentType).HasMaxLength(100);
+        builder.HasIndex(item => new { item.WorkOrderId, item.Sequence }).IsUnique();
         builder.Property(item => item.Description).HasMaxLength(WorkOrderReturnToRamp.MaxDescriptionLength);
         builder.Property(item => item.RecordedByUserId).IsRequired();
         builder.Property(item => item.CreatedAtUtc).IsRequired();

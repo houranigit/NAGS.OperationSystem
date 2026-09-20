@@ -21,6 +21,8 @@ internal fun WorkOrderDetailWireDto.toPrefilledCreateFormState(nextKey: () -> Lo
         ReturnToRampFormRow(
             localKey = nextKey(),
             serverId = occurrence.id,
+            sequence = occurrence.sequence,
+            existingCustomerSignatureName = occurrence.customerSignature?.fileName,
             fromIso = occurrence.fromUtc,
             toIso = occurrence.toUtc,
             description = occurrence.description.orEmpty(),

@@ -381,6 +381,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<BrowserFileContent> DownloadWorkOrderSignatureAsync(Guid workOrderId, CancellationToken ct = default) =>
         api.GetFileAsync($"/operations/work-orders/{workOrderId}/signature", ct);
 
+    public Task<BrowserFileContent> DownloadReturnToRampSignatureAsync(Guid workOrderId, Guid returnToRampId, CancellationToken ct = default) =>
+        api.GetFileAsync($"/operations/work-orders/{workOrderId}/return-to-ramps/{returnToRampId}/signature", ct);
+
     public Task DeleteWorkOrderSignatureAsync(Guid workOrderId, string rowVersion, CancellationToken ct = default) =>
         api.DeleteAsync($"/operations/work-orders/{workOrderId}/signature", rowVersion, ct);
 

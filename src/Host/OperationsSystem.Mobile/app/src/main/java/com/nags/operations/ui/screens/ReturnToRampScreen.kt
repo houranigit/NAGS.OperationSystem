@@ -102,7 +102,7 @@ fun ReturnToRampScreen(
                 ) {
                     Text(
                         "Record the occurrence window and the services or tasks completed during it. " +
-                            "Each submission remains a separate event in the flight history.",
+                            "Each submission creates a numbered RTR with its own optional customer signature.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -117,7 +117,7 @@ fun ReturnToRampScreen(
                         operationTypeCode = flight.operationTypeName,
                     )
                     ReturnToRampOccurrenceCard(
-                        occurrenceNumber = 1,
+                        occurrenceNumber = null,
                         row = occurrence,
                         errors = state.submitErrors,
                         flightOffset = localZone,

@@ -22,194 +22,227 @@ internal static class WorkOrderInlineFileApplier
 
         async Task<Result<IReadOnlyList<string>>> FailAsync(Error error)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, storedReferences, cancellationToken);
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, storedReferences, CancellationToken.None);
             return error;
         }
 
-        if (payload.CustomerSignature is { } signature)
+        try
         {
-            var signatureContent = DecodeBase64(signature.Base64Content, "signature");
-            if (signatureContent.IsFailure)
-                return await FailAsync(signatureContent.Error);
-
-            var validation = WorkOrderSignaturePolicy.Validate(signatureContent.Value, signature.FileName, signature.ContentType);
-            if (validation.IsFailure)
-                return await FailAsync(validation.Error);
-
-            await using var signatureStream = new MemoryStream(signatureContent.Value);
-            var stored = await storage.SaveAsync("work-order-signatures", signature.FileName, signature.ContentType, signatureStream, cancellationToken);
-            storedReferences.Add(stored.StorageKey);
-
-            var set = workOrder.SetCustomerSignature(stored.StorageKey, signature.FileName, stored.ContentType, stored.SizeBytes, now);
-            if (set.IsFailure)
-                return await FailAsync(set.Error);
-        }
-
-        var serviceLineCommands = (payload.ServiceLines ?? []).Where(line => !line.IsReturnToRamp).ToList();
-        var taskCommands = (payload.Tasks ?? []).Where(task => !task.IsReturnToRamp).ToList();
-        var returnToRampCommands = payload.ReturnToRamps ?? BuildLegacyReturnToRampCommands(payload);
-        if (!serviceLineCommands.Any(line => line.Attachments is { Count: > 0 }) &&
-            !taskCommands.Any(task => task.Attachments is { Count: > 0 }) &&
-            !returnToRampCommands.Any(item =>
-                (item.ServiceLines ?? []).Any(line => line.Attachments is { Count: > 0 }) ||
-                (item.Tasks ?? []).Any(task => task.Attachments is { Count: > 0 })))
-            return storedReferences;
-
-        if (serviceLineCommands.Any(line => line.Attachments is { Count: > 0 }))
-        {
-            var serviceLineIds = ResolveServiceLineIds(workOrder, serviceLineCommands);
-            if (serviceLineIds.IsFailure)
-                return await FailAsync(serviceLineIds.Error);
-
-            for (var i = 0; i < serviceLineCommands.Count; i++)
+            if (payload.CustomerSignature is { } signature)
             {
-                var serviceLine = serviceLineCommands[i];
-                foreach (var attachment in serviceLine.Attachments ?? [])
-                {
-                    var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
-                    if (attachmentContent.IsFailure)
-                        return await FailAsync(attachmentContent.Error);
+                var signatureContent = DecodeBase64(signature.Base64Content, "signature");
+                if (signatureContent.IsFailure)
+                    return await FailAsync(signatureContent.Error);
 
-                    var validation = WorkOrderAttachmentPolicy.Validate(
-                        attachment.Kind,
-                        attachmentContent.Value,
-                        attachment.FileName,
-                        attachment.ContentType);
-                    if (validation.IsFailure)
-                        return await FailAsync(validation.Error);
+                var validation = WorkOrderSignaturePolicy.Validate(signatureContent.Value, signature.FileName, signature.ContentType);
+                if (validation.IsFailure)
+                    return await FailAsync(validation.Error);
 
-                    await using var attachmentStream = new MemoryStream(attachmentContent.Value);
-                    var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
-                    storedReferences.Add(stored.StorageKey);
+                await using var signatureStream = new MemoryStream(signatureContent.Value);
+                var stored = await storage.SaveAsync("work-order-signatures", signature.FileName, signature.ContentType, signatureStream, cancellationToken);
+                storedReferences.Add(stored.StorageKey);
 
-                    var add = workOrder.AddServiceLineAttachment(
-                        serviceLineIds.Value[i],
-                        attachment.Kind,
-                        stored.StorageKey,
-                        attachment.FileName,
-                        stored.ContentType,
-                        stored.SizeBytes,
-                        now);
-                    if (add.IsFailure)
-                        return await FailAsync(add.Error);
-                }
+                var set = workOrder.SetCustomerSignature(stored.StorageKey, signature.FileName, stored.ContentType, stored.SizeBytes, now);
+                if (set.IsFailure)
+                    return await FailAsync(set.Error);
             }
-        }
 
-        if (taskCommands.Any(task => task.Attachments is { Count: > 0 }))
-        {
-            var taskIds = ResolveTaskIds(workOrder, taskCommands);
-            if (taskIds.IsFailure)
-                return await FailAsync(taskIds.Error);
+            var serviceLineCommands = (payload.ServiceLines ?? []).Where(line => !line.IsReturnToRamp).ToList();
+            var taskCommands = (payload.Tasks ?? []).Where(task => !task.IsReturnToRamp).ToList();
+            var returnToRampCommands = payload.ReturnToRamps ?? BuildLegacyReturnToRampCommands(payload);
+            if (!serviceLineCommands.Any(line => line.Attachments is { Count: > 0 }) &&
+                !taskCommands.Any(task => task.Attachments is { Count: > 0 }) &&
+                !returnToRampCommands.Any(item =>
+                    item.CustomerSignature is not null || item.RemoveCustomerSignature ||
+                    (item.ServiceLines ?? []).Any(line => line.Attachments is { Count: > 0 }) ||
+                    (item.Tasks ?? []).Any(task => task.Attachments is { Count: > 0 })))
+                return storedReferences;
 
-            for (var i = 0; i < taskCommands.Count; i++)
+            if (serviceLineCommands.Any(line => line.Attachments is { Count: > 0 }))
             {
-                var task = taskCommands[i];
-                foreach (var attachment in task.Attachments ?? [])
+                var serviceLineIds = ResolveServiceLineIds(workOrder, serviceLineCommands);
+                if (serviceLineIds.IsFailure)
+                    return await FailAsync(serviceLineIds.Error);
+
+                for (var i = 0; i < serviceLineCommands.Count; i++)
                 {
-                    var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
-                    if (attachmentContent.IsFailure)
-                        return await FailAsync(attachmentContent.Error);
-
-                    var validation = WorkOrderAttachmentPolicy.Validate(
-                        attachment.Kind,
-                        attachmentContent.Value,
-                        attachment.FileName,
-                        attachment.ContentType);
-                    if (validation.IsFailure)
-                        return await FailAsync(validation.Error);
-
-                    await using var attachmentStream = new MemoryStream(attachmentContent.Value);
-                    var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
-                    storedReferences.Add(stored.StorageKey);
-
-                    var add = workOrder.AddTaskAttachment(
-                        taskIds.Value[i],
-                        attachment.Kind,
-                        stored.StorageKey,
-                        attachment.FileName,
-                        stored.ContentType,
-                        stored.SizeBytes,
-                        now);
-                    if (add.IsFailure)
-                        return await FailAsync(add.Error);
-                }
-            }
-        }
-
-        if (returnToRampCommands.Any(item =>
-                (item.ServiceLines ?? []).Any(line => line.Attachments is { Count: > 0 }) ||
-                (item.Tasks ?? []).Any(task => task.Attachments is { Count: > 0 })))
-        {
-            var knownIds = returnToRampCommands.Where(item => item.Id.HasValue).Select(item => item.Id!.Value).ToHashSet();
-            var newRecords = new Queue<WorkOrderReturnToRamp>(workOrder.ReturnToRamps
-                .Where(item => !knownIds.Contains(item.Id))
-                .OrderBy(item => item.CreatedAtUtc)
-                .ThenBy(item => item.Id));
-
-            foreach (var command in returnToRampCommands)
-            {
-                WorkOrderReturnToRamp? record;
-                if (command.Id is { } existingId)
-                    record = workOrder.ReturnToRamps.FirstOrDefault(item => item.Id == existingId);
-                else
-                    newRecords.TryDequeue(out record);
-                if (record is null)
-                    return await FailAsync(Error.Conflict("Could not match return-to-ramp attachments to an occurrence.", "Operations.ReturnToRamp.AttachmentMatchFailed"));
-
-                var returnServiceCommands = command.ServiceLines ?? [];
-                var serviceIds = ResolveReturnToRampServiceLineIds(record, returnServiceCommands);
-                if (serviceIds.IsFailure)
-                    return await FailAsync(serviceIds.Error);
-                for (var i = 0; i < returnServiceCommands.Count; i++)
-                {
-                    foreach (var attachment in returnServiceCommands[i].Attachments ?? [])
+                    var serviceLine = serviceLineCommands[i];
+                    foreach (var attachment in serviceLine.Attachments ?? [])
                     {
-                        var content = DecodeBase64(attachment.Base64Content, "attachment");
-                        if (content.IsFailure)
-                            return await FailAsync(content.Error);
-                        var validation = WorkOrderAttachmentPolicy.Validate(attachment.Kind, content.Value, attachment.FileName, attachment.ContentType);
+                        var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
+                        if (attachmentContent.IsFailure)
+                            return await FailAsync(attachmentContent.Error);
+
+                        var validation = WorkOrderAttachmentPolicy.Validate(
+                            attachment.Kind,
+                            attachmentContent.Value,
+                            attachment.FileName,
+                            attachment.ContentType);
                         if (validation.IsFailure)
                             return await FailAsync(validation.Error);
 
-                        await using var stream = new MemoryStream(content.Value);
-                        var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, stream, cancellationToken);
+                        await using var attachmentStream = new MemoryStream(attachmentContent.Value);
+                        var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
                         storedReferences.Add(stored.StorageKey);
-                        var add = workOrder.AddReturnToRampServiceLineAttachment(
-                            serviceIds.Value[i], attachment.Kind, stored.StorageKey, attachment.FileName, stored.ContentType, stored.SizeBytes, now);
+
+                        var add = workOrder.AddServiceLineAttachment(
+                            serviceLineIds.Value[i],
+                            attachment.Kind,
+                            stored.StorageKey,
+                            attachment.FileName,
+                            stored.ContentType,
+                            stored.SizeBytes,
+                            now);
                         if (add.IsFailure)
                             return await FailAsync(add.Error);
                     }
                 }
+            }
 
-                var returnTaskCommands = command.Tasks ?? [];
-                var taskIds = ResolveReturnToRampTaskIds(record, returnTaskCommands);
+            if (taskCommands.Any(task => task.Attachments is { Count: > 0 }))
+            {
+                var taskIds = ResolveTaskIds(workOrder, taskCommands);
                 if (taskIds.IsFailure)
                     return await FailAsync(taskIds.Error);
-                for (var i = 0; i < returnTaskCommands.Count; i++)
+
+                for (var i = 0; i < taskCommands.Count; i++)
                 {
-                    foreach (var attachment in returnTaskCommands[i].Attachments ?? [])
+                    var task = taskCommands[i];
+                    foreach (var attachment in task.Attachments ?? [])
                     {
-                        var content = DecodeBase64(attachment.Base64Content, "attachment");
-                        if (content.IsFailure)
-                            return await FailAsync(content.Error);
-                        var validation = WorkOrderAttachmentPolicy.Validate(attachment.Kind, content.Value, attachment.FileName, attachment.ContentType);
+                        var attachmentContent = DecodeBase64(attachment.Base64Content, "attachment");
+                        if (attachmentContent.IsFailure)
+                            return await FailAsync(attachmentContent.Error);
+
+                        var validation = WorkOrderAttachmentPolicy.Validate(
+                            attachment.Kind,
+                            attachmentContent.Value,
+                            attachment.FileName,
+                            attachment.ContentType);
                         if (validation.IsFailure)
                             return await FailAsync(validation.Error);
 
-                        await using var stream = new MemoryStream(content.Value);
-                        var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, stream, cancellationToken);
+                        await using var attachmentStream = new MemoryStream(attachmentContent.Value);
+                        var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, attachmentStream, cancellationToken);
                         storedReferences.Add(stored.StorageKey);
-                        var add = workOrder.AddReturnToRampTaskAttachment(
-                            taskIds.Value[i], attachment.Kind, stored.StorageKey, attachment.FileName, stored.ContentType, stored.SizeBytes, now);
+
+                        var add = workOrder.AddTaskAttachment(
+                            taskIds.Value[i],
+                            attachment.Kind,
+                            stored.StorageKey,
+                            attachment.FileName,
+                            stored.ContentType,
+                            stored.SizeBytes,
+                            now);
                         if (add.IsFailure)
                             return await FailAsync(add.Error);
                     }
                 }
             }
-        }
 
-        return storedReferences;
+            if (returnToRampCommands.Any(item =>
+                    item.CustomerSignature is not null || item.RemoveCustomerSignature ||
+                    (item.ServiceLines ?? []).Any(line => line.Attachments is { Count: > 0 }) ||
+                    (item.Tasks ?? []).Any(task => task.Attachments is { Count: > 0 })))
+            {
+                var knownIds = returnToRampCommands.Where(item => item.Id.HasValue).Select(item => item.Id!.Value).ToHashSet();
+                var newRecords = new Queue<WorkOrderReturnToRamp>(workOrder.ReturnToRamps
+                    .Where(item => !knownIds.Contains(item.Id))
+                    .OrderBy(item => item.Sequence));
+
+                foreach (var command in returnToRampCommands)
+                {
+                    WorkOrderReturnToRamp? record;
+                    if (command.Id is { } existingId)
+                        record = workOrder.ReturnToRamps.FirstOrDefault(item => item.Id == existingId);
+                    else
+                        newRecords.TryDequeue(out record);
+                    if (record is null)
+                        return await FailAsync(Error.Conflict("Could not match return-to-ramp attachments to an occurrence.", "Operations.ReturnToRamp.AttachmentMatchFailed"));
+
+                    if (command.CustomerSignature is not null && command.RemoveCustomerSignature)
+                        return await FailAsync(Error.Validation("Cannot upload and remove the same return-to-ramp signature.", "Operations.ReturnToRamp.SignatureConflict"));
+                    if (command.CustomerSignature is { } returnSignature)
+                    {
+                        var content = DecodeBase64(returnSignature.Base64Content, "signature");
+                        if (content.IsFailure)
+                            return await FailAsync(content.Error);
+                        var validation = WorkOrderSignaturePolicy.Validate(content.Value, returnSignature.FileName, returnSignature.ContentType);
+                        if (validation.IsFailure)
+                            return await FailAsync(validation.Error);
+                        await using var stream = new MemoryStream(content.Value);
+                        var stored = await storage.SaveAsync("work-order-signatures", returnSignature.FileName, returnSignature.ContentType, stream, cancellationToken);
+                        storedReferences.Add(stored.StorageKey);
+                        var set = workOrder.SetReturnToRampCustomerSignature(record.Id, stored.StorageKey, returnSignature.FileName, stored.ContentType, stored.SizeBytes, now);
+                        if (set.IsFailure)
+                            return await FailAsync(set.Error);
+                    }
+                    else if (command.RemoveCustomerSignature)
+                    {
+                        var remove = workOrder.RemoveReturnToRampCustomerSignature(record.Id, now);
+                        if (remove.IsFailure)
+                            return await FailAsync(remove.Error);
+                    }
+
+                    var returnServiceCommands = command.ServiceLines ?? [];
+                    var serviceIds = ResolveReturnToRampServiceLineIds(record, returnServiceCommands);
+                    if (serviceIds.IsFailure)
+                        return await FailAsync(serviceIds.Error);
+                    for (var i = 0; i < returnServiceCommands.Count; i++)
+                    {
+                        foreach (var attachment in returnServiceCommands[i].Attachments ?? [])
+                        {
+                            var content = DecodeBase64(attachment.Base64Content, "attachment");
+                            if (content.IsFailure)
+                                return await FailAsync(content.Error);
+                            var validation = WorkOrderAttachmentPolicy.Validate(attachment.Kind, content.Value, attachment.FileName, attachment.ContentType);
+                            if (validation.IsFailure)
+                                return await FailAsync(validation.Error);
+
+                            await using var stream = new MemoryStream(content.Value);
+                            var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, stream, cancellationToken);
+                            storedReferences.Add(stored.StorageKey);
+                            var add = workOrder.AddReturnToRampServiceLineAttachment(
+                                serviceIds.Value[i], attachment.Kind, stored.StorageKey, attachment.FileName, stored.ContentType, stored.SizeBytes, now);
+                            if (add.IsFailure)
+                                return await FailAsync(add.Error);
+                        }
+                    }
+
+                    var returnTaskCommands = command.Tasks ?? [];
+                    var taskIds = ResolveReturnToRampTaskIds(record, returnTaskCommands);
+                    if (taskIds.IsFailure)
+                        return await FailAsync(taskIds.Error);
+                    for (var i = 0; i < returnTaskCommands.Count; i++)
+                    {
+                        foreach (var attachment in returnTaskCommands[i].Attachments ?? [])
+                        {
+                            var content = DecodeBase64(attachment.Base64Content, "attachment");
+                            if (content.IsFailure)
+                                return await FailAsync(content.Error);
+                            var validation = WorkOrderAttachmentPolicy.Validate(attachment.Kind, content.Value, attachment.FileName, attachment.ContentType);
+                            if (validation.IsFailure)
+                                return await FailAsync(validation.Error);
+
+                            await using var stream = new MemoryStream(content.Value);
+                            var stored = await storage.SaveAsync("work-order-attachments", attachment.FileName, attachment.ContentType, stream, cancellationToken);
+                            storedReferences.Add(stored.StorageKey);
+                            var add = workOrder.AddReturnToRampTaskAttachment(
+                                taskIds.Value[i], attachment.Kind, stored.StorageKey, attachment.FileName, stored.ContentType, stored.SizeBytes, now);
+                            if (add.IsFailure)
+                                return await FailAsync(add.Error);
+                        }
+                    }
+                }
+            }
+
+            return storedReferences;
+        }
+        catch
+        {
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, storedReferences, CancellationToken.None);
+            throw;
+        }
     }
 
     private static Result<byte[]> DecodeBase64(string? value, string label)
@@ -435,6 +468,8 @@ public static class WorkOrderInlineFilePolicy
 
         foreach (var occurrence in payload.ReturnToRamps ?? [])
         {
+            if (occurrence.CustomerSignature is { } returnSignature)
+                yield return new InlineFile(returnSignature.Base64Content, "signature");
             foreach (var line in occurrence.ServiceLines ?? [])
             foreach (var attachment in line.Attachments ?? [])
                 yield return new InlineFile(attachment.Base64Content, "attachment");
@@ -449,4 +484,19 @@ public static class WorkOrderInlineFilePolicy
         char.ToUpperInvariant(value[0]) + value[1..];
 
     private sealed record InlineFile(string? Base64Content, string Label);
+}
+
+
+/// <summary>Rolls back freshly uploaded files unless their owning aggregate was persisted.</summary>
+internal sealed class PendingWorkOrderFiles(IFileStorage storage, IReadOnlyList<string> references) : IAsyncDisposable
+{
+    private bool _persisted;
+
+    public void MarkPersisted() => _persisted = true;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_persisted)
+            await WorkOrderAttachmentStorage.DeleteAsync(storage, references, CancellationToken.None);
+    }
 }

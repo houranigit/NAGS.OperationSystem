@@ -18,6 +18,62 @@ public sealed class MobileMutationFingerprintCompatibilityTests
         new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task ReturnOccurrenceReplay_AcceptsPreSignatureShapeWithoutIgnoringSignatureChanges()
+    {
+        var flightId = Guid.NewGuid();
+        var ownerId = Guid.NewGuid();
+        var workOrderId = Guid.NewGuid();
+        var mutationId = Guid.NewGuid().ToString();
+        var payload = Payload(Guid.NewGuid(), Guid.NewGuid());
+        var occurrence = new WorkOrderReturnToRampCommand(null, FromUtc, FromUtc.AddHours(1), "Return",
+            payload.ServiceLines, payload.Tasks);
+        var current = new { FlightId = flightId, ReturnToRamp = occurrence };
+        var historical = new
+        {
+            FlightId = flightId,
+            ReturnToRamp = new PreSignatureReturnToRamp(occurrence.Id, occurrence.FromUtc, occurrence.ToUtc,
+                occurrence.Description, occurrence.ServiceLines, occurrence.Tasks)
+        };
+        // Serialize the actual preceding shape, independently of the new RTR command fields.
+        var historicalFingerprint = Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(historical))));
+
+        MobileMutations.CompatibleFingerprints(current).ShouldContain(historicalFingerprint);
+        await using var db = CreateDb();
+        db.MobileMutations.Add(MobileMutation.Record(mutationId, ownerId, "return-to-ramp-occurrence",
+            workOrderId, flightId, null, historicalFingerprint, FromUtc));
+        await db.SaveChangesAsync();
+        var replay = await MobileMutations.FindReplayAsync(db, mutationId, ownerId, "return-to-ramp-occurrence",
+            MobileMutations.Fingerprint(current), null, flightId, null, CancellationToken.None,
+            MobileMutations.CompatibleFingerprints(current));
+        replay.IsSuccess.ShouldBeTrue();
+        replay.Value.ShouldNotBeNull();
+
+        foreach (var changed in new[]
+                 {
+                     occurrence with { CustomerSignature = new WorkOrderSignatureCommand("c2lnbmVk", "signature.png", "image/png") },
+                     occurrence with { RemoveCustomerSignature = true }
+                 })
+        {
+            var changedEnvelope = new { FlightId = flightId, ReturnToRamp = changed };
+            MobileMutations.CompatibleFingerprints(changedEnvelope).ShouldNotContain(historicalFingerprint);
+            var rejected = await MobileMutations.FindReplayAsync(db, mutationId, ownerId, "return-to-ramp-occurrence",
+                MobileMutations.Fingerprint(changedEnvelope), null, flightId, null, CancellationToken.None,
+                MobileMutations.CompatibleFingerprints(changedEnvelope));
+            rejected.IsFailure.ShouldBeTrue();
+            rejected.Error.Code.ShouldBe("Operations.Mobile.MutationKeyReused");
+        }
+    }
+
+    private sealed record PreSignatureReturnToRamp(
+        Guid? Id,
+        DateTimeOffset FromUtc,
+        DateTimeOffset ToUtc,
+        string? Description,
+        IReadOnlyList<WorkOrderServiceLineCommand> ServiceLines,
+        IReadOnlyList<WorkOrderTaskCommand> Tasks);
+
+    [Fact]
     public async Task FindReplay_AcceptsFingerprintWrittenBeforeIdentityAndProvenanceFields()
     {
         var ownerUserId = Guid.NewGuid();
@@ -459,6 +515,8 @@ public sealed class MobileMutationFingerprintCompatibilityTests
             foreach (var property in typeInfo.Properties.ToList())
             {
                 if (property.Name == "EmployeeAssignments" ||
+                    (typeInfo.Type == typeof(WorkOrderReturnToRampCommand) &&
+                     property.Name is "CustomerSignature" or "RemoveCustomerSignature") ||
                     (property.Name == "Description" &&
                      (typeInfo.Type == typeof(WorkOrderTaskToolCommand) ||
                       typeInfo.Type == typeof(WorkOrderTaskMaterialCommand) ||

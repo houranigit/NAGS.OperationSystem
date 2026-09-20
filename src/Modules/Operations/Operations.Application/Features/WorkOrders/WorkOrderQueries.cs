@@ -251,7 +251,7 @@ internal static class WorkOrderDtoMapper
             workOrder.ApprovalNumber,
             workOrder.ApprovedByUserId,
             workOrder.ApprovedAtUtc,
-            workOrder.ServiceLines.Select(line => new WorkOrderServiceLineDto(
+            workOrder.ServiceLines.Where(line => line.ReturnToRampId is null).Select(line => new WorkOrderServiceLineDto(
                 line.Id,
                 line.Service.ServiceId,
                 line.Service.Name,
@@ -269,7 +269,7 @@ internal static class WorkOrderDtoMapper
                     a.OriginalFileName,
                     a.ContentType,
                     a.Size)).ToList())).ToList(),
-            workOrder.Tasks.Select(task => new WorkOrderTaskDto(
+            workOrder.Tasks.Where(task => task.ReturnToRampId is null).Select(task => new WorkOrderTaskDto(
                 task.Id,
                 task.TaskType.ToString(),
                 task.Description,
@@ -288,8 +288,7 @@ internal static class WorkOrderDtoMapper
             workOrder.UpdatedAtUtc,
             Convert.ToBase64String(workOrder.RowVersion),
             workOrder.ReturnToRamps
-                .OrderBy(item => item.Window.From)
-                .ThenBy(item => item.CreatedAtUtc)
+                .OrderBy(item => item.Sequence)
                 .Select(item => new WorkOrderReturnToRampDto(
                     item.Id,
                     item.Window.From,
@@ -308,7 +307,7 @@ internal static class WorkOrderDtoMapper
                         line.Window.From,
                         line.Window.To,
                         line.Description,
-                        IsReturnToRamp: true,
+                        IsReturnToRamp: false,
                         line.Attachments.Select(attachment => new WorkOrderServiceLineAttachmentDto(
                             attachment.Id,
                             attachment.Kind.ToString(),
@@ -342,6 +341,14 @@ internal static class WorkOrderDtoMapper
                             attachment.OriginalFileName,
                             attachment.ContentType,
                             attachment.Size)).ToList(),
-                        IsReturnToRamp: true)).ToList()))
+                        IsReturnToRamp: false)).ToList(),
+                    item.Sequence,
+                    string.IsNullOrWhiteSpace(item.CustomerSignatureReference) || item.CustomerSignedAtUtc is null
+                        ? null
+                        : new WorkOrderSignatureDto(
+                            item.CustomerSignatureFileName ?? "customer-signature.png",
+                            item.CustomerSignatureContentType ?? "image/png",
+                            item.CustomerSignatureSize ?? 0,
+                            item.CustomerSignedAtUtc.Value)))
                 .ToList());
 }

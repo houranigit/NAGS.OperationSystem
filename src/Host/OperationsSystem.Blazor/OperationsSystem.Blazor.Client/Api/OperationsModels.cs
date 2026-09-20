@@ -237,7 +237,9 @@ public sealed record WorkOrderReturnToRampModel(
     Guid RecordedByUserId,
     DateTimeOffset CreatedAtUtc,
     IReadOnlyList<WorkOrderServiceLineModel> ServiceLines,
-    IReadOnlyList<WorkOrderTaskModel> Tasks);
+    IReadOnlyList<WorkOrderTaskModel> Tasks,
+    int Sequence = 0,
+    WorkOrderSignatureModel? CustomerSignature = null);
 
 public sealed record WorkOrderServiceLineModel(
     Guid Id,
@@ -401,7 +403,9 @@ public sealed record WorkOrderReturnToRampRequestModel(
     DateTimeOffset ToUtc,
     string? Description,
     IReadOnlyList<WorkOrderServiceLineRequestModel> ServiceLines,
-    IReadOnlyList<WorkOrderTaskRequestModel> Tasks);
+    IReadOnlyList<WorkOrderTaskRequestModel> Tasks,
+    WorkOrderSignatureRequestModel? CustomerSignature = null,
+    bool RemoveCustomerSignature = false);
 
 public sealed record WorkOrderTaskRequestModel(
     Guid? Id,

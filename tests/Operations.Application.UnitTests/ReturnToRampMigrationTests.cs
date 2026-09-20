@@ -58,4 +58,17 @@ public sealed class ReturnToRampMigrationTests
         script.ShouldContain("FOREIGN KEY ([ReturnToRampId], [WorkOrderId])");
         script.ShouldContain("REFERENCES [operations].[work_order_return_to_ramps] ([Id], [WorkOrderId])");
     }
+    [Fact]
+    public void Numbering_migration_backfills_occurrences_and_sequence_counter_before_unique_index()
+    {
+        using var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
+            .UseSqlServer("Server=localhost;Database=operations-migration-script;User Id=sa;Password=NotUsed1!;TrustServerCertificate=true").Options);
+        var script = db.GetService<IMigrator>().GenerateScript(
+            toMigration: "20260920183215_Operations_ReturnToRampNumbersAndSignatures");
+        script.ShouldContain("PARTITION BY WorkOrderId ORDER BY CreatedAtUtc, FromUtc, Id");
+        script.ShouldContain("SET LastReturnToRampSequence = numbered.LastSequence");
+        script.ShouldContain("CustomerSignedAtUtc");
+        script.IndexOf("UPDATE occurrence SET Sequence", StringComparison.Ordinal)
+            .ShouldBeLessThan(script.IndexOf("CREATE UNIQUE INDEX [IX_work_order_return_to_ramps_WorkOrderId_Sequence]", StringComparison.Ordinal));
+    }
 }

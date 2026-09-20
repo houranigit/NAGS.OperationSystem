@@ -170,11 +170,11 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(workOrder.Value, request.Payload, storage, now, cancellationToken);
         if (inlineFiles.IsFailure)
             return inlineFiles.Error;
+        await using var pendingFiles = new PendingWorkOrderFiles(storage, inlineFiles.Value);
 
         var flightState = flight.Value.OnWorkOrderSubmitted(now);
         if (flightState.IsFailure)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return flightState.Error;
         }
 
@@ -202,17 +202,16 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
         var email = await submissionEmails.EnqueueAsync(workOrder.Value, flight.Value, ownerUserId, cancellationToken);
         if (email.IsFailure)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return email.Error;
         }
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            pendingFiles.MarkPersisted();
         }
         catch (DbUpdateException)
         {
-            await WorkOrderAttachmentStorage.DeleteAsync(storage, inlineFiles.Value, cancellationToken);
             return Error.Conflict("An ad-hoc work order conflict occurred. Reload and try again.", "Operations.WorkOrder.AdHocConflict");
         }
 

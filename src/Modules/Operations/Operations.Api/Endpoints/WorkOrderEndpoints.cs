@@ -125,6 +125,14 @@ internal static class WorkOrderEndpoints
         }).RequirePermission(OperationsPermissions.WorkOrders.Author)
             .WithMetadata(new RequestSizeLimitAttribute(WorkOrderInlineFilePolicy.MaxJsonRequestBytes));
 
+        workOrders.MapGet("/{id:guid}/return-to-ramps/{returnToRampId:guid}/signature", async (Guid id, Guid returnToRampId, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetReturnToRampSignatureContentQuery(id, returnToRampId), ct);
+            return result.IsFailure
+                ? ApiResults.Problem(result.Error)
+                : Results.File(result.Value.Content, result.Value.ContentType, result.Value.FileName);
+        }).RequirePermission(OperationsPermissions.WorkOrders.View);
+
         workOrders.MapPost("/{id:guid}/signature", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
             if (http.GetIfMatch() is not { } rowVersion)

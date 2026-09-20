@@ -433,11 +433,11 @@
         <div class="owo-step-toolbar">
             <div>
                 <div class="owo-section-line"><RadzenIcon Icon="u_turn_left" /><span>Return to ramps</span></div>
-                <div class="owo-rtr-step-copy">Optional. Record each occurrence separately with its own services and tasks.</div>
+                <div class="owo-rtr-step-copy">Optional. Each RTR has its own number, services, tasks, and customer signature.</div>
             </div>
             @if (!ViewOnly)
             {
-                <RadzenButton Text="Add return to ramp" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                <RadzenButton Text="Add RTR" Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
                               ButtonType="ButtonType.Button" Click="@AddReturnToRampAsync" />
             }
         </div>
@@ -451,9 +451,10 @@
             <div @key="occurrence.Key" class="owo-rtr-card">
                 <div class="owo-rtr-card-icon"><RadzenIcon Icon="u_turn_left" /></div>
                 <div class="owo-rtr-card-main">
-                    <strong>@ReturnToRampWindow(occurrence)</strong>
+                    <strong>@occurrence.Label</strong>
+                    <span>@ReturnToRampWindow(occurrence)</span>
                     <span>@(string.IsNullOrWhiteSpace(occurrence.Description) ? "No description" : occurrence.Description)</span>
-                    <small>@occurrence.ServiceLines.Count service(s) · @occurrence.Tasks.Count task(s)</small>
+                    <small>@occurrence.ServiceLines.Count service(s) · @occurrence.Tasks.Count task(s) · @occurrence.SignatureStatus</small>
                 </div>
                 <div class="owo-rtr-card-actions">
                     <RadzenButton Text="@(ViewOnly ? "View" : "Edit")" Icon="@(ViewOnly ? "visibility" : "edit")"
@@ -1100,7 +1101,7 @@
             return;
 
         var result = await DialogService.OpenAsync<ReturnToRampEditorDialog>(
-            ViewOnly ? "Return to ramp" : isNew ? "Add return to ramp" : "Edit return to ramp",
+            ViewOnly ? occurrence.Label : isNew ? "Add RTR" : $"Edit {occurrence.Label}",
             new Dictionary<string, object?>
             {
                 [nameof(ReturnToRampEditorDialog.StationId)] = flight.StationId,
@@ -1402,8 +1403,8 @@
     private List<string> ValidateReturnToRampsStep()
     {
         var messages = new List<string>();
-        foreach (var (occurrence, index) in model.ReturnToRamps.Select((item, index) => (item, index + 1)))
-            messages.AddRange(ReturnToRampDraftValidation.Validate(occurrence, UserTimeZone, $"Return to ramp {index}"));
+        foreach (var occurrence in model.ReturnToRamps)
+            messages.AddRange(ReturnToRampDraftValidation.Validate(occurrence, UserTimeZone, occurrence.Label));
         return messages.Distinct().ToList();
     }
 

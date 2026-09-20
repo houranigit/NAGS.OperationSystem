@@ -57,7 +57,9 @@ public sealed record WorkOrderReturnToRampCommand(
     DateTimeOffset ToUtc,
     string? Description,
     IReadOnlyList<WorkOrderServiceLineCommand> ServiceLines,
-    IReadOnlyList<WorkOrderTaskCommand> Tasks);
+    IReadOnlyList<WorkOrderTaskCommand> Tasks,
+    WorkOrderSignatureCommand? CustomerSignature = null,
+    bool RemoveCustomerSignature = false);
 
 public sealed record WorkOrderTaskToolCommand(
     Guid ToolId,

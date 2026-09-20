@@ -40,6 +40,8 @@ public sealed class ReturnToRampPortalTests
                 "description": "Bird strike inspection",
                 "recordedByUserId": "{{Guid.NewGuid()}}",
                 "createdAtUtc": "2026-08-08T11:05:00Z",
+                "sequence": 3,
+                "customerSignature": { "fileName": "rtr-3.png", "contentType": "image/png", "size": 100, "signedAtUtc": "2026-08-08T11:04:00Z" },
                 "serviceLines": [{{ServiceJson(nestedLineId, true, performerId)}}],
                 "tasks": []
               }],
@@ -55,9 +57,96 @@ public sealed class ReturnToRampPortalTests
         var occurrence = ReturnToRampDraftMapper.ReturnToRamps(detail, UtcTimeZone()).ShouldHaveSingleItem();
         occurrence.Id.ShouldBe(occurrenceId);
         occurrence.Description.ShouldBe("Bird strike inspection");
+        occurrence.Sequence.ShouldBe(3);
+        occurrence.Label.ShouldBe("RTR no. 3");
+        occurrence.CustomerSignature.ShouldNotBeNull().FileName.ShouldBe("rtr-3.png");
+        occurrence.SignatureStatus.ShouldBe("Signed");
         occurrence.ServiceLines.ShouldHaveSingleItem().Id.ShouldBe(nestedLineId);
         occurrence.ServiceLines[0].PerformerSnapshots.ShouldHaveSingleItem().FullName.ShouldBe("Ramp Agent");
     }
+
+    [Fact]
+    public void Request_mapper_preserves_saved_signatures_and_sends_only_explicit_signature_changes()
+    {
+        var original = ValidDraft(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        original.Sequence = 7;
+        original.CustomerSignature = new WorkOrderSignatureModel("saved.png", "image/png", 100, DateTimeOffset.UtcNow);
+
+        var unchanged = ReturnToRampDraftMapper.ToRequest(original, UtcTimeZone());
+        unchanged.CustomerSignature.ShouldBeNull();
+        unchanged.RemoveCustomerSignature.ShouldBeFalse();
+
+        var replacement = original.Clone();
+        replacement.PendingCustomerSignature = SignatureDraft();
+        var removal = original.Clone();
+        removal.RemoveCustomerSignature = true;
+
+        var requests = ReturnToRampDraftMapper.ToRequests([original, replacement, removal], UtcTimeZone());
+
+        requests[0].CustomerSignature.ShouldBeNull();
+        requests[0].RemoveCustomerSignature.ShouldBeFalse();
+        requests[1].CustomerSignature.ShouldNotBeNull().Base64Content.ShouldBe(Convert.ToBase64String(replacement.PendingCustomerSignature.Content));
+        requests[1].RemoveCustomerSignature.ShouldBeFalse();
+        requests[2].CustomerSignature.ShouldBeNull();
+        requests[2].RemoveCustomerSignature.ShouldBeTrue();
+        original.Label.ShouldBe("RTR no. 7");
+        original.SignatureStatus.ShouldBe("Signed");
+        replacement.SignatureStatus.ShouldBe("Signature pending");
+        removal.HasCustomerSignature.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Canceling_an_occurrence_edit_cannot_change_the_original_pending_signature()
+    {
+        var original = ValidDraft(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        original.Sequence = 4;
+        original.PendingCustomerSignature = SignatureDraft();
+        var originalFirstByte = original.PendingCustomerSignature.Content[0];
+
+        var editorCopy = original.Clone();
+        editorCopy.PendingCustomerSignature.ShouldNotBeNull().Content[0] = 0;
+        editorCopy.RemoveCustomerSignature = true;
+
+        original.PendingCustomerSignature.Content[0].ShouldBe(originalFirstByte);
+        original.RemoveCustomerSignature.ShouldBeFalse();
+        editorCopy.Sequence.ShouldBe(4);
+    }
+
+    [Fact]
+    public void Signatures_are_optional_and_pending_uploads_must_be_png_within_two_megabytes()
+    {
+        var draft = ValidDraft(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        ReturnToRampDraftValidation.Validate(draft, UtcTimeZone()).ShouldBeEmpty();
+
+        draft.PendingCustomerSignature = SignatureDraft();
+        ReturnToRampDraftValidation.Validate(draft, UtcTimeZone()).ShouldBeEmpty();
+        draft.PendingCustomerSignature.Content = [1, 2, 3];
+        ReturnToRampDraftValidation.Validate(draft, UtcTimeZone()).ShouldContain(message => message.Contains("must be a PNG image", StringComparison.Ordinal));
+
+        draft.PendingCustomerSignature.Content = new byte[ReturnToRampSignatureValidation.MaxBytes + 1];
+        ReturnToRampDraftValidation.Validate(draft, UtcTimeZone()).ShouldContain(message => message.Contains("at most 2 MB", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Persisted_rtr_number_does_not_change_when_another_occurrence_is_removed()
+    {
+        var first = ValidDraft(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        first.Sequence = 1;
+        var third = ValidDraft(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        third.Sequence = 3;
+        var occurrences = new List<ReturnToRampDraft> { first, third };
+
+        occurrences.Remove(first);
+
+        occurrences.ShouldHaveSingleItem().Label.ShouldBe("RTR no. 3");
+        new ReturnToRampDraft().Label.ShouldBe("New RTR");
+    }
+
+    private static ReturnToRampSignatureDraft SignatureDraft() => new()
+    {
+        FileName = "rtr-signature.png",
+        Content = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=")
+    };
 
     [Fact]
     public void Request_mapper_preserves_multiple_occurrence_and_child_ids_and_sends_only_pending_bytes()

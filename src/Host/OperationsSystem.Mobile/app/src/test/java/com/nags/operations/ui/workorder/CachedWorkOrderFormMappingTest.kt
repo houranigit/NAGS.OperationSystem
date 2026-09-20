@@ -140,6 +140,12 @@ class CachedWorkOrderFormMappingTest {
             returnToRamps = listOf(
                 WorkOrderReturnToRampWireDto(
                     id = "rtr-1",
+                    sequence = 4,
+                    customerSignature = WorkOrderSignatureWireDto(
+                        fileName = "rtr-4.png",
+                        contentType = "image/png",
+                        signedAtUtc = "2026-08-08T10:30:00Z",
+                    ),
                     fromUtc = "2026-08-08T10:00:00Z",
                     toUtc = "2026-08-08T10:30:00Z",
                     description = "First",
@@ -147,6 +153,7 @@ class CachedWorkOrderFormMappingTest {
                 ),
                 WorkOrderReturnToRampWireDto(
                     id = "rtr-2",
+                    sequence = 7,
                     fromUtc = "2026-08-08T11:00:00Z",
                     toUtc = "2026-08-08T11:45:00Z",
                     description = "Second",
@@ -169,6 +176,12 @@ class CachedWorkOrderFormMappingTest {
         assertEquals(listOf("rtr-1", "rtr-2"), form.returnToRamps.map { it.serverId })
         assertEquals("nested-1", form.returnToRamps.first().serviceLines.single().serverId)
         assertEquals("nested-task", form.returnToRamps.last().tasks.single().serverId)
+        // Stable numbers may have gaps after deletions; never replace them with list indexes.
+        assertEquals(listOf(4, 7), form.returnToRamps.map { it.sequence })
+        assertEquals("rtr-4.png", form.returnToRamps.first().existingCustomerSignatureName)
+        assertEquals(null, form.returnToRamps.first().customerSignaturePng)
+        assertEquals(false, form.returnToRamps.first().removeCustomerSignature)
+        assertEquals(null, form.returnToRamps.last().existingCustomerSignatureName)
     }
 
     @Test

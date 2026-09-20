@@ -15,6 +15,13 @@ public sealed class WorkOrderPrintSourceBuilder(IFileStorage storage, IMasterDat
         CancellationToken cancellationToken)
     {
         var signatureContent = await LoadOptionalSignatureAsync(workOrder.CustomerSignatureReference, cancellationToken);
+        var returnToRampSignatures = new Dictionary<Guid, byte[]>();
+        foreach (var occurrence in workOrder.ReturnToRamps)
+        {
+            var content = await LoadOptionalSignatureAsync(occurrence.CustomerSignatureReference, cancellationToken);
+            if (content is not null)
+                returnToRampSignatures.Add(occurrence.Id, content);
+        }
         var staff = await LoadStaffAsync(workOrder, cancellationToken);
         var detail = NormalizeForPrint(WorkOrderDtoMapper.Detail(workOrder));
 
@@ -49,7 +56,8 @@ public sealed class WorkOrderPrintSourceBuilder(IFileStorage storage, IMasterDat
             signatureContent,
             signatureContent is null
                 ? null
-                : workOrder.CustomerSignatureContentType ?? "image/png");
+                : workOrder.CustomerSignatureContentType ?? "image/png",
+            returnToRampSignatures);
     }
 
     private async Task<IReadOnlyList<WorkOrderPrintStaffDto>> LoadStaffAsync(
@@ -117,6 +125,20 @@ public sealed class WorkOrderPrintSourceBuilder(IFileStorage storage, IMasterDat
                         .OrderBy(attachment => attachment.OriginalFileName, StringComparer.OrdinalIgnoreCase)
                         .ThenBy(attachment => attachment.Id)
                         .ToList()
+                })
+                .ToList(),
+            ReturnToRamps = (detail.ReturnToRamps ?? [])
+                .OrderBy(item => item.Sequence)
+                .ThenBy(item => item.CreatedAtUtc)
+                .Select(item =>
+                {
+                    var activities = NormalizeForPrint(detail with
+                    {
+                        ServiceLines = item.ServiceLines,
+                        Tasks = item.Tasks,
+                        ReturnToRamps = null
+                    });
+                    return item with { ServiceLines = activities.ServiceLines, Tasks = activities.Tasks };
                 })
                 .ToList(),
             Tasks = detail.Tasks

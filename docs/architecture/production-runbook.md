@@ -86,6 +86,14 @@ The reviewed order within those two contexts is:
 
 Keep the legacy mobile return-to-ramp route and quantity-only tool bridge enabled until supported Android versions have drained their persisted outboxes. New clients use nested occurrence payloads and explicit resource usage; UTC remains the storage/API instant and clients perform local-zone input/display conversion.
 
+### 2026-09 numbered RTR records and signatures
+
+Apply `Operations_ReturnToRampNumbersAndSignatures` before deploying the updated API. It assigns existing RTR records a stable number within each work order in creation order and adds optional signature metadata. New RTR numbers increase within the work order; editing, reordering, or deleting a record does not reuse a number.
+
+Work-order detail responses now contain normal performed services and tasks in their main collections and RTR work exclusively under `returnToRamps`. Each RTR has its own `sequence` and optional `customerSignature`. Deploy the updated portal and mobile client with this API change. Existing mobile outbox requests remain supported, including retries created before RTR signatures were introduced.
+
+Signatures use the same PNG format and 2 MB limit as work-order signatures. Omitting a nested signature preserves the saved image; `removeCustomerSignature: true` removes it. Signatures are stored in the existing file store and must be included in its backup. A merged work order receives new unsigned RTR records; signatures remain on the original records. Printed work orders include a separate section for each RTR and its own optional signature.
+
 ## SQL performance settings
 
 - Keep SQL Server connection pooling enabled. Do not use `Pooling=False` for remote or production-like databases; each EF command would pay for a new physical SQL connection.

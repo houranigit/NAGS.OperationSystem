@@ -65,6 +65,20 @@ internal static class WorkOrderPrintDocumentFactory
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(displayTimeZone);
 
+        // Older cached snapshots also included RTR children in the main lists.
+        // Render each activity only in its owning occurrence.
+        var nestedServiceIds = (source.WorkOrder.ReturnToRamps ?? [])
+            .SelectMany(item => item.ServiceLines).Select(item => item.Id).ToHashSet();
+        var nestedTaskIds = (source.WorkOrder.ReturnToRamps ?? [])
+            .SelectMany(item => item.Tasks).Select(item => item.Id).ToHashSet();
+        source = source with
+        {
+            WorkOrder = source.WorkOrder with
+            {
+                ServiceLines = source.WorkOrder.ServiceLines.Where(item => !nestedServiceIds.Contains(item.Id)).ToList(),
+                Tasks = source.WorkOrder.Tasks.Where(item => !nestedTaskIds.Contains(item.Id)).ToList()
+            }
+        };
         var workOrder = source.WorkOrder;
         var document = new Document();
         document.Info.Title = $"Work Order {PrintReference(workOrder)}";
@@ -121,6 +135,7 @@ internal static class WorkOrderPrintDocumentFactory
         AddAttachmentRegister(section, workOrder);
         AddCustomerAcceptance(section, source, displayTimeZone);
         AddDocumentControl(section, workOrder, displayTimeZone);
+        AddReturnToRampDetails(section, source, displayTimeZone);
 
         return document;
     }
@@ -528,14 +543,6 @@ internal static class WorkOrderPrintDocumentFactory
         name.Format.Font.Size = Unit.FromPoint(7.2);
         name.Format.Font.Bold = true;
 
-        if (!service.IsReturnToRamp)
-            return;
-
-        var returnToRamp = cell.AddParagraph("RETURN TO RAMP");
-        returnToRamp.Format.Font.Size = Unit.FromPoint(5.8);
-        returnToRamp.Format.Font.Bold = true;
-        returnToRamp.Format.Font.Color = Color.Parse(BrandColor);
-        returnToRamp.Format.SpaceBefore = Unit.FromPoint(2);
     }
 
     private static void AddReturnToRamp(
@@ -590,6 +597,8 @@ internal static class WorkOrderPrintDocumentFactory
                 bold: true);
         }
 
+        if (activities.Count <= 4)
+            KeepRowsTogether(table);
         AddTableSpacing(section);
     }
 
@@ -640,7 +649,56 @@ internal static class WorkOrderPrintDocumentFactory
             .ToList();
         if (!string.IsNullOrWhiteSpace(item.Description))
             activities.Insert(0, item.Description.Trim());
-        return activities.Count == 0 ? "Recorded return to ramp" : string.Join("; ", activities);
+        var label = activities.Count == 0 ? "Recorded return to ramp" : string.Join("; ", activities);
+        return item.Sequence > 0 ? $"RTR no. {item.Sequence}: {label}" : label;
+    }
+
+    private static void AddReturnToRampDetails(
+        Section section,
+        ApprovedWorkOrderPrintDto source,
+        TimeZoneInfo displayTimeZone)
+    {
+        foreach (var occurrence in (source.WorkOrder.ReturnToRamps ?? [])
+                     .OrderBy(item => item.Sequence).ThenBy(item => item.CreatedAtUtc))
+        {
+            section.AddPageBreak();
+            var number = occurrence.Sequence > 0 ? $"RTR no. {occurrence.Sequence}" : "Return to Ramp";
+            var header = CreateContentTable(section, 6.0, 6.0, 6.2);
+            AddSectionHeaderRow(header, number);
+            var window = AddFactRow(header);
+            AddFactCell(window.Cells[0], "Returned At", FormatTimestamp(occurrence.FromUtc, displayTimeZone));
+            AddFactCell(window.Cells[1], "Released At", FormatTimestamp(occurrence.ToUtc, displayTimeZone));
+            AddFactCell(window.Cells[2], "Duration", FormatDuration(PositiveDuration(occurrence.FromUtc, occurrence.ToUtc)));
+            if (!string.IsNullOrWhiteSpace(occurrence.Description))
+                AddServiceDetailRows(header, "DESCRIPTION", occurrence.Description, alternate: false);
+            AddTableSpacing(section);
+
+            var detail = source.WorkOrder with
+            {
+                ServiceLines = occurrence.ServiceLines,
+                Tasks = occurrence.Tasks,
+                ReturnToRamps = [],
+                CustomerSignature = occurrence.CustomerSignature
+            };
+            var occurrenceSource = source with { WorkOrder = detail };
+            AddPerformedServices(section, detail, displayTimeZone);
+            AddCorrectiveActions(section, occurrenceSource, displayTimeZone);
+            AddResourceRegister(section, "Materials Used", BuildResourceLines(detail, ResourceKind.Material), displayTimeZone);
+            AddResourceRegister(section, "Tools Used", BuildResourceLines(detail, ResourceKind.Tool), displayTimeZone);
+            AddResourceRegister(section, "General Support", BuildResourceLines(detail, ResourceKind.GeneralSupport), displayTimeZone);
+            AddStaffUtilization(section, occurrenceSource, displayTimeZone);
+            AddAttachmentRegister(section, detail);
+
+            var acceptance = CreateContentTable(section, 9.1, 9.1);
+            AddSectionHeaderRow(acceptance, $"{number} - Customer Acceptance (Optional)");
+            var signature = acceptance.AddRow();
+            signature.TopPadding = Unit.FromPoint(6);
+            signature.BottomPadding = Unit.FromPoint(6);
+            AddSignatureCell(signature.Cells[0], source.ReturnToRampSignatures?.GetValueOrDefault(occurrence.Id));
+            AddFactCell(signature.Cells[1], "Customer Signed At", FormatTimestamp(occurrence.CustomerSignature?.SignedAtUtc, displayTimeZone));
+            KeepRowsTogether(acceptance);
+            AddTableSpacing(section);
+        }
     }
 
     internal static TimeSpan CalculateReturnToRampDuration(WorkOrderDetailDto workOrder)
@@ -828,8 +886,8 @@ internal static class WorkOrderPrintDocumentFactory
             task.Employees.Count.ToString(CultureInfo.InvariantCulture));
         AddFactCell(
             facts.Cells[3],
-            "Return to Ramp",
-            task.IsReturnToRamp ? "Yes" : "No");
+            "Attachments",
+            task.Attachments.Count.ToString(CultureInfo.InvariantCulture));
 
         AddColumnHeaderRow(
             table,

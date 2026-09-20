@@ -271,11 +271,11 @@ internal static class FlightExportProjection
                 .OrderBy(row => row.FromUtc)
                 .ThenBy(row => row.CreatedAtUtc)
                 .ThenBy(row => row.Id)
-                .Select((row, index) => new KeyValuePair<Guid, FlightExportReturnToRampContextDto>(
+                .Select(row => new KeyValuePair<Guid, FlightExportReturnToRampContextDto>(
                     row.Id,
                     new FlightExportReturnToRampContextDto(
                         row.Id,
-                        index + 1,
+                        row.Sequence,
                         row.FromUtc,
                         row.ToUtc,
                         row.Description))))
@@ -473,7 +473,8 @@ internal static class FlightExportProjection
                 item.Window.From,
                 item.Window.To,
                 item.Description,
-                item.CreatedAtUtc));
+                item.CreatedAtUtc,
+                item.Sequence));
 
     private static IReadOnlyList<string> NormalizeNames(IEnumerable<string> names) =>
         names
@@ -566,7 +567,8 @@ internal sealed record FlightExportReturnToRampRow(
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
     string? Description,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    int Sequence);
 
 public sealed class GetPerLandingExtractionQueryHandler(IOperationsDbContext db, IOperationsScope scope)
     : IQueryHandler<GetPerLandingExtractionQuery, IReadOnlyList<PerLandingExtractionItemDto>>

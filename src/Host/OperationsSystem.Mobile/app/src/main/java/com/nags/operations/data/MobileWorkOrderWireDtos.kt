@@ -59,6 +59,9 @@ data class WorkOrderReturnToRampWireDto(
     val description: String? = null,
     val serviceLines: List<WorkOrderServiceLineWireDto> = emptyList(),
     val tasks: List<WorkOrderTaskWireDto> = emptyList(),
+    /** Persisted server number; zero keeps cached responses from older servers readable. */
+    val sequence: Int = 0,
+    val customerSignature: WorkOrderSignatureWireDto? = null,
 )
 
 /** Mirrors server `WorkOrderServiceLineDto`. */
