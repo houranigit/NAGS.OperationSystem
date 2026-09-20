@@ -130,7 +130,8 @@ public sealed record WorkOrderRequest(
                     attachment.FileName,
                     attachment.ContentType)).ToList() ?? [],
                 t.IsReturnToRamp,
-                t.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
+                t.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList(),
+                t.AtaChapterId)).ToList() ?? [],
             CustomerSignature is null
                 ? null
                 : new WorkOrderSignatureCommand(
@@ -200,7 +201,8 @@ public sealed record WorkOrderTaskRequest(
     IReadOnlyList<WorkOrderTaskGeneralSupportRequest>? GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentRequest>? Attachments = null,
     bool IsReturnToRamp = false,
-    IReadOnlyList<WorkOrderEmployeeAssignmentRequest>? EmployeeAssignments = null);
+    IReadOnlyList<WorkOrderEmployeeAssignmentRequest>? EmployeeAssignments = null,
+    Guid? AtaChapterId = null);
 
 public sealed record WorkOrderReturnToRampRequest(
     Guid? Id,
@@ -247,7 +249,8 @@ public sealed record WorkOrderReturnToRampRequest(
                 attachment.FileName,
                 attachment.ContentType)).ToList() ?? [],
             IsReturnToRamp: false,
-            EmployeeAssignments: task.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
+            EmployeeAssignments: task.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList(),
+            AtaChapterId: task.AtaChapterId)).ToList() ?? [],
         CustomerSignature is null ? null : new WorkOrderSignatureCommand(CustomerSignature.Base64Content, CustomerSignature.FileName, CustomerSignature.ContentType),
         RemoveCustomerSignature);
 }

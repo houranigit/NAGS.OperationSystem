@@ -136,6 +136,7 @@ data class OutboxPayload(
         val generalSupports: List<ResourceInput> = emptyList(),
         val attachments: List<AttachmentInput> = emptyList(),
         val isReturnToRamp: Boolean = false,
+        val ataChapterId: String? = null,
     )
 
     @Serializable

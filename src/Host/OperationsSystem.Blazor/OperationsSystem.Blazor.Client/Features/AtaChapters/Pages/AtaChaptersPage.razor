@@ -1,0 +1,86 @@
+@page "/master-data/ata-chapters"
+@using OperationsSystem.Blazor.Client.Features.AtaChapters.Components
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject NotificationService Notifications
+
+<PageTitle>ATA Chapters</PageTitle>
+<RequirePermission Permission="@MasterDataPermissions.AtaChaptersView">
+    <div class="os-list-page">
+        <PageHeader Title="ATA Chapters" Description="Manage the chapters available for work order tasks. A chapter and its category must both be active to be selected." />
+        <RadzenTabs>
+            <Tabs>
+                <RadzenTabsItem Text="Chapters">
+                    <AuthorizeView Context="create">
+                        @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.AtaChaptersCreate))
+                        {
+                            <RadzenButton Text="Add chapter" Icon="add" Click="@(() => EditAsync(false, null))" class="ata-add" />
+                        }
+                    </AuthorizeView>
+                    <DataListCard @ref="chapterList" TItem="AtaChapterModel" Data="@chapters" Count="@chapterCount"
+                                  IsLoading="@loadingChapters" HasError="@chapterError" OnRetry="@ReloadChaptersAsync" LoadData="@LoadChaptersAsync"
+                                  PageSize="@chapterPageSize" SearchValue="@chapterSearch" SearchValueChanged="@(v => chapterSearch = v)"
+                                  OnSearch="@ReloadChaptersAsync" SearchPlaceholder="Search chapter or title" CountLabel="chapters" EmptyText="No ATA chapters found.">
+                        <Filters>
+                            <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statuses" Value="@chapterStatus" ValueChanged="@ChapterStatusChangedAsync" />
+                        </Filters>
+                        <Columns>
+                            <RadzenDataGridColumn TItem="AtaChapterModel" Property="Code" Title="Ch." Width="100px" />
+                            <RadzenDataGridColumn TItem="AtaChapterModel" Property="Title" Title="Title" />
+                            <RadzenDataGridColumn TItem="AtaChapterModel" Property="CategoryName" Title="Category" Sortable="false" />
+                            <RadzenDataGridColumn TItem="AtaChapterModel" Title="Status" Sortable="false">
+                                <Template Context="item">
+                                    <StatusBadge Label="@(item.IsActive ? "Active" : "Inactive")" Tone="@(item.IsActive ? "success" : "neutral")" />
+                                    @if (!item.CategoryIsActive)
+                                    {
+                                        <small class="ata-category-disabled os-muted">Category inactive</small>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                        <RowActions Context="item">
+                            <RowActionMenu>
+                                <RowAction Text="Edit" Icon="edit" Permission="@MasterDataPermissions.AtaChaptersUpdate" OnClick="@(() => EditAsync(false, item.Id))" />
+                                <RowAction Text="Activate" Icon="check_circle" Visible="@(!item.IsActive)" Permission="@MasterDataPermissions.AtaChaptersActivate" OnClick="@(() => SetActiveAsync(false, item.Id, true, item.RowVersion))" />
+                                <RowAction Text="Deactivate" Icon="cancel" Danger="true" Visible="@item.IsActive" Permission="@MasterDataPermissions.AtaChaptersDeactivate" OnClick="@(() => SetActiveAsync(false, item.Id, false, item.RowVersion))" />
+                            </RowActionMenu>
+                        </RowActions>
+                    </DataListCard>
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Categories">
+                    <RequirePermission Permission="@MasterDataPermissions.AtaChapterCategoriesView">
+                        <AuthorizeView Context="createCategory">
+                            @if (createCategory.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.AtaChapterCategoriesCreate))
+                            {
+                                <RadzenButton Text="Add category" Icon="add" Click="@(() => EditAsync(true, null))" class="ata-add" />
+                            }
+                        </AuthorizeView>
+                        <DataListCard @ref="categoryList" TItem="AtaChapterCategoryModel" Data="@categories" Count="@categoryCount"
+                                      IsLoading="@loadingCategories" HasError="@categoryError" OnRetry="@ReloadCategoriesAsync" LoadData="@LoadCategoriesAsync"
+                                      PageSize="@categoryPageSize" SearchValue="@categorySearch" SearchValueChanged="@(v => categorySearch = v)"
+                                      OnSearch="@ReloadCategoriesAsync" SearchPlaceholder="Search categories" CountLabel="categories" EmptyText="No ATA categories found.">
+                            <Filters>
+                                <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statuses" Value="@categoryStatus" ValueChanged="@CategoryStatusChangedAsync" />
+                            </Filters>
+                            <Columns>
+                                <RadzenDataGridColumn TItem="AtaChapterCategoryModel" Property="Name" Title="Category" />
+                                <RadzenDataGridColumn TItem="AtaChapterCategoryModel" Title="Status" Sortable="false">
+                                    <Template Context="item">
+                                        <StatusBadge Label="@(item.IsActive ? "Active" : "Inactive")" Tone="@(item.IsActive ? "success" : "neutral")" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                            <RowActions Context="item">
+                                <RowActionMenu>
+                                    <RowAction Text="Edit" Icon="edit" Permission="@MasterDataPermissions.AtaChapterCategoriesUpdate" OnClick="@(() => EditAsync(true, item.Id))" />
+                                    <RowAction Text="Activate" Icon="check_circle" Visible="@(!item.IsActive)" Permission="@MasterDataPermissions.AtaChapterCategoriesActivate" OnClick="@(() => SetActiveAsync(true, item.Id, true, item.RowVersion))" />
+                                    <RowAction Text="Deactivate" Icon="cancel" Danger="true" Visible="@item.IsActive" Permission="@MasterDataPermissions.AtaChapterCategoriesDeactivate" OnClick="@(() => SetActiveAsync(true, item.Id, false, item.RowVersion))" />
+                                </RowActionMenu>
+                            </RowActions>
+                        </DataListCard>
+                    </RequirePermission>
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+    </div>
+</RequirePermission>

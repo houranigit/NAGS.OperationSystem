@@ -32,6 +32,7 @@ public sealed class WorkOrderTask : Entity<Guid>
     public Guid WorkOrderId { get; private set; }
     public Guid? ReturnToRampId { get; private set; }
     public TaskType TaskType { get; private set; }
+    public AtaChapterSnapshot? AtaChapter { get; private set; }
     public string? Description { get; private set; }
     public TimeWindow Window { get; private set; } = null!;
     /// <summary>Compatibility alias for clients deployed before occurrence records.</summary>
@@ -88,6 +89,9 @@ public sealed class WorkOrderTask : Entity<Guid>
     private void Apply(WorkOrderTaskInput input)
     {
         TaskType = input.TaskType;
+        AtaChapter = input.AtaChapter is { } chapter
+            ? new AtaChapterSnapshot(chapter.AtaChapterId, chapter.Code, chapter.Title)
+            : null;
         Description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
         Window = input.Window;
         _employees.Clear();

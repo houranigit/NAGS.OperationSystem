@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using MasterData.Application.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Operations.Api.Endpoints;
@@ -26,6 +27,88 @@ public sealed class CanonicalReturnToRampEndpointsTests(OperationsApiFactory fac
         "operations.work-orders.view",
         "operations.work-orders.author"
     ];
+
+    [Fact]
+    public async Task AtaChapters_AreStoredOnTasks_AndInactiveCatalogEntriesCannotBeNewlySelected()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var author = await CreateStaffLoginAsync(admin, refs);
+        var secondAuthor = await CreateStaffLoginAsync(admin, refs);
+        var categoryId = await PostForIdAsync(admin, $"{MasterDataBase}/ata-chapter-categories", new { name = $"ATA Test {Guid.NewGuid():N}" });
+        var chapterId = await PostForIdAsync(admin, $"{MasterDataBase}/ata-chapters", new { categoryId, code = $"X{Guid.NewGuid():N}"[..20], title = "Recorded chapter title" });
+        var now = DateTimeOffset.UtcNow;
+        var flightId = await ScheduleFlightAsync(admin, refs, "ATA101", [author.StaffId, secondAuthor.StaffId], now);
+        var task = Task(author.StaffId, now, now.AddMinutes(30), "ATA normal task") with { AtaChapterId = chapterId };
+        var request = new WorkOrderRequest(WorkOrderType.Completion, "ATA101", refs.AircraftTypeId, "HZ-ATA",
+            now.AddHours(-1), now.AddHours(1), null, null, "ATA test", [], [task]);
+        var submit = await author.Client.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders", request);
+        submit.StatusCode.ShouldBe(HttpStatusCode.Created, await submit.Content.ReadAsStringAsync());
+        var workOrderId = await submit.Content.ReadFromJsonAsync<Guid>();
+        var returnRequest = TaskOccurrence(author.StaffId, now, now.AddMinutes(30), "ATA return") with { Tasks = [task] };
+        var append = await author.Client.PostAsJsonAsync($"{Base}/work-orders/{workOrderId}/return-to-ramps", returnRequest);
+        append.StatusCode.ShouldBe(HttpStatusCode.Created, await append.Content.ReadAsStringAsync());
+
+        var detail = (await author.Client.GetFromJsonAsync<WorkOrderDetailDto>($"{Base}/work-orders/{workOrderId}"))!;
+        detail.Tasks.ShouldHaveSingleItem().AtaChapterId.ShouldBe(chapterId);
+        detail.ReturnToRamps![0].Tasks[0].AtaChapterTitle.ShouldBe("Recorded chapter title");
+        var chapter = (await admin.GetFromJsonAsync<AtaChapterDto>($"{MasterDataBase}/ata-chapters/{chapterId}"))!;
+        using (var rename = new HttpRequestMessage(HttpMethod.Put, $"{MasterDataBase}/ata-chapters/{chapterId}"))
+        {
+            rename.Headers.TryAddWithoutValidation("If-Match", chapter.RowVersion);
+            rename.Content = JsonContent.Create(new { categoryId, chapter.Code, title = "Renamed catalog title" });
+            (await admin.SendAsync(rename)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        }
+        var category = (await admin.GetFromJsonAsync<AtaChapterCategoryDto>($"{MasterDataBase}/ata-chapter-categories/{categoryId}"))!;
+        using (var disable = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/ata-chapter-categories/{categoryId}/deactivate"))
+        {
+            disable.Headers.TryAddWithoutValidation("If-Match", category.RowVersion);
+            (await admin.SendAsync(disable)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        }
+        var options = await admin.GetFromJsonAsync<List<AtaChapterDto>>($"{MasterDataBase}/ata-chapters/options");
+        options!.ShouldNotContain(item => item.Id == chapterId);
+        var catalogs = await author.Client.GetFromJsonAsync<MobileCatalogsDto>("/api/v1/mobile/catalogs",
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+            {
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            });
+        catalogs!.AtaChapters!.ShouldNotContain(item => item.Id == chapterId);
+        catalogs.AtaChapters!.ShouldNotContain(item => new[] { "61", "62", "63", "64", "65", "66", "67" }.Contains(item.Code));
+
+        using (var update = new HttpRequestMessage(HttpMethod.Put, $"{Base}/work-orders/{workOrderId}"))
+        {
+            update.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+            update.Content = JsonContent.Create(request with
+            {
+                Tasks = [task with { Id = detail.Tasks[0].Id }],
+                ReturnToRamps = [returnRequest with { Id = detail.ReturnToRamps[0].Id, Tasks = [task with { Id = detail.ReturnToRamps[0].Tasks[0].Id }] }]
+            });
+            var updated = await author.Client.SendAsync(update);
+            updated.StatusCode.ShouldBe(HttpStatusCode.NoContent, await updated.Content.ReadAsStringAsync());
+        }
+        detail = (await author.Client.GetFromJsonAsync<WorkOrderDetailDto>($"{Base}/work-orders/{workOrderId}"))!;
+        detail.Tasks[0].AtaChapterTitle.ShouldBe("Recorded chapter title");
+        detail.ReturnToRamps![0].Tasks[0].AtaChapterTitle.ShouldBe("Recorded chapter title");
+        var rejected = await author.Client.PostAsJsonAsync($"{Base}/work-orders/{workOrderId}/return-to-ramps", returnRequest);
+        rejected.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await rejected.Content.ReadAsStringAsync()).ShouldContain("Operations.AtaChapter.Inactive");
+
+        var secondWorkOrderId = await SubmitCompletionAsync(secondAuthor.Client, refs, secondAuthor.StaffId, flightId, "ATA101", now);
+        var mergePayload = request with
+        {
+            Tasks = [task with { Id = detail.Tasks[0].Id }],
+            ReturnToRamps = [returnRequest with { Tasks = [task with { Id = detail.ReturnToRamps[0].Tasks[0].Id }] }]
+        };
+        var merged = await admin.PostAsJsonAsync($"{Base}/flights/{flightId}/work-orders/merge",
+            new MergeWorkOrdersRequest([workOrderId, secondWorkOrderId], mergePayload, false));
+        merged.StatusCode.ShouldBe(HttpStatusCode.Created, await merged.Content.ReadAsStringAsync());
+        var mergedId = await merged.Content.ReadFromJsonAsync<Guid>();
+        var mergedDetail = (await admin.GetFromJsonAsync<WorkOrderDetailDto>($"{Base}/work-orders/{mergedId}"))!;
+        mergedDetail.Tasks[0].Id.ShouldNotBe(detail.Tasks[0].Id);
+        mergedDetail.Tasks[0].AtaChapterTitle.ShouldBe("Recorded chapter title");
+        mergedDetail.ReturnToRamps![0].Tasks[0].Id.ShouldNotBe(detail.ReturnToRamps[0].Tasks[0].Id);
+        mergedDetail.ReturnToRamps[0].Tasks[0].AtaChapterTitle.ShouldBe("Recorded chapter title");
+    }
 
     [Fact]
     public async Task Canonical_routes_append_two_distinct_grouped_occurrences_to_editable_work_order()

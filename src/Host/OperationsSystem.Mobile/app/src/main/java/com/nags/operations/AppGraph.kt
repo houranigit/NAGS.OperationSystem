@@ -127,6 +127,7 @@ class AppGraph private constructor(context: Context) {
                 "general-supports" to byStorageKey[SyncTable.GeneralSupports.storageKey],
                 "customers" to byStorageKey[SyncTable.Customers.storageKey],
                 "aircraft-types" to byStorageKey[SyncTable.AircraftTypes.storageKey],
+                "ata-chapters" to byStorageKey[SyncTable.AtaChapters.storageKey],
             )
         },
     )

@@ -268,6 +268,11 @@ public sealed class WorkOrderSubmissionEmailQueueTests
         public Task<StaffMemberReadSnapshot?> GetStaffMemberAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetStaffMembersAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<AtaChapterReadSnapshot?> GetAtaChapterAsync(Guid id, CancellationToken cancellationToken) =>
+            Task.FromResult<AtaChapterReadSnapshot?>(null);
+        public Task<IReadOnlyList<AtaChapterReadSnapshot>> GetActiveAtaChaptersAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<AtaChapterReadSnapshot>>([]);
+
         public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();

@@ -14,6 +14,30 @@ public sealed class ReturnToRampPersistenceTests
     private static readonly DateTimeOffset Now = new(2026, 8, 8, 15, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task TaskAtaChapter_RoundTripsAndSurvivesReturnOccurrenceCloning()
+    {
+        await using var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
+            .UseInMemoryDatabase($"ata-snapshot-{Guid.NewGuid()}").Options);
+        var flight = CreateFlight();
+        var chapter = new AtaChapterSnapshot(Guid.NewGuid(), "21", "Air Conditioning");
+        var occurrence = Occurrence(0, "ATA return");
+        occurrence = occurrence with { Tasks = [occurrence.Tasks[0] with { AtaChapter = chapter }] };
+        var workOrder = CreateWorkOrder(flight, [occurrence]);
+        db.Flights.Add(flight);
+        db.WorkOrders.Add(workOrder);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var reloaded = await WorkOrderLoader.ForMutation(db.WorkOrders.AsNoTracking()).SingleAsync();
+        var task = WorkOrderDtoMapper.Detail(reloaded).ReturnToRamps![0].Tasks[0];
+        task.AtaChapterId.ShouldBe(chapter.AtaChapterId);
+        task.AtaChapterCode.ShouldBe("21");
+        task.AtaChapterTitle.ShouldBe("Air Conditioning");
+        var cloned = WorkOrderReturnToRampCloner.Clone([reloaded]);
+        cloned[0].Tasks[0].AtaChapter.ShouldBe(chapter);
+    }
+
+    [Fact]
     public async Task Loader_round_trips_multiple_occurrences_with_their_nested_rows()
     {
         await using var db = new OperationsDbContext(

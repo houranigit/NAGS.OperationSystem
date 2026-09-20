@@ -86,6 +86,10 @@ public sealed class ReturnToRampTaskDraft
 {
     public Guid Key { get; } = Guid.NewGuid();
     public Guid? Id { get; set; }
+    public Guid? AtaChapterId { get; set; }
+    public Guid? AtaChapterSnapshotId { get; set; }
+    public string? AtaChapterCode { get; set; }
+    public string? AtaChapterTitle { get; set; }
     public string TaskType { get; set; } = "Major";
     public string? Description { get; set; }
     public DateTime? FromLocal { get; set; }
@@ -101,6 +105,10 @@ public sealed class ReturnToRampTaskDraft
     public ReturnToRampTaskDraft Clone() => new()
     {
         Id = Id,
+        AtaChapterId = AtaChapterId,
+        AtaChapterSnapshotId = AtaChapterSnapshotId,
+        AtaChapterCode = AtaChapterCode,
+        AtaChapterTitle = AtaChapterTitle,
         TaskType = TaskType,
         Description = Description,
         FromLocal = FromLocal,
@@ -232,6 +240,10 @@ internal static class ReturnToRampDraftMapper
     private static ReturnToRampTaskDraft FromTask(WorkOrderTaskModel source, UserTimeZone timeZone) => new()
     {
         Id = source.Id,
+        AtaChapterId = source.AtaChapterId,
+        AtaChapterSnapshotId = source.AtaChapterId,
+        AtaChapterCode = source.AtaChapterCode,
+        AtaChapterTitle = source.AtaChapterTitle,
         TaskType = source.TaskType,
         Description = source.Description,
         FromLocal = timeZone.ToLocalDateTime(source.FromUtc),
@@ -336,7 +348,8 @@ internal static class ReturnToRampDraftMapper
             Convert.ToBase64String(item.Content!),
             item.OriginalFileName,
             item.ContentType)).ToList(),
-        EmployeeAssignments: WorkOrderEntryRules.ToRequests(source.EmployeeAssignments, timeZone));
+        EmployeeAssignments: WorkOrderEntryRules.ToRequests(source.EmployeeAssignments, timeZone),
+        AtaChapterId: source.AtaChapterId);
 }
 
 internal static class ReturnToRampDraftValidation

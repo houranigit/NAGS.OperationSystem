@@ -1,0 +1,29 @@
+@if (ViewOnly)
+{
+    <span>@AtaChapterChoices.Label(SnapshotCode, SnapshotTitle)</span>
+}
+else
+{
+    <RadzenDropDown TValue="Guid?" Value="@Value" ValueChanged="@ValueChanged" Data="@choices"
+                    TextProperty="Label" ValueProperty="Id" DisabledProperty="IsDisabled"
+                    AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    Placeholder="Select ATA chapter (optional)" class="ata-picker" />
+    @if (choices.Count == 0)
+    {
+        <small class="os-muted">No active ATA chapters are available.</small>
+    }
+}
+
+@code {
+    [Parameter] public Guid? Value { get; set; }
+    [Parameter] public EventCallback<Guid?> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<AtaChapterModel> Options { get; set; } = [];
+    [Parameter] public Guid? SnapshotId { get; set; }
+    [Parameter] public string? SnapshotCode { get; set; }
+    [Parameter] public string? SnapshotTitle { get; set; }
+    [Parameter] public bool ViewOnly { get; set; }
+    private IReadOnlyList<AtaChapterChoice> choices = [];
+
+    protected override void OnParametersSet() =>
+        choices = AtaChapterChoices.Build(Options, Value, SnapshotId, SnapshotCode, SnapshotTitle);
+}

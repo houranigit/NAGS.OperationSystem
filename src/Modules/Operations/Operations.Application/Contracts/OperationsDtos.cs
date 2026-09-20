@@ -389,7 +389,10 @@ public sealed record WorkOrderTaskDto(
     IReadOnlyList<WorkOrderTaskMaterialDto> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportDto> GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentDto> Attachments,
-    bool IsReturnToRamp);
+    bool IsReturnToRamp,
+    Guid? AtaChapterId = null,
+    string? AtaChapterCode = null,
+    string? AtaChapterTitle = null);
 
 public sealed record WorkOrderTaskEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 

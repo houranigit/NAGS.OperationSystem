@@ -46,6 +46,7 @@ public sealed record MobileSyncChange(
 /// </summary>
 public static class MobileSyncTables
 {
+    public const string AtaChapters = "ata-chapters";
     /// <summary>Non-Per-Landing flights the calling staff member is rostered on (Room: <c>flights_my</c>).</summary>
     public const string Flights = "flights";
 

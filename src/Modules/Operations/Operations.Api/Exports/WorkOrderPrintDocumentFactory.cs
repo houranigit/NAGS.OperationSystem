@@ -871,6 +871,9 @@ internal static class WorkOrderPrintDocumentFactory
             string.IsNullOrWhiteSpace(task.Description) ? MutedTextColor : TextColor);
         descriptionText.Format.SpaceBefore = Unit.FromPoint(2);
 
+        if (task.AtaChapterId.HasValue)
+            AddServiceDetailRows(table, "ATA CHAPTER", $"{task.AtaChapterCode}. {task.AtaChapterTitle}", alternate: false);
+
         var facts = AddFactRow(table);
         AddFactCell(
             facts.Cells[0],

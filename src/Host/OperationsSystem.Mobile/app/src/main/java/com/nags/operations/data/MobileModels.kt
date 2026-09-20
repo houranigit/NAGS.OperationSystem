@@ -62,6 +62,16 @@ data class MobileAircraftTypeDto(
     val model: String,
 )
 
+/** Only chapters with both an active category and active item are included by the server. */
+@Serializable
+data class MobileAtaChapterDto(
+    val id: String,
+    val categoryId: String,
+    val categoryName: String,
+    val code: String,
+    val title: String,
+)
+
 /** Mirrors server `MobileCatalogsDto` (`GET /api/v1/mobile/catalogs`). */
 @Serializable
 data class MobileCatalogsDto(
@@ -74,6 +84,7 @@ data class MobileCatalogsDto(
     val customers: List<MobileCustomerDto> = emptyList(),
     val aircraftTypes: List<MobileAircraftTypeDto> = emptyList(),
     val generatedAtUtc: String,
+    val ataChapters: List<MobileAtaChapterDto> = emptyList(),
 )
 
 /** Mirrors server `AssignedEmployeeDto` — one staff member (roster row / pickers). */

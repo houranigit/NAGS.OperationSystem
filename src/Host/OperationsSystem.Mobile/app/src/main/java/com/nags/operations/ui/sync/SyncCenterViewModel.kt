@@ -75,6 +75,7 @@ class SyncCenterViewModel(
             database.flightDao().observeAll(),
             database.perLandingFlightDao().observeAll(),
             database.adHocFlightDao().observeAll(),
+            database.ataChapterDao().observeAll(),
         ),
     ) { lists ->
         mapOf(
@@ -88,6 +89,7 @@ class SyncCenterViewModel(
             SyncTable.Flights.storageKey to lists[7].size,
             SyncTable.PerLandingFlights.storageKey to lists[8].size,
             SyncTable.AdHocFlights.storageKey to lists[9].size,
+            SyncTable.AtaChapters.storageKey to lists[10].size,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 

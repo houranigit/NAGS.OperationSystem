@@ -42,7 +42,8 @@ public sealed record MobileCatalogsDto(
     IReadOnlyList<MobileCatalogItemDto> GeneralSupports,
     IReadOnlyList<MobileCustomerDto> Customers,
     IReadOnlyList<MobileAircraftTypeDto> AircraftTypes,
-    DateTimeOffset GeneratedAtUtc);
+    DateTimeOffset GeneratedAtUtc,
+    IReadOnlyList<MobileAtaChapterDto>? AtaChapters = null);
 
 /// <summary>
 /// One flight row for the mobile cache. A single shape serves the My/Per-Landing/Ad-Hoc lists and
@@ -79,3 +80,5 @@ public sealed record MobileFlightDto(
     bool IsWithinMobileWindow,
     DateTimeOffset MobileWindowStartsAtUtc,
     DateTimeOffset MobileWindowEndsAtUtc);
+
+public sealed record MobileAtaChapterDto(Guid Id, Guid CategoryId, string CategoryName, string Code, string Title);

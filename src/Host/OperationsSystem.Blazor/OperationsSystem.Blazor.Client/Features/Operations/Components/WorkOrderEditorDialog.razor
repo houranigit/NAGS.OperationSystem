@@ -93,6 +93,7 @@
     private IReadOnlyList<AircraftTypeOption> aircraftTypes = [];
     private IReadOnlyList<StaffMemberOption> staffOptions = [];
     private IReadOnlyList<ResourceOption> toolOptions = [];
+    private IReadOnlyList<AtaChapterModel> ataChapterOptions = [];
     private IReadOnlyList<ResourceOption> materialOptions = [];
     private IReadOnlyList<ResourceOption> supportOptions = [];
     private bool isLoading = true;
@@ -167,8 +168,11 @@
         var toolsTask = MasterData.GetToolOptionsAsync();
         var materialsTask = MasterData.GetMaterialOptionsAsync();
         var supportsTask = MasterData.GetGeneralSupportOptionsAsync();
+        var ataChaptersTask = MasterData.GetAtaChapterOptionsAsync();
 
-        await Task.WhenAll(servicesTask, aircraftTask, staffTask, toolsTask, materialsTask, supportsTask);
+        await Task.WhenAll(servicesTask, aircraftTask, staffTask, toolsTask, materialsTask, supportsTask, ataChaptersTask);
+
+        ataChapterOptions = await ataChaptersTask;
 
         serviceOptions = servicesTask.Result;
         aircraftTypes = aircraftTask.Result;
@@ -389,6 +393,10 @@
         {
             <div @key="task.Key" class="owo-row-panel">
                 <div class="owo-grid-2">
+                    <div class="owo-field-block">
+                        <label class="owo-label">ATA Chapters</label>
+                        <AtaChapterPicker @bind-Value="task.AtaChapterId" Options="@ataChapterOptions" SnapshotId="@task.AtaChapterSnapshotId" SnapshotCode="@task.AtaChapterCode" SnapshotTitle="@task.AtaChapterTitle" ViewOnly="@ViewOnly" />
+                    </div>
                     <div class="owo-field-block">
                         <label class="owo-label">Task type <span class="owo-required">*</span></label>
                         <RadzenDropDown @bind-Value="task.TaskType" Data="@taskTypeOptions" TextProperty="Label" ValueProperty="Value"
@@ -1607,7 +1615,8 @@
                         Convert.ToBase64String(a.Content!),
                         a.OriginalFileName,
                         a.ContentType)).ToList(),
-                    EmployeeAssignments: WorkOrderEntryRules.ToRequests(t.EmployeeAssignments, UserTimeZone))).ToList()
+                    EmployeeAssignments: WorkOrderEntryRules.ToRequests(t.EmployeeAssignments, UserTimeZone),
+                    AtaChapterId: t.AtaChapterId)).ToList()
                 : [],
             !completion || model.CustomerSignature is null
                 ? null
@@ -1684,6 +1693,10 @@
         Tasks = ReturnToRampDraftMapper.StandardTasks(workOrder).Select(t => new TaskForm
         {
             Id = t.Id,
+            AtaChapterId = t.AtaChapterId,
+            AtaChapterSnapshotId = t.AtaChapterId,
+            AtaChapterCode = t.AtaChapterCode,
+            AtaChapterTitle = t.AtaChapterTitle,
             TaskType = t.TaskType,
             Description = t.Description,
             FromUtc = UserTimeZone.ToLocalDateTime(t.FromUtc),
@@ -1871,6 +1884,10 @@
     {
         public Guid Key { get; } = Guid.NewGuid();
         public Guid? Id { get; set; }
+        public Guid? AtaChapterId { get; set; }
+        public Guid? AtaChapterSnapshotId { get; set; }
+        public string? AtaChapterCode { get; set; }
+        public string? AtaChapterTitle { get; set; }
         public string TaskType { get; set; } = "Major";
         public string? Description { get; set; }
         public DateTime? FromUtc { get; set; }

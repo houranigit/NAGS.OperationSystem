@@ -10,6 +10,17 @@ namespace MasterData.Infrastructure.Readers;
 /// </summary>
 public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
 {
+    public Task<AtaChapterReadSnapshot?> GetAtaChapterAsync(Guid id, CancellationToken cancellationToken) =>
+        db.AtaChapters.AsNoTracking().Where(x => x.Id == id)
+            .Select(x => new AtaChapterReadSnapshot(x.Id, x.CategoryId, x.Category.Name, x.Code, x.Title, x.IsActive, x.Category.IsActive))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<AtaChapterReadSnapshot>> GetActiveAtaChaptersAsync(CancellationToken cancellationToken) =>
+        await db.AtaChapters.AsNoTracking().Where(x => x.IsActive && x.Category.IsActive)
+            .OrderBy(x => x.Code).ThenBy(x => x.Id)
+            .Select(x => new AtaChapterReadSnapshot(x.Id, x.CategoryId, x.Category.Name, x.Code, x.Title, x.IsActive, x.Category.IsActive))
+            .ToListAsync(cancellationToken);
+
     public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
         db.Customers.AsNoTracking()
             .Where(c => c.Id == id)

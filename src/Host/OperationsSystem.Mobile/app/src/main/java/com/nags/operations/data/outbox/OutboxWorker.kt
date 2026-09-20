@@ -437,44 +437,8 @@ class OutboxWorker(
         removeCustomerSignature = removeCustomerSignature,
     )
 
-    private fun OutboxPayload.TaskInput.toWire(attachmentsDir: File?) = WorkOrderTaskInput(
-        id = id,
-        taskType = taskType,
-        description = description,
-        fromUtc = fromIso,
-        toUtc = toIso,
-        employeeIds = employeeIds,
-        employeeAssignments = employeeAssignments.toWireAssignments(),
-        tools = tools.map {
-            WorkOrderTaskResourceInput(
-                toolId = it.itemId,
-                description = it.description,
-                quantity = it.quantity,
-                fromUtc = it.fromIso,
-                toUtc = it.toIso,
-            )
-        },
-        materials = materials.map {
-            WorkOrderTaskResourceInput(
-                materialId = it.itemId,
-                description = it.description,
-                quantity = it.quantity,
-                fromUtc = it.fromIso,
-                toUtc = it.toIso,
-            )
-        },
-        generalSupports = generalSupports.map {
-            WorkOrderTaskResourceInput(
-                generalSupportId = it.itemId,
-                description = it.description,
-                quantity = it.quantity,
-                fromUtc = it.fromIso,
-                toUtc = it.toIso,
-            )
-        },
-        attachments = attachments.map { it.toWire(attachmentsDir) },
-        isReturnToRamp = isReturnToRamp,
-    )
+    private fun OutboxPayload.TaskInput.toWire(attachmentsDir: File?) =
+        toWireTask(attachments.map { it.toWire(attachmentsDir) })
 
     private fun OutboxPayload.AttachmentInput.toWire(attachmentsDir: File?): WorkOrderTaskAttachmentInput {
         val directory = attachmentsDir ?: throw MissingQueuedAttachmentException(
@@ -605,3 +569,45 @@ internal fun backgroundDrainDecision(
 /** Preserve missing assignments so retried pre-upgrade mutations retain their original fingerprint. */
 internal fun List<OutboxPayload.EmployeeAssignmentInput>?.toWireAssignments(): List<WorkOrderEmployeeAssignmentInput>? =
     this?.map { WorkOrderEmployeeAssignmentInput(it.staffMemberId, it.fromIso, it.toIso) }
+
+internal fun OutboxPayload.TaskInput.toWireTask(
+    wireAttachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
+) = WorkOrderTaskInput(
+    ataChapterId = ataChapterId,
+    id = id,
+    taskType = taskType,
+    description = description,
+    fromUtc = fromIso,
+    toUtc = toIso,
+    employeeIds = employeeIds,
+    employeeAssignments = employeeAssignments.toWireAssignments(),
+    tools = tools.map {
+        WorkOrderTaskResourceInput(
+            toolId = it.itemId,
+            description = it.description,
+            quantity = it.quantity,
+            fromUtc = it.fromIso,
+            toUtc = it.toIso,
+        )
+    },
+    materials = materials.map {
+        WorkOrderTaskResourceInput(
+            materialId = it.itemId,
+            description = it.description,
+            quantity = it.quantity,
+            fromUtc = it.fromIso,
+            toUtc = it.toIso,
+        )
+    },
+    generalSupports = generalSupports.map {
+        WorkOrderTaskResourceInput(
+            generalSupportId = it.itemId,
+            description = it.description,
+            quantity = it.quantity,
+            fromUtc = it.fromIso,
+            toUtc = it.toIso,
+        )
+    },
+    attachments = wireAttachments,
+    isReturnToRamp = isReturnToRamp,
+)

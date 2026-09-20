@@ -158,7 +158,8 @@
                     var canStations = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StationsView);
                     var canCustomers = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.CustomersView);
                     var canStaff = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffMembersView);
-                    var canMasterData = canCountries || canManpower || canLicenses || canServices || canOperationTypes || canAircraftTypes || canTools || canMaterials || canGeneralSupports || canStations || canCustomers || canStaff;
+                    var canAtaChapters = masterData.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.AtaChaptersView);
+                    var canMasterData = canAtaChapters || canCountries || canManpower || canLicenses || canServices || canOperationTypes || canAircraftTypes || canTools || canMaterials || canGeneralSupports || canStations || canCustomers || canStaff;
                     var masterDataActive = IsNavGroupActive("master-data");
                 }
                 @if (canMasterData)
@@ -185,6 +186,12 @@
                                 <NavLink href="/master-data/manpower-types" class="os-nav-link" title="@UiStrings.Nav.ManpowerTypes" @onclick="CloseNav">
                                     <RadzenIcon Icon="engineering" />
                                     <span>@UiStrings.Nav.ManpowerTypes</span>
+                                </NavLink>
+                            }
+                            @if (canAtaChapters)
+                            {
+                                <NavLink href="/master-data/ata-chapters" class="os-nav-link" title="ATA Chapters" @onclick="CloseNav">
+                                    <RadzenIcon Icon="menu_book" /><span>ATA Chapters</span>
                                 </NavLink>
                             }
                             @if (canLicenses)

@@ -22,7 +22,8 @@ public sealed record WorkOrderTaskInput(
     IReadOnlyList<WorkOrderTaskMaterialInput> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportInput> GeneralSupports,
     bool IsReturnToRamp = false,
-    IReadOnlyList<WorkOrderEmployeeAssignmentInput>? EmployeeAssignments = null);
+    IReadOnlyList<WorkOrderEmployeeAssignmentInput>? EmployeeAssignments = null,
+    AtaChapterSnapshot? AtaChapter = null);
 
 public sealed record WorkOrderEmployeeAssignmentInput(Guid StaffMemberId, TimeWindow Window);
 

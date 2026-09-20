@@ -10,6 +10,8 @@ public sealed record CustomerReadSnapshot(Guid Id, string? IataCode, string? Ica
 
 public sealed record StationReadSnapshot(Guid Id, string IataCode, string? IcaoCode, string Name, bool IsActive);
 
+public sealed record AtaChapterReadSnapshot(Guid Id, Guid CategoryId, string CategoryName, string Code, string Title, bool IsActive, bool CategoryIsActive);
+
 public sealed record OperationTypeReadSnapshot(Guid Id, string Name, bool IsActive);
 
 public sealed record AircraftTypeReadSnapshot(Guid Id, string Manufacturer, string Model, bool IsActive);
@@ -44,6 +46,10 @@ public sealed record ManpowerTypeReadSnapshot(Guid Id, string Name, bool IsActiv
 /// </summary>
 public interface IMasterDataReader
 {
+    public Task<AtaChapterReadSnapshot?> GetAtaChapterAsync(Guid id, CancellationToken cancellationToken);
+
+    public Task<IReadOnlyList<AtaChapterReadSnapshot>> GetActiveAtaChaptersAsync(CancellationToken cancellationToken);
+
     public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken);
 
     public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken);

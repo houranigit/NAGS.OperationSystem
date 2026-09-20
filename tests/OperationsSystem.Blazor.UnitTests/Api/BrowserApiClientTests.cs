@@ -10,6 +10,27 @@ namespace OperationsSystem.Blazor.UnitTests.Api;
 public sealed class BrowserApiClientTests
 {
     [Fact]
+    public async Task Ata_chapter_status_updates_send_row_version_in_the_concurrency_header()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var masterData = new MasterDataApiClient(NewClient(runtime));
+        var id = Guid.NewGuid();
+
+        await masterData.SetAtaChapterActiveAsync(id, false, "chapter-version");
+
+        runtime.Arguments![0].ShouldBe("POST");
+        runtime.Arguments[1].ShouldBe($"/masterdata/ata-chapters/{id}/deactivate");
+        runtime.Arguments[2].ShouldBeNull();
+        runtime.Arguments[5].ShouldBe("chapter-version");
+
+        await masterData.SetAtaChapterCategoryActiveAsync(id, true, "category-version");
+
+        runtime.Arguments[1].ShouldBe($"/masterdata/ata-chapter-categories/{id}/activate");
+        runtime.Arguments[2].ShouldBeNull();
+        runtime.Arguments[5].ShouldBe("category-version");
+    }
+
+    [Fact]
     public async Task GetAsync_returns_null_for_nullable_response_when_body_is_empty()
     {
         var api = NewClient(new StubJsRuntime(""));

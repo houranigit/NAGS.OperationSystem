@@ -9,6 +9,18 @@ public static class MasterDataPermissions
     /// <summary>Read-only reference lookups for forms and filters, without catalog page access.</summary>
     public const string ReferenceViewOptions = "masterdata.reference.view-options";
 
+    public const string AtaChapterCategoriesView = "masterdata.ata-chapter-categories.view";
+    public const string AtaChapterCategoriesCreate = "masterdata.ata-chapter-categories.create";
+    public const string AtaChapterCategoriesUpdate = "masterdata.ata-chapter-categories.update";
+    public const string AtaChapterCategoriesActivate = "masterdata.ata-chapter-categories.activate";
+    public const string AtaChapterCategoriesDeactivate = "masterdata.ata-chapter-categories.deactivate";
+
+    public const string AtaChaptersView = "masterdata.ata-chapters.view";
+    public const string AtaChaptersCreate = "masterdata.ata-chapters.create";
+    public const string AtaChaptersUpdate = "masterdata.ata-chapters.update";
+    public const string AtaChaptersActivate = "masterdata.ata-chapters.activate";
+    public const string AtaChaptersDeactivate = "masterdata.ata-chapters.deactivate";
+
     public const string CountriesView = "masterdata.countries.view";
     public const string CountriesCreate = "masterdata.countries.create";
     public const string CountriesUpdate = "masterdata.countries.update";

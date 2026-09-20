@@ -425,3 +425,15 @@ public sealed record UpdateStaffMemberRequest(
 
 /// <summary>Requests an invited portal account for a StaffMember/CustomerContact using a compatible role.</summary>
 public sealed record GrantPortalAccessRequest(Guid RoleId);
+
+// --- ATA Chapters ----------------------------------------------------------
+
+public sealed record AtaChapterCategoryModel(Guid Id, string Name, bool IsActive,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record AtaChapterModel(Guid Id, Guid CategoryId, string CategoryName, string Code, string Title,
+    bool IsActive, bool CategoryIsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion)
+{
+    public string Label => $"{Code}. {Title}";
+}
+public sealed record SaveAtaChapterCategoryRequest(string Name);
+public sealed record SaveAtaChapterRequest(Guid CategoryId, string Code, string Title);

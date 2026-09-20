@@ -68,5 +68,17 @@ data class CustomerEntity(
     val name: String,
 )
 
+/** Synced catalog contains only chapters whose category and item are both active. */
+@Entity(tableName = "ata_chapters")
+data class AtaChapterEntity(
+    @PrimaryKey val id: String,
+    val categoryId: String,
+    val categoryName: String,
+    val code: String,
+    val title: String,
+) {
+    val displayLabel: String get() = "$code. $title"
+}
+
 /** Single-line label for service-line and task pickers. */
 fun EmployeeEntity.workOrderPickerDisplayLine(): String = "$fullName · $employeeNumber"

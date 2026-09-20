@@ -1,3 +1,4 @@
+using MasterData.Domain.AtaChapters;
 using MasterData.Contracts.Seeding;
 using MasterData.Domain.Countries;
 using MasterData.Domain.Customers;
@@ -25,6 +26,7 @@ public sealed class MasterDataDataSeeder(
     {
         var now = timeProvider.GetUtcNow();
         await SeedCatalogsAsync(now, cancellationToken);
+        await SeedAtaChaptersAsync(now, cancellationToken);
 
         var existingCodes = await db.Countries
             .Select(c => c.IsoCode)
@@ -56,6 +58,49 @@ public sealed class MasterDataDataSeeder(
         }
 
         await SeedUnknownCustomerAsync(now, cancellationToken);
+    }
+
+    private async Task SeedAtaChaptersAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // Stable IDs identify the original baseline even when administrators rename, move or
+        // deactivate it. Never match existing seeds by their editable names or codes.
+        var existingCategoryIds = (await db.AtaChapterCategories.Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var existingChapterIds = (await db.AtaChapters.Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var added = 0;
+        foreach (var categorySeed in AtaChapterSeedData.All)
+        {
+            var categoryId = MasterDataSeedIds.For("ata-chapter-category", categorySeed.Name);
+            if (!existingCategoryIds.Contains(categoryId))
+            {
+                var category = AtaChapterCategory.Create(categorySeed.Name, now, categoryId);
+                if (category.IsFailure)
+                    throw new InvalidOperationException(category.Error.Description);
+                if (!categorySeed.IsActive)
+                    category.Value.Deactivate(now);
+                db.AtaChapterCategories.Add(category.Value);
+                added++;
+            }
+
+            foreach (var chapterSeed in categorySeed.Chapters)
+            {
+                var chapterId = MasterDataSeedIds.For("ata-chapter", chapterSeed.Code);
+                if (existingChapterIds.Contains(chapterId))
+                    continue;
+                var chapter = AtaChapter.Create(categoryId, chapterSeed.Code, chapterSeed.Title, now, chapterId);
+                if (chapter.IsFailure)
+                    throw new InvalidOperationException(chapter.Error.Description);
+                if (!categorySeed.IsActive)
+                    chapter.Value.Deactivate(now);
+                db.AtaChapters.Add(chapter.Value);
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Seeded {Count} ATA chapter categories and chapters.", added);
+        }
     }
 
     private async Task SeedCatalogsAsync(DateTimeOffset now, CancellationToken cancellationToken)

@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.nags.operations.data.db.dao.AtaChapterDao
 import com.nags.operations.data.db.dao.AdHocFlightDao
 import com.nags.operations.data.db.dao.AircraftTypeDao
 import com.nags.operations.data.db.dao.CustomerDao
@@ -21,6 +22,7 @@ import com.nags.operations.data.db.dao.SyncStateDao
 import com.nags.operations.data.db.dao.WorkOrderDraftDao
 import com.nags.operations.data.db.dao.WorkOrderOutboxDao
 import com.nags.operations.data.db.dao.ToolDao
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.AdHocFlightEntity
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.CustomerEntity
@@ -49,9 +51,10 @@ import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
  * and cannot be replayed against the new API; caches repopulate on first sync.
  */
 @Database(
-    version = 15,
+    version = 16,
     exportSchema = true,
     entities = [
+        AtaChapterEntity::class,
         ServiceEntity::class,
         ToolEntity::class,
         MaterialEntity::class,
@@ -75,6 +78,7 @@ import com.nags.operations.data.db.entities.WorkOrderOutboxEntity
     ResourceCalculationTypeConverters::class,
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun ataChapterDao(): AtaChapterDao
     abstract fun serviceDao(): ServiceDao
     abstract fun toolDao(): ToolDao
     abstract fun materialDao(): MaterialDao
@@ -106,6 +110,7 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_12_13,
                         MIGRATION_13_14,
                         MIGRATION_14_15,
+                        MIGRATION_15_16,
                     )
                     .build()
                     .also { instance = it }
@@ -147,6 +152,22 @@ abstract class AppDatabase : RoomDatabase() {
                 // Fail closed until the next personalized catalog sync supplies the allowance set.
                 db.execSQL(
                     "ALTER TABLE services ADD COLUMN isAllowedPerformedService INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS ata_chapters (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        categoryId TEXT NOT NULL,
+                        categoryName TEXT NOT NULL,
+                        code TEXT NOT NULL,
+                        title TEXT NOT NULL
+                    )
+                    """.trimIndent(),
                 )
             }
         }

@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Results;
+using System.Text.Json.Serialization;
 using MasterData.Contracts.Resources;
 using MasterData.Contracts.Seeding;
 using Operations.Domain.Enumerations;
@@ -44,7 +45,8 @@ public sealed record WorkOrderTaskCommand(
     IReadOnlyList<WorkOrderTaskGeneralSupportCommand> GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentCommand>? Attachments = null,
     bool IsReturnToRamp = false,
-    IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? EmployeeAssignments = null);
+    IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? EmployeeAssignments = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? AtaChapterId = null);
 
 public sealed record WorkOrderEmployeeAssignmentCommand(
     Guid StaffMemberId,
@@ -118,7 +120,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         string fallbackFlightNumber,
         Guid stationId,
         CancellationToken cancellationToken,
-        bool preserveOmittedReturnToRamps = false)
+        bool preserveOmittedReturnToRamps = false,
+        IReadOnlyDictionary<Guid, AtaChapterSnapshot?>? existingTaskAtaChapters = null)
     {
         var validation = ValidatePayload(payload, type);
         if (validation.IsFailure)
@@ -145,14 +148,14 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         if (serviceLines.IsFailure)
             return serviceLines.Error;
 
-        var tasks = await BuildTasksAsync(payload.Tasks ?? [], stationId, cancellationToken);
+        var tasks = await BuildTasksAsync(payload.Tasks ?? [], stationId, cancellationToken, existingTaskAtaChapters);
         if (tasks.IsFailure)
             return tasks.Error;
 
         IReadOnlyList<WorkOrderReturnToRampInput>? returnToRamps;
         if (payload.ReturnToRamps is not null)
         {
-            var built = await BuildReturnToRampsAsync(payload.ReturnToRamps, stationId, cancellationToken);
+            var built = await BuildReturnToRampsAsync(payload.ReturnToRamps, stationId, cancellationToken, existingTaskAtaChapters);
             if (built.IsFailure)
                 return built.Error;
             returnToRamps = built.Value;
@@ -456,11 +459,17 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
     private async Task<Result<IReadOnlyList<WorkOrderTaskInput>>> BuildTasksAsync(
         IReadOnlyList<WorkOrderTaskCommand> tasks,
         Guid stationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<Guid, AtaChapterSnapshot?>? existingTaskAtaChapters = null)
     {
         var results = new List<WorkOrderTaskInput>(tasks.Count);
         foreach (var task in tasks)
         {
+            var existingChapter = task.Id is { } taskId ? existingTaskAtaChapters?.GetValueOrDefault(taskId) : null;
+            var chapter = await resolver.AtaChapterAsync(task.AtaChapterId, existingChapter, cancellationToken);
+            if (chapter.IsFailure)
+                return chapter.Error;
+
             var assignments = BuildEmployeeAssignments(task.EmployeeIds ?? [], task.EmployeeAssignments, task.FromUtc, task.ToUtc);
             if (assignments.IsFailure)
                 return assignments.Error;
@@ -495,7 +504,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 materials.Value,
                 supports.Value,
                 task.IsReturnToRamp,
-                assignments.Value));
+                assignments.Value,
+                chapter.Value));
         }
 
         return results;
@@ -504,7 +514,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
     public async Task<Result<WorkOrderReturnToRampInput>> BuildReturnToRampAsync(
         WorkOrderReturnToRampCommand command,
         Guid stationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<Guid, AtaChapterSnapshot?>? existingTaskAtaChapters = null)
     {
         if (command.FromUtc == default || command.ToUtc == default)
             return Error.Validation("Return-to-ramp From and To times are required.", "Operations.ReturnToRamp.WindowRequired");
@@ -522,7 +533,7 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var serviceLines = await BuildServiceLinesAsync(command.ServiceLines ?? [], stationId, cancellationToken);
         if (serviceLines.IsFailure)
             return serviceLines.Error;
-        var tasks = await BuildTasksAsync(command.Tasks ?? [], stationId, cancellationToken);
+        var tasks = await BuildTasksAsync(command.Tasks ?? [], stationId, cancellationToken, existingTaskAtaChapters);
         if (tasks.IsFailure)
             return tasks.Error;
 
@@ -537,12 +548,13 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
     private async Task<Result<IReadOnlyList<WorkOrderReturnToRampInput>>> BuildReturnToRampsAsync(
         IReadOnlyList<WorkOrderReturnToRampCommand> commands,
         Guid stationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<Guid, AtaChapterSnapshot?>? existingTaskAtaChapters = null)
     {
         var results = new List<WorkOrderReturnToRampInput>(commands.Count);
         foreach (var command in commands)
         {
-            var result = await BuildReturnToRampAsync(command, stationId, cancellationToken);
+            var result = await BuildReturnToRampAsync(command, stationId, cancellationToken, existingTaskAtaChapters);
             if (result.IsFailure)
                 return result.Error;
             results.Add(result.Value);

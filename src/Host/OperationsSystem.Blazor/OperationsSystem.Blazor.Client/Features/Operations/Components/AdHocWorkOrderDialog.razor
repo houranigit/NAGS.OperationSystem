@@ -97,6 +97,7 @@
     private IReadOnlyList<ServiceOption> actualServices = [];
     private IReadOnlyList<StaffMemberOption> staffOptions = [];
     private IReadOnlyList<ResourceOption> toolOptions = [];
+    private IReadOnlyList<AtaChapterModel> ataChapterOptions = [];
     private IReadOnlyList<ResourceOption> materialOptions = [];
     private IReadOnlyList<ResourceOption> supportOptions = [];
     private IReadOnlyList<DuplicateCandidate> duplicates = [];
@@ -136,9 +137,11 @@
             var toolsTask = MasterData.GetToolOptionsAsync();
             var materialsTask = MasterData.GetMaterialOptionsAsync();
             var supportsTask = MasterData.GetGeneralSupportOptionsAsync();
+            var ataChaptersTask = MasterData.GetAtaChapterOptionsAsync();
 
-            await Task.WhenAll(customersTask, stationsTask, aircraftTask, servicesTask, toolsTask, materialsTask, supportsTask);
+            await Task.WhenAll(customersTask, stationsTask, aircraftTask, servicesTask, toolsTask, materialsTask, supportsTask, ataChaptersTask);
 
+            ataChapterOptions = await ataChaptersTask;
             customers = customersTask.Result;
             stations = stationsTask.Result;
             aircraftTypes = aircraftTask.Result;
@@ -372,6 +375,10 @@
         {
             <div @key="task.Key" class="owf-row-panel">
                 <div class="owf-grid-2">
+                    <div class="owf-field-block">
+                        <label class="owf-label">ATA Chapters</label>
+                        <AtaChapterPicker @bind-Value="task.AtaChapterId" Options="@ataChapterOptions" />
+                    </div>
                     <div class="owf-field-block">
                         <label class="owf-label">Task type <span class="owf-required">*</span></label>
                         <RadzenDropDown @bind-Value="task.TaskType" Data="@taskTypeOptions" TextProperty="Label" ValueProperty="Value" class="owf-control" />
@@ -768,7 +775,8 @@
                         Convert.ToBase64String(a.Content),
                         a.OriginalFileName,
                         a.ContentType)).ToList(),
-                    EmployeeAssignments: WorkOrderEntryRules.ToRequests(t.EmployeeAssignments, UserTimeZone))).ToList()
+                    EmployeeAssignments: WorkOrderEntryRules.ToRequests(t.EmployeeAssignments, UserTimeZone),
+                    AtaChapterId: t.AtaChapterId)).ToList()
                 : [],
             !completion || model.CustomerSignature is null
                 ? null
@@ -1375,6 +1383,7 @@
     private sealed class TaskForm
     {
         public Guid Key { get; } = Guid.NewGuid();
+        public Guid? AtaChapterId { get; set; }
         public string TaskType { get; set; } = "Major";
         public string? Description { get; set; }
         public DateTime? FromUtc { get; set; }

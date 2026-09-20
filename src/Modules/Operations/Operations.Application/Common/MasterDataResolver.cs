@@ -10,6 +10,22 @@ namespace Operations.Application.Common;
 /// </summary>
 public sealed class MasterDataResolver(IMasterDataReader reader)
 {
+    public async Task<Result<AtaChapterSnapshot?>> AtaChapterAsync(
+        Guid? id, AtaChapterSnapshot? existing, CancellationToken cancellationToken)
+    {
+        if (id is null)
+            return Result.Success<AtaChapterSnapshot?>(null);
+        // Keeping a saved selection must not change its historical title or require a now-active catalog row.
+        if (existing?.AtaChapterId == id)
+            return Result.Success<AtaChapterSnapshot?>(existing);
+        var chapter = await reader.GetAtaChapterAsync(id.Value, cancellationToken);
+        if (chapter is null)
+            return Error.Validation("The selected ATA chapter does not exist.", "Operations.AtaChapter.NotFound");
+        if (!chapter.IsActive || !chapter.CategoryIsActive)
+            return Error.Validation("The selected ATA chapter or its category is inactive. Choose an active chapter.", "Operations.AtaChapter.Inactive");
+        return Result.Success<AtaChapterSnapshot?>(new AtaChapterSnapshot(chapter.Id, chapter.Code, chapter.Title));
+    }
+
     public async Task<Result> EnsurePerformedServicesAllowedAsync(
         IReadOnlyCollection<Guid> serviceIds,
         Guid? manpowerTypeId,

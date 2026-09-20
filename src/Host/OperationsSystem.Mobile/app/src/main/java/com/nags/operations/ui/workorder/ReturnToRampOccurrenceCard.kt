@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
@@ -48,6 +49,7 @@ fun ReturnToRampOccurrenceCard(
     tools: List<ToolEntity>,
     materials: List<MaterialEntity>,
     generalSupports: List<GeneralSupportEntity>,
+    ataChapters: List<AtaChapterEntity>,
     onChange: (ReturnToRampFormRow) -> Unit,
     onRemove: () -> Unit,
     canRemove: Boolean,
@@ -183,6 +185,7 @@ fun ReturnToRampOccurrenceCard(
                     tools = tools,
                     materials = materials,
                     generalSupports = generalSupports,
+                    ataChapters = ataChapters,
                     onChange = onTaskChange,
                     onAttachmentAdded = { onTaskAttachmentAdded(task.localKey, it) },
                     onAttachmentRemoved = { onTaskAttachmentRemoved(task.localKey, it) },

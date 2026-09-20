@@ -8,6 +8,39 @@ namespace OperationsSystem.Blazor.Client.Api;
 /// </summary>
 public sealed class MasterDataApiClient(BrowserApiClient api)
 {
+    // --- ATA Chapters ------------------------------------------------------
+
+    public Task<PagedResult<AtaChapterCategoryModel>> GetAtaChapterCategoriesAsync(
+        int page, int pageSize, string? search = null, bool? isActive = null, string? sort = null, CancellationToken ct = default) =>
+        api.GetAsync<PagedResult<AtaChapterCategoryModel>>("/masterdata/ata-chapter-categories" + new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search).Add("isActive", isActive).Add("sort", sort).Build(), ct);
+
+    public Task<PagedResult<AtaChapterModel>> GetAtaChaptersAsync(
+        int page, int pageSize, string? search = null, bool? isActive = null, Guid? categoryId = null, string? sort = null, CancellationToken ct = default) =>
+        api.GetAsync<PagedResult<AtaChapterModel>>("/masterdata/ata-chapters" + new QueryBuilder()
+            .Add("page", page).Add("pageSize", pageSize).Add("search", search).Add("isActive", isActive)
+            .Add("categoryId", categoryId?.ToString()).Add("sort", sort).Build(), ct);
+
+    public Task<IReadOnlyList<AtaChapterModel>> GetAtaChapterOptionsAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<AtaChapterModel>>("/masterdata/ata-chapters/options", ct);
+
+    public Task<AtaChapterCategoryModel> GetAtaChapterCategoryAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<AtaChapterCategoryModel>($"/masterdata/ata-chapter-categories/{id}", ct);
+    public Task<AtaChapterModel> GetAtaChapterAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<AtaChapterModel>($"/masterdata/ata-chapters/{id}", ct);
+    public Task<Guid> CreateAtaChapterCategoryAsync(SaveAtaChapterCategoryRequest request, CancellationToken ct = default) =>
+        api.PostAsync<SaveAtaChapterCategoryRequest, Guid>("/masterdata/ata-chapter-categories", request, ct);
+    public Task<Guid> CreateAtaChapterAsync(SaveAtaChapterRequest request, CancellationToken ct = default) =>
+        api.PostAsync<SaveAtaChapterRequest, Guid>("/masterdata/ata-chapters", request, ct);
+    public Task UpdateAtaChapterCategoryAsync(Guid id, SaveAtaChapterCategoryRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/ata-chapter-categories/{id}", request, rowVersion, ct);
+    public Task UpdateAtaChapterAsync(Guid id, SaveAtaChapterRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"/masterdata/ata-chapters/{id}", request, rowVersion, ct);
+    public Task SetAtaChapterCategoryActiveAsync(Guid id, bool active, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/ata-chapter-categories/{id}/{(active ? "activate" : "deactivate")}", rowVersion, ct);
+    public Task SetAtaChapterActiveAsync(Guid id, bool active, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/masterdata/ata-chapters/{id}/{(active ? "activate" : "deactivate")}", rowVersion, ct);
+
     // --- Countries ---------------------------------------------------------
 
     public Task<PagedResult<CountryListItem>> GetCountriesAsync(

@@ -219,7 +219,8 @@ public sealed class UpdateWorkOrderCommandHandler(
             workOrder.ActualFlightNumber.Value,
             workOrder.Station.StationId,
             cancellationToken,
-            preserveOmittedReturnToRamps: true);
+            preserveOmittedReturnToRamps: true,
+            existingTaskAtaChapters: workOrder.Tasks.ToDictionary(task => task.Id, task => task.AtaChapter));
         if (input.IsFailure)
             return input.Error;
 
@@ -635,7 +636,8 @@ public sealed class MergeWorkOrdersCommandHandler(
             flight.FlightNumber.Value,
             flight.Station.StationId,
             cancellationToken,
-            preserveOmittedReturnToRamps: request.Payload.ReturnToRamps is null);
+            preserveOmittedReturnToRamps: request.Payload.ReturnToRamps is null,
+            existingTaskAtaChapters: sources.SelectMany(source => source.Tasks).ToDictionary(task => task.Id, task => task.AtaChapter));
         if (input.IsFailure)
             return input.Error;
 
@@ -669,7 +671,20 @@ public sealed class MergeWorkOrdersCommandHandler(
 
         // New signatures may be supplied for the merged draft. Existing source signatures are
         // deliberately retained only on their original occurrence and are never cloned.
-        var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(generated.Value, request.Payload, storage, now, cancellationToken);
+        var mergedFiles = request.Payload with
+        {
+            // Source task ids are used above only to retain recorded ATA snapshots. The merged
+            // work order owns new activity ids, so inline files must match those new rows by order.
+            ServiceLines = (request.Payload.ServiceLines ?? []).Select(line => line with { Id = null }).ToList(),
+            Tasks = (request.Payload.Tasks ?? []).Select(task => task with { Id = null }).ToList(),
+            ReturnToRamps = request.Payload.ReturnToRamps?.Select(occurrence => occurrence with
+            {
+                Id = null,
+                ServiceLines = (occurrence.ServiceLines ?? []).Select(line => line with { Id = null }).ToList(),
+                Tasks = (occurrence.Tasks ?? []).Select(task => task with { Id = null }).ToList()
+            }).ToList()
+        };
+        var inlineFiles = await WorkOrderInlineFileApplier.ApplyAsync(generated.Value, mergedFiles, storage, now, cancellationToken);
         if (inlineFiles.IsFailure)
             return inlineFiles.Error;
         await using var pendingFiles = new PendingWorkOrderFiles(storage, inlineFiles.Value);
@@ -790,7 +805,8 @@ internal static class WorkOrderReturnToRampCloner
                     task.Materials.Select(material => new WorkOrderTaskMaterialInput(material.Material, material.Usage, material.Description)).ToList(),
                     task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportInput(support.GeneralSupport, support.Usage, support.Description)).ToList(),
                     IsReturnToRamp: false,
-                    EmployeeAssignments: task.Employees.Select(employee => new WorkOrderEmployeeAssignmentInput(employee.Employee.StaffMemberId, employee.Window)).ToList())).ToList()))
+                    EmployeeAssignments: task.Employees.Select(employee => new WorkOrderEmployeeAssignmentInput(employee.Employee.StaffMemberId, employee.Window)).ToList(),
+                    AtaChapter: task.AtaChapter)).ToList()))
             .ToList();
 }
 

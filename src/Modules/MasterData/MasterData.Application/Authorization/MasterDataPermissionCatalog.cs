@@ -27,6 +27,18 @@ public sealed class MasterDataPermissionCatalog : IPermissionCatalog
         // Read-only reference lookups for forms (station staff included); not catalog management.
         new(MasterDataPermissions.Reference.ViewOptions, AdminStationViewer),
 
+        new(MasterDataPermissions.AtaChapterCategories.View, AdminStationViewer, GrantsPortalPage: true),
+        new(MasterDataPermissions.AtaChapterCategories.Create, AdminOnly),
+        new(MasterDataPermissions.AtaChapterCategories.Update, AdminOnly),
+        new(MasterDataPermissions.AtaChapterCategories.Activate, AdminOnly),
+        new(MasterDataPermissions.AtaChapterCategories.Deactivate, AdminOnly),
+
+        new(MasterDataPermissions.AtaChapters.View, AdminStationViewer, GrantsPortalPage: true),
+        new(MasterDataPermissions.AtaChapters.Create, AdminOnly),
+        new(MasterDataPermissions.AtaChapters.Update, AdminOnly),
+        new(MasterDataPermissions.AtaChapters.Activate, AdminOnly),
+        new(MasterDataPermissions.AtaChapters.Deactivate, AdminOnly),
+
         // Countries: everyone can view; admin maintains.
         new(MasterDataPermissions.Countries.View, AdminStationCustomerViewer, GrantsPortalPage: true),
         new(MasterDataPermissions.Countries.Create, AdminOnly),

@@ -79,7 +79,7 @@ internal static class MobileMutations
         // Removing the new nullable duration fields reproduces fingerprints already persisted by
         // the server for an offline request that is retried after this deployment.
         fingerprints.Add(Fingerprint(request, PreResourceUsageFingerprintOptions));
-        if (HasInlineServiceLineAttachments(request))
+        if (HasInlineServiceLineAttachments(request) || HasAtaChapterSelection(request))
             return fingerprints.ToList();
 
         fingerprints.Add(Fingerprint(request, PreServiceLineAttachmentsFingerprintOptions));
@@ -131,6 +131,21 @@ internal static class MobileMutations
         }
 
         return false;
+    }
+
+    private static bool HasAtaChapterSelection<T>(T request)
+    {
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(request));
+        return ContainsChapter(document.RootElement);
+
+        static bool ContainsChapter(JsonElement element) => element.ValueKind switch
+        {
+            JsonValueKind.Object => element.EnumerateObject().Any(property =>
+                (property.Name == nameof(WorkOrderTaskCommand.AtaChapterId) && property.Value.ValueKind != JsonValueKind.Null) ||
+                ContainsChapter(property.Value)),
+            JsonValueKind.Array => element.EnumerateArray().Any(ContainsChapter),
+            _ => false
+        };
     }
 
     private static string Fingerprint<T>(T request, JsonSerializerOptions? options)

@@ -49,7 +49,8 @@ internal static class WorkOrderMergeMapping
 
     internal static WorkOrderTaskRequestModel ToRequest(WorkOrderTaskModel task) =>
         new(
-            Id: null,
+            // Source identity lets the server retain inactive ATA snapshots before allocating the merged task.
+            Id: task.Id,
             task.TaskType,
             task.Description,
             task.FromUtc,
@@ -76,7 +77,8 @@ internal static class WorkOrderMergeMapping
             Attachments: null,
             IsReturnToRamp: false,
             EmployeeAssignments: task.Employees.Select(item => new WorkOrderEmployeeAssignmentRequestModel(
-                item.StaffMemberId, item.FromUtc ?? task.FromUtc, item.ToUtc ?? task.ToUtc)).ToList());
+                item.StaffMemberId, item.FromUtc ?? task.FromUtc, item.ToUtc ?? task.ToUtc)).ToList(),
+            AtaChapterId: task.AtaChapterId);
 
     internal static IReadOnlyList<WorkOrderReturnToRampRequestModel>? BuildCanonicalReturnToRamps(
         IReadOnlyList<WorkOrderDetail> sources)

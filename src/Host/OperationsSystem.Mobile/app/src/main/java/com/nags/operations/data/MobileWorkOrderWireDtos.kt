@@ -128,6 +128,9 @@ data class WorkOrderTaskWireDto(
     val generalSupports: List<WorkOrderTaskResourceWireDto> = emptyList(),
     val attachments: List<WorkOrderTaskAttachmentWireDto> = emptyList(),
     val isReturnToRamp: Boolean = false,
+    val ataChapterId: String? = null,
+    val ataChapterCode: String? = null,
+    val ataChapterTitle: String? = null,
 )
 
 @Serializable

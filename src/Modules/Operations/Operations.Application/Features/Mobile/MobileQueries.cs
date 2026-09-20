@@ -90,6 +90,7 @@ public sealed class GetMobileCatalogsQueryHandler(
         var allowedPerformedServiceIds = await masterData.GetAllowedActiveServiceIdsAsync(
             scopeResult.Value.ManpowerTypeId!.Value,
             cancellationToken);
+        var ataChapters = await masterData.GetActiveAtaChaptersAsync(cancellationToken);
         var tools = await masterData.GetActiveToolsAsync(cancellationToken);
         var materials = await masterData.GetActiveMaterialsAsync(cancellationToken);
         var generalSupports = await masterData.GetActiveGeneralSupportsAsync(cancellationToken);
@@ -105,7 +106,9 @@ public sealed class GetMobileCatalogsQueryHandler(
             generalSupports.Select(g => new MobileCatalogItemDto(g.Id, g.Name, g.CalculationType)).ToList(),
             customers.Select(c => new MobileCustomerDto(c.Id, c.IataCode, c.Name)).ToList(),
             aircraftTypes.Select(a => new MobileAircraftTypeDto(a.Id, a.Manufacturer, a.Model)).ToList(),
-            timeProvider.GetUtcNow());
+            timeProvider.GetUtcNow(),
+            ataChapters.Select(chapter => new MobileAtaChapterDto(
+                chapter.Id, chapter.CategoryId, chapter.CategoryName, chapter.Code, chapter.Title)).ToList());
     }
 }
 

@@ -120,6 +120,10 @@
                     </div>
                     <div class="rtr-grid-2">
                         <div class="rtr-field">
+                            <label>ATA Chapters</label>
+                            <AtaChapterPicker @bind-Value="task.AtaChapterId" Options="@ataChapterOptions" SnapshotId="@task.AtaChapterSnapshotId" SnapshotCode="@task.AtaChapterCode" SnapshotTitle="@task.AtaChapterTitle" ViewOnly="@ViewOnly" />
+                        </div>
+                        <div class="rtr-field">
                             <label>Major / Minor <span class="rtr-required">*</span></label>
                             <RadzenDropDown @bind-Value="task.TaskType" Data="@taskTypes" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
@@ -254,6 +258,7 @@
     private IReadOnlyList<ReturnToRampResourceOption> tools = [];
     private IReadOnlyList<ReturnToRampResourceOption> materials = [];
     private IReadOnlyList<ReturnToRampResourceOption> supports = [];
+    private IReadOnlyList<AtaChapterModel> ataChapterOptions = [];
     private readonly IReadOnlyList<string> taskTypes = ["Major", "Minor"];
     private List<string> validationMessages = [];
     private string? errorMessage;
@@ -279,7 +284,9 @@
             var toolsTask = MasterData.GetToolOptionsAsync();
             var materialsTask = MasterData.GetMaterialOptionsAsync();
             var supportsTask = MasterData.GetGeneralSupportOptionsAsync();
-            await Task.WhenAll(servicesTask, staffTask, toolsTask, materialsTask, supportsTask);
+            var ataChaptersTask = MasterData.GetAtaChapterOptionsAsync();
+            await Task.WhenAll(servicesTask, staffTask, toolsTask, materialsTask, supportsTask, ataChaptersTask);
+            ataChapterOptions = await ataChaptersTask;
             services = await servicesTask;
             staff = await staffTask;
             tools = (await toolsTask).Select(item => new ReturnToRampResourceOption(item.Id, item.Name, item.CalculationType)).ToList();

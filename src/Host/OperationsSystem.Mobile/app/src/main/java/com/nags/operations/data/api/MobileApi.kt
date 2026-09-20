@@ -285,6 +285,8 @@ data class WorkOrderTaskInput(
     val attachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val isReturnToRamp: Boolean = false,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val ataChapterId: String? = null,
 )
 
 /**

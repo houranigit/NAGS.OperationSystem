@@ -267,7 +267,10 @@ public sealed record WorkOrderTaskModel(
     IReadOnlyList<WorkOrderTaskMaterialModel> Materials,
     IReadOnlyList<WorkOrderTaskGeneralSupportModel> GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentModel> Attachments,
-    bool IsReturnToRamp = false);
+    bool IsReturnToRamp = false,
+    Guid? AtaChapterId = null,
+    string? AtaChapterCode = null,
+    string? AtaChapterTitle = null);
 
 public sealed record WorkOrderTaskEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 
@@ -419,7 +422,8 @@ public sealed record WorkOrderTaskRequestModel(
     IReadOnlyList<WorkOrderTaskGeneralSupportRequestModel> GeneralSupports,
     IReadOnlyList<WorkOrderTaskAttachmentRequestModel>? Attachments = null,
     bool IsReturnToRamp = false,
-    IReadOnlyList<WorkOrderEmployeeAssignmentRequestModel>? EmployeeAssignments = null);
+    IReadOnlyList<WorkOrderEmployeeAssignmentRequestModel>? EmployeeAssignments = null,
+    Guid? AtaChapterId = null);
 
 public sealed record WorkOrderTaskToolRequestModel(
     Guid ToolId,

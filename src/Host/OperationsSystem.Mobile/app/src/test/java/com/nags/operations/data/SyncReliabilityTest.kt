@@ -95,6 +95,7 @@ class SyncReliabilityTest {
             refresh(MobileSyncTables.GeneralSupports),
             refresh(MobileSyncTables.Customers),
             refresh(MobileSyncTables.AircraftTypes),
+            refresh(MobileSyncTables.AtaChapters),
             refresh(MobileSyncTables.Employees),
         )
 

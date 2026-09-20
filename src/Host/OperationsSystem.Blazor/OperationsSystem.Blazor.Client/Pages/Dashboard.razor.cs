@@ -225,6 +225,7 @@ internal static class DashboardFeatureCatalog
         (MasterDataPermissions.CountriesView, "/master-data/countries", "countries"),
         (MasterDataPermissions.ManpowerTypesView, "/master-data/manpower-types", "manpower types"),
         (MasterDataPermissions.LicensesView, "/master-data/licenses", "licenses"),
+        (MasterDataPermissions.AtaChaptersView, "/master-data/ata-chapters", "ATA chapters"),
         (MasterDataPermissions.ServicesView, "/master-data/services", "services"),
         (MasterDataPermissions.OperationTypesView, "/master-data/operation-types", "operation types"),
         (MasterDataPermissions.AircraftTypesView, "/master-data/aircraft-types", "aircraft types"),

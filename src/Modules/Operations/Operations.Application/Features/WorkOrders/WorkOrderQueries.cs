@@ -283,7 +283,8 @@ internal static class WorkOrderDtoMapper
                 task.GeneralSupports.Select(g => new WorkOrderTaskGeneralSupportDto(
                     g.GeneralSupport.GeneralSupportId, g.GeneralSupport.Name, g.GeneralSupport.CalculationType, g.Usage.Quantity, g.Usage.FromUtc, g.Usage.ToUtc, g.Description)).ToList(),
                 task.Attachments.Select(a => new WorkOrderTaskAttachmentDto(a.Id, a.Kind.ToString(), a.OriginalFileName, a.ContentType, a.Size)).ToList(),
-                task.IsReturnToRamp)).ToList(),
+                task.IsReturnToRamp,
+                task.AtaChapter?.AtaChapterId, task.AtaChapter?.Code, task.AtaChapter?.Title)).ToList(),
             workOrder.CreatedAtUtc,
             workOrder.UpdatedAtUtc,
             Convert.ToBase64String(workOrder.RowVersion),
@@ -341,7 +342,8 @@ internal static class WorkOrderDtoMapper
                             attachment.OriginalFileName,
                             attachment.ContentType,
                             attachment.Size)).ToList(),
-                        IsReturnToRamp: false)).ToList(),
+                        IsReturnToRamp: false,
+                        task.AtaChapter?.AtaChapterId, task.AtaChapter?.Code, task.AtaChapter?.Title)).ToList(),
                     item.Sequence,
                     string.IsNullOrWhiteSpace(item.CustomerSignatureReference) || item.CustomerSignedAtUtc is null
                         ? null

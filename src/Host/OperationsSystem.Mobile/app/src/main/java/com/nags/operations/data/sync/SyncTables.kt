@@ -9,6 +9,7 @@ package com.nags.operations.data.sync
  * [SyncCoordinator.refreshAll]; nothing else in the app needs to know.
  */
 enum class SyncTable(val displayName: String, val storageKey: String) {
+    AtaChapters("ATA Chapters", "ata-chapters"),
     Services("Services", "services"),
     Tools("Tools", "tools"),
     Materials("Materials", "materials"),

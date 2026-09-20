@@ -4,12 +4,72 @@ using MasterData.Contracts.Seeding;
 using Operations.Application.Common;
 using Operations.Application.Features.WorkOrders;
 using Operations.Domain.Enumerations;
+using Operations.Domain.ValueObjects;
 using Shouldly;
 
 namespace Operations.Application.UnitTests;
 
 public sealed class WorkOrderInputBuilderTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AtaChapter_IsCapturedForNormalAndReturnTasks_AndRetainedAfterDeactivation(bool returnToRamp)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var stationId = Guid.NewGuid();
+        var chapterId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var reader = new FakeMasterDataReader(stationId);
+        reader.AtaChapters[chapterId] = new(chapterId, Guid.NewGuid(), "Airframe Systems", "21", "Air Conditioning", true, true);
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(reader));
+        var task = new WorkOrderTaskCommand(taskId, TaskType.Minor, "Inspect", now, now.AddMinutes(30), [Guid.NewGuid()], [], [], [], AtaChapterId: chapterId);
+        var payload = CompletionPayload(now, task);
+        if (returnToRamp)
+            payload = payload with { Tasks = [], ReturnToRamps = [new(null, now, now.AddHours(1), null, [], [task])] };
+
+        var captured = await builder.BuildAsync(payload, WorkOrderType.Completion, "RJ234", stationId, CancellationToken.None);
+        captured.IsSuccess.ShouldBeTrue();
+        var saved = returnToRamp ? captured.Value.ReturnToRamps![0].Tasks[0].AtaChapter : captured.Value.Tasks[0].AtaChapter;
+        saved.ShouldNotBeNull().Title.ShouldBe("Air Conditioning");
+
+        reader.AtaChapters[chapterId] = reader.AtaChapters[chapterId] with { Title = "Renamed", IsActive = false, CategoryIsActive = false };
+        var retained = await builder.BuildAsync(payload, WorkOrderType.Completion, "RJ234", stationId, CancellationToken.None,
+            existingTaskAtaChapters: new Dictionary<Guid, AtaChapterSnapshot?> { [taskId] = saved });
+        retained.IsSuccess.ShouldBeTrue();
+        var snapshot = returnToRamp ? retained.Value.ReturnToRamps![0].Tasks[0].AtaChapter : retained.Value.Tasks[0].AtaChapter;
+        snapshot.ShouldNotBeNull().Title.ShouldBe("Air Conditioning");
+
+        var newSelection = await builder.BuildAsync(payload, WorkOrderType.Completion, "RJ234", stationId, CancellationToken.None);
+        newSelection.IsFailure.ShouldBeTrue();
+        newSelection.Error.Code.ShouldBe("Operations.AtaChapter.Inactive");
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task AtaChapter_RequiresActiveItemAndCategory(bool itemActive, bool categoryActive)
+    {
+        var chapterId = Guid.NewGuid();
+        var reader = new FakeMasterDataReader();
+        reader.AtaChapters[chapterId] = new(chapterId, Guid.NewGuid(), "Category", "61", "Propellers/Propulsors", itemActive, categoryActive);
+        var result = await new MasterDataResolver(reader).AtaChapterAsync(chapterId, null, CancellationToken.None);
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.AtaChapter.Inactive");
+    }
+
+    [Fact]
+    public async Task AtaChapter_CanBeCleared_AndUnknownSelectionIsRejected()
+    {
+        var resolver = new MasterDataResolver(new FakeMasterDataReader());
+        var cleared = await resolver.AtaChapterAsync(null, new AtaChapterSnapshot(Guid.NewGuid(), "21", "Air Conditioning"), CancellationToken.None);
+        cleared.IsSuccess.ShouldBeTrue();
+        cleared.Value.ShouldBeNull();
+        var unknown = await resolver.AtaChapterAsync(Guid.NewGuid(), null, CancellationToken.None);
+        unknown.IsFailure.ShouldBeTrue();
+        unknown.Error.Code.ShouldBe("Operations.AtaChapter.NotFound");
+    }
+
     [Fact]
     public async Task BuildAsync_AllowsCompletionWithoutServiceLinesOrTasks()
     {
@@ -476,6 +536,7 @@ public sealed class WorkOrderInputBuilderTests
 
     private sealed class FakeMasterDataReader(Guid? stationId = null) : IMasterDataReader
     {
+        public Dictionary<Guid, AtaChapterReadSnapshot> AtaChapters { get; } = [];
         public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
 
@@ -510,6 +571,11 @@ public sealed class WorkOrderInputBuilderTests
 
         public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
+
+        public Task<AtaChapterReadSnapshot?> GetAtaChapterAsync(Guid id, CancellationToken cancellationToken) =>
+            Task.FromResult(AtaChapters.GetValueOrDefault(id));
+        public Task<IReadOnlyList<AtaChapterReadSnapshot>> GetActiveAtaChaptersAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<AtaChapterReadSnapshot>>([]);
 
         public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
             Task.FromResult<ToolReadSnapshot?>(new(id, "Towbar", IsActive: true, CalculationType: ResourceCalculationType.Duration));

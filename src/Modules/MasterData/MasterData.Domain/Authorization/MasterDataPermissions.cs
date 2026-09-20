@@ -16,6 +16,24 @@ public static class MasterDataPermissions
         public const string ViewOptions = "masterdata.reference.view-options";
     }
 
+    public static class AtaChapterCategories
+    {
+        public const string View = "masterdata.ata-chapter-categories.view";
+        public const string Create = "masterdata.ata-chapter-categories.create";
+        public const string Update = "masterdata.ata-chapter-categories.update";
+        public const string Activate = "masterdata.ata-chapter-categories.activate";
+        public const string Deactivate = "masterdata.ata-chapter-categories.deactivate";
+    }
+
+    public static class AtaChapters
+    {
+        public const string View = "masterdata.ata-chapters.view";
+        public const string Create = "masterdata.ata-chapters.create";
+        public const string Update = "masterdata.ata-chapters.update";
+        public const string Activate = "masterdata.ata-chapters.activate";
+        public const string Deactivate = "masterdata.ata-chapters.deactivate";
+    }
+
     public static class Countries
     {
         public const string View = "masterdata.countries.view";

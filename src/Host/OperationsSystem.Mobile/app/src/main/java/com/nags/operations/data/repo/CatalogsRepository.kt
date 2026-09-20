@@ -1,6 +1,7 @@
 package com.nags.operations.data.repo
 
 import com.nags.operations.data.db.AppDatabase
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.CustomerEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
  * insert/update entry points exposed here, by design.
  */
 class CatalogsRepository(private val db: AppDatabase) {
+    fun ataChaptersFlow(): Flow<List<AtaChapterEntity>> = db.ataChapterDao().observeAll()
     fun servicesFlow(): Flow<List<ServiceEntity>> = db.serviceDao().observeAll()
     suspend fun servicesSnapshot(): List<ServiceEntity> = db.serviceDao().snapshot()
     fun toolsFlow(): Flow<List<ToolEntity>> = db.toolDao().observeAll()

@@ -180,7 +180,11 @@
                                 var selected = selectedTaskKeys.Contains(item.Key);
                                 <label @key="item.Key" class="owm-include-row @(selected ? "owm-include-row--selected" : string.Empty)">
                                     <RadzenCheckBox TValue="bool" Value="@selected" Change="@((bool value) => ToggleTask(item.Key, value))" />
-                                    <span><strong>@item.Task.TaskType</strong><small>@DisplayWorkOrder(item.Source) · @None(item.Task.Description)</small></span>
+                                    <span><strong>@item.Task.TaskType</strong>
+                                        @if (item.Task.AtaChapterId.HasValue)
+                                        {
+                                            <small>ATA: @AtaChapterChoices.Label(item.Task.AtaChapterCode, item.Task.AtaChapterTitle)</small>
+                                        }<small>@DisplayWorkOrder(item.Source) · @None(item.Task.Description)</small></span>
                                 </label>
                             }
                         </div>

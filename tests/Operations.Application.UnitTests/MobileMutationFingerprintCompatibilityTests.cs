@@ -14,6 +14,32 @@ namespace Operations.Application.UnitTests;
 
 public sealed class MobileMutationFingerprintCompatibilityTests
 {
+    [Fact]
+    public void AtaChapter_OmissionPreservesOldTaskShape_AndSelectionsRemainInEveryReplayFingerprint()
+    {
+        var payload = Payload(Guid.NewGuid(), Guid.NewGuid());
+        var task = payload.Tasks[0];
+        var oldTask = new
+        {
+            task.Id, task.TaskType, task.Description, task.FromUtc, task.ToUtc, task.EmployeeIds,
+            task.Tools, task.Materials, task.GeneralSupports, task.Attachments, task.IsReturnToRamp, task.EmployeeAssignments
+        };
+        MobileMutations.Fingerprint(task).ShouldBe(MobileMutations.Fingerprint(oldTask));
+
+        var baseline = CurrentEnvelope(Guid.NewGuid(), payload);
+        var changed = baseline with { Payload = payload with { Tasks = [task with { AtaChapterId = Guid.NewGuid() }] } };
+        MobileMutations.CompatibleFingerprints(changed).ShouldNotContain(MobileMutations.Fingerprint(baseline));
+        var legacyBaseline = MobileMutations.PreReturnToRampFingerprint(baseline);
+        var nested = baseline with
+        {
+            Payload = payload with
+            {
+                ReturnToRamps = [new(null, FromUtc, FromUtc.AddHours(1), "Return", [], [task with { AtaChapterId = Guid.NewGuid() }])]
+            }
+        };
+        MobileMutations.CompatibleFingerprints(nested).ShouldNotContain(legacyBaseline);
+    }
+
     private static readonly DateTimeOffset FromUtc =
         new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
 

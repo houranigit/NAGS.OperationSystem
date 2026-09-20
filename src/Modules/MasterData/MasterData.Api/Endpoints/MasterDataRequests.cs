@@ -137,3 +137,9 @@ public sealed record UpdateStaffMemberRequest(
     IReadOnlyList<StaffLicenseRequest>? Licenses);
 
 public sealed record ReassignStaffMemberStationRequest(Guid StationId);
+
+// ATA chapters
+public sealed record CreateAtaChapterCategoryRequest(string Name);
+public sealed record UpdateAtaChapterCategoryRequest(string Name);
+public sealed record CreateAtaChapterRequest(Guid CategoryId, string Code, string Title);
+public sealed record UpdateAtaChapterRequest(Guid CategoryId, string Code, string Title);

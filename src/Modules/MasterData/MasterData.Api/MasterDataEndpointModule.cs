@@ -12,6 +12,8 @@ public sealed class MasterDataEndpointModule : IEndpointModule
     {
         var group = app.MapGroup("/api/v1/masterdata");
 
+        AtaChapterCategoryEndpoints.Map(group);
+        AtaChapterEndpoints.Map(group);
         CountryEndpoints.Map(group);
         ManpowerTypeEndpoints.Map(group);
         LicenseEndpoints.Map(group);

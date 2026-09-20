@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.api.MobileApi
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
@@ -36,6 +37,7 @@ data class ReturnToRampUiState(
     val catalogTools: List<ToolEntity> = emptyList(),
     val catalogMaterials: List<MaterialEntity> = emptyList(),
     val catalogGeneralSupports: List<GeneralSupportEntity> = emptyList(),
+    val catalogAtaChapters: List<AtaChapterEntity> = emptyList(),
     val occurrence: ReturnToRampFormRow? = null,
     val submitErrors: ReturnToRampSubmitFieldErrors? = null,
     val loggedInEmployeeId: String? = null,
@@ -81,6 +83,11 @@ class ReturnToRampViewModel(
         }
         viewModelScope.launch {
             catalogsRepository.materialsFlow().collect { list -> _state.update { it.copy(catalogMaterials = list) } }
+        }
+        viewModelScope.launch {
+            catalogsRepository.ataChaptersFlow().collect { list ->
+                _state.update { it.copy(catalogAtaChapters = list) }
+            }
         }
         viewModelScope.launch {
             catalogsRepository.generalSupportsFlow().collect { list ->
@@ -326,6 +333,7 @@ class ReturnToRampViewModel(
     )
 
     private fun TaskFormRow.toOutboxInput(snapshot: ReturnToRampUiState) = OutboxPayload.TaskInput(
+        ataChapterId = ataChapterId,
         taskType = taskType,
         description = description.takeIf { it.isNotBlank() },
         fromIso = fromIso,

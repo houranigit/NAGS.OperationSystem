@@ -94,6 +94,14 @@ Work-order detail responses now contain normal performed services and tasks in t
 
 Signatures use the same PNG format and 2 MB limit as work-order signatures. Omitting a nested signature preserves the saved image; `removeCustomerSignature: true` removes it. Signatures are stored in the existing file store and must be included in its backup. A merged work order receives new unsigned RTR records; signatures remain on the original records. Printed work orders include a separate section for each RTR and its own optional signature.
 
+### ATA chapter rollout
+
+Apply `MasterData_AtaChapters` and `Operations_WorkOrderTaskAtaChapters` before starting the updated API. Startup seeds the supplied ATA list once using stable IDs: five categories and 66 entries, retaining the combined `01-05` row. `Propeller / Rotor (60s)` and its seven chapters start inactive; all other seed rows start active. Later startup runs preserve administrator changes to names, codes, category assignments, and status.
+
+ATA categories and chapters have independent status controls. A chapter is available for a new task selection only when both are active. Updates publish an `ata-chapters` refresh event; mobile refreshes its cached active list through the existing catalogs endpoint and Room 15-to-16 migration preserves drafts and queued writes. The API rechecks availability when offline submissions arrive.
+
+The task selection is optional. Normal and RTR tasks store the selected chapter ID, code, and title as a historical snapshot; unchanged selections retain that snapshot when the catalog is renamed or disabled. Existing tasks without ATA information remain valid. Deploy the matching portal/mobile versions to expose the new selectors and administration screens.
+
 ## SQL performance settings
 
 - Keep SQL Server connection pooling enabled. Do not use `Pooling=False` for remote or production-like databases; each EF command would pay for a new physical SQL connection.

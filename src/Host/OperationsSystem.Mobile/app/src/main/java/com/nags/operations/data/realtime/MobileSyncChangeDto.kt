@@ -32,6 +32,7 @@ object MobileSyncTables {
     const val FlightsPerLanding = "flights-per-landing"
     const val FlightsAdHoc = "flights-ad-hoc"
     const val Employees = "employees"
+    const val AtaChapters = "ata-chapters"
     const val Services = "services"
     const val Tools = "tools"
     const val Materials = "materials"
@@ -40,6 +41,7 @@ object MobileSyncTables {
     const val AircraftTypes = "aircraft-types"
 
     val CatalogTables: Set<String> = setOf(
+        AtaChapters,
         Services,
         Tools,
         Materials,

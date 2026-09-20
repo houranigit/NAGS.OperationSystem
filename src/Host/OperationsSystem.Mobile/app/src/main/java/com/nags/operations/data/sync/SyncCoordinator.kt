@@ -7,6 +7,7 @@ import com.nags.operations.data.MobileFlightCache
 import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.api.MobileApi
 import com.nags.operations.data.db.AppDatabase
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.CustomerEntity
 import com.nags.operations.data.db.entities.EmployeeEntity
@@ -47,6 +48,9 @@ internal fun MobileCatalogsDto.toServiceEntities(): List<ServiceEntity> {
         )
     }
 }
+
+internal fun MobileCatalogsDto.toAtaChapterEntities(): List<AtaChapterEntity> =
+    ataChapters.map { AtaChapterEntity(it.id, it.categoryId, it.categoryName, it.code, it.title) }
 
 internal fun MobileCatalogsDto.toToolEntities(): List<ToolEntity> =
     tools.map {
@@ -138,12 +142,15 @@ class SyncCoordinator(
     }
 
     /**
-     * Single round-trip for the six catalog tables: one network call, six Room writes — one
+     * Single round-trip for all catalog tables: one network call and a Room write per table — one
      * transaction per table so a slow write on customers doesn't stall a services read.
      */
     private suspend fun syncCatalogs(): List<SyncOutcome> {
         return try {
             val payload = api.catalogs()
+            timeAndRecord(SyncTable.AtaChapters) {
+                db.ataChapterDao().replaceAll(payload.toAtaChapterEntities())
+            }
             timeAndRecord(SyncTable.Services) {
                 db.serviceDao().replaceAll(payload.toServiceEntities())
             }
@@ -166,6 +173,7 @@ class SyncCoordinator(
             }
 
             listOf(
+                SyncTable.AtaChapters,
                 SyncTable.Services,
                 SyncTable.Tools,
                 SyncTable.Materials,
@@ -179,6 +187,7 @@ class SyncCoordinator(
             val message = e.userMessage()
             // One failure burns down all catalog tables — they share the call.
             val catalogTables = listOf(
+                SyncTable.AtaChapters,
                 SyncTable.Services, SyncTable.Tools, SyncTable.Materials,
                 SyncTable.GeneralSupports, SyncTable.Customers, SyncTable.AircraftTypes,
             )
@@ -331,6 +340,7 @@ class SyncCoordinator(
             MobileSyncTables.FlightsAdHoc -> syncAdHocFlights() is SyncOutcome.Success
             MobileSyncTables.Employees -> syncEmployees() is SyncOutcome.Success
             // Catalog tables share one API call — refresh them all together.
+            MobileSyncTables.AtaChapters,
             MobileSyncTables.Services,
             MobileSyncTables.Tools,
             MobileSyncTables.Materials,
@@ -411,6 +421,7 @@ class SyncCoordinator(
         MobileSyncTables.FlightsPerLanding -> SyncTable.PerLandingFlights.storageKey
         MobileSyncTables.FlightsAdHoc -> SyncTable.AdHocFlights.storageKey
         MobileSyncTables.Employees -> SyncTable.Employees.storageKey
+        MobileSyncTables.AtaChapters -> SyncTable.AtaChapters.storageKey
         MobileSyncTables.Services -> SyncTable.Services.storageKey
         MobileSyncTables.Tools -> SyncTable.Tools.storageKey
         MobileSyncTables.Materials -> SyncTable.Materials.storageKey
@@ -481,6 +492,7 @@ class SyncCoordinator(
     suspend fun clearForAccountSwitch() {
         refreshMutex.withLock {
             cacheMutationMutex.withLock {
+                db.ataChapterDao().deleteAll()
                 db.serviceDao().deleteAll()
                 db.toolDao().deleteAll()
                 db.materialDao().deleteAll()

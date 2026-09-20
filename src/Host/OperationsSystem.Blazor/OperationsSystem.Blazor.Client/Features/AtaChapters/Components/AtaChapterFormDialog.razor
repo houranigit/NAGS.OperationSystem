@@ -1,0 +1,41 @@
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+
+@if (isLoading)
+{
+    <LoadingCard />
+}
+else
+{
+    <RadzenTemplateForm TItem="FormModel" Data="@model" Submit="@SaveAsync">
+        <div class="ata-form">
+            @if (CategoryMode)
+            {
+                <label>Category name</label>
+                <RadzenTextBox @bind-Value="model.Name" Name="categoryName" MaxLength="100" class="ata-control" />
+            }
+            else
+            {
+                <label>Category</label>
+                <RadzenDropDown TValue="Guid?" @bind-Value="model.CategoryId" Data="@categories" TextProperty="Label" ValueProperty="Id"
+                                AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="ata-control" />
+                @if (categories.Count == 0)
+                {
+                    <small class="os-muted">Create a category before adding a chapter.</small>
+                }
+                <label>Chapter number</label>
+                <RadzenTextBox @bind-Value="model.Code" Name="code" MaxLength="20" Placeholder="e.g. 21" class="ata-control" />
+                <label>Title</label>
+                <RadzenTextBox @bind-Value="model.Title" Name="title" MaxLength="200" Placeholder="e.g. Air Conditioning" class="ata-control" />
+            }
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage">@errorMessage</DismissibleDialogMessage>
+            }
+            <div class="ata-actions">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
+                <RadzenButton Text="@(RecordId.HasValue ? "Save" : "Create")" ButtonType="ButtonType.Submit" Disabled="@(isSaving || loadFailed)" />
+            </div>
+        </div>
+    </RadzenTemplateForm>
+}

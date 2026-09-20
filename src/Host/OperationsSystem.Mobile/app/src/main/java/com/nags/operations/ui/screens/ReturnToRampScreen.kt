@@ -127,6 +127,7 @@ fun ReturnToRampScreen(
                         tools = state.catalogTools,
                         materials = state.catalogMaterials,
                         generalSupports = state.catalogGeneralSupports,
+                        ataChapters = state.catalogAtaChapters,
                         onChange = { updated -> viewModel.updateOccurrence { updated } },
                         onRemove = {},
                         canRemove = false,

@@ -1,0 +1,93 @@
+namespace MasterData.Infrastructure.Seeding;
+
+/// <summary>Initial editable baseline transcribed from the supplied ATA Chapters List PDF.</summary>
+public static class AtaChapterSeedData
+{
+    public sealed record Category(string Name, bool IsActive, IReadOnlyList<Chapter> Chapters);
+    public sealed record Chapter(string Code, string Title);
+
+    public static IReadOnlyList<Category> All { get; } =
+    [
+        new("General (00-19)", true,
+        [
+            new("00", "General"),
+            new("01-05", "Time Limits, Maintenance Checks, Weight/Balance, etc."),
+            new("06", "Dimensions and Areas"),
+            new("07", "Lifting and Shoring"),
+            new("08", "Leveling and Weighing"),
+            new("09", "Towing and Taxiing"),
+            new("10", "Parking, Mooring, Storage"),
+            new("11", "Placards and Markings"),
+            new("12", "Servicing"),
+        ]),
+        new("Airframe Systems (20s-50s)", true,
+        [
+            new("21", "Air Conditioning"),
+            new("22", "Auto Flight"),
+            new("23", "Communications"),
+            new("24", "Electrical Power"),
+            new("25", "Equipment/Furnishings"),
+            new("26", "Fire Protection"),
+            new("27", "Flight Controls"),
+            new("28", "Fuel"),
+            new("29", "Hydraulic Power"),
+            new("30", "Ice and Rain Protection"),
+            new("31", "Indicating/Recording Systems"),
+            new("32", "Landing Gear"),
+            new("33", "Lights"),
+            new("34", "Navigation"),
+            new("35", "Oxygen"),
+            new("36", "Pneumatic"),
+            new("37", "Vacuum"),
+            new("38", "Water/Waste"),
+            new("39", "Electrical/Electronic Panels"),
+            new("41", "Water Ballast"),
+            new("42", "Integrated Modular Avionics"),
+            new("44", "Cabin Systems"),
+            new("45", "Central Maintenance System"),
+            new("46", "Information Systems"),
+            new("47", "Inert Gas System"),
+            new("49", "Airborne Auxiliary Power"),
+            new("50", "Cargo and Accessory Compartments"),
+        ]),
+        new("Structures (50s)", true,
+        [
+            new("51", "Standard Practices/Structures"),
+            new("52", "Doors"),
+            new("53", "Fuselage"),
+            new("54", "Nacelles/Pylons"),
+            new("55", "Stabilizers"),
+            new("56", "Windows"),
+            new("57", "Wings"),
+        ]),
+        new("Propeller / Rotor (60s)", false,
+        [
+            new("61", "Propellers/Propulsors"),
+            new("62", "Rotors (Rotorcraft)"),
+            new("63", "Rotor Drive (Rotorcraft)"),
+            new("64", "Tail Rotor (Rotorcraft)"),
+            new("65", "Tail Rotor Drive (Rotorcraft)"),
+            new("66", "Folding Blades/Pylon"),
+            new("67", "Rotor Flight Control (Rotorcraft)"),
+        ]),
+        new("Power Plant (70s-80s)", true,
+        [
+            new("70", "Standard Practices/Engine"),
+            new("71", "Power Plant General"),
+            new("72", "Engine (Turbine/Turboprop/Piston)"),
+            new("73", "Engine Fuel and Control"),
+            new("74", "Ignition"),
+            new("75", "Air (Bleed Air)"),
+            new("76", "Engine Controls"),
+            new("77", "Engine Indicating"),
+            new("78", "Exhaust"),
+            new("79", "Oil"),
+            new("80", "Starting"),
+            new("81", "Turbines (Reciprocating Engine)"),
+            new("82", "Water Injection"),
+            new("83", "Accessory Gearboxes"),
+            new("84", "Propulsion Augmentation"),
+            new("85", "Fuel Cell System"),
+        ]),
+    ];
+}

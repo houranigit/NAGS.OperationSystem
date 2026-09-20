@@ -74,6 +74,9 @@ private fun WorkOrderTaskWireDto.toFormRow(nextKey: () -> Long) = TaskFormRow(
     localKey = nextKey(),
     serverId = id,
     taskType = taskType,
+    ataChapterId = ataChapterId,
+    ataChapterCode = ataChapterCode,
+    ataChapterTitle = ataChapterTitle,
     employeeIds = employees.map { it.staffMemberId },
     employeePeriods = employees.associate {
         it.staffMemberId to EmployeePeriodForm(it.fromUtc ?: fromUtc, it.toUtc ?: toUtc)

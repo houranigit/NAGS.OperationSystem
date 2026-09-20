@@ -196,6 +196,12 @@ public sealed class WorkOrderTaskConfiguration : IEntityTypeConfiguration<WorkOr
         builder.Property(t => t.ReturnToRampId);
         builder.Property(t => t.TaskType).HasConversion<int>();
         builder.Property(t => t.Description).HasMaxLength(2000);
+        builder.OwnsOne(t => t.AtaChapter, chapter =>
+        {
+            chapter.Property(p => p.AtaChapterId).HasColumnName("AtaChapterId").IsRequired();
+            chapter.Property(p => p.Code).HasColumnName("AtaChapterCode").HasMaxLength(20).IsRequired();
+            chapter.Property(p => p.Title).HasColumnName("AtaChapterTitle").HasMaxLength(200).IsRequired();
+        });
 
         builder.OwnsOne(t => t.Window, w =>
         {

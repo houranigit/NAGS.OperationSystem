@@ -11,6 +11,21 @@ namespace Operations.IntegrationTests;
 
 public sealed class WorkOrderPrintDocumentFactoryTests
 {
+    [Fact]
+    public void Print_IncludesTaskAtaChapterSnapshot()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var task = baseline.WorkOrder.Tasks[0] with
+        {
+            AtaChapterId = Guid.NewGuid(), AtaChapterCode = "21", AtaChapterTitle = "Air Conditioning"
+        };
+        var source = baseline with { WorkOrder = baseline.WorkOrder with { Tasks = [task] } };
+        var ddl = DdlWriter.WriteToString(WorkOrderPrintDocumentFactory.BuildDocument(source));
+        ddl.ShouldContain("ATA CHAPTER");
+        ddl.ShouldContain("21. Air Conditioning");
+        WorkOrderPrintDocumentFactory.Create(source).Content.Length.ShouldBeGreaterThan(20_000);
+    }
+
     [Theory]
     [InlineData("Completion")]
     [InlineData("Cancellation")]

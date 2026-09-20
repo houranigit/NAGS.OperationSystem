@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.CustomerEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
@@ -147,6 +148,27 @@ interface AircraftTypeDao {
 
     @Transaction
     suspend fun replaceAll(rows: List<AircraftTypeEntity>) {
+        deleteAll()
+        insertAll(rows)
+    }
+}
+
+@Dao
+interface AtaChapterDao {
+    @Query("SELECT * FROM ata_chapters ORDER BY code COLLATE NOCASE, title COLLATE NOCASE")
+    fun observeAll(): Flow<List<AtaChapterEntity>>
+
+    @Query("SELECT COUNT(*) FROM ata_chapters")
+    suspend fun count(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(rows: List<AtaChapterEntity>)
+
+    @Query("DELETE FROM ata_chapters")
+    suspend fun deleteAll()
+
+    @Transaction
+    suspend fun replaceAll(rows: List<AtaChapterEntity>) {
         deleteAll()
         insertAll(rows)
     }

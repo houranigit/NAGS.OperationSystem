@@ -1,0 +1,4 @@
+.ata-form { display: flex; flex-direction: column; gap: .75rem; }
+.ata-form label { font-weight: 600; margin-top: .5rem; }
+::deep .ata-control { width: 100%; }
+.ata-actions { display: flex; justify-content: space-between; margin-top: 1rem; }

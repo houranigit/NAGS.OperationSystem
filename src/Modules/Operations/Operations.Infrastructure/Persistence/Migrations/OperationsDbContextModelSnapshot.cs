@@ -1396,6 +1396,35 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasPrincipalKey("Id", "WorkOrderId")
                         .OnDelete(DeleteBehavior.NoAction);
 
+                    b.OwnsOne("Operations.Domain.ValueObjects.AtaChapterSnapshot", "AtaChapter", b1 =>
+                        {
+                            b1.Property<Guid>("WorkOrderTaskId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<Guid>("AtaChapterId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("AtaChapterId");
+
+                            b1.Property<string>("Code")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)")
+                                .HasColumnName("AtaChapterCode");
+
+                            b1.Property<string>("Title")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("AtaChapterTitle");
+
+                            b1.HasKey("WorkOrderTaskId");
+
+                            b1.ToTable("work_order_tasks", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("WorkOrderTaskId");
+                        });
+
                     b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
                         {
                             b1.Property<Guid>("WorkOrderTaskId")
@@ -1416,6 +1445,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("WorkOrderTaskId");
                         });
+
+                    b.Navigation("AtaChapter");
 
                     b.Navigation("Window")
                         .IsRequired();

@@ -1,3 +1,4 @@
+using MasterData.Domain.AtaChapters;
 using System.Data;
 using System.Reflection;
 using BuildingBlocks.Application.Messaging;
@@ -24,6 +25,9 @@ public sealed class MasterDataDbContext(DbContextOptions<MasterDataDbContext> op
     : DbContext(options), IMasterDataDbContext, IOutboxDbContext
 {
     public const string Schema = "masterdata";
+
+    public DbSet<AtaChapterCategory> AtaChapterCategories => Set<AtaChapterCategory>();
+    public DbSet<AtaChapter> AtaChapters => Set<AtaChapter>();
 
     public DbSet<Country> Countries => Set<Country>();
     public DbSet<ManpowerType> ManpowerTypes => Set<ManpowerType>();

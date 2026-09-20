@@ -27,6 +27,7 @@ public static class PortalNavigationPolicy
         new("/master-data/countries", MasterDataPermissions.CountriesView),
         new("/master-data/manpower-types", MasterDataPermissions.ManpowerTypesView),
         new("/master-data/licenses", MasterDataPermissions.LicensesView),
+        new("/master-data/ata-chapters", MasterDataPermissions.AtaChaptersView),
         new("/master-data/services", MasterDataPermissions.ServicesView),
         new("/master-data/operation-types", MasterDataPermissions.OperationTypesView),
         new("/master-data/aircraft-types", MasterDataPermissions.AircraftTypesView),
@@ -160,6 +161,8 @@ public static class PortalNavigationPolicy
             return MasterDataPermissions.CountriesView;
         if (IsListOrGuidDetail(path, "master-data/manpower-types"))
             return MasterDataPermissions.ManpowerTypesView;
+        if (path == "master-data/ata-chapters")
+            return MasterDataPermissions.AtaChaptersView;
         if (IsListOrGuidDetail(path, "master-data/licenses"))
             return MasterDataPermissions.LicensesView;
         if (IsListOrGuidDetail(path, "master-data/services"))

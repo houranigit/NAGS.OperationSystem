@@ -1,3 +1,4 @@
+using MasterData.Domain.AtaChapters;
 using BuildingBlocks.Application.Messaging;
 using MasterData.Domain.AircraftTypes;
 using MasterData.Domain.Countries;
@@ -23,6 +24,10 @@ namespace MasterData.Application.Abstractions;
 /// </summary>
 public interface IMasterDataDbContext : IOutboxDbContext
 {
+    public DbSet<AtaChapterCategory> AtaChapterCategories { get; }
+
+    public DbSet<AtaChapter> AtaChapters { get; }
+
     public DbSet<Country> Countries { get; }
 
     public DbSet<ManpowerType> ManpowerTypes { get; }

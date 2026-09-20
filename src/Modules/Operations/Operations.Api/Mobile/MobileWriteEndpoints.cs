@@ -95,7 +95,8 @@ internal static class MobileWriteEndpoints
                         t.Attachments?.Select(a => new Operations.Application.Features.WorkOrders.WorkOrderTaskAttachmentCommand(
                             a.Kind, a.Base64Content, a.FileName, a.ContentType)).ToList() ?? [],
                         IsReturnToRamp: false,
-                        EmployeeAssignments: t.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList())).ToList() ?? [],
+                        EmployeeAssignments: t.EmployeeAssignments?.Select(assignment => assignment.ToCommand()).ToList(),
+                        AtaChapterId: t.AtaChapterId)).ToList() ?? [],
                     request.ClientMutationId), ct);
                 return ToWriteResult(result, created: false);
             }).RequirePermission(OperationsPermissions.WorkOrders.Author)

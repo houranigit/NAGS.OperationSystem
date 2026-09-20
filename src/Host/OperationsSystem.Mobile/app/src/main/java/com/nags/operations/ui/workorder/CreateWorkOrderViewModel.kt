@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.TaskTypeKind
 import com.nags.operations.data.ResourceCalculationType
 import com.nags.operations.data.WorkOrderStatusKind
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.CustomerEntity
 import com.nags.operations.data.db.entities.EmployeeEntity
@@ -128,6 +129,10 @@ data class TaskFormRow(
     val existingAttachmentNames: List<String> = emptyList(),
     /** Legacy draft marker, migrated into returnToRamps before submission. */
     val returnToRamp: Boolean = false,
+    val ataChapterId: String? = null,
+    /** Persisted label remains readable when the chapter leaves the active catalog. */
+    val ataChapterCode: String? = null,
+    val ataChapterTitle: String? = null,
 )
 
 /** One independently auditable return-to-ramp occurrence and its nested work. */
@@ -268,6 +273,7 @@ data class CreateWorkOrderUiState(
     val catalogTools: List<ToolEntity> = emptyList(),
     val catalogMaterials: List<MaterialEntity> = emptyList(),
     val catalogGeneralSupports: List<GeneralSupportEntity> = emptyList(),
+    val catalogAtaChapters: List<AtaChapterEntity> = emptyList(),
     val catalogAircraftTypes: List<AircraftTypeEntity> = emptyList(),
     /** True when the flight row carried a cached under-review work order and the form was prefilled locally. */
     val isUpdatingCachedUnderReviewWorkOrder: Boolean = false,
@@ -673,6 +679,11 @@ class CreateWorkOrderViewModel(
         viewModelScope.launch {
             catalogsRepository.materialsFlow().collect { list ->
                 _state.update { it.copy(catalogMaterials = list) }
+            }
+        }
+        viewModelScope.launch {
+            catalogsRepository.ataChaptersFlow().collect { list ->
+                _state.update { it.copy(catalogAtaChapters = list) }
             }
         }
         viewModelScope.launch {
@@ -1821,6 +1832,7 @@ class CreateWorkOrderViewModel(
 
     private fun TaskFormRow.toOutboxInput(snapshot: CreateWorkOrderUiState) = OutboxPayload.TaskInput(
         id = serverId,
+        ataChapterId = ataChapterId,
         taskType = taskType,
         description = description.takeIf { it.isNotBlank() },
         fromIso = fromIso,

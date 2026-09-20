@@ -289,6 +289,9 @@ private fun WorkOrderActivity(services: List<WorkOrderServiceLineWireDto>, tasks
         OutlinedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("${task.taskType} task", style = MaterialTheme.typography.titleMedium)
+                task.ataChapterId?.let {
+                    Text("ATA Chapter: " + listOfNotNull(task.ataChapterCode, task.ataChapterTitle).joinToString(". "))
+                }
                 PeriodText(task.fromUtc, task.toUtc)
                 task.description?.takeIf(String::isNotBlank)?.let { Text(it) }
                 task.employees.forEach { employee ->

@@ -33,7 +33,9 @@ public sealed class WorkOrderMergeMappingTests
         mapped.SelectMany(item => item.ServiceLines)
             .ShouldAllBe(line => line.Id == null && !line.IsReturnToRamp);
         mapped.SelectMany(item => item.Tasks)
-            .ShouldAllBe(task => task.Id == null && !task.IsReturnToRamp);
+            .ShouldAllBe(task => task.Id != null && !task.IsReturnToRamp);
+        mapped.SelectMany(item => item.Tasks).Select(task => task.Id)
+            .ShouldBe(first.ReturnToRamps!.Concat(second.ReturnToRamps!).SelectMany(item => item.Tasks).Select(task => (Guid?)task.Id));
     }
 
     [Fact]

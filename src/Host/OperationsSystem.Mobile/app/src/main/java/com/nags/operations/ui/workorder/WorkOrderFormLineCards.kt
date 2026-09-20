@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.data.WellKnownMasterDataIds
 import com.nags.operations.data.TaskTypeKind
 import com.nags.operations.data.ResourceCalculationType
+import com.nags.operations.data.db.entities.AtaChapterEntity
 import com.nags.operations.data.db.entities.EmployeeEntity
 import com.nags.operations.data.db.entities.GeneralSupportEntity
 import com.nags.operations.data.db.entities.MaterialEntity
@@ -48,6 +49,7 @@ import com.nags.operations.data.db.entities.ServiceEntity
 import com.nags.operations.data.db.entities.isAllowedPerformedOption
 import com.nags.operations.data.db.entities.ToolEntity
 import com.nags.operations.data.db.entities.workOrderPickerDisplayLine
+import com.nags.operations.ui.components.InlineSearchableDropdownField
 import com.nags.operations.ui.components.DocumentAttachmentButton
 import com.nags.operations.ui.components.MultiSelectDropdownField
 import com.nags.operations.ui.components.PhotoAttachmentButton
@@ -460,6 +462,7 @@ fun TaskLineCard(
     tools: List<ToolEntity>,
     materials: List<MaterialEntity>,
     generalSupports: List<GeneralSupportEntity>,
+    ataChapters: List<AtaChapterEntity>,
     onChange: (TaskFormRow) -> Unit,
     onAttachmentAdded: (TaskAttachmentDraft) -> Unit,
     onAttachmentRemoved: (TaskAttachmentDraft) -> Unit,
@@ -552,6 +555,35 @@ fun TaskLineCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+
+                InlineSearchableDropdownField(
+                    label = "ATA Chapters (optional)",
+                    selectedText = row.ataChapterDisplayLabel(ataChapters),
+                    placeholder = "Search chapter number or title",
+                    // The cache contains only active items in active categories. Never add a
+                    // saved inactive chapter back to the options just to render its label.
+                    options = ataChapters,
+                    renderOption = { it.displayLabel },
+                    secondaryLine = { it.categoryName },
+                    onSelect = { chapter ->
+                        onChange(row.copy(
+                            ataChapterId = chapter.id,
+                            ataChapterCode = chapter.code,
+                            ataChapterTitle = chapter.title,
+                        ))
+                    },
+                    onClearSelection = {
+                        onChange(row.copy(ataChapterId = null, ataChapterCode = null, ataChapterTitle = null))
+                    },
+                    hasSelection = row.ataChapterId != null,
+                    supportingText = fieldErrorSupportingText(when {
+                        row.ataChapterId != null && ataChapters.none { it.id == row.ataChapterId } ->
+                            "Saved chapter is currently unavailable for new selections."
+                        ataChapters.isEmpty() ->
+                            "No active ATA chapters available. Sync master data to refresh."
+                        else -> null
+                    }),
+                )
 
                 OutlinedTextField(
                     value = row.description,

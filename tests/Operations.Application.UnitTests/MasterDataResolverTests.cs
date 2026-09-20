@@ -120,6 +120,11 @@ public sealed class MasterDataResolverTests
             return Task.FromResult<IReadOnlyList<StaffMemberReadSnapshot>>(members);
         }
 
+        public Task<AtaChapterReadSnapshot?> GetAtaChapterAsync(Guid id, CancellationToken cancellationToken) =>
+            Task.FromResult<AtaChapterReadSnapshot?>(null);
+        public Task<IReadOnlyList<AtaChapterReadSnapshot>> GetActiveAtaChaptersAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<AtaChapterReadSnapshot>>([]);
+
         public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
 
