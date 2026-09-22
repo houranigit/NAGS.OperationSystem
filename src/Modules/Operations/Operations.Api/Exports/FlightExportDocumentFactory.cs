@@ -81,6 +81,14 @@ internal static class FlightExportDocumentFactory
         "Major/Minor", "Description", "From", "To", "Performed By", "Tools", "Materials", "General Support"
     ];
 
+    private static readonly string[] FlightBreakdownHeaders =
+    [
+        .. CsvHeaders,
+        "Row Type", "Activity Context", "RTR From", "RTR To", "RTR Description", "Activity Description",
+        "Calculation Type", "Quantity", "From", "To", "Duration", "Performed By",
+        "Flight ID", "Work Order ID", "Activity ID", "RTR ID"
+    ];
+
     public static bool TryParseFormat(string? value, out FlightExportFormat format)
     {
         if (string.Equals(value, "xlsx", StringComparison.OrdinalIgnoreCase) ||
@@ -225,6 +233,7 @@ internal static class FlightExportDocumentFactory
 
         AddServiceDetailsWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
         AddTaskDetailsWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
+        AddFlightBreakdownWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -236,7 +245,8 @@ internal static class FlightExportDocumentFactory
         int rowNumber,
         int sequence,
         FlightExportRowDto row,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        bool includeCollections = true)
     {
         var approved = row.ApprovedWorkOrder;
         sheet.Cell(rowNumber, 1).SetValue(sequence);
@@ -258,15 +268,18 @@ internal static class FlightExportDocumentFactory
         SetOptionalText(sheet.Cell(rowNumber, 17), approved?.AircraftManufacturer);
         SetOptionalText(sheet.Cell(rowNumber, 18), approved?.AircraftModel);
         SetOptionalText(sheet.Cell(rowNumber, 19), approved?.AircraftTailNumber);
-        SetOptionalText(sheet.Cell(rowNumber, 20), JoinNames(row.PlannedServiceNames));
-        SetOptionalText(sheet.Cell(rowNumber, 21), approved is null ? null : JoinNames(approved.ServiceNames));
-        SetOptionalText(sheet.Cell(rowNumber, 22), approved is null ? null : JoinNames(approved.ToolNames));
-        SetOptionalText(sheet.Cell(rowNumber, 23), approved is null ? null : JoinNames(approved.MaterialNames));
-        SetOptionalText(sheet.Cell(rowNumber, 24), approved is null ? null : JoinNames(approved.GeneralSupportNames));
-        SetOptionalText(sheet.Cell(rowNumber, 25), JoinNames(row.AssignedEmployeeNames));
+        if (includeCollections)
+        {
+            SetOptionalText(sheet.Cell(rowNumber, 20), JoinNames(row.PlannedServiceNames));
+            SetOptionalText(sheet.Cell(rowNumber, 21), approved is null ? null : JoinNames(approved.ServiceNames));
+            SetOptionalText(sheet.Cell(rowNumber, 22), approved is null ? null : JoinNames(approved.ToolNames));
+            SetOptionalText(sheet.Cell(rowNumber, 23), approved is null ? null : JoinNames(approved.MaterialNames));
+            SetOptionalText(sheet.Cell(rowNumber, 24), approved is null ? null : JoinNames(approved.GeneralSupportNames));
+            SetOptionalText(sheet.Cell(rowNumber, 25), JoinNames(row.AssignedEmployeeNames));
+            SetOptionalText(sheet.Cell(rowNumber, 28), approved is null ? null : JoinNames(approved.TaskNames));
+        }
         SetOptionalText(sheet.Cell(rowNumber, 26), approved?.Remarks);
         sheet.Cell(rowNumber, 27).SetValue(StatusLabel(row.Status));
-        SetOptionalText(sheet.Cell(rowNumber, 28), approved is null ? null : JoinNames(approved.TaskNames));
 
         var rowRange = sheet.Range(rowNumber, 1, rowNumber, CsvHeaders.Length);
         rowRange.Style.Font.FontSize = 9;
@@ -436,6 +449,178 @@ internal static class FlightExportDocumentFactory
             ],
             "No work-order tasks match the selected flights.",
             timeZone);
+    }
+
+    private static void AddFlightBreakdownWorksheet(
+        XLWorkbook workbook,
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria,
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
+    {
+        const int headerRowNumber = 5;
+        var detailCount = rows.Sum(row => Math.Max(1, EnumerateFlightBreakdown(row).Count()));
+        var sheet = CreateDetailWorksheetFrame(
+            workbook,
+            "Flight Breakdown",
+            "Daily Operation Report — Flight Breakdown",
+            FlightBreakdownHeaders,
+            detailCount,
+            rows,
+            criteria,
+            generatedAtUtc,
+            timeZone);
+
+        var rowNumber = headerRowNumber + 1;
+        var sequence = 1;
+        foreach (var flight in rows)
+        {
+            foreach (var item in EnumerateFlightBreakdown(flight).DefaultIfEmpty(new("Flight", 0, string.Empty)))
+            {
+                WriteWorkbookRow(sheet, rowNumber, sequence++, flight, timeZone, includeCollections: false);
+                if (item.Column > 0)
+                    SetWorkbookText(sheet.Cell(rowNumber, item.Column), item.Name);
+                if (item.ParentTask is { } parentTask)
+                    SetWorkbookText(sheet.Cell(rowNumber, 28), parentTask);
+                SetWorkbookText(sheet.Cell(rowNumber, 29), item.RowType);
+                SetWorkbookText(sheet.Cell(rowNumber, 30), item.ReturnToRamp is { } rtr
+                    ? $"Return to ramp #{rtr.Sequence}"
+                    : item.Column is >= 21 and <= 24 or 28 ? "Work order" : "Flight");
+                SetOptionalDate(sheet.Cell(rowNumber, 31), item.ReturnToRamp?.FromUtc, timeZone);
+                SetOptionalDate(sheet.Cell(rowNumber, 32), item.ReturnToRamp?.ToUtc, timeZone);
+                SetOptionalText(sheet.Cell(rowNumber, 33), item.ReturnToRamp?.Description);
+                SetOptionalText(sheet.Cell(rowNumber, 34), item.Description);
+                if (item.CalculationType is { } calculationType)
+                    SetWorkbookText(sheet.Cell(rowNumber, 35), calculationType.ToString());
+                if (item.Quantity is { } quantity)
+                    sheet.Cell(rowNumber, 36).SetValue(quantity);
+                SetOptionalDate(sheet.Cell(rowNumber, 37), item.FromUtc, timeZone);
+                SetOptionalDate(sheet.Cell(rowNumber, 38), item.ToUtc, timeZone);
+                if (item.FromUtc is { } fromUtc)
+                {
+                    if (item.ToUtc is { } toUtc)
+                        SetOptionalDuration(sheet.Cell(rowNumber, 39), NonNegative(toUtc - fromUtc));
+                    else if (item.CalculationType == ResourceCalculationType.Duration)
+                        SetWorkbookText(sheet.Cell(rowNumber, 39), "Open");
+                }
+                SetOptionalText(sheet.Cell(rowNumber, 40), JoinNames(item.PerformedByNames));
+                SetWorkbookText(sheet.Cell(rowNumber, 41), flight.Id.ToString());
+                if (flight.ApprovedWorkOrder is { WorkOrderId: var workOrderId } && workOrderId != Guid.Empty)
+                    SetWorkbookText(sheet.Cell(rowNumber, 42), workOrderId.ToString());
+                if (item.ActivityId is { } activityId)
+                    SetWorkbookText(sheet.Cell(rowNumber, 43), activityId.ToString());
+                if (item.ReturnToRamp is { } context)
+                    SetWorkbookText(sheet.Cell(rowNumber, 44), context.Id.ToString());
+
+                var range = sheet.Range(rowNumber, 1, rowNumber, FlightBreakdownHeaders.Length);
+                range.Style.Font.FontSize = 9;
+                range.Style.Font.FontColor = XLColor.FromHtml(TextColor);
+                range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                range.Style.Border.BottomBorder = XLBorderStyleValues.Hair;
+                range.Style.Border.BottomBorderColor = XLColor.FromHtml(BorderColor);
+                if ((rowNumber - headerRowNumber) % 2 == 0)
+                    range.Style.Fill.BackgroundColor = XLColor.FromHtml(AlternateRowColor);
+                ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 27), flight.Status);
+                sheet.Row(rowNumber).Height = 26;
+                rowNumber++;
+            }
+        }
+
+        // Keep the data region rectangular, including for an empty export, for filters and imports.
+        sheet.Range(headerRowNumber, 1, Math.Max(headerRowNumber, rowNumber - 1), FlightBreakdownHeaders.Length).SetAutoFilter();
+        sheet.SheetView.FreezeRows(headerRowNumber);
+        sheet.SheetView.FreezeColumns(2);
+        SetWorkbookColumnWidths(sheet);
+        double[] extraWidths = [22, 24, 24, 24, 34, 42, 19, 14, 24, 24, 17, 30, 40, 40, 40, 40];
+        for (var index = 0; index < extraWidths.Length; index++)
+            sheet.Column(CsvHeaders.Length + index + 1).Width = extraWidths[index];
+        foreach (var column in new[] { 5, 6, 7, 8, 31, 32, 37, 38 })
+        {
+            sheet.Column(column).Width = Math.Max(24, 20 + timeZone.Id.Length);
+            sheet.Column(column).Style.DateFormat.Format = WorkbookDateFormat(timeZone);
+        }
+        foreach (var column in new[] { 9, 10 })
+            sheet.Column(column).Style.NumberFormat.Format = "0 \"min\";-0 \"min\"";
+        foreach (var column in new[] { 11, 12 })
+            sheet.Column(column).Style.NumberFormat.Format = "[h]\"h \"mm\"m\"";
+        sheet.Column(39).Style.NumberFormat.Format = "[h]:mm";
+        foreach (var column in new[] { 20, 21, 22, 23, 24, 25, 26, 28, 33, 34, 40 })
+            sheet.Column(column).Style.Alignment.WrapText = true;
+    }
+
+    private sealed record FlightBreakdownItem(string RowType, int Column, string Name)
+    {
+        public string? ParentTask { get; init; }
+        public Guid? ActivityId { get; init; }
+        public FlightExportReturnToRampContextDto? ReturnToRamp { get; init; }
+        public string? Description { get; init; }
+        public IReadOnlyList<string> PerformedByNames { get; init; } = [];
+        public ResourceCalculationType? CalculationType { get; init; }
+        public decimal? Quantity { get; init; }
+        public DateTimeOffset? FromUtc { get; init; }
+        public DateTimeOffset? ToUtc { get; init; }
+    }
+
+    private static IEnumerable<FlightBreakdownItem> EnumerateFlightBreakdown(FlightExportRowDto flight)
+    {
+        foreach (var name in flight.PlannedServiceNames)
+            yield return new("Planned Service", 20, name);
+        foreach (var name in flight.AssignedEmployeeNames)
+            yield return new("Assigned Employee", 25, name);
+        if (flight.ApprovedWorkOrder is not { } workOrder)
+            yield break;
+
+        // Services and task resources are independent collections. Do not pair them or multiply usage totals.
+        foreach (var service in workOrder.ServiceDetails)
+            yield return new("Service", 21, service.ServiceName)
+            {
+                ActivityId = service.Id,
+                ReturnToRamp = service.ReturnToRamp,
+                Description = service.Description,
+                PerformedByNames = service.PerformedByNames,
+                FromUtc = service.FromUtc,
+                ToUtc = service.ToUtc
+            };
+        if (workOrder.ServiceDetails.Count == 0)
+            foreach (var name in workOrder.ServiceNames)
+                yield return new("Service", 21, name);
+
+        foreach (var task in workOrder.TaskDetails)
+        {
+            var taskName = string.IsNullOrWhiteSpace(task.Description)
+                ? task.TaskType.Trim()
+                : string.IsNullOrWhiteSpace(task.TaskType) ? task.Description.Trim() : $"{task.TaskType.Trim()}: {task.Description.Trim()}";
+            var taskItem = new FlightBreakdownItem("Task", 28, taskName)
+            {
+                ActivityId = task.Id,
+                ReturnToRamp = task.ReturnToRamp,
+                Description = task.Description,
+                PerformedByNames = task.PerformedByNames,
+                FromUtc = task.FromUtc,
+                ToUtc = task.ToUtc
+            };
+            yield return taskItem;
+            foreach (var (type, column, usages) in new[]
+                     { ("Tool", 22, task.Tools), ("Material", 23, task.Materials), ("General Support", 24, task.GeneralSupports) })
+                foreach (var usage in usages)
+                    yield return taskItem with
+                    {
+                        RowType = type,
+                        Column = column,
+                        Name = usage.Name,
+                        ParentTask = taskName,
+                        CalculationType = usage.CalculationType,
+                        Quantity = usage.Quantity,
+                        FromUtc = usage.FromUtc,
+                        ToUtc = usage.ToUtc
+                    };
+        }
+        if (workOrder.TaskDetails.Count == 0)
+            foreach (var (type, column, names) in new[]
+                     { ("Task", 28, workOrder.TaskNames), ("Tool", 22, workOrder.ToolNames),
+                         ("Material", 23, workOrder.MaterialNames), ("General Support", 24, workOrder.GeneralSupportNames) })
+                foreach (var name in names)
+                    yield return new(type, column, name);
     }
 
     private static IXLWorksheet CreateDetailWorksheetFrame(
