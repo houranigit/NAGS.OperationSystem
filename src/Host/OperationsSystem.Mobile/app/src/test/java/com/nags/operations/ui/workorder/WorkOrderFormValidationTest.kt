@@ -1047,12 +1047,48 @@ class WorkOrderFormValidationTest {
     }
 
     @Test
-    fun new_employee_selection_requires_period_entry_and_preserves_existing_employee_periods() {
+    fun new_employee_selection_defaults_from_and_preserves_existing_employee_periods() {
+        val lineFrom = "2026-07-11T09:30:00Z"
+        val lineTo = "2026-07-11T11:30:00Z"
         val period = EmployeePeriodForm("2026-07-11T10:00:00Z", "2026-07-11T11:00:00Z")
-        val selected = employeePeriodsForSelection(listOf("first", "new"), mapOf("first" to period, "removed" to period))
+        val selected = employeePeriodsForSelection(
+            listOf("first", "new"),
+            mapOf("first" to period, "removed" to period),
+            lineFrom,
+            lineTo,
+            previousIds = listOf("first", "removed"),
+        )
+
         assertEquals(period, selected["first"])
-        assertEquals(EmployeePeriodForm(), selected["new"])
+        assertEquals(EmployeePeriodForm(fromIso = lineFrom), selected["new"])
         assertFalse(selected.containsKey("removed"))
+        assertEquals(
+            "Set the To date and time for every employee.",
+            employeePeriodsError(listOf("new"), selected, lineFrom, lineTo),
+        )
+        assertNull(employeePeriodsError(
+            listOf("new"),
+            selected + ("new" to selected.getValue("new").copy(toIso = lineTo)),
+            lineFrom,
+            lineTo,
+        ))
+    }
+
+    @Test
+    fun adding_employee_preserves_retained_legacy_and_explicit_blank_periods() {
+        val from = "2026-07-11T10:00:00Z"
+        val to = "2026-07-11T11:00:00Z"
+        val selected = employeePeriodsForSelection(
+            listOf("legacy", "incomplete", "new"),
+            mapOf("incomplete" to EmployeePeriodForm()),
+            from,
+            to,
+            previousIds = listOf("legacy", "incomplete"),
+        )
+
+        assertEquals(EmployeePeriodForm(from, to), selected["legacy"])
+        assertEquals(EmployeePeriodForm(), selected["incomplete"])
+        assertEquals(EmployeePeriodForm(fromIso = from), selected["new"])
     }
 
     @Test

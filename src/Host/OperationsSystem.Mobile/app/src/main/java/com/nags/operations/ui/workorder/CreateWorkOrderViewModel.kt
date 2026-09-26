@@ -380,12 +380,12 @@ internal fun initializeBlankFromTimes(
 ): CreateWorkOrderFormState = when (step) {
     WorkOrderWizardStep.ServiceLines -> form.copy(
         serviceLines = form.serviceLines.map { row ->
-            if (row.fromIso.isBlank()) row.copy(fromIso = timestampIso) else row
+            row.withInitialFromTime(timestampIso)
         },
     )
     WorkOrderWizardStep.Tasks -> form.copy(
         tasks = form.tasks.map { row ->
-            if (row.fromIso.isBlank()) row.copy(fromIso = timestampIso) else row
+            row.withInitialFromTime(timestampIso)
         },
     )
     WorkOrderWizardStep.ReturnToRamps -> form.copy(
@@ -393,10 +393,10 @@ internal fun initializeBlankFromTimes(
             occurrence.copy(
                 fromIso = occurrence.fromIso.ifBlank { timestampIso },
                 serviceLines = occurrence.serviceLines.map { row ->
-                    if (row.fromIso.isBlank()) row.copy(fromIso = occurrence.fromIso.ifBlank { timestampIso }) else row
+                    row.withInitialFromTime(occurrence.fromIso.ifBlank { timestampIso })
                 },
                 tasks = occurrence.tasks.map { row ->
-                    if (row.fromIso.isBlank()) row.copy(fromIso = occurrence.fromIso.ifBlank { timestampIso }) else row
+                    row.withInitialFromTime(occurrence.fromIso.ifBlank { timestampIso })
                 },
             )
         },
@@ -405,6 +405,36 @@ internal fun initializeBlankFromTimes(
     WorkOrderWizardStep.Signature,
     -> form
 }
+
+/** Fill pending defaults together when a planned line first receives its start time. */
+private fun ServiceLineFormRow.withInitialFromTime(timestampIso: String): ServiceLineFormRow =
+    if (fromIso.isBlank()) copy(
+        fromIso = timestampIso,
+        employeePeriods = employeePeriods.withInitialFromTime(timestampIso),
+    ) else this
+
+private fun TaskFormRow.withInitialFromTime(timestampIso: String): TaskFormRow =
+    if (fromIso.isBlank()) copy(
+        fromIso = timestampIso,
+        employeePeriods = employeePeriods.withInitialFromTime(timestampIso),
+    ) else this
+
+private fun Map<String, EmployeePeriodForm>.withInitialFromTime(timestampIso: String): Map<String, EmployeePeriodForm> =
+    mapValues { (_, period) ->
+        if (period.fromIso.isBlank()) period.copy(fromIso = timestampIso) else period
+    }
+
+internal fun ServiceLineFormRow.withDefaultEmployee(employeeId: String): ServiceLineFormRow =
+    if (employeeIds.isEmpty()) copy(
+        employeeIds = listOf(employeeId),
+        employeePeriods = employeePeriodsForSelection(listOf(employeeId), emptyMap(), fromIso),
+    ) else this
+
+internal fun TaskFormRow.withDefaultEmployee(employeeId: String): TaskFormRow =
+    if (employeeIds.isEmpty()) copy(
+        employeeIds = listOf(employeeId),
+        employeePeriods = employeePeriodsForSelection(listOf(employeeId), emptyMap(), fromIso),
+    ) else this
 
 internal fun finalizeBlankToTimes(
     form: CreateWorkOrderFormState,
@@ -447,7 +477,7 @@ internal fun newServiceLineAt(
 ): ServiceLineFormRow = ServiceLineFormRow(
     localKey = localKey,
     employeeIds = employeeIds,
-    employeePeriods = employeeIds.associateWith { EmployeePeriodForm() },
+    employeePeriods = employeePeriodsForSelection(employeeIds, emptyMap(), timestampIso),
     fromIso = timestampIso,
     toIso = "",
 )
@@ -459,7 +489,7 @@ internal fun newTaskAt(
 ): TaskFormRow = TaskFormRow(
     localKey = localKey,
     employeeIds = employeeIds,
-    employeePeriods = employeeIds.associateWith { EmployeePeriodForm() },
+    employeePeriods = employeePeriodsForSelection(employeeIds, emptyMap(), timestampIso),
     fromIso = timestampIso,
     toIso = "",
 )
@@ -1225,18 +1255,18 @@ class CreateWorkOrderViewModel(
         val presetId = resolvedDefaultPerformingEmployeeId(snapshot) ?: return
         _state.update { s ->
             val newLines = s.form.serviceLines.map { line ->
-                if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else line
+                line.withDefaultEmployee(presetId)
             }
             val newTasks = s.form.tasks.map { task ->
-                if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else task
+                task.withDefaultEmployee(presetId)
             }
             val newReturnToRamps = s.form.returnToRamps.map { occurrence ->
                 occurrence.copy(
                     serviceLines = occurrence.serviceLines.map { line ->
-                        if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else line
+                        line.withDefaultEmployee(presetId)
                     },
                     tasks = occurrence.tasks.map { task ->
-                        if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(presetId), employeePeriods = mapOf(presetId to EmployeePeriodForm())) else task
+                        task.withDefaultEmployee(presetId)
                     },
                 )
             }
@@ -1445,7 +1475,7 @@ class CreateWorkOrderViewModel(
                         serviceLines = occurrence.serviceLines + ServiceLineFormRow(
                             localKey = allocKey(),
                             employeeIds = presetEmployees,
-                            employeePeriods = presetEmployees.associateWith { EmployeePeriodForm() },
+                            employeePeriods = employeePeriodsForSelection(presetEmployees, emptyMap(), occurrence.fromIso),
                             fromIso = occurrence.fromIso,
                             toIso = occurrence.toIso,
                         ),
@@ -1464,7 +1494,7 @@ class CreateWorkOrderViewModel(
                         tasks = occurrence.tasks + TaskFormRow(
                             localKey = allocKey(),
                             employeeIds = presetEmployees,
-                            employeePeriods = presetEmployees.associateWith { EmployeePeriodForm() },
+                            employeePeriods = employeePeriodsForSelection(presetEmployees, emptyMap(), occurrence.fromIso),
                             fromIso = occurrence.fromIso,
                             toIso = occurrence.toIso,
                         ),

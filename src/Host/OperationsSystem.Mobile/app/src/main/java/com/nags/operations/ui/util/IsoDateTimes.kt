@@ -29,6 +29,18 @@ fun formatIsoForDisplay(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): S
         iso
     }
 
+/** A date and time on separate lines keeps paired form fields readable on phones. */
+fun formatIsoForDateTimeField(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): String =
+    try {
+        val local = parseInUserZone(iso, zoneId)
+        val locale = Locale.getDefault()
+        val date = local.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(locale))
+        val time = local.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale))
+        "$date\n$time"
+    } catch (_: Exception) {
+        iso
+    }
+
 /**
  * The work-order UI always edits wall-clock values in the user's device zone. The argument is
  * retained for source compatibility with older callers that derived a fixed offset from a flight.

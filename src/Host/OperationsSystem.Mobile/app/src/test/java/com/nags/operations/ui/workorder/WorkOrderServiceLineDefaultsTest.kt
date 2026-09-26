@@ -2,6 +2,7 @@ package com.nags.operations.ui.workorder
 
 import com.nags.operations.data.db.entities.FlightServiceSummary
 import com.nags.operations.data.repo.WorkOrderFlightRow
+import com.nags.operations.data.repo.WorkOrderDraftJson
 import com.nags.operations.ui.components.initialSubmitAtdIso
 import java.time.Clock
 import java.time.Instant
@@ -173,6 +174,79 @@ class WorkOrderServiceLineDefaultsTest {
         assertEquals("", service.toIso)
         assertEquals("2026-07-18T10:43-05:00", task.fromIso)
         assertEquals("", task.toIso)
+        assertEquals(EmployeePeriodForm(fromIso = service.fromIso), service.employeePeriods["employee-1"])
+        assertEquals(EmployeePeriodForm(fromIso = task.fromIso), task.employeePeriods["employee-1"])
+    }
+
+    @Test
+    fun section_entry_initializes_pending_employee_starts_with_the_parent_start() {
+        val existingPeriod = EmployeePeriodForm("2026-07-18T10:15Z", "2026-07-18T10:30Z")
+        val form = CreateWorkOrderFormState(
+            serviceLines = listOf(
+                ServiceLineFormRow(localKey = 1L).withDefaultEmployee("employee-1"),
+                ServiceLineFormRow(
+                    localKey = 2L,
+                    employeeIds = listOf("employee-2"),
+                    employeePeriods = mapOf("employee-2" to existingPeriod),
+                ),
+            ),
+            tasks = listOf(TaskFormRow(localKey = 3L).withDefaultEmployee("employee-1")),
+            returnToRamps = listOf(ReturnToRampFormRow(
+                localKey = 4L,
+                fromIso = "2026-07-18T11:00Z",
+                serviceLines = listOf(ServiceLineFormRow(localKey = 5L).withDefaultEmployee("employee-1")),
+                tasks = listOf(TaskFormRow(localKey = 6L).withDefaultEmployee("employee-1")),
+            )),
+        )
+
+        val initialized = listOf(
+            WorkOrderWizardStep.ServiceLines,
+            WorkOrderWizardStep.Tasks,
+            WorkOrderWizardStep.ReturnToRamps,
+        ).fold(form) { current, step -> initializeBlankFromTimes(current, step, "2026-07-18T10:00Z") }
+
+        assertEquals(EmployeePeriodForm(fromIso = "2026-07-18T10:00Z"), initialized.serviceLines[0].employeePeriods["employee-1"])
+        assertEquals(existingPeriod, initialized.serviceLines[1].employeePeriods["employee-2"])
+        assertEquals(EmployeePeriodForm(fromIso = "2026-07-18T10:00Z"), initialized.tasks.single().employeePeriods["employee-1"])
+        val occurrence = initialized.returnToRamps.single()
+        assertEquals(EmployeePeriodForm(fromIso = occurrence.fromIso), occurrence.serviceLines.single().employeePeriods["employee-1"])
+        assertEquals(EmployeePeriodForm(fromIso = occurrence.fromIso), occurrence.tasks.single().employeePeriods["employee-1"])
+    }
+
+    @Test
+    fun late_default_performer_uses_existing_parent_start_without_overwriting_selected_employees() {
+        val from = "2026-07-18T09:00Z"
+        val to = "2026-07-18T09:30Z"
+        val service = ServiceLineFormRow(localKey = 1L, fromIso = from, toIso = to)
+            .withDefaultEmployee("employee-1")
+        val task = TaskFormRow(localKey = 2L, fromIso = from, toIso = to)
+            .withDefaultEmployee("employee-1")
+
+        assertEquals(EmployeePeriodForm(fromIso = from), service.employeePeriods["employee-1"])
+        assertEquals(EmployeePeriodForm(fromIso = from), task.employeePeriods["employee-1"])
+        assertEquals(service, service.withDefaultEmployee("employee-2"))
+        assertEquals(task, task.withDefaultEmployee("employee-2"))
+    }
+
+    @Test
+    fun default_employee_starts_survive_draft_round_trip_and_submission_mapping() {
+        val form = CreateWorkOrderFormState(
+            serviceLines = listOf(newServiceLineAt(1L, listOf("employee-1"), "2026-07-18T10:00Z")),
+            tasks = listOf(newTaskAt(2L, listOf("employee-2"), "2026-07-18T10:15Z")),
+        )
+
+        val restored = WorkOrderDraftJson.decodeForm(WorkOrderDraftJson.encodeForm(form))
+        assertEquals(form, restored)
+        val service = restored.serviceLines.single()
+        val task = restored.tasks.single()
+        val serviceAssignment = service.employeePeriods
+            .toOutboxAssignments(service.employeeIds, service.fromIso, service.toIso).single()
+        val taskAssignment = task.employeePeriods
+            .toOutboxAssignments(task.employeeIds, task.fromIso, task.toIso).single()
+        assertEquals(service.fromIso, serviceAssignment.fromIso)
+        assertEquals("", serviceAssignment.toIso)
+        assertEquals(task.fromIso, taskAssignment.fromIso)
+        assertEquals("", taskAssignment.toIso)
     }
 
     @Test
@@ -183,6 +257,8 @@ class WorkOrderServiceLineDefaultsTest {
                     localKey = 1L,
                     fromIso = "2026-07-18T09:00Z",
                     toIso = "2026-07-18T09:30Z",
+                    employeeIds = listOf("employee-1"),
+                    employeePeriods = mapOf("employee-1" to EmployeePeriodForm("2026-07-18T09:05Z", "2026-07-18T09:20Z")),
                 ),
             ),
             tasks = listOf(
@@ -190,6 +266,8 @@ class WorkOrderServiceLineDefaultsTest {
                     localKey = 2L,
                     fromIso = "2026-07-18T10:00Z",
                     toIso = "2026-07-18T10:30Z",
+                    employeeIds = listOf("employee-1"),
+                    employeePeriods = mapOf("employee-1" to EmployeePeriodForm()),
                 ),
             ),
         )

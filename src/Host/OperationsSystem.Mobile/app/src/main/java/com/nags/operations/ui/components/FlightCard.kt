@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,6 +44,7 @@ import com.nags.operations.ui.common.color
 import com.nags.operations.ui.common.label
 import com.nags.operations.ui.util.formatIsoForDisplay
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FlightCard(
     flight: MobileFlightDto,
@@ -134,9 +137,9 @@ fun FlightCard(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Row(
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     InfoColumn(label = "Station", value = flight.stationIata.ifBlank { "—" })
                     InfoColumn(label = "Operation", value = flight.operationTypeName.ifBlank { "—" })

@@ -57,9 +57,10 @@ alerts use FCM and the Notifications API under `/api/v1/notifications`.
   Unknown service requires service notes. Unknown tools, materials, and general supports reveal a
   required note on the individual resource row; ordinary resource notes stay hidden unless present.
   Cancellation reasons supply the required customer note when an Unknown customer has no remarks.
-* New selected employees must enter their own From/To period. Equal service/task boundaries are
-  allowed, but missing times, reversed periods, and work outside the parent period block progression
-  and submission, including return-to-ramp work. Legacy drafts retain the original whole-line period;
+* Newly selected employees start with their service/task From value and an empty To; existing employee
+  periods remain unchanged. Equal service/task boundaries are allowed, but missing times, reversed
+  periods, and work outside the parent period block progression and submission, including return-to-ramp
+  work. Legacy drafts retain the original whole-line period;
   pre-upgrade queued requests preserve missing assignments for safe idempotent retries.
 * Newly uploaded work-order PDF documents are limited to **2 MB (2,097,152 bytes)** per file.
   The picker explains rejected files, and form validation also checks saved drafts. Existing document

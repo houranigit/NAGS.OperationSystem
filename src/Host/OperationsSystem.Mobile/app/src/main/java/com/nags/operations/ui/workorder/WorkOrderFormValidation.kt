@@ -793,10 +793,20 @@ internal fun employeePeriod(
     toIso: String,
 ): EmployeePeriodForm = periods[id] ?: EmployeePeriodForm(fromIso, toIso)
 
+/** New employees start with the line; retained employees keep their explicit or legacy period. */
 internal fun employeePeriodsForSelection(
     ids: List<String>,
     periods: Map<String, EmployeePeriodForm>,
-): Map<String, EmployeePeriodForm> = ids.associateWith { periods[it] ?: EmployeePeriodForm() }
+    fromIso: String,
+    toIso: String = "",
+    previousIds: List<String> = emptyList(),
+): Map<String, EmployeePeriodForm> = ids.associateWith { id ->
+    periods[id] ?: if (id in previousIds) {
+        employeePeriod(id, periods, fromIso, toIso)
+    } else {
+        EmployeePeriodForm(fromIso = fromIso)
+    }
+}
 
 internal fun employeePeriodsError(
     ids: List<String>,

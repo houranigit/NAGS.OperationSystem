@@ -2,13 +2,12 @@ package com.nags.operations.ui.workorder
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,13 +48,11 @@ import com.nags.operations.data.db.entities.ServiceEntity
 import com.nags.operations.data.db.entities.isAllowedPerformedOption
 import com.nags.operations.data.db.entities.ToolEntity
 import com.nags.operations.data.db.entities.workOrderPickerDisplayLine
+import com.nags.operations.ui.components.AttachmentActionsRow
+import com.nags.operations.ui.components.WorkOrderDateTimeRange
 import com.nags.operations.ui.components.InlineSearchableDropdownField
-import com.nags.operations.ui.components.DocumentAttachmentButton
 import com.nags.operations.ui.components.MultiSelectDropdownField
-import com.nags.operations.ui.components.PhotoAttachmentButton
 import com.nags.operations.ui.components.TaskAttachmentRow
-import com.nags.operations.ui.components.VoiceAttachmentButton
-import com.nags.operations.ui.components.WorkOrderDateTimePickerField
 import com.nags.operations.ui.components.WorkOrderServicePicker
 import com.nags.operations.ui.components.formatMultiSelectSummary
 import java.time.ZoneId
@@ -230,27 +227,26 @@ fun ServiceLineCard(
         shape = RoundedCornerShape(radius),
         colors = CardDefaults.outlinedCardColors(),
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-        ) {
-            Spacer(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(5.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(
-                            topStart = radius,
-                            bottomStart = radius,
+        Box(Modifier.fillMaxWidth()) {
+            // The rail follows the content height without constraining wrapping form rows.
+            Box(Modifier.matchParentSize()) {
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(5.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(
+                                topStart = radius,
+                                bottomStart = radius,
+                            ),
                         ),
-                    ),
-            )
+                )
+            }
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
+                    .padding(start = 17.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(
@@ -293,6 +289,19 @@ fun ServiceLineCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+                WorkOrderDateTimeRange(
+                    fromIso = row.fromIso,
+                    toIso = row.toIso,
+                    flightOffset = flightOffset,
+                    defaultInitialIso = scheduleAnchorIso,
+                    onFromConfirmed = { onChange(row.copy(fromIso = it)) },
+                    onToConfirmed = { onChange(row.copy(toIso = it)) },
+                    fromIsError = lineErrors?.from != null,
+                    toIsError = lineErrors?.to != null,
+                    fromSupportingText = fieldErrorSupportingText(lineErrors?.from),
+                    toSupportingText = fieldErrorSupportingText(lineErrors?.to),
+                )
+
                 val employeeOrderedIds = remember(employees) { employees.map { it.staffMemberId } }
                 MultiSelectDropdownField(
                     label = "Performed by",
@@ -314,7 +323,9 @@ fun ServiceLineCard(
                         val ids = idsPreservingCatalogOrder(keys, employeeOrderedIds)
                         onChange(row.copy(
                             employeeIds = ids,
-                            employeePeriods = employeePeriodsForSelection(ids, row.employeePeriods),
+                            employeePeriods = employeePeriodsForSelection(
+                                ids, row.employeePeriods, row.fromIso, row.toIso, row.employeeIds,
+                            ),
                         ))
                     },
                 )
@@ -323,33 +334,6 @@ fun ServiceLineCard(
                         text = "No station employees in cache. Pull to refresh or open Sync Center.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    WorkOrderDateTimePickerField(
-                        iso = row.fromIso,
-                        label = "From",
-                        placeholder = "Start date & time",
-                        flightOffset = flightOffset,
-                        defaultInitialIso = scheduleAnchorIso,
-                        onIsoConfirmed = { onChange(row.copy(fromIso = it)) },
-                        modifier = Modifier.weight(1f),
-                        isError = lineErrors?.from != null,
-                        supportingText = fieldErrorSupportingText(lineErrors?.from),
-                    )
-                    WorkOrderDateTimePickerField(
-                        iso = row.toIso,
-                        label = "To",
-                        placeholder = "End date & time",
-                        flightOffset = flightOffset,
-                        defaultInitialIso = row.fromIso.takeIf { it.isNotBlank() } ?: scheduleAnchorIso,
-                        onIsoConfirmed = { onChange(row.copy(toIso = it)) },
-                        modifier = Modifier.weight(1f),
-                        isError = lineErrors?.to != null,
-                        supportingText = fieldErrorSupportingText(lineErrors?.to),
                     )
                 }
 
@@ -389,23 +373,7 @@ fun ServiceLineCard(
                 }
                 val attachmentCount = row.existingAttachmentNames.size + row.attachments.size
                 if (attachmentCount < WorkOrderFormLimits.ServiceAttachments) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        PhotoAttachmentButton(
-                            modifier = Modifier.weight(1f),
-                            onAttachment = onAttachmentAdded,
-                        )
-                        VoiceAttachmentButton(
-                            modifier = Modifier.weight(1f),
-                            onAttachment = onAttachmentAdded,
-                        )
-                        DocumentAttachmentButton(
-                            modifier = Modifier.weight(1f),
-                            onAttachment = onAttachmentAdded,
-                        )
-                    }
+                    AttachmentActionsRow(onAttachment = onAttachmentAdded)
                 } else {
                     Text(
                         "Attachment limit reached. Remove a new attachment before adding another.",
@@ -482,27 +450,26 @@ fun TaskLineCard(
         shape = RoundedCornerShape(radius),
         colors = CardDefaults.outlinedCardColors(),
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-        ) {
-            Spacer(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(5.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(
-                            topStart = radius,
-                            bottomStart = radius,
+        Box(Modifier.fillMaxWidth()) {
+            // The rail follows the content height without constraining wrapping form rows.
+            Box(Modifier.matchParentSize()) {
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(5.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(
+                                topStart = radius,
+                                bottomStart = radius,
+                            ),
                         ),
-                    ),
-            )
+                )
+            }
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
+                    .padding(start = 17.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(
@@ -600,33 +567,18 @@ fun TaskLineCard(
                     supportingText = fieldErrorSupportingText(lineErrors?.description),
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    WorkOrderDateTimePickerField(
-                        iso = row.fromIso,
-                        label = "From",
-                        placeholder = "Start date & time",
-                        flightOffset = flightOffset,
-                        defaultInitialIso = scheduleAnchorIso,
-                        onIsoConfirmed = { onChange(row.copy(fromIso = it)) },
-                        modifier = Modifier.weight(1f),
-                        isError = lineErrors?.from != null,
-                        supportingText = fieldErrorSupportingText(lineErrors?.from),
-                    )
-                    WorkOrderDateTimePickerField(
-                        iso = row.toIso,
-                        label = "To",
-                        placeholder = "End date & time",
-                        flightOffset = flightOffset,
-                        defaultInitialIso = row.fromIso.takeIf { it.isNotBlank() } ?: scheduleAnchorIso,
-                        onIsoConfirmed = { onChange(row.copy(toIso = it)) },
-                        modifier = Modifier.weight(1f),
-                        isError = lineErrors?.to != null,
-                        supportingText = fieldErrorSupportingText(lineErrors?.to),
-                    )
-                }
+                WorkOrderDateTimeRange(
+                    fromIso = row.fromIso,
+                    toIso = row.toIso,
+                    flightOffset = flightOffset,
+                    defaultInitialIso = scheduleAnchorIso,
+                    onFromConfirmed = { onChange(row.copy(fromIso = it)) },
+                    onToConfirmed = { onChange(row.copy(toIso = it)) },
+                    fromIsError = lineErrors?.from != null,
+                    toIsError = lineErrors?.to != null,
+                    fromSupportingText = fieldErrorSupportingText(lineErrors?.from),
+                    toSupportingText = fieldErrorSupportingText(lineErrors?.to),
+                )
 
                 val employeeOrderedIds = remember(employees) { employees.map { it.staffMemberId } }
                 MultiSelectDropdownField(
@@ -649,7 +601,9 @@ fun TaskLineCard(
                         val ids = idsPreservingCatalogOrder(keys, employeeOrderedIds)
                         onChange(row.copy(
                             employeeIds = ids,
-                            employeePeriods = employeePeriodsForSelection(ids, row.employeePeriods),
+                            employeePeriods = employeePeriodsForSelection(
+                                ids, row.employeePeriods, row.fromIso, row.toIso, row.employeeIds,
+                            ),
                         ))
                     },
                 )
@@ -858,23 +812,7 @@ fun TaskLineCard(
                 }
                 val attachmentCount = row.existingAttachmentNames.size + row.attachments.size
                 if (attachmentCount < WorkOrderFormLimits.TaskAttachments) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        PhotoAttachmentButton(
-                            modifier = Modifier.weight(1f),
-                            onAttachment = onAttachmentAdded,
-                        )
-                        VoiceAttachmentButton(
-                            modifier = Modifier.weight(1f),
-                            onAttachment = onAttachmentAdded,
-                        )
-                        DocumentAttachmentButton(
-                            modifier = Modifier.weight(1f),
-                            onAttachment = onAttachmentAdded,
-                        )
-                    }
+                    AttachmentActionsRow(onAttachment = onAttachmentAdded)
                 } else {
                     Text(
                         "Attachment limit reached. Remove a new attachment before adding another.",
@@ -978,64 +916,54 @@ private fun ResourceUsageFields(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
                 } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        WorkOrderDateTimePickerField(
-                            iso = usage.fromIso,
-                            label = "Usage From",
-                            placeholder = "Required",
-                            flightOffset = flightOffset,
-                            defaultInitialIso = taskFromIso.takeIf { it.isNotBlank() } ?: scheduleAnchorIso,
-                            onIsoConfirmed = { value ->
+                    WorkOrderDateTimeRange(
+                        fromIso = usage.fromIso,
+                        toIso = usage.toIso.orEmpty(),
+                        flightOffset = flightOffset,
+                        defaultInitialIso = taskFromIso.ifBlank { scheduleAnchorIso },
+                        onFromConfirmed = { value ->
+                            onUsageChanged(
+                                id,
+                                usage.copy(
+                                    calculationType = ResourceCalculationType.Duration,
+                                    quantity = null,
+                                    fromIso = value,
+                                ),
+                            )
+                        },
+                        onToConfirmed = { value ->
+                            onUsageChanged(
+                                id,
+                                usage.copy(
+                                    calculationType = ResourceCalculationType.Duration,
+                                    quantity = null,
+                                    toIso = value,
+                                ),
+                            )
+                        },
+                        fromIsError = usage.fromIso.isBlank(),
+                        optionalTo = true,
+                    )
+                    if (usage.toIso.isNullOrBlank()) {
+                        Text(
+                            "To is optional; leave it empty while this item is in use.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        TextButton(
+                            onClick = {
                                 onUsageChanged(
                                     id,
                                     usage.copy(
                                         calculationType = ResourceCalculationType.Duration,
                                         quantity = null,
-                                        fromIso = value,
+                                        toIso = null,
                                     ),
                                 )
                             },
-                            modifier = Modifier.weight(1f),
-                            isError = usage.fromIso.isBlank(),
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            WorkOrderDateTimePickerField(
-                                iso = usage.toIso.orEmpty(),
-                                label = "Usage To (optional)",
-                                placeholder = "Open-ended",
-                                flightOffset = flightOffset,
-                                defaultInitialIso = usage.fromIso.takeIf { it.isNotBlank() }
-                                    ?: taskFromIso.takeIf { it.isNotBlank() }
-                                    ?: scheduleAnchorIso,
-                                onIsoConfirmed = { value ->
-                                    onUsageChanged(
-                                        id,
-                                        usage.copy(
-                                            calculationType = ResourceCalculationType.Duration,
-                                            quantity = null,
-                                            toIso = value,
-                                        ),
-                                    )
-                                },
-                            )
-                            if (!usage.toIso.isNullOrBlank()) {
-                                TextButton(
-                                    onClick = {
-                                        onUsageChanged(
-                                            id,
-                                            usage.copy(
-                                                calculationType = ResourceCalculationType.Duration,
-                                                quantity = null,
-                                                toIso = null,
-                                            ),
-                                        )
-                                    },
-                                ) { Text("Clear To") }
-                            }
-                        }
+                            modifier = Modifier.align(Alignment.End),
+                        ) { Text("Clear To") }
                     }
                 }
             }
@@ -1072,28 +1000,17 @@ private fun EmployeePeriodFields(
         val error = employeePeriodsError(listOf(id), mapOf(id to period), lineFromIso, lineToIso)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(employees.firstOrNull { it.staffMemberId == id }?.workOrderPickerDisplayLine() ?: "Selected employee")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                WorkOrderDateTimePickerField(
-                    iso = period.fromIso,
-                    label = "Employee From",
-                    placeholder = "Required",
-                    flightOffset = flightOffset,
-                    defaultInitialIso = lineFromIso.ifBlank { scheduleAnchorIso },
-                    onIsoConfirmed = { onPeriodChanged(id, period.copy(fromIso = it)) },
-                    modifier = Modifier.weight(1f),
-                    isError = error != null,
-                )
-                WorkOrderDateTimePickerField(
-                    iso = period.toIso,
-                    label = "Employee To",
-                    placeholder = "Required",
-                    flightOffset = flightOffset,
-                    defaultInitialIso = lineToIso.ifBlank { period.fromIso.ifBlank { scheduleAnchorIso } },
-                    onIsoConfirmed = { onPeriodChanged(id, period.copy(toIso = it)) },
-                    modifier = Modifier.weight(1f),
-                    isError = error != null,
-                )
-            }
+            WorkOrderDateTimeRange(
+                fromIso = period.fromIso,
+                toIso = period.toIso,
+                flightOffset = flightOffset,
+                defaultInitialIso = lineFromIso.ifBlank { scheduleAnchorIso },
+                toInitialIso = lineToIso.ifBlank { period.fromIso.ifBlank { scheduleAnchorIso } },
+                onFromConfirmed = { onPeriodChanged(id, period.copy(fromIso = it)) },
+                onToConfirmed = { onPeriodChanged(id, period.copy(toIso = it)) },
+                fromIsError = error != null,
+                toIsError = error != null,
+            )
             error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
     }

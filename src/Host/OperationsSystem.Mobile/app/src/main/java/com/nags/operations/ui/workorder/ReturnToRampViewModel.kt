@@ -139,10 +139,10 @@ class ReturnToRampViewModel(
         updateOccurrenceInternal { occurrence ->
             occurrence.copy(
                 serviceLines = occurrence.serviceLines.map { line ->
-                    if (line.employeeIds.isEmpty()) line.copy(employeeIds = listOf(employeeId), employeePeriods = mapOf(employeeId to EmployeePeriodForm())) else line
+                    line.withDefaultEmployee(employeeId)
                 },
                 tasks = occurrence.tasks.map { task ->
-                    if (task.employeeIds.isEmpty()) task.copy(employeeIds = listOf(employeeId), employeePeriods = mapOf(employeeId to EmployeePeriodForm())) else task
+                    task.withDefaultEmployee(employeeId)
                 },
             )
         }
@@ -172,7 +172,7 @@ class ReturnToRampViewModel(
             serviceLines = occurrence.serviceLines + ServiceLineFormRow(
                 localKey = allocKey(),
                 employeeIds = defaultEmployeeIds(),
-                employeePeriods = defaultEmployeeIds().associateWith { EmployeePeriodForm() },
+                employeePeriods = employeePeriodsForSelection(defaultEmployeeIds(), emptyMap(), occurrence.fromIso),
                 fromIso = occurrence.fromIso,
                 toIso = occurrence.toIso,
             ),
@@ -212,7 +212,7 @@ class ReturnToRampViewModel(
             tasks = occurrence.tasks + TaskFormRow(
                 localKey = allocKey(),
                 employeeIds = defaultEmployeeIds(),
-                employeePeriods = defaultEmployeeIds().associateWith { EmployeePeriodForm() },
+                employeePeriods = employeePeriodsForSelection(defaultEmployeeIds(), emptyMap(), occurrence.fromIso),
                 fromIso = occurrence.fromIso,
                 toIso = occurrence.toIso,
             ),

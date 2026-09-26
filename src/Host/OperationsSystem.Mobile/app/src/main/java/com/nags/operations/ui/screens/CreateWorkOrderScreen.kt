@@ -44,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
@@ -177,6 +178,8 @@ fun CreateWorkOrderScreen(
                             else -> "Work Order"
                         },
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {
@@ -411,7 +414,7 @@ private fun CreateWorkOrderFormContent(
         if (state.isAdHocScratch) {
             WorkOrderDateTimePickerField(
                 iso = state.form.scheduledArrivalIso,
-                label = "STA (Scheduled time of arrival)",
+                label = "Scheduled arrival (STA)",
                 placeholder = "Tap to set scheduled arrival",
                 flightOffset = flightOffset,
                 defaultInitialIso = flight.sta,
@@ -421,7 +424,7 @@ private fun CreateWorkOrderFormContent(
             )
             WorkOrderDateTimePickerField(
                 iso = state.form.scheduledDepartureIso,
-                label = "STD (Scheduled time of departure)",
+                label = "Scheduled departure (STD)",
                 placeholder = "Tap to set scheduled departure",
                 flightOffset = flightOffset,
                 defaultInitialIso = state.form.scheduledArrivalIso.ifBlank { flight.std },

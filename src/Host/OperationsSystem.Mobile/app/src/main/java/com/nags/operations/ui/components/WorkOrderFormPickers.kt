@@ -5,6 +5,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,11 +41,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.nags.operations.data.db.entities.AircraftTypeEntity
 import com.nags.operations.data.db.entities.ServiceEntity
 import com.nags.operations.data.db.entities.allowedPerformedServiceOptions
 import com.nags.operations.ui.util.formatIsoForDisplay
+import com.nags.operations.ui.util.formatIsoForDateTimeField
 import com.nags.operations.ui.util.parseOffsetDateTime
 import java.time.Instant
 import java.time.LocalDateTime
@@ -91,6 +96,7 @@ fun WorkOrderDateTimePickerField(
     isError: Boolean = false,
     supportingText: @Composable (() -> Unit)? = null,
     enabled: Boolean = true,
+    compact: Boolean = false,
 ) {
     var dialogOpen by remember { mutableStateOf(false) }
 
@@ -100,7 +106,9 @@ fun WorkOrderDateTimePickerField(
             .height(IntrinsicSize.Min),
     ) {
         OutlinedTextField(
-            value = iso.takeIf { it.isNotBlank() }?.let { formatIsoForDisplay(it) }.orEmpty(),
+            value = iso.takeIf { it.isNotBlank() }?.let {
+                if (compact) formatIsoForDateTimeField(it, flightOffset) else formatIsoForDisplay(it, flightOffset)
+            }.orEmpty(),
             onValueChange = {},
             readOnly = true,
             enabled = enabled,
@@ -108,6 +116,7 @@ fun WorkOrderDateTimePickerField(
             shape = RoundedCornerShape(14.dp),
             isError = isError,
             supportingText = supportingText,
+            minLines = if (compact) 2 else 1,
             label = { Text(label) },
             placeholder = { Text(placeholder) },
             trailingIcon = {
@@ -138,6 +147,67 @@ fun WorkOrderDateTimePickerField(
     }
 }
 
+/** Keep period boxes aligned, wrapping the pair when the available width is too narrow. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun WorkOrderDateTimeRange(
+    fromIso: String,
+    toIso: String,
+    flightOffset: ZoneId,
+    defaultInitialIso: String,
+    onFromConfirmed: (String) -> Unit,
+    onToConfirmed: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    toInitialIso: String = fromIso.ifBlank { defaultInitialIso },
+    fromIsError: Boolean = false,
+    toIsError: Boolean = false,
+    fromSupportingText: @Composable (() -> Unit)? = null,
+    toSupportingText: @Composable (() -> Unit)? = null,
+    optionalTo: Boolean = false,
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val textStyle = MaterialTheme.typography.bodyLarge
+    val values = listOf(fromIso, toIso).map { it.ifBlank { defaultInitialIso } }
+    val textWidth = values.flatMap { formatIsoForDateTimeField(it, flightOffset).lines() }
+        .maxOf { textMeasurer.measure(it, textStyle, softWrap = false).size.width }
+    // Allow the text's actual locale/font size plus the field padding and calendar icon.
+    val fieldWidth = with(density) { textWidth.toDp() } + 80.dp
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        maxItemsInEachRow = 2,
+    ) {
+        // width supplies FlowRow's intrinsic wrapping width; weight fills the available row.
+        val fieldModifier = Modifier.weight(1f).width(fieldWidth)
+        WorkOrderDateTimePickerField(
+            iso = fromIso,
+            label = "From",
+            placeholder = "Start date & time",
+            flightOffset = flightOffset,
+            defaultInitialIso = defaultInitialIso,
+            onIsoConfirmed = onFromConfirmed,
+            modifier = fieldModifier,
+            isError = fromIsError,
+            supportingText = fromSupportingText,
+            compact = true,
+        )
+        WorkOrderDateTimePickerField(
+            iso = toIso,
+            label = "To",
+            placeholder = if (optionalTo) "Open-ended" else "End date & time",
+            flightOffset = flightOffset,
+            defaultInitialIso = toInitialIso,
+            onIsoConfirmed = onToConfirmed,
+            modifier = fieldModifier,
+            isError = toIsError,
+            supportingText = toSupportingText,
+            compact = true,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkOrderAtaPickerField(
@@ -151,7 +221,7 @@ fun WorkOrderAtaPickerField(
 ) {
     WorkOrderDateTimePickerField(
         iso = ataIso,
-        label = "ATA (Actual time of arrival)",
+        label = "Actual arrival (ATA)",
         placeholder = "Tap to set arrival date & time",
         flightOffset = flightOffset,
         defaultInitialIso = staIso,

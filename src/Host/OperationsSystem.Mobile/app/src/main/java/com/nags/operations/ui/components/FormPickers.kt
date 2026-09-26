@@ -335,6 +335,7 @@ private fun <T> MultiSelectOptionSheet(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .weight(1f, fill = false)
                         .heightIn(max = 440.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {

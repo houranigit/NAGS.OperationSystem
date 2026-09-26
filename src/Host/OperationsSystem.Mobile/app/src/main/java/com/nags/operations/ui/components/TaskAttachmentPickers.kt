@@ -11,12 +11,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,7 +60,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -70,6 +76,32 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val MaxVoiceDurationMs = 60_000L
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AttachmentActionsRow(
+    onAttachment: (TaskAttachmentDraft) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Keep the icon and label together; wrap whole actions when the form is narrow.
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+    val labelWidth = listOf("Photo", "Voice", "Docs").maxOf {
+        textMeasurer.measure(it, labelStyle, softWrap = false).size.width
+    }
+    val minimumTileWidth = with(LocalDensity.current) { labelWidth.toDp() } + 65.dp
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // A preferred width also keeps intrinsic height estimates correct inside line cards.
+        val tileModifier = Modifier.weight(1f).width(minimumTileWidth)
+        PhotoAttachmentButton(onAttachment = onAttachment, modifier = tileModifier)
+        VoiceAttachmentButton(onAttachment = onAttachment, modifier = tileModifier)
+        DocumentAttachmentButton(onAttachment = onAttachment, modifier = tileModifier)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -360,11 +392,11 @@ fun AttachmentActionTile(
     val tileColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     Row(
         modifier = modifier
-            .height(56.dp)
+            .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(tileColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -385,7 +417,12 @@ fun AttachmentActionTile(
             }
         }
         Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
