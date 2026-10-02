@@ -140,8 +140,8 @@ android {
         applicationId = "com.nags.operations"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.9"
+        versionCode = 5
+        versionName = "1.0.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
     }

@@ -89,6 +89,17 @@ internal static class FlightExportDocumentFactory
         "Flight ID", "Work Order ID", "Activity ID", "RTR ID"
     ];
 
+    private static readonly string[] ServiceAndResourceHeaders =
+    [
+        .. CsvHeaders.Take(20), "Item", "Type", .. CsvHeaders.Skip(24)
+    ];
+
+    private static readonly double[] WorkbookColumnWidths =
+    [
+        7d, 16, 18, 18, 21, 21, 21, 21, 16, 18, 19, 17, 18, 28, 18, 26, 22,
+        20, 20, 35, 35, 30, 30, 30, 35, 40, 16, 42
+    ];
+
     public static bool TryParseFormat(string? value, out FlightExportFormat format)
     {
         if (string.Equals(value, "xlsx", StringComparison.OrdinalIgnoreCase) ||
@@ -234,6 +245,7 @@ internal static class FlightExportDocumentFactory
         AddServiceDetailsWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
         AddTaskDetailsWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
         AddFlightBreakdownWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
+        AddServicesAndResourcesWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -247,6 +259,34 @@ internal static class FlightExportDocumentFactory
         FlightExportRowDto row,
         TimeZoneInfo timeZone,
         bool includeCollections = true)
+    {
+        var approved = row.ApprovedWorkOrder;
+        WriteWorkbookFlightFields(sheet, rowNumber, sequence, row, timeZone);
+        if (includeCollections)
+        {
+            SetOptionalText(sheet.Cell(rowNumber, 20), JoinNames(row.PlannedServiceNames));
+            SetOptionalText(sheet.Cell(rowNumber, 21), approved is null ? null : JoinNames(approved.ServiceNames));
+            SetOptionalText(sheet.Cell(rowNumber, 22), approved is null ? null : JoinNames(approved.ToolNames));
+            SetOptionalText(sheet.Cell(rowNumber, 23), approved is null ? null : JoinNames(approved.MaterialNames));
+            SetOptionalText(sheet.Cell(rowNumber, 24), approved is null ? null : JoinNames(approved.GeneralSupportNames));
+            SetOptionalText(sheet.Cell(rowNumber, 25), JoinNames(row.AssignedEmployeeNames));
+            SetOptionalText(sheet.Cell(rowNumber, 28), approved is null ? null : JoinNames(approved.TaskNames));
+        }
+        SetOptionalText(sheet.Cell(rowNumber, 26), approved?.Remarks);
+        sheet.Cell(rowNumber, 27).SetValue(StatusLabel(row.Status));
+
+        var rowRange = sheet.Range(rowNumber, 1, rowNumber, CsvHeaders.Length);
+        rowRange.Style.Font.FontSize = 9;
+        rowRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
+        rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+    }
+
+    private static void WriteWorkbookFlightFields(
+        IXLWorksheet sheet,
+        int rowNumber,
+        int sequence,
+        FlightExportRowDto row,
+        TimeZoneInfo timeZone)
     {
         var approved = row.ApprovedWorkOrder;
         sheet.Cell(rowNumber, 1).SetValue(sequence);
@@ -268,23 +308,6 @@ internal static class FlightExportDocumentFactory
         SetOptionalText(sheet.Cell(rowNumber, 17), approved?.AircraftManufacturer);
         SetOptionalText(sheet.Cell(rowNumber, 18), approved?.AircraftModel);
         SetOptionalText(sheet.Cell(rowNumber, 19), approved?.AircraftTailNumber);
-        if (includeCollections)
-        {
-            SetOptionalText(sheet.Cell(rowNumber, 20), JoinNames(row.PlannedServiceNames));
-            SetOptionalText(sheet.Cell(rowNumber, 21), approved is null ? null : JoinNames(approved.ServiceNames));
-            SetOptionalText(sheet.Cell(rowNumber, 22), approved is null ? null : JoinNames(approved.ToolNames));
-            SetOptionalText(sheet.Cell(rowNumber, 23), approved is null ? null : JoinNames(approved.MaterialNames));
-            SetOptionalText(sheet.Cell(rowNumber, 24), approved is null ? null : JoinNames(approved.GeneralSupportNames));
-            SetOptionalText(sheet.Cell(rowNumber, 25), JoinNames(row.AssignedEmployeeNames));
-            SetOptionalText(sheet.Cell(rowNumber, 28), approved is null ? null : JoinNames(approved.TaskNames));
-        }
-        SetOptionalText(sheet.Cell(rowNumber, 26), approved?.Remarks);
-        sheet.Cell(rowNumber, 27).SetValue(StatusLabel(row.Status));
-
-        var rowRange = sheet.Range(rowNumber, 1, rowNumber, CsvHeaders.Length);
-        rowRange.Style.Font.FontSize = 9;
-        rowRange.Style.Font.FontColor = XLColor.FromHtml(TextColor);
-        rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
     }
 
     private static void ApplyWorkbookStatusStyle(IXLCell cell, string status)
@@ -305,13 +328,8 @@ internal static class FlightExportDocumentFactory
 
     private static void SetWorkbookColumnWidths(IXLWorksheet sheet)
     {
-        var widths = new[]
-        {
-            7d, 16, 18, 18, 21, 21, 21, 21, 16, 18, 19, 17, 18, 28, 18, 26, 22,
-            20, 20, 35, 35, 30, 30, 30, 35, 40, 16, 42
-        };
-        for (var index = 0; index < widths.Length; index++)
-            sheet.Column(index + 1).Width = widths[index];
+        for (var index = 0; index < WorkbookColumnWidths.Length; index++)
+            sheet.Column(index + 1).Width = WorkbookColumnWidths[index];
     }
 
     private static void AddServiceDetailsWorksheet(
@@ -450,6 +468,79 @@ internal static class FlightExportDocumentFactory
             "No work-order tasks match the selected flights.",
             timeZone);
     }
+
+    private static void AddServicesAndResourcesWorksheet(
+        XLWorkbook workbook,
+        IReadOnlyList<FlightExportRowDto> rows,
+        FlightExportCriteria criteria,
+        DateTimeOffset generatedAtUtc,
+        TimeZoneInfo timeZone)
+    {
+        const int headerRowNumber = 5;
+        var columnCount = ServiceAndResourceHeaders.Length;
+        var sheet = CreateDetailWorksheetFrame(
+            workbook,
+            "Services and Resources",
+            "Daily Operation Report — Services and Resources",
+            ServiceAndResourceHeaders,
+            rows.Sum(row => EnumerateServiceAndResourceItems(row).Count()),
+            rows,
+            criteria,
+            generatedAtUtc,
+            timeZone);
+
+        var rowNumber = headerRowNumber + 1;
+        var sequence = 1;
+        foreach (var flight in rows)
+        {
+            foreach (var item in EnumerateServiceAndResourceItems(flight))
+            {
+                WriteWorkbookFlightFields(sheet, rowNumber, sequence++, flight, timeZone);
+                SetOptionalText(sheet.Cell(rowNumber, 20), JoinNames(flight.PlannedServiceNames));
+                SetWorkbookText(sheet.Cell(rowNumber, 21), item.Name);
+                SetWorkbookText(sheet.Cell(rowNumber, 22), item.RowType);
+                SetOptionalText(sheet.Cell(rowNumber, 23), JoinNames(flight.AssignedEmployeeNames));
+                SetOptionalText(sheet.Cell(rowNumber, 24), flight.ApprovedWorkOrder?.Remarks);
+                SetWorkbookText(sheet.Cell(rowNumber, 25), StatusLabel(flight.Status));
+                SetOptionalText(sheet.Cell(rowNumber, 26), flight.ApprovedWorkOrder is { } workOrder
+                    ? JoinNames(workOrder.TaskNames) : null);
+
+                var range = sheet.Range(rowNumber, 1, rowNumber, columnCount);
+                range.Style.Font.FontSize = 9;
+                range.Style.Font.FontColor = XLColor.FromHtml(TextColor);
+                range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                range.Style.Border.BottomBorder = XLBorderStyleValues.Hair;
+                range.Style.Border.BottomBorderColor = XLColor.FromHtml(BorderColor);
+                if ((rowNumber - headerRowNumber) % 2 == 0)
+                    range.Style.Fill.BackgroundColor = XLColor.FromHtml(AlternateRowColor);
+                ApplyWorkbookStatusStyle(sheet.Cell(rowNumber, 25), flight.Status);
+                sheet.Row(rowNumber).Height = 26;
+                rowNumber++;
+            }
+        }
+
+        // Only actual services/resource usages are records; an empty result retains filterable headers.
+        sheet.Range(headerRowNumber, 1, Math.Max(headerRowNumber, rowNumber - 1), columnCount).SetAutoFilter();
+        sheet.SheetView.FreezeRows(headerRowNumber);
+        sheet.SheetView.FreezeColumns(2);
+        double[] widths = [.. WorkbookColumnWidths.Take(20), 35, 22, .. WorkbookColumnWidths.Skip(24)];
+        for (var index = 0; index < widths.Length; index++)
+            sheet.Column(index + 1).Width = widths[index];
+        foreach (var column in new[] { 5, 6, 7, 8 })
+        {
+            sheet.Column(column).Width = Math.Max(24, 20 + timeZone.Id.Length);
+            sheet.Column(column).Style.DateFormat.Format = WorkbookDateFormat(timeZone);
+        }
+        foreach (var column in new[] { 9, 10 })
+            sheet.Column(column).Style.NumberFormat.Format = "0 \"min\";-0 \"min\"";
+        foreach (var column in new[] { 11, 12 })
+            sheet.Column(column).Style.NumberFormat.Format = "[h]\"h \"mm\"m\"";
+        foreach (var column in new[] { 20, 21, 23, 24, 26 })
+            sheet.Column(column).Style.Alignment.WrapText = true;
+    }
+
+    private static IEnumerable<FlightBreakdownItem> EnumerateServiceAndResourceItems(FlightExportRowDto flight) =>
+        EnumerateFlightBreakdown(flight).Where(item => item.Column is >= 21 and <= 24);
 
     private static void AddFlightBreakdownWorksheet(
         XLWorkbook workbook,

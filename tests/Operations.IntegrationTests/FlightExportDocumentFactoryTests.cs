@@ -111,7 +111,7 @@ public sealed class FlightExportDocumentFactoryTests
         using var stream = new MemoryStream(file.Content);
         using var workbook = new XLWorkbook(stream);
         workbook.Worksheets.Select(sheet => sheet.Name)
-            .ShouldBe(["Flights", "Service Details", "Task Details", "Flight Breakdown"]);
+            .ShouldBe(["Flights", "Service Details", "Task Details", "Flight Breakdown", "Services and Resources"]);
 
         var services = workbook.Worksheet("Service Details");
         services.Cell(5, 20).GetString().ShouldBe("Service");
@@ -145,6 +145,169 @@ public sealed class FlightExportDocumentFactoryTests
         tasks.Cell(6, 22).DataType.ShouldBe(XLDataType.DateTime);
         tasks.Cell(7, 17).DataType.ShouldBe(XLDataType.DateTime);
         tasks.AutoFilter.IsEnabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CreateWorkbook_ServicesAndResourcesRepeatsFlightDetailsForExactlyEightIndependentItems()
+    {
+        var source = CreateDetailedRow();
+        var workOrder = source.ApprovedWorkOrder!;
+        var row = source with
+        {
+            PlannedServiceNames = ["Marshalling", "Arrival assistance"],
+            AssignedEmployeeNames = ["Alex Engineer", "Ramp Engineer"],
+            ApprovedWorkOrder = workOrder with
+            {
+                ServiceNames = ["Baggage handling", "Aircraft inspection"],
+                ToolNames = ["Towbar, wide body", "Jack"],
+                MaterialNames = ["Hydraulic fluid"],
+                GeneralSupportNames = ["Passenger stairs", "GPU", "Air starter"],
+                TaskNames = ["Major: Inspect landing gear"],
+                TaskDetails =
+                [
+                    workOrder.TaskDetails[0] with
+                    {
+                        Tools = [QuantityResource("Towbar, wide body", 2), QuantityResource("Jack", 1)],
+                        Materials = [QuantityResource("Hydraulic fluid", 1.5m)],
+                        GeneralSupports =
+                        [
+                            QuantityResource("Passenger stairs", 1),
+                            DurationResource("GPU", GeneratedAtUtc, GeneratedAtUtc.AddHours(1)),
+                            DurationResource("Air starter", GeneratedAtUtc, null)
+                        ]
+                    }
+                ]
+            }
+        };
+        var riyadh = TimeZoneInfo.FindSystemTimeZoneById("Asia/Riyadh");
+        var file = FlightExportDocumentFactory.Create(
+            FlightExportFormat.Xlsx, [row], Criteria, GeneratedAtUtc, riyadh);
+        WriteQaSampleWhenRequested(file.Content, "FLIGHT_EXPORT_ITEMS_SAMPLE_PATH");
+
+        using var workbook = new XLWorkbook(new MemoryStream(file.Content));
+        var items = workbook.Worksheet("Services and Resources");
+        var flights = workbook.Worksheet("Flights");
+        items.Range(5, 1, 5, 20).Cells().Select(cell => cell.GetString()).ShouldBe(
+            flights.Range(5, 1, 5, 20).Cells().Select(cell => cell.GetString()));
+        items.Range(5, 21, 5, 26).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["Item", "Type", "Assigned Employees", "Remarks", "Status", "Tasks"]);
+        // Two services plus six task resources; plans, employees and the parent task are not item rows.
+        items.LastRowUsed()!.RowNumber().ShouldBe(13);
+        items.Range(6, 1, 13, 1).Cells().Select(cell => cell.GetValue<int>()).ShouldBe(Enumerable.Range(1, 8));
+        items.Range(6, 21, 13, 21).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["Baggage handling", "Aircraft inspection", "Towbar, wide body", "Jack", "Hydraulic fluid",
+                "Passenger stairs", "GPU", "Air starter"]);
+        items.Range(6, 22, 13, 22).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["Service", "Service", "Tool", "Tool", "Material", "General Support", "General Support", "General Support"]);
+        foreach (var rowNumber in Enumerable.Range(6, 8))
+        {
+            foreach (var column in Enumerable.Range(2, 19))
+                items.Cell(rowNumber, column).Value.ShouldBe(flights.Cell(6, column).Value);
+            foreach (var column in Enumerable.Range(23, 4))
+                items.Cell(rowNumber, column).Value.ShouldBe(flights.Cell(6, column + 2).Value);
+            items.Cell(rowNumber, 5).DataType.ShouldBe(XLDataType.DateTime);
+            items.Cell(rowNumber, 5).GetDateTime().ShouldBe(new DateTime(2026, 7, 23, 12, 30, 0));
+            items.Cell(rowNumber, 9).DataType.ShouldBe(XLDataType.Number);
+            items.Cell(rowNumber, 25).Style.Fill.BackgroundColor.ShouldBe(flights.Cell(6, 27).Style.Fill.BackgroundColor);
+        }
+        items.Cell(2, 1).GetString().ShouldStartWith("8 detail records across 1 flights");
+        items.Cell(2, 1).GetString().ShouldContain("Generated 2026-07-23 22:45 +03:00 [Asia/Riyadh]");
+        items.Column(5).Style.DateFormat.Format.ShouldContain("Asia/Riyadh");
+        items.AutoFilter.IsEnabled.ShouldBeTrue();
+        items.AutoFilter.Range.RangeAddress.ToString().ShouldBe("A5:Z13");
+        items.SheetView.SplitColumn.ShouldBe(2);
+        items.SheetView.SplitRow.ShouldBe(5);
+        items.Column(27).CellsUsed().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void CreateWorkbook_ServicesAndResourcesPreservesRepeatedItemsAcrossTasksAndReturnsToRamp()
+    {
+        var source = CreateResourceDetailedRow();
+        var workOrder = source.ApprovedWorkOrder!;
+        var row = source with
+        {
+            ApprovedWorkOrder = workOrder with
+            {
+                ServiceDetails =
+                [
+                    workOrder.ServiceDetails[0],
+                    workOrder.ServiceDetails[1] with { ServiceName = workOrder.ServiceDetails[0].ServiceName }
+                ]
+            }
+        };
+        var file = FlightExportDocumentFactory.Create(FlightExportFormat.Xlsx, [row], Criteria, GeneratedAtUtc);
+
+        using var workbook = new XLWorkbook(new MemoryStream(file.Content));
+        var items = workbook.Worksheet("Services and Resources");
+        // Repeated names are individual performed records, not a distinct-name list or a service/resource product.
+        items.LastRowUsed()!.RowNumber().ShouldBe(17);
+        items.Range(6, 21, 17, 21).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["Baggage handling", "Baggage handling", "Towbar", "Jack", "Torque wrench", "Wheel dolly",
+                "Hydraulic fluid", "Passenger stairs", "Towbar", "Engine oil", "GPU", "Air starter"]);
+        items.Range(6, 22, 17, 22).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["Service", "Service", "Tool", "Tool", "Tool", "Tool", "Material", "General Support",
+                "Tool", "Material", "General Support", "General Support"]);
+        items.Range(6, 2, 17, 2).Cells().ShouldAllBe(cell => cell.GetString() == "AMM-0042");
+        items.Range(6, 21, 17, 21).Cells().ShouldAllBe(cell => cell.GetString() != "Transit");
+    }
+
+    [Fact]
+    public void CreateWorkbook_ServicesAndResourcesUsesSummaryItemsOnlyWhenDetailsAreUnavailable()
+    {
+        var source = CreateRow();
+        var noWorkOrder = source with { Id = Guid.NewGuid(), ApprovedWorkOrder = null };
+        var file = FlightExportDocumentFactory.Create(
+            FlightExportFormat.Xlsx, [noWorkOrder, source], Criteria, GeneratedAtUtc);
+
+        using var workbook = new XLWorkbook(new MemoryStream(file.Content));
+        var items = workbook.Worksheet("Services and Resources");
+        items.LastRowUsed()!.RowNumber().ShouldBe(10);
+        items.Range(6, 21, 10, 21).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["Baggage", "Transit", "Towbar", "Hydraulic fluid", "GPU"]);
+        items.Range(6, 22, 10, 22).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["Service", "Service", "Tool", "Material", "General Support"]);
+        items.Range(6, 1, 10, 1).Cells().Select(cell => cell.GetValue<int>()).ShouldBe(Enumerable.Range(1, 5));
+        items.Range(6, 2, 10, 2).Cells().ShouldAllBe(cell => cell.GetString() == "AMM-0042");
+        items.Range(6, 26, 10, 26).Cells().ShouldAllBe(cell =>
+            cell.GetString() == "Major: Inspect landing gear, Minor: Power aircraft systems");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void CreateWorkbook_ServicesAndResourcesHasOnlyHeadersWhenNoItemRecordsExist(int scenario)
+    {
+        var source = CreateDetailedRow();
+        var taskOnly = source with
+        {
+            ApprovedWorkOrder = source.ApprovedWorkOrder! with
+            {
+                ServiceNames = [], ToolNames = [], MaterialNames = [], GeneralSupportNames = [],
+                ServiceDetails = [],
+                TaskDetails =
+                [source.ApprovedWorkOrder.TaskDetails[0] with { Tools = [], Materials = [], GeneralSupports = [] }]
+            }
+        };
+        FlightExportRowDto[] rows = scenario switch
+        {
+            0 => [],
+            1 => [source with { ApprovedWorkOrder = null }],
+            _ => [taskOnly]
+        };
+        var file = FlightExportDocumentFactory.Create(FlightExportFormat.Xlsx, rows, Criteria, GeneratedAtUtc);
+
+        using var workbook = new XLWorkbook(new MemoryStream(file.Content));
+        var items = workbook.Worksheet("Services and Resources");
+        workbook.Worksheets.Count.ShouldBe(5);
+        items.Cell(5, 21).GetString().ShouldBe("Item");
+        items.Cell(5, 22).GetString().ShouldBe("Type");
+        items.LastRowUsed()!.RowNumber().ShouldBe(5);
+        items.Cell(6, 1).IsEmpty().ShouldBeTrue();
+        items.Cell(2, 1).GetString().ShouldStartWith("0 detail records");
+        items.AutoFilter.IsEnabled.ShouldBeTrue();
+        items.AutoFilter.Range.RangeAddress.ToString().ShouldBe("A5:Z5");
     }
 
     [Fact]
@@ -336,7 +499,7 @@ public sealed class FlightExportDocumentFactoryTests
     {
         var file = FlightExportDocumentFactory.Create(FlightExportFormat.Xlsx, [], Criteria, GeneratedAtUtc);
         using var workbook = new XLWorkbook(new MemoryStream(file.Content));
-        workbook.Worksheets.Count.ShouldBe(4);
+        workbook.Worksheets.Count.ShouldBe(5);
         var breakdown = workbook.Worksheet("Flight Breakdown");
         breakdown.Cell(5, 29).GetString().ShouldBe("Row Type");
         breakdown.Cell(6, 1).IsEmpty().ShouldBeTrue();
@@ -409,6 +572,7 @@ public sealed class FlightExportDocumentFactoryTests
         var services = workbook.Worksheet("Service Details");
         var tasks = workbook.Worksheet("Task Details");
         var breakdown = workbook.Worksheet("Flight Breakdown");
+        var items = workbook.Worksheet("Services and Resources");
         var dangerousServiceCells = new[] { 2, 3, 5, 8, 9, 10, 11, 19, 20, 23, 24 }
             .Select(column => services.Cell(6, column));
         var dangerousTaskCells = new[] { 2, 3, 5, 8, 9, 10, 11, 19, 20, 21, 24, 25, 26, 27 }
@@ -420,9 +584,16 @@ public sealed class FlightExportDocumentFactoryTests
         }.Concat(Enumerable.Range(8, 5).SelectMany(rowNumber => new[] { 33, 34, 40 }
             .Select(column => breakdown.Cell(rowNumber, column))));
 
-        dangerousServiceCells.Concat(dangerousTaskCells).Concat(dangerousBreakdownCells).ShouldAllBe(cell =>
+        var dangerousItemCells = items.Range(6, 21, 9, 21).Cells()
+            .Concat(Enumerable.Range(6, 4).SelectMany(rowNumber => new[] { 2, 4, 14, 15, 16, 20, 23 }
+                .Select(column => items.Cell(rowNumber, column))));
+
+        dangerousServiceCells.Concat(dangerousTaskCells).Concat(dangerousBreakdownCells).Concat(dangerousItemCells).ShouldAllBe(cell =>
             !cell.HasFormula && cell.Style.IncludeQuotePrefix);
         breakdown.Range(6, 1, 12, 44).Cells().ShouldAllBe(cell => !cell.HasFormula);
+        items.Range(6, 1, 9, 26).Cells().ShouldAllBe(cell => !cell.HasFormula);
+        items.Range(6, 21, 9, 21).Cells().Select(cell => cell.GetString()).ShouldBe(
+            ["=Service", "=Tool", "+Material", "@Support"]);
         services.Cell(6, 20).GetString().ShouldBe("=Service");
         services.Cell(6, 24).GetString().ShouldBe("-Service description");
         tasks.Cell(6, 25).GetString().ShouldBe("=Tool × 2");
@@ -575,7 +746,7 @@ public sealed class FlightExportDocumentFactoryTests
         using (var workbook = new XLWorkbook(stream))
         {
             workbook.Worksheets.Select(sheet => sheet.Name)
-                .ShouldBe(["Flights", "Service Details", "Task Details", "Flight Breakdown"]);
+                .ShouldBe(["Flights", "Service Details", "Task Details", "Flight Breakdown", "Services and Resources"]);
             var flights = workbook.Worksheet("Flights");
             flights.Cell(6, 5).GetDateTime().ShouldBe(new DateTime(2026, 7, 23, 12, 30, 0));
             flights.Column(5).Style.DateFormat.Format.ShouldContain("Asia/Riyadh");
