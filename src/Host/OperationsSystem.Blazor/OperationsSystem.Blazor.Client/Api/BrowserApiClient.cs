@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
@@ -227,14 +228,22 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
 
         try
         {
-            var json = message[jsonStart..];
-            var errorStart = json.IndexOf("\nError:", StringComparison.Ordinal);
-            if (errorStart >= 0)
-                json = json[..errorStart];
+            // JS interop appends a browser-specific stack trace to the error message.
+            // Read just the JSON envelope, preserving escaped JSON in the response body.
+            var reader = new Utf8JsonReader(Encoding.UTF8.GetBytes(message[jsonStart..]));
+            using var document = JsonDocument.ParseValue(ref reader);
+            var error = document.RootElement;
+            if (!error.TryGetProperty("status", out var status) ||
+                status.ValueKind != JsonValueKind.Number ||
+                !status.TryGetInt32(out var parsedStatus) ||
+                !error.TryGetProperty("body", out var body) ||
+                body.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+            {
+                return false;
+            }
 
-            using var document = JsonDocument.Parse(json);
-            statusCode = document.RootElement.GetProperty("status").GetInt32();
-            responseBody = document.RootElement.GetProperty("body").GetString() ?? string.Empty;
+            statusCode = parsedStatus;
+            responseBody = body.GetString() ?? string.Empty;
             return true;
         }
         catch (JsonException)

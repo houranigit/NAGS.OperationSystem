@@ -29,4 +29,21 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!-- The SDK omits the initializer manifest when there are no modules. Publishing an
+       empty list ensures copy-and-replace deployments overwrite obsolete manifests,
+       such as the Hot Reload initializer left behind by an earlier release. -->
+  <Target Name="EnsurePortalPublishInitializerManifest"
+          AfterTargets="Publish"
+          DependsOnTargets="ResolveJSModuleManifestPublishConfiguration"
+          Condition="'$(IsPublishable)' == 'true' and '$(GenerateJSModuleManifest)' == 'true'">
+    <WriteLinesToFile File="$(PublishDir)wwwroot/$(JSModuleManifestRelativePath)"
+                      Lines="[]"
+                      Overwrite="true"
+                      Encoding="UTF-8"
+                      Condition="'@(_ExistingPublishJSModules)' == ''" />
+    <ItemGroup Condition="'@(_ExistingPublishJSModules)' == ''">
+      <FileWrites Include="$(PublishDir)wwwroot/$(JSModuleManifestRelativePath)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

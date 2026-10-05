@@ -40,6 +40,26 @@ when it is absent and copies it to `App_Data/firebase-admin.json` in the publish
 placed under `wwwroot` or exposed as static content. Deployments can still override the path or use
 Application Default Credentials/workload identity.
 
+## IIS portal startup
+
+Copying a new release over an existing IIS folder does not remove files absent from the new
+release. An obsolete `wwwroot/OperationsSystem.Blazor.modules.json` from a development build
+can therefore retain a Hot Reload initializer whose JavaScript no longer exists. Fresh browsers
+then remain on the loading screen with a failed module import, while an older session may work.
+
+The portal publish target now includes an empty initializer manifest when there are no current
+initializers, so folder replacements overwrite that obsolete list. Keep this file in deployment
+packages. If actual initializers are added later, the SDK-generated list is preserved. After copying
+the portal files, restart its IIS application pool so startup options are read again.
+
+Verify the deployed `/_blazor/initializers` endpoint and startup in a fresh browser session.
+The current release's initializer list is `[]`; any future listed module must return a successful
+JavaScript response. A successful root HTML request alone does not verify interactive startup.
+
+Include Safari in the startup check. A fresh session without a refresh cookie receives an expected
+401 and must reach Sign in. JavaScript interop appends a browser-specific stack to API errors;
+the portal transport parses only the JSON envelope so Safari's stack cannot interrupt authorization.
+
 ## Data Protection
 
 MFA secrets and queued email bodies and attachments are encrypted with ASP.NET Core Data Protection. In production,
