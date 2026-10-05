@@ -67,7 +67,7 @@ public sealed class GetMaterialByIdQueryHandler(IMasterDataDbContext db)
         return new MaterialDto(
             material.Id, material.Name, material.Description, material.IsActive,
             material.CreatedAtUtc, material.UpdatedAtUtc, Convert.ToBase64String(material.RowVersion),
-            material.CalculationType);
+            material.CalculationType, material.LegacySystemId);
     }
 }
 

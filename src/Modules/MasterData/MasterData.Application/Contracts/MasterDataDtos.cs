@@ -38,7 +38,8 @@ public sealed record ManpowerTypeDto(
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string? LegacySystemId = null);
 
 public sealed record ManpowerTypeOptionDto(Guid Id, string Name);
 
@@ -82,7 +83,8 @@ public sealed record ServiceDto(
     bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string? LegacySystemId = null);
 
 public sealed record ServiceOptionDto(Guid Id, string Name, bool IsAircraftPerLanding);
 
@@ -105,7 +107,8 @@ public sealed record OperationTypeDto(
     bool IsSystem,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string? LegacySystemId = null);
 
 public sealed record OperationTypeOptionDto(Guid Id, string Name);
 
@@ -126,7 +129,8 @@ public sealed record AircraftTypeDto(
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string? LegacySystemId = null);
 
 public sealed record AircraftTypeOptionDto(Guid Id, AircraftManufacturer Manufacturer, string Model);
 
@@ -151,7 +155,8 @@ public sealed record ToolDto(
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
     IReadOnlyList<ToolEquipmentDto> Equipments,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 
 public sealed record ToolOptionDto(Guid Id, string Name, ResourceCalculationType CalculationType);
 
@@ -172,7 +177,8 @@ public sealed record MaterialDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 
 public sealed record MaterialOptionDto(Guid Id, string Name, ResourceCalculationType CalculationType);
 
@@ -193,7 +199,8 @@ public sealed record GeneralSupportDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 
 public sealed record GeneralSupportOptionDto(Guid Id, string Name, ResourceCalculationType CalculationType);
 
@@ -220,7 +227,8 @@ public sealed record StationDto(
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string? LegacySystemId = null);
 
 public sealed record StationOptionDto(Guid Id, string IataCode, string Name);
 
@@ -276,7 +284,8 @@ public sealed record CustomerDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    IReadOnlyList<CustomerContactDto> Contacts);
+    IReadOnlyList<CustomerContactDto> Contacts,
+    string? LegacySystemId = null);
 
 public sealed record CustomerOptionDto(Guid Id, string? IataCode, string Name);
 
@@ -361,4 +370,5 @@ public sealed record StaffMemberDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    IReadOnlyList<StaffMemberLicenseDto> Licenses);
+    IReadOnlyList<StaffMemberLicenseDto> Licenses,
+    string? LegacySystemId = null);

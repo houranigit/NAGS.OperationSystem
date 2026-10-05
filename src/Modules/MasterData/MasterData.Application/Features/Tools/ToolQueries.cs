@@ -77,7 +77,7 @@ public sealed class GetToolByIdQueryHandler(IMasterDataDbContext db)
                     .ThenBy(e => e.Id)
                     .Select(e => new ToolEquipmentDto(e.Id, e.FactoryId, e.SerialId, e.CalibrationDate))
                     .ToList(),
-                t.CalculationType))
+                t.CalculationType, t.LegacySystemId))
             .FirstOrDefaultAsync(cancellationToken);
 
         return tool is null

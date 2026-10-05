@@ -231,6 +231,11 @@ public sealed class FlightQueryTests
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.Select(f => f.Id).ShouldBe([matching.Id]);
+        var exportRow = result.Value.Single();
+        exportRow.CustomerId.ShouldBe(customerId);
+        exportRow.StationId.ShouldBe(stationId);
+        exportRow.OperationTypeId.ShouldBe(operationTypeId);
+        exportRow.AssignedStaffMemberIds.ShouldBe([staffId]);
         result.Value.Single().StationName.ShouldBe("Dammam");
     }
 
@@ -261,8 +266,12 @@ public sealed class FlightQueryTests
 
         result.IsSuccess.ShouldBeTrue();
         var approvedRow = result.Value.ShouldHaveSingleItem();
+        approvedRow.CustomerId.ShouldBe(completedFlight.Customer.CustomerId);
+        approvedRow.StationId.ShouldBe(completedFlight.Station.StationId);
+        approvedRow.PlannedServiceIds.ShouldBe(completedFlight.PlannedServices.Select(item => item.Service.ServiceId));
         approvedRow.ApprovedWorkOrder.ShouldNotBeNull();
         approvedRow.ApprovedWorkOrder!.ApprovalNumber.ShouldBe("DMM-0001");
+        approvedRow.ApprovedWorkOrder.AircraftTypeId.ShouldBe(approved.AircraftType!.AircraftTypeId);
         approvedRow.ApprovedWorkOrder.ActualFlightNumber.ShouldBe("101");
         approvedRow.ApprovedWorkOrder.AircraftManufacturer.ShouldBe("Airbus");
         approvedRow.ApprovedWorkOrder.AircraftModel.ShouldBe("A320");
@@ -461,6 +470,7 @@ public sealed class FlightQueryTests
             detail.Description != null && detail.Description.Contains("Must not leak"));
 
         var standardServiceDetail = workOrder.ServiceDetails[0];
+        standardServiceDetail.ServiceId.ShouldBe(standardService.Service.ServiceId);
         standardServiceDetail.PerformedByNames.ShouldBe(["Standard Engineer"]);
         standardServiceDetail.Description.ShouldBe("Standard service notes");
         standardServiceDetail.ReturnToRamp.ShouldBeNull();
@@ -473,7 +483,7 @@ public sealed class FlightQueryTests
                 ResourceCalculationType.Quantity,
                 2,
                 null,
-                null));
+                null) { ResourceId = standardTask.Tools.Single().Tool.ToolId });
 
         var returnServiceDetail = workOrder.ServiceDetails[1];
         returnServiceDetail.PerformedByNames.ShouldBe(["Ramp Engineer"]);
@@ -490,7 +500,7 @@ public sealed class FlightQueryTests
                 ResourceCalculationType.Quantity,
                 1.5m,
                 null,
-                null));
+                null) { ResourceId = returnToRamp.Tasks.Single().Materials.Single().Material.MaterialId });
     }
 
     [Fact]

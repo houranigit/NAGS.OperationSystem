@@ -37,13 +37,14 @@ public sealed record ManpowerTypeDetail(
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string? LegacySystemId = null);
 
 public sealed record ManpowerTypeOption(Guid Id, string Name);
 public sealed record ServiceAllowance(Guid ServiceId, string Name, bool IsActive, bool IsAllowed);
 
-public sealed record CreateManpowerTypeRequest(string Name, string? Description);
-public sealed record UpdateManpowerTypeRequest(string Name, string? Description);
+public sealed record CreateManpowerTypeRequest(string Name, string? Description, string? LegacySystemId = null);
+public sealed record UpdateManpowerTypeRequest(string Name, string? Description, string? LegacySystemId = null);
 
 // --- Licenses --------------------------------------------------------------
 
@@ -72,21 +73,21 @@ public sealed record UpdateLicenseRequest(string Name, string? Description);
 // --- Services --------------------------------------------------------------
 
 public sealed record ServiceListItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
-public sealed record ServiceDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record ServiceDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, string? LegacySystemId = null);
 public sealed record ServiceOption(Guid Id, string Name, bool IsAircraftPerLanding);
 public sealed record ManpowerTypeAllowance(Guid ManpowerTypeId, string Name, bool IsActive, bool IsAllowed);
-public sealed record CreateServiceRequest(string Name, string? Description);
-public sealed record UpdateServiceRequest(string Name, string? Description);
+public sealed record CreateServiceRequest(string Name, string? Description, string? LegacySystemId = null);
+public sealed record UpdateServiceRequest(string Name, string? Description, string? LegacySystemId = null);
 public sealed record UpdateServiceAllowancesRequest(IReadOnlyList<Guid> ServiceIds);
 public sealed record UpdateManpowerTypeAllowancesRequest(IReadOnlyList<Guid> ManpowerTypeIds);
 
 // --- OperationTypes --------------------------------------------------------
 
 public sealed record OperationTypeListItem(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem);
-public sealed record OperationTypeDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record OperationTypeDetail(Guid Id, string Name, string? Description, bool IsActive, bool IsSystem, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, string? LegacySystemId = null);
 public sealed record OperationTypeOption(Guid Id, string Name);
-public sealed record CreateOperationTypeRequest(string Name, string? Description);
-public sealed record UpdateOperationTypeRequest(string Name, string? Description);
+public sealed record CreateOperationTypeRequest(string Name, string? Description, string? LegacySystemId = null);
+public sealed record UpdateOperationTypeRequest(string Name, string? Description, string? LegacySystemId = null);
 
 // --- AircraftTypes ---------------------------------------------------------
 
@@ -101,10 +102,10 @@ public enum AircraftManufacturer
 }
 
 public sealed record AircraftTypeListItem(Guid Id, AircraftManufacturer Manufacturer, string Model, string? Notes, bool IsActive);
-public sealed record AircraftTypeDetail(Guid Id, AircraftManufacturer Manufacturer, string Model, string? Notes, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+public sealed record AircraftTypeDetail(Guid Id, AircraftManufacturer Manufacturer, string Model, string? Notes, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion, string? LegacySystemId = null);
 public sealed record AircraftTypeOption(Guid Id, AircraftManufacturer Manufacturer, string Model);
-public sealed record CreateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
-public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
+public sealed record CreateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes, string? LegacySystemId = null);
+public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes, string? LegacySystemId = null);
 
 // --- Tools ----------------------------------------------------------------
 
@@ -131,19 +132,22 @@ public sealed record ToolDetail(
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
     IReadOnlyList<ToolEquipmentModel> Equipments,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 public sealed record ToolOption(Guid Id, string Name, ResourceCalculationType CalculationType);
 public sealed record ToolEquipmentRequest(Guid? Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
 public sealed record CreateToolRequest(
     string Name,
     string? Description,
     IReadOnlyList<ToolEquipmentRequest> Equipments,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 public sealed record UpdateToolRequest(
     string Name,
     string? Description,
     IReadOnlyList<ToolEquipmentRequest> Equipments,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 
 // --- Materials -------------------------------------------------------------
 
@@ -161,16 +165,19 @@ public sealed record MaterialDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 public sealed record MaterialOption(Guid Id, string Name, ResourceCalculationType CalculationType);
 public sealed record CreateMaterialRequest(
     string Name,
     string? Description,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 public sealed record UpdateMaterialRequest(
     string Name,
     string? Description,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 
 // --- GeneralSupports -------------------------------------------------------
 
@@ -188,16 +195,19 @@ public sealed record GeneralSupportDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 public sealed record GeneralSupportOption(Guid Id, string Name, ResourceCalculationType CalculationType);
 public sealed record CreateGeneralSupportRequest(
     string Name,
     string? Description,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 public sealed record UpdateGeneralSupportRequest(
     string Name,
     string? Description,
-    ResourceCalculationType CalculationType);
+    ResourceCalculationType CalculationType,
+    string? LegacySystemId = null);
 
 // --- Stations --------------------------------------------------------------
 
@@ -222,7 +232,8 @@ public sealed record StationDetail(
     bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string? LegacySystemId = null);
 
 public sealed record StationOption(Guid Id, string IataCode, string Name);
 
@@ -242,8 +253,9 @@ public sealed record CreateStationRequest(
     string Name,
     string? City,
     Guid CountryId,
-    IReadOnlyList<NewStationStaffRequest>? Staff);
-public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId);
+    IReadOnlyList<NewStationStaffRequest>? Staff,
+    string? LegacySystemId = null);
+public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string? LegacySystemId = null);
 
 // --- Customers -------------------------------------------------------------
 
@@ -292,7 +304,8 @@ public sealed record CustomerDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    IReadOnlyList<CustomerContactModel> Contacts);
+    IReadOnlyList<CustomerContactModel> Contacts,
+    string? LegacySystemId = null);
 
 public sealed record CustomerOption(Guid Id, string? IataCode, string Name);
 
@@ -307,7 +320,8 @@ public sealed record CreateCustomerRequest(
     string? OfficialEmail,
     string? OfficialPhone,
     AddressRequest Address,
-    IReadOnlyList<CustomerContactRequest> Contacts);
+    IReadOnlyList<CustomerContactRequest> Contacts,
+    string? LegacySystemId = null);
 
 public sealed record UpdateCustomerRequest(
     string? IataCode,
@@ -316,7 +330,8 @@ public sealed record UpdateCustomerRequest(
     Guid CountryId,
     string? OfficialEmail,
     string? OfficialPhone,
-    AddressRequest Address);
+    AddressRequest Address,
+    string? LegacySystemId = null);
 
 public sealed record AddCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone, Guid? PortalAccessRoleId);
 public sealed record UpdateCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
@@ -395,7 +410,8 @@ public sealed record StaffMemberDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    IReadOnlyList<StaffMemberLicenseModel> Licenses);
+    IReadOnlyList<StaffMemberLicenseModel> Licenses,
+    string? LegacySystemId = null);
 
 public sealed record EmploymentContractRequest(DateOnly StartDate, DateOnly? EndDate);
 public sealed record StaffLicenseRequest(Guid? Id, Guid LicenseId, string LicenseNumber);
@@ -409,7 +425,8 @@ public sealed record CreateStaffMemberRequest(
     EmploymentContractRequest? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
     IReadOnlyList<StaffLicenseRequest> Licenses,
-    Guid? PortalAccessRoleId);
+    Guid? PortalAccessRoleId,
+    string? LegacySystemId = null);
 
 public sealed record UpdateStaffMemberRequest(
     string FullName,
@@ -419,7 +436,8 @@ public sealed record UpdateStaffMemberRequest(
     Guid ManpowerTypeId,
     EmploymentContractRequest? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
-    IReadOnlyList<StaffLicenseRequest> Licenses);
+    IReadOnlyList<StaffLicenseRequest> Licenses,
+    string? LegacySystemId = null);
 
 // --- Portal access ---------------------------------------------------------
 

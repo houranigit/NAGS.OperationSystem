@@ -38,7 +38,7 @@ internal static class OperationTypeEndpoints
 
         operationTypes.MapPost("/", async (CreateOperationTypeRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new CreateOperationTypeCommand(request.Name, request.Description), ct);
+            var result = await sender.Send(new CreateOperationTypeCommand(request.Name, request.Description, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/operation-types/{id}");
         }).RequirePermission(MasterDataPermissions.OperationTypes.Create);
 
@@ -47,7 +47,7 @@ internal static class OperationTypeEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new UpdateOperationTypeCommand(id, request.Name, request.Description, rowVersion), ct);
+            var result = await sender.Send(new UpdateOperationTypeCommand(id, request.Name, request.Description, rowVersion, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.OperationTypes.Update);
 

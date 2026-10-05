@@ -1,0 +1,47 @@
+@inject AuthSession Auth
+@using OperationsSystem.Blazor.Client.Features.Operations
+
+@if (Availability.View)
+{
+    <button type="button" role="menuitem" class="os-row-actions-item" disabled="@busy" @onclick="@(() => RunAsync(ActionKind.View))">
+        <RadzenIcon Icon="visibility" /><span>View</span>
+    </button>
+    @if (Availability.Edit)
+    {
+        <button type="button" role="menuitem" class="os-row-actions-item" disabled="@busy" @onclick="@(() => RunAsync(ActionKind.Edit))">
+            <RadzenIcon Icon="edit" /><span>Edit</span>
+        </button>
+    }
+    @if (Availability.Approve || Availability.Return)
+    {
+        <div class="os-row-actions-sep" role="separator"></div>
+    }
+    @if (Availability.Approve)
+    {
+        <button type="button" role="menuitem" class="os-row-actions-item" disabled="@busy" @onclick="@(() => RunAsync(ActionKind.Approve))">
+            <RadzenIcon Icon="task_alt" /><span>Approve</span>
+        </button>
+    }
+    @if (Availability.Return)
+    {
+        <button type="button" role="menuitem" class="os-row-actions-item" disabled="@busy" @onclick="@(() => RunAsync(ActionKind.Return))">
+            <RadzenIcon Icon="undo" /><span>Return</span>
+        </button>
+    }
+    @if (Availability.Merge || Availability.Delete)
+    {
+        <div class="os-row-actions-sep" role="separator"></div>
+    }
+    @if (Availability.Merge)
+    {
+        <button type="button" role="menuitem" class="os-row-actions-item" disabled="@busy" @onclick="@(() => RunAsync(ActionKind.Merge))">
+            <RadzenIcon Icon="merge_type" /><span>Merge work orders</span>
+        </button>
+    }
+    @if (Availability.Delete)
+    {
+        <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger" disabled="@busy" @onclick="@(() => RunAsync(ActionKind.Delete))">
+            <RadzenIcon Icon="delete" /><span>Delete</span>
+        </button>
+    }
+}

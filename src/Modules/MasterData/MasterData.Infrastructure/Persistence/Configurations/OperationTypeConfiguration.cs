@@ -19,6 +19,7 @@ public sealed class OperationTypeConfiguration : IEntityTypeConfiguration<Operat
         builder.Property(o => o.CreatedAtUtc).IsRequired();
         builder.Property(o => o.UpdatedAtUtc);
         builder.Property(o => o.RowVersion).IsRowVersion();
+        builder.Property(o => o.LegacySystemId).HasMaxLength(200);
 
         builder.Ignore(o => o.DomainEvents);
     }

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using ClosedXML.Excel;
+using MasterData.Contracts.Readers;
 using MasterData.Contracts.Resources;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
@@ -94,6 +95,14 @@ internal static class FlightExportDocumentFactory
         .. CsvHeaders.Take(20), "Item", "Type", .. CsvHeaders.Skip(24)
     ];
 
+    private static readonly string[] LegacyServiceAndResourceHeaders =
+    [
+        .. ServiceAndResourceHeaders.Take(13), "Customer Legacy ID", ServiceAndResourceHeaders[14],
+        "Station Legacy ID", ServiceAndResourceHeaders[16], "Aircraft Type Legacy ID", ServiceAndResourceHeaders[18],
+        "Planned Service Legacy IDs", "Item Legacy ID", "Type", "Assigned Staff Legacy IDs",
+        .. ServiceAndResourceHeaders.Skip(23), "Operation Type Legacy ID", "Manpower Type Legacy IDs", "Missing Legacy IDs"
+    ];
+
     private static readonly double[] WorkbookColumnWidths =
     [
         7d, 16, 18, 18, 21, 21, 21, 21, 16, 18, 19, 17, 18, 28, 18, 26, 22,
@@ -130,7 +139,8 @@ internal static class FlightExportDocumentFactory
         IReadOnlyList<FlightExportRowDto> rows,
         FlightExportCriteria criteria,
         DateTimeOffset generatedAtUtc,
-        TimeZoneInfo? displayTimeZone = null)
+        TimeZoneInfo? displayTimeZone = null,
+        LegacySystemIdLookup? legacySystemIds = null)
     {
         var timeZone = displayTimeZone ?? TimeZoneInfo.Utc;
         var stamp = generatedAtUtc.UtcDateTime.ToString("yyyyMMdd-HHmmss'Z'", CultureInfo.InvariantCulture);
@@ -138,7 +148,7 @@ internal static class FlightExportDocumentFactory
         return format switch
         {
             FlightExportFormat.Xlsx => new FlightExportFile(
-                CreateWorkbook(rows, criteria, generatedAtUtc, timeZone),
+                CreateWorkbook(rows, criteria, generatedAtUtc, timeZone, legacySystemIds),
                 WorkbookContentType,
                 $"flights-report-{stamp}.xlsx"),
             FlightExportFormat.Csv => new FlightExportFile(
@@ -157,7 +167,8 @@ internal static class FlightExportDocumentFactory
         IReadOnlyList<FlightExportRowDto> rows,
         FlightExportCriteria criteria,
         DateTimeOffset generatedAtUtc,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        LegacySystemIdLookup? legacySystemIds)
     {
         var columnCount = CsvHeaders.Length;
         const int headerRowNumber = 5;
@@ -246,6 +257,8 @@ internal static class FlightExportDocumentFactory
         AddTaskDetailsWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
         AddFlightBreakdownWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
         AddServicesAndResourcesWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone);
+        if (legacySystemIds is not null)
+            AddServicesAndResourcesWorksheet(workbook, rows, criteria, generatedAtUtc, timeZone, legacySystemIds);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -474,20 +487,31 @@ internal static class FlightExportDocumentFactory
         IReadOnlyList<FlightExportRowDto> rows,
         FlightExportCriteria criteria,
         DateTimeOffset generatedAtUtc,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        LegacySystemIdLookup? legacySystemIds = null)
     {
         const int headerRowNumber = 5;
-        var columnCount = ServiceAndResourceHeaders.Length;
+        var headers = legacySystemIds is null ? ServiceAndResourceHeaders : LegacyServiceAndResourceHeaders;
+        var columnCount = headers.Length;
         var sheet = CreateDetailWorksheetFrame(
             workbook,
-            "Services and Resources",
-            "Daily Operation Report — Services and Resources",
-            ServiceAndResourceHeaders,
+            legacySystemIds is null ? "Services and Resources" : "Legacy Services and Resources",
+            legacySystemIds is null ? "Daily Operation Report — Services and Resources" : "Daily Operation Report — Legacy Services and Resources",
+            headers,
             rows.Sum(row => EnumerateServiceAndResourceItems(row).Count()),
             rows,
             criteria,
             generatedAtUtc,
             timeZone);
+
+        if (legacySystemIds is not null)
+        {
+            var note = sheet.Range(4, 1, 4, columnCount).Merge();
+            note.Value = "Legacy IDs are exported as text. Blank IDs are not configured; review Missing Legacy IDs before importing.";
+            note.Style.Font.FontSize = 9;
+            note.Style.Font.FontColor = XLColor.FromHtml(MutedTextColor);
+            sheet.Row(4).Height = 20;
+        }
 
         var rowNumber = headerRowNumber + 1;
         var sequence = 1;
@@ -504,6 +528,9 @@ internal static class FlightExportDocumentFactory
                 SetWorkbookText(sheet.Cell(rowNumber, 25), StatusLabel(flight.Status));
                 SetOptionalText(sheet.Cell(rowNumber, 26), flight.ApprovedWorkOrder is { } workOrder
                     ? JoinNames(workOrder.TaskNames) : null);
+
+                if (legacySystemIds is not null)
+                    WriteLegacySystemIds(sheet, rowNumber, flight, item, legacySystemIds);
 
                 var range = sheet.Range(rowNumber, 1, rowNumber, columnCount);
                 range.Style.Font.FontSize = 9;
@@ -523,7 +550,8 @@ internal static class FlightExportDocumentFactory
         sheet.Range(headerRowNumber, 1, Math.Max(headerRowNumber, rowNumber - 1), columnCount).SetAutoFilter();
         sheet.SheetView.FreezeRows(headerRowNumber);
         sheet.SheetView.FreezeColumns(2);
-        double[] widths = [.. WorkbookColumnWidths.Take(20), 35, 22, .. WorkbookColumnWidths.Skip(24)];
+        double[] widths = [.. WorkbookColumnWidths.Take(20), 35, 22, .. WorkbookColumnWidths.Skip(24),
+            .. legacySystemIds is null ? Array.Empty<double>() : new[] { 28d, 30, 50 }];
         for (var index = 0; index < widths.Length; index++)
             sheet.Column(index + 1).Width = widths[index];
         foreach (var column in new[] { 5, 6, 7, 8 })
@@ -537,6 +565,83 @@ internal static class FlightExportDocumentFactory
             sheet.Column(column).Style.NumberFormat.Format = "[h]\"h \"mm\"m\"";
         foreach (var column in new[] { 20, 21, 23, 24, 26 })
             sheet.Column(column).Style.Alignment.WrapText = true;
+        if (legacySystemIds is not null)
+        {
+            sheet.Columns(27, columnCount).Style.Alignment.WrapText = true;
+            int[] legacyColumns = [14, 16, 18, 20, 21, 23, 27, 28, 29];
+            foreach (var column in legacyColumns)
+                sheet.Column(column).Style.Alignment.WrapText = true;
+            for (var dataRow = headerRowNumber + 1; dataRow < rowNumber; dataRow++)
+            {
+                var lines = legacyColumns.Max(column => Math.Max(1,
+                    (int)Math.Ceiling(sheet.Cell(dataRow, column).GetString().Length /
+                        Math.Max(1, Math.Floor(sheet.Column(column).Width - 2)))));
+                sheet.Row(dataRow).Height = Math.Max(26, lines * 13 + 8);
+            }
+        }
+    }
+
+    public static LegacySystemIdRequest CollectLegacySystemIdRequest(IReadOnlyList<FlightExportRowDto> rows) => new(
+        Services: rows.SelectMany(row => row.PlannedServiceIds.Concat(
+            row.ApprovedWorkOrder?.ServiceDetails.Select(item => item.ServiceId) ?? [])).Distinct().ToArray(),
+        Tools: rows.SelectMany(row => row.ApprovedWorkOrder?.TaskDetails.SelectMany(task => task.Tools.Select(item => item.ResourceId)) ?? []).Distinct().ToArray(),
+        Materials: rows.SelectMany(row => row.ApprovedWorkOrder?.TaskDetails.SelectMany(task => task.Materials.Select(item => item.ResourceId)) ?? []).Distinct().ToArray(),
+        GeneralSupports: rows.SelectMany(row => row.ApprovedWorkOrder?.TaskDetails.SelectMany(task => task.GeneralSupports.Select(item => item.ResourceId)) ?? []).Distinct().ToArray(),
+        Customers: rows.Select(row => row.CustomerId).Distinct().ToArray(),
+        Stations: rows.Select(row => row.StationId).Distinct().ToArray(),
+        OperationTypes: rows.Select(row => row.OperationTypeId).Distinct().ToArray(),
+        AircraftTypes: rows.Select(row => row.ApprovedWorkOrder?.AircraftTypeId).OfType<Guid>().Distinct().ToArray(),
+        StaffMembers: rows.SelectMany(row => row.AssignedStaffMemberIds).Distinct().ToArray());
+
+    private static void WriteLegacySystemIds(
+        IXLWorksheet sheet, int rowNumber, FlightExportRowDto flight, FlightBreakdownItem item,
+        LegacySystemIdLookup lookup)
+    {
+        var missing = new List<string>();
+        string? Resolve(IReadOnlyDictionary<Guid, string?> map, Guid? id, string label)
+        {
+            if (id is { } value && map.TryGetValue(value, out var legacyId) && !string.IsNullOrWhiteSpace(legacyId))
+                return legacyId;
+            missing.Add(label);
+            return null;
+        }
+
+        string ResolveMany(IReadOnlyList<Guid> ids, IReadOnlyDictionary<Guid, string?> map, string label) =>
+            string.Join(", ", ids.Select(id => Resolve(map, id, label)).Where(id => id is not null));
+
+        SetLegacyText(sheet.Cell(rowNumber, 14), Resolve(lookup.Customers, flight.CustomerId, "Customer"));
+        SetLegacyText(sheet.Cell(rowNumber, 16), Resolve(lookup.Stations, flight.StationId, "Station"));
+        SetLegacyText(sheet.Cell(rowNumber, 18), flight.ApprovedWorkOrder?.AircraftTypeId is { } aircraftTypeId
+            ? Resolve(lookup.AircraftTypes, aircraftTypeId, "Aircraft type") : null);
+        SetLegacyText(sheet.Cell(rowNumber, 20), ResolveMany(flight.PlannedServiceIds, lookup.Services, "Planned service"));
+        var itemMap = item.Column switch
+        {
+            21 => lookup.Services,
+            22 => lookup.Tools,
+            23 => lookup.Materials,
+            _ => lookup.GeneralSupports
+        };
+        SetLegacyText(sheet.Cell(rowNumber, 21), Resolve(itemMap, item.CatalogId, item.RowType));
+        SetLegacyText(sheet.Cell(rowNumber, 23), ResolveMany(flight.AssignedStaffMemberIds, lookup.StaffMembers, "Staff member"));
+        SetLegacyText(sheet.Cell(rowNumber, 27), Resolve(lookup.OperationTypes, flight.OperationTypeId, "Operation type"));
+        var manpowerIds = new List<Guid>();
+        foreach (var staffId in flight.AssignedStaffMemberIds)
+        {
+            if (lookup.StaffMemberManpowerTypeIds.TryGetValue(staffId, out var manpowerId))
+                manpowerIds.Add(manpowerId);
+            else
+                missing.Add("Manpower type");
+        }
+        SetLegacyText(sheet.Cell(rowNumber, 28), ResolveMany(manpowerIds.Distinct().ToArray(), lookup.ManpowerTypes, "Manpower type"));
+        SetLegacyText(sheet.Cell(rowNumber, 29), string.Join(", ", missing.Distinct(StringComparer.Ordinal)));
+    }
+
+    private static void SetLegacyText(IXLCell cell, string? value)
+    {
+        // ClosedXML string values and the quote prefix keep leading zeros and formula-like IDs exact.
+        cell.SetValue(value ?? string.Empty);
+        cell.Style.NumberFormat.Format = "@";
+        cell.Style.IncludeQuotePrefix = true;
     }
 
     private static IEnumerable<FlightBreakdownItem> EnumerateServiceAndResourceItems(FlightExportRowDto flight) =>
@@ -643,6 +748,7 @@ internal static class FlightExportDocumentFactory
     {
         public string? ParentTask { get; init; }
         public Guid? ActivityId { get; init; }
+        public Guid? CatalogId { get; init; }
         public FlightExportReturnToRampContextDto? ReturnToRamp { get; init; }
         public string? Description { get; init; }
         public IReadOnlyList<string> PerformedByNames { get; init; } = [];
@@ -666,6 +772,7 @@ internal static class FlightExportDocumentFactory
             yield return new("Service", 21, service.ServiceName)
             {
                 ActivityId = service.Id,
+                CatalogId = service.ServiceId,
                 ReturnToRamp = service.ReturnToRamp,
                 Description = service.Description,
                 PerformedByNames = service.PerformedByNames,
@@ -699,6 +806,7 @@ internal static class FlightExportDocumentFactory
                         RowType = type,
                         Column = column,
                         Name = usage.Name,
+                        CatalogId = usage.ResourceId,
                         ParentTask = taskName,
                         CalculationType = usage.CalculationType,
                         Quantity = usage.Quantity,

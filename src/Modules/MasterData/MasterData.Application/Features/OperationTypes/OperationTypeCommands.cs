@@ -8,12 +8,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MasterData.Application.Features.OperationTypes;
 
-public sealed record CreateOperationTypeCommand(string Name, string? Description) : ICommand<Guid>;
+public sealed record CreateOperationTypeCommand(string Name, string? Description, string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateOperationTypeCommandValidator : AbstractValidator<CreateOperationTypeCommand>
 {
     public CreateOperationTypeCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
     }
@@ -29,6 +31,9 @@ public sealed class CreateOperationTypeCommandHandler(IMasterDataDbContext db, T
             return result.Error;
 
         var operationType = result.Value;
+        var legacyIdResult = operationType.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
         if (await db.OperationTypes.AnyAsync(o => o.Name == operationType.Name, cancellationToken))
             return Error.Conflict("An operation type with this name already exists.", "MasterData.OperationType.DuplicateName");
 
@@ -38,12 +43,14 @@ public sealed class CreateOperationTypeCommandHandler(IMasterDataDbContext db, T
     }
 }
 
-public sealed record UpdateOperationTypeCommand(Guid Id, string Name, string? Description, byte[] RowVersion) : ICommand;
+public sealed record UpdateOperationTypeCommand(Guid Id, string Name, string? Description, byte[] RowVersion, string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateOperationTypeCommandValidator : AbstractValidator<UpdateOperationTypeCommand>
 {
     public UpdateOperationTypeCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
@@ -59,8 +66,11 @@ public sealed class UpdateOperationTypeCommandHandler(IMasterDataDbContext db, T
         var operationType = await db.OperationTypes.FirstOrDefaultAsync(o => o.Id == request.Id, cancellationToken);
         if (operationType is null)
             return Error.NotFound("Operation type not found.", "MasterData.OperationType.NotFound");
-        if (OperationTypeSystemRecords.IsSystem(operationType.Id))
-            return Error.Conflict("System operation types cannot be modified.", "MasterData.OperationType.SystemProtected");
+        if (OperationTypeSystemRecords.IsSystem(operationType.Id)
+            && (request.LegacySystemId is null
+                || request.Name.Trim() != operationType.Name
+                || NormalizeOptional(request.Description) != operationType.Description))
+            return Error.Conflict("Only the legacy system ID can be changed for system operation types.", "MasterData.OperationType.SystemProtected");
 
         var trimmedName = request.Name.Trim();
         if (await db.OperationTypes.AnyAsync(o => o.Name == trimmedName && o.Id != request.Id, cancellationToken))
@@ -69,6 +79,14 @@ public sealed class UpdateOperationTypeCommandHandler(IMasterDataDbContext db, T
         var result = operationType.Update(request.Name, request.Description, timeProvider.GetUtcNow());
         if (result.IsFailure)
             return result.Error;
+
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = operationType.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
 
         db.SetOriginalRowVersion(operationType, request.RowVersion);
 
@@ -83,6 +101,9 @@ public sealed class UpdateOperationTypeCommandHandler(IMasterDataDbContext db, T
 
         return Result.Success();
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 public sealed record ActivateOperationTypeCommand(Guid Id, byte[] RowVersion) : ICommand;

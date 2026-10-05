@@ -1,3 +1,4 @@
+using MasterData.Domain.LegacySystem;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Resources;
@@ -5,7 +6,7 @@ using MasterData.Contracts.Resources;
 namespace MasterData.Domain.Materials;
 
 /// <summary>Material catalog item with configurable quantity or duration usage.</summary>
-public sealed class Material : AggregateRoot<Guid>
+public sealed class Material : AggregateRoot<Guid>, ILegacySystemIdentified
 {
     private Material() { }
 
@@ -16,6 +17,21 @@ public sealed class Material : AggregateRoot<Guid>
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
+    public string? LegacySystemId { get; private set; }
+
+    public Result SetLegacySystemId(string? value, DateTimeOffset now)
+    {
+        var normalized = LegacySystemIdRules.Normalize(value);
+        if (normalized.IsFailure)
+            return normalized.Error;
+
+        if (LegacySystemId == normalized.Value)
+            return Result.Success();
+
+        LegacySystemId = normalized.Value;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
 
     public static Result<Material> Create(
         string? name,

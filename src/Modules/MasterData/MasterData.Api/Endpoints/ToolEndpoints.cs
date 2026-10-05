@@ -40,7 +40,7 @@ internal static class ToolEndpoints
         {
             var equipment = request.Equipments?.Select(e => new ToolEquipmentInput(e.Id, e.FactoryId, e.SerialId, e.CalibrationDate)).ToList();
             var result = await sender.Send(new CreateToolCommand(
-                request.Name, request.Description, equipment, request.CalculationType), ct);
+                request.Name, request.Description, equipment, request.CalculationType, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/tools/{id}");
         }).RequirePermission(MasterDataPermissions.Tools.Create);
 
@@ -51,7 +51,7 @@ internal static class ToolEndpoints
 
             var equipment = request.Equipments?.Select(e => new ToolEquipmentInput(e.Id, e.FactoryId, e.SerialId, e.CalibrationDate)).ToList();
             var result = await sender.Send(new UpdateToolCommand(
-                id, request.Name, request.Description, equipment, rowVersion, request.CalculationType), ct);
+                id, request.Name, request.Description, equipment, rowVersion, request.CalculationType, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.Tools.Update);
 

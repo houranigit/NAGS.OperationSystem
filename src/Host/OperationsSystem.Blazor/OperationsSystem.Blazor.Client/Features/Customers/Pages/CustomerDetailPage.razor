@@ -78,7 +78,7 @@
                     </div>
 
                     <div class="cu-hero-actions">
-                        @if (!c.IsSystem && Auth.HasPermission(MasterDataPermissions.CustomersUpdate))
+                        @if (Auth.HasPermission(MasterDataPermissions.CustomersUpdate))
                         {
                             <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
                         }

@@ -62,19 +62,9 @@
             </Columns>
             <RowActions Context="workOrder">
                 <RowActionMenu>
-                    <RowAction Text="View" Icon="visibility" OnClick="@(() => OpenAsync(workOrder, viewOnly: true))" />
-                    <RowAction Text="Edit" Icon="edit" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                               Visible="@CanEdit(workOrder)" OnClick="@(() => OpenAsync(workOrder, viewOnly: false))" />
-                    <RowAction Separator="true" />
-                    <RowAction Text="Approve" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersApprove"
-                               Visible="@CanApprove(workOrder)" OnClick="@(() => ApproveAsync(workOrder))" />
-                    <RowAction Text="Return" Icon="undo" Permission="@OperationsPermissions.WorkOrdersApprove"
-                               Visible="@CanReturn(workOrder)" OnClick="@(() => ReturnAsync(workOrder))" />
-                    <RowAction Separator="true" />
-                    <RowAction Text="Merge work orders" Icon="merge_type" Permission="@OperationsPermissions.WorkOrdersMerge"
-                               Visible="@CanMerge(workOrder)" OnClick="@(() => MergeAsync(workOrder))" />
-                    <RowAction Text="Delete" Icon="delete" Danger="true" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                               Visible="@CanDelete(workOrder)" OnClick="@(() => DeleteAsync(workOrder))" />
+                    <MenuContent>
+                        <WorkOrderMenuContent WorkOrder="@ToSummary(workOrder)" Changed="@ReloadAsync" />
+                    </MenuContent>
                 </RowActionMenu>
             </RowActions>
         </DataListCard>
@@ -217,25 +207,6 @@
         }
     }
 
-    private async Task OpenAsync(WorkOrderListItem workOrder, bool viewOnly)
-    {
-        var result = await DialogService.OpenAsync<WorkOrderEditorDialog>(
-            viewOnly ? "Work order" : "Edit work order",
-            new Dictionary<string, object?>
-            {
-                [nameof(WorkOrderEditorDialog.WorkOrderId)] = workOrder.Id,
-                [nameof(WorkOrderEditorDialog.Type)] = workOrder.Type,
-                [nameof(WorkOrderEditorDialog.ViewOnly)] = viewOnly
-            },
-            new DialogOptions { Width = "760px" });
-
-        if (IsWorkOrderDialogSuccess(result))
-        {
-            Notifications.Notify(NotificationSeverity.Success, WorkOrderDialogSuccessTitle(result));
-            await ReloadAsync();
-        }
-    }
-
     private async Task OpenAdHocAsync()
     {
         var result = await DialogService.OpenAsync<AdHocWorkOrderDialog>(
@@ -251,97 +222,9 @@
         }
     }
 
-    private async Task ApproveAsync(WorkOrderListItem workOrder)
-    {
-        try
-        {
-            await Operations.ApproveWorkOrderAsync(workOrder.Id, workOrder.RowVersion);
-            Notifications.Notify(NotificationSeverity.Success, "Work order approved");
-            await ReloadAsync();
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(NotificationSeverity.Error, "Approval failed", ex.ToDisplayMessage("Could not approve the work order."));
-        }
-    }
-
-    private async Task ReturnAsync(WorkOrderListItem workOrder)
-    {
-        var reason = await DialogService.OpenAsync<WorkOrderReturnDialog>(
-            "Return work order",
-            null,
-            new DialogOptions { Width = "520px" });
-        if (reason is not string value || string.IsNullOrWhiteSpace(value))
-            return;
-
-        try
-        {
-            await Operations.ReturnWorkOrderAsync(workOrder.Id, new ReturnWorkOrderRequestModel(value), workOrder.RowVersion);
-            Notifications.Notify(NotificationSeverity.Success, "Work order returned");
-            await ReloadAsync();
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(NotificationSeverity.Error, "Return failed", ex.ToDisplayMessage("Could not return the work order."));
-        }
-    }
-
-    private async Task DeleteAsync(WorkOrderListItem workOrder)
-    {
-        var confirmed = await DialogService.Confirm("Delete this work order?", "Delete work order",
-            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
-        if (confirmed is not true)
-            return;
-
-        try
-        {
-            await Operations.DeleteWorkOrderAsync(workOrder.Id, workOrder.RowVersion);
-            Notifications.Notify(NotificationSeverity.Success, "Work order deleted");
-            await ReloadAsync();
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(NotificationSeverity.Error, "Delete failed", ex.ToDisplayMessage("Could not delete the work order."));
-        }
-    }
-
-    private async Task MergeAsync(WorkOrderListItem workOrder)
-    {
-        var result = await DialogService.OpenAsync<WorkOrderMergeDialog>(
-            "Merge work orders",
-            new Dictionary<string, object?> { [nameof(WorkOrderMergeDialog.FlightId)] = workOrder.FlightId },
-            new DialogOptions { Width = "980px" });
-
-        if (result is true)
-        {
-            Notifications.Notify(NotificationSeverity.Success, "Work orders merged");
-            await ReloadAsync();
-        }
-    }
-
-    private bool CanEdit(WorkOrderListItem workOrder) =>
-        workOrder.Status is "Submitted" or "Returned"
-        && CanManage(workOrder);
-    private static bool CanApprove(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
-    private static bool CanReturn(WorkOrderListItem workOrder) => workOrder.Status is "Approved";
-    private static bool CanMerge(WorkOrderListItem workOrder) => workOrder.Status is "Submitted" or "Returned";
-    private bool CanDelete(WorkOrderListItem workOrder) =>
-        workOrder.Status is "Submitted" or "Returned"
-        && (IsOwner(workOrder) || Auth.HasPermission(OperationsPermissions.WorkOrdersDeleteOthers));
-
-    private bool CanManage(WorkOrderListItem workOrder) =>
-        IsOwner(workOrder) || Auth.HasPermission(OperationsPermissions.WorkOrdersManageOthers);
-
-    private bool IsOwner(WorkOrderListItem workOrder) => Auth.User?.Id == workOrder.OwnerUserId;
-
-    private static bool IsWorkOrderDialogSuccess(object? result) => result is true or "approved" or "returned";
-
-    private static string WorkOrderDialogSuccessTitle(object? result) => result switch
-    {
-        "approved" => "Work order approved",
-        "returned" => "Work order returned",
-        _ => "Work order updated"
-    };
+    private static WorkOrderSummaryModel ToSummary(WorkOrderListItem workOrder) => new(
+        workOrder.Id, workOrder.FlightId, workOrder.Type, workOrder.Status, workOrder.ApprovalNumber,
+        workOrder.OwnerUserId, workOrder.OwnerName, workOrder.RowVersion);
 
     private static string DisplayNumber(WorkOrderListItem workOrder) =>
         string.IsNullOrWhiteSpace(workOrder.ApprovalNumber) ? ShortId(workOrder.Id) : workOrder.ApprovalNumber;

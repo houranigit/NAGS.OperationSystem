@@ -38,12 +38,15 @@ public sealed record CreateStationCommand(
     string Name,
     string? City,
     Guid CountryId,
-    IReadOnlyList<NewStationStaffInput> Staff) : ICommand<Guid>;
+    IReadOnlyList<NewStationStaffInput> Staff,
+    string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateStationCommandValidator : AbstractValidator<CreateStationCommand>
 {
     public CreateStationCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.IataCode).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
         RuleFor(x => x.City).MaximumLength(100);
@@ -75,6 +78,9 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
             return result.Error;
 
         var station = result.Value;
+        var legacyIdResult = station.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
 
         var conflict = await StationGuards.EnsureCodesAvailableAsync(db, station.IataCode, station.IcaoCode, null, cancellationToken);
         if (conflict.IsFailure)
@@ -178,12 +184,14 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
 
 // --- Update ---------------------------------------------------------------
 
-public sealed record UpdateStationCommand(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, byte[] RowVersion) : ICommand;
+public sealed record UpdateStationCommand(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, byte[] RowVersion, string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateStationCommandValidator : AbstractValidator<UpdateStationCommand>
 {
     public UpdateStationCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.IataCode).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
@@ -217,6 +225,14 @@ public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMaster
         var conflict = await StationGuards.EnsureCodesAvailableAsync(db, station.IataCode, station.IcaoCode, station.Id, cancellationToken);
         if (conflict.IsFailure)
             return conflict.Error;
+
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = station.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
 
         db.SetOriginalRowVersion(station, request.RowVersion);
 

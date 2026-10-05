@@ -10,12 +10,14 @@ namespace MasterData.Application.Features.ManpowerTypes;
 
 // --- Create ---------------------------------------------------------------
 
-public sealed record CreateManpowerTypeCommand(string Name, string? Description) : ICommand<Guid>;
+public sealed record CreateManpowerTypeCommand(string Name, string? Description, string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateManpowerTypeCommandValidator : AbstractValidator<CreateManpowerTypeCommand>
 {
     public CreateManpowerTypeCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
     }
@@ -31,6 +33,9 @@ public sealed class CreateManpowerTypeCommandHandler(IMasterDataDbContext db, Ti
             return result.Error;
 
         var manpowerType = result.Value;
+        var legacyIdResult = manpowerType.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
         var nameExists = await db.ManpowerTypes.AnyAsync(m => m.Name == manpowerType.Name, cancellationToken);
         if (nameExists)
             return Error.Conflict("A manpower type with this name already exists.", "MasterData.ManpowerType.DuplicateName");
@@ -43,12 +48,14 @@ public sealed class CreateManpowerTypeCommandHandler(IMasterDataDbContext db, Ti
 
 // --- Update ---------------------------------------------------------------
 
-public sealed record UpdateManpowerTypeCommand(Guid Id, string Name, string? Description, byte[] RowVersion) : ICommand;
+public sealed record UpdateManpowerTypeCommand(Guid Id, string Name, string? Description, byte[] RowVersion, string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateManpowerTypeCommandValidator : AbstractValidator<UpdateManpowerTypeCommand>
 {
     public UpdateManpowerTypeCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
@@ -73,6 +80,14 @@ public sealed class UpdateManpowerTypeCommandHandler(IMasterDataDbContext db, Ti
         var result = manpowerType.Update(request.Name, request.Description, timeProvider.GetUtcNow());
         if (result.IsFailure)
             return result.Error;
+
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = manpowerType.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
 
         db.SetOriginalRowVersion(manpowerType, request.RowVersion);
 

@@ -71,7 +71,7 @@ public sealed class GetOperationTypeByIdQueryHandler(IMasterDataDbContext db)
 
         return new OperationTypeDto(
             operationType.Id, operationType.Name, operationType.Description, operationType.IsActive, OperationTypeSystemRecords.IsSystem(operationType.Id),
-            operationType.CreatedAtUtc, operationType.UpdatedAtUtc, Convert.ToBase64String(operationType.RowVersion));
+            operationType.CreatedAtUtc, operationType.UpdatedAtUtc, Convert.ToBase64String(operationType.RowVersion), operationType.LegacySystemId);
     }
 }
 

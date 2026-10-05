@@ -99,7 +99,7 @@
 
                 countries = await countriesTask;
                 var detail = await detailTask;
-                model = new StationModel { IataCode = detail.IataCode, IcaoCode = detail.IcaoCode, Name = detail.Name, City = detail.City, CountryId = detail.CountryId };
+                model = new StationModel { IataCode = detail.IataCode, IcaoCode = detail.IcaoCode, Name = detail.Name, City = detail.City, CountryId = detail.CountryId, LegacySystemId = detail.LegacySystemId };
                 rowVersion = detail.RowVersion;
             }
             else
@@ -230,6 +230,12 @@
                 <RadzenIcon Icon="business" class="stf-field-icon" />
                 <RadzenTextBox @bind-Value="model.Name" class="stf-control stf-control-icon" MaxLength="150" Placeholder="e.g. John F. Kennedy International Airport" />
             </div>
+        </div>
+
+        <div class="stf-field-block">
+            <label class="stf-label">Legacy system ID</label>
+            <RadzenTextBox @bind-Value="model.LegacySystemId" Name="legacySystemId" class="stf-control" MaxLength="200" Placeholder="e.g. XYZ123" />
+            <small class="os-muted">Optional ID from your old system, used in the flight Excel export.</small>
         </div>
 
         <div class="stf-grid-2">
@@ -364,6 +370,10 @@
                     <span>@UiStrings.Stations.City</span>
                     <strong>@Display(model.City)</strong>
                 </div>
+                <div>
+                    <span>Legacy system ID</span>
+                    <strong>@Display(model.LegacySystemId)</strong>
+                </div>
             </div>
         </div>
 
@@ -489,10 +499,11 @@
             var icao = string.IsNullOrWhiteSpace(model.IcaoCode) ? null : model.IcaoCode.Trim().ToUpperInvariant();
             var name = model.Name.Trim();
             var city = Trim(model.City);
+            var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             if (StationId is { } id)
             {
-                await MasterData.UpdateStationAsync(id, new UpdateStationRequest(iata, icao, name, city, model.CountryId), rowVersion ?? string.Empty);
+                await MasterData.UpdateStationAsync(id, new UpdateStationRequest(iata, icao, name, city, model.CountryId, legacySystemId ?? string.Empty), rowVersion ?? string.Empty);
             }
             else
             {
@@ -501,7 +512,7 @@
                         r.FullName.Trim(), r.EmployeeId.Trim(), r.Email.Trim(), r.ManpowerTypeId, null, null, null,
                         r.GrantPortal ? r.PortalRoleId : null)).ToList()
                     : [];
-                await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId, staffRequests));
+                await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId, staffRequests, legacySystemId));
             }
 
             DialogService.Close(true);
@@ -519,6 +530,7 @@
 
     private sealed class StationModel
     {
+        public string? LegacySystemId { get; set; }
         public string IataCode { get; set; } = string.Empty;
         public string? IcaoCode { get; set; }
         public string Name { get; set; } = string.Empty;

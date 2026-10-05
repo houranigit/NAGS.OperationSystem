@@ -13,12 +13,15 @@ namespace MasterData.Application.Features.GeneralSupports;
 public sealed record CreateGeneralSupportCommand(
     string Name,
     string? Description,
-    ResourceCalculationType? CalculationType = null) : ICommand<Guid>;
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateGeneralSupportCommandValidator : AbstractValidator<CreateGeneralSupportCommand>
 {
     public CreateGeneralSupportCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Description).MaximumLength(500);
         RuleFor(x => x.CalculationType)
@@ -41,6 +44,9 @@ public sealed class CreateGeneralSupportCommandHandler(IMasterDataDbContext db, 
             return result.Error;
 
         var support = result.Value;
+        var legacyIdResult = support.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
         if (await db.GeneralSupports.AnyAsync(g => g.Name == support.Name, cancellationToken))
             return Error.Conflict("A general support item with this name already exists.", "MasterData.GeneralSupport.DuplicateName");
 
@@ -55,12 +61,15 @@ public sealed record UpdateGeneralSupportCommand(
     string Name,
     string? Description,
     byte[] RowVersion,
-    ResourceCalculationType? CalculationType = null) : ICommand;
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateGeneralSupportCommandValidator : AbstractValidator<UpdateGeneralSupportCommand>
 {
     public UpdateGeneralSupportCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Description).MaximumLength(500);
@@ -79,8 +88,11 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
         var support = await db.GeneralSupports.FirstOrDefaultAsync(g => g.Id == request.Id, cancellationToken);
         if (support is null)
             return Error.NotFound("General support item not found.", "MasterData.GeneralSupport.NotFound");
-        if (support.Id == WellKnownMasterDataIds.UnknownGeneralSupport)
-            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.GeneralSupport.SystemRecord");
+        if (support.Id == WellKnownMasterDataIds.UnknownGeneralSupport
+            && (request.LegacySystemId is null || !(request.Name.Trim() == support.Name
+                && NormalizeOptional(request.Description) == support.Description
+                && (request.CalculationType ?? support.CalculationType) == support.CalculationType)))
+            return Error.Validation("Only the legacy system ID can be changed for system-seeded records.", "MasterData.GeneralSupport.SystemRecord");
 
         var trimmedName = request.Name.Trim();
         if (await db.GeneralSupports.AnyAsync(g => g.Name == trimmedName && g.Id != request.Id, cancellationToken))
@@ -93,6 +105,14 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
             request.CalculationType);
         if (result.IsFailure)
             return result.Error;
+
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = support.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
 
         db.SetOriginalRowVersion(support, request.RowVersion);
 
@@ -107,6 +127,9 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
 
         return Result.Success();
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 public sealed record ActivateGeneralSupportCommand(Guid Id, byte[] RowVersion) : ICommand;

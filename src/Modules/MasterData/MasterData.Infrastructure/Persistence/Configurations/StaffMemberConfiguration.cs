@@ -46,6 +46,7 @@ public sealed class StaffMemberConfiguration : IEntityTypeConfiguration<StaffMem
         builder.Property(s => s.UpdatedAtUtc);
 
         builder.Property(s => s.RowVersion).IsRowVersion();
+        builder.Property(s => s.LegacySystemId).HasMaxLength(200);
 
         builder.HasMany(s => s.Licenses)
             .WithOne()

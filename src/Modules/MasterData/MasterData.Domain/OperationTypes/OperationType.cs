@@ -1,10 +1,11 @@
+using MasterData.Domain.LegacySystem;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Results;
 
 namespace MasterData.Domain.OperationTypes;
 
 /// <summary>Operation type catalog item with active/inactive lifecycle.</summary>
-public sealed class OperationType : AggregateRoot<Guid>
+public sealed class OperationType : AggregateRoot<Guid>, ILegacySystemIdentified
 {
     private OperationType() { }
 
@@ -14,6 +15,21 @@ public sealed class OperationType : AggregateRoot<Guid>
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
+    public string? LegacySystemId { get; private set; }
+
+    public Result SetLegacySystemId(string? value, DateTimeOffset now)
+    {
+        var normalized = LegacySystemIdRules.Normalize(value);
+        if (normalized.IsFailure)
+            return normalized.Error;
+
+        if (LegacySystemId == normalized.Value)
+            return Result.Success();
+
+        LegacySystemId = normalized.Value;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
 
     public static Result<OperationType> Create(string? name, string? description, DateTimeOffset now, Guid? id = null)
     {

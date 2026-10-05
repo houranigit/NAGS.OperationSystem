@@ -49,6 +49,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         builder.Property(c => c.UpdatedAtUtc);
 
         builder.Property(c => c.RowVersion).IsRowVersion();
+        builder.Property(c => c.LegacySystemId).HasMaxLength(200);
 
         builder.HasMany(c => c.Contacts)
             .WithOne()

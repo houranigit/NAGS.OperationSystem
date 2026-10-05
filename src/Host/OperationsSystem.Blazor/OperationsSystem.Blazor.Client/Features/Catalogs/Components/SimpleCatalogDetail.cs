@@ -11,4 +11,5 @@ internal sealed record SimpleCatalogDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    ResourceCalculationType? CalculationType);
+    ResourceCalculationType? CalculationType,
+    string? LegacySystemId = null);

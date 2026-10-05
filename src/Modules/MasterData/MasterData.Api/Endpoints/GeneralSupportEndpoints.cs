@@ -39,7 +39,7 @@ internal static class GeneralSupportEndpoints
         supports.MapPost("/", async (CreateGeneralSupportRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new CreateGeneralSupportCommand(
-                request.Name, request.Description, request.CalculationType), ct);
+                request.Name, request.Description, request.CalculationType, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/general-supports/{id}");
         }).RequirePermission(MasterDataPermissions.GeneralSupports.Create);
 
@@ -49,7 +49,7 @@ internal static class GeneralSupportEndpoints
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
             var result = await sender.Send(new UpdateGeneralSupportCommand(
-                id, request.Name, request.Description, rowVersion, request.CalculationType), ct);
+                id, request.Name, request.Description, rowVersion, request.CalculationType, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.GeneralSupports.Update);
 

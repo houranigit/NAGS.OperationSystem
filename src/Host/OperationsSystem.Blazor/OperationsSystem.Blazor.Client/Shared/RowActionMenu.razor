@@ -33,6 +33,9 @@
     /// <summary><see cref="RowAction"/> entries describing the row's available actions.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
+    /// <summary>Additional menu content, rendered only while the dropdown is open.</summary>
+    [Parameter] public RenderFragment? MenuContent { get; set; }
+
     /// <summary>Accessible label for the trigger button (defaults to a localized "Actions").</summary>
     [Parameter] public string? Label { get; set; }
 
@@ -74,11 +77,11 @@
             return;
 
         var actions = VisibleActions();
-        if (actions.Count == 0)
+        if (actions.Count == 0 && MenuContent is null)
             return;
 
         ContextMenu.Open(args, _ =>
-            @<div class="os-row-actions-menu" role="menu" @onclick:stopPropagation="true">
+            @<RowActionPanel>
                 @foreach (var action in actions)
                 {
                     if (action.Separator)
@@ -94,7 +97,8 @@
                         </button>
                     }
                 }
-            </div>);
+                @MenuContent
+            </RowActionPanel>);
     }
 
     private async Task RunAsync(RowAction action)

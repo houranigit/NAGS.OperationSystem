@@ -67,7 +67,7 @@ public sealed class GetGeneralSupportByIdQueryHandler(IMasterDataDbContext db)
         return new GeneralSupportDto(
             support.Id, support.Name, support.Description, support.IsActive,
             support.CreatedAtUtc, support.UpdatedAtUtc, Convert.ToBase64String(support.RowVersion),
-            support.CalculationType);
+            support.CalculationType, support.LegacySystemId);
     }
 }
 

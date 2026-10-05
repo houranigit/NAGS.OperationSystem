@@ -38,7 +38,7 @@ internal static class AircraftTypeEndpoints
 
         aircraftTypes.MapPost("/", async (CreateAircraftTypeRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new CreateAircraftTypeCommand(request.Manufacturer, request.Model, request.Notes), ct);
+            var result = await sender.Send(new CreateAircraftTypeCommand(request.Manufacturer, request.Model, request.Notes, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/aircraft-types/{id}");
         }).RequirePermission(MasterDataPermissions.AircraftTypes.Create);
 
@@ -47,7 +47,7 @@ internal static class AircraftTypeEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new UpdateAircraftTypeCommand(id, request.Manufacturer, request.Model, request.Notes, rowVersion), ct);
+            var result = await sender.Send(new UpdateAircraftTypeCommand(id, request.Manufacturer, request.Model, request.Notes, rowVersion, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.AircraftTypes.Update);
 

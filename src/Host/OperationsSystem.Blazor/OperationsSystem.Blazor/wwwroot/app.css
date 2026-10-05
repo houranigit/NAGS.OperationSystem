@@ -401,12 +401,15 @@ a {
 .os-row-actions-menu {
     display: grid;
     gap: 0.1rem;
-    min-width: 12rem;
+    min-width: min(12rem, calc(100dvw - 1rem));
+    max-width: calc(100dvw - 1rem);
     padding: var(--os-space-1);
     background: var(--os-color-surface);
     border: 1px solid var(--os-color-border);
     border-radius: var(--os-radius-md);
     box-shadow: var(--os-shadow-lg);
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
 }
 
 .os-row-actions-item {
@@ -435,6 +438,46 @@ a {
 
 .os-row-actions-item:hover {
     background: var(--os-color-surface-hover);
+}
+
+.os-row-actions-item:focus-visible {
+    outline: 2px solid var(--os-color-primary);
+    outline-offset: -2px;
+}
+
+.os-row-actions-submenu > summary {
+    list-style: none;
+}
+
+.os-row-actions-submenu > summary::-webkit-details-marker {
+    display: none;
+}
+
+.os-row-actions-submenu > summary > span {
+    flex: 1;
+    white-space: normal;
+}
+
+.os-row-actions-submenu-chevron {
+    margin-inline-start: auto;
+    transition: transform var(--os-transition);
+}
+
+.os-row-actions-submenu[open] > summary .os-row-actions-submenu-chevron {
+    transform: rotate(90deg);
+}
+
+.os-row-actions-submenu-panel {
+    margin-inline-start: var(--os-space-3);
+    padding-inline-start: var(--os-space-1);
+    border-inline-start: 1px solid var(--os-color-border);
+}
+
+.os-row-actions-note {
+    max-width: 21rem;
+    padding: 0.5rem var(--os-space-3);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
 }
 
 .os-row-actions-item--danger {

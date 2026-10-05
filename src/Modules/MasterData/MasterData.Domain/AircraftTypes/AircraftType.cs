@@ -1,10 +1,11 @@
+using MasterData.Domain.LegacySystem;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Results;
 
 namespace MasterData.Domain.AircraftTypes;
 
 /// <summary>Aircraft type catalog item identified by manufacturer and model.</summary>
-public sealed class AircraftType : AggregateRoot<Guid>
+public sealed class AircraftType : AggregateRoot<Guid>, ILegacySystemIdentified
 {
     private AircraftType() { }
 
@@ -15,6 +16,21 @@ public sealed class AircraftType : AggregateRoot<Guid>
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
+    public string? LegacySystemId { get; private set; }
+
+    public Result SetLegacySystemId(string? value, DateTimeOffset now)
+    {
+        var normalized = LegacySystemIdRules.Normalize(value);
+        if (normalized.IsFailure)
+            return normalized.Error;
+
+        if (LegacySystemId == normalized.Value)
+            return Result.Success();
+
+        LegacySystemId = normalized.Value;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
 
     public static Result<AircraftType> Create(
         AircraftManufacturer manufacturer,

@@ -67,7 +67,7 @@ internal static class ServiceEndpoints
 
         services.MapPost("/", async (CreateServiceRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new CreateServiceCommand(request.Name, request.Description), ct);
+            var result = await sender.Send(new CreateServiceCommand(request.Name, request.Description, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/services/{id}");
         }).RequirePermission(MasterDataPermissions.Services.Create);
 
@@ -76,7 +76,7 @@ internal static class ServiceEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new UpdateServiceCommand(id, request.Name, request.Description, rowVersion), ct);
+            var result = await sender.Send(new UpdateServiceCommand(id, request.Name, request.Description, rowVersion, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.Services.Update);
 

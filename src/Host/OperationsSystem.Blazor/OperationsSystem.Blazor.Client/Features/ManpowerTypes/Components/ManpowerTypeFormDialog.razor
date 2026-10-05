@@ -8,6 +8,12 @@
         <div class="mtf-section-line"><RadzenIcon Icon="engineering" /><span>@UiStrings.Common.Details</span></div>
         <div class="mtf-field-block"><label class="mtf-label">@UiStrings.ManpowerTypes.Name <span>*</span></label><div class="mtf-input-wrap"><RadzenIcon Icon="engineering" class="mtf-field-icon" /><RadzenTextBox @bind-Value="model.Name" Name="name" class="mtf-control mtf-control-icon" MaxLength="100" Placeholder="e.g. Operations Officer" /></div></div>
         <div class="mtf-field-block"><label class="mtf-label">@UiStrings.ManpowerTypes.ManpowerDescription</label><RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="mtf-control" MaxLength="500" Placeholder="Describe the responsibilities for this manpower type" /></div>
+        <div class="mtf-field-block">
+            <label class="mtf-label">Legacy system ID</label>
+            <RadzenTextBox @bind-Value="model.LegacySystemId" Name="legacySystemId" class="mtf-control" MaxLength="200" Placeholder="e.g. XYZ123" />
+            <small class="os-muted">Optional ID from your old system, used in the flight Excel export.</small>
+        </div>
+
         <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="@UiStrings.ManpowerTypes.Name">
             <p>Use a clear role name that can be recognized in assignments and schedules.</p>
         </DismissibleDialogMessage>
@@ -43,7 +49,7 @@
             try
             {
                 var detail = await MasterData.GetManpowerTypeAsync(id);
-                model = new ManpowerTypeModel { Name = detail.Name, Description = detail.Description };
+                model = new ManpowerTypeModel { Name = detail.Name, Description = detail.Description, LegacySystemId = detail.LegacySystemId };
                 rowVersion = detail.RowVersion;
             }
             catch (ApiException ex)
@@ -69,11 +75,12 @@
         {
             var name = model.Name.Trim();
             var description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+            var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             if (ManpowerTypeId is { } id)
-                await MasterData.UpdateManpowerTypeAsync(id, new UpdateManpowerTypeRequest(name, description), rowVersion ?? string.Empty);
+                await MasterData.UpdateManpowerTypeAsync(id, new UpdateManpowerTypeRequest(name, description, legacySystemId ?? string.Empty), rowVersion ?? string.Empty);
             else
-                await MasterData.CreateManpowerTypeAsync(new CreateManpowerTypeRequest(name, description));
+                await MasterData.CreateManpowerTypeAsync(new CreateManpowerTypeRequest(name, description, legacySystemId));
 
             DialogService.Close(true);
         }
@@ -89,6 +96,7 @@
 
     private sealed class ManpowerTypeModel
     {
+        public string? LegacySystemId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
     }

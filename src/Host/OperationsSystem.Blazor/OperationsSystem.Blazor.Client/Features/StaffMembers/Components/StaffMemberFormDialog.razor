@@ -106,6 +106,12 @@
             <label class="sf-label">@UiStrings.StaffMembers.Email <span class="sf-required">*</span></label>
             <div class="sf-input-wrap"><RadzenIcon Icon="mail" class="sf-field-icon" /><RadzenTextBox @bind-Value="model.Email" Change="@((string? value) => model.Email = value)" class="sf-control sf-control-icon" MaxLength="256" Placeholder="jane.doe@example.com" /></div>
         </div>
+        <div class="sf-field-block">
+            <label class="sf-label">Legacy system ID</label>
+            <RadzenTextBox @bind-Value="model.LegacySystemId" Name="legacySystemId" class="sf-control" MaxLength="200" Placeholder="e.g. XYZ123" />
+            <small class="os-muted">Optional ID from your old system, used in the flight Excel export.</small>
+        </div>
+
         <div class="sf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>@UiStrings.StaffMembers.Assignment</span></div>
         <div class="sf-grid-2">
             <div class="sf-field-block">
@@ -182,7 +188,7 @@
     private RenderFragment ReviewStep() => @<section class="sf-step-content">
         <div class="sf-review-intro"><h3>@UiStrings.StaffMembers.ReviewTitle</h3><p>@UiStrings.StaffMembers.ReviewIntro</p></div>
         <div class="sf-review-card"><div class="sf-review-head"><h4>@UiStrings.StaffMembers.BasicInformation</h4><button type="button" @onclick="@(() => step = 0)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
-            <dl class="sf-review-grid"><div><dt>@UiStrings.StaffMembers.EmployeeId</dt><dd>@model.EmployeeId</dd></div><div><dt>@UiStrings.StaffMembers.FullName</dt><dd>@model.FullName</dd></div><div><dt>@UiStrings.StaffMembers.Email</dt><dd>@model.Email</dd></div><div><dt>@UiStrings.StaffMembers.Station</dt><dd>@StationName</dd></div><div><dt>@UiStrings.StaffMembers.ManpowerType</dt><dd>@ManpowerTypeName</dd></div></dl>
+            <dl class="sf-review-grid"><div><dt>@UiStrings.StaffMembers.EmployeeId</dt><dd>@model.EmployeeId</dd></div><div><dt>@UiStrings.StaffMembers.FullName</dt><dd>@model.FullName</dd></div><div><dt>Legacy system ID</dt><dd>@(string.IsNullOrWhiteSpace(model.LegacySystemId) ? UiStrings.Common.None : model.LegacySystemId)</dd></div><div><dt>@UiStrings.StaffMembers.Email</dt><dd>@model.Email</dd></div><div><dt>@UiStrings.StaffMembers.Station</dt><dd>@StationName</dd></div><div><dt>@UiStrings.StaffMembers.ManpowerType</dt><dd>@ManpowerTypeName</dd></div></dl>
         </div>
         <div class="sf-review-card"><div class="sf-review-head"><h4>@UiStrings.StaffMembers.EmploymentDetails</h4><button type="button" @onclick="@(() => step = 1)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
             <dl class="sf-review-grid"><div><dt>@UiStrings.StaffMembers.StartDate</dt><dd>@DateDisplay(model.StartDate)</dd></div><div><dt>@UiStrings.StaffMembers.EndDate</dt><dd>@DateDisplay(model.EndDate)</dd></div><div><dt>@UiStrings.StaffMembers.WorkingSchedule</dt><dd>@WorkingDaysDisplay</dd></div><div><dt>@UiStrings.StaffMembers.Licenses</dt><dd>@licenseRows.Count</dd></div><div><dt>@UiStrings.PortalAccess.GrantTitle</dt><dd>@(grantPortal ? UiStrings.Common.Yes : UiStrings.Common.No)</dd></div></dl>
@@ -249,6 +255,7 @@
                 model = new StaffModel
                 {
                     FullName = detail.FullName,
+                    LegacySystemId = detail.LegacySystemId,
                     EmployeeId = detail.EmployeeId,
                     Email = detail.Email,
                     StationId = detail.StationId,
@@ -304,11 +311,12 @@
             var name = model.FullName!.Trim();
             var employeeId = model.EmployeeId!.Trim();
             var email = model.Email!.Trim();
+            var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             if (StaffMemberId is { } id)
             {
                 await MasterData.UpdateStaffMemberAsync(id,
-                    new UpdateStaffMemberRequest(name, employeeId, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests),
+                    new UpdateStaffMemberRequest(name, employeeId, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests, legacySystemId ?? string.Empty),
                     rowVersion ?? string.Empty);
             }
             else
@@ -316,7 +324,7 @@
                 await MasterData.CreateStaffMemberAsync(
                     new CreateStaffMemberRequest(
                         name, employeeId, email, model.StationId, model.ManpowerTypeId, contract, days, licenseRequests,
-                        grantPortal ? portalRoleId : null));
+                        grantPortal ? portalRoleId : null, legacySystemId));
             }
 
             DialogService.Close(true);
@@ -411,6 +419,7 @@
 
     private sealed class StaffModel
     {
+        public string? LegacySystemId { get; set; }
         public string? FullName { get; set; }
         public string? EmployeeId { get; set; }
         public string? Email { get; set; }

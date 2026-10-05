@@ -66,7 +66,7 @@ public sealed class GetAircraftTypeByIdQueryHandler(IMasterDataDbContext db)
 
         return new AircraftTypeDto(
             aircraftType.Id, aircraftType.Manufacturer, aircraftType.Model, aircraftType.Notes, aircraftType.IsActive,
-            aircraftType.CreatedAtUtc, aircraftType.UpdatedAtUtc, Convert.ToBase64String(aircraftType.RowVersion));
+            aircraftType.CreatedAtUtc, aircraftType.UpdatedAtUtc, Convert.ToBase64String(aircraftType.RowVersion), aircraftType.LegacySystemId);
     }
 }
 

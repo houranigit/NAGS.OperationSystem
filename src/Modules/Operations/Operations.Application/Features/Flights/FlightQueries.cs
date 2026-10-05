@@ -161,6 +161,9 @@ internal static class FlightExportProjection
                 f.Id,
                 FlightNumber = f.FlightNumber.Value,
                 f.OriginalFlightNumber,
+                CustomerId = f.Customer.CustomerId,
+                StationId = f.Station.StationId,
+                OperationTypeId = f.OperationType.OperationTypeId,
                 CustomerIataCode = f.Customer.IataCode,
                 CustomerName = f.Customer.Name,
                 StationIata = f.Station.IataCode,
@@ -172,7 +175,9 @@ internal static class FlightExportProjection
                 LifecycleStatus = f.Status,
                 IsPerLanding = f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
                 PlannedServiceNames = f.PlannedServices.Select(p => p.Service.Name).ToList(),
-                AssignedEmployeeNames = f.AssignedEmployees.Select(e => e.Employee.FullName).ToList()
+                AssignedEmployeeNames = f.AssignedEmployees.Select(e => e.Employee.FullName).ToList(),
+                PlannedServiceIds = f.PlannedServices.Select(p => p.Service.ServiceId).ToList(),
+                AssignedStaffMemberIds = f.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToList()
             })
             .ToListAsync(cancellationToken);
 
@@ -195,6 +200,7 @@ internal static class FlightExportProjection
                 ActualDepartureUtc = w.Actuals == null ? (DateTimeOffset?)null : w.Actuals.Atd,
                 AircraftManufacturer = w.AircraftType == null ? null : w.AircraftType.Manufacturer,
                 AircraftModel = w.AircraftType == null ? null : w.AircraftType.Model,
+                AircraftTypeId = w.AircraftType == null ? (Guid?)null : w.AircraftType.AircraftTypeId,
                 w.AircraftTailNumber,
                 ServiceNames = w.ServiceLines.Select(line => line.Service.Name).ToList(),
                 w.Remarks
@@ -297,6 +303,9 @@ internal static class FlightExportProjection
                     NormalizeNames(servicePerformersByLine[(row.WorkOrderId, row.Id)]),
                     row.Description,
                     ResolveReturnToRamp(row.ReturnToRampId, returnToRampContextsById))
+                {
+                    ServiceId = row.ServiceId
+                }
             })
             .ToLookup(row => row.WorkOrderId, row => row.Detail);
 
@@ -341,6 +350,7 @@ internal static class FlightExportProjection
                     selectedWorkOrder.Remarks)
                 {
                     WorkOrderId = selectedWorkOrder.Id,
+                    AircraftTypeId = selectedWorkOrder.AircraftTypeId,
                     WorkOrderStatus = selectedWorkOrder.Status.ToString(),
                     TaskNames = BuildTaskNames(taskDetailsByWorkOrder[selectedWorkOrder.Id]),
                     ServiceDetails = serviceDetailsByWorkOrder[selectedWorkOrder.Id].ToList(),
@@ -362,7 +372,14 @@ internal static class FlightExportProjection
                 f.IsPerLanding,
                 f.PlannedServiceNames,
                 f.AssignedEmployeeNames,
-                workOrder);
+                workOrder)
+            {
+                CustomerId = f.CustomerId,
+                StationId = f.StationId,
+                OperationTypeId = f.OperationTypeId,
+                PlannedServiceIds = f.PlannedServiceIds,
+                AssignedStaffMemberIds = f.AssignedStaffMemberIds
+            };
         }).ToList();
 
         return items;
@@ -382,7 +399,7 @@ internal static class FlightExportProjection
             (ResourceCalculationType?)tool.Tool.CalculationType,
             tool.Usage.Quantity,
             tool.Usage.FromUtc,
-            tool.Usage.ToUtc);
+            tool.Usage.ToUtc) { ResourceId = (Guid?)tool.Tool.ToolId };
 
     internal static IQueryable<FlightExportResourceNameRow> MaterialRowsQuery(
         IOperationsDbContext db,
@@ -398,7 +415,7 @@ internal static class FlightExportProjection
             (ResourceCalculationType?)material.Material.CalculationType,
             material.Usage.Quantity,
             material.Usage.FromUtc,
-            material.Usage.ToUtc);
+            material.Usage.ToUtc) { ResourceId = (Guid?)material.Material.MaterialId };
 
     internal static IQueryable<FlightExportResourceNameRow> GeneralSupportRowsQuery(
         IOperationsDbContext db,
@@ -414,7 +431,7 @@ internal static class FlightExportProjection
             (ResourceCalculationType?)support.GeneralSupport.CalculationType,
             support.Usage.Quantity,
             support.Usage.FromUtc,
-            support.Usage.ToUtc);
+            support.Usage.ToUtc) { ResourceId = (Guid?)support.GeneralSupport.GeneralSupportId };
 
     internal static IQueryable<FlightExportServiceDetailRow> ServiceDetailRowsQuery(
         IOperationsDbContext db,
@@ -428,7 +445,7 @@ internal static class FlightExportProjection
                 line.Service.Name,
                 line.Window.From,
                 line.Window.To,
-                line.Description));
+                line.Description) { ServiceId = line.Service.ServiceId });
 
     internal static IQueryable<FlightExportActivityPersonRow> ServicePerformerRowsQuery(
         IOperationsDbContext db,
@@ -514,7 +531,7 @@ internal static class FlightExportProjection
                 resource.CalculationType.GetValueOrDefault(),
                 resource.Quantity,
                 resource.FromUtc,
-                resource.ToUtc))
+                resource.ToUtc) { ResourceId = resource.ResourceId.GetValueOrDefault() })
             .OrderBy(resource => resource.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(resource => resource.Name, StringComparer.Ordinal)
             .ThenBy(resource => resource.CalculationType)
@@ -536,7 +553,10 @@ internal sealed record FlightExportResourceNameRow(
     ResourceCalculationType? CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc)
+{
+    public Guid? ResourceId { get; init; }
+}
 
 internal sealed record FlightExportServiceDetailRow(
     Guid WorkOrderId,
@@ -545,7 +565,10 @@ internal sealed record FlightExportServiceDetailRow(
     string ServiceName,
     DateTimeOffset FromUtc,
     DateTimeOffset ToUtc,
-    string? Description);
+    string? Description)
+{
+    public Guid ServiceId { get; init; }
+}
 
 internal sealed record FlightExportTaskDetailRow(
     Guid WorkOrderId,

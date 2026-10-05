@@ -22,6 +22,12 @@
             <RadzenTextArea @bind-Value="model.Notes" Name="notes" Rows="4" class="mtf-control" MaxLength="500" />
         </div>
 
+        <div class="mtf-field-block">
+            <label class="mtf-label">Legacy system ID</label>
+            <RadzenTextBox @bind-Value="model.LegacySystemId" Name="legacySystemId" class="mtf-control" MaxLength="200" Placeholder="e.g. XYZ123" />
+            <small class="os-muted">Optional ID from your old system, used in the flight Excel export.</small>
+        </div>
+
         @if (!string.IsNullOrWhiteSpace(errorMessage))
         {
             <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Please fix the following errors before continuing"
@@ -59,7 +65,8 @@
             {
                 Manufacturer = detail.Manufacturer,
                 Model = detail.Model,
-                Notes = detail.Notes
+                Notes = detail.Notes,
+                LegacySystemId = detail.LegacySystemId
             };
             rowVersion = detail.RowVersion;
         }
@@ -83,11 +90,12 @@
         {
             var modelName = model.Model.Trim();
             var notes = string.IsNullOrWhiteSpace(model.Notes) ? null : model.Notes.Trim();
+            var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             if (AircraftTypeId is { } id)
-                await MasterData.UpdateAircraftTypeAsync(id, new UpdateAircraftTypeRequest(model.Manufacturer, modelName, notes), rowVersion ?? string.Empty);
+                await MasterData.UpdateAircraftTypeAsync(id, new UpdateAircraftTypeRequest(model.Manufacturer, modelName, notes, legacySystemId ?? string.Empty), rowVersion ?? string.Empty);
             else
-                await MasterData.CreateAircraftTypeAsync(new CreateAircraftTypeRequest(model.Manufacturer, modelName, notes));
+                await MasterData.CreateAircraftTypeAsync(new CreateAircraftTypeRequest(model.Manufacturer, modelName, notes, legacySystemId));
 
             DialogService.Close(true);
         }
@@ -103,6 +111,7 @@
 
     private sealed class AircraftTypeModel
     {
+        public string? LegacySystemId { get; set; }
         public AircraftManufacturer Manufacturer { get; set; } = AircraftManufacturer.Boeing;
         public string Model { get; set; } = string.Empty;
         public string? Notes { get; set; }

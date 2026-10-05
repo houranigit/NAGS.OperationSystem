@@ -20,6 +20,7 @@ public sealed class AircraftTypeConfiguration : IEntityTypeConfiguration<Aircraf
         builder.Property(a => a.CreatedAtUtc).IsRequired();
         builder.Property(a => a.UpdatedAtUtc);
         builder.Property(a => a.RowVersion).IsRowVersion();
+        builder.Property(a => a.LegacySystemId).HasMaxLength(200);
 
         builder.Ignore(a => a.DomainEvents);
     }

@@ -53,7 +53,7 @@ internal static class CustomerEndpoints
                 request.IataCode, request.IcaoCode, request.Name, request.CountryId,
                 request.OfficialEmail, request.OfficialPhone,
                 new CustomerAddressInput(request.Address.Line1, request.Address.Line2, request.Address.City, request.Address.Region, request.Address.PostalCode),
-                MapContacts(request.Contacts));
+                MapContacts(request.Contacts), request.LegacySystemId);
 
             var result = await sender.Send(command, ct);
             return result.ToCreated(id => $"/api/v1/masterdata/customers/{id}");
@@ -68,7 +68,7 @@ internal static class CustomerEndpoints
                 id, request.IataCode, request.IcaoCode, request.Name, request.CountryId,
                 request.OfficialEmail, request.OfficialPhone,
                 new CustomerAddressInput(request.Address.Line1, request.Address.Line2, request.Address.City, request.Address.Region, request.Address.PostalCode),
-                rowVersion);
+                rowVersion, request.LegacySystemId);
 
             var result = await sender.Send(command, ct);
             return result.ToNoContent();

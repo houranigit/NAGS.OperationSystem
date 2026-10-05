@@ -21,6 +21,7 @@ public sealed class ManpowerTypeConfiguration : IEntityTypeConfiguration<Manpowe
         builder.Property(m => m.UpdatedAtUtc);
 
         builder.Property(m => m.RowVersion).IsRowVersion();
+        builder.Property(m => m.LegacySystemId).HasMaxLength(200);
 
         builder.Ignore(m => m.DomainEvents);
     }

@@ -1,3 +1,4 @@
+using MasterData.Domain.LegacySystem;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Results;
 
@@ -7,7 +8,7 @@ namespace MasterData.Domain.ManpowerTypes;
 /// A category of manpower (e.g. Mechanic, Loadmaster) that staff members are classified under.
 /// Catalog reference data with an active/inactive lifecycle; never hard-deleted.
 /// </summary>
-public sealed class ManpowerType : AggregateRoot<Guid>
+public sealed class ManpowerType : AggregateRoot<Guid>, ILegacySystemIdentified
 {
     private ManpowerType() { }
 
@@ -19,6 +20,21 @@ public sealed class ManpowerType : AggregateRoot<Guid>
 
     /// <summary>Optimistic-concurrency token surfaced to clients as an ETag.</summary>
     public byte[] RowVersion { get; private set; } = [];
+    public string? LegacySystemId { get; private set; }
+
+    public Result SetLegacySystemId(string? value, DateTimeOffset now)
+    {
+        var normalized = LegacySystemIdRules.Normalize(value);
+        if (normalized.IsFailure)
+            return normalized.Error;
+
+        if (LegacySystemId == normalized.Value)
+            return Result.Success();
+
+        LegacySystemId = normalized.Value;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
 
     public static Result<ManpowerType> Create(string? name, string? description, DateTimeOffset now, Guid? id = null)
     {

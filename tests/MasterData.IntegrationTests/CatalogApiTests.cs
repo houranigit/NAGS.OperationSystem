@@ -187,12 +187,12 @@ public class CatalogApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
 
             await migrator.MigrateAsync(ResourceCalculationTypesMigration);
 
-            (await db.Tools.AsNoTracking().SingleAsync(item => item.Id == toolId))
-                .CalculationType.ToString().ShouldBe("Duration");
-            (await db.Materials.AsNoTracking().SingleAsync(item => item.Id == materialId))
-                .CalculationType.ToString().ShouldBe("Quantity");
-            (await db.GeneralSupports.AsNoTracking().SingleAsync(item => item.Id == supportId))
-                .CalculationType.ToString().ShouldBe("Quantity");
+            (await db.Tools.AsNoTracking().Where(item => item.Id == toolId)
+                .Select(item => item.CalculationType).SingleAsync()).ToString().ShouldBe("Duration");
+            (await db.Materials.AsNoTracking().Where(item => item.Id == materialId)
+                .Select(item => item.CalculationType).SingleAsync()).ToString().ShouldBe("Quantity");
+            (await db.GeneralSupports.AsNoTracking().Where(item => item.Id == supportId)
+                .Select(item => item.CalculationType).SingleAsync()).ToString().ShouldBe("Quantity");
         }
         finally
         {

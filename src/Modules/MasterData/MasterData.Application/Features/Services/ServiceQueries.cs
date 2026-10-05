@@ -71,7 +71,7 @@ public sealed class GetServiceByIdQueryHandler(IMasterDataDbContext db)
 
         return new ServiceDto(
             service.Id, service.Name, service.Description, service.IsActive, ServiceSystemRecords.IsSystem(service.Id),
-            service.CreatedAtUtc, service.UpdatedAtUtc, Convert.ToBase64String(service.RowVersion));
+            service.CreatedAtUtc, service.UpdatedAtUtc, Convert.ToBase64String(service.RowVersion), service.LegacySystemId);
     }
 }
 

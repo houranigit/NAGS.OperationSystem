@@ -29,12 +29,15 @@ public sealed record CreateStaffMemberCommand(
     EmploymentContractInput? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
     IReadOnlyList<StaffLicenseInput> Licenses,
-    Guid? PortalAccessRoleId) : ICommand<Guid>;
+    Guid? PortalAccessRoleId,
+    string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateStaffMemberCommandValidator : AbstractValidator<CreateStaffMemberCommand>
 {
     public CreateStaffMemberCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
         RuleFor(x => x.EmployeeId).NotEmpty().MaximumLength(50);
         RuleFor(x => x.Email).NotEmpty();
@@ -80,6 +83,9 @@ public sealed class CreateStaffMemberCommandHandler(
             return result.Error;
 
         var staff = result.Value;
+        var legacyIdResult = staff.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
 
         var employeeIdCheck = await StaffMemberGuards.EnsureEmployeeIdAvailableAsync(db, staff.EmployeeId, null, cancellationToken);
         if (employeeIdCheck.IsFailure)
@@ -136,12 +142,15 @@ public sealed record UpdateStaffMemberCommand(
     EmploymentContractInput? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
     IReadOnlyList<StaffLicenseInput> Licenses,
-    byte[] RowVersion) : ICommand;
+    byte[] RowVersion,
+    string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateStaffMemberCommandValidator : AbstractValidator<UpdateStaffMemberCommand>
 {
     public UpdateStaffMemberCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
         RuleFor(x => x.EmployeeId).NotEmpty().MaximumLength(50);
@@ -219,6 +228,14 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
         var reconcile = staff.ReconcileLicenses(StaffMemberGuards.MapLicenses(request.Licenses), now);
         if (reconcile.IsFailure)
             return reconcile.Error;
+
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = staff.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
 
         db.SetOriginalRowVersion(staff, request.RowVersion);
 

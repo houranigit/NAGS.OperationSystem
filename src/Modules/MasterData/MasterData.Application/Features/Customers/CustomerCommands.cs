@@ -29,12 +29,15 @@ public sealed record CreateCustomerCommand(
     string? OfficialEmail,
     string? OfficialPhone,
     CustomerAddressInput Address,
-    IReadOnlyList<CustomerContactInput> Contacts) : ICommand<Guid>;
+    IReadOnlyList<CustomerContactInput> Contacts,
+    string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateCustomerCommandValidator : AbstractValidator<CreateCustomerCommand>
 {
     public CreateCustomerCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.CountryId).NotEmpty();
         RuleFor(x => x.Address).NotNull();
@@ -90,6 +93,9 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserC
             return result.Error;
 
         var customer = result.Value;
+        var legacyIdResult = customer.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
 
         var conflict = await CustomerGuards.EnsureIcaoAvailableAsync(db, customer.IcaoCode, null, cancellationToken);
         if (conflict.IsFailure)
@@ -164,12 +170,15 @@ public sealed record UpdateCustomerCommand(
     string? OfficialEmail,
     string? OfficialPhone,
     CustomerAddressInput Address,
-    byte[] RowVersion) : ICommand;
+    byte[] RowVersion,
+    string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateCustomerCommandValidator : AbstractValidator<UpdateCustomerCommand>
 {
     public UpdateCustomerCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.CountryId).NotEmpty();
@@ -192,8 +201,9 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (customer is null)
             return Error.NotFound("Customer not found.", "MasterData.Customer.NotFound");
-        if (CustomerSystemRecords.IsSystem(customer.Id))
-            return Error.Conflict("System customers cannot be modified.", "MasterData.Customer.SystemProtected");
+        if (CustomerSystemRecords.IsSystem(customer.Id)
+            && (request.LegacySystemId is null || !HasUnchangedCoreFields(request, customer)))
+            return Error.Conflict("Only the legacy system ID can be changed for system customers.", "MasterData.Customer.SystemProtected");
 
         var countryCheck = await CustomerGuards.EnsureActiveCountryAsync(db, request.CountryId, cancellationToken);
         if (countryCheck.IsFailure)
@@ -215,6 +225,14 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
         if (conflict.IsFailure)
             return conflict.Error;
 
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = customer.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
+
         db.SetOriginalRowVersion(customer, request.RowVersion);
 
         try
@@ -228,6 +246,21 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
 
         return Result.Success();
     }
+    private static bool HasUnchangedCoreFields(UpdateCustomerCommand request, Customer customer) =>
+        string.Equals(NormalizeOptional(request.IataCode), customer.IataCode, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(NormalizeOptional(request.IcaoCode), customer.IcaoCode, StringComparison.OrdinalIgnoreCase)
+        && request.Name.Trim() == customer.Name
+        && request.CountryId == customer.CountryId
+        && string.Equals(NormalizeOptional(request.OfficialEmail), customer.OfficialEmail, StringComparison.OrdinalIgnoreCase)
+        && NormalizeOptional(request.OfficialPhone) == customer.OfficialPhone
+        && NormalizeOptional(request.Address.Line1) == customer.Address.Line1
+        && NormalizeOptional(request.Address.Line2) == customer.Address.Line2
+        && NormalizeOptional(request.Address.City) == customer.Address.City
+        && NormalizeOptional(request.Address.Region) == customer.Address.Region
+        && NormalizeOptional(request.Address.PostalCode) == customer.Address.PostalCode;
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 // --- Add contact ----------------------------------------------------------

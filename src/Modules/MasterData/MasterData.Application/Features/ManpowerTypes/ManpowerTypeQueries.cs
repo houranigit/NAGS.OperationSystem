@@ -70,7 +70,7 @@ public sealed class GetManpowerTypeByIdQueryHandler(IMasterDataDbContext db)
 
         return new ManpowerTypeDto(
             manpowerType.Id, manpowerType.Name, manpowerType.Description, manpowerType.IsActive,
-            manpowerType.CreatedAtUtc, manpowerType.UpdatedAtUtc, Convert.ToBase64String(manpowerType.RowVersion));
+            manpowerType.CreatedAtUtc, manpowerType.UpdatedAtUtc, Convert.ToBase64String(manpowerType.RowVersion), manpowerType.LegacySystemId);
     }
 }
 

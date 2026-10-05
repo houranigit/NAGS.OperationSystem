@@ -364,33 +364,6 @@
     display: none;
 }
 
-.os-lang-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--os-space-2);
-    height: 2.5rem;
-    padding: 0 var(--os-space-3);
-    border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-sm);
-    background: var(--os-color-surface);
-    color: var(--os-color-text-muted);
-    font-family: inherit;
-    font-size: var(--os-text-sm);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background var(--os-transition), color var(--os-transition), border-color var(--os-transition);
-}
-
-.os-lang-btn:hover {
-    background: var(--os-color-surface-hover);
-    color: var(--os-color-text);
-    border-color: var(--os-color-border-strong);
-}
-
-.os-lang-btn .rz-icon {
-    font-size: 1.1rem;
-}
-
 /* --- Profile menu -------------------------------------------------------- */
 .os-profile {
     position: relative;
@@ -468,10 +441,13 @@
 }
 
 .os-profile-backdrop {
-    display: none;
     position: fixed;
     inset: 0;
-    z-index: 40;
+    z-index: 90;
+}
+
+.os-shell--profile-open .os-topbar {
+    z-index: 100;
 }
 
 .os-profile-panel {
@@ -495,10 +471,6 @@
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
-}
-
-.os-profile--open .os-profile-backdrop {
-    display: block;
 }
 
 .os-profile-identity {
@@ -761,10 +733,6 @@
     }
 
     .os-profile-chev {
-        display: none;
-    }
-
-    .os-lang-btn span {
         display: none;
     }
 

@@ -54,6 +54,27 @@ development, `Database:ApplyMigrationsOnStartup` may be enabled to apply them au
 production and production-like remote testing, keep it disabled, use reviewed SQL scripts, and take a
 backup first.
 
+### 2026-10 legacy system IDs
+
+Apply `20261005005402_MasterData_LegacySystemIds` before deploying the v1.0.12 API and
+Portal. The release includes an idempotent incremental SQL script for installations already
+on v1.0.11. It adds nullable `LegacySystemId` columns to Services, Tools, Materials,
+General Supports, Customers, Stations, Manpower Types, Operation Types, Aircraft Types,
+and Staff Members. Existing records retain null IDs until an administrator configures them.
+
+The optional field accepts up to 200 characters and preserves case and leading zeros.
+Whitespace is trimmed; clearing the portal field removes the mapping. Older clients that
+omit the field preserve any existing mapping. Protected system records allow mapping-only
+edits while their names, classification, and lifecycle protections remain in force.
+
+The Flights Excel export adds **Legacy Services and Resources** beside the existing five
+worksheets. It preserves the original item rows and flight/work-order values, replacing
+catalog names with current legacy mappings by record ID. It also includes operation-type
+and assigned staff manpower-type IDs. Manpower types come from each staff member's current
+master-data record. Blank IDs are reported in **Missing Legacy IDs** and must be reviewed
+before importing into another system. CSV/PDF/dashboard exports and mobile catalog/sync
+contracts are unchanged. No Android update is required for this release.
+
 ### 2026-09 work-order submission emails
 
 Apply `20260912201828_Identity_WorkOrderEmailPreference` before deploying the updated API and clients.

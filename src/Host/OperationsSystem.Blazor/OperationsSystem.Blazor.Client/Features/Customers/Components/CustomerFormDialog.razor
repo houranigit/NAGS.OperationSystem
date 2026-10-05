@@ -46,6 +46,10 @@
     else
     {
         <p class="cuf-intro os-muted">@UiStrings.Customers.EditFormIntro</p>
+        @if (isSystem)
+        {
+            <p class="cuf-intro os-muted">Only the legacy system ID can be changed for this system record.</p>
+        }
         @DetailsSection()
         @AddressSection()
         @ErrorBanner()
@@ -63,6 +67,7 @@
     private readonly List<ContactRow> contacts = [];
     private IReadOnlyList<CountryOption> countries = [];
     private string? rowVersion;
+    private bool isSystem;
     private int step;
     private bool isSubmitting;
     private string? errorMessage;
@@ -75,7 +80,7 @@
 
     private bool IsCreate => CustomerId is null;
     private bool CanCreateContacts => Auth.HasPermission(MasterDataPermissions.CustomerContactsCreate);
-    private bool CanManageLogo => Auth.HasPermission(MasterDataPermissions.CustomersUpdate);
+    private bool CanManageLogo => !isSystem && Auth.HasPermission(MasterDataPermissions.CustomersUpdate);
     private int ReviewStepIndex => CanCreateContacts ? 3 : 2;
     private int StepCount => ReviewStepIndex + 1;
 
@@ -134,26 +139,32 @@
             </DismissibleDialogMessage>
         }
         <div class="cuf-grid-2">
-            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IataCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IataCode" class="cuf-control cuf-control-icon" MaxLength="2" Placeholder="e.g. SV" /></div></div>
-            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IcaoCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IcaoCode" class="cuf-control cuf-control-icon" MaxLength="3" Placeholder="e.g. SVA" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IataCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IataCode" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="2" Placeholder="e.g. SV" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.IcaoCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="tag" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.IcaoCode" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="3" Placeholder="e.g. SVA" /></div></div>
         </div>
-        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Name <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="badge" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.Name" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="e.g. Saudi Arabian Airlines" /></div></div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Name <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="badge" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.Name" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="e.g. Saudi Arabian Airlines" /></div></div>
+        <div class="cuf-field-block">
+            <label class="cuf-label">Legacy system ID</label>
+            <RadzenTextBox @bind-Value="model.LegacySystemId" Name="legacySystemId" class="cuf-control" MaxLength="200" Placeholder="e.g. XYZ123" />
+            <small class="os-muted">Optional ID from your old system, used in the flight Excel export.</small>
+        </div>
+
         <div class="cuf-grid-2">
-            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Country <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="public" class="cuf-field-icon" /><RadzenDropDown @bind-Value="model.CountryId" Data="@countries" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="cuf-control cuf-control-icon" Placeholder="@UiStrings.Stations.SelectCountry" /></div></div>
-            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.OfficialPhone</label><div class="cuf-input-wrap"><RadzenIcon Icon="call" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.OfficialPhone" class="cuf-control cuf-control-icon" MaxLength="30" Placeholder="e.g. +966 11 000 0000" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Country <span class="cuf-required">*</span></label><div class="cuf-input-wrap"><RadzenIcon Icon="public" class="cuf-field-icon" /><RadzenDropDown @bind-Value="model.CountryId" Disabled="@isSystem" Data="@countries" TextProperty="Name" ValueProperty="Id" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="cuf-control cuf-control-icon" Placeholder="@UiStrings.Stations.SelectCountry" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.OfficialPhone</label><div class="cuf-input-wrap"><RadzenIcon Icon="call" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.OfficialPhone" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="30" Placeholder="e.g. +966 11 000 0000" /></div></div>
         </div>
-        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.OfficialEmail</label><div class="cuf-input-wrap"><RadzenIcon Icon="mail" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.OfficialEmail" class="cuf-control cuf-control-icon" MaxLength="256" Placeholder="operations@example.com" /></div></div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.OfficialEmail</label><div class="cuf-input-wrap"><RadzenIcon Icon="mail" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.OfficialEmail" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="256" Placeholder="operations@example.com" /></div></div>
     </section>;
 
     private RenderFragment AddressSection() =>@<section class="cuf-step-content">
         <div class="cuf-section-line"><RadzenIcon Icon="location_on" /><span>@UiStrings.Customers.Address</span></div>
-        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.AddressLine1</label><div class="cuf-input-wrap"><RadzenIcon Icon="home" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressLine1" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="Building, street and district" /></div></div>
-        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.AddressLine2</label><div class="cuf-input-wrap"><RadzenIcon Icon="home" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressLine2" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="Suite, floor or additional details" /></div></div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.AddressLine1</label><div class="cuf-input-wrap"><RadzenIcon Icon="home" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressLine1" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="Building, street and district" /></div></div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.AddressLine2</label><div class="cuf-input-wrap"><RadzenIcon Icon="home" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressLine2" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="200" Placeholder="Suite, floor or additional details" /></div></div>
         <div class="cuf-grid-2">
-            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.City</label><div class="cuf-input-wrap"><RadzenIcon Icon="location_city" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressCity" class="cuf-control cuf-control-icon" MaxLength="100" Placeholder="e.g. Riyadh" /></div></div>
-            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Region</label><div class="cuf-input-wrap"><RadzenIcon Icon="map" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressRegion" class="cuf-control cuf-control-icon" MaxLength="100" Placeholder="e.g. Riyadh Province" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.City</label><div class="cuf-input-wrap"><RadzenIcon Icon="location_city" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressCity" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="100" Placeholder="e.g. Riyadh" /></div></div>
+            <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.Region</label><div class="cuf-input-wrap"><RadzenIcon Icon="map" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressRegion" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="100" Placeholder="e.g. Riyadh Province" /></div></div>
         </div>
-        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.PostalCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="local_post_office" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressPostalCode" class="cuf-control cuf-control-icon" MaxLength="20" Placeholder="e.g. 12345" /></div></div>
+        <div class="cuf-field-block"><label class="cuf-label">@UiStrings.Customers.PostalCode</label><div class="cuf-input-wrap"><RadzenIcon Icon="local_post_office" class="cuf-field-icon" /><RadzenTextBox @bind-Value="model.AddressPostalCode" ReadOnly="@isSystem" class="cuf-control cuf-control-icon" MaxLength="20" Placeholder="e.g. 12345" /></div></div>
     </section>;
 
     private RenderFragment ContactsSection() =>@<section class="cuf-step-content">
@@ -192,7 +203,7 @@
     private RenderFragment ReviewSection() =>@<section class="cuf-step-content">
         <div class="cuf-review-intro"><h3>@UiStrings.Customers.StepReview</h3><p>@string.Format(UiStrings.Customers.ReviewSummary, Display(model.IataCode), model.Name, contacts.Count(c => !c.Removed))</p></div>
         <div class="cuf-review-card"><div class="cuf-review-head"><h4>@UiStrings.Common.Details</h4><button type="button" @onclick="@(() => step = 0)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
-            <dl class="cuf-review-grid"><div><dt>@UiStrings.Customers.IataCode</dt><dd>@Display(model.IataCode)</dd></div><div><dt>@UiStrings.Customers.IcaoCode</dt><dd>@Display(model.IcaoCode)</dd></div><div><dt>@UiStrings.Customers.Name</dt><dd>@model.Name</dd></div><div><dt>@UiStrings.Customers.Country</dt><dd>@CountryName</dd></div><div><dt>@UiStrings.Customers.OfficialEmail</dt><dd>@Display(model.OfficialEmail)</dd></div><div><dt>@UiStrings.Customers.OfficialPhone</dt><dd>@Display(model.OfficialPhone)</dd></div></dl>
+            <dl class="cuf-review-grid"><div><dt>@UiStrings.Customers.IataCode</dt><dd>@Display(model.IataCode)</dd></div><div><dt>@UiStrings.Customers.IcaoCode</dt><dd>@Display(model.IcaoCode)</dd></div><div><dt>@UiStrings.Customers.Name</dt><dd>@model.Name</dd></div><div><dt>Legacy system ID</dt><dd>@Display(model.LegacySystemId)</dd></div><div><dt>@UiStrings.Customers.Country</dt><dd>@CountryName</dd></div><div><dt>@UiStrings.Customers.OfficialEmail</dt><dd>@Display(model.OfficialEmail)</dd></div><div><dt>@UiStrings.Customers.OfficialPhone</dt><dd>@Display(model.OfficialPhone)</dd></div></dl>
         </div>
         <div class="cuf-review-card"><div class="cuf-review-head"><h4>@UiStrings.Customers.Address</h4><button type="button" @onclick="@(() => step = 1)"><RadzenIcon Icon="edit" />@UiStrings.Common.Edit</button></div>
             <dl class="cuf-review-grid"><div><dt>@UiStrings.Customers.AddressLine1</dt><dd>@Display(model.AddressLine1)</dd></div><div><dt>@UiStrings.Customers.City</dt><dd>@Display(model.AddressCity)</dd></div><div><dt>@UiStrings.Customers.Region</dt><dd>@Display(model.AddressRegion)</dd></div><div><dt>@UiStrings.Customers.PostalCode</dt><dd>@Display(model.AddressPostalCode)</dd></div></dl>
@@ -238,6 +249,7 @@
                     IataCode = detail.IataCode,
                     IcaoCode = detail.IcaoCode,
                     Name = detail.Name,
+                    LegacySystemId = detail.LegacySystemId,
                     CountryId = detail.CountryId,
                     OfficialEmail = detail.OfficialEmail,
                     OfficialPhone = detail.OfficialPhone,
@@ -248,6 +260,7 @@
                     AddressPostalCode = detail.Address.PostalCode
                 };
                 rowVersion = detail.RowVersion;
+                isSystem = detail.IsSystem;
 
                 if (!string.IsNullOrWhiteSpace(detail.LogoFileReference))
                 {
@@ -375,13 +388,14 @@
             var email = Trim(model.OfficialEmail);
             var phone = Trim(model.OfficialPhone);
             var name = model.Name!.Trim();
+            var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             Guid targetId;
             if (CustomerId is { } id)
             {
                 // Customer update changes only customer fields; contacts are managed on the detail page.
                 await MasterData.UpdateCustomerAsync(id,
-                    new UpdateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address),
+                    new UpdateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, legacySystemId ?? string.Empty),
                     rowVersion ?? string.Empty);
                 targetId = id;
             }
@@ -399,7 +413,7 @@
                             .ToList()
                         : [];
                     targetId = await MasterData.CreateCustomerAsync(
-                        new CreateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests));
+                        new CreateCustomerRequest(iata, icao, name, model.CountryId, email, phone, address, contactRequests, legacySystemId));
                     savedCustomerId = targetId;
                 }
             }
@@ -434,6 +448,7 @@
 
     private sealed class CustomerModel
     {
+        public string? LegacySystemId { get; set; }
         public string? IataCode { get; set; }
         public string? IcaoCode { get; set; }
         public string? Name { get; set; }

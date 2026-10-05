@@ -42,6 +42,7 @@ internal static class FlightEndpoints
         flights.MapGet("/export", async (
             string format,
             ISender sender,
+            [Microsoft.AspNetCore.Mvc.FromServices] MasterData.Contracts.Readers.ILegacySystemIdReader legacySystemIdReader,
             TimeProvider timeProvider,
             CancellationToken ct,
             string? search = null,
@@ -96,6 +97,9 @@ internal static class FlightEndpoints
             if (result.IsFailure)
                 return ApiResults.Problem(result.Error);
 
+            var legacySystemIds = exportFormat == FlightExportFormat.Xlsx
+                ? await legacySystemIdReader.GetAsync(FlightExportDocumentFactory.CollectLegacySystemIdRequest(result.Value), ct)
+                : null;
             var file = FlightExportDocumentFactory.Create(
                 exportFormat,
                 result.Value,
@@ -112,7 +116,8 @@ internal static class FlightEndpoints
                     ToUtcExclusive: false,
                     Sort: sort),
                 timeProvider.GetUtcNow(),
-                displayTimeZone);
+                displayTimeZone,
+                legacySystemIds);
 
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Flights.View)

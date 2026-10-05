@@ -8,8 +8,8 @@ public sealed record CreateCountryRequest(string Name, string IsoCode);
 public sealed record UpdateCountryRequest(string Name, string IsoCode);
 
 // ManpowerTypes
-public sealed record CreateManpowerTypeRequest(string Name, string? Description);
-public sealed record UpdateManpowerTypeRequest(string Name, string? Description);
+public sealed record CreateManpowerTypeRequest(string Name, string? Description, string? LegacySystemId = null);
+public sealed record UpdateManpowerTypeRequest(string Name, string? Description, string? LegacySystemId = null);
 public sealed record UpdateServiceAllowancesRequest(IReadOnlyList<Guid>? ServiceIds);
 
 // Licenses
@@ -17,17 +17,17 @@ public sealed record CreateLicenseRequest(string Code, string Name, string? Desc
 public sealed record UpdateLicenseRequest(string Name, string? Description);
 
 // Services
-public sealed record CreateServiceRequest(string Name, string? Description);
-public sealed record UpdateServiceRequest(string Name, string? Description);
+public sealed record CreateServiceRequest(string Name, string? Description, string? LegacySystemId = null);
+public sealed record UpdateServiceRequest(string Name, string? Description, string? LegacySystemId = null);
 public sealed record UpdateManpowerTypeAllowancesRequest(IReadOnlyList<Guid>? ManpowerTypeIds);
 
 // OperationTypes
-public sealed record CreateOperationTypeRequest(string Name, string? Description);
-public sealed record UpdateOperationTypeRequest(string Name, string? Description);
+public sealed record CreateOperationTypeRequest(string Name, string? Description, string? LegacySystemId = null);
+public sealed record UpdateOperationTypeRequest(string Name, string? Description, string? LegacySystemId = null);
 
 // AircraftTypes
-public sealed record CreateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
-public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes);
+public sealed record CreateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes, string? LegacySystemId = null);
+public sealed record UpdateAircraftTypeRequest(AircraftManufacturer Manufacturer, string Model, string? Notes, string? LegacySystemId = null);
 
 // Tools
 public sealed record ToolEquipmentRequest(Guid? Id, string FactoryId, string SerialId, DateOnly? CalibrationDate);
@@ -35,32 +35,38 @@ public sealed record CreateToolRequest(
     string Name,
     string? Description,
     IReadOnlyList<ToolEquipmentRequest>? Equipments,
-    ResourceCalculationType? CalculationType = null);
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null);
 public sealed record UpdateToolRequest(
     string Name,
     string? Description,
     IReadOnlyList<ToolEquipmentRequest>? Equipments,
-    ResourceCalculationType? CalculationType = null);
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null);
 
 // Materials
 public sealed record CreateMaterialRequest(
     string Name,
     string? Description,
-    ResourceCalculationType? CalculationType = null);
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null);
 public sealed record UpdateMaterialRequest(
     string Name,
     string? Description,
-    ResourceCalculationType? CalculationType = null);
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null);
 
 // GeneralSupports
 public sealed record CreateGeneralSupportRequest(
     string Name,
     string? Description,
-    ResourceCalculationType? CalculationType = null);
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null);
 public sealed record UpdateGeneralSupportRequest(
     string Name,
     string? Description,
-    ResourceCalculationType? CalculationType = null);
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null);
 
 // Stations
 public sealed record CreateStationRequest(
@@ -69,8 +75,9 @@ public sealed record CreateStationRequest(
     string Name,
     string? City,
     Guid CountryId,
-    IReadOnlyList<NewStationStaffRequest>? Staff);
-public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId);
+    IReadOnlyList<NewStationStaffRequest>? Staff,
+    string? LegacySystemId = null);
+public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string? LegacySystemId = null);
 
 public sealed record NewStationStaffRequest(
     string FullName,
@@ -94,7 +101,8 @@ public sealed record CreateCustomerRequest(
     string? OfficialEmail,
     string? OfficialPhone,
     AddressRequest Address,
-    IReadOnlyList<CustomerContactRequest>? Contacts);
+    IReadOnlyList<CustomerContactRequest>? Contacts,
+    string? LegacySystemId = null);
 
 public sealed record UpdateCustomerRequest(
     string? IataCode,
@@ -103,7 +111,8 @@ public sealed record UpdateCustomerRequest(
     Guid CountryId,
     string? OfficialEmail,
     string? OfficialPhone,
-    AddressRequest Address);
+    AddressRequest Address,
+    string? LegacySystemId = null);
 
 public sealed record AddCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone, Guid? PortalAccessRoleId);
 public sealed record UpdateCustomerContactRequest(string Name, string? JobTitle, string Email, string? Phone);
@@ -124,7 +133,8 @@ public sealed record CreateStaffMemberRequest(
     EmploymentContractRequest? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
     IReadOnlyList<StaffLicenseRequest>? Licenses,
-    Guid? PortalAccessRoleId);
+    Guid? PortalAccessRoleId,
+    string? LegacySystemId = null);
 
 public sealed record UpdateStaffMemberRequest(
     string FullName,
@@ -134,7 +144,8 @@ public sealed record UpdateStaffMemberRequest(
     Guid ManpowerTypeId,
     EmploymentContractRequest? EmploymentContract,
     IReadOnlyList<DayOfWeek>? WorkingDays,
-    IReadOnlyList<StaffLicenseRequest>? Licenses);
+    IReadOnlyList<StaffLicenseRequest>? Licenses,
+    string? LegacySystemId = null);
 
 public sealed record ReassignStaffMemberStationRequest(Guid StationId);
 

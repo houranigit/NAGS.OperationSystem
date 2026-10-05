@@ -46,7 +46,7 @@ internal static class StationEndpoints
                 (s.Licenses ?? []).Select(l => new StaffLicenseInput(l.Id, l.LicenseId, l.LicenseNumber)).ToList(),
                 s.PortalAccessRoleId)).ToList();
 
-            var result = await sender.Send(new CreateStationCommand(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, staff), ct);
+            var result = await sender.Send(new CreateStationCommand(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, staff, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/stations/{id}");
         }).RequirePermission(MasterDataPermissions.Stations.Create);
 
@@ -55,7 +55,7 @@ internal static class StationEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new UpdateStationCommand(id, request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, rowVersion), ct);
+            var result = await sender.Send(new UpdateStationCommand(id, request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, rowVersion, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.Stations.Update);
 

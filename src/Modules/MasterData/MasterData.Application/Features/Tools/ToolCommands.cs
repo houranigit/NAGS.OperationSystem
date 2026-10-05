@@ -16,12 +16,15 @@ public sealed record CreateToolCommand(
     string Name,
     string? Description,
     IReadOnlyList<ToolEquipmentInput>? Equipments,
-    ResourceCalculationType? CalculationType = null) : ICommand<Guid>;
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateToolCommandValidator : AbstractValidator<CreateToolCommand>
 {
     public CreateToolCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
         RuleFor(x => x.CalculationType)
@@ -54,6 +57,9 @@ public sealed class CreateToolCommandHandler(IMasterDataDbContext db, TimeProvid
             return result.Error;
 
         var tool = result.Value;
+        var legacyIdResult = tool.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
         if (await db.Tools.AnyAsync(t => t.Name == tool.Name, cancellationToken))
             return Error.Conflict("A tool with this name already exists.", "MasterData.Tool.DuplicateName");
 
@@ -77,12 +83,15 @@ public sealed record UpdateToolCommand(
     string? Description,
     IReadOnlyList<ToolEquipmentInput>? Equipments,
     byte[] RowVersion,
-    ResourceCalculationType? CalculationType = null) : ICommand;
+    ResourceCalculationType? CalculationType = null,
+    string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateToolCommandValidator : AbstractValidator<UpdateToolCommand>
 {
     public UpdateToolCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
@@ -104,8 +113,12 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
             .FirstOrDefaultAsync(t => t.Id == request.Id, cancellationToken);
         if (tool is null)
             return Error.NotFound("Tool not found.", "MasterData.Tool.NotFound");
-        if (tool.Id == WellKnownMasterDataIds.UnknownTool)
-            return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.Tool.SystemRecord");
+        if (tool.Id == WellKnownMasterDataIds.UnknownTool
+            && (request.LegacySystemId is null || !(request.Name.Trim() == tool.Name
+                && NormalizeOptional(request.Description) == tool.Description
+                && (request.CalculationType ?? tool.CalculationType) == tool.CalculationType
+                && HasUnchangedEquipment(request.Equipments, tool))))
+            return Error.Validation("Only the legacy system ID can be changed for system-seeded records.", "MasterData.Tool.SystemRecord");
 
         var trimmedName = request.Name.Trim();
         if (await db.Tools.AnyAsync(t => t.Name == trimmedName && t.Id != request.Id, cancellationToken))
@@ -146,6 +159,14 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
                 return remove;
         }
 
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = tool.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
+
         db.SetOriginalRowVersion(tool, request.RowVersion);
 
         try
@@ -159,6 +180,18 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
 
         return Result.Success();
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool HasUnchangedEquipment(IReadOnlyList<ToolEquipmentInput>? requested, Tool tool) =>
+        (requested?.Count ?? 0) == tool.Equipments.Count
+        && (requested ?? []).Select(input => input.Id).Distinct().Count() == tool.Equipments.Count
+        && (requested ?? []).All(input => input.Id is { } id
+            && tool.Equipments.Any(equipment => equipment.Id == id
+                && equipment.FactoryId == input.FactoryId.Trim()
+                && equipment.SerialId == input.SerialId.Trim()
+                && equipment.CalibrationDate == input.CalibrationDate));
 }
 
 public sealed record ActivateToolCommand(Guid Id, byte[] RowVersion) : ICommand;

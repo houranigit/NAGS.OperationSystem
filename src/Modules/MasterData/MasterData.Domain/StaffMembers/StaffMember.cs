@@ -1,3 +1,4 @@
+using MasterData.Domain.LegacySystem;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
@@ -11,7 +12,7 @@ namespace MasterData.Domain.StaffMembers;
 /// schedule, and a reconciled-by-id collection of license assignments. Email is unique across staff.
 /// A linked portal <c>User</c> is optional and assigned later via the portal-access workflow.
 /// </summary>
-public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
+public sealed class StaffMember : AggregateRoot<Guid>, ILegacySystemIdentified, IAuditable
 {
     private readonly List<StaffMemberLicense> _licenses = [];
 
@@ -54,6 +55,21 @@ public sealed class StaffMember : AggregateRoot<Guid>, IAuditable
 
     /// <summary>Optimistic-concurrency token surfaced to clients as an ETag.</summary>
     public byte[] RowVersion { get; private set; } = [];
+    public string? LegacySystemId { get; private set; }
+
+    public Result SetLegacySystemId(string? value, DateTimeOffset now)
+    {
+        var normalized = LegacySystemIdRules.Normalize(value);
+        if (normalized.IsFailure)
+            return normalized.Error;
+
+        if (LegacySystemId == normalized.Value)
+            return Result.Success();
+
+        LegacySystemId = normalized.Value;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
 
     public IReadOnlyList<StaffMemberLicense> Licenses => _licenses.AsReadOnly();
 

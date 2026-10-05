@@ -62,7 +62,7 @@ internal static class ManpowerTypeEndpoints
 
         manpowerTypes.MapPost("/", async (CreateManpowerTypeRequest request, ISender sender, CancellationToken ct) =>
         {
-            var result = await sender.Send(new CreateManpowerTypeCommand(request.Name, request.Description), ct);
+            var result = await sender.Send(new CreateManpowerTypeCommand(request.Name, request.Description, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/manpower-types/{id}");
         }).RequirePermission(MasterDataPermissions.ManpowerTypes.Create);
 
@@ -71,7 +71,7 @@ internal static class ManpowerTypeEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new UpdateManpowerTypeCommand(id, request.Name, request.Description, rowVersion), ct);
+            var result = await sender.Send(new UpdateManpowerTypeCommand(id, request.Name, request.Description, rowVersion, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.ManpowerTypes.Update);
 

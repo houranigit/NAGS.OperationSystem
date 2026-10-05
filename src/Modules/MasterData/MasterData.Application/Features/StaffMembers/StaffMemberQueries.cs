@@ -271,6 +271,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
                 s.IsActive,
                 s.CreatedAtUtc,
                 s.UpdatedAtUtc,
+                s.LegacySystemId,
                 s.RowVersion
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -305,7 +306,7 @@ public sealed class GetStaffMemberByIdQueryHandler(IMasterDataDbContext db, IMas
             staff.ManpowerTypeId, staff.ManpowerTypeName,
             contract, workingDays, staff.LinkedUserId, staff.PortalState.ToString(), staff.PortalFailureReason, staff.IsActive,
             staff.CreatedAtUtc, staff.UpdatedAtUtc, Convert.ToBase64String(staff.RowVersion),
-            licenses);
+            licenses, staff.LegacySystemId);
     }
 
     private static Error ScopeForbidden() =>

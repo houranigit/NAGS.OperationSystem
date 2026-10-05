@@ -8,12 +8,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MasterData.Application.Features.AircraftTypes;
 
-public sealed record CreateAircraftTypeCommand(AircraftManufacturer Manufacturer, string Model, string? Notes) : ICommand<Guid>;
+public sealed record CreateAircraftTypeCommand(AircraftManufacturer Manufacturer, string Model, string? Notes, string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateAircraftTypeCommandValidator : AbstractValidator<CreateAircraftTypeCommand>
 {
     public CreateAircraftTypeCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Manufacturer).IsInEnum();
         RuleFor(x => x.Model).NotEmpty().MaximumLength(50);
         RuleFor(x => x.Notes).MaximumLength(500);
@@ -30,6 +32,9 @@ public sealed class CreateAircraftTypeCommandHandler(IMasterDataDbContext db, Ti
             return result.Error;
 
         var aircraftType = result.Value;
+        var legacyIdResult = aircraftType.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
         if (await db.AircraftTypes.AnyAsync(a => a.Manufacturer == aircraftType.Manufacturer && a.Model == aircraftType.Model, cancellationToken))
             return Error.Conflict("An aircraft type with this manufacturer and model already exists.", "MasterData.AircraftType.Duplicate");
 
@@ -39,12 +44,14 @@ public sealed class CreateAircraftTypeCommandHandler(IMasterDataDbContext db, Ti
     }
 }
 
-public sealed record UpdateAircraftTypeCommand(Guid Id, AircraftManufacturer Manufacturer, string Model, string? Notes, byte[] RowVersion) : ICommand;
+public sealed record UpdateAircraftTypeCommand(Guid Id, AircraftManufacturer Manufacturer, string Model, string? Notes, byte[] RowVersion, string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateAircraftTypeCommandValidator : AbstractValidator<UpdateAircraftTypeCommand>
 {
     public UpdateAircraftTypeCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Manufacturer).IsInEnum();
         RuleFor(x => x.Model).NotEmpty().MaximumLength(50);
@@ -70,6 +77,14 @@ public sealed class UpdateAircraftTypeCommandHandler(IMasterDataDbContext db, Ti
                 a.Manufacturer == aircraftType.Manufacturer && a.Model == aircraftType.Model && a.Id != request.Id,
                 cancellationToken))
             return Error.Conflict("An aircraft type with this manufacturer and model already exists.", "MasterData.AircraftType.Duplicate");
+
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = aircraftType.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
 
         db.SetOriginalRowVersion(aircraftType, request.RowVersion);
 

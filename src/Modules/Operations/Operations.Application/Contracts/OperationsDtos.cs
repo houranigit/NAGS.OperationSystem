@@ -49,7 +49,14 @@ public sealed record FlightExportRowDto(
     bool IsPerLanding,
     IReadOnlyList<string> PlannedServiceNames,
     IReadOnlyList<string> AssignedEmployeeNames,
-    ApprovedWorkOrderExportDto? ApprovedWorkOrder);
+    ApprovedWorkOrderExportDto? ApprovedWorkOrder)
+{
+    public Guid CustomerId { get; init; }
+    public Guid StationId { get; init; }
+    public Guid OperationTypeId { get; init; }
+    public IReadOnlyList<Guid> PlannedServiceIds { get; init; } = [];
+    public IReadOnlyList<Guid> AssignedStaffMemberIds { get; init; } = [];
+}
 
 public sealed record ApprovedWorkOrderExportDto(
     string? ApprovalNumber,
@@ -66,6 +73,7 @@ public sealed record ApprovedWorkOrderExportDto(
     string? Remarks)
 {
     public Guid WorkOrderId { get; init; }
+    public Guid? AircraftTypeId { get; init; }
     public string WorkOrderStatus { get; init; } = string.Empty;
     public IReadOnlyList<string> TaskNames { get; init; } = [];
     public IReadOnlyList<FlightExportServiceDetailDto> ServiceDetails { get; init; } = [];
@@ -86,7 +94,10 @@ public sealed record FlightExportServiceDetailDto(
     DateTimeOffset ToUtc,
     IReadOnlyList<string> PerformedByNames,
     string? Description,
-    FlightExportReturnToRampContextDto? ReturnToRamp);
+    FlightExportReturnToRampContextDto? ReturnToRamp)
+{
+    public Guid ServiceId { get; init; }
+}
 
 /// <summary>
 /// Structured resource usage keeps the spreadsheet presentation independent from task ownership
@@ -97,7 +108,10 @@ public sealed record FlightExportResourceUsageDto(
     ResourceCalculationType CalculationType,
     decimal? Quantity,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc)
+{
+    public Guid ResourceId { get; init; }
+}
 
 public sealed record FlightExportTaskDetailDto(
     Guid Id,

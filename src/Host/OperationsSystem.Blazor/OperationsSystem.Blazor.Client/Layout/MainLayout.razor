@@ -14,7 +14,11 @@
 <RadzenChartTooltip />
 <RadzenContextMenu />
 
-<div class="os-shell @(navOpen ? "os-shell--nav-open" : null) @(railCollapsed ? "os-shell--rail" : null) @(!ShowSidebar ? "os-shell--sidebarless" : null)">
+<div class="os-shell @(navOpen ? "os-shell--nav-open" : null) @(railCollapsed ? "os-shell--rail" : null) @(profileOpen ? "os-shell--profile-open" : null) @(!ShowSidebar ? "os-shell--sidebarless" : null)" @onclick="CloseProfile">
+    @if (profileOpen)
+    {
+        <div class="os-profile-backdrop" @onclick="CloseProfile"></div>
+    }
     @if (ShowSidebar)
     {
         <div class="os-scrim" @onclick="CloseNav"></div>
@@ -269,12 +273,6 @@
                 }
             </AuthorizeView>
 
-            <a href="/manual" target="_blank" rel="noopener noreferrer" data-enhance-nav="false"
-               class="os-nav-link os-nav-link--root" title="@UiStrings.Nav.UserManual"
-               @onclick="CloseNav">
-                <RadzenIcon Icon="menu_book" />
-                <span>@UiStrings.Nav.UserManual</span>
-            </a>
         </nav>
 
         <div class="os-sidebar-foot">
@@ -305,14 +303,9 @@
                     <NotificationBell />
                 }
 
-                <button type="button" class="os-lang-btn" @onclick="ToggleLanguageAsync">
-                    <RadzenIcon Icon="translate" />
-                    <span>@LanguageLabel</span>
-                </button>
-
                 @if (Auth.User is { } current)
                 {
-                    <div class="os-profile @(profileOpen ? "os-profile--open" : null)">
+                    <div class="os-profile @(profileOpen ? "os-profile--open" : null)" @onclick:stopPropagation="true" @onkeydown="OnProfileKeyDown">
                         <button type="button" class="os-user-chip" @onclick="ToggleProfile"
                                 aria-haspopup="true" aria-expanded="@profileOpen">
                             <span class="os-avatar">@Initials(current.DisplayName)</span>
@@ -323,8 +316,8 @@
                             <RadzenIcon Icon="expand_more" class="os-profile-chev" />
                         </button>
 
-                        <div class="os-profile-backdrop" @onclick="CloseProfile"></div>
-
+                        @if (profileOpen)
+                        {
                         <div class="os-profile-panel">
                             <div class="os-profile-identity">
                                 <span class="os-avatar os-avatar--lg">@Initials(current.DisplayName)</span>
@@ -354,6 +347,7 @@
                                 </button>
                             </div>
                         </div>
+                        }
                     </div>
                 }
             </div>
@@ -384,7 +378,6 @@
     private Guid? notificationUserId;
     private readonly HashSet<string> expandedNavGroups = new(StringComparer.Ordinal);
 
-    private string LanguageLabel => Locale.Language == LocaleState.Arabic ? "EN" : "العربية";
     private bool ShowSidebar => Auth.User is not { } user
         || PortalNavigationPolicy.ShouldShowSidebar(user.UserType, user.Permissions);
     private bool CanShowDashboardNavigation =>
@@ -496,17 +489,17 @@
 
     private void CloseProfile() => profileOpen = false;
 
+    private void OnProfileKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+            CloseProfile();
+    }
+
     private async Task GoToAccountAsync()
     {
         profileOpen = false;
         Navigation.NavigateTo("/account");
         await Task.CompletedTask;
-    }
-
-    private async Task ToggleLanguageAsync()
-    {
-        await Locale.ToggleAsync();
-        Navigation.NavigateTo(Navigation.Uri, forceLoad: true, replace: true);
     }
 
     private async Task LogoutAsync()

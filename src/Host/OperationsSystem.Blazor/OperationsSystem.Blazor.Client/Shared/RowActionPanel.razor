@@ -1,0 +1,55 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div @ref="panel" class="os-row-actions-menu" role="menu" @onclick:stopPropagation="true">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private ElementReference panel;
+    private IJSObjectReference? module;
+    private bool disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || disposed)
+            return;
+
+        try
+        {
+            var imported = await JS.InvokeAsync<IJSObjectReference>("import", "./js/row-action-menu.js");
+            if (disposed)
+            {
+                await imported.DisposeAsync();
+                return;
+            }
+
+            module = imported;
+            await imported.InvokeVoidAsync("observe", panel);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The document observer also releases its handlers when the menu leaves the DOM.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        if (module is not { } imported)
+            return;
+
+        module = null;
+        try
+        {
+            await imported.InvokeVoidAsync("unobserve", panel);
+            await imported.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit may have disconnected before the popup is removed.
+        }
+    }
+}

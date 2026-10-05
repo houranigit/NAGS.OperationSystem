@@ -4,22 +4,32 @@
 <RadzenTemplateForm TItem="ToolModel" Data="@model" Submit="@SubmitAsync">
     <div class="mtf-form">
         <p class="mtf-intro os-muted">Define the tool and optional equipment rows attached to it.</p>
+        @if (isSystem)
+        {
+            <p class="mtf-intro os-muted">Only the legacy system ID can be changed for this system record.</p>
+        }
         <div class="mtf-section-line"><RadzenIcon Icon="build" /><span>@UiStrings.Common.Details</span></div>
 
         <div class="mtf-field-block">
             <label class="mtf-label">Name <span>*</span></label>
             <div class="mtf-input-wrap">
                 <RadzenIcon Icon="build" class="mtf-field-icon" />
-                <RadzenTextBox @bind-Value="model.Name" Name="name" class="mtf-control mtf-control-icon" MaxLength="100" />
+                <RadzenTextBox @bind-Value="model.Name" ReadOnly="@isSystem" Name="name" class="mtf-control mtf-control-icon" MaxLength="100" />
             </div>
         </div>
         <div class="mtf-field-block">
             <label class="mtf-label">Description</label>
-            <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="mtf-control" MaxLength="500" />
+            <RadzenTextArea @bind-Value="model.Description" ReadOnly="@isSystem" Name="description" Rows="4" class="mtf-control" MaxLength="500" />
         </div>
         <div class="mtf-field-block">
+            <label class="mtf-label">Legacy system ID</label>
+            <RadzenTextBox @bind-Value="model.LegacySystemId" Name="legacySystemId" class="mtf-control" MaxLength="200" Placeholder="e.g. XYZ123" />
+            <small class="os-muted">Optional ID from your old system, used in the flight Excel export.</small>
+        </div>
+
+        <div class="mtf-field-block">
             <label class="mtf-label">Usage calculation <span>*</span></label>
-            <RadzenDropDown @bind-Value="model.CalculationType" Data="@calculationTypes"
+            <RadzenDropDown @bind-Value="model.CalculationType" Disabled="@isSystem" Data="@calculationTypes"
                             Name="calculationType" class="mtf-control" />
             <small class="os-muted">Quantity records an amount used. Duration records a from/to usage period, where the end can remain open.</small>
         </div>
@@ -31,14 +41,20 @@
                 <div class="mtf-callout" @key="equipment.Key">
                     <RadzenIcon Icon="tag" />
                     <div class="mtf-equipment-grid">
-                        <RadzenTextBox @bind-Value="equipment.FactoryId" Placeholder="Factory id" MaxLength="100" class="mtf-control" />
-                        <RadzenTextBox @bind-Value="equipment.SerialId" Placeholder="Serial id" MaxLength="100" class="mtf-control" />
-                        <RadzenDatePicker @bind-Value="equipment.CalibrationDate" DateFormat="yyyy-MM-dd" ShowTime="false" Placeholder="Calibration date" class="mtf-control" />
-                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Click="@(() => RemoveEquipment(equipment))" />
+                        <RadzenTextBox @bind-Value="equipment.FactoryId" ReadOnly="@isSystem" Placeholder="Factory id" MaxLength="100" class="mtf-control" />
+                        <RadzenTextBox @bind-Value="equipment.SerialId" ReadOnly="@isSystem" Placeholder="Serial id" MaxLength="100" class="mtf-control" />
+                        <RadzenDatePicker @bind-Value="equipment.CalibrationDate" Disabled="@isSystem" DateFormat="yyyy-MM-dd" ShowTime="false" Placeholder="Calibration date" class="mtf-control" />
+                        @if (!isSystem)
+                        {
+                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Light" Click="@(() => RemoveEquipment(equipment))" />
+                        }
                     </div>
                 </div>
             }
-            <RadzenButton Text="Add equipment" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddEquipment" />
+            @if (!isSystem)
+            {
+                <RadzenButton Text="Add equipment" Icon="add" ButtonStyle="ButtonStyle.Light" Click="@AddEquipment" />
+            }
         </RadzenStack>
 
         @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -63,6 +79,8 @@
     private readonly IReadOnlyList<ResourceCalculationType> calculationTypes = Enum.GetValues<ResourceCalculationType>();
     private ToolModel model = new();
     private string? rowVersion;
+    private bool isSystem;
+    private static readonly Guid UnknownToolId = new("60000000-0000-0000-0000-000000000001");
     private bool isSubmitting;
     private string? errorMessage;
 
@@ -78,6 +96,7 @@
             {
                 Name = detail.Name,
                 Description = detail.Description,
+                LegacySystemId = detail.LegacySystemId,
                 CalculationType = detail.CalculationType,
                 Equipments = detail.Equipments
                     .Select(e => new ToolEquipmentModelState
@@ -90,6 +109,7 @@
                     .ToList()
             };
             rowVersion = detail.RowVersion;
+            isSystem = detail.Id == UnknownToolId;
         }
         catch (ApiException ex)
         {
@@ -129,15 +149,16 @@
 
             var name = model.Name.Trim();
             var description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+            var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             if (ToolId is { } id)
                 await MasterData.UpdateToolAsync(
                     id,
-                    new UpdateToolRequest(name, description, requestRows, model.CalculationType),
+                    new UpdateToolRequest(name, description, requestRows, model.CalculationType, legacySystemId ?? string.Empty),
                     rowVersion ?? string.Empty);
             else
                 await MasterData.CreateToolAsync(
-                    new CreateToolRequest(name, description, requestRows, model.CalculationType));
+                    new CreateToolRequest(name, description, requestRows, model.CalculationType, legacySystemId));
 
             DialogService.Close(true);
         }
@@ -153,6 +174,7 @@
 
     private sealed class ToolModel
     {
+        public string? LegacySystemId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public ResourceCalculationType CalculationType { get; set; } = ResourceCalculationType.Duration;

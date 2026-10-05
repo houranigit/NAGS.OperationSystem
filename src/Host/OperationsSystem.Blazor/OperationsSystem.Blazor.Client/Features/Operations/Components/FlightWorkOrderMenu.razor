@@ -1,0 +1,37 @@
+@implements IAsyncDisposable
+@inject OperationsApiClient Operations
+@inject AuthSession Auth
+
+@if (Auth.HasPermission(OperationsPermissions.WorkOrdersView))
+{
+    @if (loading)
+    {
+        <div class="os-row-actions-note" role="status">Loading work orders…</div>
+    }
+    else if (failed)
+    {
+        <button type="button" class="os-row-actions-item" @onclick="LoadAsync">
+            <RadzenIcon Icon="refresh" /><span>Retry loading work orders</span>
+        </button>
+    }
+    else if (workOrders.Count > 0)
+    {
+        <div class="os-row-actions-sep" role="separator"></div>
+        <RowActionSubmenu Text="Work order" Icon="fact_check">
+            @if (workOrders.Count == 1)
+            {
+                <div class="os-row-actions-note">@WorkOrderLabel(workOrders[0])</div>
+                <WorkOrderMenuContent WorkOrder="@workOrders[0]" Changed="@Changed" />
+            }
+            else
+            {
+                @foreach (var workOrder in workOrders)
+                {
+                    <RowActionSubmenu @key="workOrder.Id" Text="@WorkOrderLabel(workOrder)" Icon="description">
+                        <WorkOrderMenuContent WorkOrder="@workOrder" Changed="@Changed" />
+                    </RowActionSubmenu>
+                }
+            }
+        </RowActionSubmenu>
+    }
+}

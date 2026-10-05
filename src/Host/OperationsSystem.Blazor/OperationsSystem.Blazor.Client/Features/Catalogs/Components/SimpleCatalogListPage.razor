@@ -74,7 +74,7 @@
                 <RowActionMenu>
                     <RowAction Text="@UiStrings.Common.Open" Icon="visibility" OnClick="@(() => Open(item.Id))" />
                     <RowAction Text="@UiStrings.Common.Edit" Icon="edit" Permission="@UpdatePermission"
-                               Visible="@(!item.IsSystem)" OnClick="@(() => OpenEditAsync(item.Id))" />
+                               OnClick="@(() => OpenEditAsync(item.Id))" />
                     <RowAction Separator="true" />
                     <RowAction Text="Activate" Icon="check_circle" Permission="@ActivatePermission"
                                Visible="@(!item.IsSystem && !item.IsActive)" OnClick="@(() => ActivateAsync(item.Id))" />

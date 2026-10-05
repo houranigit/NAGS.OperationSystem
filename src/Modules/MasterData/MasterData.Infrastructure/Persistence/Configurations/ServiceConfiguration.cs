@@ -19,6 +19,7 @@ public sealed class ServiceConfiguration : IEntityTypeConfiguration<Service>
         builder.Property(s => s.CreatedAtUtc).IsRequired();
         builder.Property(s => s.UpdatedAtUtc);
         builder.Property(s => s.RowVersion).IsRowVersion();
+        builder.Property(s => s.LegacySystemId).HasMaxLength(200);
 
         builder.Ignore(s => s.DomainEvents);
     }

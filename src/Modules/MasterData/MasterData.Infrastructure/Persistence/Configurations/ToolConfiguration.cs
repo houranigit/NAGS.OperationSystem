@@ -25,6 +25,7 @@ public sealed class ToolConfiguration : IEntityTypeConfiguration<Tool>
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.UpdatedAtUtc);
         builder.Property(t => t.RowVersion).IsRowVersion();
+        builder.Property(t => t.LegacySystemId).HasMaxLength(200);
 
         builder.HasMany(t => t.Equipments)
             .WithOne()

@@ -1,0 +1,16 @@
+<details class="os-row-actions-submenu">
+    <summary class="os-row-actions-item">
+        <RadzenIcon Icon="@Icon" />
+        <span>@Text</span>
+        <RadzenIcon Icon="chevron_right" class="os-row-actions-submenu-chevron" />
+    </summary>
+    <div class="os-row-actions-submenu-panel">
+        @ChildContent
+    </div>
+</details>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public string Icon { get; set; } = "task_alt";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

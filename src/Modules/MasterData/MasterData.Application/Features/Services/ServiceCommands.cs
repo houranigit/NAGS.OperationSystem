@@ -8,12 +8,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MasterData.Application.Features.Services;
 
-public sealed record CreateServiceCommand(string Name, string? Description) : ICommand<Guid>;
+public sealed record CreateServiceCommand(string Name, string? Description, string? LegacySystemId = null) : ICommand<Guid>;
 
 public sealed class CreateServiceCommandValidator : AbstractValidator<CreateServiceCommand>
 {
     public CreateServiceCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
     }
@@ -29,6 +31,9 @@ public sealed class CreateServiceCommandHandler(IMasterDataDbContext db, TimePro
             return result.Error;
 
         var service = result.Value;
+        var legacyIdResult = service.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+        if (legacyIdResult.IsFailure)
+            return legacyIdResult.Error;
         if (await db.Services.AnyAsync(s => s.Name == service.Name, cancellationToken))
             return Error.Conflict("A service with this name already exists.", "MasterData.Service.DuplicateName");
 
@@ -38,12 +43,14 @@ public sealed class CreateServiceCommandHandler(IMasterDataDbContext db, TimePro
     }
 }
 
-public sealed record UpdateServiceCommand(Guid Id, string Name, string? Description, byte[] RowVersion) : ICommand;
+public sealed record UpdateServiceCommand(Guid Id, string Name, string? Description, byte[] RowVersion, string? LegacySystemId = null) : ICommand;
 
 public sealed class UpdateServiceCommandValidator : AbstractValidator<UpdateServiceCommand>
 {
     public UpdateServiceCommandValidator()
     {
+        RuleFor(x => x.LegacySystemId).Must(value => value is null || value.Trim().Length <= 200)
+            .WithMessage("Legacy system ID must be at most 200 characters.");
         RuleFor(x => x.Id).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Description).MaximumLength(500);
@@ -59,8 +66,11 @@ public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimePro
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == request.Id, cancellationToken);
         if (service is null)
             return Error.NotFound("Service not found.", "MasterData.Service.NotFound");
-        if (ServiceSystemRecords.IsSystem(service.Id))
-            return Error.Conflict("System services cannot be modified.", "MasterData.Service.SystemProtected");
+        if (ServiceSystemRecords.IsSystem(service.Id)
+            && (request.LegacySystemId is null
+                || request.Name.Trim() != service.Name
+                || NormalizeOptional(request.Description) != service.Description))
+            return Error.Conflict("Only the legacy system ID can be changed for system services.", "MasterData.Service.SystemProtected");
 
         var trimmedName = request.Name.Trim();
         if (await db.Services.AnyAsync(s => s.Name == trimmedName && s.Id != request.Id, cancellationToken))
@@ -69,6 +79,14 @@ public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimePro
         var result = service.Update(request.Name, request.Description, timeProvider.GetUtcNow());
         if (result.IsFailure)
             return result.Error;
+
+        // Preserve mappings for older callers that omit this optional field; an empty string clears it.
+        if (request.LegacySystemId is not null)
+        {
+            var legacyIdResult = service.SetLegacySystemId(request.LegacySystemId, timeProvider.GetUtcNow());
+            if (legacyIdResult.IsFailure)
+                return legacyIdResult.Error;
+        }
 
         db.SetOriginalRowVersion(service, request.RowVersion);
 
@@ -83,6 +101,9 @@ public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimePro
 
         return Result.Success();
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 public sealed record ActivateServiceCommand(Guid Id, byte[] RowVersion) : ICommand;

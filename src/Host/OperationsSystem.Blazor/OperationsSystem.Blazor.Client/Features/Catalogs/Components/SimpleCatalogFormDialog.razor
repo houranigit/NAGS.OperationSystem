@@ -4,24 +4,34 @@
 <RadzenTemplateForm TItem="SimpleCatalogModel" Data="@model" Submit="@SubmitAsync">
     <div class="mtf-form">
         <p class="mtf-intro os-muted">@SimpleCatalogText.Description(Kind)</p>
+        @if (isSystem)
+        {
+            <p class="mtf-intro os-muted">Only the legacy system ID can be changed for this system record.</p>
+        }
         <div class="mtf-section-line"><RadzenIcon Icon="@SimpleCatalogText.Icon(Kind)" /><span>@UiStrings.Common.Details</span></div>
 
         <div class="mtf-field-block">
             <label class="mtf-label">Name <span>*</span></label>
             <div class="mtf-input-wrap">
                 <RadzenIcon Icon="@SimpleCatalogText.Icon(Kind)" class="mtf-field-icon" />
-                <RadzenTextBox @bind-Value="model.Name" Name="name" class="mtf-control mtf-control-icon" MaxLength="@NameMaxLength" />
+                <RadzenTextBox @bind-Value="model.Name" ReadOnly="@isSystem" Name="name" class="mtf-control mtf-control-icon" MaxLength="@NameMaxLength" />
             </div>
         </div>
         <div class="mtf-field-block">
             <label class="mtf-label">Description</label>
-            <RadzenTextArea @bind-Value="model.Description" Name="description" Rows="4" class="mtf-control" MaxLength="500" />
+            <RadzenTextArea @bind-Value="model.Description" ReadOnly="@isSystem" Name="description" Rows="4" class="mtf-control" MaxLength="500" />
         </div>
+        <div class="mtf-field-block">
+            <label class="mtf-label">Legacy system ID</label>
+            <RadzenTextBox @bind-Value="model.LegacySystemId" Name="legacySystemId" class="mtf-control" MaxLength="200" Placeholder="e.g. XYZ123" />
+            <small class="os-muted">Optional ID from your old system, used in the flight Excel export.</small>
+        </div>
+
         @if (SupportsCalculationType)
         {
             <div class="mtf-field-block">
                 <label class="mtf-label">Usage calculation <span>*</span></label>
-                <RadzenDropDown @bind-Value="model.CalculationType" Data="@calculationTypes"
+                <RadzenDropDown @bind-Value="model.CalculationType" Disabled="@isSystem" Data="@calculationTypes"
                                 Name="calculationType" class="mtf-control" />
                 <small class="os-muted">Quantity records an amount used. Duration records a from/to usage period, where the end can remain open.</small>
             </div>
@@ -50,6 +60,9 @@
     private readonly IReadOnlyList<ResourceCalculationType> calculationTypes = Enum.GetValues<ResourceCalculationType>();
     private SimpleCatalogModel model = new();
     private string? rowVersion;
+    private bool isSystem;
+    private static readonly Guid UnknownMaterialId = new("70000000-0000-0000-0000-000000000001");
+    private static readonly Guid UnknownGeneralSupportId = new("80000000-0000-0000-0000-000000000001");
     private bool isSubmitting;
     private string? errorMessage;
 
@@ -71,9 +84,13 @@
             {
                 Name = detail.Name,
                 Description = detail.Description,
+                LegacySystemId = detail.LegacySystemId,
                 CalculationType = detail.CalculationType ?? ResourceCalculationType.Quantity
             };
             rowVersion = detail.RowVersion;
+            isSystem = detail.IsSystem
+                || (Kind == SimpleCatalogKind.Materials && detail.Id == UnknownMaterialId)
+                || (Kind == SimpleCatalogKind.GeneralSupports && detail.Id == UnknownGeneralSupportId);
         }
         catch (ApiException ex)
         {
@@ -95,11 +112,12 @@
         {
             var name = model.Name.Trim();
             var description = string.IsNullOrWhiteSpace(model.Description) ? null : model.Description.Trim();
+            var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             if (EntityId is { } id)
-                await UpdateAsync(id, name, description);
+                await UpdateAsync(id, name, description, legacySystemId ?? string.Empty);
             else
-                await CreateAsync(name, description);
+                await CreateAsync(name, description, legacySystemId);
 
             DialogService.Close(true);
         }
@@ -113,25 +131,25 @@
         }
     }
 
-    private Task CreateAsync(string name, string? description) => Kind switch
+    private Task CreateAsync(string name, string? description, string? legacySystemId) => Kind switch
     {
-        SimpleCatalogKind.Services => MasterData.CreateServiceAsync(new CreateServiceRequest(name, description)),
-        SimpleCatalogKind.OperationTypes => MasterData.CreateOperationTypeAsync(new CreateOperationTypeRequest(name, description)),
+        SimpleCatalogKind.Services => MasterData.CreateServiceAsync(new CreateServiceRequest(name, description, legacySystemId)),
+        SimpleCatalogKind.OperationTypes => MasterData.CreateOperationTypeAsync(new CreateOperationTypeRequest(name, description, legacySystemId)),
         SimpleCatalogKind.Materials => MasterData.CreateMaterialAsync(
-            new CreateMaterialRequest(name, description, model.CalculationType)),
+            new CreateMaterialRequest(name, description, model.CalculationType, legacySystemId)),
         SimpleCatalogKind.GeneralSupports => MasterData.CreateGeneralSupportAsync(
-            new CreateGeneralSupportRequest(name, description, model.CalculationType)),
+            new CreateGeneralSupportRequest(name, description, model.CalculationType, legacySystemId)),
         _ => Task.CompletedTask
     };
 
-    private Task UpdateAsync(Guid id, string name, string? description) => Kind switch
+    private Task UpdateAsync(Guid id, string name, string? description, string legacySystemId) => Kind switch
     {
-        SimpleCatalogKind.Services => MasterData.UpdateServiceAsync(id, new UpdateServiceRequest(name, description), rowVersion ?? string.Empty),
-        SimpleCatalogKind.OperationTypes => MasterData.UpdateOperationTypeAsync(id, new UpdateOperationTypeRequest(name, description), rowVersion ?? string.Empty),
+        SimpleCatalogKind.Services => MasterData.UpdateServiceAsync(id, new UpdateServiceRequest(name, description, legacySystemId), rowVersion ?? string.Empty),
+        SimpleCatalogKind.OperationTypes => MasterData.UpdateOperationTypeAsync(id, new UpdateOperationTypeRequest(name, description, legacySystemId), rowVersion ?? string.Empty),
         SimpleCatalogKind.Materials => MasterData.UpdateMaterialAsync(
-            id, new UpdateMaterialRequest(name, description, model.CalculationType), rowVersion ?? string.Empty),
+            id, new UpdateMaterialRequest(name, description, model.CalculationType, legacySystemId), rowVersion ?? string.Empty),
         SimpleCatalogKind.GeneralSupports => MasterData.UpdateGeneralSupportAsync(
-            id, new UpdateGeneralSupportRequest(name, description, model.CalculationType), rowVersion ?? string.Empty),
+            id, new UpdateGeneralSupportRequest(name, description, model.CalculationType, legacySystemId), rowVersion ?? string.Empty),
         _ => Task.CompletedTask
     };
 
@@ -146,22 +164,23 @@
 
     private static SimpleCatalogDetail ToDetail(ServiceDetail value) =>
         new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem,
-            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null);
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null, value.LegacySystemId);
 
     private static SimpleCatalogDetail ToDetail(OperationTypeDetail value) =>
         new(value.Id, value.Name, value.Description, value.IsActive, value.IsSystem,
-            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null);
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, null, value.LegacySystemId);
 
     private static SimpleCatalogDetail ToDetail(MaterialDetail value) =>
         new(value.Id, value.Name, value.Description, value.IsActive, false,
-            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType);
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType, value.LegacySystemId);
 
     private static SimpleCatalogDetail ToDetail(GeneralSupportDetail value) =>
         new(value.Id, value.Name, value.Description, value.IsActive, false,
-            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType);
+            value.CreatedAtUtc, value.UpdatedAtUtc, value.RowVersion, value.CalculationType, value.LegacySystemId);
 
     private sealed class SimpleCatalogModel
     {
+        public string? LegacySystemId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public ResourceCalculationType CalculationType { get; set; } = ResourceCalculationType.Quantity;

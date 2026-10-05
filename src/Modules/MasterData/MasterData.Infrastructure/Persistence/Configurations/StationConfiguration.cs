@@ -29,6 +29,7 @@ public sealed class StationConfiguration : IEntityTypeConfiguration<Station>
         builder.Property(s => s.UpdatedAtUtc);
 
         builder.Property(s => s.RowVersion).IsRowVersion();
+        builder.Property(s => s.LegacySystemId).HasMaxLength(200);
 
         builder.Ignore(s => s.DomainEvents);
     }

@@ -1,3 +1,4 @@
+using MasterData.Domain.LegacySystem;
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
@@ -9,7 +10,7 @@ namespace MasterData.Domain.Stations;
 /// optional unique 4-letter ICAO code. References an active <see cref="Countries.Country"/>.
 /// Long-lived master data with an active/inactive lifecycle; never hard-deleted.
 /// </summary>
-public sealed class Station : AggregateRoot<Guid>, IAuditable
+public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAuditable
 {
     private Station() { }
 
@@ -27,6 +28,21 @@ public sealed class Station : AggregateRoot<Guid>, IAuditable
 
     /// <summary>Optimistic-concurrency token surfaced to clients as an ETag.</summary>
     public byte[] RowVersion { get; private set; } = [];
+    public string? LegacySystemId { get; private set; }
+
+    public Result SetLegacySystemId(string? value, DateTimeOffset now)
+    {
+        var normalized = LegacySystemIdRules.Normalize(value);
+        if (normalized.IsFailure)
+            return normalized.Error;
+
+        if (LegacySystemId == normalized.Value)
+            return Result.Success();
+
+        LegacySystemId = normalized.Value;
+        UpdatedAtUtc = now;
+        return Result.Success();
+    }
 
     public static Result<Station> Create(
         string? iataCode,

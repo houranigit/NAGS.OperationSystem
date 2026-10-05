@@ -110,7 +110,7 @@ public sealed class GetStationByIdQueryHandler(IMasterDataDbContext db, IMasterD
         return new StationDto(
             station.Id, station.IataCode, station.IcaoCode, station.Name, station.City,
             station.CountryId, countryName, station.IsActive,
-            station.CreatedAtUtc, station.UpdatedAtUtc, Convert.ToBase64String(station.RowVersion));
+            station.CreatedAtUtc, station.UpdatedAtUtc, Convert.ToBase64String(station.RowVersion), station.LegacySystemId);
     }
 }
 

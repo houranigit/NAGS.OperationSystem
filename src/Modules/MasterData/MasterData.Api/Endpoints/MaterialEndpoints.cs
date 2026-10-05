@@ -39,7 +39,7 @@ internal static class MaterialEndpoints
         materials.MapPost("/", async (CreateMaterialRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new CreateMaterialCommand(
-                request.Name, request.Description, request.CalculationType), ct);
+                request.Name, request.Description, request.CalculationType, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/materials/{id}");
         }).RequirePermission(MasterDataPermissions.Materials.Create);
 
@@ -49,7 +49,7 @@ internal static class MaterialEndpoints
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
             var result = await sender.Send(new UpdateMaterialCommand(
-                id, request.Name, request.Description, rowVersion, request.CalculationType), ct);
+                id, request.Name, request.Description, rowVersion, request.CalculationType, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.Materials.Update);
 

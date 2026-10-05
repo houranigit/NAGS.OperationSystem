@@ -48,7 +48,7 @@ internal static class StaffMemberEndpoints
         {
             var result = await sender.Send(new CreateStaffMemberCommand(
                 request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
-                MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses), request.PortalAccessRoleId), ct);
+                MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses), request.PortalAccessRoleId, request.LegacySystemId), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/staff-members/{id}");
         }).RequirePermission(MasterDataPermissions.StaffMembers.Create);
 
@@ -59,7 +59,7 @@ internal static class StaffMemberEndpoints
 
             var result = await sender.Send(new UpdateStaffMemberCommand(
                 id, request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
-                MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses), rowVersion), ct);
+                MapContract(request.EmploymentContract), request.WorkingDays, MapLicenses(request.Licenses), rowVersion, request.LegacySystemId), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.StaffMembers.Update);
 

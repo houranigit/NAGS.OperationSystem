@@ -25,6 +25,7 @@ public sealed class GeneralSupportConfiguration : IEntityTypeConfiguration<Gener
         builder.Property(g => g.CreatedAtUtc).IsRequired();
         builder.Property(g => g.UpdatedAtUtc);
         builder.Property(g => g.RowVersion).IsRowVersion();
+        builder.Property(g => g.LegacySystemId).HasMaxLength(200);
 
         builder.Ignore(g => g.DomainEvents);
     }

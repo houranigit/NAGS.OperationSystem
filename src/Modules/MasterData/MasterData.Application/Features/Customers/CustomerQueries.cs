@@ -123,7 +123,7 @@ public sealed class GetCustomerByIdQueryHandler(IMasterDataDbContext db, IMaster
             new AddressDto(customer.Address.Line1, customer.Address.Line2, customer.Address.City, customer.Address.Region, customer.Address.PostalCode),
             customer.IsActive, CustomerSystemRecords.IsSystem(customer.Id),
             customer.CreatedAtUtc, customer.UpdatedAtUtc, Convert.ToBase64String(customer.RowVersion),
-            contacts);
+            contacts, customer.LegacySystemId);
     }
 }
 
