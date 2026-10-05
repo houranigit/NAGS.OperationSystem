@@ -14,6 +14,7 @@ public sealed class UserTimeZone(IJSRuntime js)
     public string Id => timeZone.Id;
     public string DisplayName => timeZone.DisplayName;
     public bool IsUtc => timeZone.Equals(TimeZoneInfo.Utc);
+    public bool IsInitialized { get; private set; }
 
     public Task InitializeAsync() => initialization ??= InitializeCoreAsync();
 
@@ -119,6 +120,10 @@ public sealed class UserTimeZone(IJSRuntime js)
             {
                 timeZone = TimeZoneInfo.Utc;
             }
+        }
+        finally
+        {
+            IsInitialized = true;
         }
     }
 

@@ -279,7 +279,8 @@ public static class UiStrings
         public static string LastUpdated => UiText.Get("OperationsDashboard.LastUpdated", "Last updated");
         public static string LiveConnected => UiText.Get("OperationsDashboard.LiveConnected", "Live connection");
         public static string LiveConnecting => UiText.Get("OperationsDashboard.LiveConnecting", "Connecting live");
-        public static string UtcReporting => UiText.Get("OperationsDashboard.UtcReporting", "All times are shown in UTC");
+        public static string TimeZoneReporting(string timeZoneId) => string.Format(
+            UiText.Get("OperationsDashboard.TimeZoneReporting", "All times are shown in {0}"), timeZoneId);
         public static string TotalFlights => UiText.Get("OperationsDashboard.TotalFlights", "Total flights");
         public static string InSelectedPeriod => UiText.Get("OperationsDashboard.InSelectedPeriod", "In the selected period");
         public static string Refresh => UiText.Get("OperationsDashboard.Refresh", "Refresh data");
@@ -381,8 +382,8 @@ public static class UiStrings
         public static string Customer => UiText.Get("OperationsDashboard.Customer", "Customer");
         public static string Station => UiText.Get("OperationsDashboard.Station", "Station");
         public static string OperationType => UiText.Get("OperationsDashboard.OperationType", "Operation type");
-        public static string ArrivalUtc => UiText.Get("OperationsDashboard.ArrivalUtc", "Scheduled arrival (UTC)");
-        public static string DepartureUtc => UiText.Get("OperationsDashboard.DepartureUtc", "Scheduled departure (UTC)");
+        public static string ArrivalUtc => UiText.Get("OperationsDashboard.ArrivalUtc", "Scheduled arrival");
+        public static string DepartureUtc => UiText.Get("OperationsDashboard.DepartureUtc", "Scheduled departure");
         public static string Services => UiText.Get("OperationsDashboard.Services", "Services");
         public static string NoPerformedServices => UiText.Get("OperationsDashboard.NoPerformedServices", "No performed services");
         public static string Status => UiText.Get("OperationsDashboard.Status", "Status");

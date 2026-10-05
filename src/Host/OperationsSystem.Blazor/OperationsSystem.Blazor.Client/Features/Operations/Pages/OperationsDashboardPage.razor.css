@@ -255,7 +255,7 @@
     font-size: 0.95rem;
 }
 
-.od-utc-badge {
+.od-timezone-badge {
     padding: 0.2rem 0.42rem;
     border: 1px solid var(--os-color-border);
     border-radius: var(--os-radius-pill);

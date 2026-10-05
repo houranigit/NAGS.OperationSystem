@@ -784,6 +784,19 @@ public sealed class FlightExportDocumentFactoryTests
     }
 
     [Fact]
+    public void Report_file_names_use_the_display_zone_date_and_unambiguous_offset()
+    {
+        var chicago = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+        var instant = DateTimeOffset.Parse("2026-10-05T01:55:00Z");
+
+        var local = FlightExportDocumentFactory.Create(FlightExportFormat.Csv, [], Criteria, instant, chicago);
+        var utc = FlightExportDocumentFactory.Create(FlightExportFormat.Csv, [], Criteria, instant);
+
+        local.FileName.ShouldBe("flights-report-20261004-205500-0500.csv");
+        utc.FileName.ShouldBe("flights-report-20261005-015500Z.csv");
+    }
+
+    [Fact]
     public void CreatePdf_RemainsTheCanonicalNativeDailyOperationReport()
     {
         FlightExportDocumentFactory.BuildPdfColumns(Criteria)

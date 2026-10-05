@@ -51,10 +51,10 @@
                          MarginRight="24"
                          MarginBottom="12"
                          MarginLeft="22">
-                <RadzenLineSeries TItem="DashboardTimelinePoint"
+                <RadzenLineSeries TItem="ChartPoint"
                                   Data="@points"
-                                  CategoryProperty="@nameof(DashboardTimelinePoint.BucketDateUtc)"
-                                  ValueProperty="@nameof(DashboardTimelinePoint.FlightCount)"
+                                  CategoryProperty="@nameof(ChartPoint.CategoryDate)"
+                                  ValueProperty="@nameof(ChartPoint.FlightCount)"
                                   Title="@flightsLabel"
                                   Smooth="true"
                                   Stroke="#8a1538"

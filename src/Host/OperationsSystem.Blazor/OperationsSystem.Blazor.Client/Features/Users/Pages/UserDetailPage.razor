@@ -1,3 +1,4 @@
+@inject UserTimeZone UserTimeZone
 @page "/users/{Id:guid}"
 @inject IdentityApiClient Identity
 @inject DialogService DialogService
@@ -149,11 +150,11 @@
                         </div>
                         <div class="us-metric">
                             <dt>@UiStrings.Users.MemberSince</dt>
-                            <dd>@u.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                            <dd>@UserTimeZone.Format(u.CreatedAtUtc, "d")</dd>
                         </div>
                         <div class="us-metric">
                             <dt>@UiStrings.Users.LastUpdated</dt>
-                            <dd>@(u.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                            <dd>@(u.UpdatedAtUtc is { } updated ? UserTimeZone.Format(updated, "g") : UiStrings.Common.None)</dd>
                         </div>
                     </dl>
                 </RadzenCard>
@@ -306,7 +307,7 @@
                                 <Template Context="s"><span class="us-mono">@(s.CreatedByIp ?? UiStrings.Common.None)</span></Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.LastActivity" Width="180px">
-                                <Template Context="s">@s.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
+                                <Template Context="s">@UserTimeZone.Format(s.CreatedAtUtc, "g")</Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="130px">
                                 <Template Context="s">@SessionBadge(s)</Template>
@@ -366,7 +367,7 @@
                         <div class="us-timeline-content">
                             <p class="us-timeline-title">@(showTarget ? $"{entry.Action} · {TargetLabel(entry)}" : entry.Action)</p>
                             <p class="os-muted us-timeline-sub">
-                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span title="@UserTimeZone.Format(entry.OccurredOnUtc, "F")">@RelativeTime(entry.OccurredOnUtc)</span>
                                 <span class="us-dot-sep">&middot;</span>
                                 @(showTarget
                                     ? entry.Module
@@ -464,7 +465,11 @@
 
     private static bool CanResetMfa(UserDetail u) => u.MfaEnabled || u.MfaEnrollmentRequired;
 
-    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -767,7 +772,7 @@
         };
     }
 
-    private static string LockStatusLabel(UserDetail u)
+    private string LockStatusLabel(UserDetail u)
     {
         if (!u.IsLockedOut)
             return UiStrings.Users.NotLocked;
@@ -777,7 +782,7 @@
 
         return IsIndefiniteLockout(end)
             ? UiStrings.Users.LockedIndefinitely
-            : string.Format(UiStrings.Users.LockedUntil, end.ToLocalTime().ToString("g"));
+            : string.Format(UiStrings.Users.LockedUntil, UserTimeZone.Format(end, "g"));
     }
 
     private static bool IsIndefiniteLockout(DateTimeOffset value) => value.UtcDateTime.Year >= 9000;
@@ -829,13 +834,13 @@
         ? $"{entry.EntityType} {ShortId(id)}"
         : entry.EntityType;
 
-    private static string FullStamp(DateTimeOffset? value) =>
-        value is { } v ? v.ToLocalTime().ToString("F") : UiStrings.Users.Never;
+    private string FullStamp(DateTimeOffset? value) =>
+        value is { } v ? UserTimeZone.Format(v, "F") : UiStrings.Users.Never;
 
-    private static string LoginStamp(DateTimeOffset? value) =>
+    private string LoginStamp(DateTimeOffset? value) =>
         value is { } v ? RelativeTime(v) : UiStrings.Users.Never;
 
-    private static string RelativeTime(DateTimeOffset value)
+    private string RelativeTime(DateTimeOffset value)
     {
         var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
         if (delta < TimeSpan.Zero)
@@ -850,7 +855,7 @@
         if (delta.TotalDays < 30)
             return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
 
-        return value.ToLocalTime().ToString("d");
+        return UserTimeZone.Format(value, "d");
     }
 
     private string? RecentIp() => sessions?.FirstOrDefault(s => s.IsCurrent)?.CreatedByIp

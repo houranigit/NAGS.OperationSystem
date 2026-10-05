@@ -742,6 +742,240 @@ public sealed class DashboardQueryTests
         sql.ShouldAllBe(statement => statement.Contains("SELECT", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("America/Chicago", "2026-10-04T05:00:00Z", "2026-10-05T05:00:00Z")]
+    [InlineData("Asia/Riyadh", "2026-10-03T21:00:00Z", "2026-10-04T21:00:00Z")]
+    public async Task Dashboard_LocalDayIncludesOnlyTheHalfOpenUtcRangeAndBucketsLocalHours(
+        string timeZoneId, string from, string to)
+    {
+        await using var db = NewDb();
+        var fromUtc = DateTimeOffset.Parse(from);
+        var toUtc = DateTimeOffset.Parse(to);
+        db.Flights.AddRange(
+            CreateFlight("100", scheduledArrival: fromUtc.AddTicks(-1)),
+            CreateFlight("200", scheduledArrival: fromUtc),
+            CreateFlight("300", scheduledArrival: toUtc.AddMinutes(-1)),
+            CreateFlight("400", scheduledArrival: toUtc));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: fromUtc, ToUtc: toUtc, IncludeOptions: false, TimeZoneId: timeZoneId), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TotalFlights.ShouldBe(2);
+        result.Value.FromUtc.ShouldBe(fromUtc);
+        result.Value.ToUtc.ShouldBe(toUtc);
+        result.Value.Hourly.Single(point => point.Key == "00").FlightCount.ShouldBe(1);
+        result.Value.Hourly.Single(point => point.Key == "23").FlightCount.ShouldBe(1);
+        result.Value.Timeline.Count.ShouldBe(24);
+        result.Value.Timeline[0].BucketUtc.ShouldBe(fromUtc);
+        result.Value.Timeline[^1].BucketUtc.ShouldBe(toUtc.AddHours(-1));
+        result.Value.Timeline.Sum(point => point.FlightCount).ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData("America/Chicago", "2026-01-01T00:30:00Z", "18", "12", "2025")]
+    [InlineData("Asia/Riyadh", "2026-12-31T22:30:00Z", "01", "01", "2027")]
+    [InlineData("Browser UTC+05:30", "2026-12-31T20:00:00Z", "01", "01", "2027")]
+    public async Task Dashboard_TrendsUseLocalHoursMonthsAndYears(
+        string timeZoneId, string sta, string expectedHour, string expectedMonth, string expectedYear)
+    {
+        await using var db = NewDb();
+        db.Flights.Add(CreateFlight("100", scheduledArrival: DateTimeOffset.Parse(sta)));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            IncludeOptions: false, TimeZoneId: timeZoneId), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Hourly.Single(point => point.Key == expectedHour).FlightCount.ShouldBe(1);
+        result.Value.Monthly.Single(point => point.Key == expectedMonth).FlightCount.ShouldBe(1);
+        result.Value.Yearly.ShouldHaveSingleItem().Key.ShouldBe(expectedYear);
+        result.Value.Timeline.ShouldHaveSingleItem().FlightCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Dashboard_LocalYearRangeZeroFillsAcrossTheLocalNewYear()
+    {
+        await using var db = NewDb();
+        var sta = DateTimeOffset.Parse("2026-01-01T00:30:00Z");
+        db.Flights.Add(CreateFlight("100", scheduledArrival: sta));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: DateTimeOffset.Parse("2026-01-01T00:00:00Z"),
+            ToUtc: DateTimeOffset.Parse("2026-01-02T06:00:00Z"),
+            IncludeOptions: false, TimeZoneId: "America/Chicago"), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Yearly.Select(point => point.Key).ShouldBe(["2025", "2026"]);
+        result.Value.Yearly.Select(point => point.FlightCount).ShouldBe([1, 0]);
+    }
+
+    [Fact]
+    public async Task Dashboard_MaxTimelineUsesTheLocalDayAcrossDifferentUtcDates()
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateFlight("100", scheduledArrival: DateTimeOffset.Parse("2026-10-04T05:30:00Z")),
+            CreateFlight("200", scheduledArrival: DateTimeOffset.Parse("2026-10-05T00:30:00Z")));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            IncludeOptions: false, TimeZoneId: "America/Chicago"), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TimelineGranularity.ShouldBe("Hour");
+        result.Value.Timeline.Count.ShouldBe(20);
+        result.Value.Timeline[0].BucketUtc.ShouldBe(DateTimeOffset.Parse("2026-10-04T05:00:00Z"));
+        result.Value.Timeline[^1].BucketUtc.ShouldBe(DateTimeOffset.Parse("2026-10-05T00:00:00Z"));
+        result.Value.Timeline.Sum(point => point.FlightCount).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Dashboard_SpringForwardDayHas23BucketsAndNoNonexistentLocalHour()
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateFlight("100", scheduledArrival: DateTimeOffset.Parse("2026-03-08T07:30:00Z")),
+            CreateFlight("200", scheduledArrival: DateTimeOffset.Parse("2026-03-08T08:30:00Z")));
+        await db.SaveChangesAsync();
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: DateTimeOffset.Parse("2026-03-08T06:00:00Z"),
+            ToUtc: DateTimeOffset.Parse("2026-03-09T05:00:00Z"),
+            IncludeOptions: false, TimeZoneId: zone.Id), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Timeline.Count.ShouldBe(23);
+        result.Value.Timeline.Select(point => TimeZoneInfo.ConvertTime(point.BucketUtc, zone).Hour)
+            .ShouldNotContain(2);
+        result.Value.Timeline.Sum(point => point.FlightCount).ShouldBe(2);
+        result.Value.Hourly.Single(point => point.Key == "02").FlightCount.ShouldBe(0);
+        result.Value.Timeline.ShouldAllBe(point => point.BucketUtc.Offset == TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task Dashboard_FallBackDayHas25BucketsAndKeepsBothRepeatedHours()
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateFlight("100", scheduledArrival: DateTimeOffset.Parse("2026-11-01T06:30:00Z")),
+            CreateFlight("200", scheduledArrival: DateTimeOffset.Parse("2026-11-01T07:30:00Z")));
+        await db.SaveChangesAsync();
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: DateTimeOffset.Parse("2026-11-01T05:00:00Z"),
+            ToUtc: DateTimeOffset.Parse("2026-11-02T06:00:00Z"),
+            IncludeOptions: false, TimeZoneId: zone.Id), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Timeline.Count.ShouldBe(25);
+        var repeated = result.Value.Timeline.Where(point => TimeZoneInfo.ConvertTime(point.BucketUtc, zone).Hour == 1).ToList();
+        repeated.Select(point => point.BucketUtc).ShouldBe([
+            DateTimeOffset.Parse("2026-11-01T06:00:00Z"), DateTimeOffset.Parse("2026-11-01T07:00:00Z")]);
+        repeated.Select(point => point.FlightCount).ShouldBe([1, 1]);
+        result.Value.Hourly.Single(point => point.Key == "01").FlightCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Dashboard_DailyBucketsStayAtLocalMidnightAcrossDst()
+    {
+        await using var db = NewDb();
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: DateTimeOffset.Parse("2026-10-31T05:00:00Z"),
+            ToUtc: DateTimeOffset.Parse("2026-11-03T06:00:00Z"),
+            IncludeOptions: false, TimeZoneId: zone.Id), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TimelineGranularity.ShouldBe("Day");
+        result.Value.Timeline.Select(point => point.BucketUtc).ShouldBe([
+            DateTimeOffset.Parse("2026-10-31T05:00:00Z"), DateTimeOffset.Parse("2026-11-01T05:00:00Z"),
+            DateTimeOffset.Parse("2026-11-02T06:00:00Z")]);
+        result.Value.Timeline.ShouldAllBe(point => TimeZoneInfo.ConvertTime(point.BucketUtc, zone).Hour == 0 && point.FlightCount == 0);
+    }
+
+    [Fact]
+    public async Task Dashboard_TwoLocalDaysRemainHourlyEvenWhenFallBackAddsAnExtraHour()
+    {
+        await using var db = NewDb();
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: DateTimeOffset.Parse("2026-10-31T05:00:00Z"),
+            ToUtc: DateTimeOffset.Parse("2026-11-02T06:00:00Z"),
+            IncludeOptions: false, TimeZoneId: "America/Chicago"), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TimelineGranularity.ShouldBe("Hour");
+        result.Value.Timeline.Count.ShouldBe(49);
+    }
+
+    [Theory]
+    [InlineData("Unknown/Time_Zone")]
+    [InlineData("Browser UTC+15:00")]
+    [InlineData("Browser UTC+14:01")]
+    [InlineData("Browser UTC+5:30")]
+    public async Task Dashboard_RejectsInvalidTimeZones(string timeZoneId)
+    {
+        await using var db = NewDb();
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            TimeZoneId: timeZoneId), CancellationToken.None);
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.Dashboard.TimeZoneInvalid");
+    }
+
+    [Theory]
+    [InlineData("2026-04-04T13:00:00Z", "2026-04-05T13:30:00Z", "2026-04-04T14:45:00Z", "2026-04-04T15:15:00Z", 25)]
+    [InlineData("2026-10-03T13:30:00Z", "2026-10-04T13:00:00Z", "2026-10-03T15:15:00Z", "2026-10-03T15:45:00Z", 24)]
+    public async Task Dashboard_PartialHourDstTransitionsPreserveEveryFlightAndDistinctActualBucketStarts(
+        string from, string to, string firstSta, string secondSta, int expectedBuckets)
+    {
+        await using var db = NewDb();
+        db.Flights.AddRange(
+            CreateFlight("100", scheduledArrival: DateTimeOffset.Parse(firstSta)),
+            CreateFlight("200", scheduledArrival: DateTimeOffset.Parse(secondSta)));
+        await db.SaveChangesAsync();
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: DateTimeOffset.Parse(from), ToUtc: DateTimeOffset.Parse(to),
+            IncludeOptions: false, TimeZoneId: "Australia/Lord_Howe"), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Timeline.Count.ShouldBe(expectedBuckets);
+        result.Value.Timeline.Sum(point => point.FlightCount).ShouldBe(2);
+        result.Value.Timeline.Count(point => point.FlightCount == 1).ShouldBe(2);
+        result.Value.Timeline.Select(point => point.BucketUtc).Distinct().Count().ShouldBe(expectedBuckets);
+        result.Value.Timeline[0].BucketUtc.ShouldBe(DateTimeOffset.Parse(from));
+    }
+
+    [Fact]
+    public async Task Dashboard_TwoHourFallBackRetainsEveryRepeatedHourAndFlight()
+    {
+        await using var db = NewDb();
+        var fromUtc = DateTimeOffset.Parse("2026-10-24T22:00:00Z");
+        var toUtc = DateTimeOffset.Parse("2026-10-26T00:00:00Z");
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("Antarctica/Troll");
+        db.Flights.AddRange(Enumerable.Range(0, 26).Select(hour => CreateFlight(
+            (100 + hour).ToString(), scheduledArrival: fromUtc.AddHours(hour).AddMinutes(30))));
+        await db.SaveChangesAsync();
+
+        var result = await AdminHandler(db).Handle(new GetOperationsDashboardQuery(
+            FromUtc: fromUtc, ToUtc: toUtc, IncludeOptions: false, TimeZoneId: zone.Id),
+            CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.TotalFlights.ShouldBe(26);
+        result.Value.Timeline.Count.ShouldBe(26);
+        result.Value.Timeline.Select(point => point.BucketUtc)
+            .ShouldBe(Enumerable.Range(0, 26).Select(hour => fromUtc.AddHours(hour)));
+        result.Value.Timeline.ShouldAllBe(point => point.FlightCount == 1);
+        result.Value.Timeline.Sum(point => point.FlightCount).ShouldBe(result.Value.TotalFlights);
+        result.Value.Hourly.Single(point => point.Key == "01").FlightCount.ShouldBe(2);
+        result.Value.Hourly.Single(point => point.Key == "02").FlightCount.ShouldBe(2);
+    }
+
     private static OperationsDbContext NewDb() =>
         new(new DbContextOptionsBuilder<OperationsDbContext>()
             .UseInMemoryDatabase($"dashboard-{Guid.NewGuid()}")

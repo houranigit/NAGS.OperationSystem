@@ -40,7 +40,7 @@
                             <h2 id="home-snapshot-heading">Data snapshot</h2>
                             <p>Loaded once for this visit. Open the relevant feature for current operational detail.</p>
                         </div>
-                        @if (snapshotGeneratedAtUtc is { } generatedAt)
+                        @if (snapshotGeneratedAtUtc is { } generatedAt && UserTimeZone.IsInitialized)
                         {
                             <span class="os-home-snapshot-time"><RadzenIcon Icon="schedule" />@SnapshotTime(generatedAt)</span>
                         }

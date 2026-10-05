@@ -129,6 +129,32 @@ public sealed class BrowserApiClientTests
     }
 
     [Fact]
+    public async Task Dashboard_requests_and_downloads_forward_the_browser_time_zone()
+    {
+        var runtime = new CapturingDownloadJsRuntime { Response = "{}" };
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var flightId = Guid.NewGuid();
+        var fromUtc = DateTimeOffset.Parse("2026-10-04T05:00:00Z");
+        var toUtc = DateTimeOffset.Parse("2026-10-05T05:00:00Z");
+
+        await operations.GetOperationsDashboardAsync(fromUtc, toUtc, timeZoneId: "America/Chicago");
+
+        runtime.Arguments![1]!.ToString()!.ShouldContain("timeZoneId=America%2FChicago");
+        runtime.Arguments[1]!.ToString()!.ShouldContain("fromUtc=2026-10-04T05%3A00%3A00.0000000%2B00%3A00");
+
+        await operations.ExportOperationsDashboardFlightsAsync("xlsx", fromUtc, toUtc,
+            timeZoneId: "America/Chicago");
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
+        runtime.Arguments![0]!.ToString()!.ShouldContain("timeZoneId=America%2FChicago");
+
+        await operations.DownloadDashboardApprovedWorkOrderAsync(flightId, "America/Chicago");
+
+        runtime.Arguments![0].ShouldBe(
+            $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf?timeZoneId=America%2FChicago");
+    }
+
+    [Fact]
     public async Task Service_line_attachment_upload_uses_service_line_route()
     {
         var runtime = new CapturingDownloadJsRuntime();
@@ -251,6 +277,7 @@ public sealed class BrowserApiClientTests
     {
         public string? Identifier { get; private set; }
         public object?[]? Arguments { get; private set; }
+        public string? Response { get; init; }
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
             InvokeAsync<TValue>(identifier, CancellationToken.None, args);
@@ -262,7 +289,9 @@ public sealed class BrowserApiClientTests
         {
             Identifier = identifier;
             Arguments = args;
-            return ValueTask.FromResult(default(TValue)!);
+            return ValueTask.FromResult(typeof(TValue) == typeof(string) && Response is not null
+                ? (TValue)(object)Response
+                : default!);
         }
     }
 

@@ -14,6 +14,7 @@ public partial class NotificationsInbox : IAsyncDisposable
     [Inject] private NotificationsApiClient Api { get; set; } = default!;
     [Inject] private NotificationCenterState Center { get; set; } = default!;
     [Inject] private LocaleState Locale { get; set; } = default!;
+    [Inject] private UserTimeZone UserTimeZone { get; set; } = default!;
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private NotificationService Toasts { get; set; } = default!;
     [Inject] private DialogService Dialogs { get; set; } = default!;
@@ -35,6 +36,7 @@ public partial class NotificationsInbox : IAsyncDisposable
     {
         Center.LiveReceived += OnLiveReceived;
         Center.Reconciled += OnCenterReconciled;
+        await UserTimeZone.InitializeAsync();
         await LoadAsync();
     }
 

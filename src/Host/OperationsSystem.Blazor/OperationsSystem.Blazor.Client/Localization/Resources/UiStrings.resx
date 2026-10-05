@@ -225,7 +225,7 @@
   <data name="OperationsDashboard.LastUpdated" xml:space="preserve"><value>Last updated</value></data>
   <data name="OperationsDashboard.LiveConnected" xml:space="preserve"><value>Live connection</value></data>
   <data name="OperationsDashboard.LiveConnecting" xml:space="preserve"><value>Connecting live</value></data>
-  <data name="OperationsDashboard.UtcReporting" xml:space="preserve"><value>All times are shown in UTC</value></data>
+  <data name="OperationsDashboard.TimeZoneReporting" xml:space="preserve"><value>All times are shown in {0}</value></data>
   <data name="OperationsDashboard.TotalFlights" xml:space="preserve"><value>Total flights</value></data>
   <data name="OperationsDashboard.InSelectedPeriod" xml:space="preserve"><value>In the selected period</value></data>
   <data name="OperationsDashboard.Refresh" xml:space="preserve"><value>Refresh data</value></data>
@@ -327,8 +327,8 @@
   <data name="OperationsDashboard.Customer" xml:space="preserve"><value>Customer</value></data>
   <data name="OperationsDashboard.Station" xml:space="preserve"><value>Station</value></data>
   <data name="OperationsDashboard.OperationType" xml:space="preserve"><value>Operation type</value></data>
-  <data name="OperationsDashboard.ArrivalUtc" xml:space="preserve"><value>Scheduled arrival (UTC)</value></data>
-  <data name="OperationsDashboard.DepartureUtc" xml:space="preserve"><value>Scheduled departure (UTC)</value></data>
+  <data name="OperationsDashboard.ArrivalUtc" xml:space="preserve"><value>Scheduled arrival</value></data>
+  <data name="OperationsDashboard.DepartureUtc" xml:space="preserve"><value>Scheduled departure</value></data>
   <data name="OperationsDashboard.Services" xml:space="preserve"><value>Services</value></data>
   <data name="OperationsDashboard.NoPerformedServices" xml:space="preserve"><value>No performed services</value></data>
   <data name="OperationsDashboard.Status" xml:space="preserve"><value>Status</value></data>

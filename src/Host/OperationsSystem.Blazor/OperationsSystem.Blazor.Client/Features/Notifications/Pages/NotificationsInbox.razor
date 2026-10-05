@@ -65,7 +65,7 @@
                             <span class="os-notification-card__copy">
                                 <span class="os-notification-card__meta">
                                     <span class="os-notification-card__kind">@UiStrings.Notifications.FlightAssignment</span>
-                                    <time datetime="@notification.CreatedAtUtc.ToString("O")" title="@notification.CreatedAtUtc.ToLocalTime().ToString("F")">
+                                    <time datetime="@notification.CreatedAtUtc.ToString("O")" title="@($"{UserTimeZone.Format(notification.CreatedAtUtc, "F")} ({UserTimeZone.Id})")">
                                         @RelativeTime(notification.CreatedAtUtc)
                                     </time>
                                 </span>

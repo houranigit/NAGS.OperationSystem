@@ -1,3 +1,4 @@
+@inject UserTimeZone UserTimeZone
 @page "/master-data/staff-members/{Id:guid}"
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
@@ -139,11 +140,11 @@
                         </div>
                         <div class="sm-metric">
                             <dt>@UiStrings.StaffMembers.Created</dt>
-                            <dd>@s.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                            <dd>@UserTimeZone.Format(s.CreatedAtUtc, "d")</dd>
                         </div>
                         <div class="sm-metric">
                             <dt>@UiStrings.StaffMembers.Updated</dt>
-                            <dd>@(s.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                            <dd>@(s.UpdatedAtUtc is { } updated ? UserTimeZone.Format(updated, "g") : UiStrings.Common.None)</dd>
                         </div>
                         <div class="sm-metric">
                             <dt>@UiStrings.StaffMembers.EmploymentContract</dt>
@@ -410,7 +411,7 @@
                         <div class="sm-timeline-content">
                             <p class="sm-timeline-title">@entry.Action</p>
                             <p class="os-muted sm-timeline-sub">
-                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span title="@UserTimeZone.Format(entry.OccurredOnUtc, "F")">@RelativeTime(entry.OccurredOnUtc)</span>
                                 <span class="sm-dot-sep">&middot;</span>
                                 @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
@@ -496,7 +497,11 @@
             yield return new TabDef(StaffTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
 
-    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -731,7 +736,7 @@
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
 
-    private static string RelativeTime(DateTimeOffset value)
+    private string RelativeTime(DateTimeOffset value)
     {
         var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
         if (delta < TimeSpan.Zero)
@@ -746,7 +751,7 @@
         if (delta.TotalDays < 30)
             return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
 
-        return value.ToLocalTime().ToString("d");
+        return UserTimeZone.Format(value, "d");
     }
 
     private static (string Icon, string Tone) TimelineVisual(string action)

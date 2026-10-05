@@ -225,7 +225,7 @@
   <data name="OperationsDashboard.LastUpdated" xml:space="preserve"><value>آخر تحديث</value></data>
   <data name="OperationsDashboard.LiveConnected" xml:space="preserve"><value>اتصال مباشر</value></data>
   <data name="OperationsDashboard.LiveConnecting" xml:space="preserve"><value>جارٍ الاتصال المباشر</value></data>
-  <data name="OperationsDashboard.UtcReporting" xml:space="preserve"><value>تُعرض جميع الأوقات بالتوقيت العالمي المنسق (UTC)</value></data>
+  <data name="OperationsDashboard.TimeZoneReporting" xml:space="preserve"><value>تُعرض جميع الأوقات بتوقيت {0}</value></data>
   <data name="OperationsDashboard.TotalFlights" xml:space="preserve"><value>إجمالي الرحلات</value></data>
   <data name="OperationsDashboard.InSelectedPeriod" xml:space="preserve"><value>ضمن الفترة المحددة</value></data>
   <data name="OperationsDashboard.Refresh" xml:space="preserve"><value>تحديث البيانات</value></data>
@@ -327,8 +327,8 @@
   <data name="OperationsDashboard.Customer" xml:space="preserve"><value>العميل</value></data>
   <data name="OperationsDashboard.Station" xml:space="preserve"><value>المحطة</value></data>
   <data name="OperationsDashboard.OperationType" xml:space="preserve"><value>نوع العملية</value></data>
-  <data name="OperationsDashboard.ArrivalUtc" xml:space="preserve"><value>الوصول المجدول (UTC)</value></data>
-  <data name="OperationsDashboard.DepartureUtc" xml:space="preserve"><value>المغادرة المجدولة (UTC)</value></data>
+  <data name="OperationsDashboard.ArrivalUtc" xml:space="preserve"><value>الوصول المجدول</value></data>
+  <data name="OperationsDashboard.DepartureUtc" xml:space="preserve"><value>المغادرة المجدولة</value></data>
   <data name="OperationsDashboard.Services" xml:space="preserve"><value>الخدمات</value></data>
   <data name="OperationsDashboard.NoPerformedServices" xml:space="preserve"><value>لا توجد خدمات منفذة</value></data>
   <data name="OperationsDashboard.Status" xml:space="preserve"><value>الحالة</value></data>

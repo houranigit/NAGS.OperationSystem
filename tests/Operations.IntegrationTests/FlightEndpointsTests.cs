@@ -1,7 +1,9 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using ClosedXML.Excel;
 using Microsoft.Extensions.DependencyInjection;
+using Operations.Application.Contracts;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 using Operations.Infrastructure.Persistence;
@@ -194,6 +196,64 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
 
     private async Task<string> SeedFlightAsync() =>
         (await SeedFlightDetailsAsync()).FlightNumber;
+
+    [Fact]
+    public async Task Dashboard_exports_use_the_requested_browser_zone_in_every_format()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var seed = await SeedFlightDetailsAsync();
+        var filters = $"stationIds={seed.StationId}&customerIds={seed.CustomerId}&timeZoneId=America%2FChicago";
+
+        var dashboardCsv = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=csv&{filters}");
+        var flightsCsv = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/export?format=csv&stationId={seed.StationId}&customerId={seed.CustomerId}&timeZoneId=America%2FChicago");
+
+        dashboardCsv.StatusCode.ShouldBe(HttpStatusCode.OK);
+        flightsCsv.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var csv = await dashboardCsv.Content.ReadAsByteArrayAsync();
+        csv.ShouldBe(await flightsCsv.Content.ReadAsByteArrayAsync());
+        Encoding.UTF8.GetString(csv).ShouldContain("2026-07-11T07:00:00-05:00 [America/Chicago]");
+
+        var xlsx = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=xlsx&{filters}");
+        xlsx.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var stream = new MemoryStream(await xlsx.Content.ReadAsByteArrayAsync());
+        using var workbook = new XLWorkbook(stream);
+        var sheet = workbook.Worksheet("Flights");
+        sheet.Cell(6, 5).GetDateTime().ShouldBe(new DateTime(2026, 7, 11, 7, 0, 0));
+        sheet.Column(5).Style.DateFormat.Format.ShouldContain("America/Chicago");
+        sheet.Cell(2, 1).GetString().ShouldContain("[America/Chicago]");
+
+        var pdf = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=pdf&{filters}");
+        pdf.StatusCode.ShouldBe(HttpStatusCode.OK);
+        Encoding.ASCII.GetString(await pdf.Content.ReadAsByteArrayAsync(), 0, 5).ShouldBe("%PDF-");
+    }
+
+    [Fact]
+    public async Task Dashboard_analytics_group_real_sql_rows_by_the_requested_local_calendar()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var seed = await SeedFlightDetailsAsync();
+        var filters = $"stationIds={seed.StationId}&customerIds={seed.CustomerId}&includeOptions=false";
+
+        var response = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/analytics-dashboard?{filters}&timeZoneId=America%2FChicago");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var local = await response.Content.ReadFromJsonAsync<OperationsDashboardDto>();
+        local.ShouldNotBeNull();
+        local.TotalFlights.ShouldBe(1);
+        local.Hourly.Single(point => point.Key == "07").FlightCount.ShouldBe(1);
+        local.Hourly.Single(point => point.Key == "12").FlightCount.ShouldBe(0);
+        local.Timeline.Single(point => point.FlightCount == 1).BucketUtc
+            .ShouldBe(seed.ScheduledArrivalUtc);
+
+        var utc = await admin.GetFromJsonAsync<OperationsDashboardDto>(
+            $"{OperationsApiFactory.Base}/analytics-dashboard?{filters}");
+        utc.ShouldNotBeNull();
+        utc.Hourly.Single(point => point.Key == "12").FlightCount.ShouldBe(1);
+    }
 
     private async Task<SeededFlight> SeedFlightDetailsAsync()
     {

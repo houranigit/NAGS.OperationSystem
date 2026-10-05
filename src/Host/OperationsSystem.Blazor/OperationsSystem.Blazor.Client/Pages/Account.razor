@@ -318,7 +318,7 @@
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="UserSession" Property="CreatedByIp" Title="@UiStrings.Sessions.IpAddress" Width="160px" />
                             <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.Created" Width="210px">
-                                <Template Context="session">@session.CreatedAtUtc.ToLocalTime().ToString("g")</Template>
+                                <Template Context="session"><LocalDateTime Value="@session.CreatedAtUtc" Format="g" /></Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="UserSession" Title="@UiStrings.Sessions.State" Width="130px">
                                 <Template Context="session">

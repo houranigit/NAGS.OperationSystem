@@ -143,7 +143,10 @@ internal static class FlightExportDocumentFactory
         LegacySystemIdLookup? legacySystemIds = null)
     {
         var timeZone = displayTimeZone ?? TimeZoneInfo.Utc;
-        var stamp = generatedAtUtc.UtcDateTime.ToString("yyyyMMdd-HHmmss'Z'", CultureInfo.InvariantCulture);
+        var generatedAtLocal = TimeZoneInfo.ConvertTime(generatedAtUtc, timeZone);
+        var stamp = generatedAtLocal.ToString(
+            timeZone.Equals(TimeZoneInfo.Utc) ? "yyyyMMdd-HHmmss'Z'" : "yyyyMMdd-HHmmsszzz",
+            CultureInfo.InvariantCulture).Replace(":", string.Empty, StringComparison.Ordinal);
 
         return format switch
         {

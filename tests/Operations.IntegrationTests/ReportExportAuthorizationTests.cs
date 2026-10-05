@@ -171,4 +171,20 @@ public sealed class ReportExportAuthorizationTests(OperationsApiFactory factory)
 
         return await factory.CreateAuthenticatedClientAsync(email, password);
     }
+
+    [Theory]
+    [InlineData("analytics-dashboard")]
+    [InlineData("analytics-dashboard/flights/export?format=csv")]
+    [InlineData("analytics-dashboard/flights/00000000-0000-0000-0000-000000000001/work-orders/approved/pdf")]
+    public async Task Dashboard_routes_validate_the_requested_display_zone(string path)
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var separator = path.Contains('?') ? "&" : "?";
+
+        var response = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/{path}{separator}timeZoneId=Moon%2FBase");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Operations.Dashboard.TimeZoneInvalid");
+    }
 }

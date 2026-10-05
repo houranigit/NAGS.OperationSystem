@@ -1,6 +1,6 @@
 @inject UserTimeZone UserTimeZone
 
-@if (Value is { } value)
+@if (Value is { } value && UserTimeZone.IsInitialized)
 {
     <time datetime="@value.ToUniversalTime().ToString("O")" title="@Title(value)">@Display(value)</time>
 }

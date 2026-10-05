@@ -19,7 +19,8 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         IReadOnlyList<Guid>? serviceIds = null,
         int topCount = 4,
         bool includeOptions = true,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? timeZoneId = null)
     {
         var query = new QueryBuilder()
             .Add("fromUtc", fromUtc)
@@ -29,6 +30,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             .Add("serviceIds", serviceIds)
             .Add("topCount", topCount)
             .Add("includeOptions", includeOptions)
+            .Add("timeZoneId", timeZoneId)
             .Build();
         return api.GetAsync<OperationsDashboard>($"/operations/analytics-dashboard{query}", ct);
     }
@@ -65,7 +67,8 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         IReadOnlyList<Guid>? customerIds = null,
         IReadOnlyList<Guid>? serviceIds = null,
         string? sort = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? timeZoneId = null)
     {
         var query = new QueryBuilder()
             .Add("format", format)
@@ -75,6 +78,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             .Add("customerIds", customerIds)
             .Add("serviceIds", serviceIds)
             .Add("sort", sort)
+            .Add("timeZoneId", timeZoneId)
             .Build();
         return api.DownloadFileAsync(
             $"/operations/analytics-dashboard/flights/export{query}",
@@ -260,8 +264,13 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             cancellationToken: ct);
 
     public Task DownloadDashboardApprovedWorkOrderAsync(Guid flightId, CancellationToken ct = default) =>
+        DownloadDashboardApprovedWorkOrderAsync(flightId, null, ct);
+
+    public Task DownloadDashboardApprovedWorkOrderAsync(Guid flightId, string? timeZoneId, CancellationToken ct = default) =>
         api.DownloadFileAsync(
-            $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf",
+            string.IsNullOrWhiteSpace(timeZoneId)
+                ? $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf"
+                : $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf?timeZoneId={Uri.EscapeDataString(timeZoneId)}",
             fallbackFileName: "approved-work-order.pdf",
             cancellationToken: ct);
 

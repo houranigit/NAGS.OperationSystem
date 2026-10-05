@@ -1,3 +1,4 @@
+@inject UserTimeZone UserTimeZone
 @page "/roles/{Id:guid}"
 @inject IdentityApiClient Identity
 @inject DialogService DialogService
@@ -118,11 +119,11 @@
                         </div>
                         <div class="rl-metric">
                             <dt>@UiStrings.Users.Created</dt>
-                            <dd>@r.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                            <dd>@UserTimeZone.Format(r.CreatedAtUtc, "d")</dd>
                         </div>
                         <div class="rl-metric">
                             <dt>@UiStrings.Users.LastUpdated</dt>
-                            <dd>@(r.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                            <dd>@(r.UpdatedAtUtc is { } updated ? UserTimeZone.Format(updated, "g") : UiStrings.Common.None)</dd>
                         </div>
                     </dl>
                 </RadzenCard>
@@ -273,7 +274,7 @@
                         <div class="rl-timeline-content">
                             <p class="rl-timeline-title">@entry.Action</p>
                             <p class="os-muted rl-timeline-sub">
-                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span title="@UserTimeZone.Format(entry.OccurredOnUtc, "F")">@RelativeTime(entry.OccurredOnUtc)</span>
                                 <span class="rl-dot-sep">&middot;</span>
                                 @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
@@ -348,7 +349,11 @@
     private bool HasMoreActions(RoleDetail r) =>
         !r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesDelete);
 
-    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -511,7 +516,7 @@
 
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
 
-    private static string RelativeTime(DateTimeOffset value)
+    private string RelativeTime(DateTimeOffset value)
     {
         var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
         if (delta < TimeSpan.Zero)
@@ -526,7 +531,7 @@
         if (delta.TotalDays < 30)
             return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
 
-        return value.ToLocalTime().ToString("d");
+        return UserTimeZone.Format(value, "d");
     }
 
     private static (string Icon, string Tone) TimelineVisual(string action)

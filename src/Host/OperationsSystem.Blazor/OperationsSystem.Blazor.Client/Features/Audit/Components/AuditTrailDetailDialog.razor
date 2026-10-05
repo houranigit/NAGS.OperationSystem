@@ -1,7 +1,9 @@
 @using System.Globalization
 @using System.Text.Json
+@using System.Text.Json.Nodes
 @inject AuditApiClient Audit
 @inject DialogService DialogService
+@inject UserTimeZone UserTimeZone
 
 <div class="adt-dialog">
     @if (isLoading)
@@ -21,7 +23,7 @@
             </div>
             <div class="adt-summary-item">
                 <span>@UiStrings.Audit.When</span>
-                <strong>@entry.OccurredOnUtc.ToLocalTime().ToString("F")</strong>
+                <strong><LocalDateTime Value="@entry.OccurredOnUtc" Format="F" ShowZone="true" /></strong>
             </div>
             <div class="adt-summary-item">
                 <span>@UiStrings.Audit.Actor</span>
@@ -89,7 +91,11 @@
     private bool isLoading = true;
     private bool loadError;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -125,7 +131,7 @@
     private static string ValueClass(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "adt-empty-value" : string.Empty;
 
-    private static string FormatValue(string field, string? value)
+    private string FormatValue(string field, string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return UiStrings.Common.None;
@@ -134,14 +140,14 @@
         {
             return IsIndefiniteLockout(lockout)
                 ? UiStrings.Users.LockedIndefinitely
-                : string.Format(UiStrings.Users.LockedUntil, lockout.ToLocalTime().ToString("g"));
+                : string.Format(UiStrings.Users.LockedUntil, UserTimeZone.Format(lockout, "g"));
         }
 
         if ((field.EndsWith("Utc", StringComparison.OrdinalIgnoreCase) ||
              field.EndsWith("At", StringComparison.OrdinalIgnoreCase)) &&
             TryParseDate(value, out var date))
         {
-            return date.ToLocalTime().ToString("g");
+            return UserTimeZone.Format(date, "g");
         }
 
         if (bool.TryParse(value, out var boolean))
@@ -182,16 +188,50 @@
         return builder.ToString();
     }
 
-    private static string FormatMetadata(string metadata)
+    private string FormatMetadata(string metadata)
     {
         try
         {
-            using var document = JsonDocument.Parse(metadata);
-            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            var document = LocalizeMetadataValue(JsonNode.Parse(metadata));
+            return document?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? metadata;
         }
         catch (JsonException)
         {
             return metadata;
         }
+    }
+
+    private void LocalizeMetadataDates(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var property in obj.ToArray())
+            {
+                var local = LocalizeMetadataValue(property.Value);
+                if (!ReferenceEquals(local, property.Value))
+                    obj[property.Key] = local;
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            for (var index = 0; index < array.Count; index++)
+            {
+                var local = LocalizeMetadataValue(array[index]);
+                if (!ReferenceEquals(local, array[index]))
+                    array[index] = local;
+            }
+        }
+    }
+
+    private JsonNode? LocalizeMetadataValue(JsonNode? node)
+    {
+        if (node is JsonValue value && value.TryGetValue<string>(out var text) &&
+            text.Length > 10 && text[10] == 'T' &&
+            DateOnly.TryParseExact(text.AsSpan(0, 10), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) &&
+            TryParseDate(text, out var instant))
+            return JsonValue.Create(UserTimeZone.ToLocal(instant).ToString("O", CultureInfo.InvariantCulture));
+
+        LocalizeMetadataDates(node);
+        return node;
     }
 }

@@ -1,3 +1,4 @@
+@inject UserTimeZone UserTimeZone
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
 @inject NotificationService Notifications
@@ -105,11 +106,11 @@
                     <dl class="md-metrics">
                         <div class="md-metric">
                             <dt>Created</dt>
-                            <dd>@catalog.CreatedAtUtc.ToLocalTime().ToString("d")</dd>
+                            <dd>@UserTimeZone.Format(catalog.CreatedAtUtc, "d")</dd>
                         </div>
                         <div class="md-metric">
                             <dt>Updated</dt>
-                            <dd>@(catalog.UpdatedAtUtc is { } updated ? updated.ToLocalTime().ToString("g") : UiStrings.Common.None)</dd>
+                            <dd>@(catalog.UpdatedAtUtc is { } updated ? UserTimeZone.Format(updated, "g") : UiStrings.Common.None)</dd>
                         </div>
                     </dl>
                 </RadzenCard>
@@ -199,7 +200,7 @@
                         <div class="md-timeline-content">
                             <p class="md-timeline-title">@entry.Action</p>
                             <p class="os-muted md-timeline-sub">
-                                <span title="@entry.OccurredOnUtc.ToLocalTime().ToString("F")">@RelativeTime(entry.OccurredOnUtc)</span>
+                                <span title="@UserTimeZone.Format(entry.OccurredOnUtc, "F")">@RelativeTime(entry.OccurredOnUtc)</span>
                                 <span class="md-dot-sep">&middot;</span>
                                 @(entry.IsSystemActor ? UiStrings.Audit.System : (entry.ActorDisplayName ?? UiStrings.Common.None))
                             </p>
@@ -262,7 +263,11 @@
             yield return new TabDef(SimpleCatalogTab.History, UiStrings.Audit.HistoryTitle, "manage_history");
     }
 
-    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        await UserTimeZone.InitializeAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -452,7 +457,7 @@
     private static string StatusDescription(SimpleCatalogDetail catalog) => catalog.IsActive ? "Available for use in operational workflows." : "Hidden from active selection lists until reactivated.";
     private static string ShortId(Guid id) => "#" + id.ToString("N")[..8].ToUpperInvariant();
 
-    private static string RelativeTime(DateTimeOffset value)
+    private string RelativeTime(DateTimeOffset value)
     {
         var delta = DateTimeOffset.UtcNow - value.ToUniversalTime();
         if (delta < TimeSpan.Zero)
@@ -467,7 +472,7 @@
         if (delta.TotalDays < 30)
             return string.Format(UiStrings.Common.DaysAgo, (int)delta.TotalDays);
 
-        return value.ToLocalTime().ToString("d");
+        return UserTimeZone.Format(value, "d");
     }
 
     private static (string Icon, string Tone) TimelineVisual(string action)

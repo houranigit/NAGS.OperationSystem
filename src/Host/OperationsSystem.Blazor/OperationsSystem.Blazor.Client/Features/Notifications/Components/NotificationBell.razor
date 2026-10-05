@@ -1,6 +1,7 @@
 @implements IAsyncDisposable
 @inject NotificationCenterState Center
 @inject LocaleState Locale
+@inject UserTimeZone UserTimeZone
 @inject NavigationManager Navigation
 @inject NotificationService Toasts
 
@@ -38,7 +39,7 @@
             </header>
 
             <div class="os-notification-bell__content">
-                @if (Center.IsLoading)
+                @if (Center.IsLoading || !UserTimeZone.IsInitialized)
                 {
                     @for (var index = 0; index < 3; index++)
                     {
@@ -75,7 +76,7 @@
                             <span class="os-notification-bell__item-copy">
                                 <strong>@NotificationPresentation.Title(notification, Locale)</strong>
                                 <span>@NotificationPresentation.Body(notification, Locale)</span>
-                                <small title="@notification.CreatedAtUtc.ToLocalTime().ToString("F")">@RelativeTime(notification.CreatedAtUtc)</small>
+                                <small title="@($"{UserTimeZone.Format(notification.CreatedAtUtc, "F")} ({UserTimeZone.Id})")">@RelativeTime(notification.CreatedAtUtc)</small>
                             </span>
                             @if (!notification.IsRead)
                             {
@@ -101,6 +102,8 @@
     private bool isUpdating;
 
     protected override void OnInitialized() => Center.Changed += OnCenterChanged;
+
+    protected override async Task OnInitializedAsync() => await UserTimeZone.InitializeAsync();
 
     private void Toggle() => isOpen = !isOpen;
 

@@ -295,7 +295,8 @@ internal static class FlightEndpoints
             string? serviceIds = null,
             int topCount = 5,
             bool includeAnalytics = true,
-            bool includeOptions = true) =>
+            bool includeOptions = true,
+            string? timeZoneId = null) =>
         {
             if (!TryParseDashboardIds(stationIds, out var parsedStationIds))
                 return ApiResults.Problem(InvalidDashboardIds("stationIds"));
@@ -303,6 +304,17 @@ internal static class FlightEndpoints
                 return ApiResults.Problem(InvalidDashboardIds("customerIds"));
             if (!TryParseDashboardIds(serviceIds, out var parsedServiceIds))
                 return ApiResults.Problem(InvalidDashboardIds("serviceIds"));
+
+            if (!string.IsNullOrWhiteSpace(timeZoneId)
+                && !FlightExportTimeZoneResolver.TryResolve(timeZoneId, out _))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    new Dictionary<string, string[]>
+                    {
+                        ["timeZoneId"] = ["Time zone must be a valid IANA, Windows, or Browser UTC±HH:mm identifier."]
+                    },
+                    code: "Operations.Dashboard.TimeZoneInvalid"));
+            }
 
             var result = await sender.Send(new GetOperationsDashboardQuery(
                 fromUtc,
@@ -312,7 +324,8 @@ internal static class FlightEndpoints
                 parsedServiceIds,
                 topCount,
                 includeAnalytics,
-                includeOptions), ct);
+                includeOptions,
+                timeZoneId), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics).WithTags("Operations.Dashboard");
 
@@ -359,7 +372,8 @@ internal static class FlightEndpoints
             string? stationIds = null,
             string? customerIds = null,
             string? serviceIds = null,
-            string? sort = null) =>
+            string? sort = null,
+            string? timeZoneId = null) =>
         {
             if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
             {
@@ -369,6 +383,18 @@ internal static class FlightEndpoints
                         ["format"] = ["Format must be one of: xlsx, csv, or pdf."]
                     },
                     code: "Operations.Dashboard.ExportFormatInvalid"));
+            }
+
+            var displayTimeZone = TimeZoneInfo.Utc;
+            if (!string.IsNullOrWhiteSpace(timeZoneId)
+                && !FlightExportTimeZoneResolver.TryResolve(timeZoneId, out displayTimeZone))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    new Dictionary<string, string[]>
+                    {
+                        ["timeZoneId"] = ["Time zone must be a valid IANA, Windows, or Browser UTC±HH:mm identifier."]
+                    },
+                    code: "Operations.Dashboard.TimeZoneInvalid"));
             }
 
             if (!TryParseDashboardIds(stationIds, out var parsedStationIds))
@@ -403,7 +429,8 @@ internal static class FlightEndpoints
                     ServiceIds: parsedServiceIds,
                     ToUtcExclusive: true,
                     Sort: sort),
-                timeProvider.GetUtcNow());
+                timeProvider.GetUtcNow(),
+                displayTimeZone);
             return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Dashboard.ViewAnalytics)
             .RequirePermission(OperationsPermissions.Dashboard.Export)
@@ -413,13 +440,24 @@ internal static class FlightEndpoints
         group.MapGet("/analytics-dashboard/flights/{flightId:guid}/work-orders/approved/pdf", async (
             Guid flightId,
             ISender sender,
-            CancellationToken ct) =>
+            CancellationToken ct,
+            string? timeZoneId = null) =>
         {
+            if (!FlightExportTimeZoneResolver.TryResolve(timeZoneId, out var displayTimeZone))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    new Dictionary<string, string[]>
+                    {
+                        ["timeZoneId"] = ["Time zone must be a valid IANA, Windows, or Browser UTC±HH:mm identifier."]
+                    },
+                    code: "Operations.Dashboard.TimeZoneInvalid"));
+            }
+
             var result = await sender.Send(new GetApprovedWorkOrderPrintQuery(flightId), ct);
             if (result.IsFailure)
                 return ApiResults.Problem(result.Error);
 
-            var file = WorkOrderPrintDocumentFactory.Create(result.Value);
+            var file = WorkOrderPrintDocumentFactory.Create(result.Value, displayTimeZone);
             return Results.File(
                 file.Content,
                 "application/pdf",

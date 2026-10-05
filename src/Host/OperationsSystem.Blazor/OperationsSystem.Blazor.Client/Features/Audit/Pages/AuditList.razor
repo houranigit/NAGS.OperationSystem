@@ -20,7 +20,7 @@
                                 AllowSorting="false" EmptyText="@UiStrings.Audit.Empty">
                     <Columns>
                         <RadzenDataGridColumn TItem="AuditTrailListItem" Title="@UiStrings.Audit.When" Width="200px">
-                            <Template Context="row">@row.OccurredOnUtc.ToString("u")</Template>
+                            <Template Context="row"><LocalDateTime Value="@row.OccurredOnUtc" ShowZone="true" /></Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="AuditTrailListItem" Title="@UiStrings.Audit.Actor" Width="200px">
                             <Template Context="row">@(row.IsSystemActor ? UiStrings.Audit.System : (row.ActorDisplayName ?? row.ActorId?.ToString() ?? UiStrings.Common.None))</Template>

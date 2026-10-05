@@ -69,7 +69,7 @@
                 <RadzenDataGridColumn TItem="UserListItem" Property="RoleName" Title="@UiStrings.Users.Role" Width="180px" />
                 <RadzenDataGridColumn TItem="UserListItem" Title="@UiStrings.Users.LastLogin" Sortable="false" Width="170px">
                     <Template Context="user">
-                        @(user.LastLoginAtUtc is { } at ? at.ToLocalTime().ToString("g") : UiStrings.Users.Never)
+                        <LocalDateTime Value="@user.LastLoginAtUtc" Format="g" EmptyText="@UiStrings.Users.Never" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>

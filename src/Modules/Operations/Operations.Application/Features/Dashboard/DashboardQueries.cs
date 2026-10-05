@@ -23,7 +23,8 @@ public sealed record GetOperationsDashboardQuery(
     IReadOnlyList<Guid>? ServiceIds = null,
     int TopCount = 5,
     bool IncludeAnalytics = true,
-    bool IncludeOptions = true) : IQuery<OperationsDashboardDto>;
+    bool IncludeOptions = true,
+    string? TimeZoneId = null) : IQuery<OperationsDashboardDto>;
 
 public sealed record GetDashboardFlightsQuery(
     int Page = 1,
@@ -73,6 +74,16 @@ public sealed class GetOperationsDashboardQueryHandler
     {
         if (DashboardQueryValidation.ValidateDates(request.FromUtc, request.ToUtc) is { } dateError)
             return dateError;
+        if (!DashboardQueryValidation.TryResolveTimeZone(request.TimeZoneId, out var timeZone))
+        {
+            return Error.Validation(
+                new Dictionary<string, string[]>
+                {
+                    ["timeZoneId"] = ["Time zone must be a valid IANA, Windows, or Browser UTC±HH:mm identifier."]
+                },
+                code: "Operations.Dashboard.TimeZoneInvalid");
+        }
+
         if (request.TopCount < 1)
         {
             return Error.Validation(
@@ -113,7 +124,8 @@ public sealed class GetOperationsDashboardQueryHandler
         var statuses = DashboardProjection.BuildStatuses(statusCounts, totalFlights);
         var timelineGranularity = DashboardTimelineProjection.SelectGranularity(
             filter.FromUtc,
-            filter.ToUtc);
+            filter.ToUtc,
+            timeZone);
 
         if (!request.IncludeAnalytics)
         {
@@ -139,17 +151,27 @@ public sealed class GetOperationsDashboardQueryHandler
                 ServiceOptions: []);
         }
 
+        // Local calendar grouping is provider independent. Load only authorized STA scalars, never
+        // flight graphs; omitted zones retain the existing SQL aggregate path for UTC callers.
+        var useLocalCalendar = !string.IsNullOrWhiteSpace(request.TimeZoneId);
+        var arrivalInstants = useLocalCalendar
+            ? await flights.Select(flight => flight.Schedule.Sta).ToListAsync(cancellationToken)
+            : null;
+
         if (filter.FromUtc is null && filter.ToUtc is null && totalFlights > 0)
         {
-            var timelineBounds = await flights
-                .GroupBy(_ => 1)
-                .Select(group => new DashboardTimelineBounds(
-                    group.Min(flight => flight.Schedule.Sta),
-                    group.Max(flight => flight.Schedule.Sta)))
-                .SingleAsync(cancellationToken);
+            var timelineBounds = arrivalInstants is not null
+                ? new DashboardTimelineBounds(arrivalInstants.Min(), arrivalInstants.Max())
+                : await flights
+                    .GroupBy(_ => 1)
+                    .Select(group => new DashboardTimelineBounds(
+                        group.Min(flight => flight.Schedule.Sta),
+                        group.Max(flight => flight.Schedule.Sta)))
+                    .SingleAsync(cancellationToken);
             timelineGranularity = DashboardTimelineProjection.SelectMaxGranularity(
                 timelineBounds.FirstFlightUtc,
-                timelineBounds.LastFlightUtc);
+                timelineBounds.LastFlightUtc,
+                timeZone);
         }
 
         var stationGroups = await flights
@@ -212,22 +234,43 @@ public sealed class GetOperationsDashboardQueryHandler
             .Distinct()
             .LongCountAsync(cancellationToken);
 
-        var hourlyCounts = await flights
-            .GroupBy(flight => flight.Schedule.Sta.Hour)
-            .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
-            .ToListAsync(cancellationToken);
-        var monthlyCounts = await flights
-            .GroupBy(flight => flight.Schedule.Sta.Month)
-            .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
-            .ToListAsync(cancellationToken);
-        var yearlyCounts = await flights
-            .GroupBy(flight => flight.Schedule.Sta.Year)
-            .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
-            .ToListAsync(cancellationToken);
-        var timelineCounts = await DashboardTimelineProjection.LoadCountsAsync(
-            flights,
-            timelineGranularity,
-            cancellationToken);
+        IReadOnlyList<DashboardTrendCount> hourlyCounts;
+        IReadOnlyList<DashboardTrendCount> monthlyCounts;
+        IReadOnlyList<DashboardTrendCount> yearlyCounts;
+        IReadOnlyList<DashboardTimelinePointDto> timeline;
+        if (arrivalInstants is not null)
+        {
+            var localArrivals = arrivalInstants.Select(instant => TimeZoneInfo.ConvertTime(instant, timeZone)).ToList();
+            hourlyCounts = localArrivals.GroupBy(instant => instant.Hour)
+                .Select(group => new DashboardTrendCount(group.Key, group.LongCount())).ToList();
+            monthlyCounts = localArrivals.GroupBy(instant => instant.Month)
+                .Select(group => new DashboardTrendCount(group.Key, group.LongCount())).ToList();
+            yearlyCounts = localArrivals.GroupBy(instant => instant.Year)
+                .Select(group => new DashboardTrendCount(group.Key, group.LongCount())).ToList();
+            timeline = DashboardTimelineProjection.BuildLocal(
+                arrivalInstants, timelineGranularity, filter.FromUtc, filter.ToUtc, timeZone);
+        }
+        else
+        {
+            hourlyCounts = await flights
+                .GroupBy(flight => flight.Schedule.Sta.Hour)
+                .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
+                .ToListAsync(cancellationToken);
+            monthlyCounts = await flights
+                .GroupBy(flight => flight.Schedule.Sta.Month)
+                .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
+                .ToListAsync(cancellationToken);
+            yearlyCounts = await flights
+                .GroupBy(flight => flight.Schedule.Sta.Year)
+                .Select(group => new DashboardTrendCount(group.Key, group.LongCount()))
+                .ToListAsync(cancellationToken);
+            var timelineCounts = await DashboardTimelineProjection.LoadCountsAsync(
+                flights,
+                timelineGranularity,
+                cancellationToken);
+            timeline = DashboardTimelineProjection.Build(
+                timelineCounts, timelineGranularity, filter.FromUtc, filter.ToUtc);
+        }
 
         IReadOnlyList<DashboardFilterOptionDto> stationOptions = [];
         IReadOnlyList<DashboardFilterOptionDto> customerOptions = [];
@@ -279,15 +322,14 @@ public sealed class GetOperationsDashboardQueryHandler
                 totalFlights,
                 WellKnownMasterDataIds.AdHocOperationType),
             DashboardProjection.BuildServiceCategories(perLandingFlightCount, onCallFlightCount),
-            DashboardTimelineProjection.Build(
-                timelineCounts,
-                timelineGranularity,
-                filter.FromUtc,
-                filter.ToUtc),
+            timeline,
             timelineGranularity.ToString(),
             DashboardProjection.BuildHourly(hourlyCounts),
             DashboardProjection.BuildMonthly(monthlyCounts),
-            DashboardProjection.BuildYearly(yearlyCounts, filter.FromUtc, filter.ToUtc),
+            DashboardProjection.BuildYearly(
+                yearlyCounts,
+                filter.FromUtc is { } from ? TimeZoneInfo.ConvertTime(from, timeZone) : null,
+                filter.ToUtc is { } to ? TimeZoneInfo.ConvertTime(to, timeZone) : null),
             stationOptions,
             customerOptions,
             serviceOptions);
@@ -401,6 +443,36 @@ internal sealed record DashboardFilter(
 
 internal static class DashboardQueryValidation
 {
+    public static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo timeZone)
+    {
+        var candidate = timeZoneId?.Trim();
+        if (candidate?.Length > 128)
+        {
+            timeZone = TimeZoneInfo.Utc;
+            return false;
+        }
+
+        const string browserPrefix = "Browser UTC";
+        if (candidate?.StartsWith(browserPrefix, StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var suffix = candidate.AsSpan(browserPrefix.Length);
+            if (suffix.Length != 6 || suffix[0] is not ('+' or '-')
+                || !TimeSpan.TryParseExact(suffix[1..], "hh\\:mm", CultureInfo.InvariantCulture, out var offset)
+                || offset > TimeSpan.FromHours(14))
+            {
+                timeZone = TimeZoneInfo.Utc;
+                return false;
+            }
+            candidate = browserPrefix + suffix.ToString();
+        }
+
+        if (ScheduleFlightsCommandHandler.TryResolveTimeZone(candidate, out timeZone))
+            return true;
+        return candidate is not null
+            && TimeZoneInfo.TryConvertWindowsIdToIanaId(candidate, out var ianaId)
+            && ScheduleFlightsCommandHandler.TryResolveTimeZone(ianaId, out timeZone);
+    }
+
     public static Error? ValidateDates(DateTimeOffset? fromUtc, DateTimeOffset? toUtc)
     {
         if (fromUtc is null || toUtc is null || fromUtc < toUtc)
@@ -757,12 +829,16 @@ internal static class DashboardTimelineProjection
 {
     public static DashboardTimelineGranularity SelectGranularity(
         DateTimeOffset? fromUtc,
-        DateTimeOffset? toUtc)
+        DateTimeOffset? toUtc,
+        TimeZoneInfo? timeZone = null)
     {
         if (fromUtc is null || toUtc is null)
             return DashboardTimelineGranularity.Month;
 
-        var duration = toUtc.Value - fromUtc.Value;
+        var duration = timeZone is null
+            ? toUtc.Value - fromUtc.Value
+            : TimeZoneInfo.ConvertTime(toUtc.Value, timeZone).DateTime
+                - TimeZoneInfo.ConvertTime(fromUtc.Value, timeZone).DateTime;
         if (duration <= TimeSpan.FromDays(2))
             return DashboardTimelineGranularity.Hour;
         if (duration <= TimeSpan.FromDays(120))
@@ -773,10 +849,11 @@ internal static class DashboardTimelineProjection
 
     public static DashboardTimelineGranularity SelectMaxGranularity(
         DateTimeOffset firstFlightUtc,
-        DateTimeOffset lastFlightUtc)
+        DateTimeOffset lastFlightUtc,
+        TimeZoneInfo? timeZone = null)
     {
-        var first = firstFlightUtc.ToUniversalTime();
-        var last = lastFlightUtc.ToUniversalTime();
+        var first = TimeZoneInfo.ConvertTime(firstFlightUtc, timeZone ?? TimeZoneInfo.Utc);
+        var last = TimeZoneInfo.ConvertTime(lastFlightUtc, timeZone ?? TimeZoneInfo.Utc);
         if (first.Year == last.Year && first.DayOfYear == last.DayOfYear)
             return DashboardTimelineGranularity.Hour;
         if (first.Year == last.Year && first.Month == last.Month)
@@ -854,6 +931,126 @@ internal static class DashboardTimelineProjection
         }
 
         return points;
+    }
+
+    public static IReadOnlyList<DashboardTimelinePointDto> BuildLocal(
+        IReadOnlyList<DateTimeOffset> arrivalInstants,
+        DashboardTimelineGranularity granularity,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        TimeZoneInfo timeZone)
+    {
+        var lookup = arrivalInstants.GroupBy(instant => FloorToLocalBucket(instant, granularity, timeZone))
+            .ToDictionary(group => group.Key, group => group.LongCount());
+        if (lookup.Count == 0 && (fromUtc is null || toUtc is null))
+            return [];
+
+        var firstBucket = fromUtc is { } from
+            ? FloorToLocalBucket(from, granularity, timeZone)
+            : lookup.Keys.Min();
+        var endExclusive = toUtc ?? AddLocalBucket(lookup.Keys.Max(), granularity, timeZone);
+        var points = new List<DashboardTimelinePointDto>();
+        for (var bucket = firstBucket; bucket < endExclusive; bucket = AddLocalBucket(bucket, granularity, timeZone))
+            points.Add(new DashboardTimelinePointDto(bucket, lookup.GetValueOrDefault(bucket)));
+        return points;
+    }
+
+    private static DateTimeOffset FloorToLocalBucket(
+        DateTimeOffset instant,
+        DashboardTimelineGranularity granularity,
+        TimeZoneInfo timeZone)
+    {
+        var local = TimeZoneInfo.ConvertTime(instant, timeZone);
+        if (granularity == DashboardTimelineGranularity.Hour)
+        {
+            // Retain the instant's offset: repeated fall-back hours are distinct UTC buckets.
+            var floor = new DateTimeOffset(local.Year, local.Month, local.Day, local.Hour, 0, 0, local.Offset)
+                .ToUniversalTime();
+            // A partial-hour DST transition may make that nominal hour start invalid for this
+            // offset. Its bucket starts at the actual transition instead (e.g. Lord Howe).
+            return timeZone.GetUtcOffset(floor) == local.Offset
+                ? floor
+                : FirstOffsetChange(floor, instant.ToUniversalTime(), timeZone) ?? floor;
+        }
+
+        var date = granularity == DashboardTimelineGranularity.Day
+            ? local.Date
+            : new DateTime(local.Year, local.Month, 1);
+        return ResolveLocalPeriodStart(date, timeZone);
+    }
+
+    private static DateTimeOffset AddLocalBucket(
+        DateTimeOffset bucketUtc,
+        DashboardTimelineGranularity granularity,
+        TimeZoneInfo timeZone)
+    {
+        if (granularity == DashboardTimelineGranularity.Hour)
+        {
+            var localHour = TimeZoneInfo.ConvertTime(bucketUtc, timeZone).DateTime;
+            var nextLocalHour = new DateTime(localHour.Year, localHour.Month, localHour.Day, localHour.Hour, 0, 0)
+                .AddHours(1);
+            var next = ResolveLocalPeriodStart(nextLocalHour, timeZone, bucketUtc);
+            while (next <= bucketUtc)
+            {
+                nextLocalHour = nextLocalHour.AddHours(1);
+                next = ResolveLocalPeriodStart(nextLocalHour, timeZone, bucketUtc);
+            }
+            // Offset changes split a repeated hour or partial-hour transition into real, distinct
+            // intervals; nonexistent spring hours are skipped by resolving the next valid boundary.
+            return FirstOffsetChange(bucketUtc, next, timeZone) ?? next;
+        }
+        var local = TimeZoneInfo.ConvertTime(bucketUtc, timeZone).Date;
+        return ResolveLocalPeriodStart(
+            granularity == DashboardTimelineGranularity.Day ? local.AddDays(1) : local.AddMonths(1),
+            timeZone);
+    }
+
+    private static DateTimeOffset? FirstOffsetChange(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        TimeZoneInfo timeZone)
+    {
+        var offset = timeZone.GetUtcOffset(fromUtc);
+        for (var cursor = fromUtc; cursor < toUtc;)
+        {
+            var probe = toUtc - cursor <= TimeSpan.FromMinutes(15) ? toUtc : cursor.AddMinutes(15);
+            if (timeZone.GetUtcOffset(probe) != offset)
+            {
+                var low = cursor.UtcTicks;
+                var high = probe.UtcTicks;
+                while (high - low > 1)
+                {
+                    var middle = low + (high - low) / 2;
+                    if (timeZone.GetUtcOffset(new DateTimeOffset(middle, TimeSpan.Zero)) == offset)
+                        low = middle;
+                    else
+                        high = middle;
+                }
+                return new DateTimeOffset(high, TimeSpan.Zero);
+            }
+            cursor = probe;
+        }
+        return null;
+    }
+
+    private static DateTimeOffset ResolveLocalPeriodStart(
+        DateTime local,
+        TimeZoneInfo timeZone,
+        DateTimeOffset? afterUtc = null)
+    {
+        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        // Some zones move their clocks at midnight. Start that calendar bucket at its first valid
+        // instant, using the earlier occurrence when midnight is repeated.
+        while (timeZone.IsInvalidTime(local))
+            local = local.AddMinutes(1);
+        var offsets = timeZone.IsAmbiguousTime(local)
+            ? timeZone.GetAmbiguousTimeOffsets(local)
+            : [timeZone.GetUtcOffset(local)];
+        var candidates = offsets.Select(offset => new DateTimeOffset(local, offset).ToUniversalTime())
+            .Order().ToArray();
+        // When advancing hourly buckets, a repeated boundary's first occurrence may already have
+        // passed. Choose its next occurrence before advancing to another wall-clock hour.
+        return candidates.FirstOrDefault(candidate => afterUtc is null || candidate > afterUtc.Value, candidates[0]);
     }
 
     private static bool TryResolveBounds(

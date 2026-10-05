@@ -56,9 +56,12 @@
                 <div class="od-filter-summary">
                     <RadzenIcon Icon="date_range" />
                     <span>@FilterRangeSummary</span>
-                    <span class="od-utc-badge"
-                          title="@UiStrings.OperationsDashboard.UtcReporting"
-                          aria-label="@UiStrings.OperationsDashboard.UtcReporting">UTC</span>
+                    @if (timeZoneReady)
+                    {
+                        <span class="od-timezone-badge"
+                              title="@UiStrings.OperationsDashboard.TimeZoneReporting(UserTimeZone.Id)"
+                              aria-label="@UiStrings.OperationsDashboard.TimeZoneReporting(UserTimeZone.Id)">@UserTimeZone.Id</span>
+                    }
                     @if (IsFilterBusy)
                     {
                         <span class="od-filter-loading" role="status" aria-live="polite">
@@ -398,7 +401,7 @@
                                     <span><RadzenIcon Icon="flight" /></span>
                                     <div>
                                         <strong>@DisplayFlightNumber(flight)</strong>
-                                        <small>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) UTC</small>
+                                        <small>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) @UserTimeZone.Id</small>
                                     </div>
                                 </div>
                             </Template>

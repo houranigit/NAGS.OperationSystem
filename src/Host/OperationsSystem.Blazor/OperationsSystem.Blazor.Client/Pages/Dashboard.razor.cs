@@ -33,8 +33,9 @@ public partial class Dashboard : IAsyncDisposable
         .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .FirstOrDefault() ?? Auth.User?.DisplayName ?? string.Empty;
 
-    private string TodayLabel => UserTimeZone.ToLocal(DateTimeOffset.UtcNow)
-        .ToString("dddd, MMMM d", CultureInfo.CurrentCulture);
+    private string TodayLabel => UserTimeZone.IsInitialized
+        ? UserTimeZone.ToLocal(DateTimeOffset.UtcNow).ToString("dddd, MMMM d", CultureInfo.CurrentCulture)
+        : "—";
 
     private IReadOnlyList<DashboardFeature> FeatureCards =>
         DashboardFeatureCatalog.BuildFeatures(Auth.User?.Permissions ?? []);

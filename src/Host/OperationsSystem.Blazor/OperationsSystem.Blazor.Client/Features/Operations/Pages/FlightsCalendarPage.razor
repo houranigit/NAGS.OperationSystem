@@ -16,19 +16,23 @@
                 <div class="ofc-filters">
                     <RadzenDropDown TValue="string" Data="@statusOptions" TextProperty="Label" ValueProperty="Value"
                                     Value="@statusFilter" ValueChanged="@OnStatusFilterChangedAsync"
-                                    AllowClear="true" Placeholder="All statuses" class="ofc-filter" />
+                                    AllowClear="true" Placeholder="All statuses" Disabled="@(!timeZoneReady)" class="ofc-filter" />
                     <RadzenDropDown TValue="Guid?" Data="@stationOptions" TextProperty="Label" ValueProperty="Value"
                                     Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync"
-                                    AllowClear="true" Placeholder="All stations" class="ofc-filter" />
+                                    AllowClear="true" Placeholder="All stations" Disabled="@(!timeZoneReady)" class="ofc-filter" />
                     <RadzenDropDown TValue="Guid?" Data="@customerOptions" TextProperty="Label" ValueProperty="Value"
                                     Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync"
                                     AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                    Placeholder="All customers" class="ofc-filter" />
+                                    Placeholder="All customers" Disabled="@(!timeZoneReady)" class="ofc-filter" />
                 </div>
             </Actions>
         </PageHeader>
 
-        @if (loadError)
+        @if (!timeZoneReady)
+        {
+            <LoadingCard />
+        }
+        else if (loadError)
         {
             <ErrorState Message="Could not load the calendar." OnRetry="@ReloadAsync" />
         }
@@ -136,6 +140,7 @@
     private DateTime visibleDate = DateTime.UtcNow.Date;
     private DateTime rangeStart = DateTime.UtcNow.Date;
     private DateTime rangeEnd = DateTime.UtcNow.Date.AddDays(7);
+    private bool timeZoneReady;
     private bool loadError;
     private readonly IReadOnlyList<StatusFilterOption> statusOptions =
     [
@@ -154,6 +159,7 @@
             LoadCustomerOptionsAsync());
 
         SetRangeForCurrentView();
+        timeZoneReady = true;
         await FetchAsync();
     }
 

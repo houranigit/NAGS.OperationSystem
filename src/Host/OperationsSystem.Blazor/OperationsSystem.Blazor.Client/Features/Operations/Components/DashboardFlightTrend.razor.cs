@@ -1,12 +1,13 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using OperationsSystem.Blazor.Client.Api;
+using OperationsSystem.Blazor.Client.State;
 
 namespace OperationsSystem.Blazor.Client.Features.Operations.Components;
 
 public partial class DashboardFlightTrend
 {
-    private IReadOnlyList<DashboardTimelinePoint> points = [];
+    private IReadOnlyList<ChartPoint> points = [];
     private IReadOnlyList<PresetOption> presets = [];
     private string title = string.Empty;
     private string description = string.Empty;
@@ -19,6 +20,8 @@ public partial class DashboardFlightTrend
     private string rangeKey = string.Empty;
     private string previousRangeKey = string.Empty;
     private IReadOnlyList<DashboardTimelinePoint>? projectedPoints;
+    private string projectedGranularity = string.Empty;
+    private string projectedZoneId = string.Empty;
     private DashboardPeriodPreset selectedPreset;
     private DateTime trendMin;
     private DateTime trendMax;
@@ -26,6 +29,8 @@ public partial class DashboardFlightTrend
     private double viewEnd = 1;
     private bool busy;
     private bool hasData;
+
+    [Inject] private UserTimeZone UserTimeZone { get; set; } = default!;
 
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
     [Parameter] public string Description { get; set; } = string.Empty;
@@ -53,20 +58,32 @@ public partial class DashboardFlightTrend
     {
         title = Title;
         description = Description;
-        if (!ReferenceEquals(projectedPoints, Points))
+        granularity = Granularity;
+        if (!ReferenceEquals(projectedPoints, Points) ||
+            projectedGranularity != granularity || projectedZoneId != UserTimeZone.Id)
         {
             projectedPoints = Points;
-            points = Points.OrderBy(point => point.BucketUtc).ToList();
+            projectedGranularity = granularity;
+            projectedZoneId = UserTimeZone.Id;
+            points = Points.OrderBy(point => point.BucketUtc)
+                .Select(point => new ChartPoint(point.BucketUtc,
+                    DashboardTrendTimeLabels.ScaleDate(point.BucketUtc, granularity, UserTimeZone), point.FlightCount))
+                .ToList();
             hasData = points.Any(point => point.FlightCount > 0);
-            trendMin = points.Count == 0 ? DateTime.UtcNow.Date : points[0].BucketDateUtc;
-            trendMax = points.Count == 0 ? DateTime.UtcNow.Date.AddDays(1) : points[^1].BucketDateUtc;
+            var now = DateTimeOffset.UtcNow;
+            var today = DashboardLocalDateRange.Today(UserTimeZone, now);
+            trendMin = points.Count == 0
+                ? DashboardTrendTimeLabels.ScaleDate(UserTimeZone.DateBoundaryUtc(today, endOfDay: false), granularity, UserTimeZone)
+                : points[0].CategoryDate;
+            trendMax = points.Count == 0
+                ? DashboardTrendTimeLabels.ScaleDate(DashboardLocalDateRange.NextMidnightUtc(UserTimeZone, now), granularity, UserTimeZone)
+                : points[^1].CategoryDate;
             if (trendMax <= trendMin)
                 trendMax = trendMin.AddHours(1);
         }
 
-        granularity = Granularity;
         rangeSummary = RangeSummary;
-        rangeKey = RangeKey;
+        rangeKey = $"{RangeKey}|{granularity}|{UserTimeZone.Id}";
         if (!string.Equals(previousRangeKey, rangeKey, StringComparison.Ordinal))
         {
             previousRangeKey = rangeKey;
@@ -95,22 +112,10 @@ public partial class DashboardFlightTrend
         preset == selectedPreset ? "dft-preset is-active" : "dft-preset";
 
     private string FormatAxisValue(object value) =>
-        TryGetDate(value, out var date)
-            ? granularity switch
-            {
-                "Hour" => date.ToString("HH:mm", CultureInfo.CurrentCulture),
-                "Day" => date.ToString("dd MMM", CultureInfo.CurrentCulture),
-                _ => date.ToString("MMM yy", CultureInfo.CurrentCulture)
-            }
-            : Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+        DashboardTrendTimeLabels.Axis(value, granularity, UserTimeZone);
 
     private string FormatTooltipDate(DateTimeOffset value) =>
-        granularity switch
-        {
-            "Hour" => value.UtcDateTime.ToString("dd MMM yyyy · HH:mm 'UTC'", CultureInfo.CurrentCulture),
-            "Day" => value.UtcDateTime.ToString("dddd, dd MMM yyyy", CultureInfo.CurrentCulture),
-            _ => value.UtcDateTime.ToString("MMMM yyyy", CultureInfo.CurrentCulture)
-        };
+        DashboardTrendTimeLabels.Tooltip(value, granularity, UserTimeZone);
 
     private DateTime ScaleToTrend(double position)
     {
@@ -119,33 +124,14 @@ public partial class DashboardFlightTrend
     }
 
     private string FormatNavigatorDate(DateTime value) =>
-        granularity switch
-        {
-            "Hour" => value.ToString("dd MMM · HH:mm", CultureInfo.CurrentCulture),
-            "Day" => value.ToString("dd MMM yyyy", CultureInfo.CurrentCulture),
-            _ => value.ToString("MMM yyyy", CultureInfo.CurrentCulture)
-        };
+        DashboardTrendTimeLabels.Navigator(value, granularity, UserTimeZone);
 
     private static string FormatCountAxis(object value) =>
         Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString("N0", CultureInfo.CurrentCulture);
 
     private static string FormatCount(long value) => value.ToString("N0", CultureInfo.CurrentCulture);
 
-    private static bool TryGetDate(object value, out DateTimeOffset date)
-    {
-        switch (value)
-        {
-            case DateTimeOffset offset:
-                date = offset;
-                return true;
-            case DateTime dateTime:
-                date = new DateTimeOffset(DateTime.SpecifyKind(dateTime, DateTimeKind.Utc));
-                return true;
-            default:
-                date = default;
-                return false;
-        }
-    }
-
     private sealed record PresetOption(DashboardPeriodPreset Value, string Label);
+
+    private sealed record ChartPoint(DateTimeOffset BucketUtc, DateTime CategoryDate, long FlightCount);
 }
