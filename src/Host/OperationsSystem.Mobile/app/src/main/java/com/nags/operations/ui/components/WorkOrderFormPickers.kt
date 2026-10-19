@@ -4,42 +4,27 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SecondaryTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -49,12 +34,7 @@ import com.nags.operations.data.db.entities.ServiceEntity
 import com.nags.operations.data.db.entities.allowedPerformedServiceOptions
 import com.nags.operations.ui.util.formatIsoForDisplay
 import com.nags.operations.ui.util.formatIsoForDateTimeField
-import com.nags.operations.ui.util.parseOffsetDateTime
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.ZoneOffset
 
 /** Same flight banner as [FlightDetailsActionsSheet] / [FlightOverviewBanner] for a consistent look. */
 @Composable
@@ -98,7 +78,7 @@ fun WorkOrderDateTimePickerField(
     enabled: Boolean = true,
     compact: Boolean = false,
 ) {
-    var dialogOpen by remember { mutableStateOf(false) }
+    var dialogOpen by rememberSaveable { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -135,7 +115,8 @@ fun WorkOrderDateTimePickerField(
     }
 
     if (dialogOpen) {
-        WorkOrderOffsetDateTimePickerDialog(
+        WorkOrderDateTimePickerSheet(
+            label = label,
             initialIso = iso.takeIf { it.isNotBlank() } ?: defaultInitialIso,
             flightOffset = flightOffset,
             onDismiss = { dialogOpen = false },
@@ -230,111 +211,6 @@ fun WorkOrderAtaPickerField(
         isError = isError,
         supportingText = supportingText,
     )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WorkOrderOffsetDateTimePickerDialog(
-    initialIso: String,
-    flightOffset: ZoneId,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    val initialZoned = remember(initialIso, flightOffset) {
-        try {
-            parseOffsetDateTime(initialIso).atZoneSameInstant(flightOffset)
-        } catch (_: Exception) {
-            java.time.ZonedDateTime.now(flightOffset)
-        }
-    }
-
-    // Material's DatePicker represents a calendar date as UTC midnight, not as the selected
-    // instant. Seeding it this way prevents positive/negative zones from shifting the date.
-    val initialMillis = remember(initialZoned) {
-        initialZoned.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    }
-    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
-    val timePickerState = rememberTimePickerState(
-        initialHour = initialZoned.hour,
-        initialMinute = initialZoned.minute,
-        is24Hour = false,
-    )
-
-    var tabIndex by remember { mutableIntStateOf(0) }
-    var timeZoneError by remember { mutableStateOf<String?>(null) }
-
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val selectedMillis = datePickerState.selectedDateMillis ?: initialMillis
-                    val pickedDate = Instant.ofEpochMilli(selectedMillis)
-                        .atZone(ZoneOffset.UTC)
-                        .toLocalDate()
-                    val pickedTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
-                    val combined = LocalDateTime.of(pickedDate, pickedTime)
-                    val validOffsets = flightOffset.rules.getValidOffsets(combined)
-                    when (validOffsets.size) {
-                        0 -> timeZoneError = "That local time does not exist because the clock moves forward. Choose another time."
-                        1 -> onConfirm(combined.atOffset(validOffsets.single()).toString())
-                        else -> timeZoneError = "That local time occurs twice because the clock moves back. Choose a time outside the repeated hour."
-                    }
-                },
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Confirm")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            SecondaryTabRow(selectedTabIndex = tabIndex) {
-                Tab(
-                    selected = tabIndex == 0,
-                    onClick = { tabIndex = 0 },
-                    icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
-                    text = { Text("Date") },
-                )
-                Tab(
-                    selected = tabIndex == 1,
-                    onClick = { tabIndex = 1 },
-                    icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
-                    text = { Text("Time") },
-                )
-            }
-            when (tabIndex) {
-                0 -> DatePicker(
-                    state = datePickerState,
-                    title = null,
-                    headline = null,
-                    showModeToggle = false,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                else -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TimePicker(state = timePickerState)
-                }
-            }
-            timeZoneError?.let { message ->
-                Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                )
-            }
-        }
-    }
 }
 
 @Composable
