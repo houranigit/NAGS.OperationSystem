@@ -1,6 +1,5 @@
 package com.nags.operations.ui.components
 
-import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -29,15 +28,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -93,33 +87,29 @@ internal fun WorkOrderDateTimePickerSheet(
         initial.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     }
     val dateState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
-    val system24Hour = DateFormat.is24HourFormat(LocalContext.current)
-    val timeState = rememberTimePickerState(initial.hour, initial.minute, system24Hour)
-    // Keep restored text and time state in the same format for this editing session.
-    val is24Hour = timeState.is24hour
     val focusManager = LocalFocusManager.current
     val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
-    val timeFormatter = remember(locale, is24Hour) {
-        DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "hh:mm a", locale)
+    val timeFormatter = remember(locale) {
+        DateTimeFormatter.ofPattern("HH:mm", locale)
     }
     var hourText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(displayHour(initial.hour, is24Hour)))
+        mutableStateOf(TextFieldValue(twoDigits(initial.hour)))
     }
     var minuteText by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(twoDigits(initial.minute)))
     }
-    val hourRange = if (is24Hour) 0..23 else 1..12
-    val hourValid = hourText.text.toIntOrNull() in hourRange
-    val minuteValid = minuteText.text.toIntOrNull() in 0..59
-    val timeValid = hourValid && minuteValid
+    val hour = hourText.text.toIntOrNull()?.takeIf { it in 0..23 }
+    val minute = minuteText.text.toIntOrNull()?.takeIf { it in 0..59 }
+    val hourValid = hour != null
+    val minuteValid = minute != null
     val selectedMillis = dateState.selectedDateMillis
     val pickedDate = Instant.ofEpochMilli(selectedMillis ?: initialMillis)
         .atZone(ZoneOffset.UTC).toLocalDate()
     val dateSummary = pickedDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
-    val timeSummary = if (timeValid) LocalTime.of(timeState.hour, timeState.minute).format(timeFormatter) else "— : —"
+    val timeSummary = if (hour != null && minute != null) LocalTime.of(hour, minute).format(timeFormatter) else "— : —"
     // Recompute as the user edits so daylight-saving errors disappear as soon as corrected.
-    val selection = if (selectedMillis != null && timeValid) {
-        resolveDateTimeSelection(selectedMillis, timeState.hour, timeState.minute, flightOffset)
+    val selection = if (selectedMillis != null && hour != null && minute != null) {
+        resolveDateTimeSelection(selectedMillis, hour, minute, flightOffset)
     } else null
 
     ModalBottomSheet(
@@ -146,9 +136,7 @@ internal fun WorkOrderDateTimePickerSheet(
                                 dateState.selectedDateMillis = today
                                 dateState.displayedMonthMillis = today
                             }
-                            timeState.hour = now.hour
-                            timeState.minute = now.minute
-                            hourText = TextFieldValue(displayHour(now.hour, is24Hour))
+                            hourText = TextFieldValue(twoDigits(now.hour))
                             minuteText = TextFieldValue(twoDigits(now.minute))
                         }) { Text("Use now") }
                     }
@@ -189,7 +177,7 @@ internal fun WorkOrderDateTimePickerSheet(
                             modifier = Modifier.weight(1f).semantics { heading() },
                         )
                         Text(
-                            if (is24Hour) "24-hour" else "12-hour",
+                            "24-hour",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -202,12 +190,7 @@ internal fun WorkOrderDateTimePickerSheet(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         TimeNumberField(
                             value = hourText,
-                            onValueChange = { value ->
-                                hourText = value
-                                value.text.toIntOrNull()?.takeIf { it in hourRange }?.let { hour ->
-                                    timeState.hour = if (is24Hour) hour else hour % 12 + if (timeState.hour >= 12) 12 else 0
-                                }
-                            },
+                            onValueChange = { hourText = it },
                             label = "Hour",
                             isError = !hourValid,
                             imeAction = ImeAction.Next,
@@ -223,10 +206,7 @@ internal fun WorkOrderDateTimePickerSheet(
                         )
                         TimeNumberField(
                             value = minuteText,
-                            onValueChange = { value ->
-                                minuteText = value
-                                value.text.toIntOrNull()?.takeIf { it in 0..59 }?.let { timeState.minute = it }
-                            },
+                            onValueChange = { minuteText = it },
                             label = "Minute",
                             isError = !minuteValid,
                             imeAction = ImeAction.Done,
@@ -234,30 +214,8 @@ internal fun WorkOrderDateTimePickerSheet(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    if (!is24Hour) {
-                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                            listOf("AM", "PM").forEachIndexed { index, period ->
-                                SegmentedButton(
-                                    selected = (timeState.hour >= 12) == (index == 1),
-                                    onClick = { timeState.hour = timeState.hour % 12 + index * 12 },
-                                    shape = SegmentedButtonDefaults.itemShape(index, 2, RoundedCornerShape(14.dp)),
-                                    colors = SegmentedButtonDefaults.colors(
-                                        activeContainerColor = MaterialTheme.colorScheme.primary,
-                                        activeContentColor = MaterialTheme.colorScheme.onPrimary,
-                                        activeBorderColor = MaterialTheme.colorScheme.primary,
-                                        inactiveContainerColor = MaterialTheme.colorScheme.surface,
-                                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        inactiveBorderColor = MaterialTheme.colorScheme.outline,
-                                    ),
-                                    icon = {},
-                                    label = { Text(period, fontWeight = FontWeight.SemiBold) },
-                                    modifier = Modifier.heightIn(min = 48.dp),
-                                )
-                            }
-                        }
-                    }
                     val error = when {
-                        !hourValid -> if (is24Hour) "Enter an hour from 00 to 23." else "Enter an hour from 01 to 12."
+                        !hourValid -> "Enter an hour from 00 to 23."
                         !minuteValid -> "Enter minutes from 00 to 59."
                         selection is DateTimeSelection.Invalid -> selection.message
                         else -> null
@@ -299,9 +257,6 @@ internal fun WorkOrderDateTimePickerSheet(
 }
 
 private fun twoDigits(value: Int): String = value.toString().padStart(2, '0')
-
-private fun displayHour(hour: Int, is24Hour: Boolean): String =
-    twoDigits(if (is24Hour) hour else (hour % 12).let { if (it == 0) 12 else it })
 
 @Composable
 private fun TimeNumberField(

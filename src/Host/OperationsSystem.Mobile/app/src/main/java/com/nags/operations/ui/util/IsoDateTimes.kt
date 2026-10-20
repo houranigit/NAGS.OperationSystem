@@ -29,14 +29,19 @@ fun formatIsoForDisplay(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): S
         iso
     }
 
-/** A date and time on separate lines keeps paired form fields readable on phones. */
-fun formatIsoForDateTimeField(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): String =
+/** Date/time entry always uses 24-hour time; compact paired fields put it on a separate line. */
+fun formatIsoForDateTimeField(
+    iso: String,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    compact: Boolean = true,
+): String =
     try {
         val local = parseInUserZone(iso, zoneId)
         val locale = Locale.getDefault()
-        val date = local.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(locale))
-        val time = local.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale))
-        "$date\n$time"
+        val dateStyle = if (compact) FormatStyle.SHORT else FormatStyle.MEDIUM
+        val date = local.format(DateTimeFormatter.ofLocalizedDate(dateStyle).withLocale(locale))
+        val time = local.format(DateTimeFormatter.ofPattern("HH:mm", locale))
+        if (compact) "$date\n$time" else "$date · $time"
     } catch (_: Exception) {
         iso
     }

@@ -24,9 +24,9 @@ shape and business rules.
   `clientMutationId` so server retries are idempotent.
 * **Local-time work-order entry** — the UI converts server UTC instants through the device IANA
   time zone, including daylight-saving rules, while queued and transmitted values remain UTC.
-  Date/time fields open a shared bottom sheet with a calendar, a live selection summary, numeric
-  hour/minute entry, a joined AM/PM selector, and a **Use now** shortcut. It follows the device's 12/24-hour
-  preference; only **Confirm** applies the selection. Canceling leaves the field unchanged, including
+  Date/time fields open a shared bottom sheet with a calendar, a live selection summary,
+  numeric 24-hour time entry (00:00–23:59), and a **Use now** shortcut. The picker summary and date/time
+  fields use `HH:mm`; only **Confirm** applies the selection. Canceling leaves the field unchanged, including
   an optional/open end time. Invalid or repeated daylight-saving times still require correction.
   Resource rows follow their catalog calculation type: Quantity stores an amount; Duration stores
   a required From and optional/open To. Each selected service/task employee has a required From/To

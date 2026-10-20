@@ -87,7 +87,7 @@ fun WorkOrderDateTimePickerField(
     ) {
         OutlinedTextField(
             value = iso.takeIf { it.isNotBlank() }?.let {
-                if (compact) formatIsoForDateTimeField(it, flightOffset) else formatIsoForDisplay(it, flightOffset)
+                formatIsoForDateTimeField(it, flightOffset, compact = compact)
             }.orEmpty(),
             onValueChange = {},
             readOnly = true,
