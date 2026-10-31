@@ -376,16 +376,32 @@ private fun CreateWorkOrderFormContent(
             }
         }
 
-        OutlinedTextField(
-            value = state.form.flightNumber,
-            onValueChange = viewModel::updateFlightNumber,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            label = { Text("Flight number") },
-            singleLine = true,
-            isError = submitErrs?.flightNumber != null,
-            supportingText = fieldErrorSupportingText(submitErrs?.flightNumber),
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = state.form.flightNumber,
+                onValueChange = viewModel::updateFlightNumber,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+                label = { Text("Flight number") },
+                singleLine = true,
+                isError = submitErrs?.flightNumber != null,
+                supportingText = fieldErrorSupportingText(submitErrs?.flightNumber),
+            )
+            OutlinedTextField(
+                value = state.form.workPackageNumber,
+                onValueChange = { value ->
+                    viewModel.updateForm {
+                        it.copy(workPackageNumber = value.take(com.nags.operations.ui.workorder.WorkOrderFormLimits.ReferenceNumber))
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+                label = { Text("Work Package #") },
+                singleLine = true,
+                isError = submitErrs?.workPackageNumber != null,
+                supportingText = fieldErrorSupportingText(submitErrs?.workPackageNumber),
+            )
+        }
         AircraftTypePicker(
             selectedId = state.form.aircraftTypeId,
             options = state.catalogAircraftTypes,

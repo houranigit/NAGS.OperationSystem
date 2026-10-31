@@ -61,6 +61,7 @@ data class OutboxPayload(
     data class WorkOrderInput(
         val type: String,
         val actualFlightNumber: String?,
+        val workPackageNumber: String? = null,
         val aircraftTypeId: String?,
         val aircraftTailNumber: String?,
         val ataIso: String?,
@@ -116,6 +117,7 @@ data class OutboxPayload(
         val fromIso: String,
         val toIso: String,
         val description: String?,
+        val customerReferenceNumber: String? = null,
         /** Defaults empty so queued submissions from versions before service attachments remain valid. */
         val attachments: List<AttachmentInput> = emptyList(),
         val isReturnToRamp: Boolean = false,
@@ -127,6 +129,7 @@ data class OutboxPayload(
         val id: String? = null,
         val taskType: String,
         val description: String?,
+        val customerReferenceNumber: String? = null,
         val fromIso: String,
         val toIso: String,
         val employeeIds: List<String>,

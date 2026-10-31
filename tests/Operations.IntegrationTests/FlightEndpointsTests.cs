@@ -21,14 +21,48 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
-    [Fact]
-    public async Task ExportFlights_WithoutAuthentication_Returns401()
+    [Theory]
+    [InlineData("")]
+    [InlineData("&report=billing")]
+    public async Task ExportFlights_WithoutAuthentication_Returns401(string reportQuery)
     {
         var client = factory.CreateClient();
 
-        var response = await client.GetAsync($"{OperationsApiFactory.Base}/flights/export?format=xlsx");
+        var response = await client.GetAsync($"{OperationsApiFactory.Base}/flights/export?format=xlsx{reportQuery}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ExportBilling_AsAdmin_ReturnsSeparateWorkbookWithHeadersForEmptyActivitySelection()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var flightNumber = await SeedFlightAsync();
+        var response = await admin.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/export?format=xlsx&report=billing&search={Uri.EscapeDataString(flightNumber)}&timeZoneId=America%2FChicago");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        var disposition = response.Content.Headers.ContentDisposition!;
+        (disposition.FileNameStar ?? disposition.FileName)!.Trim('"').ShouldStartWith("billing-report-");
+        using var workbook = new XLWorkbook(new MemoryStream(await response.Content.ReadAsByteArrayAsync()));
+        workbook.Worksheets.Select(sheet => sheet.Name).ShouldBe(["Billing Report"]);
+        workbook.Worksheet(1).Cell(1, 1).GetString().ShouldBe("WO ID");
+        workbook.Worksheet(1).Cell(1, 20).GetString().ShouldBe("End Time");
+        workbook.Worksheet(1).LastRowUsed()!.RowNumber().ShouldBe(1);
+        workbook.Properties.Subject.ShouldNotBeNull().ShouldContain("America/Chicago");
+    }
+
+    [Theory]
+    [InlineData("csv", "billing")]
+    [InlineData("pdf", "billing")]
+    [InlineData("xlsx", "unknown")]
+    public async Task ExportBilling_InvalidReportOrFormat_ReturnsValidationProblem(string format, string report)
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var response = await admin.GetAsync($"{OperationsApiFactory.Base}/flights/export?format={format}&report={report}");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Operations.Flight.ExportReportInvalid");
     }
 
     [Theory]

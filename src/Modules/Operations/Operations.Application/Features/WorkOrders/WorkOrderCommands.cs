@@ -115,7 +115,8 @@ public sealed class SubmitWorkOrderCommandHandler(
             input.Value.Tasks,
             input.Value.ReturnToRamps ?? [],
             now,
-            request.WorkOrderId);
+            request.WorkOrderId,
+            input.Value.WorkPackageNumber);
         if (workOrder.IsFailure)
             return workOrder.Error;
 
@@ -239,7 +240,8 @@ public sealed class UpdateWorkOrderCommandHandler(
             input.Value.ServiceLines,
             input.Value.Tasks,
             input.Value.ReturnToRamps,
-            now);
+            now,
+            input.Value.WorkPackageNumber);
         if (update.IsFailure)
             return update.Error;
 
@@ -665,7 +667,8 @@ public sealed class MergeWorkOrdersCommandHandler(
             input.Value.ServiceLines,
             input.Value.Tasks.Select(task => task with { Id = null }).ToList(),
             input.Value.ReturnToRamps ?? WorkOrderReturnToRampCloner.Clone(sources),
-            now);
+            now,
+            workPackageNumber: input.Value.WorkPackageNumber);
         if (generated.IsFailure)
             return generated.Error;
 
@@ -794,7 +797,8 @@ internal static class WorkOrderReturnToRampCloner
                     line.Description,
                     IsReturnToRamp: false,
                     Id: null,
-                    EmployeeAssignments: line.PerformedBy.Select(performer => new WorkOrderEmployeeAssignmentInput(performer.StaffMember.StaffMemberId, performer.Window)).ToList())).ToList(),
+                    EmployeeAssignments: line.PerformedBy.Select(performer => new WorkOrderEmployeeAssignmentInput(performer.StaffMember.StaffMemberId, performer.Window)).ToList(),
+                    CustomerReferenceNumber: line.CustomerReferenceNumber)).ToList(),
                 item.Tasks.Select(task => new WorkOrderTaskInput(
                     null,
                     task.TaskType,
@@ -806,7 +810,8 @@ internal static class WorkOrderReturnToRampCloner
                     task.GeneralSupports.Select(support => new WorkOrderTaskGeneralSupportInput(support.GeneralSupport, support.Usage, support.Description)).ToList(),
                     IsReturnToRamp: false,
                     EmployeeAssignments: task.Employees.Select(employee => new WorkOrderEmployeeAssignmentInput(employee.Employee.StaffMemberId, employee.Window)).ToList(),
-                    AtaChapter: task.AtaChapter)).ToList()))
+                    AtaChapter: task.AtaChapter,
+                    CustomerReferenceNumber: task.CustomerReferenceNumber)).ToList()))
             .ToList();
 }
 

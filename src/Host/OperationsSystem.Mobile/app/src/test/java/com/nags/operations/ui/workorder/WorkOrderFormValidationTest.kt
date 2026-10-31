@@ -12,6 +12,31 @@ import org.junit.Test
 
 class WorkOrderFormValidationTest {
     @Test
+    fun optional_references_accept_empty_and_boundary_values_but_reject_oversized_saved_data() {
+        val form = validForm()
+        val atLimit = "0".repeat(WorkOrderFormLimits.ReferenceNumber)
+        val valid = form.copy(
+            workPackageNumber = " $atLimit ",
+            serviceLines = form.serviceLines.map { it.copy(customerReferenceNumber = atLimit) },
+            tasks = form.tasks.map { it.copy(customerReferenceNumber = atLimit) },
+        )
+        assertNull(validationErrors(form))
+        assertNull(validationErrors(valid))
+        val tooLong = atLimit + "1"
+        val errors = validationErrors(valid.copy(
+            workPackageNumber = tooLong,
+            serviceLines = valid.serviceLines.map { it.copy(customerReferenceNumber = tooLong) },
+            tasks = valid.tasks.map { it.copy(customerReferenceNumber = tooLong) },
+        ))!!
+        assertNotNull(errors.workPackageNumber)
+        assertNotNull(errors.serviceLinesByKey.values.single().customerReferenceNumber)
+        assertNotNull(errors.tasksByKey.values.single().customerReferenceNumber)
+        assertEquals(WorkOrderWizardStep.Flight, firstWizardStepWithErrors(errors))
+        assertNotNull(submitErrorsForWizardStep(errors, WorkOrderWizardStep.ServiceLines))
+        assertNotNull(submitErrorsForWizardStep(errors, WorkOrderWizardStep.Tasks))
+    }
+
+    @Test
     fun valid_portal_equivalent_form_passes() {
         val errors = computeCreateWorkOrderSubmitErrors(
             form = validForm(),

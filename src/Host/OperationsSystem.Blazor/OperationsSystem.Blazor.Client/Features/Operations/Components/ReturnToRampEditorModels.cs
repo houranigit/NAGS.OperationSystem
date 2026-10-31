@@ -65,6 +65,7 @@ public sealed class ReturnToRampServiceDraft
     public DateTime? FromLocal { get; set; }
     public DateTime? ToLocal { get; set; }
     public string? Description { get; set; }
+    public string? CustomerReferenceNumber { get; set; }
     public List<ReturnToRampAttachmentDraft> Attachments { get; set; } = [];
 
     public ReturnToRampServiceDraft Clone() => new()
@@ -78,6 +79,7 @@ public sealed class ReturnToRampServiceDraft
         FromLocal = FromLocal,
         ToLocal = ToLocal,
         Description = Description,
+        CustomerReferenceNumber = CustomerReferenceNumber,
         Attachments = Attachments.Select(item => item.Clone()).ToList()
     };
 }
@@ -92,6 +94,7 @@ public sealed class ReturnToRampTaskDraft
     public string? AtaChapterTitle { get; set; }
     public string TaskType { get; set; } = "Major";
     public string? Description { get; set; }
+    public string? CustomerReferenceNumber { get; set; }
     public DateTime? FromLocal { get; set; }
     public DateTime? ToLocal { get; set; }
     public IEnumerable<Guid> EmployeeIds { get; set; } = [];
@@ -111,6 +114,7 @@ public sealed class ReturnToRampTaskDraft
         AtaChapterTitle = AtaChapterTitle,
         TaskType = TaskType,
         Description = Description,
+        CustomerReferenceNumber = CustomerReferenceNumber,
         FromLocal = FromLocal,
         ToLocal = ToLocal,
         EmployeeIds = EmployeeIds.ToList(),
@@ -234,6 +238,7 @@ internal static class ReturnToRampDraftMapper
         FromLocal = timeZone.ToLocalDateTime(source.FromUtc),
         ToLocal = timeZone.ToLocalDateTime(source.ToUtc),
         Description = source.Description,
+        CustomerReferenceNumber = source.CustomerReferenceNumber,
         Attachments = (source.Attachments ?? []).Select(FromAttachment).ToList()
     };
 
@@ -246,6 +251,7 @@ internal static class ReturnToRampDraftMapper
         AtaChapterTitle = source.AtaChapterTitle,
         TaskType = source.TaskType,
         Description = source.Description,
+        CustomerReferenceNumber = source.CustomerReferenceNumber,
         FromLocal = timeZone.ToLocalDateTime(source.FromUtc),
         ToLocal = timeZone.ToLocalDateTime(source.ToUtc),
         EmployeeIds = source.Employees.Select(item => item.StaffMemberId).ToList(),
@@ -314,7 +320,8 @@ internal static class ReturnToRampDraftMapper
             item.Kind,
             Convert.ToBase64String(item.Content!),
             item.OriginalFileName,
-            item.ContentType)).ToList());
+            item.ContentType)).ToList(),
+        CustomerReferenceNumber: WorkOrderEntryRules.OptionalReference(source.CustomerReferenceNumber));
 
     private static WorkOrderTaskRequestModel ToTaskRequest(
         ReturnToRampTaskDraft source,
@@ -349,7 +356,8 @@ internal static class ReturnToRampDraftMapper
             item.OriginalFileName,
             item.ContentType)).ToList(),
         EmployeeAssignments: WorkOrderEntryRules.ToRequests(source.EmployeeAssignments, timeZone),
-        AtaChapterId: source.AtaChapterId);
+        AtaChapterId: source.AtaChapterId,
+        CustomerReferenceNumber: WorkOrderEntryRules.OptionalReference(source.CustomerReferenceNumber));
 }
 
 internal static class ReturnToRampDraftValidation

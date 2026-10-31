@@ -7,6 +7,21 @@ public partial class ReturnToRampEditorDialog
 {
     private string? signaturePreviewUrl;
 
+    internal static void SelectServiceEmployees(ReturnToRampServiceDraft line, IEnumerable<Guid>? ids)
+    {
+        // Radzen may pass a deferred query over its mutable selection. Keep our own snapshot.
+        line.PerformedByStaffMemberIds = (ids ?? []).Distinct().ToList();
+        line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(
+            line.PerformedByStaffMemberIds, line.EmployeeAssignments, line.FromLocal);
+    }
+
+    internal static void SelectTaskEmployees(ReturnToRampTaskDraft task, IEnumerable<Guid>? ids)
+    {
+        task.EmployeeIds = (ids ?? []).Distinct().ToList();
+        task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(
+            task.EmployeeIds, task.EmployeeAssignments, task.FromLocal);
+    }
+
     private string? PendingSignaturePreview => model.PendingCustomerSignature is { } signature
         ? $"data:image/png;base64,{Convert.ToBase64String(signature.Content)}"
         : null;

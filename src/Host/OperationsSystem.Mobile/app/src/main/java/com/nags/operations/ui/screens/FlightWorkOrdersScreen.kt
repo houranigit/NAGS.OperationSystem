@@ -195,6 +195,7 @@ private fun WorkOrderReadOnlyDetails(order: WorkOrderDetailWireDto, api: MobileA
     Text("${order.status} · ${order.type}")
     Text("${order.customerName} · ${order.stationIata}")
     Text("Flight ${order.actualFlightNumber.ifBlank { order.plannedFlightNumber }}")
+    order.workPackageNumber?.takeIf(String::isNotBlank)?.let { Text("Work Package #: $it") }
     Text("${order.aircraftTypeModel.orEmpty()} ${order.aircraftTailNumber.orEmpty()}".trim())
     Text("ATA: ${order.actualArrivalUtc?.let(::formatIsoForDisplay) ?: "—"}")
     Text("ATD: ${order.actualDepartureUtc?.let(::formatIsoForDisplay) ?: "—"}")
@@ -276,6 +277,7 @@ private fun WorkOrderActivity(services: List<WorkOrderServiceLineWireDto>, tasks
         OutlinedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(service.serviceName, style = MaterialTheme.typography.titleMedium)
+                service.customerReferenceNumber?.takeIf(String::isNotBlank)?.let { Text("Customer Ref #: $it") }
                 PeriodText(service.fromUtc, service.toUtc)
                 service.description?.takeIf(String::isNotBlank)?.let { Text("Notes: $it") }
                 service.effectivePerformedBy.forEach { employee ->
@@ -290,6 +292,7 @@ private fun WorkOrderActivity(services: List<WorkOrderServiceLineWireDto>, tasks
         OutlinedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("${task.taskType} task", style = MaterialTheme.typography.titleMedium)
+                task.customerReferenceNumber?.takeIf(String::isNotBlank)?.let { Text("Customer Ref #: $it") }
                 task.ataChapterId?.let {
                     Text("ATA Chapter: " + listOfNotNull(task.ataChapterCode, task.ataChapterTitle).joinToString(". "))
                 }

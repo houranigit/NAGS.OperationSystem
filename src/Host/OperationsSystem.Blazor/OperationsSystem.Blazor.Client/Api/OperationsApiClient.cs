@@ -110,7 +110,8 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         IReadOnlyList<string>? serviceCategories = null,
         string? sort = null,
         string? timeZoneId = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? report = null)
     {
         var query = new QueryBuilder()
             .Add("format", format)
@@ -124,6 +125,7 @@ public sealed class OperationsApiClient(BrowserApiClient api)
             .Add("serviceCategory", JoinValues(serviceCategories))
             .Add("sort", sort)
             .Add("timeZoneId", timeZoneId)
+            .Add("report", report)
             .Build();
         return api.DownloadFileAsync($"/operations/flights/export{query}", cancellationToken: ct);
     }

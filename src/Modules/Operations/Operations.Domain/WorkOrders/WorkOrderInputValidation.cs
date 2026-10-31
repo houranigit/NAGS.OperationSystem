@@ -5,6 +5,16 @@ namespace Operations.Domain.WorkOrders;
 
 public static class WorkOrderInputValidation
 {
+    public const int MaxReferenceNumberLength = 200;
+
+    public static string? NormalizeReferenceNumber(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    public static Result ReferenceNumber(string? value, string fieldName) =>
+        NormalizeReferenceNumber(value)?.Length > MaxReferenceNumberLength
+            ? Error.Validation($"{fieldName} must be at most {MaxReferenceNumberLength} characters.", $"Operations.WorkOrder.{fieldName}TooLong")
+            : Result.Success();
+
     public static Result EmployeeAssignments(
         IEnumerable<Guid> selectedStaffIds,
         IReadOnlyList<WorkOrderEmployeeAssignmentInput>? assignments,

@@ -74,6 +74,18 @@ development, `Database:ApplyMigrationsOnStartup` may be enabled to apply them au
 production and production-like remote testing, keep it disabled, use reviewed SQL scripts, and take a
 backup first.
 
+### 2026-10 work-order reference numbers
+
+Apply `20261030192847_Operations_WorkOrderReferenceNumbers` before deploying the updated API
+and portal. It adds nullable `WorkPackageNumber` on work orders and nullable
+`CustomerReferenceNumber` on service lines and tasks. All three columns accept up to 200 characters;
+existing rows retain null values. Portal and Android work-order entry keep these fields optional,
+including customer references on return-to-ramp services and tasks. Existing draft and queued mobile
+requests without the new fields remain readable.
+
+Keep automatic migrations disabled for remote testing. Deploy the additive migration through the
+reviewed database-change process before starting an API that reads the new columns.
+
 ### 2026-10 legacy system IDs
 
 Apply `20261005005402_MasterData_LegacySystemIds` before deploying the v1.0.12 API and

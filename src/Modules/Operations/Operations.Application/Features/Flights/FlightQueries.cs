@@ -45,7 +45,8 @@ public sealed record GetFlightsExportQuery(
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
     IReadOnlyList<FlightServiceCategory>? ServiceCategories = null,
-    string? Sort = null) : IQuery<IReadOnlyList<FlightExportRowDto>>;
+    string? Sort = null,
+    bool IncludeManpower = false) : IQuery<IReadOnlyList<FlightExportRowDto>>;
 
 public sealed record GetPerLandingExtractionQuery(
     string? Search = null,
@@ -109,7 +110,10 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
     }
 }
 
-public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+public sealed class GetFlightsExportQueryHandler(
+    IOperationsDbContext db,
+    IOperationsScope scope,
+    IMasterDataReader masterData)
     : IQueryHandler<GetFlightsExportQuery, IReadOnlyList<FlightExportRowDto>>
 {
     public async Task<Result<IReadOnlyList<FlightExportRowDto>>> Handle(
@@ -138,7 +142,8 @@ public sealed class GetFlightsExportQueryHandler(IOperationsDbContext db, IOpera
         var rows = await FlightExportProjection.LoadAsync(
             db,
             FlightListQuery.ApplySort(query, request.Sort),
-            cancellationToken);
+            cancellationToken,
+            request.IncludeManpower ? masterData : null);
         return Result.Success(rows);
     }
 }
@@ -153,7 +158,8 @@ internal static class FlightExportProjection
     public static async Task<IReadOnlyList<FlightExportRowDto>> LoadAsync(
         IOperationsDbContext db,
         IQueryable<Flight> flights,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IMasterDataReader? manpowerReader = null)
     {
         var flightRows = await flights
             .Select(f => new
@@ -250,6 +256,9 @@ internal static class FlightExportProjection
             : await WorkOrderLoader.ForMutation(db.WorkOrders.AsNoTracking())
                 .Where(workOrder => selectedWorkOrderIds.Contains(workOrder.Id))
                 .ToListAsync(cancellationToken);
+        var manpowerDetailsByWorkOrder = manpowerReader is null
+            ? new Dictionary<Guid, IReadOnlyList<FlightExportManpowerDetailDto>>()
+            : await LoadManpowerDetailsAsync(activityPerformerGraphs, manpowerReader, cancellationToken);
         var toolNamesByWorkOrder = toolRows.ToLookup(row => row.WorkOrderId, row => row.Name);
         var materialNamesByWorkOrder = materialRows.ToLookup(row => row.WorkOrderId, row => row.Name);
         var generalSupportNamesByWorkOrder = generalSupportRows.ToLookup(row => row.WorkOrderId, row => row.Name);
@@ -354,7 +363,8 @@ internal static class FlightExportProjection
                     WorkOrderStatus = selectedWorkOrder.Status.ToString(),
                     TaskNames = BuildTaskNames(taskDetailsByWorkOrder[selectedWorkOrder.Id]),
                     ServiceDetails = serviceDetailsByWorkOrder[selectedWorkOrder.Id].ToList(),
-                    TaskDetails = taskDetailsByWorkOrder[selectedWorkOrder.Id].ToList()
+                    TaskDetails = taskDetailsByWorkOrder[selectedWorkOrder.Id].ToList(),
+                    ManpowerDetails = manpowerDetailsByWorkOrder.GetValueOrDefault(selectedWorkOrder.Id) ?? []
                 };
 
             return new FlightExportRowDto(
@@ -383,6 +393,67 @@ internal static class FlightExportProjection
         }).ToList();
 
         return items;
+    }
+
+    private static async Task<Dictionary<Guid, IReadOnlyList<FlightExportManpowerDetailDto>>> LoadManpowerDetailsAsync(
+        IReadOnlyList<WorkOrder> workOrders,
+        IMasterDataReader masterData,
+        CancellationToken cancellationToken)
+    {
+        var assignments = workOrders
+            .SelectMany(workOrder => workOrder.ServiceLines
+                .Concat(workOrder.ReturnToRamps.SelectMany(item => item.ServiceLines)))
+            .DistinctBy(line => line.Id)
+            .SelectMany(line => line.PerformedBy.Select(performer => new
+            {
+                line.WorkOrderId,
+                ActivityId = line.Id,
+                performer.StaffMember.StaffMemberId,
+                FromUtc = performer.Window.From,
+                ToUtc = performer.Window.To
+            }))
+            .Concat(workOrders
+                .SelectMany(workOrder => workOrder.Tasks
+                    .Concat(workOrder.ReturnToRamps.SelectMany(item => item.Tasks)))
+                .DistinctBy(task => task.Id)
+                .SelectMany(task => task.Employees.Select(employee => new
+                {
+                    task.WorkOrderId,
+                    ActivityId = task.Id,
+                    employee.Employee.StaffMemberId,
+                    FromUtc = employee.Window.From,
+                    ToUtc = employee.Window.To
+                })))
+            .OrderBy(assignment => assignment.FromUtc)
+            .ThenBy(assignment => assignment.ToUtc)
+            .ThenBy(assignment => assignment.ActivityId)
+            .ThenBy(assignment => assignment.StaffMemberId)
+            .ToList();
+        if (assignments.Count == 0)
+            return [];
+
+        var staff = await masterData.GetStaffMembersAsync(
+            assignments.Select(assignment => assignment.StaffMemberId).Distinct().ToList(),
+            cancellationToken);
+        var manpowerTypeByStaff = staff.ToDictionary(employee => employee.Id, employee => employee.ManpowerTypeId);
+        var manpowerNames = new Dictionary<Guid, string>();
+        foreach (var manpowerTypeId in manpowerTypeByStaff.Values.Distinct().OrderBy(id => id))
+        {
+            var manpowerType = await masterData.GetManpowerTypeAsync(manpowerTypeId, cancellationToken);
+            if (manpowerType is not null)
+                manpowerNames[manpowerTypeId] = manpowerType.Name;
+        }
+
+        return assignments.GroupBy(assignment => assignment.WorkOrderId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<FlightExportManpowerDetailDto>)group.Select(assignment =>
+                    new FlightExportManpowerDetailDto(
+                        manpowerTypeByStaff.TryGetValue(assignment.StaffMemberId, out var manpowerTypeId)
+                            ? manpowerNames.GetValueOrDefault(manpowerTypeId) ?? string.Empty
+                            : string.Empty,
+                        assignment.FromUtc,
+                        assignment.ToUtc)).ToList());
     }
 
     internal static IQueryable<FlightExportResourceNameRow> ToolRowsQuery(

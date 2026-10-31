@@ -33,6 +33,9 @@ class WorkOrderDraftJsonTest {
 
         val form = WorkOrderDraftJson.decodeForm(legacyJson)
 
+        assertEquals("", form.workPackageNumber)
+        assertEquals("", form.serviceLines.single().customerReferenceNumber)
+        assertEquals("", form.tasks.single().customerReferenceNumber)
         assertEquals("", form.atdIso)
         assertEquals("", form.serviceLines.single().fromIso)
         assertEquals("", form.serviceLines.single().toIso)
@@ -50,11 +53,13 @@ class WorkOrderDraftJsonTest {
     fun current_form_round_trip_preserves_atd_and_mixed_line_timestamps() {
         val original = CreateWorkOrderFormState(
             flightNumber = "MOB200",
+            workPackageNumber = "WP-0012",
             ataIso = "2026-07-11T10:00:00-05:00",
             atdIso = "2026-07-11T12:15:00-05:00",
             serviceLines = listOf(
                 ServiceLineFormRow(
                     localKey = 1L,
+                    customerReferenceNumber = "SVC-001",
                     fromIso = "2026-07-11T10:05:00-05:00",
                     toIso = "",
                     attachments = listOf(
@@ -73,6 +78,7 @@ class WorkOrderDraftJsonTest {
             tasks = listOf(
                 TaskFormRow(
                     localKey = 2L,
+                    customerReferenceNumber = "TASK-002",
                     fromIso = "",
                     toIso = "2026-07-11T11:45:00-05:00",
                 ),
@@ -90,6 +96,7 @@ class WorkOrderDraftJsonTest {
                     serviceLines = listOf(
                         ServiceLineFormRow(
                             localKey = 11,
+                            customerReferenceNumber = "RTR-SVC-011",
                             serverId = "service-11",
                             serviceId = "service-1",
                             employeeIds = listOf("staff-1"),
@@ -101,13 +108,18 @@ class WorkOrderDraftJsonTest {
                     customerSignaturePng = "AQID",
                     fromIso = "2026-07-11T14:00:00-05:00",
                     toIso = "2026-07-11T14:30:00-05:00",
-                    tasks = listOf(TaskFormRow(localKey = 21, serverId = "task-21")),
+                    tasks = listOf(TaskFormRow(localKey = 21, serverId = "task-21", customerReferenceNumber = "RTR-TASK-021")),
                 ),
             ),
         )
 
         val restored = WorkOrderDraftJson.decodeForm(WorkOrderDraftJson.encodeForm(original))
 
+        assertEquals(original.workPackageNumber, restored.workPackageNumber)
+        assertEquals("SVC-001", restored.serviceLines.single().customerReferenceNumber)
+        assertEquals("TASK-002", restored.tasks.single().customerReferenceNumber)
+        assertEquals("RTR-SVC-011", restored.returnToRamps.first().serviceLines.single().customerReferenceNumber)
+        assertEquals("RTR-TASK-021", restored.returnToRamps.last().tasks.single().customerReferenceNumber)
         assertEquals(original.atdIso, restored.atdIso)
         assertEquals(original.serviceLines.single().fromIso, restored.serviceLines.single().fromIso)
         assertEquals(original.serviceLines.single().toIso, restored.serviceLines.single().toIso)

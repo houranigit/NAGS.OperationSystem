@@ -31,6 +31,7 @@ data class WorkOrderDetailWireDto(
     val scheduledArrivalUtc: String,
     val scheduledDepartureUtc: String,
     val actualFlightNumber: String,
+    val workPackageNumber: String? = null,
     val aircraftTypeId: String? = null,
     val aircraftTypeModel: String? = null,
     val aircraftTailNumber: String? = null,
@@ -75,6 +76,7 @@ data class WorkOrderServiceLineWireDto(
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
+    val customerReferenceNumber: String? = null,
     val attachments: List<WorkOrderTaskAttachmentWireDto> = emptyList(),
     val isReturnToRamp: Boolean = false,
     /** Rolling-deploy fallback for responses from the pre-multi-performer backend. */
@@ -120,6 +122,7 @@ data class WorkOrderTaskWireDto(
     val id: String,
     val taskType: String,
     val description: String? = null,
+    val customerReferenceNumber: String? = null,
     val fromUtc: String,
     val toUtc: String,
     val employees: List<WorkOrderTaskEmployeeWireDto> = emptyList(),

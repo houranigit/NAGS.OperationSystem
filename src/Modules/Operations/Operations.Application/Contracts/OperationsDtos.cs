@@ -78,7 +78,13 @@ public sealed record ApprovedWorkOrderExportDto(
     public IReadOnlyList<string> TaskNames { get; init; } = [];
     public IReadOnlyList<FlightExportServiceDetailDto> ServiceDetails { get; init; } = [];
     public IReadOnlyList<FlightExportTaskDetailDto> TaskDetails { get; init; } = [];
+    public IReadOnlyList<FlightExportManpowerDetailDto> ManpowerDetails { get; init; } = [];
 }
+
+public sealed record FlightExportManpowerDetailDto(
+    string Name,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc);
 
 public sealed record FlightExportReturnToRampContextDto(
     Guid Id,
@@ -329,7 +335,8 @@ public sealed record WorkOrderDetailDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    IReadOnlyList<WorkOrderReturnToRampDto>? ReturnToRamps = null);
+    IReadOnlyList<WorkOrderReturnToRampDto>? ReturnToRamps = null,
+    string? WorkPackageNumber = null);
 
 public sealed record WorkOrderReturnToRampDto(
     Guid Id,
@@ -375,7 +382,8 @@ public sealed record WorkOrderServiceLineDto(
     DateTimeOffset ToUtc,
     string? Description,
     bool IsReturnToRamp,
-    IReadOnlyList<WorkOrderServiceLineAttachmentDto>? Attachments = null)
+    IReadOnlyList<WorkOrderServiceLineAttachmentDto>? Attachments = null,
+    string? CustomerReferenceNumber = null)
 {
     // Rolling-deployment aliases for installed clients that predate multi-performer services.
     // PerformedBy is authoritative; these can be removed after those clients are retired.
@@ -406,7 +414,8 @@ public sealed record WorkOrderTaskDto(
     bool IsReturnToRamp,
     Guid? AtaChapterId = null,
     string? AtaChapterCode = null,
-    string? AtaChapterTitle = null);
+    string? AtaChapterTitle = null,
+    string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderTaskEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 

@@ -20,7 +20,8 @@ public sealed record WorkOrderEditableCommandPayload(
     IReadOnlyList<WorkOrderServiceLineCommand> ServiceLines,
     IReadOnlyList<WorkOrderTaskCommand> Tasks,
     WorkOrderSignatureCommand? CustomerSignature = null,
-    IReadOnlyList<WorkOrderReturnToRampCommand>? ReturnToRamps = null);
+    IReadOnlyList<WorkOrderReturnToRampCommand>? ReturnToRamps = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? WorkPackageNumber = null);
 
 public sealed record WorkOrderServiceLineCommand(
     Guid ServiceId,
@@ -31,7 +32,8 @@ public sealed record WorkOrderServiceLineCommand(
     bool IsReturnToRamp = false,
     Guid? Id = null,
     IReadOnlyList<WorkOrderServiceLineAttachmentCommand>? Attachments = null,
-    IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? EmployeeAssignments = null);
+    IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? EmployeeAssignments = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderTaskCommand(
     Guid? Id,
@@ -46,7 +48,8 @@ public sealed record WorkOrderTaskCommand(
     IReadOnlyList<WorkOrderTaskAttachmentCommand>? Attachments = null,
     bool IsReturnToRamp = false,
     IReadOnlyList<WorkOrderEmployeeAssignmentCommand>? EmployeeAssignments = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? AtaChapterId = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? AtaChapterId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderEmployeeAssignmentCommand(
     Guid StaffMemberId,
@@ -110,7 +113,8 @@ public sealed record BuiltWorkOrderInput(
     string? Remarks,
     IReadOnlyList<WorkOrderServiceLineInput> ServiceLines,
     IReadOnlyList<WorkOrderTaskInput> Tasks,
-    IReadOnlyList<WorkOrderReturnToRampInput>? ReturnToRamps);
+    IReadOnlyList<WorkOrderReturnToRampInput>? ReturnToRamps,
+    string? WorkPackageNumber = null);
 
 public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
 {
@@ -178,7 +182,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
             payload.Remarks,
             serviceLines.Value.Where(line => !line.IsReturnToRamp).ToList(),
             tasks.Value.Where(task => !task.IsReturnToRamp).ToList(),
-            returnToRamps);
+            returnToRamps,
+            WorkOrderInputValidation.NormalizeReferenceNumber(payload.WorkPackageNumber));
     }
 
     private static Result ValidatePayload(WorkOrderEditableCommandPayload payload, WorkOrderType type)
@@ -195,6 +200,9 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
 
             messages.Add(message);
         }
+
+        if (payload.WorkPackageNumber?.Trim().Length > WorkOrderInputValidation.MaxReferenceNumberLength)
+            Add(nameof(payload.WorkPackageNumber), "Work package number must be at most 200 characters.");
 
         if (type == WorkOrderType.Cancellation)
         {
@@ -424,6 +432,9 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var results = new List<WorkOrderServiceLineInput>(lines.Count);
         foreach (var line in lines)
         {
+            var reference = WorkOrderInputValidation.ReferenceNumber(line.CustomerReferenceNumber, nameof(line.CustomerReferenceNumber));
+            if (reference.IsFailure)
+                return reference.Error;
             var description = WorkOrderInputValidation.Description(line.ServiceId, WellKnownMasterDataIds.UnknownService, line.Description, "Service");
             if (description.IsFailure)
                 return description.Error;
@@ -450,7 +461,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 line.Description,
                 line.IsReturnToRamp,
                 line.Id,
-                assignments.Value));
+                assignments.Value,
+                WorkOrderInputValidation.NormalizeReferenceNumber(line.CustomerReferenceNumber)));
         }
 
         return results;
@@ -465,6 +477,9 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
         var results = new List<WorkOrderTaskInput>(tasks.Count);
         foreach (var task in tasks)
         {
+            var reference = WorkOrderInputValidation.ReferenceNumber(task.CustomerReferenceNumber, nameof(task.CustomerReferenceNumber));
+            if (reference.IsFailure)
+                return reference.Error;
             var existingChapter = task.Id is { } taskId ? existingTaskAtaChapters?.GetValueOrDefault(taskId) : null;
             var chapter = await resolver.AtaChapterAsync(task.AtaChapterId, existingChapter, cancellationToken);
             if (chapter.IsFailure)
@@ -505,7 +520,8 @@ public sealed class WorkOrderInputBuilder(Common.MasterDataResolver resolver)
                 supports.Value,
                 task.IsReturnToRamp,
                 assignments.Value,
-                chapter.Value));
+                chapter.Value,
+                WorkOrderInputValidation.NormalizeReferenceNumber(task.CustomerReferenceNumber)));
         }
 
         return results;

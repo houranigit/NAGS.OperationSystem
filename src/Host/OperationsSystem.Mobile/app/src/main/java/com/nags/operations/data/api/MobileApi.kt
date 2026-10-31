@@ -228,6 +228,8 @@ data class MobileInviteRequest(
 data class WorkOrderWireRequest(
     val type: String,
     val actualFlightNumber: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val workPackageNumber: String? = null,
     val aircraftTypeId: String? = null,
     val aircraftTailNumber: String? = null,
     val actualArrivalUtc: String? = null,
@@ -263,6 +265,8 @@ data class WorkOrderServiceLineInput(
     val fromUtc: String,
     val toUtc: String,
     val description: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val customerReferenceNumber: String? = null,
     val attachments: List<WorkOrderTaskAttachmentInput> = emptyList(),
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val isReturnToRamp: Boolean = false,
@@ -274,6 +278,8 @@ data class WorkOrderTaskInput(
     val id: String? = null,
     val taskType: String,
     val description: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val customerReferenceNumber: String? = null,
     val fromUtc: String,
     val toUtc: String,
     val employeeIds: List<String> = emptyList(),

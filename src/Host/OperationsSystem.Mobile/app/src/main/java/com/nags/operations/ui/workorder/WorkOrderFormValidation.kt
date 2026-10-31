@@ -10,6 +10,7 @@ import java.time.OffsetDateTime
 
 internal object WorkOrderFormLimits {
     const val FlightNumber = 12
+    const val ReferenceNumber = 200
     const val AircraftTailNumber = 20
     const val Remarks = 2_000
     const val LineDescription = 2_000
@@ -398,6 +399,7 @@ internal fun computeWorkOrderLineErrors(
                 "This service is no longer allowed for your manpower type. Remove or replace it."
             else -> null
         }
+        val customerReferenceNumber = referenceNumberError(row.customerReferenceNumber, "Customer Ref #")
         val performer = if (row.employeeIds.isEmpty() || row.employeeIds.any { it.isBlank() }) {
             "Choose at least one person."
         } else employeePeriodsError(row.employeeIds, row.employeePeriods, row.fromIso, row.toIso)
@@ -433,7 +435,7 @@ internal fun computeWorkOrderLineErrors(
 
         if (
             service != null || performer != null || from != null || to != null ||
-            description != null || attachments != null
+            description != null || customerReferenceNumber != null || attachments != null
         ) {
             serviceMap[row.localKey] = ServiceLineSubmitFieldErrors(
                 serviceType = service,
@@ -441,6 +443,7 @@ internal fun computeWorkOrderLineErrors(
                 from = from,
                 to = to,
                 description = description,
+                customerReferenceNumber = customerReferenceNumber,
                 attachments = attachments,
             )
         }
@@ -451,6 +454,7 @@ internal fun computeWorkOrderLineErrors(
         val taskType = if (row.taskType != TaskTypeKind.Major && row.taskType != TaskTypeKind.Minor) {
             "Task type must be Major or Minor."
         } else null
+        val customerReferenceNumber = referenceNumberError(row.customerReferenceNumber, "Customer Ref #")
         val performers = if (row.employeeIds.isEmpty() || row.employeeIds.any { it.isBlank() }) {
             "Choose at least one person."
         } else employeePeriodsError(row.employeeIds, row.employeePeriods, row.fromIso, row.toIso)
@@ -508,7 +512,7 @@ internal fun computeWorkOrderLineErrors(
 
         if (
             taskType != null || performers != null || from != null || to != null || description != null ||
-            tools != null || materials != null || generalSupports != null || attachments != null
+            customerReferenceNumber != null || tools != null || materials != null || generalSupports != null || attachments != null
         ) {
             taskMap[row.localKey] = TaskLineSubmitFieldErrors(
                 taskType = taskType,
@@ -516,6 +520,7 @@ internal fun computeWorkOrderLineErrors(
                 from = from,
                 to = to,
                 description = description,
+                customerReferenceNumber = customerReferenceNumber,
                 tools = tools,
                 materials = materials,
                 generalSupports = generalSupports,
@@ -587,6 +592,7 @@ internal fun computeCreateWorkOrderSubmitErrors(
             "Flight number must be at most ${WorkOrderFormLimits.FlightNumber} characters."
         else -> null
     }
+    val workPackageNumber = referenceNumberError(form.workPackageNumber, "Work Package #")
     val aircraft = if (form.aircraftTypeId.isNullOrBlank()) "Aircraft type is required." else null
     val tail = if (form.aircraftTailNumber.trim().length > WorkOrderFormLimits.AircraftTailNumber) {
         "Tail number must be at most ${WorkOrderFormLimits.AircraftTailNumber} characters."
@@ -669,13 +675,14 @@ internal fun computeCreateWorkOrderSubmitErrors(
         }
     }
 
-    val hasProblems = flightNumber != null || aircraft != null || tail != null ||
+    val hasProblems = flightNumber != null || workPackageNumber != null || aircraft != null || tail != null ||
         scheduledArrival != null || scheduledDeparture != null || ata != null || atd != null || remarks != null ||
         lineErrors.services.isNotEmpty() || lineErrors.tasks.isNotEmpty() || returnToRampErrors.isNotEmpty()
     if (!hasProblems) return null
 
     return CreateWorkOrderSubmitFieldErrors(
         flightNumber = flightNumber,
+        workPackageNumber = workPackageNumber,
         aircraftType = aircraft,
         aircraftTailNumber = tail,
         scheduledArrival = scheduledArrival,
@@ -690,7 +697,7 @@ internal fun computeCreateWorkOrderSubmitErrors(
 }
 
 internal fun isBlankSubmitErrors(errors: CreateWorkOrderSubmitFieldErrors): Boolean =
-    errors.customer == null && errors.flightNumber == null && errors.aircraftType == null &&
+    errors.customer == null && errors.flightNumber == null && errors.workPackageNumber == null && errors.aircraftType == null &&
         errors.aircraftTailNumber == null && errors.scheduledArrival == null &&
         errors.scheduledDeparture == null && errors.ata == null && errors.atd == null &&
         errors.remarks == null && errors.serviceLinesByKey.isEmpty() && errors.tasksByKey.isEmpty() &&
@@ -840,4 +847,9 @@ internal fun Map<String, EmployeePeriodForm>.toOutboxAssignments(
 private fun documentAttachmentError(attachments: List<TaskAttachmentDraft>): String? =
     if (attachments.any { it.kind == "Document" && it.sizeBytes > 2L * 1024 * 1024 }) {
         "Documents must be 2 MB or less. Remove or replace the oversized document."
+    } else null
+
+private fun referenceNumberError(value: String, label: String): String? =
+    if (value.trim().length > WorkOrderFormLimits.ReferenceNumber) {
+        "$label must be at most ${WorkOrderFormLimits.ReferenceNumber} characters."
     } else null

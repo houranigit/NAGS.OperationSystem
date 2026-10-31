@@ -10,7 +10,8 @@ public sealed record WorkOrderServiceLineInput(
     string? Description,
     bool IsReturnToRamp = false,
     Guid? Id = null,
-    IReadOnlyList<WorkOrderEmployeeAssignmentInput>? EmployeeAssignments = null);
+    IReadOnlyList<WorkOrderEmployeeAssignmentInput>? EmployeeAssignments = null,
+    string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderTaskInput(
     Guid? Id,
@@ -23,7 +24,8 @@ public sealed record WorkOrderTaskInput(
     IReadOnlyList<WorkOrderTaskGeneralSupportInput> GeneralSupports,
     bool IsReturnToRamp = false,
     IReadOnlyList<WorkOrderEmployeeAssignmentInput>? EmployeeAssignments = null,
-    AtaChapterSnapshot? AtaChapter = null);
+    AtaChapterSnapshot? AtaChapter = null,
+    string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderEmployeeAssignmentInput(Guid StaffMemberId, TimeWindow Window);
 

@@ -21,12 +21,15 @@ public sealed class ReportExportAuthorizationTests(OperationsApiFactory factory)
 
         var flights = await viewer.GetAsync(
             $"{OperationsApiFactory.Base}/flights/export?format=csv");
+        var billing = await viewer.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/export?format=xlsx&report=billing");
         var dashboard = await viewer.GetAsync(
             $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=csv");
         var dashboardWorkOrder = await viewer.GetAsync(
             $"{OperationsApiFactory.Base}/analytics-dashboard/flights/{Guid.NewGuid()}/work-orders/approved/pdf");
 
         flights.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        billing.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         dashboard.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         dashboardWorkOrder.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
@@ -46,6 +49,8 @@ public sealed class ReportExportAuthorizationTests(OperationsApiFactory factory)
 
         var flights = await viewer.GetAsync(
             $"{OperationsApiFactory.Base}/flights/export?format=csv");
+        var billing = await viewer.GetAsync(
+            $"{OperationsApiFactory.Base}/flights/export?format=xlsx&report=billing");
         var dashboard = await viewer.GetAsync(
             $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=csv");
         var flightId = Guid.NewGuid();
@@ -55,6 +60,7 @@ public sealed class ReportExportAuthorizationTests(OperationsApiFactory factory)
             $"{OperationsApiFactory.Base}/flights/{flightId}/work-orders/approved/pdf");
 
         flights.StatusCode.ShouldBe(HttpStatusCode.OK, await flights.Content.ReadAsStringAsync());
+        billing.StatusCode.ShouldBe(HttpStatusCode.OK, await billing.Content.ReadAsStringAsync());
         dashboard.StatusCode.ShouldBe(HttpStatusCode.OK, await dashboard.Content.ReadAsStringAsync());
         dashboardWorkOrder.StatusCode.ShouldBe(
             HttpStatusCode.NotFound,

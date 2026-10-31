@@ -56,6 +56,7 @@ public static class UiStrings
         public static string ExcelWorkbook => UiText.Get("Flights.ExcelWorkbook", "Excel workbook (.xlsx)");
         public static string CsvFile => UiText.Get("Flights.CsvFile", "CSV file (.csv)");
         public static string PdfReport => UiText.Get("Flights.PdfReport", "PDF report (.pdf)");
+        public static string ExportBilling => UiText.Get("Flights.ExportBilling", "Export Billing");
         public static string ExportReady => UiText.Get("Flights.ExportReady", "Export ready");
         public static string ExportReadyDetail => UiText.Get("Flights.ExportReadyDetail", "{0} has been downloaded.");
         public static string ExportFailed => UiText.Get("Flights.ExportFailed", "Export failed");

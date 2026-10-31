@@ -54,7 +54,8 @@ internal static class FlightEndpoints
             DateTimeOffset? fromUtc = null,
             DateTimeOffset? toUtc = null,
             string? sort = null,
-            string? timeZoneId = null) =>
+            string? timeZoneId = null,
+            string? report = null) =>
         {
             if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
             {
@@ -64,6 +65,15 @@ internal static class FlightEndpoints
                         ["format"] = ["Format must be one of: xlsx, csv, or pdf."]
                     },
                     code: "Operations.Flight.ExportFormatInvalid"));
+            }
+
+            var billingReport = string.Equals(report, "billing", StringComparison.OrdinalIgnoreCase);
+            if ((!string.IsNullOrWhiteSpace(report) && !billingReport) ||
+                (billingReport && exportFormat != FlightExportFormat.Xlsx))
+            {
+                return ApiResults.Problem(Error.Validation(
+                    "The billing report requires Excel format (xlsx). Omit report for standard exports.",
+                    "Operations.Flight.ExportReportInvalid"));
             }
 
             if (!FlightExportTimeZoneResolver.TryResolve(timeZoneId, out var displayTimeZone))
@@ -92,10 +102,17 @@ internal static class FlightEndpoints
                 fromUtc,
                 toUtc,
                 serviceCategories,
-                sort), ct);
+                sort,
+                IncludeManpower: billingReport), ct);
 
             if (result.IsFailure)
                 return ApiResults.Problem(result.Error);
+
+            if (billingReport)
+            {
+                var billingFile = BillingExportDocumentFactory.Create(result.Value, timeProvider.GetUtcNow(), displayTimeZone);
+                return Results.File(billingFile.Content, billingFile.ContentType, billingFile.FileName, enableRangeProcessing: false);
+            }
 
             var legacySystemIds = exportFormat == FlightExportFormat.Xlsx
                 ? await legacySystemIdReader.GetAsync(FlightExportDocumentFactory.CollectLegacySystemIdRequest(result.Value), ct)

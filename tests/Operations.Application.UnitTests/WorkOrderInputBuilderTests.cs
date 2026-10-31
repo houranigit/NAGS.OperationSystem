@@ -14,6 +14,37 @@ public sealed class WorkOrderInputBuilderTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task References_are_normalized_for_normal_and_return_to_ramp_payloads(bool returnToRamp)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var stationId = Guid.NewGuid();
+        var staffId = Guid.NewGuid();
+        var builder = new WorkOrderInputBuilder(new MasterDataResolver(new FakeMasterDataReader(stationId)));
+        var task = new WorkOrderTaskCommand(null, TaskType.Minor, null, now, now.AddMinutes(30),
+            [staffId], [], [], [], CustomerReferenceNumber: " TASK-1 ");
+        var service = new WorkOrderServiceLineCommand(Guid.NewGuid(), [staffId], now, now.AddMinutes(30),
+            null, CustomerReferenceNumber: " SERVICE-1 ");
+        var payload = CompletionPayload(now, task) with { ServiceLines = [service], WorkPackageNumber = " PACKAGE-1 " };
+        if (returnToRamp)
+            payload = payload with { ServiceLines = [], Tasks = [], ReturnToRamps = [new(null, now, now.AddHours(1), null, [service], [task])] };
+
+        var result = await builder.BuildAsync(payload, WorkOrderType.Completion, "RJ234", stationId, CancellationToken.None);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.WorkPackageNumber.ShouldBe("PACKAGE-1");
+        (returnToRamp ? result.Value.ReturnToRamps![0].ServiceLines[0] : result.Value.ServiceLines[0])
+            .CustomerReferenceNumber.ShouldBe("SERVICE-1");
+        (returnToRamp ? result.Value.ReturnToRamps![0].Tasks[0] : result.Value.Tasks[0])
+            .CustomerReferenceNumber.ShouldBe("TASK-1");
+
+        var invalid = payload with { WorkPackageNumber = new string('P', 201) };
+        var rejected = await builder.BuildAsync(invalid, WorkOrderType.Completion, "RJ234", stationId, CancellationToken.None);
+        rejected.IsFailure.ShouldBeTrue();
+        rejected.Error.Failures!.ShouldContainKey(nameof(payload.WorkPackageNumber));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task AtaChapter_IsCapturedForNormalAndReturnTasks_AndRetainedAfterDeactivation(bool returnToRamp)
     {
         var now = DateTimeOffset.UtcNow;

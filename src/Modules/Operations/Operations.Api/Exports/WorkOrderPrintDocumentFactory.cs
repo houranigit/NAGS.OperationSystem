@@ -268,6 +268,13 @@ internal static class WorkOrderPrintDocumentFactory
             "Station",
             JoinCodeAndName(workOrder.StationIata, workOrder.StationName));
 
+        if (!string.IsNullOrWhiteSpace(workOrder.WorkPackageNumber))
+        {
+            var references = AddFactRow(table);
+            references.Cells[0].MergeRight = 2;
+            AddFactCell(references.Cells[0], "Work Package #", workOrder.WorkPackageNumber);
+        }
+
         KeepRowsTogether(table);
         AddTableSpacing(section);
     }
@@ -461,6 +468,15 @@ internal static class WorkOrderPrintDocumentFactory
                             service.PerformedBy.Select(performer =>
                                 $"{FormatPerson(performer.FullName, performer.EmployeeId)}: {FormatCompactWindow(performer.FromUtc ?? service.FromUtc, performer.ToUtc ?? service.ToUtc, displayTimeZone)}")),
                     alternate: index % 2 == 1);
+
+                if (!string.IsNullOrWhiteSpace(service.CustomerReferenceNumber))
+                {
+                    AddServiceDetailRows(
+                        table,
+                        "CUSTOMER REF #",
+                        service.CustomerReferenceNumber,
+                        alternate: index % 2 == 1);
+                }
 
                 if (!string.IsNullOrWhiteSpace(service.Description))
                 {
@@ -873,6 +889,9 @@ internal static class WorkOrderPrintDocumentFactory
 
         if (task.AtaChapterId.HasValue)
             AddServiceDetailRows(table, "ATA CHAPTER", $"{task.AtaChapterCode}. {task.AtaChapterTitle}", alternate: false);
+
+        if (!string.IsNullOrWhiteSpace(task.CustomerReferenceNumber))
+            AddServiceDetailRows(table, "CUSTOMER REF #", task.CustomerReferenceNumber, alternate: false);
 
         var facts = AddFactRow(table);
         AddFactCell(

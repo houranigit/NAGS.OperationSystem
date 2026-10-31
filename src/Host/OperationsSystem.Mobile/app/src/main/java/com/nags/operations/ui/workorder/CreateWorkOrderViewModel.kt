@@ -73,6 +73,7 @@ data class ServiceLineFormRow(
     val fromIso: String = "",
     val toIso: String = "",
     val description: String = "",
+    val customerReferenceNumber: String = "",
     val attachments: List<TaskAttachmentDraft> = emptyList(),
     /** Read-only names of attachments already uploaded on the server (edit mode). */
     val existingAttachmentNames: List<String> = emptyList(),
@@ -122,6 +123,7 @@ data class TaskFormRow(
     val generalSupportQuantities: Map<String, Double> = emptyMap(),
     val generalSupportUsages: Map<String, ResourceUsageForm> = emptyMap(),
     val description: String = "",
+    val customerReferenceNumber: String = "",
     val fromIso: String = "",
     val toIso: String = "",
     val attachments: List<TaskAttachmentDraft> = emptyList(),
@@ -156,6 +158,7 @@ data class ReturnToRampFormRow(
 @Serializable
 data class CreateWorkOrderFormState(
     val flightNumber: String = "",
+    val workPackageNumber: String = "",
     /** Resolved aircraft type id from synced catalog; nullable until user picks or flight model matches. */
     val aircraftTypeId: String? = null,
     val aircraftTailNumber: String = "",
@@ -189,6 +192,7 @@ data class ServiceLineSubmitFieldErrors(
     val from: String? = null,
     val to: String? = null,
     val description: String? = null,
+    val customerReferenceNumber: String? = null,
     val attachments: String? = null,
 )
 
@@ -198,6 +202,7 @@ data class TaskLineSubmitFieldErrors(
     val from: String? = null,
     val to: String? = null,
     val description: String? = null,
+    val customerReferenceNumber: String? = null,
     val tools: String? = null,
     val materials: String? = null,
     val generalSupports: String? = null,
@@ -216,6 +221,7 @@ data class ReturnToRampSubmitFieldErrors(
 data class CreateWorkOrderSubmitFieldErrors(
     val customer: String? = null,
     val flightNumber: String? = null,
+    val workPackageNumber: String? = null,
     val aircraftType: String? = null,
     val aircraftTailNumber: String? = null,
     val scheduledArrival: String? = null,
@@ -1797,6 +1803,7 @@ class CreateWorkOrderViewModel(
             // cancellations flow through the dedicated cancel path.
             type = "Completion",
             actualFlightNumber = form.flightNumber.ifBlank { flight.flightNumber },
+            workPackageNumber = form.workPackageNumber.trim().takeIf { it.isNotEmpty() },
             aircraftTypeId = form.aircraftTypeId,
             aircraftTailNumber = form.aircraftTailNumber.takeIf { it.isNotBlank() },
             ataIso = ataIso,
@@ -1855,6 +1862,7 @@ class CreateWorkOrderViewModel(
         fromIso = fromIso,
         toIso = toIso,
         description = description.takeIf { it.isNotBlank() },
+        customerReferenceNumber = customerReferenceNumber.trim().takeIf { it.isNotEmpty() },
         attachments = attachments.map(TaskAttachmentDraft::toOutboxPlaceholder),
         // Compatibility alias stays false for canonical grouped rows.
         isReturnToRamp = false,
@@ -1865,6 +1873,7 @@ class CreateWorkOrderViewModel(
         ataChapterId = ataChapterId,
         taskType = taskType,
         description = description.takeIf { it.isNotBlank() },
+        customerReferenceNumber = customerReferenceNumber.trim().takeIf { it.isNotEmpty() },
         fromIso = fromIso,
         toIso = toIso,
         employeeIds = employeeIds,

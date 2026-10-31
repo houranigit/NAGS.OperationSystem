@@ -199,6 +199,13 @@ Cancellation means **the customer cancelled the flight**. Because the customer m
 
 - **Actual service lines and tasks are optional** — a completion may be submitted and approved with zero actual services. Billing later compares planned vs actual; the work order is not forced to include the planned services.
 - Completion approval requires the actual aircraft type, actual flight number, and ATA/ATD (see §6).
+- **Work Package #** is an optional work-order reference entered beside the actual flight number in
+  the portal and mobile forms. **Customer Ref #** is optional on each performed service line and
+  task, including return-to-ramp work. Each reference accepts up to 200 characters, preserves case
+  and leading zeros, trims surrounding whitespace, and stores an empty value as null. These values
+  belong to the work order and its activities; they do not change the flight's planned data or any
+  customer catalog record. Submitted receipts and approved work-order PDFs include references when
+  supplied.
 
 ## 9. Assignment And Visibility
 
@@ -292,6 +299,16 @@ Service lines and task lines **both support multiple employees**.
   `operations.flights.export`; `Completed`/`Canceled` rows use the approved work order,
   `InProgress` rows use the newest submitted or returned work order, and `Scheduled` rows keep
   work-order columns empty).
+- **Export Billing** in the Flights export menu downloads a separate `Billing Report` Excel sheet
+  (`GET /flights/export?format=xlsx&report=billing`). It uses the same permissions, filters, sort,
+  timezone, and work-order selection as the flight export. Each recorded service, tool, material,
+  general support usage, and service/task performer (including RTR) produces one row with repeated
+  WO/flight details. Manpower descriptions use the current master-data manpower type name and the
+  performer's recorded time window; missing type names stay blank. Dates and 24-hour times are
+  separate native Excel values, with paired `STA`, `ATA`, `STD`, and `ATD` headers matching the sample.
+  Resource times remain blank when not recorded (for example, quantity-based materials).
+  Planned services and assigned-only employees do not create billing rows; a flight with no
+  recorded activities contributes no rows. No pricing or billing-state changes are performed.
 - Flight detail (schedule, crew, planned services, work orders with owners, captured approved work-order values, lifecycle timeline).
 - Flight timeline (`GET /flights/{id}/timeline`).
 - Work order review/detail (services, tasks, resources, actuals, owner, signature) — access-scoped.

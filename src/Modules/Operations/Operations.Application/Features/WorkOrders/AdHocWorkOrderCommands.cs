@@ -163,7 +163,8 @@ public sealed class CreateAdHocWorkOrderCommandHandler(
             workOrderInput.Value.Tasks,
             workOrderInput.Value.ReturnToRamps ?? [],
             now,
-            request.WorkOrderId);
+            request.WorkOrderId,
+            workOrderInput.Value.WorkPackageNumber);
         if (workOrder.IsFailure)
             return workOrder.Error;
 

@@ -41,6 +41,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
     public ActualTime? Actuals { get; private set; }
     public CancellationDetails? Cancellation { get; private set; }
     public string? Remarks { get; private set; }
+    public string? WorkPackageNumber { get; private set; }
     public string? CustomerSignatureReference { get; private set; }
     public string? CustomerSignatureFileName { get; private set; }
     public string? CustomerSignatureContentType { get; private set; }
@@ -76,7 +77,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
         IReadOnlyList<WorkOrderTaskInput> tasks,
         DateTimeOffset now,
-        Guid? id = null)
+        Guid? id = null,
+        string? workPackageNumber = null)
     {
         var legacy = SplitLegacyReturnToRampActivities(serviceLines, tasks);
         return SubmitInternal(
@@ -95,7 +97,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             legacy.ReturnToRamps,
             now,
             isMergeGenerated: false,
-            id);
+            id,
+            workPackageNumber);
     }
 
     public static Result<WorkOrder> SubmitNew(
@@ -113,7 +116,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<WorkOrderTaskInput> tasks,
         IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
         DateTimeOffset now,
-        Guid? id = null) =>
+        Guid? id = null,
+        string? workPackageNumber = null) =>
         SubmitInternal(
             flight,
             type,
@@ -130,7 +134,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             returnToRamps,
             now,
             isMergeGenerated: false,
-            id);
+            id,
+            workPackageNumber);
 
     public static Result<WorkOrder> SubmitMerged(
         Flight flight,
@@ -146,7 +151,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
         IReadOnlyList<WorkOrderTaskInput> tasks,
         DateTimeOffset now,
-        Guid? id = null)
+        Guid? id = null,
+        string? workPackageNumber = null)
     {
         var legacy = SplitLegacyReturnToRampActivities(serviceLines, tasks);
         return SubmitInternal(
@@ -165,7 +171,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             legacy.ReturnToRamps,
             now,
             isMergeGenerated: true,
-            id);
+            id,
+            workPackageNumber);
     }
 
     public static Result<WorkOrder> SubmitMerged(
@@ -183,7 +190,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<WorkOrderTaskInput> tasks,
         IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
         DateTimeOffset now,
-        Guid? id = null) =>
+        Guid? id = null,
+        string? workPackageNumber = null) =>
         SubmitInternal(
             flight,
             type,
@@ -200,7 +208,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             returnToRamps,
             now,
             isMergeGenerated: true,
-            id);
+            id,
+            workPackageNumber);
 
     private static Result<WorkOrder> SubmitInternal(
         Flight flight,
@@ -218,7 +227,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
         DateTimeOffset now,
         bool isMergeGenerated,
-        Guid? id = null)
+        Guid? id = null,
+        string? workPackageNumber = null)
     {
         if (flight.Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
             return Error.Conflict("Work orders can only be submitted for scheduled or in-progress flights.", "Operations.WorkOrder.FlightNotOpen");
@@ -226,7 +236,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (flight.Customer.CustomerId == WellKnownMasterDataIds.UnknownCustomer && string.IsNullOrWhiteSpace(remarks))
             return Error.Validation("Remarks are required when the customer is unknown.", "Operations.WorkOrder.UnknownCustomerRemarksRequired");
 
-        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps);
+        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps, workPackageNumber);
         if (validate.IsFailure)
             return validate.Error;
 
@@ -250,6 +260,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             Actuals = actuals,
             Cancellation = type == WorkOrderType.Cancellation ? cancellation : null,
             Remarks = NormalizeRemarks(remarks),
+            WorkPackageNumber = WorkOrderInputValidation.NormalizeReferenceNumber(workPackageNumber),
             CreatedAtUtc = now
         };
 
@@ -270,7 +281,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         string? remarks,
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
         IReadOnlyList<WorkOrderTaskInput> tasks,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? workPackageNumber = null)
     {
         var legacy = SplitLegacyReturnToRampActivities(serviceLines, tasks);
         IReadOnlyList<WorkOrderReturnToRampInput>? returnToRamps = legacy.ReturnToRamps.Count == 0
@@ -287,7 +299,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
             legacy.ServiceLines,
             legacy.Tasks,
             returnToRamps,
-            now);
+            now,
+            workPackageNumber);
     }
 
     /// <summary>
@@ -306,7 +319,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
         IReadOnlyList<WorkOrderTaskInput> tasks,
         IReadOnlyList<WorkOrderReturnToRampInput>? returnToRamps,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? workPackageNumber = null)
     {
         var editable = EnsureEditable();
         if (editable.IsFailure)
@@ -318,7 +332,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         if (Customer.CustomerId == WellKnownMasterDataIds.UnknownCustomer && string.IsNullOrWhiteSpace(remarks))
             return Error.Validation("Remarks are required when the customer is unknown.", "Operations.WorkOrder.UnknownCustomerRemarksRequired");
 
-        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps ?? []);
+        var validate = ValidateEditableFields(type, aircraftTailNumber, remarks, actuals, cancellation, serviceLines, tasks, returnToRamps ?? [], workPackageNumber);
         if (validate.IsFailure)
             return validate.Error;
 
@@ -334,6 +348,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         Actuals = actuals;
         Cancellation = type == WorkOrderType.Cancellation ? cancellation : null;
         Remarks = NormalizeRemarks(remarks);
+        WorkPackageNumber = WorkOrderInputValidation.NormalizeReferenceNumber(workPackageNumber);
         if (Type == WorkOrderType.Cancellation)
         {
             CustomerSignatureReference = null;
@@ -373,8 +388,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         string? remarks,
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
         IReadOnlyList<WorkOrderTaskInput> tasks,
-        DateTimeOffset now) =>
-        UpdateDetails(type, actualFlightNumber, aircraftType, aircraftTailNumber, actuals, cancellation, remarks, serviceLines, tasks, now);
+        DateTimeOffset now,
+        string? workPackageNumber = null) =>
+        UpdateDetails(type, actualFlightNumber, aircraftType, aircraftTailNumber, actuals, cancellation, remarks, serviceLines, tasks, now, workPackageNumber);
 
     public Result Approve(int sequence, string approvalNumber, Guid approverUserId, DateTimeOffset now)
         => ApproveInternal(sequence, approvalNumber, approverUserId, now, requireCompletionDetails: true);
@@ -903,8 +919,13 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
         CancellationDetails? cancellation,
         IReadOnlyList<WorkOrderServiceLineInput> serviceLines,
         IReadOnlyList<WorkOrderTaskInput> tasks,
-        IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps)
+        IReadOnlyList<WorkOrderReturnToRampInput> returnToRamps,
+        string? workPackageNumber)
     {
+        var reference = WorkOrderInputValidation.ReferenceNumber(workPackageNumber, nameof(WorkPackageNumber));
+        if (reference.IsFailure)
+            return reference.Error;
+
         if (NormalizeTail(aircraftTailNumber)?.Length > 20)
             return Error.Validation("Aircraft tail number must be at most 20 characters.", "Operations.WorkOrder.TailTooLong");
         if (NormalizeRemarks(remarks)?.Length > 2000)
@@ -918,6 +939,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         foreach (var line in serviceLines)
         {
+            var referenceNumber = WorkOrderInputValidation.ReferenceNumber(line.CustomerReferenceNumber, nameof(WorkOrderServiceLine.CustomerReferenceNumber));
+            if (referenceNumber.IsFailure)
+                return referenceNumber.Error;
             var description = WorkOrderInputValidation.Description(line.Service.ServiceId, WellKnownMasterDataIds.UnknownService, line.Description, "Service");
             if (description.IsFailure)
                 return description.Error;
@@ -964,6 +988,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
         foreach (var line in input.ServiceLines ?? [])
         {
+            var referenceNumber = WorkOrderInputValidation.ReferenceNumber(line.CustomerReferenceNumber, nameof(WorkOrderServiceLine.CustomerReferenceNumber));
+            if (referenceNumber.IsFailure)
+                return referenceNumber.Error;
             var description = WorkOrderInputValidation.Description(line.Service.ServiceId, WellKnownMasterDataIds.UnknownService, line.Description, "Service");
             if (description.IsFailure)
                 return description.Error;
@@ -998,6 +1025,9 @@ public sealed class WorkOrder : AggregateRoot<Guid>, IAuditable
 
     private static Result ValidateTaskResources(WorkOrderTaskInput task)
     {
+        var referenceNumber = WorkOrderInputValidation.ReferenceNumber(task.CustomerReferenceNumber, nameof(WorkOrderTask.CustomerReferenceNumber));
+        if (referenceNumber.IsFailure)
+            return referenceNumber.Error;
         var assignments = WorkOrderInputValidation.EmployeeAssignments(task.Employees.Select(staff => staff.StaffMemberId), task.EmployeeAssignments, task.Window);
         if (assignments.IsFailure)
             return assignments.Error;

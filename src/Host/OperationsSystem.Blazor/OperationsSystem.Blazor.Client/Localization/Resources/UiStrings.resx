@@ -45,6 +45,7 @@
   <data name="Flights.ExcelWorkbook" xml:space="preserve"><value>Excel workbook (.xlsx)</value></data>
   <data name="Flights.CsvFile" xml:space="preserve"><value>CSV file (.csv)</value></data>
   <data name="Flights.PdfReport" xml:space="preserve"><value>PDF report (.pdf)</value></data>
+  <data name="Flights.ExportBilling" xml:space="preserve"><value>Export Billing</value></data>
   <data name="Flights.ExportReady" xml:space="preserve"><value>Export ready</value></data>
   <data name="Flights.ExportReadyDetail" xml:space="preserve"><value>{0} has been downloaded.</value></data>
   <data name="Flights.ExportFailed" xml:space="preserve"><value>Export failed</value></data>

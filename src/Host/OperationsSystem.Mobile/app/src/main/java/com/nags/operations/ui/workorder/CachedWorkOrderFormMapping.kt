@@ -37,6 +37,7 @@ internal fun WorkOrderDetailWireDto.toPrefilledCreateFormState(nextKey: () -> Lo
     }
     return CreateWorkOrderFormState(
         flightNumber = actualFlightNumber,
+        workPackageNumber = workPackageNumber.orEmpty(),
         aircraftTypeId = aircraftTypeId,
         aircraftTailNumber = aircraftTailNumber.orEmpty(),
         scheduledArrivalIso = scheduledArrivalUtc,
@@ -65,6 +66,7 @@ private fun WorkOrderServiceLineWireDto.toFormRow(nextKey: () -> Long) = Service
     fromIso = fromUtc,
     toIso = toUtc,
     description = description.orEmpty(),
+    customerReferenceNumber = customerReferenceNumber.orEmpty(),
     existingAttachmentNames = attachments.map { it.originalFileName },
     // Group membership, not this retired compatibility flag, carries RTR semantics in the form.
     returnToRamp = false,
@@ -124,6 +126,7 @@ private fun WorkOrderTaskWireDto.toFormRow(nextKey: () -> Long) = TaskFormRow(
         )
     },
     description = description.orEmpty(),
+    customerReferenceNumber = customerReferenceNumber.orEmpty(),
     fromIso = fromUtc,
     toIso = toUtc,
     existingAttachmentNames = attachments.map { it.originalFileName },

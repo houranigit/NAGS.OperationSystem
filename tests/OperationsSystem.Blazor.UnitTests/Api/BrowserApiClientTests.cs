@@ -129,6 +129,43 @@ public sealed class BrowserApiClientTests
     }
 
     [Fact]
+    public async Task Billing_export_preserves_flight_filters_sort_and_time_zone_in_the_authenticated_download()
+    {
+        var runtime = new CapturingDownloadJsRuntime();
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var stationId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var operationTypeId = Guid.NewGuid();
+        var fromUtc = DateTimeOffset.Parse("2026-10-30T05:00:00Z");
+        var toUtc = DateTimeOffset.Parse("2026-10-31T05:00:00Z");
+
+        await operations.ExportFlightsAsync(
+            "xlsx",
+            search: "WO & flight",
+            stationId: stationId,
+            customerId: customerId,
+            operationTypeId: operationTypeId,
+            statuses: ["Completed", "Canceled"],
+            fromUtc: fromUtc,
+            toUtc: toUtc,
+            serviceCategories: ["PerLanding", "OnCall"],
+            sort: "sta desc",
+            timeZoneId: "America/Chicago",
+            report: "billing");
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe(
+            "/operations/flights/export?format=xlsx&search=WO%20%26%20flight" +
+            $"&stationId={stationId}&customerId={customerId}&operationTypeId={operationTypeId}" +
+            "&status=Completed%2CCanceled" +
+            "&fromUtc=2026-10-30T05%3A00%3A00.0000000%2B00%3A00" +
+            "&toUtc=2026-10-31T05%3A00%3A00.0000000%2B00%3A00" +
+            "&serviceCategory=PerLanding%2COnCall&sort=sta%20desc" +
+            "&timeZoneId=America%2FChicago&report=billing");
+    }
+
+    [Fact]
     public async Task Dashboard_requests_and_downloads_forward_the_browser_time_zone()
     {
         var runtime = new CapturingDownloadJsRuntime { Response = "{}" };

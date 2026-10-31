@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Readers;
 using MasterData.Contracts.Resources;
 using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
@@ -171,7 +172,7 @@ public sealed class FlightQueryTests
         var listResult = await new GetFlightsQueryHandler(db, scope).Handle(
             new GetFlightsQuery(Page: 1, PageSize: int.MaxValue),
             CancellationToken.None);
-        var exportResult = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var exportResult = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(),
             CancellationToken.None);
 
@@ -219,7 +220,7 @@ public sealed class FlightQueryTests
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, staffId));
-        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var result = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(
                 Search: "match",
                 CustomerId: customerId,
@@ -260,7 +261,7 @@ public sealed class FlightQueryTests
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
-        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var result = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(Sort: "FlightNumber:asc"),
             CancellationToken.None);
 
@@ -324,7 +325,7 @@ public sealed class FlightQueryTests
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
-        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var result = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(),
             CancellationToken.None);
 
@@ -342,14 +343,20 @@ public sealed class FlightQueryTests
         await using var db = NewDb();
         var completedFlight = CreateScheduledFlight("RJ", "Royal Jordanian", "120");
         var standardServicePerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Standard Engineer", "ENG-10");
+        var secondServicePerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Second Engineer", "ENG-11");
         var standardTaskPerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Standard Engineer", "ENG-10");
         var returnServicePerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Ramp Engineer", "ENG-20");
         var returnTaskPerformer = new StaffMemberSnapshot(Guid.NewGuid(), "Ramp Engineer", "ENG-20");
         var standardService = new WorkOrderServiceLineInput(
             new ServiceSnapshot(Guid.NewGuid(), "Standard service"),
-            [standardServicePerformer],
+            [standardServicePerformer, secondServicePerformer],
             TimeWindow.Create(Now.AddMinutes(12), Now.AddMinutes(25)).Value,
-            "Standard service notes");
+            "Standard service notes",
+            EmployeeAssignments:
+            [
+                new(standardServicePerformer.StaffMemberId, TimeWindow.Create(Now.AddMinutes(13), Now.AddMinutes(20)).Value),
+                new(secondServicePerformer.StaffMemberId, TimeWindow.Create(Now.AddMinutes(14), Now.AddMinutes(21)).Value)
+            ]);
         var standardTask = new WorkOrderTaskInput(
             Id: null,
             TaskType.Major,
@@ -363,7 +370,11 @@ public sealed class FlightQueryTests
                     QuantityUsage(2))
             ],
             Materials: [],
-            GeneralSupports: []);
+            GeneralSupports: [],
+            EmployeeAssignments:
+            [
+                new(standardTaskPerformer.StaffMemberId, TimeWindow.Create(Now.AddMinutes(27), Now.AddMinutes(31)).Value)
+            ]);
         var secondStandardTask = new WorkOrderTaskInput(
             Id: null,
             TaskType.Minor,
@@ -446,9 +457,19 @@ public sealed class FlightQueryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
+        var manpowerTypeId = Guid.NewGuid();
+        StaffMemberSnapshot[] recordedStaff =
+        [
+            standardServicePerformer, secondServicePerformer, standardTaskPerformer, returnServicePerformer
+        ];
+        var masterData = new FlightExportMasterDataReader(
+            recordedStaff.Select(employee => new StaffMemberReadSnapshot(
+                employee.StaffMemberId, employee.FullName, employee.EmployeeId,
+                completedFlight.Station.StationId, manpowerTypeId, IsActive: false)).ToList(),
+            [new ManpowerTypeReadSnapshot(manpowerTypeId, "Technician / Mechanic", IsActive: false)]);
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
-        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
-            new GetFlightsExportQuery(),
+        var result = await new GetFlightsExportQueryHandler(db, scope, masterData).Handle(
+            new GetFlightsExportQuery(IncludeManpower: true),
             CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
@@ -471,7 +492,7 @@ public sealed class FlightQueryTests
 
         var standardServiceDetail = workOrder.ServiceDetails[0];
         standardServiceDetail.ServiceId.ShouldBe(standardService.Service.ServiceId);
-        standardServiceDetail.PerformedByNames.ShouldBe(["Standard Engineer"]);
+        standardServiceDetail.PerformedByNames.ShouldBe(["Second Engineer", "Standard Engineer"]);
         standardServiceDetail.Description.ShouldBe("Standard service notes");
         standardServiceDetail.ReturnToRamp.ShouldBeNull();
         var standardTaskDetail = workOrder.TaskDetails[0];
@@ -501,6 +522,26 @@ public sealed class FlightQueryTests
                 1.5m,
                 null,
                 null) { ResourceId = returnToRamp.Tasks.Single().Materials.Single().Material.MaterialId });
+
+        workOrder.ManpowerDetails.ShouldBe(
+        [
+            new("Technician / Mechanic", Now.AddMinutes(13), Now.AddMinutes(20)),
+            new("Technician / Mechanic", Now.AddMinutes(14), Now.AddMinutes(21)),
+            new("Technician / Mechanic", Now.AddMinutes(27), Now.AddMinutes(31)),
+            new("Technician / Mechanic", Now.AddMinutes(42), Now.AddMinutes(50)),
+            new(string.Empty, Now.AddMinutes(51), Now.AddMinutes(60))
+        ]);
+        masterData.RequestedStaffIds.ShouldBe(
+            recordedStaff.Select(employee => employee.StaffMemberId).Append(returnTaskPerformer.StaffMemberId),
+            ignoreOrder: true);
+        masterData.RequestedManpowerTypeIds.ShouldBe([manpowerTypeId]);
+
+        var normalExportReader = new FlightExportMasterDataReader();
+        var normalExport = await new GetFlightsExportQueryHandler(db, scope, normalExportReader).Handle(
+            new GetFlightsExportQuery(), CancellationToken.None);
+        normalExport.Value.ShouldHaveSingleItem().ApprovedWorkOrder.ShouldNotBeNull().ManpowerDetails.ShouldBeEmpty();
+        normalExportReader.RequestedStaffIds.ShouldBeEmpty();
+        normalExportReader.RequestedManpowerTypeIds.ShouldBeEmpty();
     }
 
     [Fact]
@@ -539,7 +580,7 @@ public sealed class FlightQueryTests
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
-        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var result = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(),
             CancellationToken.None);
 
@@ -568,7 +609,7 @@ public sealed class FlightQueryTests
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
-        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var result = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(),
             CancellationToken.None);
 
@@ -598,7 +639,7 @@ public sealed class FlightQueryTests
         await db.SaveChangesAsync();
 
         var scope = new StaticScope(new OperationsScopeContext(UserType.SystemAdministrator, null, null));
-        var result = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var result = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(),
             CancellationToken.None);
 
@@ -653,7 +694,7 @@ public sealed class FlightQueryTests
         var listResult = await new GetFlightsQueryHandler(db, scope).Handle(
             new GetFlightsQuery(PageSize: 100, ServiceCategories: [category]),
             CancellationToken.None);
-        var exportResult = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var exportResult = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(ServiceCategories: [category]),
             CancellationToken.None);
 
@@ -921,7 +962,7 @@ public sealed class FlightQueryTests
         var listResult = await new GetFlightsQueryHandler(db, scope).Handle(
             new GetFlightsQuery(PageSize: 100, Sort: sort),
             CancellationToken.None);
-        var exportResult = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var exportResult = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(Sort: sort),
             CancellationToken.None);
 

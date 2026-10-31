@@ -79,7 +79,7 @@ internal static class MobileMutations
         // Removing the new nullable duration fields reproduces fingerprints already persisted by
         // the server for an offline request that is retried after this deployment.
         fingerprints.Add(Fingerprint(request, PreResourceUsageFingerprintOptions));
-        if (HasInlineServiceLineAttachments(request) || HasAtaChapterSelection(request))
+        if (HasInlineServiceLineAttachments(request) || HasAtaChapterSelection(request) || HasReferenceNumbers(request))
             return fingerprints.ToList();
 
         fingerprints.Add(Fingerprint(request, PreServiceLineAttachmentsFingerprintOptions));
@@ -144,6 +144,21 @@ internal static class MobileMutations
                 (property.Name == nameof(WorkOrderTaskCommand.AtaChapterId) && property.Value.ValueKind != JsonValueKind.Null) ||
                 ContainsChapter(property.Value)),
             JsonValueKind.Array => element.EnumerateArray().Any(ContainsChapter),
+            _ => false
+        };
+    }
+
+    private static bool HasReferenceNumbers<T>(T request)
+    {
+        var root = JsonSerializer.SerializeToElement(request);
+        return ContainsReference(root);
+
+        static bool ContainsReference(JsonElement element) => element.ValueKind switch
+        {
+            JsonValueKind.Object => element.EnumerateObject().Any(property =>
+                (property.Name is nameof(WorkOrderEditableCommandPayload.WorkPackageNumber) or nameof(WorkOrderTaskCommand.CustomerReferenceNumber) &&
+                 property.Value.ValueKind != JsonValueKind.Null) || ContainsReference(property.Value)),
+            JsonValueKind.Array => element.EnumerateArray().Any(ContainsReference),
             _ => false
         };
     }
@@ -271,6 +286,8 @@ internal static class MobileMutations
             WorkOrderServiceLineCommand value,
             JsonSerializerOptions options)
         {
+            if (value.CustomerReferenceNumber is not null)
+                throw new JsonException("Customer references cannot be represented by the legacy contract.");
             if (value.EmployeeAssignments is not null)
                 throw new JsonException("Employee working periods cannot be represented by the legacy contract.");
             if (value.PerformedByStaffMemberIds is not { Count: 1 })

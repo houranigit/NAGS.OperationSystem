@@ -194,7 +194,7 @@
             }
         </div>
         <div class="owf-grid-2">
-            <div class="owf-field-block">
+            <div class="owf-field-block owf-full">
                 <label class="owf-label">Customer <span class="owf-required">*</span></label>
                 <div class="owf-input-wrap">
                     <RadzenIcon Icon="business" class="owf-field-icon" />
@@ -215,6 +215,10 @@
                     </span>
                     <RadzenTextBox @bind-Value="model.FlightNumber" MaxLength="12" class="owf-control owf-control-icon owf-flight-number-control" />
                 </div>
+            </div>
+            <div class="owf-field-block">
+                <label class="owf-label">Work Package # <small>optional</small></label>
+                <RadzenTextBox @bind-Value="model.WorkPackageNumber" MaxLength="200" class="owf-control" />
             </div>
             <div class="owf-field-block owf-full">
                 <label class="owf-label">Station <span class="owf-required">*</span></label>
@@ -333,8 +337,12 @@
                     </div>
                     <div class="owf-field-block">
                         <label class="owf-label">Performed by <span class="owf-required">*</span></label>
-                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Change="@((object? _) => line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(line.PerformedByStaffMemberIds, line.EmployeeAssignments))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value:get="line.PerformedByStaffMemberIds" @bind-Value:set="@(ids => SelectServiceEmployees(line, ids))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                                        Multiple="true" Chips="true" AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
+                    </div>
+                    <div class="owf-field-block owf-full">
+                        <label class="owf-label">Customer Ref # <small>optional</small></label>
+                        <RadzenTextBox @bind-Value="line.CustomerReferenceNumber" MaxLength="200" class="owf-control" />
                     </div>
                     <div class="owf-field-block">
                         <label class="owf-label">From (@UserTimeZone.Id) <span class="owf-required">*</span></label>
@@ -385,8 +393,12 @@
                     </div>
                     <div class="owf-field-block">
                         <label class="owf-label">Employees <span class="owf-required">*</span></label>
-                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Change="@((object? _) => task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(task.EmployeeIds, task.EmployeeAssignments))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value:get="task.EmployeeIds" @bind-Value:set="@(ids => SelectTaskEmployees(task, ids))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                                        Multiple="true" Chips="true" AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="owf-control" />
+                    </div>
+                    <div class="owf-field-block">
+                        <label class="owf-label">Customer Ref # <small>optional</small></label>
+                        <RadzenTextBox @bind-Value="task.CustomerReferenceNumber" MaxLength="200" class="owf-control" />
                     </div>
                     <div class="owf-field-block">
                         <label class="owf-label">From (@UserTimeZone.Id) <span class="owf-required">*</span></label>
@@ -742,7 +754,8 @@
                         a.Kind,
                         Convert.ToBase64String(a.Content),
                         a.OriginalFileName,
-                        a.ContentType)).ToList())).ToList()
+                        a.ContentType)).ToList(),
+                    CustomerReferenceNumber: l.CustomerReferenceNumber)).ToList()
                 : [],
             completion
                 ? model.Tasks.Select(t => new WorkOrderTaskRequestModel(
@@ -776,7 +789,8 @@
                         a.OriginalFileName,
                         a.ContentType)).ToList(),
                     EmployeeAssignments: WorkOrderEntryRules.ToRequests(t.EmployeeAssignments, UserTimeZone),
-                    AtaChapterId: t.AtaChapterId)).ToList()
+                    AtaChapterId: t.AtaChapterId,
+                    CustomerReferenceNumber: t.CustomerReferenceNumber)).ToList()
                 : [],
             !completion || model.CustomerSignature is null
                 ? null
@@ -784,7 +798,8 @@
                     Convert.ToBase64String(model.CustomerSignature.Content),
                     model.CustomerSignature.FileName,
                     model.CustomerSignature.ContentType),
-            completion ? ReturnToRampDraftMapper.ToRequests(model.ReturnToRamps, UserTimeZone) : null);
+            completion ? ReturnToRampDraftMapper.ToRequests(model.ReturnToRamps, UserTimeZone) : null,
+            WorkPackageNumber: model.WorkPackageNumber);
     }
 
     private List<string> ValidateAll()
@@ -1030,6 +1045,20 @@
     {
         duplicateResultMessage = null;
         duplicates = [];
+    }
+
+    private static void SelectServiceEmployees(ServiceLineForm line, IEnumerable<Guid>? ids)
+    {
+        line.PerformedByStaffMemberIds = (ids ?? []).Distinct().ToList();
+        line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(
+            line.PerformedByStaffMemberIds, line.EmployeeAssignments, line.FromUtc);
+    }
+
+    private static void SelectTaskEmployees(TaskForm task, IEnumerable<Guid>? ids)
+    {
+        task.EmployeeIds = (ids ?? []).Distinct().ToList();
+        task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(
+            task.EmployeeIds, task.EmployeeAssignments, task.FromUtc);
     }
 
     private void AddServiceLine() =>
@@ -1353,6 +1382,7 @@
         public Guid? CustomerId { get; set; }
         public Guid? StationId { get; set; }
         public string FlightNumber { get; set; } = string.Empty;
+        public string? WorkPackageNumber { get; set; }
         public Guid? AircraftTypeId { get; set; }
         public DateTime? ScheduledArrivalUtc { get; set; }
         public DateTime? ScheduledDepartureUtc { get; set; }
@@ -1377,6 +1407,7 @@
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
+        public string? CustomerReferenceNumber { get; set; }
         public List<AttachmentForm> Attachments { get; } = [];
     }
 
@@ -1386,6 +1417,7 @@
         public Guid? AtaChapterId { get; set; }
         public string TaskType { get; set; } = "Major";
         public string? Description { get; set; }
+        public string? CustomerReferenceNumber { get; set; }
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public IEnumerable<Guid> EmployeeIds { get; set; } = [];

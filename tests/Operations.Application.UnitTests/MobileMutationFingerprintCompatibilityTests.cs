@@ -15,6 +15,35 @@ namespace Operations.Application.UnitTests;
 public sealed class MobileMutationFingerprintCompatibilityTests
 {
     [Fact]
+    public void Reference_omission_preserves_prior_shapes_and_reference_changes_never_replay_old_mutations()
+    {
+        var payload = Payload(Guid.NewGuid(), Guid.NewGuid());
+        var baseline = CurrentEnvelope(Guid.NewGuid(), payload);
+        var historical = MobileMutations.CompatibleFingerprints(baseline)
+            .Append(MobileMutations.Fingerprint(baseline)).ToHashSet();
+        JsonSerializer.Serialize(payload).ShouldNotContain("WorkPackageNumber");
+        JsonSerializer.Serialize(payload.ServiceLines[0]).ShouldNotContain("CustomerReferenceNumber");
+        JsonSerializer.Serialize(payload.Tasks[0]).ShouldNotContain("CustomerReferenceNumber");
+
+        var changes = new[]
+        {
+            payload with { WorkPackageNumber = "PACKAGE-1" },
+            payload with { ServiceLines = [payload.ServiceLines[0] with { CustomerReferenceNumber = "SERVICE-1" }] },
+            payload with { Tasks = [payload.Tasks[0] with { CustomerReferenceNumber = "TASK-1" }] },
+            payload with { ReturnToRamps = [new(null, FromUtc, FromUtc.AddHours(1), null,
+                [payload.ServiceLines[0] with { CustomerReferenceNumber = "RETURN-SERVICE" }], [])] },
+            payload with { ReturnToRamps = [new(null, FromUtc, FromUtc.AddHours(1), null,
+                [], [payload.Tasks[0] with { CustomerReferenceNumber = "RETURN-TASK" }])] }
+        };
+        foreach (var changed in changes)
+        {
+            var envelope = baseline with { Payload = changed };
+            MobileMutations.Fingerprint(envelope).ShouldNotBe(MobileMutations.Fingerprint(baseline));
+            MobileMutations.CompatibleFingerprints(envelope).ShouldAllBe(fingerprint => !historical.Contains(fingerprint));
+        }
+    }
+
+    [Fact]
     public void AtaChapter_OmissionPreservesOldTaskShape_AndSelectionsRemainInEveryReplayFingerprint()
     {
         var payload = Payload(Guid.NewGuid(), Guid.NewGuid());

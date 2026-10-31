@@ -324,6 +324,7 @@ class ReturnToRampViewModel(
                 fromIso = row.fromIso,
                 toIso = row.toIso,
                 description = row.description.takeIf { it.isNotBlank() },
+                customerReferenceNumber = row.customerReferenceNumber.trim().takeIf { it.isNotEmpty() },
                 attachments = row.attachments.map(TaskAttachmentDraft::toOutboxPlaceholder),
                 isReturnToRamp = false,
             )
@@ -336,6 +337,7 @@ class ReturnToRampViewModel(
         ataChapterId = ataChapterId,
         taskType = taskType,
         description = description.takeIf { it.isNotBlank() },
+        customerReferenceNumber = customerReferenceNumber.trim().takeIf { it.isNotEmpty() },
         fromIso = fromIso,
         toIso = toIso,
         employeeIds = employeeIds,

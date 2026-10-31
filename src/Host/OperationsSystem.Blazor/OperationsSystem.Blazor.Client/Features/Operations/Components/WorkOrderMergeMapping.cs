@@ -45,7 +45,8 @@ internal static class WorkOrderMergeMapping
             Id: null,
             Attachments: null,
             EmployeeAssignments: line.PerformedBy.Select(item => new WorkOrderEmployeeAssignmentRequestModel(
-                item.StaffMemberId, item.FromUtc ?? line.FromUtc, item.ToUtc ?? line.ToUtc)).ToList());
+                item.StaffMemberId, item.FromUtc ?? line.FromUtc, item.ToUtc ?? line.ToUtc)).ToList(),
+            CustomerReferenceNumber: line.CustomerReferenceNumber);
 
     internal static WorkOrderTaskRequestModel ToRequest(WorkOrderTaskModel task) =>
         new(
@@ -78,7 +79,8 @@ internal static class WorkOrderMergeMapping
             IsReturnToRamp: false,
             EmployeeAssignments: task.Employees.Select(item => new WorkOrderEmployeeAssignmentRequestModel(
                 item.StaffMemberId, item.FromUtc ?? task.FromUtc, item.ToUtc ?? task.ToUtc)).ToList(),
-            AtaChapterId: task.AtaChapterId);
+            AtaChapterId: task.AtaChapterId,
+            CustomerReferenceNumber: task.CustomerReferenceNumber);
 
     internal static IReadOnlyList<WorkOrderReturnToRampRequestModel>? BuildCanonicalReturnToRamps(
         IReadOnlyList<WorkOrderDetail> sources)

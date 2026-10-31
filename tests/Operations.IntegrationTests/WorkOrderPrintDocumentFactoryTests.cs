@@ -12,6 +12,51 @@ namespace Operations.IntegrationTests;
 public sealed class WorkOrderPrintDocumentFactoryTests
 {
     [Fact]
+    public void Print_IncludesOptionalWorkPackageAndCustomerReferencesForMainAndReturnToRampWork()
+    {
+        var baseline = CreateSource(includeCompletionDetails: true);
+        var service = baseline.WorkOrder.ServiceLines[0];
+        var task = baseline.WorkOrder.Tasks[0];
+        var occurrence = new WorkOrderReturnToRampDto(
+            Guid.NewGuid(), task.FromUtc, task.ToUtc, null, Guid.NewGuid(), task.ToUtc,
+            [service with { Id = Guid.NewGuid(), CustomerReferenceNumber = "RTR-SERVICE-001", IsReturnToRamp = true }],
+            [task with { Id = Guid.NewGuid(), CustomerReferenceNumber = "RTR-TASK-001", IsReturnToRamp = true }],
+            Sequence: 1);
+        var source = baseline with
+        {
+            WorkOrder = baseline.WorkOrder with
+            {
+                WorkPackageNumber = "WP-00042",
+                ServiceLines = [service with { CustomerReferenceNumber = "MAIN-SERVICE-001" }],
+                Tasks = [task with { CustomerReferenceNumber = "MAIN-TASK-001" }],
+                ReturnToRamps = [occurrence]
+            }
+        };
+
+        var ddl = DdlWriter.WriteToString(WorkOrderPrintDocumentFactory.BuildDocument(source));
+
+        ddl.ShouldContain("Work Package #");
+        ddl.ShouldContain("WP-00042");
+        ddl.ShouldContain("CUSTOMER REF #");
+        ddl.ShouldContain("MAIN-SERVICE-001");
+        ddl.ShouldContain("MAIN-TASK-001");
+        ddl.ShouldContain("RTR-SERVICE-001");
+        ddl.ShouldContain("RTR-TASK-001");
+        WorkOrderPrintDocumentFactory.Create(source).Content.Length.ShouldBeGreaterThan(20_000);
+    }
+
+    [Fact]
+    public void Print_OmitsOptionalReferenceLabelsWhenReferencesAreAbsent()
+    {
+        var source = CreateSource(includeCompletionDetails: true);
+
+        var ddl = DdlWriter.WriteToString(WorkOrderPrintDocumentFactory.BuildDocument(source));
+
+        ddl.ShouldNotContain("Work Package #");
+        ddl.ShouldNotContain("CUSTOMER REF #");
+    }
+
+    [Fact]
     public void Print_IncludesTaskAtaChapterSnapshot()
     {
         var baseline = CreateSource(includeCompletionDetails: true);

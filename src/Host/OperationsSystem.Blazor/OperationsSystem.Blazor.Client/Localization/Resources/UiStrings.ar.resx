@@ -45,6 +45,7 @@
   <data name="Flights.ExcelWorkbook" xml:space="preserve"><value>مصنف Excel (.xlsx)</value></data>
   <data name="Flights.CsvFile" xml:space="preserve"><value>ملف CSV (.csv)</value></data>
   <data name="Flights.PdfReport" xml:space="preserve"><value>تقرير PDF (.pdf)</value></data>
+  <data name="Flights.ExportBilling" xml:space="preserve"><value>تصدير تقرير الفوترة</value></data>
   <data name="Flights.ExportReady" xml:space="preserve"><value>تم تجهيز التصدير</value></data>
   <data name="Flights.ExportReadyDetail" xml:space="preserve"><value>تم تنزيل {0}.</value></data>
   <data name="Flights.ExportFailed" xml:space="preserve"><value>تعذر التصدير</value></data>

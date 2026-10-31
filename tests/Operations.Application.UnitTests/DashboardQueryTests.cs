@@ -558,7 +558,7 @@ public sealed class DashboardQueryTests
                 ServiceIds: [baggage.ServiceId],
                 Sort: "flightnumber:asc"),
             CancellationToken.None);
-        var canonical = await new GetFlightsExportQueryHandler(db, scope).Handle(
+        var canonical = await new GetFlightsExportQueryHandler(db, scope, new FlightExportMasterDataReader()).Handle(
             new GetFlightsExportQuery(
                 StationId: stationId,
                 CustomerId: matchingCustomerId,

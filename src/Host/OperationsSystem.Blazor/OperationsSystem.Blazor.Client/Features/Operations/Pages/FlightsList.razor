@@ -66,6 +66,7 @@
                                 <RowAction Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view" OnClick="@(() => ExportAsync("xlsx"))" />
                                 <RowAction Text="@UiStrings.Flights.CsvFile" Icon="csv" OnClick="@(() => ExportAsync("csv"))" />
                                 <RowAction Text="@UiStrings.Flights.PdfReport" Icon="picture_as_pdf" OnClick="@(() => ExportAsync("pdf"))" />
+                                <RowAction Text="@UiStrings.Flights.ExportBilling" Icon="receipt_long" OnClick="@(() => ExportAsync("billing"))" />
                             </RowActionMenu>
                         </div>
                     }
@@ -509,7 +510,7 @@
         try
         {
             await Operations.ExportFlightsAsync(
-                format,
+                format == "billing" ? "xlsx" : format,
                 string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
                 stationFilter,
                 customerFilter,
@@ -519,7 +520,8 @@
                 DateBoundaryUtc(toFilter, true),
                 serviceCategoryFilters,
                 currentSort,
-                UserTimeZone.Id);
+                UserTimeZone.Id,
+                report: format == "billing" ? "billing" : null);
 
             Notifications.Notify(
                 NotificationSeverity.Success,
@@ -651,6 +653,7 @@
         "xlsx" => UiStrings.Flights.ExcelWorkbook,
         "csv" => UiStrings.Flights.CsvFile,
         "pdf" => UiStrings.Flights.PdfReport,
+        "billing" => UiStrings.Flights.ExportBilling,
         _ => UiStrings.Flights.Export
     };
 

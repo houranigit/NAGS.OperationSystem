@@ -33,6 +33,7 @@ public sealed class WorkOrderServiceLine : Entity<Guid>
     public IReadOnlyList<WorkOrderServiceLinePerformer> PerformedBy => _performedBy.AsReadOnly();
     public TimeWindow Window { get; private set; } = null!;
     public string? Description { get; private set; }
+    public string? CustomerReferenceNumber { get; private set; }
     /// <summary>Compatibility alias for clients deployed before occurrence records.</summary>
     public bool IsReturnToRamp => ReturnToRampId.HasValue;
     public IReadOnlyList<WorkOrderServiceLineAttachment> Attachments => _attachments.AsReadOnly();
@@ -84,6 +85,7 @@ public sealed class WorkOrderServiceLine : Entity<Guid>
     private void Apply(WorkOrderServiceLineInput input)
     {
         Service = input.Service;
+        CustomerReferenceNumber = WorkOrderInputValidation.NormalizeReferenceNumber(input.CustomerReferenceNumber);
         Window = input.Window;
         Description = NormalizeDescription(input.Description);
         _performedBy.Clear();

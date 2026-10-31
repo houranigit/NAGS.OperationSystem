@@ -68,8 +68,8 @@
                         </div>
                         <div class="rtr-field">
                             <label>Performed by <span class="rtr-required">*</span></label>
-                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Change="@((object? _) => line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(line.PerformedByStaffMemberIds, line.EmployeeAssignments))" Data="@StaffChoices(line)"
-                                            TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowFiltering="true"
+                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value:get="line.PerformedByStaffMemberIds" @bind-Value:set="@(ids => SelectServiceEmployees(line, ids))" Data="@StaffChoices(line)"
+                                            TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowClear="true" Chips="true" AllowFiltering="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
                         <div class="rtr-field">
@@ -81,6 +81,10 @@
                             <label>To <span class="rtr-required">*</span></label>
                             <RadzenDatePicker TValue="DateTime?" @bind-Value="line.ToLocal" DateFormat="yyyy-MM-dd HH:mm" ShowTime="true"
                                               Min="@line.FromLocal" Max="@model.ToLocal" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field rtr-full">
+                            <label>Customer Ref # <small>optional</small></label>
+                            <RadzenTextBox @bind-Value="line.CustomerReferenceNumber" MaxLength="200" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
                         <div class="rtr-field rtr-full">
                             <label>Description @if (WorkOrderEntryRules.RequiresServiceDescription(line.ServiceId)) { <span class="rtr-required">*</span> } else { <small>optional</small> }</label>
@@ -129,9 +133,13 @@
                         </div>
                         <div class="rtr-field">
                             <label>Performed by <span class="rtr-required">*</span></label>
-                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Change="@((object? _) => task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(task.EmployeeIds, task.EmployeeAssignments))" Data="@StaffChoices(task)"
-                                            TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowFiltering="true"
+                            <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value:get="task.EmployeeIds" @bind-Value:set="@(ids => SelectTaskEmployees(task, ids))" Data="@StaffChoices(task)"
+                                            TextProperty="DisplayName" ValueProperty="Id" Multiple="true" AllowClear="true" Chips="true" AllowFiltering="true"
                                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@ViewOnly" class="rtr-control" />
+                        </div>
+                        <div class="rtr-field">
+                            <label>Customer Ref # <small>optional</small></label>
+                            <RadzenTextBox @bind-Value="task.CustomerReferenceNumber" MaxLength="200" Disabled="@ViewOnly" class="rtr-control" />
                         </div>
                         <div class="rtr-field rtr-full">
                             <label>Description <small>optional</small></label>

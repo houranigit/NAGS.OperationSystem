@@ -74,6 +74,7 @@
                 <div class="owm-section-line"><RadzenIcon Icon="rule" /><span>Merged work order</span></div>
                 <div class="owm-field-selectors">
                     @ValueSourceField("Actual flight #", "tag", actualFlightSourceId, id => actualFlightSourceId = id, source => source.ActualFlightNumber)
+                    @ValueSourceField("Work Package #", "tag", workPackageSourceId, id => workPackageSourceId = id, source => source.WorkPackageNumber)
                     @if (IsMergedCompletion)
                     {
                         @ValueSourceField("Aircraft type", "flight", aircraftSourceId, id => aircraftSourceId = id, source => source.AircraftTypeModel)
@@ -217,6 +218,7 @@
     private HashSet<string> selectedServiceLineKeys = [];
     private HashSet<string> selectedTaskKeys = [];
     private Guid? actualFlightSourceId;
+    private Guid? workPackageSourceId;
     private Guid? aircraftSourceId;
     private Guid? tailSourceId;
     private Guid? actualTimesSourceId;
@@ -344,6 +346,7 @@
         selectedServiceLineKeys.Clear();
         selectedTaskKeys.Clear();
         actualFlightSourceId = null;
+        workPackageSourceId = null;
         aircraftSourceId = null;
         tailSourceId = null;
         actualTimesSourceId = null;
@@ -361,6 +364,7 @@
     private void SyncMergeSelections(bool selectMissingLinesAndTasks)
     {
         EnsureFieldSource(ref actualFlightSourceId);
+        EnsureFieldSource(ref workPackageSourceId);
         EnsureFieldSource(ref aircraftSourceId);
         EnsureFieldSource(ref tailSourceId);
         EnsureFieldSource(ref actualTimesSourceId);
@@ -511,7 +515,8 @@
             CustomerSignature: null,
             ReturnToRamps: completion
                 ? WorkOrderMergeMapping.BuildCanonicalReturnToRamps(SelectedSources)
-                : []);
+                : [],
+            WorkPackageNumber: SourceOrFallback(workPackageSourceId, baseWorkOrder).WorkPackageNumber);
     }
 
     private WorkOrderDetail? SourceOrNull(Guid? id) =>

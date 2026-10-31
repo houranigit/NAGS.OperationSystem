@@ -397,6 +397,7 @@ class OutboxWorker(
     private fun OutboxPayload.WorkOrderInput.toWire(attachmentsDir: File?) = WorkOrderWireRequest(
         type = type,
         actualFlightNumber = actualFlightNumber,
+        workPackageNumber = workPackageNumber,
         aircraftTypeId = aircraftTypeId,
         aircraftTailNumber = aircraftTailNumber,
         actualArrivalUtc = ataIso,
@@ -531,6 +532,7 @@ internal fun OutboxPayload.ServiceLineInput.toWireServiceLine(
     fromUtc = fromIso,
     toUtc = toIso,
     description = description,
+    customerReferenceNumber = customerReferenceNumber,
     attachments = wireAttachments,
     isReturnToRamp = isReturnToRamp,
 )
@@ -577,6 +579,7 @@ internal fun OutboxPayload.TaskInput.toWireTask(
     id = id,
     taskType = taskType,
     description = description,
+    customerReferenceNumber = customerReferenceNumber,
     fromUtc = fromIso,
     toUtc = toIso,
     employeeIds = employeeIds,

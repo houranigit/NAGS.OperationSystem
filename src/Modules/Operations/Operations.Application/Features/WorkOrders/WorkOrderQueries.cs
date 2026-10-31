@@ -268,7 +268,7 @@ internal static class WorkOrderDtoMapper
                     a.Kind.ToString(),
                     a.OriginalFileName,
                     a.ContentType,
-                    a.Size)).ToList())).ToList(),
+                    a.Size)).ToList(), line.CustomerReferenceNumber)).ToList(),
             workOrder.Tasks.Where(task => task.ReturnToRampId is null).Select(task => new WorkOrderTaskDto(
                 task.Id,
                 task.TaskType.ToString(),
@@ -284,7 +284,7 @@ internal static class WorkOrderDtoMapper
                     g.GeneralSupport.GeneralSupportId, g.GeneralSupport.Name, g.GeneralSupport.CalculationType, g.Usage.Quantity, g.Usage.FromUtc, g.Usage.ToUtc, g.Description)).ToList(),
                 task.Attachments.Select(a => new WorkOrderTaskAttachmentDto(a.Id, a.Kind.ToString(), a.OriginalFileName, a.ContentType, a.Size)).ToList(),
                 task.IsReturnToRamp,
-                task.AtaChapter?.AtaChapterId, task.AtaChapter?.Code, task.AtaChapter?.Title)).ToList(),
+                task.AtaChapter?.AtaChapterId, task.AtaChapter?.Code, task.AtaChapter?.Title, task.CustomerReferenceNumber)).ToList(),
             workOrder.CreatedAtUtc,
             workOrder.UpdatedAtUtc,
             Convert.ToBase64String(workOrder.RowVersion),
@@ -314,7 +314,7 @@ internal static class WorkOrderDtoMapper
                             attachment.Kind.ToString(),
                             attachment.OriginalFileName,
                             attachment.ContentType,
-                            attachment.Size)).ToList())).ToList(),
+                            attachment.Size)).ToList(), line.CustomerReferenceNumber)).ToList(),
                     item.Tasks.Select(task => new WorkOrderTaskDto(
                         task.Id,
                         task.TaskType.ToString(),
@@ -343,7 +343,7 @@ internal static class WorkOrderDtoMapper
                             attachment.ContentType,
                             attachment.Size)).ToList(),
                         IsReturnToRamp: false,
-                        task.AtaChapter?.AtaChapterId, task.AtaChapter?.Code, task.AtaChapter?.Title)).ToList(),
+                        task.AtaChapter?.AtaChapterId, task.AtaChapter?.Code, task.AtaChapter?.Title, task.CustomerReferenceNumber)).ToList(),
                     item.Sequence,
                     string.IsNullOrWhiteSpace(item.CustomerSignatureReference) || item.CustomerSignedAtUtc is null
                         ? null
@@ -352,5 +352,6 @@ internal static class WorkOrderDtoMapper
                             item.CustomerSignatureContentType ?? "image/png",
                             item.CustomerSignatureSize ?? 0,
                             item.CustomerSignedAtUtc.Value)))
-                .ToList());
+                .ToList(),
+            workOrder.WorkPackageNumber);
 }

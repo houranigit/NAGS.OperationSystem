@@ -224,7 +224,7 @@
 
     private RenderFragment CompletionDetailsStep() => @<section class="owo-step-content">
         <div class="owo-section-line"><RadzenIcon Icon="fact_check" /><span>Details</span></div>
-        <div class="owo-grid-1">
+        <div class="owo-grid-2">
             <div class="owo-field-block">
                 <label class="owo-label">Flight number <span class="owo-required">*</span></label>
                 <div class="owo-input-wrap">
@@ -238,6 +238,10 @@
                     <RadzenTextBox @bind-Value="model.ActualFlightNumber" Immediate="true" MaxLength="12"
                                    Disabled="@ViewOnly" class="owo-control owo-control-icon owo-flight-number-control" />
                 </div>
+            </div>
+            <div class="owo-field-block">
+                <label class="owo-label">Work Package # <small>optional</small></label>
+                <RadzenTextBox @bind-Value="model.WorkPackageNumber" MaxLength="200" Disabled="@ViewOnly" class="owo-control" />
             </div>
         </div>
         <div class="owo-grid-2">
@@ -340,9 +344,13 @@
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">Performed by <span class="owo-required">*</span></label>
-                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="line.PerformedByStaffMemberIds" Change="@((object? _) => line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(line.PerformedByStaffMemberIds, line.EmployeeAssignments))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value:get="line.PerformedByStaffMemberIds" @bind-Value:set="@(ids => SelectServiceEmployees(line, ids))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                                        Multiple="true" AllowClear="true" Chips="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                         Disabled="@ViewOnly" class="owo-control" />
+                    </div>
+                    <div class="owo-field-block owo-full">
+                        <label class="owo-label">Customer Ref # <small>optional</small></label>
+                        <RadzenTextBox @bind-Value="line.CustomerReferenceNumber" MaxLength="200" Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">From (@UserTimeZone.Id) <span class="owo-required">*</span></label>
@@ -404,9 +412,13 @@
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">Employees <span class="owo-required">*</span></label>
-                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value="task.EmployeeIds" Change="@((object? _) => task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(task.EmployeeIds, task.EmployeeAssignments))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
-                                        Multiple="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                        <RadzenDropDown TValue="IEnumerable<Guid>" @bind-Value:get="task.EmployeeIds" @bind-Value:set="@(ids => SelectTaskEmployees(task, ids))" Data="@staffOptions" TextProperty="FullName" ValueProperty="Id"
+                                        Multiple="true" AllowClear="true" Chips="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                         Disabled="@ViewOnly" class="owo-control" />
+                    </div>
+                    <div class="owo-field-block">
+                        <label class="owo-label">Customer Ref # <small>optional</small></label>
+                        <RadzenTextBox @bind-Value="task.CustomerReferenceNumber" MaxLength="200" Disabled="@ViewOnly" class="owo-control" />
                     </div>
                     <div class="owo-field-block">
                         <label class="owo-label">From (@UserTimeZone.Id) <span class="owo-required">*</span></label>
@@ -1554,6 +1566,20 @@
 
     private static string NoResourceText(string title) => $"No {title.ToLowerInvariant()} added";
 
+    private static void SelectServiceEmployees(ServiceLineForm line, IEnumerable<Guid>? ids)
+    {
+        line.PerformedByStaffMemberIds = (ids ?? []).Distinct().ToList();
+        line.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(
+            line.PerformedByStaffMemberIds, line.EmployeeAssignments, line.FromUtc);
+    }
+
+    private static void SelectTaskEmployees(TaskForm task, IEnumerable<Guid>? ids)
+    {
+        task.EmployeeIds = (ids ?? []).Distinct().ToList();
+        task.EmployeeAssignments = WorkOrderEntryRules.SynchronizeAssignments(
+            task.EmployeeIds, task.EmployeeAssignments, task.FromUtc);
+    }
+
     private WorkOrderRequestModel BuildRequest()
     {
         var completion = IsCompletion;
@@ -1582,7 +1608,8 @@
                         a.Kind,
                         Convert.ToBase64String(a.Content!),
                         a.OriginalFileName,
-                        a.ContentType)).ToList())).ToList()
+                        a.ContentType)).ToList(),
+                    CustomerReferenceNumber: WorkOrderEntryRules.OptionalReference(l.CustomerReferenceNumber))).ToList()
                 : [],
             completion
                 ? model.Tasks.Select(t => new WorkOrderTaskRequestModel(
@@ -1616,7 +1643,8 @@
                         a.OriginalFileName,
                         a.ContentType)).ToList(),
                     EmployeeAssignments: WorkOrderEntryRules.ToRequests(t.EmployeeAssignments, UserTimeZone),
-                    AtaChapterId: t.AtaChapterId)).ToList()
+                    AtaChapterId: t.AtaChapterId,
+                    CustomerReferenceNumber: WorkOrderEntryRules.OptionalReference(t.CustomerReferenceNumber))).ToList()
                 : [],
             !completion || model.CustomerSignature is null
                 ? null
@@ -1624,7 +1652,8 @@
                     Convert.ToBase64String(model.CustomerSignature.Content),
                     model.CustomerSignature.FileName,
                     model.CustomerSignature.ContentType),
-            completion ? ReturnToRampDraftMapper.ToRequests(model.ReturnToRamps, UserTimeZone) : null);
+            completion ? ReturnToRampDraftMapper.ToRequests(model.ReturnToRamps, UserTimeZone) : null,
+            WorkPackageNumber: WorkOrderEntryRules.OptionalReference(model.WorkPackageNumber));
     }
 
     private string StepClass(int index) =>
@@ -1662,6 +1691,7 @@
     {
         Type = workOrder.Type,
         ActualFlightNumber = workOrder.ActualFlightNumber,
+        WorkPackageNumber = workOrder.WorkPackageNumber,
         AircraftTypeId = workOrder.AircraftTypeId,
         AircraftTailNumber = workOrder.AircraftTailNumber,
         ActualArrivalUtc = UserTimeZone.ToLocalDateTime(workOrder.ActualArrivalUtc),
@@ -1681,6 +1711,7 @@
             FromUtc = UserTimeZone.ToLocalDateTime(l.FromUtc),
             ToUtc = UserTimeZone.ToLocalDateTime(l.ToUtc),
             Description = l.Description,
+            CustomerReferenceNumber = l.CustomerReferenceNumber,
             Attachments = (l.Attachments ?? []).Select(a => new AttachmentForm
             {
                 Id = a.Id,
@@ -1699,6 +1730,7 @@
             AtaChapterTitle = t.AtaChapterTitle,
             TaskType = t.TaskType,
             Description = t.Description,
+            CustomerReferenceNumber = t.CustomerReferenceNumber,
             FromUtc = UserTimeZone.ToLocalDateTime(t.FromUtc),
             ToUtc = UserTimeZone.ToLocalDateTime(t.ToUtc),
             EmployeeIds = t.Employees.Select(e => e.StaffMemberId).ToList(),
@@ -1852,6 +1884,7 @@
     {
         public string Type { get; set; } = "Completion";
         public string? ActualFlightNumber { get; set; }
+        public string? WorkPackageNumber { get; set; }
         public Guid? AircraftTypeId { get; set; }
         public string? AircraftTailNumber { get; set; }
         public DateTime? ActualArrivalUtc { get; set; }
@@ -1877,6 +1910,7 @@
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public string? Description { get; set; }
+        public string? CustomerReferenceNumber { get; set; }
         public List<AttachmentForm> Attachments { get; set; } = [];
     }
 
@@ -1890,6 +1924,7 @@
         public string? AtaChapterTitle { get; set; }
         public string TaskType { get; set; } = "Major";
         public string? Description { get; set; }
+        public string? CustomerReferenceNumber { get; set; }
         public DateTime? FromUtc { get; set; }
         public DateTime? ToUtc { get; set; }
         public IEnumerable<Guid> EmployeeIds { get; set; } = [];

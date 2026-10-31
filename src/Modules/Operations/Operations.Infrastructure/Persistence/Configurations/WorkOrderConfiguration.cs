@@ -20,6 +20,7 @@ public sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
         builder.Property(w => w.IsMergeGenerated).IsRequired();
         builder.Property(w => w.AircraftTailNumber).HasMaxLength(20);
         builder.Property(w => w.Remarks).HasMaxLength(2000);
+        builder.Property(w => w.WorkPackageNumber).HasMaxLength(WorkOrderInputValidation.MaxReferenceNumberLength);
         builder.Property(w => w.CustomerSignatureReference).HasMaxLength(500);
         builder.Property(w => w.CustomerSignatureFileName).HasMaxLength(255);
         builder.Property(w => w.CustomerSignatureContentType).HasMaxLength(100);
@@ -115,6 +116,7 @@ public sealed class WorkOrderServiceLineConfiguration : IEntityTypeConfiguration
         builder.Property(l => l.WorkOrderId).IsRequired();
         builder.Property(l => l.ReturnToRampId);
         builder.Property(l => l.Description).HasMaxLength(2000);
+        builder.Property(l => l.CustomerReferenceNumber).HasMaxLength(WorkOrderInputValidation.MaxReferenceNumberLength);
 
         builder.OwnsOne(l => l.Service, s =>
         {
@@ -196,6 +198,7 @@ public sealed class WorkOrderTaskConfiguration : IEntityTypeConfiguration<WorkOr
         builder.Property(t => t.ReturnToRampId);
         builder.Property(t => t.TaskType).HasConversion<int>();
         builder.Property(t => t.Description).HasMaxLength(2000);
+        builder.Property(t => t.CustomerReferenceNumber).HasMaxLength(WorkOrderInputValidation.MaxReferenceNumberLength);
         builder.OwnsOne(t => t.AtaChapter, chapter =>
         {
             chapter.Property(p => p.AtaChapterId).HasColumnName("AtaChapterId").IsRequired();

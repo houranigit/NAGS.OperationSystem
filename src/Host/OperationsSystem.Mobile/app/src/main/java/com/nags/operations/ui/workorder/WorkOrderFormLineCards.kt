@@ -289,6 +289,19 @@ fun ServiceLineCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+                OutlinedTextField(
+                    value = row.customerReferenceNumber,
+                    onValueChange = {
+                        onChange(row.copy(customerReferenceNumber = it.take(WorkOrderFormLimits.ReferenceNumber)))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = fieldShape,
+                    label = { Text("Customer Ref # (optional)") },
+                    singleLine = true,
+                    isError = lineErrors?.customerReferenceNumber != null,
+                    supportingText = fieldErrorSupportingText(lineErrors?.customerReferenceNumber),
+                )
+
                 WorkOrderDateTimeRange(
                     fromIso = row.fromIso,
                     toIso = row.toIso,
@@ -565,6 +578,19 @@ fun TaskLineCard(
                     maxLines = 4,
                     isError = lineErrors?.description != null,
                     supportingText = fieldErrorSupportingText(lineErrors?.description),
+                )
+
+                OutlinedTextField(
+                    value = row.customerReferenceNumber,
+                    onValueChange = {
+                        onChange(row.copy(customerReferenceNumber = it.take(WorkOrderFormLimits.ReferenceNumber)))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = fieldShape,
+                    label = { Text("Customer Ref # (optional)") },
+                    singleLine = true,
+                    isError = lineErrors?.customerReferenceNumber != null,
+                    supportingText = fieldErrorSupportingText(lineErrors?.customerReferenceNumber),
                 )
 
                 WorkOrderDateTimeRange(

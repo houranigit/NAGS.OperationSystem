@@ -57,6 +57,9 @@ alerts use FCM and the Notifications API under `/api/v1/notifications`.
   performer or removes it. Per Landing is a flight designation, never a performable service line.
 * One active work order per user per flight; approval locks the work order and settles the flight.
 * Service lines and tasks keep their stable server ids so uploaded attachments survive edits.
+* Work orders have an optional **Work Package #**, shown beside Flight number. Services and tasks,
+  including return-to-ramp work, have an optional **Customer Ref #**. These references accept up to
+  200 characters, preserve leading zeros and case, and survive local drafts and offline delivery.
 * The seeded Unknown customer requires work-order remarks on both scratch and existing-flight forms.
   Unknown service requires service notes. Unknown tools, materials, and general supports reveal a
   required note on the individual resource row; ordinary resource notes stay hidden unless present.

@@ -227,7 +227,8 @@ public sealed record WorkOrderDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    IReadOnlyList<WorkOrderReturnToRampModel>? ReturnToRamps = null);
+    IReadOnlyList<WorkOrderReturnToRampModel>? ReturnToRamps = null,
+    string? WorkPackageNumber = null);
 
 public sealed record WorkOrderReturnToRampModel(
     Guid Id,
@@ -250,7 +251,8 @@ public sealed record WorkOrderServiceLineModel(
     DateTimeOffset ToUtc,
     string? Description,
     bool IsReturnToRamp = false,
-    IReadOnlyList<WorkOrderServiceLineAttachmentModel>? Attachments = null);
+    IReadOnlyList<WorkOrderServiceLineAttachmentModel>? Attachments = null,
+    string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderServiceLinePerformerModel(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 
@@ -270,7 +272,8 @@ public sealed record WorkOrderTaskModel(
     bool IsReturnToRamp = false,
     Guid? AtaChapterId = null,
     string? AtaChapterCode = null,
-    string? AtaChapterTitle = null);
+    string? AtaChapterTitle = null,
+    string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderTaskEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
 
@@ -376,7 +379,8 @@ public sealed record WorkOrderRequestModel(
     IReadOnlyList<WorkOrderServiceLineRequestModel> ServiceLines,
     IReadOnlyList<WorkOrderTaskRequestModel> Tasks,
     WorkOrderSignatureRequestModel? CustomerSignature = null,
-    IReadOnlyList<WorkOrderReturnToRampRequestModel>? ReturnToRamps = null);
+    IReadOnlyList<WorkOrderReturnToRampRequestModel>? ReturnToRamps = null,
+    string? WorkPackageNumber = null);
 
 public sealed record MergeWorkOrdersRequestModel(
     IReadOnlyList<Guid> SourceWorkOrderIds,
@@ -392,7 +396,8 @@ public sealed record WorkOrderServiceLineRequestModel(
     bool IsReturnToRamp = false,
     Guid? Id = null,
     IReadOnlyList<WorkOrderServiceLineAttachmentRequestModel>? Attachments = null,
-    IReadOnlyList<WorkOrderEmployeeAssignmentRequestModel>? EmployeeAssignments = null);
+    IReadOnlyList<WorkOrderEmployeeAssignmentRequestModel>? EmployeeAssignments = null,
+    string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderServiceLineAttachmentRequestModel(
     string Kind,
@@ -423,7 +428,8 @@ public sealed record WorkOrderTaskRequestModel(
     IReadOnlyList<WorkOrderTaskAttachmentRequestModel>? Attachments = null,
     bool IsReturnToRamp = false,
     IReadOnlyList<WorkOrderEmployeeAssignmentRequestModel>? EmployeeAssignments = null,
-    Guid? AtaChapterId = null);
+    Guid? AtaChapterId = null,
+    string? CustomerReferenceNumber = null);
 
 public sealed record WorkOrderTaskToolRequestModel(
     Guid ToolId,

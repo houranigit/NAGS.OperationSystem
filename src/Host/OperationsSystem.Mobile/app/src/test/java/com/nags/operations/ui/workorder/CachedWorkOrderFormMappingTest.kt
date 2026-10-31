@@ -33,11 +33,13 @@ class CachedWorkOrderFormMappingTest {
             scheduledArrivalUtc = "2026-07-11T10:00:00Z",
             scheduledDepartureUtc = "2026-07-11T12:00:00Z",
             actualFlightNumber = "MOB100",
+            workPackageNumber = "WP-003",
             actualArrivalUtc = "2026-07-11T10:05:00Z",
             actualDepartureUtc = "2026-07-11T11:55:00Z",
             serviceLines = listOf(
                 WorkOrderServiceLineWireDto(
                     id = "line-1",
+                    customerReferenceNumber = "SVC-004",
                     serviceId = "service-1",
                     serviceName = "Revoked service",
                     performedBy = listOf(
@@ -60,6 +62,7 @@ class CachedWorkOrderFormMappingTest {
             tasks = listOf(
                 WorkOrderTaskWireDto(
                     id = "task-1",
+                    customerReferenceNumber = "TASK-005",
                     taskType = "Major",
                     fromUtc = "2026-07-11T10:10:00Z",
                     toUtc = "2026-07-11T11:00:00Z",
@@ -99,11 +102,14 @@ class CachedWorkOrderFormMappingTest {
 
         val form = workOrder.toPrefilledCreateFormState { 1L }
 
+        assertEquals("WP-003", form.workPackageNumber)
         assertEquals(workOrder.actualDepartureUtc, form.atdIso)
         assertEquals(workOrder.scheduledArrivalUtc, form.scheduledArrivalIso)
         assertTrue(form.serviceLines.isEmpty())
         assertTrue(form.tasks.isEmpty())
         val occurrence = form.returnToRamps.single()
+        assertEquals("SVC-004", occurrence.serviceLines.single().customerReferenceNumber)
+        assertEquals("TASK-005", occurrence.tasks.single().customerReferenceNumber)
         assertEquals("Revoked service", occurrence.serviceLines.single().serviceName)
         assertEquals("line-1", occurrence.serviceLines.single().serverId)
         assertEquals(listOf("staff-1", "staff-2"), occurrence.serviceLines.single().employeeIds)

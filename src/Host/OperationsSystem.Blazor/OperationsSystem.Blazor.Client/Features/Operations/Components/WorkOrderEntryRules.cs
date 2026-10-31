@@ -22,9 +22,13 @@ internal static class WorkOrderEntryRules
 
     internal static IReadOnlyList<EmployeeAssignmentDraft> SynchronizeAssignments(
         IEnumerable<Guid>? selectedIds,
-        IReadOnlyList<EmployeeAssignmentDraft> assignments) =>
+        IReadOnlyList<EmployeeAssignmentDraft> assignments,
+        DateTime? fromLocal = null) =>
         (selectedIds ?? []).Distinct().Select(id => assignments.FirstOrDefault(item => item.StaffMemberId == id)
-            ?? new EmployeeAssignmentDraft(id)).ToList();
+            ?? new EmployeeAssignmentDraft(id, fromLocal)).ToList();
+
+    internal static string? OptionalReference(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     internal static List<string> ValidateAssignments(
         IEnumerable<Guid>? selectedIds,

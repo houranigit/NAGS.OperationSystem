@@ -34,6 +34,7 @@ public sealed class WorkOrderTask : Entity<Guid>
     public TaskType TaskType { get; private set; }
     public AtaChapterSnapshot? AtaChapter { get; private set; }
     public string? Description { get; private set; }
+    public string? CustomerReferenceNumber { get; private set; }
     public TimeWindow Window { get; private set; } = null!;
     /// <summary>Compatibility alias for clients deployed before occurrence records.</summary>
     public bool IsReturnToRamp => ReturnToRampId.HasValue;
@@ -93,6 +94,7 @@ public sealed class WorkOrderTask : Entity<Guid>
             ? new AtaChapterSnapshot(chapter.AtaChapterId, chapter.Code, chapter.Title)
             : null;
         Description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
+        CustomerReferenceNumber = WorkOrderInputValidation.NormalizeReferenceNumber(input.CustomerReferenceNumber);
         Window = input.Window;
         _employees.Clear();
         foreach (var employee in input.Employees.GroupBy(e => e.StaffMemberId).Select(g => g.First()))

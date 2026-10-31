@@ -26,6 +26,7 @@ class OutboxPayloadCompatibilityTest {
             workOrder = OutboxPayload.WorkOrderInput(
                 type = "Completion",
                 actualFlightNumber = "MOB100",
+                workPackageNumber = "WP-006",
                 aircraftTypeId = "aircraft-1",
                 aircraftTailNumber = null,
                 ataIso = "2026-07-11T10:00:00Z",
@@ -39,6 +40,7 @@ class OutboxPayloadCompatibilityTest {
 
         val decoded = json.decodeFromString<OutboxPayload>(json.encodeToString(OutboxPayload.serializer(), payload))
 
+        assertEquals("WP-006", decoded.workOrder?.workPackageNumber)
         assertEquals("AQID", decoded.baseRowVersion)
         assertEquals(0, decoded.workOrder?.serviceLineIdentityVersion)
     }
@@ -70,6 +72,8 @@ class OutboxPayloadCompatibilityTest {
         )
         val line = payload.workOrder!!.serviceLines.single()
 
+        assertNull(payload.workOrder?.workPackageNumber)
+        assertNull(line.customerReferenceNumber)
         assertFalse(line.isReturnToRamp)
         assertTrue(line.attachments.isEmpty())
         assertEquals(listOf("staff-1"), line.performedByStaffMemberIds)
@@ -79,6 +83,7 @@ class OutboxPayloadCompatibilityTest {
     fun return_to_ramp_service_line_round_trips_through_outbox_json() {
         val line = OutboxPayload.ServiceLineInput(
             id = "line-1",
+            customerReferenceNumber = "SVC-007",
             serviceId = "service-1",
             performedByStaffMemberIds = listOf("staff-1", "staff-2"),
             fromIso = "2026-07-11T10:00:00Z",
@@ -102,6 +107,8 @@ class OutboxPayloadCompatibilityTest {
         )
 
         assertTrue(decoded.isReturnToRamp)
+        assertEquals("SVC-007", decoded.customerReferenceNumber)
+        assertEquals("SVC-007", decoded.toWireServiceLine().customerReferenceNumber)
         assertEquals("line-1", decoded.id)
         assertEquals(listOf("staff-1", "staff-2"), decoded.performedByStaffMemberIds)
         assertEquals("0-service.pdf", decoded.attachments.single().relativePath)
@@ -119,6 +126,7 @@ class OutboxPayloadCompatibilityTest {
             }""".trimIndent(),
         )
 
+        assertNull(task.customerReferenceNumber)
         assertFalse(task.isReturnToRamp)
     }
 
@@ -126,6 +134,7 @@ class OutboxPayloadCompatibilityTest {
     fun return_to_ramp_task_round_trips_through_outbox_json() {
         val task = OutboxPayload.TaskInput(
             taskType = "Major",
+            customerReferenceNumber = "TASK-008",
             description = null,
             fromIso = "2026-07-11T10:00:00Z",
             toIso = "2026-07-11T11:00:00Z",
@@ -137,6 +146,8 @@ class OutboxPayloadCompatibilityTest {
             json.encodeToString(OutboxPayload.TaskInput.serializer(), task),
         )
 
+        assertEquals("TASK-008", decoded.customerReferenceNumber)
+        assertEquals("TASK-008", decoded.toWireTask().customerReferenceNumber)
         assertTrue(decoded.isReturnToRamp)
     }
 
