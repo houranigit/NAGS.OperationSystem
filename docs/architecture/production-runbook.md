@@ -40,6 +40,59 @@ when it is absent and copies it to `App_Data/firebase-admin.json` in the publish
 placed under `wwwroot` or exposed as static content. Deployments can still override the path or use
 Application Default Credentials/workload identity.
 
+## Local Docker Compose stack
+
+The root `docker-compose.yml` runs SQL Server, the API, and the Blazor portal as separate
+containers. This is a local development environment with automatic migrations against its own
+`OperationsSystem` database, demo data disabled, and SMTP/Android push disabled. It does not use
+host user-secrets or local appsettings overrides. Existing IIS deployment remains supported.
+
+1. Copy `.env.example` to `.env` and replace the password/signing-key placeholders with strong
+   generated values (JWT key at least 32 characters). `.env` is ignored by Git. The initial local
+   setup may already have generated this file; preserve its values when reusing existing volumes.
+2. Provision the ignored `src/Host/OperationsSystem.Api/App_Data/firebase-admin.json` required
+   by the existing API publish target. Docker supplies it as a BuildKit build secret and removes
+   the published copy before creating the runtime image. It is excluded from the build context.
+   FCM is disabled in this stack; do not enable it without mounting runtime credentials separately.
+3. Run `docker compose up -d --build` from the repository root. The first build downloads the
+   .NET images and NuGet packages. SQL must pass its health check before the API applies migrations;
+   API readiness must pass before the portal starts.
+4. Open the portal at `http://localhost:5080`; API readiness is at
+   `http://localhost:5212/health/ready`. SQL is exposed at `localhost:1433`. All host ports bind
+   only to loopback. Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD` from your local `.env`;
+   the existing administrator MFA requirements still apply.
+
+Use `docker compose ps` for status and `docker compose logs api` for API startup diagnostics.
+`docker compose down` stops/removes the containers while retaining SQL data, uploaded files,
+API Data Protection keys, and portal Data Protection keys in named volumes. Do not use
+`docker compose down -v` unless intentionally deleting this local environment's data and keys.
+Changing `ADMIN_PASSWORD` does not reset an already seeded administrator; changing the SQL
+password requires updating the database login as well as `.env` when retaining its volume.
+
+SQL Server uses `linux/amd64`, including emulation on Apple Silicon. The API and portal use
+native .NET 10 images. This local HTTP configuration is not a production deployment recipe;
+production still requires the configuration, migrations, TLS, and backup steps in this runbook.
+
+### Launch from Visual Studio
+
+With Visual Studio Container Development Tools installed and Docker Desktop using Linux
+containers, reload `OperationsSystem.slnx`. Select the **Docker** solution configuration, then
+set **Docker > docker-compose** as the startup project (or select it in the startup-project
+dropdown). Choose the **Docker Compose** launch profile and press F5 or Ctrl+F5.
+
+The profile starts SQL Server, the API, and the portal without attaching debuggers, then opens
+`http://localhost:5080`. It uses the same Compose file, `.env`, project name, and volumes as the
+local CLI stack. Regular mode builds the complete images inside Docker, preserving the shared
+Dockerfile targets and build-secret handling. `docker-compose.vs.release.yml` preserves the
+API/portal stage selection after Visual Studio's generated overrides. Dependency-aware startup
+honors SQL/API health checks. Provision the `.env` and Firebase publish credential described above on the Windows
+machine as well; ignored files are not transferred through Git.
+
+The Compose project participates in builds only in the **Docker** solution configuration.
+Normal **Debug** and **Release** builds continue to work with the .NET CLI without the
+Visual Studio-only Docker SDK. The Docker configuration maps the C# projects to Debug;
+the current Dockerfile publishes the container applications in Release.
+
 ## IIS portal startup
 
 Copying a new release over an existing IIS folder does not remove files absent from the new

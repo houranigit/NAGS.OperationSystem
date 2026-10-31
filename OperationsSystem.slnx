@@ -1,4 +1,18 @@
 <Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <BuildType Name="Docker" />
+    <ProjectType>
+      <BuildType Solution="Docker|*" Project="Debug" />
+    </ProjectType>
+  </Configurations>
+  <Folder Name="/Docker/">
+    <Project Path="docker-compose.dcproj" Type="E53339B2-1760-4266-BCC7-CA923CBCF16C">
+      <Build Project="false" />
+      <Build Solution="Docker|*" Project="true" />
+    </Project>
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/BuildingBlocks.Api/BuildingBlocks.Api.csproj" />

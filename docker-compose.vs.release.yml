@@ -1,0 +1,8 @@
+# Regular mode: preserve each service's target after Visual Studio's generated overrides.
+services:
+  api:
+    build:
+      target: api
+  portal:
+    build:
+      target: portal

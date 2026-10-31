@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" Sdk="Microsoft.Docker.Sdk">
+  <PropertyGroup Label="Globals">
+    <ProjectVersion>2.1</ProjectVersion>
+    <DockerTargetOS>Linux</DockerTargetOS>
+    <ProjectGuid>0d4bd03c-a9fd-4040-bc77-20191a668a2f</ProjectGuid>
+    <DockerComposeProjectName>operationsystem</DockerComposeProjectName>
+    <DockerComposeEnvFilePath>.env</DockerComposeEnvFilePath>
+    <DockerDevelopmentMode>Regular</DockerDevelopmentMode>
+    <DependencyAwareStart>true</DependencyAwareStart>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="docker-compose.yml" />
+    <None Include="docker-compose.vs.release.yml">
+      <DependentUpon>docker-compose.yml</DependentUpon>
+    </None>
+    <None Include="Dockerfile" />
+    <None Include=".dockerignore" />
+    <None Include=".env.example" />
+    <None Include="Properties/launchSettings.json" />
+  </ItemGroup>
+</Project>
