@@ -58,7 +58,8 @@ class AppGraph private constructor(context: Context) {
     private val catalogRealtimeChannel = CatalogRealtimeChannel(
         accessTokens = tokenStore.accessTokenFlow,
         online = networkMonitor.isOnline,
-        requestCatalogRefresh = catalogSyncScheduler::refreshNow,
+        requestCatalogRefresh = catalogSyncScheduler::refreshCatalog,
+        requestFullRefresh = catalogSyncScheduler::refreshNow,
         appScope = appScope,
     )
     val catalogConnectionState get() = catalogRealtimeChannel.state

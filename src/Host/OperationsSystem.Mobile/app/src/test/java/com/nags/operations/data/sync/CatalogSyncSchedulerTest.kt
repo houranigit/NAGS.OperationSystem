@@ -1,5 +1,6 @@
 package com.nags.operations.data.sync
 
+import com.nags.operations.data.SharedCatalog
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -8,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -24,30 +26,31 @@ class CatalogSyncSchedulerTest {
     fun reconnectAndRefreshedCredentialsReloadCatalogsWithoutOfflineRequests() = runBlocking {
         val tokens = MutableStateFlow<String?>("first-token")
         val online = MutableStateFlow(false)
-        var refreshes = 0
-        val scheduler = CatalogSyncScheduler(tokens, online, { refreshes++ }, {}, scope)
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        val scheduler = CatalogSyncScheduler(tokens, online, { batches += it }, {}, scope)
         scheduler.start()
         settle()
-        assertEquals(0, refreshes)
+        assertEquals(0, batches.size)
         online.value = true
         settle()
-        assertEquals(1, refreshes)
+        assertEquals(1, batches.size)
         online.value = false
         settle()
         scheduler.refreshNow()
         settle()
-        assertEquals(1, refreshes)
+        assertEquals(1, batches.size)
         online.value = true
         settle()
-        assertEquals(2, refreshes)
+        assertEquals(2, batches.size)
         tokens.value = "refreshed-token"
         settle()
-        assertEquals(3, refreshes)
+        assertEquals(3, batches.size)
+        assertTrue(batches.all { it == allCatalogs })
         scheduler.stop()
     }
 
     @Test
-    fun liveAndManualHintBurstsKeepOnlyOnePendingRefresh() = runBlocking {
+    fun manualHintBurstsKeepOnlyOnePendingFullRefresh() = runBlocking {
         val pending = CompletableDeferred<Unit>()
         var refreshes = 0
         val scheduler = CatalogSyncScheduler(
@@ -66,6 +69,111 @@ class CatalogSyncSchedulerTest {
         scheduler.refreshNow()
         settle()
         assertEquals(2, refreshes)
+    }
+
+    @Test
+    fun aLiveHintRefreshesOnlyTheAffectedCatalog() = runBlocking {
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        val scheduler = CatalogSyncScheduler(
+            MutableStateFlow("token"), MutableStateFlow(true), { batches += it }, {}, scope,
+        )
+        scheduler.start()
+        settle()
+        scheduler.refreshCatalog(SharedCatalog.Tools)
+        settle()
+        assertEquals(listOf(allCatalogs, setOf(SharedCatalog.Tools)), batches)
+        scheduler.stop()
+    }
+
+    @Test
+    fun liveHintBurstsRetainEveryDistinctPendingCatalog() = runBlocking {
+        val finishInitialRefresh = CompletableDeferred<Unit>()
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        val scheduler = CatalogSyncScheduler(
+            MutableStateFlow("token"), MutableStateFlow(true), {
+                batches += it
+                if (batches.size == 1) finishInitialRefresh.await()
+            }, {}, scope,
+        )
+        scheduler.start()
+        settle()
+        repeat(20) {
+            scheduler.refreshCatalog(SharedCatalog.Tools)
+            scheduler.refreshCatalog(SharedCatalog.Customers)
+            scheduler.refreshCatalog(SharedCatalog.AircraftTypes)
+        }
+        settle()
+        assertEquals(listOf(allCatalogs), batches)
+        finishInitialRefresh.complete(Unit)
+        settle()
+        assertEquals(listOf(allCatalogs, setOf(SharedCatalog.Tools, SharedCatalog.Customers, SharedCatalog.AircraftTypes)), batches)
+        scheduler.stop()
+    }
+
+    @Test
+    fun pendingFullRefreshCannotBeDowngradedByLaterLiveHints() = runBlocking {
+        val finishInitialRefresh = CompletableDeferred<Unit>()
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        val scheduler = CatalogSyncScheduler(
+            MutableStateFlow("token"), MutableStateFlow(true), {
+                batches += it
+                if (batches.size == 1) finishInitialRefresh.await()
+            }, {}, scope,
+        )
+        scheduler.start()
+        settle()
+        scheduler.refreshCatalog(SharedCatalog.Tools)
+        scheduler.refreshNow()
+        scheduler.refreshCatalog(SharedCatalog.Customers)
+        settle()
+        finishInitialRefresh.complete(Unit)
+        settle()
+        assertEquals(listOf(allCatalogs, allCatalogs), batches)
+        scheduler.stop()
+    }
+
+    @Test
+    fun hintsReceivedDuringTargetedFetchRunAsTheNextBatch() = runBlocking {
+        val finishToolsRefresh = CompletableDeferred<Unit>()
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        val scheduler = CatalogSyncScheduler(
+            MutableStateFlow("token"), MutableStateFlow(true), {
+                batches += it
+                if (it == setOf(SharedCatalog.Tools)) finishToolsRefresh.await()
+            }, {}, scope,
+        )
+        scheduler.start()
+        settle()
+        scheduler.refreshCatalog(SharedCatalog.Tools)
+        settle()
+        scheduler.refreshCatalog(SharedCatalog.Services)
+        scheduler.refreshCatalog(SharedCatalog.Materials)
+        settle()
+        assertEquals(listOf(allCatalogs, setOf(SharedCatalog.Tools)), batches)
+        finishToolsRefresh.complete(Unit)
+        settle()
+        assertEquals(listOf(allCatalogs, setOf(SharedCatalog.Tools), setOf(SharedCatalog.Services, SharedCatalog.Materials)), batches)
+        scheduler.stop()
+    }
+
+    @Test
+    fun signingInAndPeriodicChecksRefreshEveryCatalog() = runBlocking {
+        val tokens = MutableStateFlow<String?>(null)
+        val periodicRefresh = CompletableDeferred<Set<SharedCatalog>>()
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        val scheduler = CatalogSyncScheduler(tokens, MutableStateFlow(true), {
+            batches += it
+            if (batches.size == 2) periodicRefresh.complete(it)
+        }, {}, scope, pollIntervalMs = 20L)
+        scheduler.start()
+        settle()
+        assertTrue(batches.isEmpty())
+        tokens.value = "token"
+        settle()
+        assertEquals(allCatalogs, batches.first())
+        assertEquals(allCatalogs, withTimeout(2_000L) { periodicRefresh.await() })
+        assertTrue(batches.all { it == allCatalogs })
+        scheduler.stop()
     }
 
     @Test
@@ -170,4 +278,6 @@ class CatalogSyncSchedulerTest {
     private suspend fun settle() {
         repeat(10) { yield() }
     }
+
+    private val allCatalogs = SharedCatalog.entries.toSet()
 }

@@ -534,7 +534,7 @@ export const manualArticles = [
       {
         "id": "refresh",
         "title": "Refresh the catalogs",
-        "body": "While connected, catalog creates, edits, activations, and deactivations in the portal trigger a live refresh of the cached records you may access. You can also select Refresh now. Automatic refresh after sign-in, returning to the app, reconnecting, and periodically while the app process is running covers missed live updates."
+        "body": "While connected, catalog creates, edits, activations, and deactivations in the portal refresh only the affected catalog. Other catalogs keep their previous Last sync time. Last sync means the last successful fetch, even when the fetched data has not changed. Refresh now checks all catalogs, as do automatic refreshes after sign-in, returning to the app, reconnecting, and periodically while the app process is running."
       },
       {
         "id": "offline",

@@ -4,6 +4,7 @@ import android.util.Log
 import com.microsoft.signalr.HubConnection
 import com.microsoft.signalr.HubConnectionBuilder
 import com.microsoft.signalr.HubConnectionState
+import com.nags.operations.data.SharedCatalog
 import com.nags.operations.data.api.HttpClientFactory
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Single
@@ -34,7 +35,8 @@ import kotlin.coroutines.resumeWithException
 class CatalogRealtimeChannel(
     private val accessTokens: Flow<String?>,
     private val online: StateFlow<Boolean>,
-    private val requestCatalogRefresh: () -> Unit,
+    private val requestCatalogRefresh: (SharedCatalog) -> Unit,
+    private val requestFullRefresh: () -> Unit,
     private val appScope: CoroutineScope,
 ) {
     private val lifecycleLock = Any()
@@ -82,15 +84,16 @@ class CatalogRealtimeChannel(
                 .build()
             try {
                 connection.on("change", { change ->
-                    if (enabled && diagnostics.acceptChange(attemptId, change.table, System.currentTimeMillis())) {
-                        requestCatalogRefresh()
+                    if (enabled) {
+                        diagnostics.acceptChange(attemptId, change.table, System.currentTimeMillis())
+                            ?.let(requestCatalogRefresh)
                     }
                 }, CatalogChangeEnvelope::class.java)
                 connection.start().awaitCompletion()
                 attempt = 0
                 // The retained hub has no replay feed. Reload server snapshots on every connect
                 // so disconnect gaps do not require the retired Operations catch-up endpoint.
-                if (enabled && diagnostics.connected(attemptId)) requestCatalogRefresh()
+                if (enabled && diagnostics.connected(attemptId)) requestFullRefresh()
                 awaitClosure(connection)
                 diagnostics.reconnecting(attemptId)
             } catch (error: CancellationException) {
@@ -166,18 +169,13 @@ internal class CatalogRealtimeDiagnostics {
         if (clearLastEvent) _lastEventAt.value = null
     }
 
-    fun acceptChange(attemptId: Long, table: String?, receivedAt: Long): Boolean = synchronized(lock) {
-        if (attemptId != generation || _state.value != RealtimeChannelState.Connected || table !in SHARED_CATALOG_TABLES) {
-            return false
+    fun acceptChange(attemptId: Long, table: String?, receivedAt: Long): SharedCatalog? = synchronized(lock) {
+        if (attemptId != generation || _state.value != RealtimeChannelState.Connected) {
+            return null
         }
+        val catalog = SharedCatalog.entries.firstOrNull { it.storageKey == table } ?: return null
         _lastEventAt.value = receivedAt
-        true
-    }
-
-    private companion object {
-        val SHARED_CATALOG_TABLES = setOf(
-            "aircraft-types", "customers", "services", "tools", "materials", "general-supports", "ata-chapters",
-        )
+        catalog
     }
 }
 

@@ -1,5 +1,6 @@
 package com.nags.operations.data.sync
 
+import com.nags.operations.data.SharedCatalog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -22,13 +23,14 @@ import kotlinx.coroutines.withContext
 class CatalogSyncScheduler(
     private val accessTokens: Flow<String?>,
     private val online: StateFlow<Boolean>,
-    private val refreshCatalogs: suspend () -> Unit,
+    private val refreshCatalogs: suspend (Set<SharedCatalog>) -> Unit,
     private val clearCatalogs: suspend () -> Unit,
     private val appScope: CoroutineScope,
     private val pollIntervalMs: Long = 5L * 60L * 1_000L,
 ) {
     private val requests = Channel<Unit>(Channel.CONFLATED)
     private val lifecycleLock = Any()
+    private val pendingCatalogs = mutableSetOf<SharedCatalog>()
     @Volatile private var enabled = false
     private var loop: Job? = null
 
@@ -41,7 +43,7 @@ class CatalogSyncScheduler(
             combine(accessTokens, online) { token, connected -> CatalogSyncSession(token, connected) }
                 .distinctUntilChanged()
                 .onEach { session ->
-                    if (session.token != null && session.online) requests.trySend(Unit)
+                    if (session.token != null && session.online) refreshNow()
                 }
                 .map { session -> CatalogSyncAvailability(session.token != null, session.online) }
                 .distinctUntilChanged()
@@ -57,8 +59,12 @@ class CatalogSyncScheduler(
                     coroutineScope {
                         launch {
                             for (request in requests) {
+                                val catalogs = synchronized(lifecycleLock) {
+                                    pendingCatalogs.toSet().also { pendingCatalogs.clear() }
+                                }
+                                if (catalogs.isEmpty()) continue
                                 try {
-                                    refreshCatalogs()
+                                    refreshCatalogs(catalogs)
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (_: Exception) {
@@ -69,17 +75,25 @@ class CatalogSyncScheduler(
                         }
                         while (true) {
                             delay(pollIntervalMs)
-                            requests.trySend(Unit)
+                            refreshNow()
                         }
                     }
                 }
         }
     }
 
-    /** A burst of foreground/manual/live hints produces at most one pending refresh. */
-    fun refreshNow() {
+    /** Foreground/manual/session/reconnect refreshes recheck all shared catalogs. */
+    fun refreshNow() = enqueue(SharedCatalog.entries)
+
+    /** Live hints merge affected catalogs into the pending batch without losing distinct changes. */
+    fun refreshCatalog(catalog: SharedCatalog) = enqueue(setOf(catalog))
+
+    private fun enqueue(catalogs: Collection<SharedCatalog>) {
         synchronized(lifecycleLock) {
-            if (enabled) requests.trySend(Unit)
+            if (enabled) {
+                pendingCatalogs.addAll(catalogs)
+                requests.trySend(Unit)
+            }
         }
     }
 
@@ -87,6 +101,7 @@ class CatalogSyncScheduler(
     suspend fun stop() {
         val job = synchronized(lifecycleLock) {
             enabled = false
+            pendingCatalogs.clear()
             loop.also { loop = null }
         }
         job?.cancelAndJoin()

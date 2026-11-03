@@ -46,6 +46,56 @@ class SharedCatalogsRepositoryTest {
     }
 
     @Test
+    fun targetedToolRefreshLeavesEveryOtherSnapshotAndItsMetadataUntouched() = runBlocking {
+        val fetched = mutableListOf<SharedCatalog>()
+        var toolName = "Tool"
+        var customerFails = false
+        val repository = repository { kind ->
+            fetched += kind
+            if (customerFails && kind == SharedCatalog.Customers) throw IOException("Offline")
+            payload(kind).let { if (kind == SharedCatalog.Tools) it.replace("\"Tool\"", "\"$toolName\"") else it }
+        }
+        repository.refresh()
+        customerFails = true
+        repository.refresh(setOf(SharedCatalog.Customers))
+        val previous = dao.rows.value.associateBy { it.catalog }
+        assertNotNull(previous.getValue("customers").error)
+        fetched.clear()
+        dao.writes.clear()
+        clock = "2026-11-03T10:01:00Z"
+        durationMs = 71L
+        toolName = "Updated tool"
+
+        repository.refresh(setOf(SharedCatalog.Tools))
+
+        assertEquals(listOf(SharedCatalog.Tools), fetched)
+        assertEquals(listOf("tools"), dao.writes.map { it.catalog })
+        assertEquals("Updated tool", repository.toolsFlow().first().single().name)
+        val updated = dao.snapshot("account-a", "tools")!!
+        assertEquals(clock, updated.lastAttemptUtc)
+        assertEquals(clock, updated.lastSuccessUtc)
+        assertEquals(71L, updated.lastDurationMs)
+        for ((catalog, snapshot) in previous.filterKeys { it != "tools" }) {
+            assertEquals(snapshot, dao.snapshot("account-a", catalog))
+        }
+        assertFalse(repository.isSyncing.value)
+    }
+
+    @Test
+    fun subsetRefreshFetchesOnlyRequestedCatalogsInCanonicalOrder() = runBlocking {
+        val fetched = mutableListOf<SharedCatalog>()
+        val repository = repository { kind -> fetched += kind; payload(kind) }
+
+        repository.refresh(linkedSetOf(SharedCatalog.Materials, SharedCatalog.AircraftTypes, SharedCatalog.Tools))
+
+        assertEquals(listOf(SharedCatalog.AircraftTypes, SharedCatalog.Tools, SharedCatalog.Materials), fetched)
+        assertEquals(listOf("aircraft-types", "tools", "materials"), dao.rows.value.map { it.catalog })
+        assertTrue(repository.observeStatus().first().filter {
+            it.kind !in setOf(SharedCatalog.AircraftTypes, SharedCatalog.Tools, SharedCatalog.Materials)
+        }.all { it.lastSuccessUtc == null && it.itemCount == 0 })
+    }
+
+    @Test
     fun aTransientCatalogFailureRetainsItsSnapshotWhileOtherCatalogsRefresh() = runBlocking {
         var failing = false
         val repository = repository { kind ->
@@ -80,11 +130,13 @@ class SharedCatalogsRepositoryTest {
             payload(kind)
         }
         repository.refresh()
+        val previousAircraft = dao.snapshot("account-a", "aircraft-types")!!
         denied = true
-        repository.refresh()
+        repository.refresh(setOf(SharedCatalog.Customers))
 
         assertTrue(repository.customersFlow().first().isEmpty())
         assertEquals(1, repository.aircraftTypesFlow().first().size)
+        assertEquals(previousAircraft, dao.snapshot("account-a", "aircraft-types"))
         val status = repository.observeStatus().first().single { it.kind == SharedCatalog.Customers }
         assertEquals(0, status.itemCount)
         assertNull(status.lastSuccessUtc)
@@ -101,7 +153,7 @@ class SharedCatalogsRepositoryTest {
             owner.value = null
             throw ApiException(401, "Expired session")
         }
-        repository.refresh()
+        repository.refresh(setOf(SharedCatalog.Tools))
 
         assertTrue(dao.rows.value.isEmpty())
         assertTrue(repository.aircraftTypesFlow().first().isEmpty())
@@ -225,6 +277,7 @@ class SharedCatalogsRepositoryTest {
 
 private class MemoryCatalogDao : SharedCatalogDao {
     val rows = MutableStateFlow<List<SharedCatalogSnapshotEntity>>(emptyList())
+    val writes = mutableListOf<SharedCatalogSnapshotEntity>()
 
     override fun observe(ownerSubject: String): Flow<List<SharedCatalogSnapshotEntity>> = rows.map { snapshots ->
         snapshots.filter { it.ownerSubject == ownerSubject }
@@ -234,6 +287,7 @@ private class MemoryCatalogDao : SharedCatalogDao {
         rows.value.firstOrNull { it.ownerSubject == ownerSubject && it.catalog == catalog }
 
     override suspend fun put(snapshot: SharedCatalogSnapshotEntity) {
+        writes += snapshot
         rows.value = rows.value.filterNot {
             it.ownerSubject == snapshot.ownerSubject && it.catalog == snapshot.catalog
         } + snapshot

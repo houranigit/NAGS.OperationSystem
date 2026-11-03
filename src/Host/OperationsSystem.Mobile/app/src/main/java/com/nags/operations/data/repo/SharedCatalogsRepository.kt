@@ -87,14 +87,15 @@ class SharedCatalogsRepository internal constructor(
             ?.let { json.decodeFromString<List<T>>(it.payloadJson) }.orEmpty()
     }
 
-    /** Every catalog has an independent outcome; a failed fetch never replaces a good snapshot. */
-    suspend fun refresh() {
+    /** Only requested catalogs are touched; a failed fetch never replaces a good snapshot. */
+    suspend fun refresh(catalogs: Set<SharedCatalog> = SharedCatalog.entries.toSet()) {
+        if (catalogs.isEmpty()) return
         if (!refreshMutex.tryLock()) return
         _isSyncing.value = true
         try {
             val owner = currentOwner() ?: return
             val expectedGeneration = mutationMutex.withLock { generation }
-            for (kind in SharedCatalog.entries) {
+            for (kind in SharedCatalog.entries.filter { it in catalogs }) {
                 if (!isCurrent(owner, expectedGeneration)) return
                 val attemptedAt = now()
                 val startedNanos = monotonicNanos()
