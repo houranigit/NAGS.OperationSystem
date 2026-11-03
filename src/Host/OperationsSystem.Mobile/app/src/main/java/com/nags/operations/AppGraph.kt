@@ -8,12 +8,17 @@ import com.nags.operations.data.api.AuthApi
 import com.nags.operations.data.api.HttpClientFactory
 import com.nags.operations.data.api.NotificationsApi
 import com.nags.operations.data.api.OperationsApi
+import com.nags.operations.data.api.SharedCatalogsApi
+import com.nags.operations.data.db.CatalogDatabase
 import com.nags.operations.data.db.NotificationsDatabase
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.notifications.NotificationPushPayload
 import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.FlightsRepository
 import com.nags.operations.data.repo.NotificationsRepository
+import com.nags.operations.data.repo.SharedCatalogsRepository
+import com.nags.operations.data.realtime.CatalogRealtimeChannel
+import com.nags.operations.data.sync.CatalogSyncScheduler
 import com.nags.operations.notifications.DeviceTokenManager
 import com.nags.operations.notifications.NotificationNavigationCoordinator
 import com.nags.operations.notifications.SystemNotificationManager
@@ -25,7 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Process-scoped dependencies for online flights, identity, and notifications. */
+/** Process-scoped dependencies for online flights, shared catalogs, identity, and notifications. */
 class AppGraph private constructor(context: Context) {
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val tokenStore: TokenStore = TokenStore(context.applicationContext)
@@ -34,12 +39,30 @@ class AppGraph private constructor(context: Context) {
     private val authApi: AuthApi = AuthApi(tokenStore, httpClient)
     val operationsApi: OperationsApi = OperationsApi(tokenStore, httpClient)
     private val notificationsApi: NotificationsApi = NotificationsApi(tokenStore, httpClient)
+    private val sharedCatalogsApi = SharedCatalogsApi(tokenStore, httpClient)
     private val database = NotificationsDatabase.get(context.applicationContext)
+    private val catalogDatabase = CatalogDatabase.get(context.applicationContext)
 
     val flightsRepository: FlightsRepository = FlightsRepository(operationsApi)
     val notificationsRepository: NotificationsRepository =
         NotificationsRepository(notificationsApi, database, tokenStore)
+    val sharedCatalogsRepository = SharedCatalogsRepository(sharedCatalogsApi, catalogDatabase, tokenStore)
     val networkMonitor: NetworkMonitor = NetworkMonitor(context.applicationContext, appScope)
+    private val catalogSyncScheduler = CatalogSyncScheduler(
+        accessTokens = tokenStore.accessTokenFlow,
+        online = networkMonitor.isOnline,
+        refreshCatalogs = sharedCatalogsRepository::refresh,
+        clearCatalogs = sharedCatalogsRepository::clearLocal,
+        appScope = appScope,
+    )
+    private val catalogRealtimeChannel = CatalogRealtimeChannel(
+        accessTokens = tokenStore.accessTokenFlow,
+        online = networkMonitor.isOnline,
+        requestCatalogRefresh = catalogSyncScheduler::refreshNow,
+        appScope = appScope,
+    )
+    val catalogConnectionState get() = catalogRealtimeChannel.state
+    val lastCatalogEventAt get() = catalogRealtimeChannel.lastEventAt
     val notificationNavigation = NotificationNavigationCoordinator(context.applicationContext)
     private val systemNotificationManager = SystemNotificationManager(context.applicationContext)
     private val notificationDisplayGate = NotificationDisplayGate()
@@ -81,16 +104,21 @@ class AppGraph private constructor(context: Context) {
         sessionTransitionMutex.withLock {
             notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
+            pauseCatalogSync()
             deviceTokenManager.pause()
             deviceTokenManager.revokeBeforeLogout()
             authRepository.logout()
             notificationsRepository.clearLocal()
+            sharedCatalogsRepository.clearLocal()
         }
     }
 
-    /** Refresh the inbox badge when returning to the foreground. Flight screens refresh separately. */
+    fun refreshCatalogs() = catalogSyncScheduler.refreshNow()
+
+    /** Flight screens refresh separately; catalogs and the inbox badge refresh on foreground. */
     fun onForeground() {
         if (secureStorageReady) {
+            catalogSyncScheduler.refreshNow()
             appScope.launch {
                 if (tokenStore.getAccessToken() != null) {
                     runCatching { notificationsRepository.refreshUnreadCount() }
@@ -110,11 +138,13 @@ class AppGraph private constructor(context: Context) {
         sessionTransitionMutex.withLock {
             notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
+            pauseCatalogSync()
             deviceTokenManager.pause()
             deviceTokenManager.revokeBeforeLogout()
             // Remove the old bearer before clearing its notification rows and publishing a new user.
             tokenStore.clearTokens()
             notificationsRepository.clearLocal()
+            sharedCatalogsRepository.clearLocal()
             tokenStore.clearAll()
         }
     }
@@ -122,6 +152,8 @@ class AppGraph private constructor(context: Context) {
     private suspend fun resumeSessionServices() {
         legacyWorkCancellation.join()
         sessionTransitionMutex.withLock {
+            catalogSyncScheduler.start()
+            catalogRealtimeChannel.start()
             deviceTokenManager.resume()
             if (tokenStore.getAccessToken() != null) {
                 tokenStore.getSessionSubject()?.takeIf(String::isNotBlank)?.let {
@@ -130,6 +162,11 @@ class AppGraph private constructor(context: Context) {
                 appScope.launch { runCatching { notificationsRepository.refresh() } }
             }
         }
+    }
+
+    private suspend fun pauseCatalogSync() {
+        catalogRealtimeChannel.stop()
+        catalogSyncScheduler.stop()
     }
 
     private fun deactivateNotificationDisplay(fallbackSubject: String?) {

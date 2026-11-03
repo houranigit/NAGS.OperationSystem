@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -30,7 +31,7 @@ public sealed class CreateMaterialCommandValidator : AbstractValidator<CreateMat
     }
 }
 
-public sealed class CreateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class CreateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateMaterialCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateMaterialCommand request, CancellationToken cancellationToken)
@@ -52,6 +53,7 @@ public sealed class CreateMaterialCommandHandler(IMasterDataDbContext db, TimePr
 
         db.Materials.Add(material);
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Materials, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return material.Id;
     }
 }
@@ -80,7 +82,7 @@ public sealed class UpdateMaterialCommandValidator : AbstractValidator<UpdateMat
     }
 }
 
-public sealed class UpdateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class UpdateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateMaterialCommand>
 {
     public async Task<Result> Handle(UpdateMaterialCommand request, CancellationToken cancellationToken)
@@ -98,6 +100,8 @@ public sealed class UpdateMaterialCommandHandler(IMasterDataDbContext db, TimePr
         if (await db.Materials.AnyAsync(m => m.Name == trimmedName && m.Id != request.Id, cancellationToken))
             return Error.Conflict("A material with this name already exists.", "MasterData.Material.DuplicateName");
 
+        var previousName = material.Name;
+        var previousCalculationType = material.CalculationType;
         var result = material.Update(
             request.Name,
             request.Description,
@@ -105,6 +109,9 @@ public sealed class UpdateMaterialCommandHandler(IMasterDataDbContext db, TimePr
             request.CalculationType);
         if (result.IsFailure)
             return result.Error;
+
+        var optionsChanged = material.IsActive && (material.Name != previousName
+            || material.CalculationType != previousCalculationType);
 
         // Preserve mappings for older callers that omit this optional field; an empty string clears it.
         if (request.LegacySystemId is not null)
@@ -119,6 +126,8 @@ public sealed class UpdateMaterialCommandHandler(IMasterDataDbContext db, TimePr
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Materials, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -135,7 +144,7 @@ public sealed class UpdateMaterialCommandHandler(IMasterDataDbContext db, TimePr
 public sealed record ActivateMaterialCommand(Guid Id, byte[] RowVersion) : ICommand;
 public sealed record DeactivateMaterialCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class ActivateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateMaterialCommand>
 {
     public async Task<Result> Handle(ActivateMaterialCommand request, CancellationToken cancellationToken)
@@ -144,12 +153,15 @@ public sealed class ActivateMaterialCommandHandler(IMasterDataDbContext db, Time
         if (material is null)
             return Error.NotFound("Material not found.", "MasterData.Material.NotFound");
 
+        var optionsChanged = !material.IsActive;
         material.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(material, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Materials, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -160,7 +172,7 @@ public sealed class ActivateMaterialCommandHandler(IMasterDataDbContext db, Time
     }
 }
 
-public sealed class DeactivateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class DeactivateMaterialCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateMaterialCommand>
 {
     public async Task<Result> Handle(DeactivateMaterialCommand request, CancellationToken cancellationToken)
@@ -171,12 +183,15 @@ public sealed class DeactivateMaterialCommandHandler(IMasterDataDbContext db, Ti
         if (material.Id == WellKnownMasterDataIds.UnknownMaterial)
             return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.Material.SystemRecord");
 
+        var optionsChanged = material.IsActive;
         material.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(material, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Materials, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

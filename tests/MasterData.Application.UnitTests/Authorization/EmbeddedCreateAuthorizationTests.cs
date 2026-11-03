@@ -46,7 +46,8 @@ public sealed class EmbeddedCreateAuthorizationTests
         var handler = new CreateCustomerCommandHandler(
             db: null!,
             userContext: UserWithoutEmbeddedCreatePermissions(),
-            timeProvider: TimeProvider.System);
+            timeProvider: TimeProvider.System,
+            mobileSync: NoopMobileSyncBroadcaster.Instance);
 
         var result = await handler.Handle(
             new CreateCustomerCommand(

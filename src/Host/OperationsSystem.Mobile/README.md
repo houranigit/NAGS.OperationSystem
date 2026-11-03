@@ -1,6 +1,6 @@
 # NAGS Operations — Android
 
-The native Kotlin/Compose client supports the current [flight baseline](../../../docs/modules/operations-foundation.md): view flights, open basic planning details, and invite employees. Flight creation, single/batch scheduling, and planning edits remain in the web portal.
+The native Kotlin/Compose client supports the current [flight baseline](../../../docs/modules/operations-foundation.md): view flights, open basic planning details, invite employees, and synchronize shared MasterData catalogs. Flight creation, single/batch scheduling, and planning edits remain in the web portal.
 
 ## Current journey
 
@@ -11,6 +11,16 @@ An account with `operations.flights.invite` can invite active, unassigned employ
 The server enforces the same account/station scope as the portal. Administrators and Viewers can read within their granted scope; station staff see assigned flights and station-wide Per Landing flights, with wider station visibility when separately granted. Viewers cannot invite. A successful sign-in alone does not grant flight access.
 
 Flight reads and invitations require a server connection. The flight list is held in memory, with no offline flight cache or queued flight mutations. Work orders, status actions, drafts, scratch creation, return-to-ramp, flight printing, and Operations sync are outside this client baseline.
+
+## Shared catalog synchronization
+
+The app caches seven shared reference catalogs: customers, aircraft types, services, tools, materials, general supports, and ATA chapters. `SharedCatalogsApi` reads their existing `/api/v1/masterdata/{catalog}/options` endpoints through the same authenticated API client and configured branch URL as flight requests. These are active lookup records, not work-order forms or personalized performed-service allowances.
+
+Each endpoint requires `masterdata.reference.view-options` or its catalog's `.view` permission. Flight viewing does not grant catalog access. Administrators, station staff, and Viewers use their configured grants; a Customer Contact with customer-view permission can receive only their own customer options. Synchronization does not broaden those scopes or add permissions.
+
+Open **Sync Center** from the sync-status button in the home header or the Sync Center action in **My profile**. The restored page shows network online/offline status, live-channel connection state, the last accepted catalog event, and each catalog's cached count, last successful refresh, measured duration, and current error or permission denial. **Refresh now** runs an online catalog refresh. Connection status is independent of cache freshness: a connected channel can be awaiting its first event, and a failed channel does not stop HTTP refreshes. The last accepted event remains visible while offline and clears when the session ends. Automatic refresh runs after sign-in/token refresh, reconnecting, returning to the app, and every five minutes while the app process is active and connected. The catalog hub triggers a refresh on connection/reconnection and after successful catalog changes. Creating a record, changing active lookup fields, or activating/deactivating a record publishes a refresh hint after persistence succeeds. Deactivation therefore removes it from the next cached active-options snapshot. Changes outside the lookup payload, inactive-only edits, repeated state transitions, and rejected writes do not publish hints. Hints are best-effort; periodic and foreground refreshes also cover missed delivery. No background WorkManager catalog job is installed.
+
+`CatalogDatabase` version 2 stores snapshots keyed by API base URL and authenticated account in `shared-catalogs.db`, separately from the notification cache and unopened legacy database. Copied account IDs in the main, HandOver, and Operation Module APIs cannot expose another environment's cached catalog snapshot. The explicit version 1 → 2 migration preserves existing catalog snapshots and adds duration metadata. A network or parsing failure retains the last successful catalog snapshot and its timestamp. A `403` clears that catalog's cached records and records the denial; `401` clears the catalog cache. Signing out or changing accounts clears shared catalog snapshots. Catalog cache reads do not grant offline flight access: lists, details, and invitations continue to use the live scoped Operations API.
 
 ## Identity and Notifications
 
@@ -26,6 +36,7 @@ Notifications use Room `NotificationsDatabase` version 1 in `operations-baseline
 |---|---|
 | Flight HTTP client | `data/api/OperationsApi.kt` |
 | Online flight repository | `data/repo/FlightsRepository.kt` |
+| Shared catalog HTTP client and cache | `data/api/SharedCatalogsApi.kt`, `data/repo/SharedCatalogsRepository.kt`, `data/db/CatalogDatabase.kt` |
 | Flight models | `data/FlightModels.kt` |
 | Identity | Existing `AuthApi`, `AuthRepository`, and `TokenStore` |
 | Notification cache | `data/db/NotificationsDatabase.kt` |
@@ -39,7 +50,7 @@ Flight calls use the existing shared API:
 - `GET /api/v1/operations/flights/{id}/invitation-options`
 - `POST /api/v1/operations/flights/{id}/invite` with `{ "staffMemberIds": [...] }` and `If-Match`.
 
-There are no calls to the retired `/api/v1/mobile` Operations BFF or Operations realtime-sync hub.
+Shared catalog calls use the `customers`, `aircraft-types`, `services`, `tools`, `materials`, `general-supports`, and `ata-chapters` options routes under `/api/v1/masterdata`. Catalog change hints use the retained `/hubs/mobile-sync` hub. There are no calls to the retired `/api/v1/mobile` Operations BFF, flight-sync endpoints, or WO mutation APIs.
 
 ## Local development
 

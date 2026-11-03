@@ -255,11 +255,15 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
 
+    // Shared-catalog invalidations use the existing host-owned SignalR hub.
+    implementation(libs.signalr)
+    implementation(libs.slf4j.android)
+
     testImplementation(libs.junit4)
 }
 
 // Room schema export — generated JSONs land alongside the module so migrations
-// can track changes to the notification cache.
+// can track changes to the notification and shared-catalog caches.
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
     arg("room.incremental", "true")

@@ -52,7 +52,7 @@ test("manual navigation resolves every category and article exactly once", async
   for (const article of manualArticles) {
     assert.ok(manualCategories.some(item => item.id === article.categoryId && item.articleIds.includes(article.id)));
   }
-  for (const id of ["current-scope", "schedule-flight", "schedule-many-flights", "find-edit-flight", "android-browse-flights", "android-invite-employees", "android-account-notifications", "flight-access", "master-data-overview"]) {
+  for (const id of ["current-scope", "schedule-flight", "schedule-many-flights", "find-edit-flight", "android-browse-flights", "android-invite-employees", "android-catalog-sync", "android-account-notifications", "flight-access", "master-data-overview"]) {
     assert.ok(manualArticles.some(item => item.id === id));
   }
 });

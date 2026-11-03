@@ -5,8 +5,11 @@
     <exclude domain="file" path="outbox/" />
     <exclude domain="database" path="operations.db" />
     <exclude domain="database" path="operations-baseline.db" />
+    <exclude domain="database" path="shared-catalogs.db" />
     <exclude domain="database" path="operations.db-shm" />
     <exclude domain="database" path="operations-baseline.db-shm" />
+    <exclude domain="database" path="shared-catalogs.db-shm" />
     <exclude domain="database" path="operations.db-wal" />
     <exclude domain="database" path="operations-baseline.db-wal" />
+    <exclude domain="database" path="shared-catalogs.db-wal" />
 </full-backup-content>

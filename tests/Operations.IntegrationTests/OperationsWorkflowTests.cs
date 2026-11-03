@@ -1,5 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Threading.Channels;
+using BuildingBlocks.Application.Mobile;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
+using OperationsSystem.Api.Mobile;
 using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -413,6 +419,350 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         (await viewer.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         using var request = InvitationRequest(flightId, [refs.StaffMemberId], flight.RowVersion);
         (await viewer.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Shared_catalog_options_keep_flight_and_lookup_permissions_separate()
+    {
+        using var anonymous = factory.CreateClient();
+        foreach (var catalog in SharedCatalogs)
+            (await anonymous.GetAsync($"{MasterDataBase}/{catalog}/options")).StatusCode
+                .ShouldBe(HttpStatusCode.Unauthorized, catalog);
+
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var (flightOnly, _) = await CreateStaffLoginAsync(admin, refs);
+        var lookupRoleId = await CreateCatalogRoleAsync(admin, "StationStaff",
+            "operations.flights.view", "masterdata.reference.view-options");
+        var (lookupClient, _) = await CreateStaffLoginAsync(admin, refs, lookupRoleId);
+
+        foreach (var catalog in SharedCatalogs)
+        {
+            (await flightOnly.GetAsync($"{MasterDataBase}/{catalog}/options")).StatusCode
+                .ShouldBe(HttpStatusCode.Forbidden, catalog);
+            (await CatalogOptionsAsync(lookupClient, catalog)).ValueKind.ShouldBe(JsonValueKind.Array, catalog);
+        }
+
+        // Lookup access is not catalog-grid access and does not acquire mutation authority.
+        (await lookupClient.GetAsync($"{MasterDataBase}/services")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await lookupClient.PostAsJsonAsync($"{MasterDataBase}/services", new { name = "Denied" }))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var serviceRoleId = await CreateCatalogRoleAsync(admin, "StationStaff",
+            "operations.flights.view", "masterdata.services.view");
+        var (serviceClient, _) = await CreateStaffLoginAsync(admin, refs, serviceRoleId);
+        (await serviceClient.GetAsync($"{MasterDataBase}/services/options")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await serviceClient.GetAsync($"{MasterDataBase}/customers/options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Administrator_catalog_options_expose_active_shared_lookup_shapes_without_work_order_allowances()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var toolId = await PostForIdAsync(admin, $"{MasterDataBase}/tools",
+            new { name = $"Catalog Tool {suffix}", description = (string?)null, equipments = Array.Empty<object>(), calculationType = "Duration" });
+        var materialId = await PostForIdAsync(admin, $"{MasterDataBase}/materials",
+            new { name = $"Catalog Material {suffix}", description = (string?)null, calculationType = "Quantity" });
+        var supportId = await PostForIdAsync(admin, $"{MasterDataBase}/general-supports",
+            new { name = $"Catalog Support {suffix}", description = (string?)null, calculationType = "Quantity" });
+        var categoryId = await PostForIdAsync(admin, $"{MasterDataBase}/ata-chapter-categories",
+            new { name = $"Catalog ATA {suffix}" });
+        var chapterId = await PostForIdAsync(admin, $"{MasterDataBase}/ata-chapters",
+            new { categoryId, code = $"90-{suffix}", title = $"Catalog Chapter {suffix}" });
+
+        var customer = FindOption(await CatalogOptionsAsync(admin, "customers"), refs.CustomerId);
+        customer.GetProperty("iataCode").ValueKind.ShouldBe(JsonValueKind.Null);
+        customer.GetProperty("name").GetString().ShouldNotBeNullOrWhiteSpace();
+        var aircraft = FindOption(await CatalogOptionsAsync(admin, "aircraft-types"), refs.AircraftTypeId);
+        aircraft.GetProperty("manufacturer").GetString().ShouldBe("Airbus");
+        aircraft.GetProperty("model").GetString().ShouldNotBeNullOrWhiteSpace();
+        var services = await CatalogOptionsAsync(admin, "services");
+        FindOption(services, refs.ServiceId).GetProperty("isAircraftPerLanding").GetBoolean().ShouldBeFalse();
+        FindOption(services, WellKnownMasterDataIds.AircraftPerLandingService)
+            .GetProperty("isAircraftPerLanding").GetBoolean().ShouldBeTrue();
+        services.EnumerateArray().All(service => !service.TryGetProperty("isAllowedPerformedService", out _)).ShouldBeTrue();
+        FindOption(await CatalogOptionsAsync(admin, "tools"), toolId)
+            .GetProperty("calculationType").GetString().ShouldBe("Duration");
+        FindOption(await CatalogOptionsAsync(admin, "materials"), materialId)
+            .GetProperty("calculationType").GetString().ShouldBe("Quantity");
+        FindOption(await CatalogOptionsAsync(admin, "general-supports"), supportId)
+            .GetProperty("calculationType").GetString().ShouldBe("Quantity");
+        var chapter = FindOption(await CatalogOptionsAsync(admin, "ata-chapters"), chapterId);
+        chapter.GetProperty("categoryId").GetGuid().ShouldBe(categoryId);
+        chapter.GetProperty("categoryName").GetString().ShouldBe($"Catalog ATA {suffix}");
+        chapter.GetProperty("code").GetString().ShouldBe($"90-{suffix}");
+        chapter.GetProperty("title").GetString().ShouldBe($"Catalog Chapter {suffix}");
+
+        await DeactivateReferenceAsync(admin, "customers", refs.CustomerId);
+        await DeactivateReferenceAsync(admin, "aircraft-types", refs.AircraftTypeId);
+        await DeactivateReferenceAsync(admin, "ata-chapter-categories", categoryId);
+        (await CatalogOptionsAsync(admin, "customers")).EnumerateArray()
+            .ShouldNotContain(item => item.GetProperty("id").GetGuid() == refs.CustomerId);
+        (await CatalogOptionsAsync(admin, "aircraft-types")).EnumerateArray()
+            .ShouldNotContain(item => item.GetProperty("id").GetGuid() == refs.AircraftTypeId);
+        (await CatalogOptionsAsync(admin, "ata-chapters")).EnumerateArray()
+            .ShouldNotContain(item => item.GetProperty("id").GetGuid() == chapterId);
+    }
+
+    [Fact]
+    public async Task Viewer_can_sync_granted_shared_catalogs_without_catalog_mutation_permissions()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var roleId = await CreateCatalogRoleAsync(admin, "ViewerOnly",
+            "operations.flights.view", "masterdata.reference.view-options");
+        var email = $"catalog-viewer-{Guid.NewGuid():N}@example.com";
+        var invited = await admin.PostAsJsonAsync($"{IdentityBase}/users/invite", new
+        {
+            email, displayName = "Catalog viewer", roleId
+        });
+        invited.StatusCode.ShouldBe(HttpStatusCode.Created, await invited.Content.ReadAsStringAsync());
+        var viewer = await ActivateCatalogClientAsync(admin, email);
+
+        foreach (var catalog in SharedCatalogs)
+            (await CatalogOptionsAsync(viewer, catalog)).ValueKind.ShouldBe(JsonValueKind.Array, catalog);
+        (await viewer.PostAsJsonAsync($"{MasterDataBase}/aircraft-types", new { manufacturer = "Airbus", model = "Denied" }))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Customer_contact_options_remain_customer_scoped_and_do_not_unlock_shared_catalogs_or_flights()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var roleId = await CreateCatalogRoleAsync(admin, "CustomerContact", "masterdata.customers.view");
+        var email = $"catalog-contact-{Guid.NewGuid():N}@example.com";
+        var customer = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/customers/{refs.CustomerId}");
+        using var addContact = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/customers/{refs.CustomerId}/contacts")
+        {
+            Content = JsonContent.Create(new { name = "Catalog contact", jobTitle = (string?)null, email, phone = (string?)null, portalAccessRoleId = roleId })
+        };
+        addContact.Headers.TryAddWithoutValidation("If-Match", customer!.RowVersion);
+        var added = await admin.SendAsync(addContact);
+        added.StatusCode.ShouldBe(HttpStatusCode.Created, await added.Content.ReadAsStringAsync());
+        var contact = await ActivateCatalogClientAsync(admin, email);
+
+        var options = await CatalogOptionsAsync(contact, "customers");
+        options.EnumerateArray().ShouldHaveSingleItem().GetProperty("id").GetGuid().ShouldBe(refs.CustomerId);
+        foreach (var catalog in SharedCatalogs.Where(catalog => catalog != "customers"))
+            (await contact.GetAsync($"{MasterDataBase}/{catalog}/options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden, catalog);
+        (await contact.GetAsync($"{Base}/flights")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData("tools")]
+    [InlineData("materials")]
+    [InlineData("general-supports")]
+    [InlineData("aircraft-types")]
+    [InlineData("customers")]
+    [InlineData("services")]
+    public async Task Catalog_mutations_publish_live_refresh_after_success_without_false_failure_or_noop_events(string catalog)
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var name = $"Live {suffix}";
+        var customerIcao = NextThreeLetterCode();
+        var resource = catalog is "tools" or "materials" or "general-supports";
+        var calculationType = catalog == "tools" ? "Duration" : "Quantity";
+
+        object Body(string displayName, string? description = null) => catalog switch
+        {
+            "aircraft-types" => new { manufacturer = "Airbus", model = displayName, notes = description },
+            "customers" => new
+            {
+                iataCode = (string?)null, icaoCode = customerIcao, name = displayName,
+                countryId = refs.CountryId, officialEmail = (string?)null, officialPhone = (string?)null,
+                address = new { line1 = "1 Airport Rd", line2 = (string?)null, city = "City", region = (string?)null, postalCode = (string?)null },
+                contacts = Array.Empty<object>()
+            },
+            "tools" => new { name = displayName, description, calculationType, equipments = Array.Empty<object>() },
+            "materials" or "general-supports" => new { name = displayName, description, calculationType },
+            _ => new { name = displayName, description }
+        };
+
+        await using var live = await CatalogLiveSubscription.ConnectAsync(factory, admin);
+        var id = await PostForIdAsync(admin, $"{MasterDataBase}/{catalog}", Body(name));
+        await live.ExpectRefreshAsync(catalog);
+        var createdOption = FindOption(await CatalogOptionsAsync(admin, catalog), id);
+        createdOption.GetProperty(catalog == "aircraft-types" ? "model" : "name").GetString()
+            .ShouldBe(catalog == "aircraft-types" ? name.ToUpperInvariant() : name);
+        var createdVersion = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/{catalog}/{id}"))!.RowVersion;
+
+        // Duplicate creates must not publish an invalidation for a rejected transaction.
+        (await admin.PostAsJsonAsync($"{MasterDataBase}/{catalog}", Body(name))).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        await live.ExpectNoRefreshAsync();
+
+        name += " edited";
+        if (resource) calculationType = calculationType == "Duration" ? "Quantity" : "Duration";
+        (await UpdateCatalogAsync(admin, catalog, id, Body(name), createdVersion)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await live.ExpectRefreshAsync(catalog);
+        var editedOption = FindOption(await CatalogOptionsAsync(admin, catalog), id);
+        editedOption.GetProperty(catalog == "aircraft-types" ? "model" : "name").GetString()
+            .ShouldBe(catalog == "aircraft-types" ? name.ToUpperInvariant() : name);
+        if (resource) editedOption.GetProperty("calculationType").GetString().ShouldBe(calculationType);
+
+        if (catalog == "tools")
+        {
+            var version = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/{catalog}/{id}"))!.RowVersion;
+            (await UpdateCatalogAsync(admin, catalog, id, Body(name, "Metadata only"), version))
+                .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+            var tool = await admin.GetFromJsonAsync<JsonElement>($"{MasterDataBase}/{catalog}/{id}");
+            tool.GetProperty("description").GetString().ShouldBe("Metadata only");
+            await live.ExpectNoRefreshAsync();
+        }
+
+        // An old version that would overwrite visible fields must fail without a live hint.
+        (await UpdateCatalogAsync(admin, catalog, id, Body(name + " stale"), createdVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        await live.ExpectNoRefreshAsync();
+
+        await SetCatalogActiveAsync(admin, catalog, id, active: false);
+        await live.ExpectRefreshAsync(catalog);
+        (await CatalogOptionsAsync(admin, catalog)).EnumerateArray()
+            .ShouldNotContain(option => option.GetProperty("id").GetGuid() == id);
+        await SetCatalogActiveAsync(admin, catalog, id, active: false);
+        await live.ExpectNoRefreshAsync();
+
+        var inactiveVersion = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/{catalog}/{id}"))!.RowVersion;
+        name += " inactive";
+        (await UpdateCatalogAsync(admin, catalog, id, Body(name), inactiveVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await live.ExpectNoRefreshAsync();
+
+        await SetCatalogActiveAsync(admin, catalog, id, active: true);
+        await live.ExpectRefreshAsync(catalog);
+        FindOption(await CatalogOptionsAsync(admin, catalog), id)
+            .GetProperty(catalog == "aircraft-types" ? "model" : "name").GetString()
+            .ShouldBe(catalog == "aircraft-types" ? name.ToUpperInvariant() : name);
+        await SetCatalogActiveAsync(admin, catalog, id, active: true);
+        await live.ExpectNoRefreshAsync();
+    }
+
+    private static async Task<HttpResponseMessage> UpdateCatalogAsync(
+        HttpClient admin, string catalog, Guid id, object body, string rowVersion)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"{MasterDataBase}/{catalog}/{id}")
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", rowVersion);
+        return await admin.SendAsync(request);
+    }
+
+    private static async Task SetCatalogActiveAsync(HttpClient admin, string catalog, Guid id, bool active)
+    {
+        var detail = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/{catalog}/{id}");
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"{MasterDataBase}/{catalog}/{id}/{(active ? "activate" : "deactivate")}");
+        request.Headers.TryAddWithoutValidation("If-Match", detail!.RowVersion);
+        var response = await admin.SendAsync(request);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>Real SignalR transport through TestServer; shares this class's disposable SQL fixture.</summary>
+    private sealed class CatalogLiveSubscription(HubConnection connection, Channel<MobileSyncChange> changes) : IAsyncDisposable
+    {
+        public static async Task<CatalogLiveSubscription> ConnectAsync(OperationsApiFactory api, HttpClient authenticatedClient)
+        {
+            var bearer = authenticatedClient.DefaultRequestHeaders.Authorization!.Parameter;
+            var connection = new HubConnectionBuilder()
+                .WithUrl(new Uri(api.Server.BaseAddress, MobileSyncHub.Path), options =>
+                {
+                    options.Transports = HttpTransportType.LongPolling;
+                    options.HttpMessageHandlerFactory = _ => api.Server.CreateHandler();
+                    options.AccessTokenProvider = () => Task.FromResult(bearer);
+                })
+                .Build();
+            var changes = Channel.CreateUnbounded<MobileSyncChange>();
+            connection.On<MobileSyncChange>(MobileSyncHub.ChangeClientMethod, change =>
+            {
+                changes.Writer.TryWrite(change);
+            });
+            try
+            {
+                await connection.StartAsync();
+                connection.State.ShouldBe(HubConnectionState.Connected);
+                return new CatalogLiveSubscription(connection, changes);
+            }
+            catch
+            {
+                await connection.DisposeAsync();
+                throw;
+            }
+        }
+
+        public async Task ExpectRefreshAsync(string catalog)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var change = await changes.Reader.ReadAsync(timeout.Token);
+            change.Table.ShouldBe(catalog);
+            change.Op.ShouldBe(MobileSyncOps.Refresh);
+            change.Audience.ShouldBe(MobileSyncAudience.AllStations);
+            change.EntityId.ShouldBeNull();
+            change.Payload.ShouldBeNull();
+        }
+
+        public async Task ExpectNoRefreshAsync()
+        {
+            connection.State.ShouldBe(HubConnectionState.Connected);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+            try
+            {
+                var change = await changes.Reader.ReadAsync(timeout.Token);
+                throw new InvalidOperationException($"Unexpected catalog refresh: {change.Table}.");
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                // A rejected/irrelevant/no-op mutation has no change envelope on the live channel.
+            }
+            connection.State.ShouldBe(HubConnectionState.Connected);
+        }
+
+        public ValueTask DisposeAsync() => connection.DisposeAsync();
+    }
+
+    private static readonly string[] SharedCatalogs =
+    [
+        "customers", "aircraft-types", "services", "tools", "materials", "general-supports", "ata-chapters"
+    ];
+
+    private static Task<Guid> CreateCatalogRoleAsync(HttpClient admin, string userType, params string[] permissions) =>
+        PostForIdAsync(admin, $"{IdentityBase}/roles", new
+        {
+            name = $"Catalog Access {Guid.NewGuid():N}", description = (string?)null,
+            compatibleUserType = userType, permissions
+        });
+
+    private async Task<HttpClient> ActivateCatalogClientAsync(HttpClient admin, string email)
+    {
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        invitationToken.ShouldNotBeNull();
+        var password = $"Catalogs-{Guid.NewGuid():N}!";
+        (await admin.PostAsJsonAsync($"{IdentityBase}/auth/activate", new { email, invitationToken, newPassword = password }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await factory.DrainOutboxesAsync();
+        return await factory.CreateAuthenticatedClientAsync(email, password);
+    }
+
+    private static async Task<JsonElement> CatalogOptionsAsync(HttpClient client, string catalog)
+    {
+        var response = await client.GetAsync($"{MasterDataBase}/{catalog}/options");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    private static JsonElement FindOption(JsonElement options, Guid id) =>
+        options.EnumerateArray().Single(option => option.GetProperty("id").GetGuid() == id);
+
+    private static async Task DeactivateReferenceAsync(HttpClient admin, string catalog, Guid id)
+    {
+        var detail = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/{catalog}/{id}");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/{catalog}/{id}/deactivate");
+        request.Headers.TryAddWithoutValidation("If-Match", detail!.RowVersion);
+        var response = await admin.SendAsync(request);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync());
     }
 
     private static HttpRequestMessage InvitationRequest(Guid flightId, IReadOnlyList<Guid> staffIds, string? rowVersion = null)

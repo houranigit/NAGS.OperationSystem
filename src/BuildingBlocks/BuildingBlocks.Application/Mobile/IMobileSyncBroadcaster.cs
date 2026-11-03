@@ -11,8 +11,8 @@ namespace BuildingBlocks.Application.Mobile;
 /// Lives in BuildingBlocks so any module can enqueue without depending on the module
 /// that hosts the SignalR-backed implementation. Registered scoped so each request gets
 /// its own buffer. Flush failures are logged and swallowed — real-time pushes are an
-/// optimisation, never a correctness boundary (the catch-up endpoint and periodic
-/// polling cover missed messages).
+/// optimisation, never a correctness boundary (snapshot reloads on reconnect and
+/// periodic refresh cover missed messages).
 /// </remarks>
 public interface IMobileSyncBroadcaster
 {

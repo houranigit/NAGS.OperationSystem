@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -22,7 +23,7 @@ public sealed class CreateAircraftTypeCommandValidator : AbstractValidator<Creat
     }
 }
 
-public sealed class CreateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class CreateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateAircraftTypeCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateAircraftTypeCommand request, CancellationToken cancellationToken)
@@ -40,6 +41,7 @@ public sealed class CreateAircraftTypeCommandHandler(IMasterDataDbContext db, Ti
 
         db.AircraftTypes.Add(aircraftType);
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.AircraftTypes, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return aircraftType.Id;
     }
 }
@@ -60,7 +62,7 @@ public sealed class UpdateAircraftTypeCommandValidator : AbstractValidator<Updat
     }
 }
 
-public sealed class UpdateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class UpdateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateAircraftTypeCommand>
 {
     public async Task<Result> Handle(UpdateAircraftTypeCommand request, CancellationToken cancellationToken)
@@ -68,6 +70,9 @@ public sealed class UpdateAircraftTypeCommandHandler(IMasterDataDbContext db, Ti
         var aircraftType = await db.AircraftTypes.FirstOrDefaultAsync(a => a.Id == request.Id, cancellationToken);
         if (aircraftType is null)
             return Error.NotFound("Aircraft type not found.", "MasterData.AircraftType.NotFound");
+
+        var previousManufacturer = aircraftType.Manufacturer;
+        var previousModel = aircraftType.Model;
 
         var result = aircraftType.Update(request.Manufacturer, request.Model, request.Notes, timeProvider.GetUtcNow());
         if (result.IsFailure)
@@ -91,6 +96,8 @@ public sealed class UpdateAircraftTypeCommandHandler(IMasterDataDbContext db, Ti
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (aircraftType.IsActive && (aircraftType.Manufacturer != previousManufacturer || aircraftType.Model != previousModel))
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.AircraftTypes, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -104,7 +111,7 @@ public sealed class UpdateAircraftTypeCommandHandler(IMasterDataDbContext db, Ti
 public sealed record ActivateAircraftTypeCommand(Guid Id, byte[] RowVersion) : ICommand;
 public sealed record DeactivateAircraftTypeCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class ActivateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateAircraftTypeCommand>
 {
     public async Task<Result> Handle(ActivateAircraftTypeCommand request, CancellationToken cancellationToken)
@@ -113,12 +120,15 @@ public sealed class ActivateAircraftTypeCommandHandler(IMasterDataDbContext db, 
         if (aircraftType is null)
             return Error.NotFound("Aircraft type not found.", "MasterData.AircraftType.NotFound");
 
+        var wasActive = aircraftType.IsActive;
         aircraftType.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(aircraftType, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (aircraftType.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.AircraftTypes, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -129,7 +139,7 @@ public sealed class ActivateAircraftTypeCommandHandler(IMasterDataDbContext db, 
     }
 }
 
-public sealed class DeactivateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class DeactivateAircraftTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateAircraftTypeCommand>
 {
     public async Task<Result> Handle(DeactivateAircraftTypeCommand request, CancellationToken cancellationToken)
@@ -138,12 +148,15 @@ public sealed class DeactivateAircraftTypeCommandHandler(IMasterDataDbContext db
         if (aircraftType is null)
             return Error.NotFound("Aircraft type not found.", "MasterData.AircraftType.NotFound");
 
+        var wasActive = aircraftType.IsActive;
         aircraftType.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(aircraftType, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (aircraftType.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.AircraftTypes, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

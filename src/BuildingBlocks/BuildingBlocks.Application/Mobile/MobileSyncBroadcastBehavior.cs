@@ -39,7 +39,7 @@ public sealed class MobileSyncBroadcastBehavior<TRequest, TResponse>(
         catch (Exception ex)
         {
             // Live pushes are best-effort — a flush failure must never turn a successful
-            // command into a failed one. Clients reconcile via catch-up on reconnect.
+            // command into a failed one. Clients reload snapshots on reconnect and periodic refresh.
             logger.LogWarning(ex,
                 "Mobile sync broadcaster flush failed for request {RequestType}",
                 typeof(TRequest).Name);

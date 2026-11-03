@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -43,7 +44,7 @@ public sealed class ToolEquipmentInputValidator : AbstractValidator<ToolEquipmen
     }
 }
 
-public sealed class CreateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class CreateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateToolCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateToolCommand request, CancellationToken cancellationToken)
@@ -73,6 +74,7 @@ public sealed class CreateToolCommandHandler(IMasterDataDbContext db, TimeProvid
 
         db.Tools.Add(tool);
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Tools, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return tool.Id;
     }
 }
@@ -103,7 +105,7 @@ public sealed class UpdateToolCommandValidator : AbstractValidator<UpdateToolCom
     }
 }
 
-public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateToolCommand>
 {
     public async Task<Result> Handle(UpdateToolCommand request, CancellationToken cancellationToken)
@@ -124,10 +126,15 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
         if (await db.Tools.AnyAsync(t => t.Name == trimmedName && t.Id != request.Id, cancellationToken))
             return Error.Conflict("A tool with this name already exists.", "MasterData.Tool.DuplicateName");
 
+        var previousName = tool.Name;
+        var previousCalculationType = tool.CalculationType;
         var now = timeProvider.GetUtcNow();
         var result = tool.Update(request.Name, request.Description, now, request.CalculationType);
         if (result.IsFailure)
             return result.Error;
+
+        var optionsChanged = tool.IsActive && (tool.Name != previousName
+            || tool.CalculationType != previousCalculationType);
 
         var requested = request.Equipments ?? [];
         var keepEquipmentIds = requested.Where(e => e.Id.HasValue).Select(e => e.Id!.Value).ToHashSet();
@@ -172,6 +179,8 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Tools, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -197,7 +206,7 @@ public sealed class UpdateToolCommandHandler(IMasterDataDbContext db, TimeProvid
 public sealed record ActivateToolCommand(Guid Id, byte[] RowVersion) : ICommand;
 public sealed record DeactivateToolCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class ActivateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateToolCommand>
 {
     public async Task<Result> Handle(ActivateToolCommand request, CancellationToken cancellationToken)
@@ -206,12 +215,15 @@ public sealed class ActivateToolCommandHandler(IMasterDataDbContext db, TimeProv
         if (tool is null)
             return Error.NotFound("Tool not found.", "MasterData.Tool.NotFound");
 
+        var optionsChanged = !tool.IsActive;
         tool.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(tool, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Tools, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -222,7 +234,7 @@ public sealed class ActivateToolCommandHandler(IMasterDataDbContext db, TimeProv
     }
 }
 
-public sealed class DeactivateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class DeactivateToolCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateToolCommand>
 {
     public async Task<Result> Handle(DeactivateToolCommand request, CancellationToken cancellationToken)
@@ -233,12 +245,15 @@ public sealed class DeactivateToolCommandHandler(IMasterDataDbContext db, TimePr
         if (tool.Id == WellKnownMasterDataIds.UnknownTool)
             return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.Tool.SystemRecord");
 
+        var optionsChanged = tool.IsActive;
         tool.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(tool, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Tools, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

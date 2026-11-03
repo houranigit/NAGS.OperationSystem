@@ -28,12 +28,15 @@ fun MainShellScreen(
     onLogout: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenAccount: () -> Unit,
+    onOpenSyncCenter: () -> Unit,
     notificationOpenRequest: NotificationOpenRequest? = null,
     onNotificationHandled: (String?) -> Unit = {},
 ) {
     val displayName by graph.tokenStore.displayNameFlow.collectAsStateWithLifecycle(initialValue = null)
     val unreadNotifications by graph.notificationsRepository.observeUnreadCount()
         .collectAsStateWithLifecycle(initialValue = 0)
+    val isOnline by graph.networkMonitor.isOnline.collectAsStateWithLifecycle()
+    val isSyncing by graph.sharedCatalogsRepository.isSyncing.collectAsStateWithLifecycle()
     val subject by graph.tokenStore.sessionSubjectFlow.collectAsStateWithLifecycle(initialValue = null)
     val flights: FlightsViewModel = viewModel(key = "flights:$subject", factory = factory)
     NotificationPermissionPrompt()
@@ -44,7 +47,8 @@ fun MainShellScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             AppHeader(displayName = displayName, onLogout = onLogout,
                 onNotificationsClick = onOpenNotifications, onProfileClick = onOpenAccount,
-                unreadNotifications = unreadNotifications)
+                unreadNotifications = unreadNotifications, onSyncCenterClick = onOpenSyncCenter,
+                isOnline = isOnline, isSyncing = isSyncing)
             FlightsScreen(viewModel = flights, notificationOpenRequest = notificationOpenRequest,
                 onNotificationHandled = onNotificationHandled)
         }

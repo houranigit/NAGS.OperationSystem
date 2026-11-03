@@ -1,0 +1,243 @@
+package com.nags.operations.data.repo
+
+import com.nags.operations.data.ApiException
+import com.nags.operations.data.SharedCatalog
+import com.nags.operations.data.db.dao.SharedCatalogDao
+import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
+import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+
+class SharedCatalogsRepositoryTest {
+    private val owner = MutableStateFlow<String?>("account-a")
+    private val dao = MemoryCatalogDao()
+    private var clock = "2026-11-03T10:00:00Z"
+    private var elapsedNanos = 0L
+    private var durationMs = 25L
+
+    @Test
+    fun successfulRefreshPersistsAllCanonicalCatalogsAndTheirMetadata() = runBlocking {
+        val repository = repository()
+        repository.refresh()
+
+        assertEquals(SharedCatalog.entries.size, dao.rows.value.size)
+        assertEquals("A320", repository.aircraftTypesFlow().first().single().model)
+        assertNull(repository.customersFlow().first().single().iataCode)
+        assertTrue(repository.servicesFlow().first().single().isAircraftPerLanding)
+        assertEquals("Duration", repository.toolsFlow().first().single().calculationType)
+        assertEquals("Quantity", repository.materialsFlow().first().single().calculationType)
+        assertEquals("Support", repository.generalSupportsFlow().first().single().name)
+        assertEquals("05", repository.ataChaptersFlow().first().single().code)
+        assertTrue(repository.observeStatus().first().all {
+            it.itemCount == 1 && it.lastSuccessUtc == clock && it.lastAttemptUtc == clock &&
+                it.error == null && !it.permissionDenied && it.lastDurationMs == durationMs
+        })
+        // The options route's entity concurrency metadata is not part of the reference cache.
+        assertFalse(dao.snapshot("account-a", "ata-chapters")!!.payloadJson.contains("rowVersion"))
+        assertFalse(repository.isSyncing.value)
+    }
+
+    @Test
+    fun aTransientCatalogFailureRetainsItsSnapshotWhileOtherCatalogsRefresh() = runBlocking {
+        var failing = false
+        val repository = repository { kind ->
+            if (failing && kind == SharedCatalog.Customers) throw IOException("Offline")
+            payload(kind)
+        }
+        repository.refresh()
+        val previous = dao.snapshot("account-a", "customers")!!
+        // A wall-clock adjustment does not affect the monotonic download duration.
+        clock = "2026-11-03T09:00:00Z"
+        durationMs = 87L
+        failing = true
+        repository.refresh()
+
+        val retained = dao.snapshot("account-a", "customers")!!
+        assertEquals(previous.payloadJson, retained.payloadJson)
+        assertEquals(previous.lastSuccessUtc, retained.lastSuccessUtc)
+        assertEquals(previous.lastDurationMs, retained.lastDurationMs)
+        assertEquals(25L, retained.lastDurationMs)
+        assertEquals(clock, retained.lastAttemptUtc)
+        assertNotNull(retained.error)
+        assertEquals(clock, dao.snapshot("account-a", "aircraft-types")!!.lastSuccessUtc)
+        assertEquals(87L, dao.snapshot("account-a", "aircraft-types")!!.lastDurationMs)
+        assertEquals("Airline", repository.customersFlow().first().single().name)
+    }
+
+    @Test
+    fun deniedCatalogAccessDropsOnlyThatCatalogAndItsLastSuccess() = runBlocking {
+        var denied = false
+        val repository = repository { kind ->
+            if (denied && kind == SharedCatalog.Customers) throw ApiException(403, "Denied")
+            payload(kind)
+        }
+        repository.refresh()
+        denied = true
+        repository.refresh()
+
+        assertTrue(repository.customersFlow().first().isEmpty())
+        assertEquals(1, repository.aircraftTypesFlow().first().size)
+        val status = repository.observeStatus().first().single { it.kind == SharedCatalog.Customers }
+        assertEquals(0, status.itemCount)
+        assertNull(status.lastSuccessUtc)
+        assertNull(status.lastDurationMs)
+        assertTrue(status.permissionDenied)
+        assertNotNull(status.error)
+    }
+
+    @Test
+    fun unauthorizedResponseClearsPersistedCatalogsEvenIfHttpAlreadyRemovedTokens() = runBlocking {
+        repository().refresh()
+        assertTrue(dao.rows.value.isNotEmpty())
+        val repository = repository {
+            owner.value = null
+            throw ApiException(401, "Expired session")
+        }
+        repository.refresh()
+
+        assertTrue(dao.rows.value.isEmpty())
+        assertTrue(repository.aircraftTypesFlow().first().isEmpty())
+        assertFalse(repository.isSyncing.value)
+    }
+
+    @Test
+    fun aLateResponseCannotWriteAfterAccountSwitchCleanup() = runBlocking {
+        val response = CompletableDeferred<String>()
+        var reads = 0
+        val repository = repository {
+            reads++
+            response.await()
+        }
+        val pending = launch(start = CoroutineStart.UNDISPATCHED) { repository.refresh() }
+        assertTrue(repository.isSyncing.value)
+        owner.value = "account-b"
+        repository.clearLocal()
+        response.complete(payload(SharedCatalog.AircraftTypes))
+        pending.join()
+
+        assertTrue(dao.rows.value.isEmpty())
+        assertTrue(repository.aircraftTypesFlow().first().isEmpty())
+        assertEquals(1, reads)
+    }
+
+    @Test
+    fun cleanupAlsoInvalidatesLateResponsesWhenTheSameAccountSignsBackIn() = runBlocking {
+        val response = CompletableDeferred<String>()
+        val repository = repository { response.await() }
+        val pending = launch(start = CoroutineStart.UNDISPATCHED) { repository.refresh() }
+        repository.clearLocal()
+        response.complete(payload(SharedCatalog.AircraftTypes))
+        pending.join()
+
+        assertTrue(dao.rows.value.isEmpty())
+    }
+
+    @Test
+    fun readFlowsNeverExposeAnotherAccountOrSignedOutCache() = runBlocking {
+        val repository = repository()
+        repository.refresh()
+        owner.value = "account-b"
+        assertTrue(repository.customersFlow().first().isEmpty())
+        owner.value = null
+        assertTrue(repository.customersFlow().first().isEmpty())
+        assertTrue(repository.observeStatus().first().all { it.lastSuccessUtc == null && it.itemCount == 0 })
+    }
+
+    @Test
+    fun copiedAccountIdsOnDifferentApiServersNeverShareCachedCatalogs() = runBlocking {
+        fun forServer(baseUrl: String, model: String) = SharedCatalogsRepository(
+            fetchCatalog = { kind -> payload(kind).replace("A320", model) },
+            dao = dao,
+            ownerFlow = owner.map { sharedCatalogOwnerKey(baseUrl, it) },
+            currentOwner = { sharedCatalogOwnerKey(baseUrl, owner.value) },
+            now = { clock },
+        )
+        val currentBranch = forServer("http://10.0.2.2:5213/", "Branch aircraft")
+        val handover = forServer("http://10.0.2.2:5212", "Handover aircraft")
+        currentBranch.refresh()
+
+        assertTrue(handover.aircraftTypesFlow().first().isEmpty())
+        handover.refresh()
+        assertEquals("Branch aircraft", currentBranch.aircraftTypesFlow().first().single().model)
+        assertEquals("Handover aircraft", handover.aircraftTypesFlow().first().single().model)
+        assertEquals(SharedCatalog.entries.size * 2, dao.rows.value.size)
+    }
+
+    @Test
+    fun malformedSuccessPayloadDoesNotReplaceTheLastValidSnapshot() = runBlocking {
+        var malformed = false
+        val repository = repository { kind ->
+            if (malformed && kind == SharedCatalog.AircraftTypes) "[{\"id\":\"incomplete\"}]" else payload(kind)
+        }
+        repository.refresh()
+        val previous = dao.snapshot("account-a", "aircraft-types")!!
+        malformed = true
+        repository.refresh()
+
+        val retained = dao.snapshot("account-a", "aircraft-types")!!
+        assertEquals(previous.payloadJson, retained.payloadJson)
+        assertEquals(previous.lastSuccessUtc, retained.lastSuccessUtc)
+        assertNotNull(retained.error)
+        assertEquals("A320", repository.aircraftTypesFlow().first().single().model)
+    }
+
+    @Test
+    fun concurrentRefreshRequestsDoNotRaceSnapshotReplacement() = runBlocking {
+        val response = CompletableDeferred<String>()
+        var reads = 0
+        val repository = repository { kind ->
+            reads++
+            if (kind == SharedCatalog.AircraftTypes) response.await() else payload(kind)
+        }
+        val pending = launch(start = CoroutineStart.UNDISPATCHED) { repository.refresh() }
+        repository.refresh()
+        assertEquals(1, reads)
+        response.complete(payload(SharedCatalog.AircraftTypes))
+        pending.join()
+
+        assertEquals(SharedCatalog.entries.size, reads)
+        assertEquals(SharedCatalog.entries.size, dao.rows.value.size)
+    }
+
+    private fun repository(fetch: suspend (SharedCatalog) -> String = ::payload) = SharedCatalogsRepository(
+        fetchCatalog = fetch, dao = dao, ownerFlow = owner, currentOwner = { owner.value }, now = { clock },
+        monotonicNanos = { elapsedNanos.also { elapsedNanos += durationMs * 1_000_000L } },
+    )
+
+    private fun payload(kind: SharedCatalog): String = when (kind) {
+        SharedCatalog.AircraftTypes -> """[{"id":"aircraft","manufacturer":"Airbus","model":"A320"}]"""
+        SharedCatalog.Customers -> """[{"id":"customer","iataCode":null,"name":"Airline"}]"""
+        SharedCatalog.Services -> """[{"id":"service","name":"Per Landing","isAircraftPerLanding":true}]"""
+        SharedCatalog.Tools -> """[{"id":"tool","name":"Tool","calculationType":"Duration"}]"""
+        SharedCatalog.Materials -> """[{"id":"material","name":"Material","calculationType":"Quantity"}]"""
+        SharedCatalog.GeneralSupports -> """[{"id":"support","name":"Support","calculationType":"Quantity"}]"""
+        SharedCatalog.AtaChapters -> """[{"id":"chapter","categoryId":"category","categoryName":"General","code":"05","title":"Time limits","isActive":true,"categoryIsActive":true,"rowVersion":"ignored"}]"""
+    }
+}
+
+private class MemoryCatalogDao : SharedCatalogDao {
+    val rows = MutableStateFlow<List<SharedCatalogSnapshotEntity>>(emptyList())
+
+    override fun observe(ownerSubject: String): Flow<List<SharedCatalogSnapshotEntity>> = rows.map { snapshots ->
+        snapshots.filter { it.ownerSubject == ownerSubject }
+    }
+
+    override suspend fun snapshot(ownerSubject: String, catalog: String): SharedCatalogSnapshotEntity? =
+        rows.value.firstOrNull { it.ownerSubject == ownerSubject && it.catalog == catalog }
+
+    override suspend fun put(snapshot: SharedCatalogSnapshotEntity) {
+        rows.value = rows.value.filterNot {
+            it.ownerSubject == snapshot.ownerSubject && it.catalog == snapshot.catalog
+        } + snapshot
+    }
+
+    override suspend fun clearAll() { rows.value = emptyList() }
+}

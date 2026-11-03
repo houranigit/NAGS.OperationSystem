@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
@@ -47,7 +48,7 @@ public sealed class CreateCustomerCommandValidator : AbstractValidator<CreateCus
     }
 }
 
-public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserContext userContext, TimeProvider timeProvider)
+public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserContext userContext, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateCustomerCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateCustomerCommand request, CancellationToken cancellationToken)
@@ -115,6 +116,7 @@ public sealed class CreateCustomerCommandHandler(IMasterDataDbContext db, IUserC
 
         db.Customers.Add(customer);
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Customers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return customer.Id;
     }
 
@@ -187,7 +189,7 @@ public sealed class UpdateCustomerCommandValidator : AbstractValidator<UpdateCus
     }
 }
 
-public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateCustomerCommand>
 {
     public async Task<Result> Handle(UpdateCustomerCommand request, CancellationToken cancellationToken)
@@ -215,6 +217,9 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
             return addressResult.Error;
 
         var now = timeProvider.GetUtcNow();
+        var previousIataCode = customer.IataCode;
+        var previousName = customer.Name;
+
         var result = customer.Update(
             request.IataCode, request.IcaoCode, request.Name, request.CountryId,
             request.OfficialEmail, request.OfficialPhone, addressResult.Value, now);
@@ -238,6 +243,8 @@ public sealed class UpdateCustomerCommandHandler(IMasterDataDbContext db, IMaste
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (customer.IsActive && (customer.IataCode != previousIataCode || customer.Name != previousName))
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Customers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -511,7 +518,7 @@ public sealed record ActivateCustomerCommand(Guid Id, byte[] RowVersion) : IComm
 
 public sealed record DeactivateCustomerCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateCustomerCommand>
 {
     public async Task<Result> Handle(ActivateCustomerCommand request, CancellationToken cancellationToken)
@@ -526,12 +533,15 @@ public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, IMas
         if (CustomerSystemRecords.IsSystem(customer.Id))
             return Error.Conflict("System customers cannot be activated or deactivated.", "MasterData.Customer.SystemProtected");
 
+        var wasActive = customer.IsActive;
         customer.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(customer, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (customer.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Customers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -542,7 +552,7 @@ public sealed class ActivateCustomerCommandHandler(IMasterDataDbContext db, IMas
     }
 }
 
-public sealed class DeactivateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class DeactivateCustomerCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateCustomerCommand>
 {
     public async Task<Result> Handle(DeactivateCustomerCommand request, CancellationToken cancellationToken)
@@ -571,12 +581,15 @@ public sealed class DeactivateCustomerCommandHandler(IMasterDataDbContext db, IM
             }
         }
 
+        var wasActive = customer.IsActive;
         customer.Deactivate(now);
         db.SetOriginalRowVersion(customer, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (customer.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Customers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

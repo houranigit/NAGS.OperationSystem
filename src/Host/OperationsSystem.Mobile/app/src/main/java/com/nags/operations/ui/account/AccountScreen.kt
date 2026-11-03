@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -35,7 +36,12 @@ import com.nags.operations.ui.theme.BrandRed
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AccountScreen(viewModel: AccountViewModel, onBack: () -> Unit, onLogout: () -> Unit) {
+fun AccountScreen(
+    viewModel: AccountViewModel,
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    onOpenSyncCenter: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LifecycleResumeEffect(viewModel) {
         viewModel.refresh()
@@ -80,6 +86,10 @@ fun AccountScreen(viewModel: AccountViewModel, onBack: () -> Unit, onLogout: () 
             }
             if (!state.isOnline) {
                 Text(stringResource(R.string.account_profile_offline), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OutlinedButton(onClick = onOpenSyncCenter) {
+                Icon(Icons.Default.Sync, contentDescription = null)
+                Text(stringResource(R.string.sync_center_title), modifier = Modifier.padding(start = 8.dp))
             }
             OutlinedButton(onClick = onLogout) {
                 Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)

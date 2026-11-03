@@ -35,7 +35,7 @@ public sealed class LegacySystemIdTests
     public async Task Create_update_and_clear_are_persisted_and_omitted_update_preserves_mapping()
     {
         await using var db = CreateDb();
-        var create = await new CreateServiceCommandHandler(db, TimeProvider.System).Handle(
+        var create = await new CreateServiceCommandHandler(db, TimeProvider.System, NoopMobileSyncBroadcaster.Instance).Handle(
             new CreateServiceCommand("A Check", null, "  00123  "), CancellationToken.None);
         create.IsSuccess.ShouldBeTrue();
         db.ChangeTracker.Clear();
@@ -43,7 +43,7 @@ public sealed class LegacySystemIdTests
         var detail = await new GetServiceByIdQueryHandler(db).Handle(
             new GetServiceByIdQuery(create.Value), CancellationToken.None);
         detail.Value.LegacySystemId.ShouldBe("00123");
-        var handler = new UpdateServiceCommandHandler(db, TimeProvider.System);
+        var handler = new UpdateServiceCommandHandler(db, TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
         var update = new UpdateServiceCommand(create.Value, "A Check Updated", null, []);
         (await handler.Handle(update, CancellationToken.None)).IsSuccess.ShouldBeTrue();
         db.ChangeTracker.Clear();
@@ -68,7 +68,7 @@ public sealed class LegacySystemIdTests
             WellKnownMasterDataIds.AircraftPerLandingService).Value;
         db.Services.Add(service);
         await db.SaveChangesAsync();
-        var handler = new UpdateServiceCommandHandler(db, TimeProvider.System);
+        var handler = new UpdateServiceCommandHandler(db, TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
         var mapping = new UpdateServiceCommand(service.Id, service.Name, service.Description, [], "PL001");
 
         (await handler.Handle(mapping, CancellationToken.None)).IsSuccess.ShouldBeTrue();
@@ -92,7 +92,7 @@ public sealed class LegacySystemIdTests
             Address.Create(null, null, null, null, null).Value, Now, WellKnownMasterDataIds.UnknownCustomer).Value;
         db.AddRange(country, customer);
         await db.SaveChangesAsync();
-        var handler = new UpdateCustomerCommandHandler(db, new AdministratorScope(), TimeProvider.System);
+        var handler = new UpdateCustomerCommandHandler(db, new AdministratorScope(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
         var mapping = new UpdateCustomerCommand(customer.Id, null, null, customer.Name, country.Id,
             null, null, new CustomerAddressInput(null, null, null, null, null), [], "UNKNOWN-CUSTOMER");
 
@@ -118,9 +118,9 @@ public sealed class LegacySystemIdTests
         var operation = OperationType.Create("Adhoc", null, Now, WellKnownMasterDataIds.AdHocOperationType).Value;
         db.AddRange(tool, material, support, operation);
         await db.SaveChangesAsync();
-        var toolHandler = new UpdateToolCommandHandler(db, TimeProvider.System);
-        var materialHandler = new UpdateMaterialCommandHandler(db, TimeProvider.System);
-        var supportHandler = new UpdateGeneralSupportCommandHandler(db, TimeProvider.System);
+        var toolHandler = new UpdateToolCommandHandler(db, TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
+        var materialHandler = new UpdateMaterialCommandHandler(db, TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
+        var supportHandler = new UpdateGeneralSupportCommandHandler(db, TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
         var operationHandler = new UpdateOperationTypeCommandHandler(db, TimeProvider.System);
         var toolMapping = new UpdateToolCommand(tool.Id, tool.Name, null, [], [], LegacySystemId: "TOOL");
         var materialMapping = new UpdateMaterialCommand(material.Id, material.Name, null, [], LegacySystemId: "MAT");

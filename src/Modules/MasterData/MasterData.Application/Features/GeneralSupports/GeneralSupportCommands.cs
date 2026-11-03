@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -30,7 +31,7 @@ public sealed class CreateGeneralSupportCommandValidator : AbstractValidator<Cre
     }
 }
 
-public sealed class CreateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class CreateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateGeneralSupportCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateGeneralSupportCommand request, CancellationToken cancellationToken)
@@ -52,6 +53,7 @@ public sealed class CreateGeneralSupportCommandHandler(IMasterDataDbContext db, 
 
         db.GeneralSupports.Add(support);
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.GeneralSupports, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return support.Id;
     }
 }
@@ -80,7 +82,7 @@ public sealed class UpdateGeneralSupportCommandValidator : AbstractValidator<Upd
     }
 }
 
-public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateGeneralSupportCommand>
 {
     public async Task<Result> Handle(UpdateGeneralSupportCommand request, CancellationToken cancellationToken)
@@ -98,6 +100,8 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
         if (await db.GeneralSupports.AnyAsync(g => g.Name == trimmedName && g.Id != request.Id, cancellationToken))
             return Error.Conflict("A general support item with this name already exists.", "MasterData.GeneralSupport.DuplicateName");
 
+        var previousName = support.Name;
+        var previousCalculationType = support.CalculationType;
         var result = support.Update(
             request.Name,
             request.Description,
@@ -105,6 +109,9 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
             request.CalculationType);
         if (result.IsFailure)
             return result.Error;
+
+        var optionsChanged = support.IsActive && (support.Name != previousName
+            || support.CalculationType != previousCalculationType);
 
         // Preserve mappings for older callers that omit this optional field; an empty string clears it.
         if (request.LegacySystemId is not null)
@@ -119,6 +126,8 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.GeneralSupports, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -135,7 +144,7 @@ public sealed class UpdateGeneralSupportCommandHandler(IMasterDataDbContext db, 
 public sealed record ActivateGeneralSupportCommand(Guid Id, byte[] RowVersion) : ICommand;
 public sealed record DeactivateGeneralSupportCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class ActivateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateGeneralSupportCommand>
 {
     public async Task<Result> Handle(ActivateGeneralSupportCommand request, CancellationToken cancellationToken)
@@ -144,12 +153,15 @@ public sealed class ActivateGeneralSupportCommandHandler(IMasterDataDbContext db
         if (support is null)
             return Error.NotFound("General support item not found.", "MasterData.GeneralSupport.NotFound");
 
+        var optionsChanged = !support.IsActive;
         support.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(support, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.GeneralSupports, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -160,7 +172,7 @@ public sealed class ActivateGeneralSupportCommandHandler(IMasterDataDbContext db
     }
 }
 
-public sealed class DeactivateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class DeactivateGeneralSupportCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateGeneralSupportCommand>
 {
     public async Task<Result> Handle(DeactivateGeneralSupportCommand request, CancellationToken cancellationToken)
@@ -171,12 +183,15 @@ public sealed class DeactivateGeneralSupportCommandHandler(IMasterDataDbContext 
         if (support.Id == WellKnownMasterDataIds.UnknownGeneralSupport)
             return Error.Validation("System-seeded records cannot be modified or deactivated.", "MasterData.GeneralSupport.SystemRecord");
 
+        var optionsChanged = support.IsActive;
         support.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(support, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (optionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.GeneralSupports, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

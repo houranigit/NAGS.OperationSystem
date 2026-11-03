@@ -1,0 +1,76 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "055afdf2d46613ec4d8699f86849de2c",
+    "entities": [
+      {
+        "tableName": "shared_catalog_snapshots",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `catalog` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `itemCount` INTEGER NOT NULL, `lastAttemptUtc` TEXT, `lastSuccessUtc` TEXT, `error` TEXT, `permissionDenied` INTEGER NOT NULL, `lastDurationMs` INTEGER, PRIMARY KEY(`ownerSubject`, `catalog`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catalog",
+            "columnName": "catalog",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payloadJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemCount",
+            "columnName": "itemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAttemptUtc",
+            "columnName": "lastAttemptUtc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSuccessUtc",
+            "columnName": "lastSuccessUtc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "permissionDenied",
+            "columnName": "permissionDenied",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastDurationMs",
+            "columnName": "lastDurationMs",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "catalog"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '055afdf2d46613ec4d8699f86849de2c')"
+    ]
+  }
+}

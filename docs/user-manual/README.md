@@ -5,7 +5,8 @@ register. The guide covers single-flight and batch scheduling on the portal,
 Android list/search/refresh and basic flight details, permitted employee
 invitations, shared access rules, and existing master-data catalogs.
 
-Android retains sign-in, MFA, profile viewing, and notifications. Its flight
+Android retains shared catalog synchronization, sign-in, MFA, profile viewing,
+and notifications. Its flight
 actions are viewing and employee invitations; scheduling and planning edits use
 the portal. Work orders, operational history, status changes, handover,
 approvals, analytics, and exports remain outside the current Operations scope.

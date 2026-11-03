@@ -7,6 +7,7 @@ import com.nags.operations.ui.account.AccountViewModel
 import com.nags.operations.ui.flights.FlightsViewModel
 import com.nags.operations.ui.login.LoginViewModel
 import com.nags.operations.ui.notifications.NotificationsViewModel
+import com.nags.operations.ui.sync.SyncCenterViewModel
 
 class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
@@ -14,6 +15,10 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
         LoginViewModel::class.java -> LoginViewModel(graph.authRepository)
         FlightsViewModel::class.java -> FlightsViewModel(graph.flightsRepository, graph.authRepository)
         AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
+        SyncCenterViewModel::class.java -> SyncCenterViewModel(
+            graph.sharedCatalogsRepository, graph.networkMonitor, graph.catalogConnectionState,
+            graph.lastCatalogEventAt, graph::refreshCatalogs,
+        )
         NotificationsViewModel::class.java -> NotificationsViewModel(graph.notificationsRepository)
         else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")
     } as T

@@ -22,6 +22,8 @@ import com.nags.operations.ui.login.LoginScreen
 import com.nags.operations.ui.login.LoginViewModel
 import com.nags.operations.ui.notifications.NotificationsScreen
 import com.nags.operations.ui.notifications.NotificationsViewModel
+import com.nags.operations.ui.sync.SyncCenterScreen
+import com.nags.operations.ui.sync.SyncCenterViewModel
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -29,6 +31,7 @@ private object Routes {
     const val Flights = "flights"
     const val Notifications = "notifications"
     const val Account = "account"
+    const val SyncCenter = "sync"
 }
 
 @Composable
@@ -94,12 +97,18 @@ fun OperationsApp() {
             MainShellScreen(graph = graph, factory = factory, onLogout = ::signOut,
                 onOpenNotifications = { navController.navigate(Routes.Notifications) },
                 onOpenAccount = { navController.navigate(Routes.Account) },
+                onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) },
                 notificationOpenRequest = pendingNotification,
                 onNotificationHandled = graph.notificationNavigation::consume)
         }
         composable(Routes.Account) {
             val model: AccountViewModel = viewModel(key = "account:$subject", factory = factory)
-            AccountScreen(viewModel = model, onBack = { navController.popBackStack() }, onLogout = ::signOut)
+            AccountScreen(viewModel = model, onBack = { navController.popBackStack() }, onLogout = ::signOut,
+                onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) })
+        }
+        composable(Routes.SyncCenter) {
+            val model: SyncCenterViewModel = viewModel(key = "sync:$subject", factory = factory)
+            SyncCenterScreen(viewModel = model, onBack = { navController.popBackStack() })
         }
         composable(Routes.Notifications) {
             val model: NotificationsViewModel = viewModel(key = "notifications:$subject", factory = factory)

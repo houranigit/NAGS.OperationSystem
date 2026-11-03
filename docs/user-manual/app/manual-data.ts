@@ -186,6 +186,7 @@ export const manualCategories = [
     "articleIds": [
       "android-browse-flights",
       "android-invite-employees",
+      "android-catalog-sync",
       "android-account-notifications"
     ]
   },
@@ -509,6 +510,54 @@ export const manualArticles = [
     "categoryId": "android-flight-tools",
     "audience": "mobile",
     "location": "Android → Flights → Flight details → Invite employees"
+  },
+  {
+    "id": "android-catalog-sync",
+    "title": "Keep shared catalogs synchronized",
+    "eyebrow": "Android reference data",
+    "summary": "Refresh the local aircraft, customer, service, tool, material, general-support, and ATA chapter catalogs.",
+    "keywords": [
+      "mobile",
+      "android",
+      "sync",
+      "catalogs",
+      "aircraft types",
+      "customers",
+      "offline"
+    ],
+    "steps": [
+      {
+        "id": "open",
+        "title": "Open Sync Center",
+        "body": "Tap the sync-status icon in the app header, or open My profile → Sync Center. The page shows network and live-channel status, the last catalog event, and a separate card for each catalog with its cached record count, last successful sync time and age, duration, and any refresh error."
+      },
+      {
+        "id": "refresh",
+        "title": "Refresh the catalogs",
+        "body": "While connected, catalog creates, edits, activations, and deactivations in the portal trigger a live refresh of the cached records you may access. You can also select Refresh now. Automatic refresh after sign-in, returning to the app, reconnecting, and periodically while the app process is running covers missed live updates."
+      },
+      {
+        "id": "offline",
+        "title": "Check the last successful sync",
+        "body": "A connection failure keeps the last successful catalog cache for the current account. The displayed refresh time shows its age. Reconnect and retry if a catalog has not refreshed."
+      },
+      {
+        "id": "access",
+        "title": "Resolve catalog access errors",
+        "body": "Catalog access follows your Master Data permissions. Access denied clears that catalog's cached records; ask an administrator to review your access. Signing out or changing accounts clears the shared catalog cache."
+      }
+    ],
+    "callouts": [
+      {
+        "tone": "info",
+        "title": "Catalog caching and flight access",
+        "body": "Shared catalog synchronization does not queue work orders or other changes. Loading current flights, opening flight details, and sending employee invitations still require a connection."
+      }
+    ],
+    "sectionId": "android",
+    "categoryId": "android-flight-tools",
+    "audience": "mobile",
+    "location": "Android → Sync Center"
   },
   {
     "id": "android-account-notifications",

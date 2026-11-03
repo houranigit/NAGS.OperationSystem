@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -21,7 +22,7 @@ public sealed class CreateServiceCommandValidator : AbstractValidator<CreateServ
     }
 }
 
-public sealed class CreateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class CreateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateServiceCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateServiceCommand request, CancellationToken cancellationToken)
@@ -39,6 +40,7 @@ public sealed class CreateServiceCommandHandler(IMasterDataDbContext db, TimePro
 
         db.Services.Add(service);
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Services, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return service.Id;
     }
 }
@@ -58,7 +60,7 @@ public sealed class UpdateServiceCommandValidator : AbstractValidator<UpdateServ
     }
 }
 
-public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateServiceCommand>
 {
     public async Task<Result> Handle(UpdateServiceCommand request, CancellationToken cancellationToken)
@@ -75,6 +77,8 @@ public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimePro
         var trimmedName = request.Name.Trim();
         if (await db.Services.AnyAsync(s => s.Name == trimmedName && s.Id != request.Id, cancellationToken))
             return Error.Conflict("A service with this name already exists.", "MasterData.Service.DuplicateName");
+
+        var previousName = service.Name;
 
         var result = service.Update(request.Name, request.Description, timeProvider.GetUtcNow());
         if (result.IsFailure)
@@ -93,6 +97,8 @@ public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimePro
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (service.IsActive && service.Name != previousName)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Services, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -109,7 +115,7 @@ public sealed class UpdateServiceCommandHandler(IMasterDataDbContext db, TimePro
 public sealed record ActivateServiceCommand(Guid Id, byte[] RowVersion) : ICommand;
 public sealed record DeactivateServiceCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class ActivateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateServiceCommand>
 {
     public async Task<Result> Handle(ActivateServiceCommand request, CancellationToken cancellationToken)
@@ -120,12 +126,15 @@ public sealed class ActivateServiceCommandHandler(IMasterDataDbContext db, TimeP
         if (ServiceSystemRecords.IsSystem(service.Id))
             return Error.Conflict("System services cannot be activated or deactivated.", "MasterData.Service.SystemProtected");
 
+        var wasActive = service.IsActive;
         service.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(service, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (service.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Services, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -136,7 +145,7 @@ public sealed class ActivateServiceCommandHandler(IMasterDataDbContext db, TimeP
     }
 }
 
-public sealed class DeactivateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class DeactivateServiceCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateServiceCommand>
 {
     public async Task<Result> Handle(DeactivateServiceCommand request, CancellationToken cancellationToken)
@@ -147,12 +156,15 @@ public sealed class DeactivateServiceCommandHandler(IMasterDataDbContext db, Tim
         if (ServiceSystemRecords.IsSystem(service.Id))
             return Error.Conflict("System services cannot be activated or deactivated.", "MasterData.Service.SystemProtected");
 
+        var wasActive = service.IsActive;
         service.Deactivate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(service, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (service.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Services, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
