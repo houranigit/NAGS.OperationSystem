@@ -1,26 +1,22 @@
 package com.nags.operations
 
 import android.content.Context
+import androidx.work.WorkManager
+import androidx.work.await
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.AuthApi
 import com.nags.operations.data.api.HttpClientFactory
-import com.nags.operations.data.api.MobileApi
 import com.nags.operations.data.api.NotificationsApi
-import com.nags.operations.data.db.AppDatabase
+import com.nags.operations.data.api.OperationsApi
+import com.nags.operations.data.db.NotificationsDatabase
 import com.nags.operations.data.network.NetworkMonitor
-import com.nags.operations.data.outbox.OutboxWorker
-import com.nags.operations.data.outbox.OutboxWorkScheduler
-import com.nags.operations.data.outbox.WorkOrderOutboxRepository
-import com.nags.operations.data.realtime.RealtimeChannel
+import com.nags.operations.data.notifications.NotificationPushPayload
 import com.nags.operations.data.repo.AuthRepository
-import com.nags.operations.data.repo.CatalogsRepository
-import com.nags.operations.data.repo.EmployeesRepository
 import com.nags.operations.data.repo.FlightsRepository
 import com.nags.operations.data.repo.NotificationsRepository
-import com.nags.operations.data.repo.WorkOrderDraftsRepository
-import com.nags.operations.data.sync.SyncCoordinator
-import com.nags.operations.data.sync.SyncScheduler
-import com.nags.operations.data.sync.SyncTable
+import com.nags.operations.notifications.DeviceTokenManager
+import com.nags.operations.notifications.NotificationNavigationCoordinator
+import com.nags.operations.notifications.SystemNotificationManager
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,50 +24,21 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import com.nags.operations.notifications.DeviceTokenManager
-import com.nags.operations.notifications.NotificationNavigationCoordinator
-import com.nags.operations.notifications.SystemNotificationManager
-import com.nags.operations.data.notifications.NotificationPushPayload
-import com.nags.operations.ui.components.cleanupAttachmentPreviews
 
-/**
- * Tiny hand-rolled DI container so screens / ViewModels can resolve everything
- * they need without pulling in Hilt for a project this size. One instance per
- * process; it's safe to capture inside `remember { }` blocks.
- *
- * The container also owns a single process-lifetime [CoroutineScope] that the
- * sync scheduler and any other long-lived coroutines (network monitor flow,
- * future SignalR subscription) attach to. This scope is never cancelled — the
- * OS reclaims it on process death.
- */
+/** Process-scoped dependencies for online flights, identity, and notifications. */
 class AppGraph private constructor(context: Context) {
-
-    /** Process-lifetime supervisor scope. Errors in one job don't tear down the others. */
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
     val tokenStore: TokenStore = TokenStore(context.applicationContext)
 
     private val httpClient: HttpClient = HttpClientFactory.create(tokenStore)
     private val authApi: AuthApi = AuthApi(tokenStore, httpClient)
-    val mobileApi: MobileApi = MobileApi(tokenStore, httpClient)
+    val operationsApi: OperationsApi = OperationsApi(tokenStore, httpClient)
     private val notificationsApi: NotificationsApi = NotificationsApi(tokenStore, httpClient)
+    private val database = NotificationsDatabase.get(context.applicationContext)
 
-    val database: AppDatabase = AppDatabase.get(context.applicationContext)
-
-    val catalogsRepository: CatalogsRepository = CatalogsRepository(database)
-    val employeesRepository: EmployeesRepository = EmployeesRepository(database)
-    val flightsRepository: FlightsRepository = FlightsRepository(database)
-    val workOrderDraftsRepository: WorkOrderDraftsRepository = WorkOrderDraftsRepository(database)
+    val flightsRepository: FlightsRepository = FlightsRepository(operationsApi)
     val notificationsRepository: NotificationsRepository =
         NotificationsRepository(notificationsApi, database, tokenStore)
-    private val outboxWorkScheduler = OutboxWorkScheduler(context.applicationContext)
-    val workOrderOutboxRepository: WorkOrderOutboxRepository =
-        WorkOrderOutboxRepository(
-            context = context.applicationContext,
-            db = database,
-            onPendingWork = outboxWorkScheduler::scheduleAndAwait,
-        )
-
     val networkMonitor: NetworkMonitor = NetworkMonitor(context.applicationContext, appScope)
     val notificationNavigation = NotificationNavigationCoordinator(context.applicationContext)
     private val systemNotificationManager = SystemNotificationManager(context.applicationContext)
@@ -84,68 +51,13 @@ class AppGraph private constructor(context: Context) {
         appScope = appScope,
     )
 
-    val syncCoordinator: SyncCoordinator = SyncCoordinator(
-        api = mobileApi,
-        db = database,
-        tokenStore = tokenStore,
-        outboxRepository = workOrderOutboxRepository,
-    )
-
-    private val syncScheduler: SyncScheduler = SyncScheduler(
-        tokenStore = tokenStore,
-        networkMonitor = networkMonitor,
-        coordinator = syncCoordinator,
-        appScope = appScope,
-    )
-
-    /**
-     * SignalR-driven push channel for near-instant updates. We let the channel
-     * own its own connect/reconnect loop; it reads JWT + connectivity off the
-     * same flows as the scheduler so they self-pause in lock-step on logout
-     * or offline.
-     */
-    val realtimeChannel: RealtimeChannel = RealtimeChannel(
-        tokenStore = tokenStore,
-        networkMonitor = networkMonitor,
-        coordinator = syncCoordinator,
-        mobileApi = mobileApi,
-        appScope = appScope,
-        getCursors = {
-            val rows = database.syncStateDao().snapshot()
-            // Map storage-key rows to the wire-side table identifiers expected
-            // by the catch-up endpoint. Tables with no cursor get a null entry
-            // so the channel can still mention them in its catch-up call.
-            val byStorageKey = rows.associate { it.tableName to it.cursor }
-            mapOf(
-                "flights" to byStorageKey[SyncTable.Flights.storageKey],
-                "flights-per-landing" to byStorageKey[SyncTable.PerLandingFlights.storageKey],
-                "flights-ad-hoc" to byStorageKey[SyncTable.AdHocFlights.storageKey],
-                "employees" to byStorageKey[SyncTable.Employees.storageKey],
-                "services" to byStorageKey[SyncTable.Services.storageKey],
-                "tools" to byStorageKey[SyncTable.Tools.storageKey],
-                "materials" to byStorageKey[SyncTable.Materials.storageKey],
-                "general-supports" to byStorageKey[SyncTable.GeneralSupports.storageKey],
-                "customers" to byStorageKey[SyncTable.Customers.storageKey],
-                "aircraft-types" to byStorageKey[SyncTable.AircraftTypes.storageKey],
-                "ata-chapters" to byStorageKey[SyncTable.AtaChapters.storageKey],
-            )
-        },
-    )
-
-    /**
-     * Drains the offline work-order outbox into the v2 mobile API as soon as
-     * `signedIn AND online AND hasPending` line up — same eager-start, self-
-     * suspending discipline as [syncScheduler] and [realtimeChannel].
-     */
-    val outboxWorker: OutboxWorker = OutboxWorker(
-        tokenStore = tokenStore,
-        networkMonitor = networkMonitor,
-        outboxRepository = workOrderOutboxRepository,
-        mobileApi = mobileApi,
-        syncCoordinator = syncCoordinator,
-        appScope = appScope,
-    )
-
+    // Retire persisted jobs from an installed older client. Its worker entry point is also inert,
+    // so a job already dispatched during the upgrade cannot submit obsolete mutations.
+    private val legacyWorkCancellation = appScope.launch(Dispatchers.IO) {
+        val workManager = WorkManager.getInstance(context.applicationContext)
+        workManager.cancelUniqueWork("operations-work-order-outbox").await()
+        workManager.cancelAllWorkByTag("operations-outbox").await()
+    }
     private val sessionTransitionMutex = Mutex()
     @Volatile private var secureStorageReady = false
 
@@ -157,40 +69,28 @@ class AppGraph private constructor(context: Context) {
     )
 
     init {
-        appScope.launch(Dispatchers.IO) {
-            cleanupAttachmentPreviews(context.applicationContext)
-        }
         appScope.launch {
             tokenStore.initializeSecureStorage()
+            legacyWorkCancellation.join()
             secureStorageReady = true
-            deviceTokenManager.start()
             resumeSessionServices()
         }
     }
 
-    /**
-     * Stops every authenticated job before revoking credentials. Same-user cache, drafts, and
-     * queued work are deliberately retained; a later login with a different JWT subject runs the
-     * account-switch cleanup before that new token is published.
-     */
     suspend fun signOut() {
         sessionTransitionMutex.withLock {
             notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
-            pauseSessionServices()
+            deviceTokenManager.pause()
             deviceTokenManager.revokeBeforeLogout()
             authRepository.logout()
             notificationsRepository.clearLocal()
         }
     }
 
-    /** Convenience for screens / view-models that want to trigger an on-demand refresh. */
-    fun refreshNow() = syncScheduler.refreshNow()
-
-    /** Single-activity foreground hook; an unchanged token/network pair otherwise emits nothing. */
+    /** Refresh the inbox badge when returning to the foreground. Flight screens refresh separately. */
     fun onForeground() {
         if (secureStorageReady) {
-            syncScheduler.refreshNow()
             appScope.launch {
                 if (tokenStore.getAccessToken() != null) {
                     runCatching { notificationsRepository.refreshUnreadCount() }
@@ -199,7 +99,6 @@ class AppGraph private constructor(context: Context) {
         }
     }
 
-    /** Atomically rejects a late push once logout/account switching has closed the display gate. */
     fun showNotificationIfCurrent(
         payload: NotificationPushPayload,
         expectedSubject: String,
@@ -211,38 +110,23 @@ class AppGraph private constructor(context: Context) {
         sessionTransitionMutex.withLock {
             notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
-            pauseSessionServices()
+            deviceTokenManager.pause()
             deviceTokenManager.revokeBeforeLogout()
-            // Make the old bearer unobservable before deleting its local rows. If cleanup fails,
-            // saveLogin propagates the failure and never publishes the new account.
+            // Remove the old bearer before clearing its notification rows and publishing a new user.
             tokenStore.clearTokens()
             notificationsRepository.clearLocal()
-            syncCoordinator.clearForAccountSwitch()
             tokenStore.clearAll()
         }
     }
 
-    private suspend fun pauseSessionServices() {
-        deviceTokenManager.pause()
-        workOrderOutboxRepository.pauseEnqueues()
-        outboxWorker.stop()
-        outboxWorkScheduler.pauseAndCancel()
-        syncScheduler.stop()
-        realtimeChannel.stop()
-    }
-
     private suspend fun resumeSessionServices() {
+        legacyWorkCancellation.join()
         sessionTransitionMutex.withLock {
-            workOrderOutboxRepository.resumeEnqueues()
             deviceTokenManager.resume()
-            syncScheduler.start()
-            realtimeChannel.start()
-            outboxWorker.start()
             if (tokenStore.getAccessToken() != null) {
                 tokenStore.getSessionSubject()?.takeIf(String::isNotBlank)?.let {
                     notificationDisplayGate.activate(it)
                 }
-                outboxWorkScheduler.resumeAndSchedule()
                 appScope.launch { runCatching { notificationsRepository.refresh() } }
             }
         }
@@ -261,10 +145,8 @@ class AppGraph private constructor(context: Context) {
     companion object {
         @Volatile private var instance: AppGraph? = null
 
-        fun get(context: Context): AppGraph {
-            return instance ?: synchronized(this) {
-                instance ?: AppGraph(context.applicationContext).also { instance = it }
-            }
+        fun get(context: Context): AppGraph = instance ?: synchronized(this) {
+            instance ?: AppGraph(context.applicationContext).also { instance = it }
         }
     }
 }

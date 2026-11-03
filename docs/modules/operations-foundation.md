@@ -1,6 +1,6 @@
 # Operations Module Foundation
 
-This is the entry point for the current Operations module. This branch starts from `main` and reduces Operations to a flight scheduling baseline: maintain a flight register, create one flight, and schedule the same flight on selected dates. HandOver implementation is excluded. Operational workflows will be designed and implemented individually later.
+This is the entry point for the current Operations module. This branch starts from `main` and reduces Operations to a flight scheduling baseline: maintain a flight register, create one flight, schedule the same flight on selected dates, and invite employees onto an existing flight. The Android client supports flight viewing, basic details, and employee invitations; scheduling remains in the web portal. HandOver implementation is excluded. Operational workflows will be designed and implemented individually later.
 
 ## Flight data and ownership
 
@@ -16,7 +16,7 @@ Aircraft Per Landing remains an exclusive planned designation and cannot be comb
 
 ## Authorization and API
 
-Retained permissions are `operations.flights.view`, `view-station`, `schedule`, `update`, and `assign`. Existing account/station scope remains enforced on the backend. Viewer accounts are read-only; station staff see assigned flights and station-wide Per Landing flights unless granted station-wide visibility. Customer contacts have no Operations access.
+Retained permissions are `operations.flights.view`, `view-station`, `schedule`, `update`, `assign`, and `invite`. Existing account/station scope remains enforced on the backend. Viewer accounts are read-only; station staff see assigned flights and station-wide Per Landing flights unless granted station-wide visibility. Customer contacts have no Operations access.
 
 All flight routes are under `/api/v1/operations/flights`:
 
@@ -29,12 +29,22 @@ All flight routes are under `/api/v1/operations/flights`:
 | PUT | `/{id}` | Update scheduled details |
 | POST | `/{id}/change-number` | Change the current number |
 | POST | `/{id}/assign` | Replace assigned staff |
+| GET | `/{id}/invitation-options` | Active, unassigned staff at the flight station |
+| POST | `/{id}/invite` | Add selected employees without replacing the roster |
 
-Edits retain the existing `If-Match` rowversion precondition. Operations work-order, mobile, timeline, lifecycle, reporting, and dashboard endpoints are removed. The native Android client remains at the main API contract and is incompatible with this scheduling-only backend. The shared catalog-change hub remains owned by the API host because MasterData still publishes catalog changes.
+Edits and invitations retain the existing `If-Match` rowversion precondition. Invitations require `operations.flights.invite`, an administrator or station-staff account, and access to the flight. They accept only active staff at that flight's station and are unavailable for Per Landing flights. Invitations add distinct employees immediately to the existing roster; repeated selections do not replace assignments or create duplicate invitation events. A stale version that would add employees fails without changing the roster. The retained invitation event queues the existing bilingual inbox/push notification for linked recipients, suppressing self-notifications; transport delivery remains separate from the accepted flight change.
+
+Operations work-order, legacy mobile BFF, timeline, lifecycle, reporting, and dashboard endpoints are removed. The shared catalog-change hub remains owned by the API host because MasterData still publishes catalog changes.
+
+## Android baseline
+
+Android uses the same paginated `/api/v1/operations/flights` list and basic-details endpoint as the portal, plus the two invitation routes above. It supports search, paging, refresh, device-time-zone schedule display, and authorized employee invitations. It does not create or schedule flights. Flight reads and invitations require an online server response; there is no Room flight cache, Operations realtime sync, or offline submission queue in this baseline. Identity sign-in, optional enrolled MFA, token refresh, profile, and Notifications remain existing capabilities. Administrator and Viewer accounts retain their server-granted read scope; station staff retain the visibility rules above.
+
+The former `operations.db` file and dormant drafts/queued work remain unopened. Notifications use the separate `operations-baseline.db` Room database. Startup cancels the retired WorkManager outbox chain/tag, and its retained worker entry point is inert. A notification flight link resolves the current basic flight details through the scoped API. See the [Android README](../../src/Host/OperationsSystem.Mobile/README.md) for development configuration.
 
 ## Database change
 
-Keep the historical `main` EF migrations unchanged. `Operations_FlightSchedulingBaseline` preserves the existing flights, direct `flight_planned_services`, and `flight_assigned_employees` rows in place, and removes retired work-order, mobile, reminder, history, status, contract, and merge storage plus pending event envelopes from the retired Operations contract assembly. The migration does not require a HandOver operational graph. It does not alter another module's schema or delete stored file blobs.
+Keep the historical `main` EF migrations unchanged. `Operations_FlightSchedulingBaseline` preserves the existing flights, direct `flight_planned_services`, and `flight_assigned_employees` rows in place, and removes retired work-order, mobile, reminder, history, status, contract, and merge storage plus pending event envelopes for retired Operations contracts. The retained `FlightEmployeeAssigned` invitation contract and platform audit envelopes are preserved. The migration does not require a HandOver operational graph. It does not alter another module's schema or delete stored file blobs.
 
 This migration intentionally discards work-order/workflow data. Development startup migrations are disabled. Review the SQL and back up an existing database before applying the reset and running the API against that database. Restoring the previous application requires restoring its database backup; the reset migration cannot reconstruct the removed operational history. Verification uses disposable local SQL databases, never a configured remote database.
 

@@ -81,8 +81,8 @@ object HttpClientFactory {
                             response.status == HttpStatusCode.Unauthorized
                         ) {
                             // The refresh credential is definitively invalid. Keep the remembered
-                            // account/profile so the same user can sign in again without losing
-                            // offline work; authenticated navigation reacts to the token removal.
+                            // account/profile for the next sign-in; authenticated navigation reacts
+                            // to the token removal.
                             tokenStore.clearTokens()
                             null
                         } else if (!response.status.isSuccess()) {

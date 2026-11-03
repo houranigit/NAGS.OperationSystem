@@ -11,11 +11,12 @@ namespace Operations.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // The retired contract assembly can no longer rehydrate pending Operations events.
-            // Keep the platform audit events and envelopes already processed.
+            // Keep the retained invitation contract, platform audit events, and processed envelopes.
+            // The other retired Operations contracts can no longer be rehydrated.
             migrationBuilder.Sql("""
                 DELETE FROM [operations].[outbox_messages]
-                WHERE [ProcessedOnUtc] IS NULL AND [Type] LIKE N'Operations.Contracts.%';
+                WHERE [ProcessedOnUtc] IS NULL AND [Type] LIKE N'Operations.Contracts.%'
+                  AND [Type] NOT LIKE N'Operations.Contracts.FlightEmployeeAssigned,%';
                 """);
 
             migrationBuilder.DropTable(

@@ -28,31 +28,3 @@ fun formatIsoForDisplay(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): S
     } catch (_: Exception) {
         iso
     }
-
-/** Date/time entry always uses 24-hour time; compact paired fields put it on a separate line. */
-fun formatIsoForDateTimeField(
-    iso: String,
-    zoneId: ZoneId = ZoneId.systemDefault(),
-    compact: Boolean = true,
-): String =
-    try {
-        val local = parseInUserZone(iso, zoneId)
-        val locale = Locale.getDefault()
-        val dateStyle = if (compact) FormatStyle.SHORT else FormatStyle.MEDIUM
-        val date = local.format(DateTimeFormatter.ofLocalizedDate(dateStyle).withLocale(locale))
-        val time = local.format(DateTimeFormatter.ofPattern("HH:mm", locale))
-        if (compact) "$date\n$time" else "$date · $time"
-    } catch (_: Exception) {
-        iso
-    }
-
-/**
- * The work-order UI always edits wall-clock values in the user's device zone. The argument is
- * retained for source compatibility with older callers that derived a fixed offset from a flight.
- * A ZoneId, unlike a ZoneOffset, preserves daylight-saving rules for the picked date.
- */
-fun userTimeZone(): ZoneId = ZoneId.systemDefault()
-
-@Deprecated("Use userTimeZone(); a flight's serialized offset is not the user's time zone")
-@Suppress("UNUSED_PARAMETER")
-fun offsetSameAsFlight(baseIso: String): ZoneId = userTimeZone()

@@ -28,8 +28,6 @@ class AuthRepository(
 ) {
     suspend fun profile(): AuthenticatedUser = api.me()
 
-    suspend fun setWorkOrderEmailPreference(enabled: Boolean) = api.setWorkOrderEmailPreference(enabled)
-
     suspend fun login(email: String, password: String): LoginOutcome {
         val response = api.login(email, password)
 
@@ -97,7 +95,7 @@ class AuthRepository(
         } catch (e: Exception) {
             // A caller cancellation is not a profile-fetch failure.
             if (e is CancellationException) throw e
-            // Sync's /me refresh fills the profile later; signing in must not fail on this.
+            // Screens refresh /me later; signing in must not fail on a profile fetch.
         }
         onSessionPublished()
     }

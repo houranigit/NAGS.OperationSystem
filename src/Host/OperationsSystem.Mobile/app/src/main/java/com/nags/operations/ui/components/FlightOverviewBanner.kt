@@ -29,13 +29,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.nags.operations.R
 import com.nags.operations.ui.theme.BrandRedDark
 import com.nags.operations.ui.theme.BrandRedLight
 
-/**
- * Mirrors [com.operations.mobile.ui.components.FlightInfoBanner] from the sibling app,
- * using the NAGS brand gradient instead of portal sky blues.
- */
+/** Basic flight planning summary, using the established NAGS gradient. */
 @Composable
 fun FlightOverviewBanner(
     customerIataCode: String,
@@ -138,12 +137,12 @@ fun FlightOverviewBanner(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     OverviewMetaChip(
-                        label = "Aircraft type",
+                        label = stringResource(R.string.flights_aircraft),
                         value = aircraftModel?.takeIf { it.isNotBlank() } ?: "—",
                         modifier = Modifier.weight(1f),
                     )
                     OverviewMetaChip(
-                        label = "Operation",
+                        label = stringResource(R.string.flights_operation),
                         value = operationTypeCode.ifBlank { "—" },
                         modifier = Modifier.weight(1f),
                     )
@@ -154,12 +153,12 @@ fun FlightOverviewBanner(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     OverviewTimeTile(
-                        label = "Arrival",
+                        label = stringResource(R.string.flights_arrival),
                         value = staDisplay,
                         modifier = Modifier.weight(1f),
                     )
                     OverviewTimeTile(
-                        label = "Departure",
+                        label = stringResource(R.string.flights_departure),
                         value = stdDisplay,
                         modifier = Modifier.weight(1f),
                     )
@@ -180,17 +179,9 @@ private fun customerNameLine(name: String, fallbackIata: String): String {
     }
 }
 
-/** E.g. `EK-HAJJ4`; falls back gracefully if one part is missing. */
-private fun flightIdentifierLine(iata: String, flightNumber: String?): String {
-    val code = iata.trim()
-    val fn = flightNumber?.trim()?.takeIf { it.isNotEmpty() }
-    return when {
-        code.isNotEmpty() && fn != null -> "$code-$fn"
-        fn != null -> fn
-        code.isNotEmpty() -> code
-        else -> "—"
-    }
-}
+/** Display the server flight number, with the customer code as an empty-value fallback. */
+private fun flightIdentifierLine(iata: String, flightNumber: String?): String =
+    flightNumber?.takeIf { it.isNotBlank() } ?: iata.takeIf { it.isNotBlank() } ?: "—"
 
 @Composable
 private fun OverviewMetaChip(label: String, value: String, modifier: Modifier = Modifier) {

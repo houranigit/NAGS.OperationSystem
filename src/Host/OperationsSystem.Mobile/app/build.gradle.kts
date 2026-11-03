@@ -95,7 +95,7 @@ val debugApiBaseUrl = normalizeBaseUrl(
         ?: localProperties.nonBlankProperty("operations.api.debug.base.url")
         // Backward-compatible local developer setting; never used by Release.
         ?: localProperties.nonBlankProperty("operations.api.base.url")
-        ?: "http://10.0.2.2:5211",
+        ?: "http://10.0.2.2:5213",
 )
 val releaseApiBaseUrl = configuredValue(
     "operations.api.release.base.url",
@@ -172,7 +172,7 @@ android {
             }
 
             // Keep shrinking disabled until the native client has regression tests and verified
-            // keep rules for serialization, Room, Ktor, and SignalR.
+            // keep rules for serialization, Room and Ktor.
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -251,22 +251,15 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.exifinterface)
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
-
-    // Real-time sync over SignalR. The signalr client brings RxJava + OkHttp
-    // transitively; slf4j-android is the Android logging binding so the
-    // connection lifecycle is observable in logcat instead of silently NOP'd.
-    implementation(libs.signalr)
-    implementation(libs.slf4j.android)
 
     testImplementation(libs.junit4)
 }
 
 // Room schema export — generated JSONs land alongside the module so migrations
-// can diff against the last committed schema once the catalogs evolve.
+// can track changes to the notification cache.
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
     arg("room.incremental", "true")

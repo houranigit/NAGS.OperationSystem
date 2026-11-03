@@ -1,12 +1,14 @@
 # NAGS Operations Field Guide
 
-A searchable user manual for the Operations System portal's flight scheduling
-baseline. The guide covers single-flight and batch scheduling, the basic grid,
-planning edits, permissions, and the existing master-data catalogs.
+A searchable user manual for portal flight planning and the Android flight
+register. The guide covers single-flight and batch scheduling on the portal,
+Android list/search/refresh and basic flight details, permitted employee
+invitations, shared access rules, and existing master-data catalogs.
 
-Work orders, history, status changes, handover, approvals, analytics, exports,
-and mobile operations are deferred on this branch. The retained Android source
-uses the earlier operational API and is unsupported against this reset backend.
+Android retains sign-in, MFA, profile viewing, and notifications. Its flight
+actions are viewing and employee invitations; scheduling and planning edits use
+the portal. Work orders, operational history, status changes, handover,
+approvals, analytics, and exports remain outside the current Operations scope.
 
 The manual source, genuine application captures, and portable release files live
 in this project so they can be versioned with the product. Only relevant sign-in
@@ -84,7 +86,7 @@ node scripts/inline-portable.mjs \
 1. Update guide content in `app/manual-data.ts` and shared rendering in
    `app/page.tsx`.
 2. Replace or add screenshots in `public/screenshots/` using direct captures
-   from the current portal. Do not create simulated
+   from the current portal or Android app. Do not create simulated
    application screens.
 3. Update the screenshot references in `app/page.tsx`.
 4. Run `npm run lint` and `npm run test`.

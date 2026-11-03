@@ -2,7 +2,7 @@ package com.nags.operations.data.repo
 
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.NotificationsApi
-import com.nags.operations.data.db.AppDatabase
+import com.nags.operations.data.db.NotificationsDatabase
 import com.nags.operations.data.db.entities.toDto
 import com.nags.operations.data.db.entities.toEntity
 import com.nags.operations.data.notifications.NotificationDto
@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong
 @OptIn(ExperimentalCoroutinesApi::class)
 class NotificationsRepository(
     private val api: NotificationsApi,
-    private val db: AppDatabase,
+    private val db: NotificationsDatabase,
     private val tokenStore: TokenStore,
 ) {
     private data class RemoteUnreadCount(val recipientUserId: String, val count: Int)

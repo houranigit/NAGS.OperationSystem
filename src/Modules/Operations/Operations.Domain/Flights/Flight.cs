@@ -108,6 +108,22 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
+    public Result InviteEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
+    {
+        if (IsPerLanding)
+            return PerLandingAssignmentError();
+
+        foreach (var employee in employees)
+        {
+            if (_assignedEmployees.Any(assigned => assigned.Employee.StaffMemberId == employee.StaffMemberId))
+                continue;
+            _assignedEmployees.Add(new FlightAssignedEmployee(Guid.NewGuid(), Id, employee));
+            UpdatedAtUtc = now;
+        }
+
+        return Result.Success();
+    }
+
     private void SetPlannedServices(IReadOnlyList<ServiceSnapshot> services)
     {
         _plannedServices.Clear();

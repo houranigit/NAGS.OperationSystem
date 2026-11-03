@@ -1,197 +1,75 @@
-# NAGS Operations — Mobile
+# NAGS Operations — Android
 
-This is the released main-branch Android client. Its Operations workflows are deferred on the flight scheduling implementation branch and are incompatible with that branch's reduced API. See [the current module scope](../../../docs/modules/operations-foundation.md).
+The native Kotlin/Compose client supports the current [flight baseline](../../../docs/modules/operations-foundation.md): view flights, open basic planning details, and invite employees. Flight creation, single/batch scheduling, and planning edits remain in the web portal.
 
-Native Android client for Operations System v1.0.0. A rewrite of the legacy app that keeps its
-proven offline-first engine and screens while consuming the new backend's flight and work-order
-shape and business rules.
+## Current journey
 
-## What ships
+Sign in, browse the paged Flights list, search, refresh, and open a flight's details. Dates and times are displayed in the device time zone. Details show customer, station, operation type, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees.
 
-* **Sign-in** — email/password with optional TOTP MFA. Bearer JWT + refresh token exchanged in the
-  JSON body (`/api/v1/identity/auth/mobile/*`), persisted across launches with automatic refresh.
-* **Local-first cache** — Room mirrors ten server tables (services, tools, materials, general
-  supports, customers, aircraft types, station staff, my flights, Per Landing flights, Ad Hoc
-  flights). Flight lists and work-order forms read from Room; only the sync coordinator writes
-  the synced tables. Work-order review refreshes visible records online and can display the cached
-  personal work order when offline.
-* **Real-time sync** — SignalR channel on `/hubs/mobile-sync` applies `change` envelopes
-  (upsert / delete / refresh per logical table); a REST catch-up (`GET /api/v1/mobile/sync/changes`)
-  reconciles after every reconnect, and a 5-minute foreground poll is the safety net.
-* **Offline writes (outbox)** — work-order create/update, ad-hoc scratch create, return-to-ramp,
-  and flight cancellation queue locally (attachments on disk) and drain FIFO with exponential
-  backoff when connectivity returns. A unique, network-constrained WorkManager job persists the
-  wake-up across process death and device reboot, while a shared drain lock prevents the foreground
-  and background uploaders from submitting the same row. Every mutation carries a
-  `clientMutationId` so server retries are idempotent.
-* **Local-time work-order entry** — the UI converts server UTC instants through the device IANA
-  time zone, including daylight-saving rules, while queued and transmitted values remain UTC.
-  Date/time fields open a shared bottom sheet with a calendar, a live selection summary,
-  numeric 24-hour time entry (00:00–23:59), and a **Use now** shortcut. The picker summary and date/time
-  fields use `HH:mm`; only **Confirm** applies the selection. Canceling leaves the field unchanged, including
-  an optional/open end time. Invalid or repeated daylight-saving times still require correction.
-  Resource rows follow their catalog calculation type: Quantity stores an amount; Duration stores
-  a required From and optional/open To. Each selected service/task employee has a required From/To
-  period contained within that service or task. Periods and resource notes survive drafts and outbox delivery.
-* **Screens** — My Flights / Per Landing / Ad Hoc tabs, create/update work order (planned services
-  seed the form as service lines to complete or remove — never Per Landing), return-to-ramp,
-  read-only flight work orders (including completed flights), invite teammates (online-only),
-  cancel flight (time + reason), local drafts, and the Sync Center diagnostics screen. Completed
-  flights expose **Print approved WO PDF**, using the same authenticated PDF endpoint as the portal
-  and Android's print dialog / Save as PDF. Viewing remains available after the authoring window ends;
-  refreshing and printing require a connection and the existing server visibility permissions.
-* **Notifications** — persisted bilingual inbox, unread bell badge, read/archive actions, and
-  high-priority FCM flight-assignment alerts. Notification taps select My Flights and open the
-  same flight action sheet used by flight cards; cold starts and warm `singleTask` intents share
-  one durable navigation handoff.
-* **My profile** — the account icon in the home header opens the employee name/email, sign-out,
-  and **Email me submitted work orders** switch. The preference defaults to off, is saved to the
-  signed-in Identity account, and applies to both the portal and mobile app. Enabled accounts
-  receive their submitted work order with its PDF. The setting refreshes on opening/resuming the
-  profile and reconnecting; changes need an online server confirmation and are never queued offline.
+An account with `operations.flights.invite` can invite active, unassigned employees at the flight's station from the details sheet. Invitations are online, add only to the existing roster, and require its current rowversion. They are unavailable for Per Landing flights. A stale response retains the selection for review against refreshed options/version; it does not silently resend the request.
 
-The mobile-sync SignalR hub remains data synchronization only. User-facing closed/background app
-alerts use FCM and the Notifications API under `/api/v1/notifications`.
+The server enforces the same account/station scope as the portal. Administrators and Viewers can read within their granted scope; station staff see assigned flights and station-wide Per Landing flights, with wider station visibility when separately granted. Viewers cannot invite. A successful sign-in alone does not grant flight access.
 
-## Business rules mirrored from the backend
+Flight reads and invitations require a server connection. The flight list is held in memory, with no offline flight cache or queued flight mutations. Work orders, status actions, drafts, scratch creation, return-to-ramp, flight printing, and Operations sync are outside this client baseline.
 
-* Planned services are copied into the create-work-order form; the user completes each line's
-  performer or removes it. Per Landing is a flight designation, never a performable service line.
-* One active work order per user per flight; approval locks the work order and settles the flight.
-* Service lines and tasks keep their stable server ids so uploaded attachments survive edits.
-* Work orders have an optional **Work Package #**, shown beside Flight number. Services and tasks,
-  including return-to-ramp work, have an optional **Customer Ref #**. These references accept up to
-  200 characters, preserve leading zeros and case, and survive local drafts and offline delivery.
-* The seeded Unknown customer requires work-order remarks on both scratch and existing-flight forms.
-  Unknown service requires service notes. Unknown tools, materials, and general supports reveal a
-  required note on the individual resource row; ordinary resource notes stay hidden unless present.
-  Cancellation reasons supply the required customer note when an Unknown customer has no remarks.
-* Newly selected employees start with their service/task From value and an empty To; existing employee
-  periods remain unchanged. Equal service/task boundaries are allowed, but missing times, reversed
-  periods, and work outside the parent period block progression and submission, including return-to-ramp
-  work. Legacy drafts retain the original whole-line period;
-  pre-upgrade queued requests preserve missing assignments for safe idempotent retries.
-* Newly uploaded work-order PDF documents are limited to **2 MB (2,097,152 bytes)** per file.
-  The picker explains rejected files, and form validation also checks saved drafts. Existing document
-  previews remain readable; image and voice limits are unchanged.
-* Return-to-ramp work is stored as separate occurrences, each with its own window, optional
-  description, services, tasks, resources, and attachments. The older flag-only wire shape remains
-  readable only so already-persisted outbox rows can drain safely.
-* Statuses are the server enum names: flights `Scheduled/InProgress/Completed/Canceled/Merged`,
-  work orders `Submitted/Returned/Approved/Merged` (drafts are local-only).
+## Identity and Notifications
 
-## Module layout
+Existing email/password sign-in, enrolled TOTP MFA, secure bearer/refresh-token storage, session refresh, basic profile, and sign-out remain. Native authentication uses `/api/v1/identity/auth/mobile/*`; profile uses `/api/v1/identity/me`.
 
-```
-app/src/main/java/com/nags/operations/
-  AppGraph.kt                       — hand-rolled DI: TokenStore, Db, repos, sync, outbox, realtime
-  MainActivity.kt                   — single Compose activity, hosts the NavHost
-  data/api/                         — Ktor HTTP: AuthApi (mobile auth), MobileApi (/api/v1/mobile)
-  data/db/                          — Room database (v15), entities, DAOs, converters
-  data/outbox/                      — durable queue + foreground/WorkManager delivery
-  data/realtime/                    — SignalR channel + change envelope
-  data/notifications/               — notification wire models and typed push payload
-  data/repo/                        — read-only Flow repositories over Room
-  notifications/                    — FCM registration, receipt, system UI, deep-link handoff
-  data/sync/                        — SyncCoordinator (single writer), SyncScheduler, sync tables
-  ui/                               — Compose screens, ViewModels, components
+The existing bilingual notification inbox, read/archive actions, unread count, and configured FCM registration remain. Flight links open current basic details through the scoped flight API; schedule-level links open the list. The server queues the retained employee-invitation notification for linked recipients after an accepted invitation. Notification transport and device registration are separate from flight reads.
+
+Notifications use Room `NotificationsDatabase` version 1 in `operations-baseline.db`. The previous `operations.db` and its dormant drafts/queued work remain unopened. Startup cancels the old WorkManager chain `operations-work-order-outbox` and tag `operations-outbox`; the retained legacy worker entry point performs no upload. This baseline does not replay or convert the old queue.
+
+## API and code ownership
+
+| Area | Current implementation |
+|---|---|
+| Flight HTTP client | `data/api/OperationsApi.kt` |
+| Online flight repository | `data/repo/FlightsRepository.kt` |
+| Flight models | `data/FlightModels.kt` |
+| Identity | Existing `AuthApi`, `AuthRepository`, and `TokenStore` |
+| Notification cache | `data/db/NotificationsDatabase.kt` |
+| Process/session dependencies | `AppGraph.kt` |
+| Compose navigation and screens | `ui/` |
+
+Flight calls use the existing shared API:
+
+- `GET /api/v1/operations/flights?page=1&pageSize=20&search=...`
+- `GET /api/v1/operations/flights/{id}`
+- `GET /api/v1/operations/flights/{id}/invitation-options`
+- `POST /api/v1/operations/flights/{id}/invite` with `{ "staffMemberIds": [...] }` and `If-Match`.
+
+There are no calls to the retired `/api/v1/mobile` Operations BFF or Operations realtime-sync hub.
+
+## Local development
+
+Use JDK 17 with the pinned Gradle 8.9 / Android Gradle Plugin 8.7.3 toolchain. The API URL is selected at build time through `BuildConfig.API_BASE_URL`.
+
+For the current branch's Docker API, set the ignored `local.properties` entry:
+
+```properties
+operations.api.debug.base.url=http://10.0.2.2:5213
 ```
 
-## Build prerequisites
+`10.0.2.2` is the Android emulator's host-loopback alias. A physical device needs a reachable address for the same branch API. Changing the property requires rebuilding the app.
 
-The project is pinned to Gradle 8.9, Android Gradle Plugin 8.7.3, and JDK 17. Run Gradle with a
-JDK 17 `JAVA_HOME` instead of relying on an unverified machine default. On macOS:
+Run debug checks from this directory, explicitly selecting that endpoint when desired:
 
 ```sh
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug \
+  -Poperations.api.debug.base.url=http://10.0.2.2:5213
 ```
 
-## Switching API environments (Dev ↔ Production)
-
-The mobile app reads `BuildConfig.API_BASE_URL`. That value is set at **build time**, not at runtime.
-
-| Build | Where to change the URL | Current production value |
-|---|---|---|
-| **Debug** (Android Studio Run / `assembleDebug`) | `local.properties` → `operations.api.debug.base.url` | `http://operation.nags-ksa.com:5211` |
-| **Release** (`assembleRelease`) | `gradle.properties` → `operations.api.release.base.url` (or env `OPERATIONS_API_RELEASE_BASE_URL`) | `http://operation.nags-ksa.com:5211` |
-
-### Debug → local emulator API
-
-In `local.properties`:
-
-```properties
-operations.api.debug.base.url=http://10.0.2.2:5211
-```
-
-`10.0.2.2` is the Android emulator’s host-loopback alias.
-
-### Debug → production API
-
-In `local.properties`:
-
-```properties
-operations.api.debug.base.url=http://operation.nags-ksa.com:5211
-```
-
-If DNS is not reachable from the phone/emulator, use the server IP instead:
-
-```properties
-operations.api.debug.base.url=http://80.209.234.61:5211
-```
-
-After changing `local.properties`, do a **Sync Gradle** / rebuild (clean install if the old URL was cached).
-
-### Release → production (default)
-
-`gradle.properties` already contains:
-
-```properties
-operations.api.release.base.url=http://operation.nags-ksa.com:5211
-```
-
-Override for one build without editing the file:
-
-```sh
-./gradlew :app:assembleRelease -Poperations.api.release.base.url=http://80.209.234.61:5211
-```
-
-Verified Debug checks:
-
-```sh
-./gradlew clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-```
+These are verification commands, not a claim that a particular device journey has been observed. Report build/unit/lint results separately from emulator checks.
 
 ## Release configuration
 
-Release never reads `local.properties`. Supply the production API URL with one of:
+Release does not read `local.properties`. Supply a compatible baseline backend URL with Gradle property `operations.api.release.base.url` or environment variable `OPERATIONS_API_RELEASE_BASE_URL`. The build validates an absolute HTTP/HTTPS URL, rejects emulator/loopback hosts and embedded credentials, and rejects queries/fragments.
 
-- `gradle.properties` / Gradle property `operations.api.release.base.url`
-- Environment variable `OPERATIONS_API_RELEASE_BASE_URL`
+Provision the ignored Android Firebase client file `app/google-services.json` for application ID `com.nags.operations` before release builds. Debug/unit builds can run without it; device registration then remains disabled. Every release build validates this file. It is distinct from the backend Firebase Admin credential.
 
-The value must be an absolute `http`/`https` URL with a non-loopback host and no embedded credentials,
-query string, or fragment. Release compilation and packaging fail when it is absent or invalid.
-
-### Firebase client configuration
-
-Provision the Android Firebase client file at `app/google-services.json` before building a release.
-It must be the Android client configuration for application id `com.nags.operations`, not the
-server-side Firebase Admin service-account JSON. The file is ignored by git and should be injected by
-CI or supplied locally from the Firebase console.
-
-Debug/unit builds intentionally remain available without this file; `BuildConfig.FIREBASE_CONFIGURED`
-then disables device registration while the inbox REST surface continues to work. Every Release build
-runs `validateReleaseFirebaseConfiguration` and fails when the file is absent.
-For example:
-
-```sh
-export OPERATIONS_API_RELEASE_BASE_URL=http://operation.nags-ksa.com:5211
-./gradlew :app:lintRelease :app:assembleRelease
-```
-
-`assembleRelease` may produce an unsigned APK for verification. A distributable App Bundle must be
-signed. Configure all four values below through CI secrets, environment variables, or a user-level
-`~/.gradle/gradle.properties` file. Do not put them in this repository or pass passwords on a shared
-shell command line.
+For distribution, provide all four signing values through CI/environment variables or user-level Gradle properties:
 
 | Gradle property | Environment variable |
 |---|---|
@@ -200,24 +78,4 @@ shell command line.
 | `operations.android.signing.key.alias` | `OPERATIONS_ANDROID_SIGNING_KEY_ALIAS` |
 | `operations.android.signing.key.password` | `OPERATIONS_ANDROID_SIGNING_KEY_PASSWORD` |
 
-The store file may be absolute or relative to the mobile project root. `bundleRelease` fails before
-distribution when any signing value is absent or the keystore does not exist.
-
-Verified pre-release checks and signed bundle command:
-
-```sh
-./gradlew clean \
-  :app:testDebugUnitTest \
-  :app:lintDebug \
-  :app:lintRelease \
-  :app:assembleDebug \
-  :app:assembleRelease
-
-# Requires the four signing values above.
-./gradlew :app:bundleRelease
-```
-
-R8/resource shrinking remains disabled until native regression tests and keep rules cover Room,
-Kotlin serialization, Ktor, and SignalR. Sensitive auth state, the Room cache, and pending outbox
-attachments are excluded from backup/device transfer; application backup is disabled as an
-additional safeguard.
+`assembleRelease` can produce an unsigned verification APK; `bundleRelease` requires the complete signing configuration. Application backup/device transfer remains disabled, with auth state, databases, and legacy outbox files excluded by the existing backup rules.

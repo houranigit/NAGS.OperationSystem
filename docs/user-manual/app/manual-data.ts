@@ -56,7 +56,7 @@ export const manualSections = [
     "id": "get-started",
     "title": "Get started",
     "eyebrow": "Current scope",
-    "summary": "Use the portal for flight scheduling and the existing administration and master-data catalogs.",
+    "summary": "Use the portal for flight planning and Android for scoped flight viewing and employee invitations. Administration and master-data catalogs remain available on the portal.",
     "keywords": [
       "portal",
       "scope",
@@ -82,6 +82,23 @@ export const manualSections = [
     "callouts": [],
     "categoryIds": [
       "scheduling"
+    ]
+  },
+  {
+    "id": "android",
+    "title": "Android",
+    "eyebrow": "Flights and invitations",
+    "summary": "Find flights, view planned details, and invite permitted station colleagues from the Android app.",
+    "keywords": [
+      "mobile",
+      "android",
+      "flights",
+      "invite"
+    ],
+    "steps": [],
+    "callouts": [],
+    "categoryIds": [
+      "android-flight-tools"
     ]
   },
   {
@@ -122,8 +139,8 @@ export const manualCategories = [
   {
     "id": "quick-start",
     "title": "Orientation",
-    "eyebrow": "Portal",
-    "summary": "Start here for the scheduling baseline.",
+    "eyebrow": "Web and Android",
+    "summary": "Start here for the current flight tools.",
     "keywords": [
       "start"
     ],
@@ -149,6 +166,27 @@ export const manualCategories = [
       "schedule-flight",
       "schedule-many-flights",
       "find-edit-flight"
+    ]
+  },
+  {
+    "id": "android-flight-tools",
+    "title": "Mobile flight tools",
+    "eyebrow": "Android",
+    "summary": "Browse flights and details, invite employees, and use account and notification tools.",
+    "keywords": [
+      "mobile",
+      "android",
+      "search",
+      "refresh",
+      "invite"
+    ],
+    "steps": [],
+    "callouts": [],
+    "sectionId": "android",
+    "articleIds": [
+      "android-browse-flights",
+      "android-invite-employees",
+      "android-account-notifications"
     ]
   },
   {
@@ -188,7 +226,7 @@ export const manualArticles = [
     "id": "current-scope",
     "title": "Flight scheduling baseline",
     "eyebrow": "Start here",
-    "summary": "This branch keeps basic flight planning. Additional operational workflows will be introduced separately.",
+    "summary": "Plan flights in the portal. On Android, browse flights and invite employees within your permissions and account scope.",
     "keywords": [
       "baseline",
       "portal",
@@ -209,6 +247,11 @@ export const manualArticles = [
         "body": "Create a flight, schedule a batch of dates, search the grid, or edit the scheduled details."
       },
       {
+        "id": "android",
+        "title": "Open flights on Android",
+        "body": "Sign in with your existing account to search and refresh flights, open basic planned details, and invite employees when permitted."
+      },
+      {
         "id": "catalogs",
         "title": "Use reference catalogs",
         "body": "Administration, account settings, notifications, and Master Data remain available according to existing access."
@@ -221,15 +264,15 @@ export const manualArticles = [
         "body": "Work orders (WO), operational history, handover, approvals, status changes, Return to Ramp, exports, and Operations analytics are unavailable in this scheduling baseline."
       },
       {
-        "tone": "warning",
-        "title": "Mobile is not supported by this backend baseline",
-        "body": "The retained Android source uses the earlier operational API. Do not use it against this reset backend until its workflows are implemented again."
+        "tone": "info",
+        "title": "Android flight access",
+        "body": "The Android app supports flight viewing and employee invitations. Use the portal for single-flight and batch scheduling and planning edits. Connect to load current flight records and send invitations."
       }
     ],
     "sectionId": "get-started",
     "categoryId": "quick-start",
     "audience": "all",
-    "location": "Portal",
+    "location": "Portal and Android",
     "screenshotKey": "portal-login"
   },
   {
@@ -368,10 +411,157 @@ export const manualArticles = [
     "location": "Operations → Flights"
   },
   {
+    "id": "android-browse-flights",
+    "title": "Find and view flights on Android",
+    "eyebrow": "Flight register",
+    "summary": "Search the flights you can access, refresh the list, and open the basic planned details.",
+    "keywords": [
+      "android",
+      "mobile",
+      "flights",
+      "search",
+      "refresh",
+      "load more",
+      "details",
+      "planned services",
+      "assigned staff"
+    ],
+    "steps": [
+      {
+        "id": "sign-in",
+        "title": "Sign in and open Flights",
+        "body": "Use your existing account and complete the MFA code step if prompted. Flight viewing permission is required; the app shows an access message when it is missing."
+      },
+      {
+        "id": "search",
+        "title": "Find a flight",
+        "body": "Enter a flight number, customer, or flight ID in Search. Tap Load more when more matching records are available. The list follows the same account and station visibility rules as the portal."
+      },
+      {
+        "id": "refresh",
+        "title": "Refresh the list",
+        "body": "Pull down or tap Refresh flights to request current records. Flights also refresh when the screen resumes. A connection is required; if a request fails, check the connection and retry."
+      },
+      {
+        "id": "details",
+        "title": "Open the flight details",
+        "body": "Tap a flight card to view its customer, station, operation type, scheduled arrival and departure, optional aircraft type, planned services, assigned staff, and flight ID. Times use the device time zone shown above the list."
+      }
+    ],
+    "callouts": [
+      {
+        "tone": "info",
+        "title": "Mobile flight actions",
+        "body": "Android provides flight viewing and permitted employee invitations. Use the portal to create flights, schedule many dates, or edit planning details."
+      }
+    ],
+    "sectionId": "android",
+    "categoryId": "android-flight-tools",
+    "audience": "mobile",
+    "location": "Android → Flights"
+  },
+  {
+    "id": "android-invite-employees",
+    "title": "Invite employees from Android",
+    "eyebrow": "Flight staff",
+    "summary": "Add eligible station colleagues to a flight while preserving the existing assigned staff.",
+    "keywords": [
+      "android",
+      "mobile",
+      "invite",
+      "employees",
+      "colleagues",
+      "staff",
+      "assignment",
+      "permission",
+      "per landing"
+    ],
+    "steps": [
+      {
+        "id": "open",
+        "title": "Open Invite employees",
+        "body": "Open the flight details and tap Invite employees. This action appears only with flight invite permission and is unavailable for Per Landing flights."
+      },
+      {
+        "id": "choose",
+        "title": "Choose station colleagues",
+        "body": "Select one or more employees from the available list. Options contain active staff at the flight station who are not already assigned. Existing assigned staff remain on the flight."
+      },
+      {
+        "id": "send",
+        "title": "Send the invitations",
+        "body": "Tap Send invitations while connected. After the server accepts the request, the app refreshes the flight details and list. Invited colleagues are added to the assigned staff; notifications follow the existing notification setup."
+      },
+      {
+        "id": "refresh",
+        "title": "Review a changed flight before retrying",
+        "body": "If another user changed the flight, review the refreshed details and invitation options before sending again. Selected employees who are no longer available must be deselected; Refresh available employees loads the latest choices."
+      }
+    ],
+    "callouts": [
+      {
+        "tone": "info",
+        "title": "Permissions and station scope apply",
+        "body": "An invitation adds employees to the flight. The server checks your invite permission, writable account, flight access, and the selected employees at the flight station."
+      }
+    ],
+    "sectionId": "android",
+    "categoryId": "android-flight-tools",
+    "audience": "mobile",
+    "location": "Android → Flights → Flight details → Invite employees"
+  },
+  {
+    "id": "android-account-notifications",
+    "title": "Use your Android account and notifications",
+    "eyebrow": "Account tools",
+    "summary": "Keep using sign-in, MFA, profile viewing, and the notification inbox alongside the flight register.",
+    "keywords": [
+      "android",
+      "mobile",
+      "login",
+      "sign in",
+      "MFA",
+      "profile",
+      "account",
+      "notifications",
+      "read",
+      "archive",
+      "sign out"
+    ],
+    "steps": [
+      {
+        "id": "account",
+        "title": "Open your account",
+        "body": "Use the account action in the app header to view your name and email. The profile refreshes while connected. Select Sign out to end the current session."
+      },
+      {
+        "id": "inbox",
+        "title": "Open the notification inbox",
+        "body": "Use the notification bell to view your inbox and unread count. Read or archive notifications using the available inbox actions."
+      },
+      {
+        "id": "flight",
+        "title": "Follow a flight notification",
+        "body": "Open a flight notification to load its basic flight details. Access is checked again for the signed-in account. A schedule-level notification refreshes Flights; a flight that is no longer accessible shows an error."
+      }
+    ],
+    "callouts": [
+      {
+        "tone": "info",
+        "title": "Device notifications",
+        "body": "System alerts follow device permissions and the configured notification service. The in-app inbox remains available through its existing account access."
+      }
+    ],
+    "sectionId": "android",
+    "categoryId": "android-flight-tools",
+    "audience": "mobile",
+    "location": "Android → Account / Notifications"
+  },
+  {
     "id": "flight-access",
     "title": "Flight permissions and visibility",
     "eyebrow": "Account scope",
-    "summary": "The backend checks both permission and scope for every flight request.",
+    "summary": "Web and Android use the same backend permission and scope checks for flight requests.",
     "keywords": [
       "permission",
       "view",
@@ -379,23 +569,26 @@ export const manualArticles = [
       "update",
       "assign",
       "station",
-      "viewer"
+      "viewer",
+      "invite",
+      "android",
+      "mobile"
     ],
     "steps": [
       {
         "id": "view",
         "title": "Grant flight viewing",
-        "body": "The flight view permission opens the grid. A viewer with only that destination lands directly on Flights."
+        "body": "The flight view permission opens the portal grid and Android flight list and details. A portal viewer with only that destination lands directly on Flights."
       },
       {
         "id": "actions",
         "title": "Grant the needed actions",
-        "body": "Scheduling, updating, and assigning staff have separate permissions. Creating a flight with staff assignments also requires assignment permission."
+        "body": "Portal scheduling, updating, and assigning staff have separate permissions. Creating a flight with staff assignments also requires assignment permission. Android employee invitations use the separate flight invite permission; viewing a flight alone does not grant invitations."
       },
       {
         "id": "scope",
         "title": "Check account scope",
-        "body": "Visible records remain constrained by account and station scope. Staff reads follow the existing assignment and station visibility rules; the station-wide flight-view permission can widen permitted station reads."
+        "body": "System administrators and Viewer Only accounts can read across stations when granted flight viewing. Station staff remain limited to their active linked station: Per Landing flights and assigned flights are visible, with the station-wide flight-view permission widening reads at that station. Invitations require a writable account, invite permission, and access to the flight."
       }
     ],
     "callouts": [

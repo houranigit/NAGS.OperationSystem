@@ -51,6 +51,7 @@
   <Folder Name="/src/Modules/Operations/">
     <Project Path="src/Modules/Operations/Operations.Api/Operations.Api.csproj" />
     <Project Path="src/Modules/Operations/Operations.Application/Operations.Application.csproj" />
+    <Project Path="src/Modules/Operations/Operations.Contracts/Operations.Contracts.csproj" />
     <Project Path="src/Modules/Operations/Operations.Domain/Operations.Domain.csproj" />
     <Project Path="src/Modules/Operations/Operations.Infrastructure/Operations.Infrastructure.csproj" />
   </Folder>

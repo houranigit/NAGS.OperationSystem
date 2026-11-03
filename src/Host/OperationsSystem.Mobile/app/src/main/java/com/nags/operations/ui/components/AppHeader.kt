@@ -1,19 +1,11 @@
 package com.nags.operations.ui.components
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,9 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.Badge
@@ -38,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -53,33 +41,13 @@ import com.nags.operations.ui.theme.BrandRed
 import com.nags.operations.ui.theme.BrandRedDark
 import com.nags.operations.ui.theme.BrandRedLight
 
-/**
- * Branded top header shown on every authenticated screen. Renders a
- * brand-red gradient panel, either an initials avatar or a tappable sync
- * status control, a two-line greeting, and a profile (or logout) affordance on the
- * right.
- *
- * The gradient draws **behind** the status bar; icons stay readable via the
- * activity's light status-bar appearance. Bottom corners match Sync Center.
- *
- * @param displayName the signed-in employee's name (or login handle). When
- *   null / blank the header gracefully falls back to "Hello, there".
- * @param onLogout invoked when the user taps the logout pill.
- * @param subtitle optional eyebrow above the greeting — defaults to
- *   "Welcome back", which reads correctly on a returning home surface but
- *   can be swapped per screen (e.g. "Today's flights").
- * @param onSyncCenterClick when non-null, replaces the initials avatar with a
- *   sync-status icon that navigates to the Sync Center when tapped.
- */
+/** Branded header for the flight list, with profile and notification shortcuts. */
 @Composable
 fun AppHeader(
     displayName: String?,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String = "Welcome back",
-    onSyncCenterClick: (() -> Unit)? = null,
-    isOnline: Boolean = true,
-    isSyncing: Boolean = false,
     onNotificationsClick: (() -> Unit)? = null,
     unreadNotifications: Int = 0,
     onProfileClick: (() -> Unit)? = null,
@@ -102,15 +70,7 @@ fun AppHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (onSyncCenterClick != null) {
-                SyncStatusHeaderButton(
-                    isOnline = isOnline,
-                    isSyncing = isSyncing,
-                    onClick = onSyncCenterClick,
-                )
-            } else {
-                InitialsAvatar(displayName = displayName)
-            }
+            InitialsAvatar(displayName = displayName)
 
             Column(
                 modifier = Modifier.weight(1f),
@@ -190,71 +150,6 @@ private fun NotificationBellButton(unreadCount: Int, onClick: () -> Unit) {
                 modifier = Modifier.size(21.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun SyncStatusHeaderButton(
-    isOnline: Boolean,
-    isSyncing: Boolean,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(52.dp)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.18f))
-                .border(
-                    width = 1.dp,
-                    color = Color.White.copy(alpha = 0.32f),
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            val iconModifier = Modifier.size(26.dp)
-            when {
-                isSyncing -> {
-                    val infiniteTransition = rememberInfiniteTransition(label = "syncHeaderIcon")
-                    val rotation by infiniteTransition.animateFloat(
-                        initialValue = 0f,
-                        targetValue = 360f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1100, easing = LinearEasing),
-                            repeatMode = RepeatMode.Restart,
-                        ),
-                        label = "rotation",
-                    )
-                    Icon(
-                        imageVector = Icons.Default.Sync,
-                        contentDescription = "Open Sync Center",
-                        tint = Color.White,
-                        modifier = iconModifier.rotate(rotation),
-                    )
-                }
-                else -> {
-                    Icon(
-                        imageVector = if (!isOnline) Icons.Default.CloudOff else Icons.Default.CloudDone,
-                        contentDescription = "Open Sync Center",
-                        tint = Color.White,
-                        modifier = iconModifier,
-                    )
-                }
-            }
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(if (isOnline) Color(0xFF22B07D) else Color(0xFF94A3B8)),
-        )
     }
 }
 

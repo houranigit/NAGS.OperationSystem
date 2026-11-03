@@ -15,9 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 
 /**
  * Observes the OS connectivity callbacks and emits a coarse "are we online?"
- * boolean. The sync coordinator uses this to kick a fresh sync whenever the
- * device transitions from offline → online so the user sees the latest data
- * the moment they re-enter coverage on the ramp.
+ * boolean. Screens and notification registration use it to react when the
+ * device transitions between offline and online.
  *
  * We deliberately stay coarse — no metering / VPN / captive-portal distinctions
  * here; if anything claims to be a working network we trust it and let the

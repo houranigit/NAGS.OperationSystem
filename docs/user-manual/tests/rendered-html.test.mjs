@@ -22,7 +22,9 @@ test("server-renders the current scheduling guide", async () => {
   assert.match(html, /NAGS Operations Field Guide/i);
   assert.match(html, /Search the user manual/i);
   assert.match(html, /Flight scheduling baseline/i);
-  assert.match(html, /Mobile is not supported by this backend baseline/i);
+  assert.match(html, /Android flight access/i);
+  assert.match(html, /employee invitations/i);
+  assert.doesNotMatch(html, /Mobile is not supported|Android source uses the earlier operational API/i);
   assert.doesNotMatch(html, /Follow the flight lifecycle|codex-preview|Your site is taking shape/i);
 });
 
@@ -50,7 +52,7 @@ test("manual navigation resolves every category and article exactly once", async
   for (const article of manualArticles) {
     assert.ok(manualCategories.some(item => item.id === article.categoryId && item.articleIds.includes(article.id)));
   }
-  for (const id of ["current-scope", "schedule-flight", "schedule-many-flights", "find-edit-flight", "flight-access", "master-data-overview"]) {
+  for (const id of ["current-scope", "schedule-flight", "schedule-many-flights", "find-edit-flight", "android-browse-flights", "android-invite-employees", "android-account-notifications", "flight-access", "master-data-overview"]) {
     assert.ok(manualArticles.some(item => item.id === id));
   }
 });

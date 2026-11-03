@@ -15,9 +15,6 @@ coroutines = "1.9.0"
 datastore = "1.1.1"
 room = "2.7.0"
 work = "2.11.2"
-exifinterface = "1.4.2"
-signalr = "8.0.17"
-slf4jAndroid = "1.7.36"
 junit4 = "4.13.2"
 firebaseBom = "34.16.0"
 googleServices = "4.5.0"
@@ -54,16 +51,7 @@ androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
-androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 
-# Official Microsoft SignalR Java client — works on Android. Talks to the .NET
-# Operations.Web hub at /hubs/mobile-sync over a WebSocket and delivers the
-# `change` envelope JSON to the realtime channel.
-signalr = { module = "com.microsoft.signalr:signalr", version.ref = "signalr" }
-# SignalR's Java client logs via SLF4J — Android needs an explicit binding so
-# the connection lifecycle (negotiate / connect / disconnect / errors) doesn't
-# silently NOP into the SLF4J no-op fallback.
-slf4j-android = { module = "org.slf4j:slf4j-android", version.ref = "slf4jAndroid" }
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }

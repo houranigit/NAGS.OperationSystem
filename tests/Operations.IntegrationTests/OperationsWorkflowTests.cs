@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using MasterData.Contracts.Seeding;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Operations.Infrastructure.Persistence;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -277,6 +280,160 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         updated.PlannedServices.ShouldHaveSingleItem().ServiceId
             .ShouldBe(WellKnownMasterDataIds.AircraftPerLandingService);
     }
+
+    [Fact]
+    public async Task Invite_permission_adds_employees_once_without_replacing_roster_and_notifies_the_invitee()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var roleId = await CreateInviteRoleAsync(admin);
+        var (inviter, inviterId) = await CreateStaffLoginAsync(admin, refs, roleId);
+        var (invitee, inviteeId) = await CreateStaffLoginAsync(admin, refs);
+        var flightId = await ScheduleFlightAsync(admin, refs, "INV100", assignedStaffIds: [inviterId]);
+        var flight = await GetFlightAsync(inviter, flightId);
+
+        var options = await inviter.GetFromJsonAsync<List<AssignedEmployee>>($"{Base}/flights/{flightId}/invitation-options");
+        options!.ShouldContain(employee => employee.StaffMemberId == inviteeId);
+        options!.ShouldNotContain(employee => employee.StaffMemberId == inviterId);
+
+        using var request = InvitationRequest(flightId, [inviterId, inviteeId, inviteeId], flight.RowVersion);
+        var response = await inviter.SendAsync(request);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync());
+        var updated = await GetFlightAsync(admin, flightId);
+        updated.AssignedEmployees.Select(employee => employee.StaffMemberId).Order()
+            .ShouldBe(new[] { inviterId, inviteeId }.Order());
+        using var repeated = InvitationRequest(flightId, [inviteeId], updated.RowVersion);
+        (await inviter.SendAsync(repeated)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await GetFlightAsync(admin, flightId)).AssignedEmployees.Count.ShouldBe(2);
+
+        await factory.DrainOutboxesAsync();
+        (await invitee.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var inbox = await invitee.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
+        inbox!.Items.Count(item => item.Kind == "EmployeeInvitedToFlight" && item.Payload.GetValueOrDefault("flightId") == flightId.ToString())
+            .ShouldBe(1);
+        options = await inviter.GetFromJsonAsync<List<AssignedEmployee>>($"{Base}/flights/{flightId}/invitation-options");
+        options!.ShouldNotContain(employee => employee.StaffMemberId == inviteeId);
+    }
+
+    [Fact]
+    public async Task Invitation_routes_require_invite_permission_even_when_the_flight_is_accessible()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var (staff, staffId) = await CreateStaffLoginAsync(admin, refs);
+        var flightId = await ScheduleFlightAsync(admin, refs, "INV200", assignedStaffIds: [staffId]);
+        var flight = await GetFlightAsync(staff, flightId);
+
+        (await staff.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var request = InvitationRequest(flightId, [refs.StaffMemberId], flight.RowVersion);
+        (await staff.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Invite_permission_does_not_bypass_flight_scope(bool otherStation)
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var roleId = await CreateInviteRoleAsync(admin);
+        var (inviter, _) = await CreateStaffLoginAsync(admin, refs, roleId);
+        var flightRefs = otherStation ? await SetupMasterDataAsync(admin) : refs;
+        var flightId = await ScheduleFlightAsync(admin, flightRefs, "INV300");
+        var flight = await GetFlightAsync(admin, flightId);
+
+        (await inviter.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var request = InvitationRequest(flightId, [flightRefs.StaffMemberId], flight.RowVersion);
+        (await inviter.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Per_landing_flights_do_not_offer_employee_invitations()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var flightId = await ScheduleFlightAsync(admin, refs, "INV400", [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var flight = await GetFlightAsync(admin, flightId);
+
+        (await admin.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var request = InvitationRequest(flightId, [refs.StaffMemberId], flight.RowVersion);
+        (await admin.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Invitation_requires_current_version_and_stale_write_preserves_roster_and_outbox()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var (_, secondStaffId) = await CreateStaffLoginAsync(admin, refs);
+        var flightId = await ScheduleFlightAsync(admin, refs, "INV500");
+        var flight = await GetFlightAsync(admin, flightId);
+
+        using var missingVersion = InvitationRequest(flightId, [refs.StaffMemberId]);
+        (await admin.SendAsync(missingVersion)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldBeEmpty();
+        using var accepted = InvitationRequest(flightId, [refs.StaffMemberId], flight.RowVersion);
+        (await admin.SendAsync(accepted)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        using var stale = InvitationRequest(flightId, [secondStaffId], flight.RowVersion);
+        (await admin.SendAsync(stale)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var saved = await GetFlightAsync(admin, flightId);
+        saved.AssignedEmployees.ShouldHaveSingleItem().StaffMemberId.ShouldBe(refs.StaffMemberId);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+        (await db.OutboxMessages.CountAsync(message =>
+            message.Type.StartsWith("Operations.Contracts.FlightEmployeeAssigned") && message.Content.Contains(flightId.ToString())))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Viewer_can_read_flights_but_cannot_read_invitation_options_or_invite()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var flightId = await ScheduleFlightAsync(admin, refs, "INV600");
+        var flight = await GetFlightAsync(admin, flightId);
+        var roleId = await PostForIdAsync(admin, $"{IdentityBase}/roles", new
+        {
+            name = $"Ops Viewer {Guid.NewGuid():N}", description = (string?)null,
+            compatibleUserType = "ViewerOnly", permissions = new[] { "operations.flights.view" }
+        });
+        var email = $"viewer-{Guid.NewGuid():N}@example.com";
+        var invited = await admin.PostAsJsonAsync($"{IdentityBase}/users/invite", new { email, displayName = "Operations viewer", roleId });
+        invited.StatusCode.ShouldBe(HttpStatusCode.Created, await invited.Content.ReadAsStringAsync());
+        var invitationToken = await factory.GetInvitationTokenAsync(email);
+        const string password = "ViewerPass#12345";
+        (await admin.PostAsJsonAsync($"{IdentityBase}/auth/activate", new { email, invitationToken, newPassword = password }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var viewer = await factory.CreateAuthenticatedClientAsync(email, password);
+
+        (await viewer.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await viewer.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var request = InvitationRequest(flightId, [refs.StaffMemberId], flight.RowVersion);
+        (await viewer.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    private static HttpRequestMessage InvitationRequest(Guid flightId, IReadOnlyList<Guid> staffIds, string? rowVersion = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/invite")
+        {
+            Content = JsonContent.Create(new { staffMemberIds = staffIds })
+        };
+        if (rowVersion is not null)
+            request.Headers.TryAddWithoutValidation("If-Match", rowVersion);
+        return request;
+    }
+
+    private static Task<Guid> CreateInviteRoleAsync(HttpClient admin) => PostForIdAsync(admin, $"{IdentityBase}/roles", new
+    {
+        name = $"Ops Invite {Guid.NewGuid():N}", description = (string?)null,
+        compatibleUserType = "StationStaff", permissions = new[] { "operations.flights.view", "operations.flights.invite" }
+    });
+
+    private sealed record NotificationPage(List<NotificationItem> Items);
+    private sealed record NotificationItem(string Kind, Dictionary<string, string> Payload);
 
     private sealed record MasterDataRefs(
         Guid CountryId, Guid StationId, Guid CustomerId, Guid OperationTypeId,

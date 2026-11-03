@@ -1,4 +1,6 @@
+using BuildingBlocks.Application.Messaging;
 using Microsoft.EntityFrameworkCore;
+using Operations.Contracts;
 using Operations.Infrastructure.Persistence;
 using Shouldly;
 using Testcontainers.MsSql;
@@ -77,10 +79,21 @@ public sealed class FlightSchedulingMigrationTests : IAsyncLifetime
 
             INSERT INTO [operations].[outbox_messages]
                 ([Id], [OccurredOnUtc], [Type], [Content], [ProcessedOnUtc], [Attempts])
-            VALUES ({retiredEventId}, {arrival}, N'Operations.Contracts.FlightEmployeeAssigned, Operations.Contracts', {eventContent}, NULL, 0),
+            VALUES ({retiredEventId}, {arrival}, N'Operations.Contracts.WorkOrderFileDeletionRequested, Operations.Contracts', {eventContent}, NULL, 0),
                    ({auditEventId}, {arrival}, N'BuildingBlocks.Contracts.Auditing.AuditEntryRecorded, BuildingBlocks.Contracts', {eventContent}, NULL, 0),
-                   ({processedRetiredEventId}, {arrival}, N'Operations.Contracts.FlightEmployeeAssigned, Operations.Contracts', {eventContent}, {arrival}, 1);
+                   ({processedRetiredEventId}, {arrival}, N'Operations.Contracts.WorkOrderFileDeletionRequested, Operations.Contracts', {eventContent}, {arrival}, 1);
             """);
+
+        var pendingInvitation = OutboxMessage.Create(new FlightEmployeeAssigned
+        {
+            FlightId = flightId,
+            FlightNumber = "BASE100",
+            StaffMemberId = staffMemberId,
+            Source = FlightAssignmentSource.Invite,
+            OccurredOnUtc = arrival
+        });
+        db.OutboxMessages.Add(pendingInvitation);
+        await db.SaveChangesAsync();
 
         await db.Database.MigrateAsync();
         var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
@@ -115,6 +128,7 @@ public sealed class FlightSchedulingMigrationTests : IAsyncLifetime
         employee.Employee.EmployeeId.ShouldBe("EMP-100");
         (await db.OutboxMessages.AnyAsync(message => message.Id == retiredEventId)).ShouldBeFalse();
         (await db.OutboxMessages.SingleAsync(message => message.Id == auditEventId)).ProcessedOnUtc.ShouldBeNull();
+        (await db.OutboxMessages.SingleAsync(message => message.Id == pendingInvitation.Id)).ProcessedOnUtc.ShouldBeNull();
         (await db.OutboxMessages.SingleAsync(message => message.Id == processedRetiredEventId))
             .ProcessedOnUtc.ShouldBe(arrival);
 

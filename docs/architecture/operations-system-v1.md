@@ -69,7 +69,7 @@ For every rewritten feature, first extract the business facts from the old proje
 
 ### Mobile
 
-The native Android source at `src/Host/OperationsSystem.Mobile` targets the prior operational backend. The current scheduling baseline removes its `/api/v1/mobile/*` Operations BFF and does not support that client. Identity mobile authentication and the host-owned MasterData catalog-change hub remain independent capabilities. See [Operations Module Foundation](../modules/operations-foundation.md) before reintroducing mobile Operations workflows.
+The native Android client at `src/Host/OperationsSystem.Mobile` uses the current shared Operations API for online flight lists, basic details, and employee invitations. Creation and scheduling remain web responsibilities. The former `/api/v1/mobile/*` Operations BFF, work-order forms, flight cache, realtime sync, and offline uploader are retired. Identity mobile authentication and Notifications remain existing capabilities. See [Operations Module Foundation](../modules/operations-foundation.md) for the current scope.
 
 ## 4. Architecture Direction
 
@@ -293,14 +293,14 @@ Features/
 ### Authentication Schemes
 
 - The web app uses an in-memory access token plus an httpOnly, secure, rotated refresh-token cookie.
-- The backend auth foundation must support Bearer tokens as a first-class scheme so the deferred mobile client can authenticate without redesign.
+- The backend auth foundation must support Bearer tokens as a first-class scheme so the native mobile client can authenticate without redesign.
 - Endpoints select their scheme/policy explicitly. Do not assume a single global scheme.
 
 ### Identity And StaffMember Linkage
 
 - Identity owns authentication users, roles, and permissions.
 - The operational `StaffMember` concept (named `Employee` in the legacy project) represents a person who performs work and is scoped to one station; it is a MasterData concern.
-- A User may be linked to a StaffMember. This link drives data scoping and, later, the mobile client's "current staff member" context.
+- A User may be linked to a StaffMember. This link drives data scoping and the mobile client's current staff-member context.
 - Keep the link explicit and cross-module-safe (contracts/read models), not a hidden foreign key into another module's internals.
 
 ### Data Scoping (Row-Level Authorization)
@@ -558,7 +558,7 @@ The legacy is already a DDD modular monolith with strong patterns. Preserve thes
 
 ## 27. Mobile Strategy
 
-Mobile Operations is deferred in the current scheduling baseline. The existing Android source is retained as a separate prior client and must not be presented as compatible with this backend. Reintroduce only explicitly agreed workflows against the new flight model; do not rebuild WO or offline-sync infrastructure merely to match that reference client.
+Android follows the shared flight register and basic-details API, with online add-only employee invitations under the existing invite permission and rowversion checks. It has no flight creation/scheduling, work-order workflows, Operations sync, or offline writes. The old `operations.db` is left unopened; a separate notification-only Room database serves the retained inbox. Existing bearer sign-in/session rotation and notification transport remain intact. Earlier mobile/offline decisions below describe the previous implementation and do not extend this baseline.
 
 ## 28. Decisions Log
 
@@ -624,3 +624,5 @@ Use this section to record decisions as they become final.
 | 2026-07-18 | On Call is derived for Per-Landing flights from non-merged work orders with at least one performed service line; the seeded On Call catalog service is retired | Staff record the actual service performed, while list/detail/calendar/filter/extraction behavior uses one consistent state rule |
 | 2026-07-23 | Work-order service lines and tasks reconcile by stable id and both may own attachment metadata backed by external file storage | Service attachments must mirror task behavior without losing existing files during an otherwise ordinary work-order edit; legacy supported task attachments only |
 | 2026-11-03 | Reset Operations to flight scheduling with direct planned-service and assigned-staff lists; remove WO/history/status/workflow/reporting/mobile Operations surfaces | Rebuild agreed capabilities individually from a simple baseline; preserve historical migrations and existing flight planning data through a new reset migration |
+
+| 2026-11-03 | Android uses the shared paginated flight list/basic-details API and retains online employee invitations; web owns creation/scheduling | Keep the agreed mobile journey while removing WO, status, flight-cache, sync, and offline submission workflows; preserve the old Room file and existing authentication/Notifications |

@@ -9,51 +9,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.nags.operations.AppGraph
-import com.nags.operations.ui.components.FlightSheetCallbacks
-import com.nags.operations.ui.home.MainShellScreen
-import com.nags.operations.ui.invite.InviteEmployeesScreen
-import com.nags.operations.ui.invite.InviteEmployeesViewModel
-import com.nags.operations.ui.login.LoginScreen
-import com.nags.operations.ui.login.LoginViewModel
-import com.nags.operations.ui.screens.CreateWorkOrderScreen
-import com.nags.operations.ui.screens.ReturnToRampScreen
-import com.nags.operations.ui.screens.FlightWorkOrdersScreen
-import com.nags.operations.ui.sync.SyncCenterScreen
-import com.nags.operations.ui.sync.SyncCenterViewModel
-import com.nags.operations.ui.workorder.CreateWorkOrderLaunchMode
-import com.nags.operations.ui.workorder.CreateWorkOrderViewModel
-import com.nags.operations.ui.workorder.ReturnToRampViewModel
-import com.nags.operations.ui.notifications.NotificationsScreen
-import com.nags.operations.ui.notifications.NotificationsViewModel
 import com.nags.operations.ui.account.AccountScreen
 import com.nags.operations.ui.account.AccountViewModel
+import com.nags.operations.ui.home.MainShellScreen
+import com.nags.operations.ui.login.LoginScreen
+import com.nags.operations.ui.login.LoginViewModel
+import com.nags.operations.ui.notifications.NotificationsScreen
+import com.nags.operations.ui.notifications.NotificationsViewModel
 import kotlinx.coroutines.launch
 
 private object Routes {
     const val Login = "login"
-    const val Main = "main"
-    const val SyncCenter = "sync-center"
-    const val FlightWorkOrders = "flight-work-orders/{flightId}"
-    const val CreateWorkOrder = "create-work-order/{flightId}"
-    const val ReturnToRamp = "return-to-ramp/{flightId}"
-    const val CreateAdHocFlight = "create-ad-hoc-flight"
-    const val WorkOrderDraft = "work-order-draft/{draftId}"
-    const val InviteEmployees = "invite/{flightId}"
+    const val Flights = "flights"
     const val Notifications = "notifications"
     const val Account = "account"
 }
-
-private const val NavAnimMs = 220
 
 @Composable
 fun OperationsApp() {
@@ -61,10 +37,10 @@ fun OperationsApp() {
     val graph = remember { AppGraph.get(context) }
     val factory = remember(graph) { AppViewModelFactory(graph) }
     val navController = rememberNavController()
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     val accessToken by graph.tokenStore.accessTokenFlow.collectAsStateWithLifecycle(initialValue = null)
-    val pendingNotificationOpen by graph.notificationNavigation.pending
-        .collectAsStateWithLifecycle(initialValue = null)
+    val pendingNotification by graph.notificationNavigation.pending.collectAsStateWithLifecycle(initialValue = null)
+    val subject by graph.tokenStore.sessionSubjectFlow.collectAsStateWithLifecycle(initialValue = null)
 
     fun navigateToLogin() {
         if (navController.currentDestination?.route == Routes.Login) return
@@ -73,285 +49,63 @@ fun OperationsApp() {
             launchSingleTop = true
         }
     }
-
-    // Invalid/expired refresh credentials remove only the bearer pair. Route back to login while
-    // preserving the remembered subject, cache, drafts, and outbox for same-user reauthentication.
-    LaunchedEffect(accessToken) {
-        if (accessToken == null && navController.currentDestination?.route != null) {
+    fun signOut() {
+        scope.launch {
+            graph.signOut()
             navigateToLogin()
         }
     }
 
-    LaunchedEffect(pendingNotificationOpen, accessToken) {
-        val request = pendingNotificationOpen ?: return@LaunchedEffect
-        if (request.isExpiredReminder()) {
-            if (accessToken != null) {
-                request.notificationId?.let { id ->
-                    graph.appScope.launch { runCatching { graph.notificationsRepository.markRead(id) } }
-                }
-            }
-            graph.notificationNavigation.consume(request.notificationId)
-            return@LaunchedEffect
-        }
+    LaunchedEffect(accessToken) {
+        if (accessToken == null && navController.currentDestination?.route != null) navigateToLogin()
+    }
+    LaunchedEffect(pendingNotification, accessToken) {
+        val request = pendingNotification ?: return@LaunchedEffect
         if (accessToken == null) return@LaunchedEffect
-        val subject = graph.tokenStore.getSessionSubject()
         if (!request.recipientUserId.isNullOrBlank() &&
-            !request.recipientUserId.equals(subject, ignoreCase = true)
-        ) {
+            !request.recipientUserId.equals(graph.tokenStore.getSessionSubject(), ignoreCase = true)) {
             graph.notificationNavigation.discardForWrongAccount()
             return@LaunchedEffect
         }
         request.notificationId?.let { id ->
             graph.appScope.launch { runCatching { graph.notificationsRepository.markRead(id) } }
         }
-        if (navController.currentDestination?.route != Routes.Main) {
-            if (!navController.popBackStack(Routes.Main, inclusive = false)) {
-                navController.navigate(Routes.Main) {
-                    popUpTo(navController.graph.id) { inclusive = true }
-                    launchSingleTop = true
-                }
+        if (navController.currentDestination?.route != Routes.Flights &&
+            !navController.popBackStack(Routes.Flights, inclusive = false)) {
+            navController.navigate(Routes.Flights) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
             }
         }
     }
-
-    NavHost(
-        navController = navController,
-        startDestination = Routes.Login,
-        enterTransition = { fadeIn(tween(NavAnimMs)) },
-        exitTransition = { fadeOut(tween(NavAnimMs)) },
-        popEnterTransition = { fadeIn(tween(NavAnimMs)) },
-        popExitTransition = { fadeOut(tween(NavAnimMs)) },
-    ) {
+    NavHost(navController = navController, startDestination = Routes.Login,
+        enterTransition = { fadeIn(tween(220)) }, exitTransition = { fadeOut(tween(220)) },
+        popEnterTransition = { fadeIn(tween(220)) }, popExitTransition = { fadeOut(tween(220)) }) {
         composable(Routes.Login) {
-            val vm: LoginViewModel = viewModel(factory = factory)
-            LoginScreen(
-                viewModel = vm,
-                tokenStore = graph.tokenStore,
-                onLoggedIn = {
-                    navController.navigate(Routes.Main) {
-                        popUpTo(Routes.Login) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-            )
+            val model: LoginViewModel = viewModel(factory = factory)
+            LoginScreen(viewModel = model, tokenStore = graph.tokenStore, onLoggedIn = {
+                navController.navigate(Routes.Flights) {
+                    popUpTo(Routes.Login) { inclusive = true }
+                    launchSingleTop = true
+                }
+            })
         }
-        composable(
-            route = Routes.FlightWorkOrders,
-            arguments = listOf(navArgument("flightId") { type = NavType.StringType }),
-        ) { entry ->
-            FlightWorkOrdersScreen(
-                flightId = requireNotNull(entry.arguments?.getString("flightId")),
-                api = graph.mobileApi,
-                flightsRepository = graph.flightsRepository,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(Routes.Main) {
-            MainShellScreen(
-                tokenStore = graph.tokenStore,
-                graph = graph,
-                factory = factory,
-                onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) },
-                onOpenCreateAdHocFlight = { navController.navigate(Routes.CreateAdHocFlight) },
+        composable(Routes.Flights) {
+            MainShellScreen(graph = graph, factory = factory, onLogout = ::signOut,
                 onOpenNotifications = { navController.navigate(Routes.Notifications) },
                 onOpenAccount = { navController.navigate(Routes.Account) },
-                notificationOpenRequest = pendingNotificationOpen,
-                onNotificationHandled = graph.notificationNavigation::consume,
-                flightSheetCallbacks = FlightSheetCallbacks(
-                    onOpenWorkOrder = { flightId ->
-                        navController.navigate("flight-work-orders/$flightId")
-                    },
-                    onCreateWorkOrder = { flightId ->
-                        navController.navigate("create-work-order/$flightId")
-                    },
-                    onCompleteWorkOrderDraft = { draftId ->
-                        navController.navigate("work-order-draft/$draftId")
-                    },
-                    onReturnToRamp = { flightId ->
-                        navController.navigate("return-to-ramp/$flightId")
-                    },
-                    onInviteTeammate = { flightId ->
-                        navController.navigate("invite/$flightId")
-                    },
-                ),
-                onOpenWorkOrderDraft = { draftId ->
-                    navController.navigate("work-order-draft/$draftId")
-                },
-                onLogout = {
-                    coroutineScope.launch {
-                        graph.signOut()
-                        navigateToLogin()
-                    }
-                },
-            )
+                notificationOpenRequest = pendingNotification,
+                onNotificationHandled = graph.notificationNavigation::consume)
         }
         composable(Routes.Account) {
-            val vm: AccountViewModel = viewModel(factory = factory)
-            AccountScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-                onLogout = {
-                    coroutineScope.launch {
-                        graph.signOut()
-                        navigateToLogin()
-                    }
-                },
-            )
+            val model: AccountViewModel = viewModel(key = "account:$subject", factory = factory)
+            AccountScreen(viewModel = model, onBack = { navController.popBackStack() }, onLogout = ::signOut)
         }
         composable(Routes.Notifications) {
-            val vm: NotificationsViewModel = viewModel(factory = factory)
-            NotificationsScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
+            val model: NotificationsViewModel = viewModel(key = "notifications:$subject", factory = factory)
+            NotificationsScreen(viewModel = model, onBack = { navController.popBackStack() },
                 onOpenFlight = graph.notificationNavigation::publish,
-                onOpenSchedule = graph.notificationNavigation::publish,
-            )
-        }
-        composable(Routes.CreateAdHocFlight) {
-            val vm: CreateWorkOrderViewModel = viewModel(
-                key = "ad_hoc_scratch",
-                factory = remember(graph) {
-                    object : ViewModelProvider.Factory {
-                        @Suppress("UNCHECKED_CAST")
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                            CreateWorkOrderViewModel(
-                                launchMode = CreateWorkOrderLaunchMode.AdHocScratch,
-                                flightsRepository = graph.flightsRepository,
-                                draftsRepository = graph.workOrderDraftsRepository,
-                                outboxRepository = graph.workOrderOutboxRepository,
-                                tokenStore = graph.tokenStore,
-                                applicationScope = graph.appScope,
-                                catalogsRepository = graph.catalogsRepository,
-                                employeesRepository = graph.employeesRepository,
-                            ) as T
-                    }
-                },
-            )
-            CreateWorkOrderScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(
-            route = Routes.CreateWorkOrder,
-            arguments = listOf(navArgument("flightId") { type = NavType.StringType }),
-        ) { entry ->
-            val flightId = entry.arguments?.getString("flightId") ?: return@composable
-            val vm: CreateWorkOrderViewModel = viewModel(
-                key = flightId,
-                factory = remember(flightId, graph) {
-                    object : ViewModelProvider.Factory {
-                        @Suppress("UNCHECKED_CAST")
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                            CreateWorkOrderViewModel(
-                                launchMode = CreateWorkOrderLaunchMode.FromFlight(flightId),
-                                flightsRepository = graph.flightsRepository,
-                                draftsRepository = graph.workOrderDraftsRepository,
-                                outboxRepository = graph.workOrderOutboxRepository,
-                                tokenStore = graph.tokenStore,
-                                applicationScope = graph.appScope,
-                                catalogsRepository = graph.catalogsRepository,
-                                employeesRepository = graph.employeesRepository,
-                            ) as T
-                    }
-                },
-            )
-            CreateWorkOrderScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(
-            route = Routes.ReturnToRamp,
-            arguments = listOf(navArgument("flightId") { type = NavType.StringType }),
-        ) { entry ->
-            val flightId = entry.arguments?.getString("flightId") ?: return@composable
-            val vm: ReturnToRampViewModel = viewModel(
-                key = "rtr_$flightId",
-                factory = remember(flightId, graph) {
-                    object : ViewModelProvider.Factory {
-                        @Suppress("UNCHECKED_CAST")
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                            ReturnToRampViewModel(
-                                flightId = flightId,
-                                flightsRepository = graph.flightsRepository,
-                                outboxRepository = graph.workOrderOutboxRepository,
-                                mobileApi = graph.mobileApi,
-                                applicationScope = graph.appScope,
-                                catalogsRepository = graph.catalogsRepository,
-                                employeesRepository = graph.employeesRepository,
-                            ) as T
-                    }
-                },
-            )
-            ReturnToRampScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(
-            route = Routes.WorkOrderDraft,
-            arguments = listOf(navArgument("draftId") { type = NavType.StringType }),
-        ) { entry ->
-            val draftId = entry.arguments?.getString("draftId") ?: return@composable
-            val vm: CreateWorkOrderViewModel = viewModel(
-                key = "draft_$draftId",
-                factory = remember(draftId, graph) {
-                    object : ViewModelProvider.Factory {
-                        @Suppress("UNCHECKED_CAST")
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                            CreateWorkOrderViewModel(
-                                launchMode = CreateWorkOrderLaunchMode.FromDraft(draftId),
-                                flightsRepository = graph.flightsRepository,
-                                draftsRepository = graph.workOrderDraftsRepository,
-                                outboxRepository = graph.workOrderOutboxRepository,
-                                tokenStore = graph.tokenStore,
-                                applicationScope = graph.appScope,
-                                catalogsRepository = graph.catalogsRepository,
-                                employeesRepository = graph.employeesRepository,
-                            ) as T
-                    }
-                },
-            )
-            CreateWorkOrderScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(
-            route = Routes.InviteEmployees,
-            arguments = listOf(navArgument("flightId") { type = NavType.StringType }),
-        ) { entry ->
-            val flightId = entry.arguments?.getString("flightId") ?: return@composable
-            val vm: InviteEmployeesViewModel = viewModel(
-                key = "invite_$flightId",
-                factory = remember(flightId, graph) {
-                    object : ViewModelProvider.Factory {
-                        @Suppress("UNCHECKED_CAST")
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                            InviteEmployeesViewModel(
-                                flightId = flightId,
-                                flightsRepository = graph.flightsRepository,
-                                employeesRepository = graph.employeesRepository,
-                                mobileApi = graph.mobileApi,
-                                syncCoordinator = graph.syncCoordinator,
-                                networkMonitor = graph.networkMonitor,
-                                tokenStore = graph.tokenStore,
-                            ) as T
-                    }
-                },
-            )
-            InviteEmployeesScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(Routes.SyncCenter) {
-            val vm: SyncCenterViewModel = viewModel(factory = factory)
-            SyncCenterScreen(
-                viewModel = vm,
-                onBack = { navController.popBackStack() },
-            )
+                onOpenSchedule = graph.notificationNavigation::publish)
         }
     }
 }

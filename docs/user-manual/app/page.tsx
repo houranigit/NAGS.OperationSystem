@@ -24,6 +24,7 @@ const audienceOptions: readonly {
 }[] = [
   { id: "everything", label: "All guides" },
   { id: "portal", label: "Portal" },
+  { id: "mobile", label: "Android" },
   { id: "administrator", label: "Admin" },
 ];
 
@@ -313,7 +314,7 @@ function ArticleReader({
           </div>
           <div className="rail-note">
             <span>Time zone</span>
-            <p>Enter and read planning times in the user time zone displayed by the portal.</p>
+            <p>The portal uses its displayed user time zone. Android shows scheduled times in the device time zone.</p>
           </div>
         </aside>
       </div>
@@ -359,7 +360,7 @@ function SearchResults({
         <div className="empty-results">
           <span>0</span>
           <h2>No exact match</h2>
-          <p>Try a status, flight number concept, screen name, or master-data record.</p>
+          <p>Try a flight number concept, invitation, screen name, or master-data record.</p>
         </div>
       )}
     </section>
@@ -516,7 +517,7 @@ export default function Home() {
             <span className="live-dot" />
             <strong>Operations reference</strong>
           </div>
-          <p>Portal flight scheduling baseline</p>
+          <p>Web flight planning · Android flight tools</p>
           <small>Product-aligned · November 2026</small>
         </div>
       </aside>
@@ -536,7 +537,7 @@ export default function Home() {
               ref={searchRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search flights, scheduling, master data…"
+              placeholder="Search flights, invitations, Android, master data…"
               aria-label="Search the user manual"
             />
             {query ? (
