@@ -27,7 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
       : "https");
   const metadataBase = new URL(`${protocol}://${host}`);
   const description =
-    "Searchable user manual for flight operations, work orders, mobile execution, permissions, reporting, and master data.";
+    "Searchable user manual for flight scheduling, permissions, and master data.";
 
   return {
     metadataBase,

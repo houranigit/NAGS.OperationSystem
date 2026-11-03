@@ -1,18 +1,17 @@
 # NAGS Operations Field Guide
 
-A searchable user manual for the Operations System portal and Android
-application. The manual source, genuine application screenshots, and portable
-release files all live in this project so they can be versioned and updated with
-the product.
+A searchable user manual for the Operations System portal's flight scheduling
+baseline. The guide covers single-flight and batch scheduling, the basic grid,
+planning edits, permissions, and the existing master-data catalogs.
 
-The guide covers:
+Work orders, history, status changes, handover, approvals, analytics, exports,
+and mobile operations are deferred on this branch. The retained Android source
+uses the earlier operational API and is unsupported against this reset backend.
 
-- flight scheduling, assignment, invitation, and lifecycle;
-- Completion and Cancellation work-order authoring, approval, return, merge,
-  Return to Ramp, printing, and offline delivery;
-- regular, Per Landing, On Call, and Ad Hoc operations;
-- roles, permissions, dashboards, reports, and protected system records;
-- the complete master-data catalog.
+The manual source, genuine application captures, and portable release files live
+in this project so they can be versioned with the product. Only relevant sign-in
+and master-data captures are shown; older operational screenshots do not describe
+the current flight grid.
 
 ## Ready-to-use files
 
@@ -67,12 +66,10 @@ In the portal account menu, select **Download manual**, or attach
 `release/nags-operations-field-guide.html` directly from the repository. The
 recipient should download the attachment and open it in Chrome, Edge, Safari, or
 Firefox. It requires no internet connection or application sign-in because the
-styling, search application, screenshots, and sample work-order PDF are embedded
-in the file.
+styling, search application, and referenced screenshots are embedded in the file.
 
 Email applications normally do not run interactive HTML inside the message
-preview; the attachment must be opened in a browser. The file is approximately
-11 MB, so confirm the recipient's email attachment limit.
+preview; the attachment must be opened in a browser.
 
 To create the email file from an existing static export at a custom location:
 
@@ -87,12 +84,12 @@ node scripts/inline-portable.mjs \
 1. Update guide content in `app/manual-data.ts` and shared rendering in
    `app/page.tsx`.
 2. Replace or add screenshots in `public/screenshots/` using direct captures
-   from the current portal or Android application. Do not create simulated
+   from the current portal. Do not create simulated
    application screens.
 3. Update the screenshot references in `app/page.tsx`.
 4. Run `npm run lint` and `npm run test`.
 5. Open `release/nags-operations-field-guide.html` in a browser and spot-check
-   search, navigation, screenshots, and the sample PDF.
+   search, navigation, and screenshots.
 6. Commit the source, genuine screenshots, and refreshed single-file HTML
    together. A subsequent portal build or publish embeds that exact file.
 

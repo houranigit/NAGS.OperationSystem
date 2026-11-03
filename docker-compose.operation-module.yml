@@ -1,0 +1,99 @@
+# Standalone branch environment. Do not merge with the main Compose files.
+name: operationssystem-operation-module
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: ${OPERATION_MODULE_SQL_PASSWORD:?Set OPERATION_MODULE_SQL_PASSWORD in .env.operation-module}
+      MSSQL_MEMORY_LIMIT_MB: "2048"
+    ports:
+      - "127.0.0.1:1434:1433"
+    volumes:
+      - sql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" -b -o /dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  api:
+    image: operationssystem-operation-module-api:local
+    build:
+      context: .
+      target: api
+      secrets:
+        - firebase_admin
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: &branch-database "Server=sqlserver;Database=OperationsSystemOperationModuleMain;User Id=sa;Password=${OPERATION_MODULE_SQL_PASSWORD:?Set OPERATION_MODULE_SQL_PASSWORD in .env.operation-module};TrustServerCertificate=True"
+      ConnectionStrings__Audit: *branch-database
+      ConnectionStrings__Identity: *branch-database
+      ConnectionStrings__MasterData: *branch-database
+      ConnectionStrings__Operations: *branch-database
+      ConnectionStrings__Notifications: *branch-database
+      Identity__Jwt__SigningKey: ${OPERATION_MODULE_JWT_KEY:?Set OPERATION_MODULE_JWT_KEY in .env.operation-module}
+      Identity__Admin__Email: ${OPERATION_MODULE_ADMIN_EMAIL:?Set OPERATION_MODULE_ADMIN_EMAIL in .env.operation-module}
+      Identity__Admin__Password: ${OPERATION_MODULE_ADMIN_PASSWORD:?Set OPERATION_MODULE_ADMIN_PASSWORD in .env.operation-module}
+      Identity__ActivationUrlBase: http://127.0.0.1:5081/activate
+      Identity__PasswordResetUrlBase: http://127.0.0.1:5081/reset-password
+      Identity__EmailChangeConfirmUrlBase: http://127.0.0.1:5081/confirm-email-change
+      Identity__DemoData__Enabled: "false"
+      Database__ApplyMigrationsOnStartup: "true"
+      Messaging__OutboxDispatchEnabled: "false"
+      Notifications__Fcm__Enabled: "false"
+      Notifications__Fcm__Required: "false"
+      EmailSettings__EnableEmailNotifications: "false"
+      OpenTelemetry__Enabled: "false"
+      FileStorage__RootPath: /data/storage
+      DataProtection__KeyRingPath: /data/keys
+    ports:
+      - "127.0.0.1:5213:8080"
+    volumes:
+      - storage:/data/storage
+      - api-keys:/data/keys
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  portal:
+    image: operationssystem-operation-module-portal:local
+    build:
+      context: .
+      target: portal
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ApiProxy__BaseUrl: http://api:8080
+    ports:
+      - "127.0.0.1:5081:8080"
+    volumes:
+      - portal-keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+secrets:
+  firebase_admin:
+    file: ./src/Host/OperationsSystem.Api/App_Data/firebase-admin.json
+
+volumes:
+  sql-data:
+  storage:
+  api-keys:
+  portal-keys:

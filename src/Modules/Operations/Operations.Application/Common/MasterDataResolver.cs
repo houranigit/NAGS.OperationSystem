@@ -10,45 +10,6 @@ namespace Operations.Application.Common;
 /// </summary>
 public sealed class MasterDataResolver(IMasterDataReader reader)
 {
-    public async Task<Result<AtaChapterSnapshot?>> AtaChapterAsync(
-        Guid? id, AtaChapterSnapshot? existing, CancellationToken cancellationToken)
-    {
-        if (id is null)
-            return Result.Success<AtaChapterSnapshot?>(null);
-        // Keeping a saved selection must not change its historical title or require a now-active catalog row.
-        if (existing?.AtaChapterId == id)
-            return Result.Success<AtaChapterSnapshot?>(existing);
-        var chapter = await reader.GetAtaChapterAsync(id.Value, cancellationToken);
-        if (chapter is null)
-            return Error.Validation("The selected ATA chapter does not exist.", "Operations.AtaChapter.NotFound");
-        if (!chapter.IsActive || !chapter.CategoryIsActive)
-            return Error.Validation("The selected ATA chapter or its category is inactive. Choose an active chapter.", "Operations.AtaChapter.Inactive");
-        return Result.Success<AtaChapterSnapshot?>(new AtaChapterSnapshot(chapter.Id, chapter.Code, chapter.Title));
-    }
-
-    public async Task<Result> EnsurePerformedServicesAllowedAsync(
-        IReadOnlyCollection<Guid> serviceIds,
-        Guid? manpowerTypeId,
-        bool isAdministrator,
-        CancellationToken ct)
-    {
-        if (isAdministrator || serviceIds.Count == 0)
-            return Result.Success();
-
-        if (manpowerTypeId is null)
-            return Error.Forbidden(
-                "Your linked staff member does not have an active manpower type.",
-                "Operations.WorkOrder.ManpowerTypeRequired");
-
-        var allowedIds = await reader.GetAllowedActiveServiceIdsAsync(manpowerTypeId.Value, ct);
-        if (serviceIds.Distinct().All(allowedIds.Contains))
-            return Result.Success();
-
-        return Error.Validation(
-            "One or more performed services are not allowed for your manpower type.",
-            "Operations.WorkOrder.ServiceNotAllowed");
-    }
-
     public async Task<Result<CustomerSnapshot>> CustomerAsync(Guid id, CancellationToken ct)
     {
         var c = await reader.GetCustomerAsync(id, ct);
@@ -113,48 +74,6 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         return snapshots;
     }
 
-    public async Task<Result<ServiceSnapshot>> ServiceAsync(Guid id, CancellationToken ct)
-    {
-        var s = await reader.GetServiceAsync(id, ct);
-        if (s is null)
-            return Error.Validation($"Service '{id}' was not found.", "Operations.Ref.ServiceNotFound");
-        if (!s.IsActive)
-            return Error.Validation($"Service '{s.Name}' is inactive.", "Operations.Ref.ServiceInactive");
-        return new ServiceSnapshot(s.Id, s.Name);
-    }
-
-    public async Task<Result<StaffMemberSnapshot>> StaffMemberAsync(Guid id, CancellationToken ct)
-    {
-        var s = await reader.GetStaffMemberAsync(id, ct);
-        if (s is null)
-            return Error.Validation($"Staff member '{id}' was not found.", "Operations.Ref.StaffNotFound");
-        if (!s.IsActive)
-            return Error.Validation($"Staff member '{s.FullName}' is inactive.", "Operations.Ref.StaffInactive");
-        return new StaffMemberSnapshot(s.Id, s.FullName, s.EmployeeId);
-    }
-
-    public async Task<Result<IReadOnlyList<StaffMemberSnapshot>>> StaffMembersAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
-    {
-        if (ids.Count == 0)
-            return Result.Success<IReadOnlyList<StaffMemberSnapshot>>([]);
-
-        var distinctIds = ids.Distinct().ToList();
-        var found = await reader.GetStaffMembersAsync(distinctIds, ct);
-        var byId = found.ToDictionary(s => s.Id);
-
-        var snapshots = new List<StaffMemberSnapshot>();
-        foreach (var id in distinctIds)
-        {
-            if (!byId.TryGetValue(id, out var s))
-                return Error.Validation($"Staff member '{id}' was not found.", "Operations.Ref.StaffNotFound");
-            if (!s.IsActive)
-                return Error.Validation($"Staff member '{s.FullName}' is inactive.", "Operations.Ref.StaffInactive");
-            snapshots.Add(new StaffMemberSnapshot(s.Id, s.FullName, s.EmployeeId));
-        }
-
-        return snapshots;
-    }
-
     public async Task<Result<IReadOnlyList<StaffMemberSnapshot>>> StaffMembersForStationAsync(
         IReadOnlyCollection<Guid> ids,
         Guid stationId,
@@ -183,27 +102,4 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         return snapshots;
     }
 
-    public async Task<Result<ToolSnapshot>> ToolAsync(Guid id, CancellationToken ct)
-    {
-        var t = await reader.GetToolAsync(id, ct);
-        if (t is null || !t.IsActive)
-            return Error.Validation($"Tool '{id}' was not found or is inactive.", "Operations.Ref.ToolInvalid");
-        return new ToolSnapshot(t.Id, t.Name, t.CalculationType);
-    }
-
-    public async Task<Result<MaterialSnapshot>> MaterialAsync(Guid id, CancellationToken ct)
-    {
-        var m = await reader.GetMaterialAsync(id, ct);
-        if (m is null || !m.IsActive)
-            return Error.Validation($"Material '{id}' was not found or is inactive.", "Operations.Ref.MaterialInvalid");
-        return new MaterialSnapshot(m.Id, m.Name, m.CalculationType);
-    }
-
-    public async Task<Result<GeneralSupportSnapshot>> GeneralSupportAsync(Guid id, CancellationToken ct)
-    {
-        var g = await reader.GetGeneralSupportAsync(id, ct);
-        if (g is null || !g.IsActive)
-            return Error.Validation($"General support '{id}' was not found or is inactive.", "Operations.Ref.GeneralSupportInvalid");
-        return new GeneralSupportSnapshot(g.Id, g.Name, g.CalculationType);
-    }
 }

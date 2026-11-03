@@ -35,222 +35,24 @@ public sealed class BrowserApiClientTests
     {
         var api = NewClient(new StubJsRuntime(""));
 
-        var result = await api.GetAsync<WorkOrderSummaryModel?>($"/operations/flights/{Guid.NewGuid()}/work-orders/mine");
+        var result = await api.GetAsync<FlightDetail?>($"/operations/flights/{Guid.NewGuid()}");
 
         result.ShouldBeNull();
     }
 
     [Fact]
-    public async Task Approved_work_order_download_uses_authenticated_blob_download_route()
+    public async Task Flight_grid_query_preserves_filters_and_sort()
     {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var flightId = Guid.NewGuid();
-
-        await operations.DownloadApprovedWorkOrderAsync(flightId);
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe($"/operations/flights/{flightId}/work-orders/approved/pdf");
-        runtime.Arguments[1].ShouldBe("approved-work-order.pdf");
-    }
-
-    [Fact]
-    public async Task Approved_work_order_download_forwards_the_user_time_zone()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var flightId = Guid.NewGuid();
-
-        await operations.DownloadApprovedWorkOrderAsync(flightId, "America/Chicago");
-
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe(
-            $"/operations/flights/{flightId}/work-orders/approved/pdf?timeZoneId=America%2FChicago");
-    }
-
-    [Fact]
-    public async Task Return_to_ramp_clients_use_the_canonical_flight_and_work_order_routes()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var flightId = Guid.NewGuid();
-        var workOrderId = Guid.NewGuid();
-        var request = new WorkOrderReturnToRampRequestModel(
-            null,
-            DateTimeOffset.Parse("2026-08-08T10:00:00Z"),
-            DateTimeOffset.Parse("2026-08-08T11:00:00Z"),
-            "Second visit",
-            [],
-            []);
-
-        await operations.RecordFlightReturnToRampAsync(flightId, request);
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.request");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe("POST");
-        runtime.Arguments[1].ShouldBe($"/operations/flights/{flightId}/return-to-ramps");
-        runtime.Arguments[2].ShouldBeSameAs(request);
-
-        await operations.RecordWorkOrderReturnToRampAsync(workOrderId, request);
-
-        runtime.Arguments![1].ShouldBe($"/operations/work-orders/{workOrderId}/return-to-ramps");
-        runtime.Arguments[2].ShouldBeSameAs(request);
-    }
-
-    [Fact]
-    public async Task Dashboard_approved_work_order_download_uses_dashboard_authenticated_blob_route()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var flightId = Guid.NewGuid();
-
-        await operations.DownloadDashboardApprovedWorkOrderAsync(flightId);
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe(
-            $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf");
-        runtime.Arguments[1].ShouldBe("approved-work-order.pdf");
-    }
-
-    [Fact]
-    public async Task Flights_export_forwards_the_user_time_zone_to_the_regular_export_route()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-
-        await operations.ExportFlightsAsync("xlsx", timeZoneId: "Asia/Riyadh");
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe(
-            "/operations/flights/export?format=xlsx&timeZoneId=Asia%2FRiyadh");
-    }
-
-    [Fact]
-    public async Task Billing_export_preserves_flight_filters_sort_and_time_zone_in_the_authenticated_download()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
+        var runtime = new CapturingDownloadJsRuntime { Response = "{\"items\":[],\"page\":1,\"pageSize\":25,\"totalCount\":0}" };
         var operations = new OperationsApiClient(NewClient(runtime));
         var stationId = Guid.NewGuid();
-        var customerId = Guid.NewGuid();
-        var operationTypeId = Guid.NewGuid();
         var fromUtc = DateTimeOffset.Parse("2026-10-30T05:00:00Z");
-        var toUtc = DateTimeOffset.Parse("2026-10-31T05:00:00Z");
 
-        await operations.ExportFlightsAsync(
-            "xlsx",
-            search: "WO & flight",
-            stationId: stationId,
-            customerId: customerId,
-            operationTypeId: operationTypeId,
-            statuses: ["Completed", "Canceled"],
-            fromUtc: fromUtc,
-            toUtc: toUtc,
-            serviceCategories: ["PerLanding", "OnCall"],
-            sort: "sta desc",
-            timeZoneId: "America/Chicago",
-            report: "billing");
+        await operations.GetFlightsAsync(1, 25, "123 & 456", stationId, fromUtc: fromUtc, sort: "sta desc");
 
-        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe(
-            "/operations/flights/export?format=xlsx&search=WO%20%26%20flight" +
-            $"&stationId={stationId}&customerId={customerId}&operationTypeId={operationTypeId}" +
-            "&status=Completed%2CCanceled" +
-            "&fromUtc=2026-10-30T05%3A00%3A00.0000000%2B00%3A00" +
-            "&toUtc=2026-10-31T05%3A00%3A00.0000000%2B00%3A00" +
-            "&serviceCategory=PerLanding%2COnCall&sort=sta%20desc" +
-            "&timeZoneId=America%2FChicago&report=billing");
-    }
-
-    [Fact]
-    public async Task Dashboard_requests_and_downloads_forward_the_browser_time_zone()
-    {
-        var runtime = new CapturingDownloadJsRuntime { Response = "{}" };
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var flightId = Guid.NewGuid();
-        var fromUtc = DateTimeOffset.Parse("2026-10-04T05:00:00Z");
-        var toUtc = DateTimeOffset.Parse("2026-10-05T05:00:00Z");
-
-        await operations.GetOperationsDashboardAsync(fromUtc, toUtc, timeZoneId: "America/Chicago");
-
-        runtime.Arguments![1]!.ToString()!.ShouldContain("timeZoneId=America%2FChicago");
-        runtime.Arguments[1]!.ToString()!.ShouldContain("fromUtc=2026-10-04T05%3A00%3A00.0000000%2B00%3A00");
-
-        await operations.ExportOperationsDashboardFlightsAsync("xlsx", fromUtc, toUtc,
-            timeZoneId: "America/Chicago");
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.downloadFile");
-        runtime.Arguments![0]!.ToString()!.ShouldContain("timeZoneId=America%2FChicago");
-
-        await operations.DownloadDashboardApprovedWorkOrderAsync(flightId, "America/Chicago");
-
-        runtime.Arguments![0].ShouldBe(
-            $"/operations/analytics-dashboard/flights/{flightId}/work-orders/approved/pdf?timeZoneId=America%2FChicago");
-    }
-
-    [Fact]
-    public async Task Service_line_attachment_upload_uses_service_line_route()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var workOrderId = Guid.NewGuid();
-        var serviceLineId = Guid.NewGuid();
-
-        await operations.UploadWorkOrderServiceLineAttachmentAsync(
-            workOrderId,
-            serviceLineId,
-            "Image",
-            [1, 2, 3],
-            "service.jpg",
-            "image/jpeg",
-            "row-version");
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.uploadFile");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments");
-        runtime.Arguments[6].ShouldBe("row-version");
-        ((IReadOnlyDictionary<string, string>)runtime.Arguments[7]!)["kind"].ShouldBe("Image");
-    }
-
-    [Fact]
-    public async Task Service_line_attachment_download_uses_service_line_route()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var workOrderId = Guid.NewGuid();
-        var serviceLineId = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
-
-        await operations.DownloadWorkOrderServiceLineAttachmentAsync(workOrderId, serviceLineId, attachmentId);
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.requestFile");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments/{attachmentId}");
-    }
-
-    [Fact]
-    public async Task Service_line_attachment_delete_uses_service_line_route_and_row_version()
-    {
-        var runtime = new CapturingDownloadJsRuntime();
-        var operations = new OperationsApiClient(NewClient(runtime));
-        var workOrderId = Guid.NewGuid();
-        var serviceLineId = Guid.NewGuid();
-        var attachmentId = Guid.NewGuid();
-
-        await operations.DeleteWorkOrderServiceLineAttachmentAsync(
-            workOrderId,
-            serviceLineId,
-            attachmentId,
-            "row-version");
-
-        runtime.Identifier.ShouldBe("operationsSystem.api.request");
-        runtime.Arguments.ShouldNotBeNull();
-        runtime.Arguments![0].ShouldBe("DELETE");
-        runtime.Arguments[1].ShouldBe($"/operations/work-orders/{workOrderId}/service-lines/{serviceLineId}/attachments/{attachmentId}");
-        runtime.Arguments[5].ShouldBe("row-version");
+        runtime.Arguments![1].ShouldBe(
+            "/operations/flights?page=1&pageSize=25&search=123%20%26%20456" +
+            $"&stationId={stationId}&fromUtc=2026-10-30T05%3A00%3A00.0000000%2B00%3A00&sort=sta%20desc");
     }
 
     [Fact]

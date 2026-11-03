@@ -7,7 +7,7 @@ namespace Operations.IntegrationTests;
 
 /// <summary>
 /// End-to-end Operations workflows through the real API: scheduling rules, bulk scheduling,
-/// per-landing vs assigned visibility, and employee assignment/invite flows.
+/// Per-Landing vs assigned visibility, and roster updates.
 /// </summary>
 public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : IClassFixture<OperationsApiFactory>
 {
@@ -20,8 +20,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     private static readonly string[] StaffOperationsPermissions =
     [
         "operations.flights.view",
-        "operations.flights.assign",
-        "operations.flights.invite"
+        "operations.flights.assign"
     ];
 
     [Fact]
@@ -95,7 +94,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var (assignedClient, assignedStaffId) = await CreateStaffLoginAsync(admin, refs);
+        var (_, assignedStaffId) = await CreateStaffLoginAsync(admin, refs);
         var selectedDates = new[]
         {
             new DateOnly(2026, 8, 3),
@@ -129,22 +128,35 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             var expectedDeparture = new DateTimeOffset(selectedDates[i].AddDays(1).ToDateTime(new TimeOnly(1, 15), DateTimeKind.Utc));
 
             flight.FlightNumber.ShouldBe("NGS150");
-            flight.Status.ShouldBe("Scheduled");
             flight.ScheduledArrivalUtc.ShouldBe(expectedArrival);
             flight.ScheduledDepartureUtc.ShouldBe(expectedDeparture);
             flight.PlannedServices.ShouldContain(service => service.ServiceId == refs.ServiceId);
             flight.AssignedEmployees.ShouldContain(employee => employee.StaffMemberId == assignedStaffId);
         }
+    }
 
-        await factory.DrainOutboxesAsync();
-        var inbox = await assignedClient.GetFromJsonAsync<NotificationPage>(
-            "/api/v1/notifications/me?page=1&pageSize=20");
-        var scheduleNotifications = inbox!.Items
-            .Where(notification => notification.Kind == "FlightScheduleUpdated")
-            .ToList();
-        var scheduleNotification = scheduleNotifications.ShouldHaveSingleItem();
-        scheduleNotification.Payload["flightCount"].ShouldBe(selectedDates.Length.ToString());
-        scheduleNotification.Payload.ContainsKey("flightId").ShouldBeFalse();
+    [Fact]
+    public async Task Flight_number_update_rejects_stale_version_without_overwriting_current_number()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var flightId = await ScheduleFlightAsync(admin, refs, "NGS160");
+        var flight = await GetFlightAsync(admin, flightId);
+
+        using var first = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/change-number")
+        {
+            Content = JsonContent.Create(new { flightNumber = "NGS161" })
+        };
+        first.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
+        (await admin.SendAsync(first)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        using var stale = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/change-number")
+        {
+            Content = JsonContent.Create(new { flightNumber = "NGS162" })
+        };
+        stale.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
+        (await admin.SendAsync(stale)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await GetFlightAsync(admin, flightId)).FlightNumber.ShouldBe("NGS161");
     }
 
     [Fact]
@@ -156,13 +168,8 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var (unassignedClient, _) = await CreateStaffLoginAsync(admin, refs);
 
         var flightId = await ScheduleFlightAsync(admin, refs, "NGS400", assignedStaffIds: [assignedStaffId]);
-        await factory.DrainOutboxesAsync();
 
         (await assignedClient.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
-        var assignedInbox = await assignedClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
-        assignedInbox!.Items.ShouldContain(notification =>
-            notification.Kind == "StaffAssignedToFlight" &&
-            notification.Payload["flightId"] == flightId.ToString());
         (await unassignedClient.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         var assignedList = await assignedClient.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
@@ -211,7 +218,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var (replacementClient, replacementStaffId) = await CreateStaffLoginAsync(admin, refs);
+        var (_, replacementStaffId) = await CreateStaffLoginAsync(admin, refs);
         var flightId = await ScheduleFlightAsync(admin, refs, "NGS403", assignedStaffIds: [refs.StaffMemberId]);
         var flight = await GetFlightAsync(admin, flightId);
 
@@ -223,15 +230,10 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
         var replaceResponse = await admin.SendAsync(replaceRequest);
         replaceResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await replaceResponse.Content.ReadAsStringAsync());
-        await factory.DrainOutboxesAsync();
 
         var replaced = await GetFlightAsync(admin, flightId);
         replaced.AssignedEmployees.ShouldContain(e => e.StaffMemberId == replacementStaffId);
         replaced.AssignedEmployees.ShouldNotContain(e => e.StaffMemberId == refs.StaffMemberId);
-        var replacementInbox = await replacementClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
-        replacementInbox!.Items.ShouldContain(notification =>
-            notification.Payload["flightId"] == flightId.ToString());
-
         using var clearRequest = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
         {
             Content = JsonContent.Create(new { staffMemberIds = Array.Empty<Guid>() })
@@ -240,70 +242,45 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
         var clearResponse = await admin.SendAsync(clearRequest);
         clearResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await clearResponse.Content.ReadAsStringAsync());
-        await factory.DrainOutboxesAsync();
         (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldBeEmpty();
-        var afterUnassign = await replacementClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
-        afterUnassign!.Items.Count(notification => notification.Payload["flightId"] == flightId.ToString()).ShouldBe(1);
     }
 
     [Fact]
-    public async Task Invite_permission_assigns_unassigned_employee_without_full_assign_permission()
+    public async Task Schedule_edit_can_clear_roster_and_change_to_per_landing_in_one_request()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var inviteRoleId = await PostForIdAsync(admin, $"{IdentityBase}/roles", new
+        var flightId = await ScheduleFlightAsync(admin, refs, "NGS404", assignedStaffIds: [refs.StaffMemberId]);
+        var flight = await GetFlightAsync(admin, flightId);
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{flightId}")
         {
-            name = $"Ops Invite Staff {Guid.NewGuid():N}",
-            description = (string?)null,
-            compatibleUserType = "StationStaff",
-            permissions = new[]
+            Content = JsonContent.Create(new
             {
-                "operations.flights.view",
-                "operations.flights.invite"
-            }
-        });
-        var (inviterClient, inviterStaffId) = await CreateStaffLoginAsync(admin, refs, inviteRoleId);
-        var (targetClient, targetStaffId) = await CreateStaffLoginAsync(admin, refs);
-        var flightId = await ScheduleFlightAsync(admin, refs, "NGS450", assignedStaffIds: [inviterStaffId]);
-        var flight = await GetFlightAsync(inviterClient, flightId);
-
-        var optionsResponse = await inviterClient.GetAsync($"{Base}/flights/{flightId}/invite-options");
-        optionsResponse.StatusCode.ShouldBe(HttpStatusCode.OK, await optionsResponse.Content.ReadAsStringAsync());
-        var options = await optionsResponse.Content.ReadFromJsonAsync<List<AssignedEmployee>>();
-        options.ShouldNotBeNull();
-        options!.ShouldContain(e => e.StaffMemberId == targetStaffId);
-        options.ShouldNotContain(e => e.StaffMemberId == inviterStaffId);
-
-        var invite = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/invite")
-        {
-            Content = JsonContent.Create(new { staffMemberIds = new[] { targetStaffId } })
+                customerId = refs.CustomerId,
+                stationId = refs.StationId,
+                operationTypeId = refs.OperationTypeId,
+                scheduledArrivalUtc = flight.ScheduledArrivalUtc,
+                scheduledDepartureUtc = flight.ScheduledDepartureUtc,
+                aircraftTypeId = (Guid?)null,
+                plannedServiceIds = new[] { WellKnownMasterDataIds.AircraftPerLandingService },
+                assignedStaffMemberIds = Array.Empty<Guid>()
+            })
         };
-        invite.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
+        request.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
 
-        var inviteResponse = await inviterClient.SendAsync(invite);
-        inviteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent, await inviteResponse.Content.ReadAsStringAsync());
-        await factory.DrainOutboxesAsync();
-        (await GetFlightAsync(admin, flightId)).AssignedEmployees.ShouldContain(e => e.StaffMemberId == targetStaffId);
-        var targetInbox = await targetClient.GetFromJsonAsync<NotificationPage>("/api/v1/notifications/me?page=1&pageSize=20");
-        targetInbox!.Items.ShouldContain(notification =>
-            notification.Kind == "EmployeeInvitedToFlight" &&
-            notification.Payload["flightId"] == flightId.ToString() &&
-            notification.BodyEn.Contains("NGS450", StringComparison.Ordinal));
-
-        var assign = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
-        {
-            Content = JsonContent.Create(new { staffMemberIds = new[] { targetStaffId } })
-        };
-        assign.Headers.TryAddWithoutValidation("If-Match", (await GetFlightAsync(inviterClient, flightId)).RowVersion);
-        (await inviterClient.SendAsync(assign)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var response = await admin.SendAsync(request);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync());
+        var updated = await GetFlightAsync(admin, flightId);
+        updated.IsPerLanding.ShouldBeTrue();
+        updated.AssignedEmployees.ShouldBeEmpty();
+        updated.PlannedServices.ShouldHaveSingleItem().ServiceId
+            .ShouldBe(WellKnownMasterDataIds.AircraftPerLandingService);
     }
 
     private sealed record MasterDataRefs(
         Guid CountryId, Guid StationId, Guid CustomerId, Guid OperationTypeId,
         Guid ServiceId, Guid AircraftTypeId, Guid ManpowerTypeId, Guid StaffMemberId, Guid StaffRoleId);
-
-    private sealed record NotificationPage(List<NotificationItem> Items);
-    private sealed record NotificationItem(string Kind, string BodyEn, Dictionary<string, string> Payload);
 
     private async Task<MasterDataRefs> SetupMasterDataAsync(HttpClient admin)
     {
@@ -449,7 +426,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
     private sealed record CountryItem(Guid Id, string Name, string IsoCode, bool IsActive);
 
-    private sealed record FlightListItem(Guid Id, string FlightNumber, string Status, bool IsPerLanding);
+    private sealed record FlightListItem(Guid Id, string FlightNumber, bool IsPerLanding);
 
     private sealed record PlannedService(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 
@@ -458,7 +435,6 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     private sealed record FlightDetail(
         Guid Id,
         string FlightNumber,
-        string Status,
         bool IsPerLanding,
         DateTimeOffset ScheduledArrivalUtc,
         DateTimeOffset ScheduledDepartureUtc,

@@ -5,29 +5,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ClosedXML" />
-    <PackageReference Include="PDFsharp-MigraDoc" />
-    <PackageReference Include="Uno.Fonts.OpenSans" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Regular.ttf"
-                      LogicalName="Operations.Api.Fonts.OpenSans-Regular.ttf" />
-    <EmbeddedResource Include="$(PkgUno_Fonts_OpenSans)/lib/net7.0/Uno.Fonts.OpenSans/Fonts/OpenSans-Bold.ttf"
-                      LogicalName="Operations.Api.Fonts.OpenSans-Bold.ttf" />
-    <EmbeddedResource Include="../../../Host/OperationsSystem.Mobile/app/src/main/res/drawable-nodpi/nags_logo.png"
-                      LogicalName="Operations.Api.Assets.NagsLogo.png" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\Operations.Application\Operations.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Api\BuildingBlocks.Api.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>Operations.IntegrationTests</_Parameter1>
-    </AssemblyAttribute>
   </ItemGroup>
 
   <PropertyGroup>

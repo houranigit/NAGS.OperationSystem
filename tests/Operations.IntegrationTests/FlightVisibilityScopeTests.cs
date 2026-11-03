@@ -45,11 +45,6 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         var dispatcherList = await dispatcher.Client.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
         dispatcherList!.Items.ShouldContain(f => f.Id == flightId);
 
-        var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(-1).ToString("O"));
-        var to = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(1).ToString("O"));
-        var calendar = await dispatcher.Client.GetFromJsonAsync<List<CalendarFlight>>($"{Base}/flights/calendar?fromUtc={from}&toUtc={to}");
-        calendar!.ShouldContain(f => f.Id == flightId);
-
         // Regular staff without view-station keep assigned-only visibility.
         (await regular.Client.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var regularList = await regular.Client.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
@@ -206,8 +201,6 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
 
     private sealed record CountryItem(Guid Id, string Name, string IsoCode, bool IsActive);
 
-    private sealed record FlightListItem(Guid Id, string FlightNumber, string Status, bool IsPerLanding);
-
-    private sealed record CalendarFlight(Guid Id, string FlightNumber, string Status);
+    private sealed record FlightListItem(Guid Id, string FlightNumber, bool IsPerLanding);
 
 }

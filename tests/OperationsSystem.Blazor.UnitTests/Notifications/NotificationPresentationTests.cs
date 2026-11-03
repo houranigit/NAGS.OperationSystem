@@ -23,7 +23,7 @@ public sealed class NotificationPresentationTests
         {
             NotificationPresentation.Title(notification, locale).ShouldBe("تم تعيينك");
             NotificationPresentation.Body(notification, locale).ShouldBe("أضافك أحد الزملاء.");
-            NotificationPresentation.DeepLink(notification).ShouldBe($"/operations/flights/{flightId}");
+            NotificationPresentation.DeepLink(notification).ShouldBe($"/operations/flights?search={flightId}");
         }
         finally
         {

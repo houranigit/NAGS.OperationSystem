@@ -24,40 +24,6 @@
                 })
             </div>
 
-            @if (HasCurrentDuplicateCheck && duplicates.Count > 0)
-            {
-                <div class="opf-warning-panel" role="status">
-                    <RadzenIcon Icon="warning_amber" class="opf-message-icon" />
-                    <div>
-                        <strong>Potential duplicates found.</strong>
-                        <div class="opf-duplicates">
-                            @foreach (var duplicate in duplicates)
-                            {
-                                <a @key="duplicate.FlightId" class="opf-duplicate-link" href="@FlightUrl(duplicate.FlightId)" target="_blank" rel="noopener noreferrer">
-                                    @duplicate.FlightNumber · @duplicate.CustomerName · @duplicate.StationIata
-                                </a>
-                            }
-                        </div>
-                    </div>
-                    <button type="button" class="opf-message-close" aria-label="Dismiss duplicate message" @onclick="DismissDuplicateMessage">
-                        <RadzenIcon Icon="close" />
-                    </button>
-                </div>
-            }
-            else if (HasCurrentDuplicateCheck)
-            {
-                <div class="opf-success-panel" role="status">
-                    <RadzenIcon Icon="task_alt" class="opf-message-icon" />
-                    <div>
-                        <strong>No duplicates found.</strong>
-                        <p>No other flight matches this customer, station, scheduled arrival, and scheduled departure.</p>
-                    </div>
-                    <button type="button" class="opf-message-close" aria-label="Dismiss duplicate message" @onclick="DismissDuplicateMessage">
-                        <RadzenIcon Icon="close" />
-                    </button>
-                </div>
-            }
-
             @if (!string.IsNullOrWhiteSpace(errorMessage))
             {
                 <div class="opf-error-panel" role="alert">
@@ -114,7 +80,6 @@
     private IReadOnlyList<AircraftTypeOption> aircraftTypes = [];
     private IReadOnlyList<ServiceOption> services = [];
     private IReadOnlyList<StaffMemberOption> staff = [];
-    private IReadOnlyList<DuplicateCandidate> duplicates = [];
     private FlightDetail? original;
     private string? rowVersion;
     private bool isLoading = true;
@@ -123,7 +88,6 @@
     private int step;
     private string serviceSearchTerm = string.Empty;
     private string staffSearchTerm = string.Empty;
-    private string? duplicateCheckSignature;
     private Guid? staffLoadedForStationId;
     private static readonly Guid AdHocOperationTypeId = new("30000000-0000-0000-0000-000000000001");
 
@@ -173,7 +137,7 @@
                 <label class="opf-label">Customer <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="business" class="opf-field-icon" />
-                    <RadzenDropDown @bind-Value="model.CustomerId" Data="@customers" TextProperty="Name" ValueProperty="Id"
+                    <RadzenDropDown @bind-Value="model.CustomerId" Disabled="@(FlightId is not null)" Data="@customers" TextProperty="Name" ValueProperty="Id"
                                     AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                     class="opf-control opf-control-icon" Placeholder="Select customer" />
                 </div>
@@ -201,7 +165,7 @@
                 <label class="opf-label">Station <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
-                    <RadzenDropDown @bind-Value="model.StationId" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
+                    <RadzenDropDown @bind-Value="model.StationId" Disabled="@(FlightId is not null)" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
                                     AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Select station" />
                 </div>
             </div>
@@ -209,7 +173,7 @@
                 <label class="opf-label">Operation type <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="settings" class="opf-field-icon" />
-                    <RadzenDropDown @bind-Value="model.OperationTypeId" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
+                    <RadzenDropDown @bind-Value="model.OperationTypeId" Disabled="@(FlightId is not null)" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
                                     AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Select operation" />
                 </div>
             </div>
@@ -251,10 +215,6 @@
             </div>
         </div>
 
-        <div class="opf-details-actions">
-            <RadzenButton Text="Check duplicates" Icon="manage_search" ButtonStyle="ButtonStyle.Secondary"
-                          ButtonType="ButtonType.Button" Click="@CheckDuplicatesAsync" Disabled="@isSubmitting" />
-        </div>
     </section>;
 
     private RenderFragment BulkFlightDetailsStep() => @<section class="opf-step-content">
@@ -804,49 +764,7 @@
 
     private void ClearStaffSearch() => staffSearchTerm = string.Empty;
 
-    private bool HasCurrentDuplicateCheck =>
-        duplicateCheckSignature is not null && duplicateCheckSignature == DuplicateSignature();
-
-    private string DuplicateSignature() =>
-        $"{model.CustomerId:N}|{model.StationId:N}|{model.ScheduledArrivalUtc?.Ticks}|{model.ScheduledDepartureUtc?.Ticks}";
-
-    private void DismissDuplicateMessage()
-    {
-        duplicates = [];
-        duplicateCheckSignature = null;
-    }
-
     private void DismissErrorMessage() => errorMessage = null;
-
-    private async Task CheckDuplicatesAsync()
-    {
-        errorMessage = null;
-        duplicates = [];
-        duplicateCheckSignature = null;
-
-        if (model.CustomerId == Guid.Empty || model.StationId == Guid.Empty || model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
-        {
-            errorMessage = "Select customer, station, scheduled arrival, and scheduled departure before checking duplicates.";
-            return;
-        }
-
-        try
-        {
-            duplicates = await Operations.GetDuplicateCandidatesAsync(
-                model.CustomerId,
-                ToUtc(model.ScheduledArrivalUtc.Value),
-                ToUtc(model.ScheduledDepartureUtc.Value),
-                model.StationId,
-                FlightId);
-            duplicateCheckSignature = DuplicateSignature();
-        }
-        catch (ApiException ex)
-        {
-            errorMessage = ex.ToDisplayMessage("Could not check duplicate candidates.");
-        }
-    }
-
-    private static string FlightUrl(Guid flightId) => $"/operations/flights/{flightId}";
 
     private async Task SubmitAsync()
     {
@@ -933,27 +851,12 @@
             ToUtc(model.ScheduledArrivalUtc!.Value),
             ToUtc(model.ScheduledDepartureUtc!.Value),
             model.AircraftTypeId,
-            model.PlannedServiceIds.ToList()), version);
-
-        var assignmentIds = AssignmentIdsForSave();
-        if (CanAssignStaff && AssignmentsChanged(assignmentIds))
-        {
-            var refreshed = await Operations.GetFlightAsync(id);
-            await Operations.AssignEmployeesAsync(id, new AssignEmployeesRequestModel(assignmentIds), refreshed.RowVersion);
-        }
+            model.PlannedServiceIds.ToList(),
+            CanAssignStaff ? AssignmentIdsForSave() : null), version);
     }
 
     private IReadOnlyList<Guid> AssignmentIdsForSave() =>
         !CanAssignStaff || IsPerLandingSelected ? [] : model.AssignedStaffMemberIds.ToList();
-
-    private bool AssignmentsChanged(IReadOnlyList<Guid> next)
-    {
-        if (original is null)
-            return next.Count > 0;
-
-        var current = original.AssignedEmployees.Select(employee => employee.StaffMemberId).ToHashSet();
-        return current.Count != next.Count || next.Any(id => !current.Contains(id));
-    }
 
     private string? Validate()
     {

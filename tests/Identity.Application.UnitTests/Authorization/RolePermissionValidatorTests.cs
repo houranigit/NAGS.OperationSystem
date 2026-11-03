@@ -79,12 +79,11 @@ public sealed class RolePermissionValidatorTests
     }
 
     [Fact]
-    public void Role_validation_accepts_viewer_page_with_supporting_read_and_export_permissions()
+    public void Role_validation_accepts_viewer_page_with_supporting_read_permissions()
     {
         var result = RolePermissionValidator.Validate(
         [
-            OperationsPermissions.Dashboard.ViewAnalytics,
-            OperationsPermissions.Dashboard.Export,
+            OperationsPermissions.Flights.View,
             MasterDataPermissions.Reference.ViewOptions,
             IdentityPermissions.Sessions.View
         ],
@@ -108,7 +107,7 @@ public sealed class RolePermissionValidatorTests
     {
         Array.Empty<string>(),
         new[] { IdentityPermissions.Sessions.View, MasterDataPermissions.Reference.ViewOptions },
-        new[] { OperationsPermissions.Flights.Export, OperationsPermissions.Dashboard.Export }
+        new[] { MasterDataPermissions.Reference.ViewOptions }
     };
 
     [Theory]
@@ -116,11 +115,11 @@ public sealed class RolePermissionValidatorTests
     [InlineData(MasterDataPermissions.Stations.Update)]
     [InlineData(MasterDataPermissions.StaffAllocation.Reassign)]
     [InlineData(OperationsPermissions.Flights.Schedule)]
-    [InlineData(OperationsPermissions.WorkOrders.Approve)]
+    [InlineData(OperationsPermissions.Flights.Assign)]
     public void Role_validation_rejects_mutation_permissions_for_viewer_only(string permission)
     {
         var result = RolePermissionValidator.Validate(
-            [OperationsPermissions.Dashboard.View, permission],
+            [OperationsPermissions.Flights.View, permission],
             UserType.ViewerOnly,
             Registry());
 

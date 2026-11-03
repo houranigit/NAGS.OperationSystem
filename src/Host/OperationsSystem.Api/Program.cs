@@ -25,9 +25,7 @@ using Notifications.Api;
 using Notifications.Api.Realtime;
 using Notifications.Infrastructure;
 using Operations.Api;
-using Operations.Api.Mobile;
-using Operations.Api.Realtime;
-using Operations.Application.Behaviors;
+using OperationsSystem.Api.Mobile;
 using Operations.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
@@ -90,9 +88,7 @@ var moduleApplicationAssemblies = new[]
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssemblies(moduleApplicationAssemblies);
-    // Post-success realtime behaviors wrap validation and the handler, whose SaveChanges calls
-    // complete before either best-effort live notification is emitted.
-    cfg.AddOpenBehavior(typeof(OperationsDashboardRealtimeBehavior<,>));
+    // Catalog changes are broadcast after a successful command commits.
     cfg.AddOpenBehavior(typeof(BuildingBlocks.Application.Mobile.MobileSyncBroadcastBehavior<,>));
     cfg.AddOpenBehavior(typeof(ValidationPipelineBehavior<,>));
 });
@@ -113,12 +109,9 @@ builder.Services.AddMasterDataModule(builder.Configuration);
 builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddNotificationsApi();
 builder.Services.AddOperationsModule(builder.Configuration);
-builder.Services.AddScoped<Operations.Application.Features.WorkOrders.WorkOrderPrintSourceBuilder>();
-builder.Services.AddSingleton<Operations.Application.Abstractions.IWorkOrderPdfRenderer, Operations.Api.Exports.WorkOrderPdfRenderer>();
 
-// Mobile offline-sync: SignalR hub + per-request change broadcaster.
+// Shared MasterData catalog changes: SignalR hub + per-request broadcaster.
 builder.Services.AddMobileSync();
-builder.Services.AddOperationsDashboardRealtime();
 
 // Compose the cross-module permission catalog after all module catalogs are registered.
 builder.Services.AddPermissionRegistry();
@@ -255,8 +248,7 @@ new MasterDataEndpointModule().MapEndpoints(app);
 new NotificationsEndpointModule().MapEndpoints(app);
 new OperationsEndpointModule().MapEndpoints(app);
 
-app.MapHub<Operations.Api.Mobile.MobileSyncHub>(Operations.Api.Mobile.MobileSyncHub.Path);
-app.MapHub<OperationsDashboardHub>(OperationsDashboardHub.Path);
+app.MapHub<MobileSyncHub>(MobileSyncHub.Path);
 app.MapHub<NotificationsHub>(NotificationsHub.Path);
 
 var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")

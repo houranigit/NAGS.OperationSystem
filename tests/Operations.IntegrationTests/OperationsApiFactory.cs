@@ -43,10 +43,10 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
         var connectionString = _sql.GetConnectionString().Replace("Database=master", "Database=OperationsTests");
 
         builder.UseSetting("ConnectionStrings:Default", connectionString);
+        builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
         builder.UseSetting("Identity:DemoData:Enabled", "false");
         builder.UseSetting("Messaging:OutboxDispatchEnabled", "false");
         builder.UseSetting("Notifications:Fcm:Enabled", "false");
-        builder.UseSetting("Operations:FlightReminders:Enabled", "false");
         // Tests share a client IP and authenticate frequently; relax the anonymous auth rate limit.
         builder.UseSetting("Security:RateLimit:AnonymousAuthPermitLimit", "1000000");
 
@@ -55,6 +55,7 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Default"] = connectionString,
+                ["Database:ApplyMigrationsOnStartup"] = "true",
                 ["Identity:Jwt:Issuer"] = "operations-system",
                 ["Identity:Jwt:Audience"] = "operations-system",
                 ["Identity:Jwt:SigningKey"] = "integration-tests-signing-key-must-be-long-enough-1234567890",
@@ -64,7 +65,6 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
                 ["Identity:DemoData:Enabled"] = "false",
                 ["Messaging:OutboxDispatchEnabled"] = "false",
                 ["Notifications:Fcm:Enabled"] = "false",
-                ["Operations:FlightReminders:Enabled"] = "false",
                 ["Security:RateLimit:AnonymousAuthPermitLimit"] = "1000000"
             });
         });

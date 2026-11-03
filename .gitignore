@@ -21,6 +21,8 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.operation-module.example
+!.env.main.example
 appsettings.*.local.json
 src/Host/OperationsSystem.Api/App_Data/firebase-admin.json
 *.jks

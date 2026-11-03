@@ -15,15 +15,10 @@ public static class PortalNavigationPolicy
 
     public static IReadOnlyList<PortalDestination> OrderedDestinations { get; } =
     [
-        new("/", OperationsPermissions.DashboardView),
-        new("/operations/dashboard", OperationsPermissions.DashboardAnalyticsView),
         new("/users", IdentityPermissions.UsersView),
         new("/roles", IdentityPermissions.RolesView),
         new("/audit", AuditPermissions.TrailsView),
-        new("/operations/calendar", OperationsPermissions.FlightsView),
         new("/operations/flights", OperationsPermissions.FlightsView),
-        new("/operations/work-orders", OperationsPermissions.WorkOrdersView),
-        new("/operations/staff-allocation", MasterDataPermissions.StaffAllocationView),
         new("/master-data/countries", MasterDataPermissions.CountriesView),
         new("/master-data/manpower-types", MasterDataPermissions.ManpowerTypesView),
         new("/master-data/licenses", MasterDataPermissions.LicensesView),
@@ -87,24 +82,8 @@ public static class PortalNavigationPolicy
         if (path is "account" or "notifications")
             return true;
 
-        if (path.Length == 0)
-            return granted.Contains(OperationsPermissions.DashboardView);
-        if (path == "operations/dashboard")
-            return granted.Contains(OperationsPermissions.DashboardAnalyticsView);
-        if (path == "operations/calendar" || path == "operations/flights")
+        if (path == "operations/flights")
             return granted.Contains(OperationsPermissions.FlightsView);
-        if (IsGuidDetail(path, "operations/flights"))
-            return granted.Contains(OperationsPermissions.FlightsView);
-        if (path == "operations/flights/per-landing-extract")
-        {
-            return granted.Contains(OperationsPermissions.FlightsView)
-                   && granted.Contains(OperationsPermissions.WorkOrdersApprove);
-        }
-
-        if (path == "operations/work-orders")
-            return granted.Contains(OperationsPermissions.WorkOrdersView);
-        if (path == "operations/staff-allocation")
-            return granted.Contains(MasterDataPermissions.StaffAllocationView);
 
         if (IsListOrGuidDetail(path, "users"))
             return granted.Contains(IdentityPermissions.UsersView);

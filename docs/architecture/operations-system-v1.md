@@ -56,7 +56,7 @@ For every rewritten feature, first extract the business facts from the old proje
 - A storage abstraction for binary files/attachments (local filesystem in v1.0.0, designed to swap to S3/Azure Blob later)
 - A composite notification delivery abstraction with independent SignalR and Firebase Cloud Messaging transports
 - Redis is not part of v1.0.0 unless a measured distributed-caching need appears
-- The mobile BFF and offline-sync protocol live under `/api/v1/mobile` + `/hubs/mobile-sync` (see Section 27); user-facing alerts use FCM and remain separate from mobile sync
+- The previous mobile Operations BFF is retired by the scheduling baseline; catalog-change broadcasts remain on `/hubs/mobile-sync`. User-facing notifications remain separate.
 
 ### Frontend
 
@@ -69,10 +69,7 @@ For every rewritten feature, first extract the business facts from the old proje
 
 ### Mobile
 
-- Native Android app (Kotlin + Jetpack Compose) at `src/Host/OperationsSystem.Mobile`, rewritten from the legacy app while preserving its offline-first engine (Room cache, outbox, SignalR + catch-up sync)
-- The Blazor web portal and Android consume the same backend API and business rules
-- Mobile-facing surface: `/api/v1/identity/auth/mobile/*` (bearer auth, refresh token in JSON body), `/api/v1/mobile/*` (BFF reads, offline-sync catch-up, idempotent writes), and the `/hubs/mobile-sync` SignalR hub
-- Avoid web-only or mobile-only business rules in the backend
+The native Android source at `src/Host/OperationsSystem.Mobile` targets the prior operational backend. The current scheduling baseline removes its `/api/v1/mobile/*` Operations BFF and does not support that client. Identity mobile authentication and the host-owned MasterData catalog-change hub remain independent capabilities. See [Operations Module Foundation](../modules/operations-foundation.md) before reintroducing mobile Operations workflows.
 
 ## 4. Architecture Direction
 
@@ -167,7 +164,7 @@ Features/
 - The legacy `Core` and `Store` modules are business references for this single v1.0.0 module; their names and project boundaries are not carried into the rewrite.
 - Catalog records may have lifecycle and validation behavior, but `MasterData` must not become a home for unrelated workflows merely because other modules consume their data.
 - Stock quantities, warehouses, receipts, issues, transfers, and replenishment are not master data. Introduce an `Inventory` module if those behaviors enter scope.
-- Flights and work orders remain in `Operations`; customer agreements and negotiated pricing remain in `Contracts`.
+- Flight scheduling remains in `Operations`; actual work and work orders are deferred. Customer agreements and negotiated pricing remain outside Operations.
 
 ## 6. Module Dependency Rules
 
@@ -561,17 +558,7 @@ The legacy is already a DDD modular monolith with strong patterns. Preserve thes
 
 ## 27. Mobile Strategy
 
-The mobile client has returned as a rewrite of the legacy Android app: the new backend's flight/work-order shape and rules merged with the legacy app's proven offline-sync engine and screens.
-
-- The Android app lives at `src/Host/OperationsSystem.Mobile` (Kotlin + Jetpack Compose, Room, Ktor, SignalR). The legacy app under `legacy/src/Host/MobileApplication` stays read-only reference.
-- The backend exposes a dedicated mobile surface implemented inside the owning modules and composed at the host:
-  - **Auth (Identity):** `POST /api/v1/identity/auth/mobile/{login, login/mfa, refresh, logout}` reuse the exact web login/refresh/session handlers but exchange the refresh token through the JSON body (native clients keep it in secure device storage; the web keeps its httpOnly cookie).
-  - **Reads (Operations, composing the MasterData reader):** `GET /api/v1/mobile/{me, catalogs, employees/at-my-station, flights/my, flights/per-landing, flights/ad-hoc, flights/{id}, flights/{id}/work-orders/mine, work-orders/{id}}`. Flight rows embed the caller's active work order for offline form hydration. `OperationsScope` enforces station/assignment scoping; the surface serves StationStaff accounts only (fail-closed without an active staff link).
-  - **Offline sync:** SignalR hub at `/hubs/mobile-sync` pushes `MobileSyncChange` envelopes (`table`, `op` = upsert/delete/refresh, `entityId`, `audience` = employee/station/all-stations, `version`, `originMutationId`) after commit via `MobileSyncBroadcastBehavior`; `GET /api/v1/mobile/sync/changes` is the reconnect catch-up and returns refresh envelopes per table (pragmatic model — no server-side change log or tombstones in this release).
-  - **Writes (Operations):** idempotent outbox endpoints `POST /flights/{id}/work-orders`, `POST /work-orders/scratch`, `PUT /work-orders/{id}`, `POST /work-orders/{id}/return-to-ramp`, `POST /flights/{id}/cancel`, `POST /flights/{id}/invite` under `/api/v1/mobile`. Every mutation carries a `clientMutationId` recorded in `operations.Operations_MobileMutations` atomically with the business change; scratch creates dedupe by `clientFlightId`. Editable offline updates also carry the cached base `RowVersion`, so a portal or second-device edit made while the phone is offline produces a conflict instead of being overwritten.
-- Mobile reuses the same domain and business rules — normal flights copy planned services into work-order lines while Per-Landing work orders start empty, one active work order per user per flight, and service/task reconciliation by stable id. Its durable outbox stores attachment files outside Room payload JSON and maps them back to the owning service line or task when sending. A Per-Landing flight becomes On Call after any real performed service line is persisted on a non-merged work order. Mobile has no business logic of its own.
-- The legacy AOG naming is retired everywhere in favour of Per Landing (`flights-per-landing` sync table, `flights_per_landing` Room table, Per Landing tab).
-- FCM push and device registration/revoke are provided by the Notifications module; the SignalR sync hub remains standalone and independent of user-facing notifications.
+Mobile Operations is deferred in the current scheduling baseline. The existing Android source is retained as a separate prior client and must not be presented as compatible with this backend. Reintroduce only explicitly agreed workflows against the new flight model; do not rebuild WO or offline-sync infrastructure merely to match that reference client.
 
 ## 28. Decisions Log
 
@@ -636,3 +623,4 @@ Use this section to record decisions as they become final.
 | 2026-07-11 | The legacy AOG naming is retired; the concept is Per Landing everywhere (tabs, sync tables, endpoints) | Aligns the mobile vocabulary with the v1.0.0 domain (`Flight.IsPerLanding`, Aircraft Per Landing service) |
 | 2026-07-18 | On Call is derived for Per-Landing flights from non-merged work orders with at least one performed service line; the seeded On Call catalog service is retired | Staff record the actual service performed, while list/detail/calendar/filter/extraction behavior uses one consistent state rule |
 | 2026-07-23 | Work-order service lines and tasks reconcile by stable id and both may own attachment metadata backed by external file storage | Service attachments must mirror task behavior without losing existing files during an otherwise ordinary work-order edit; legacy supported task attachments only |
+| 2026-11-03 | Reset Operations to flight scheduling with direct planned-service and assigned-staff lists; remove WO/history/status/workflow/reporting/mobile Operations surfaces | Rebuild agreed capabilities individually from a simple baseline; preserve historical migrations and existing flight planning data through a new reset migration |

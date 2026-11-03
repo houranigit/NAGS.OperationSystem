@@ -5,7 +5,6 @@
     <ProjectReference Include="..\Notifications.Domain\Notifications.Domain.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Application\BuildingBlocks.Application.csproj" />
     <ProjectReference Include="..\..\MasterData\MasterData.Contracts\MasterData.Contracts.csproj" />
-    <ProjectReference Include="..\..\Operations\Operations.Contracts\Operations.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,7 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Domain.Flights;
 
-/// <summary>A service planned for a flight. Today selected manually; later sourced from the contract.</summary>
+/// <summary>A service selected when scheduling a flight.</summary>
 public sealed class PlannedService : Entity<Guid>
 {
     private PlannedService() { }

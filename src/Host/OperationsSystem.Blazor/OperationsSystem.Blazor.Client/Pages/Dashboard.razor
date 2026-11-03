@@ -10,7 +10,7 @@
                 <div class="os-home-hero-copy">
                     <p class="os-home-eyebrow"><RadzenIcon Icon="space_dashboard" />Workspace overview</p>
                     <h1>Welcome back, @FirstName</h1>
-                    <p>See a concise snapshot, then move directly to the tools available for your role.</p>
+                    <p>Open the tools available for your role.</p>
                     <div class="os-home-identity">
                         <span><RadzenIcon Icon="calendar_today" />@TodayLabel</span>
                         <span><RadzenIcon Icon="verified_user" />@user.RoleName</span>
@@ -30,57 +30,6 @@
                     }
                 </aside>
             </section>
-
-            @if (HasSummaryAccess)
-            {
-                <section class="os-home-section" aria-labelledby="home-snapshot-heading">
-                    <header class="os-home-section-heading">
-                        <div>
-                            <p class="os-home-eyebrow">At a glance</p>
-                            <h2 id="home-snapshot-heading">Data snapshot</h2>
-                            <p>Loaded once for this visit. Open the relevant feature for current operational detail.</p>
-                        </div>
-                        @if (snapshotGeneratedAtUtc is { } generatedAt && UserTimeZone.IsInitialized)
-                        {
-                            <span class="os-home-snapshot-time"><RadzenIcon Icon="schedule" />@SnapshotTime(generatedAt)</span>
-                        }
-                    </header>
-
-                    @if (isSummaryLoading)
-                    {
-                        <div class="os-home-summary-grid" aria-label="@UiStrings.Common.Loading">
-                            @for (var index = 0; index < SummaryPlaceholderCount; index++)
-                            {
-                                <div @key="index" class="os-home-summary-card os-home-summary-card--loading"></div>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="os-home-summary-grid">
-                            @foreach (var metric in SummaryMetrics)
-                            {
-                                <article @key="metric.Key" class="@SummaryCardClass(metric.Tone)">
-                                    <span class="os-home-summary-icon"><RadzenIcon Icon="@metric.Icon" /></span>
-                                    <div>
-                                        <span>@metric.Label</span>
-                                        <strong>@FormatCount(metric.Value)</strong>
-                                        <small>@metric.Hint</small>
-                                    </div>
-                                </article>
-                            }
-                        </div>
-
-                        @if (summaryHasError)
-                        {
-                            <div class="os-home-notice" role="status">
-                                <RadzenIcon Icon="info" />
-                                <span>Some snapshot totals are unavailable. Your feature links and permissions are unaffected.</span>
-                            </div>
-                        }
-                    }
-                </section>
-            }
 
             <section class="os-home-section" aria-labelledby="home-features-heading">
                 <header class="os-home-section-heading">

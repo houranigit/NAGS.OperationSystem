@@ -41,18 +41,16 @@ public sealed class DashboardFeatureCatalogTests
     public void Mutating_quick_actions_require_their_view_permission_too()
     {
         DashboardFeatureCatalog.BuildQuickActions(
-            [OperationsPermissions.FlightsSchedule, OperationsPermissions.WorkOrdersAuthor])
+            [OperationsPermissions.FlightsSchedule])
             .Select(action => action.Key)
             .ShouldBe(["account"]);
 
         DashboardFeatureCatalog.BuildQuickActions(
             [
                 OperationsPermissions.FlightsView,
-                OperationsPermissions.FlightsSchedule,
-                OperationsPermissions.WorkOrdersView,
-                OperationsPermissions.WorkOrdersAuthor
+                OperationsPermissions.FlightsSchedule
             ])
             .Select(action => action.Key)
-            .ShouldBe(["schedule-flight", "create-work-order"]);
+            .ShouldBe(["schedule-flight"]);
     }
 }

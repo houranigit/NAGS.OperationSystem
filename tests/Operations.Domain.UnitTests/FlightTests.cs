@@ -1,4 +1,4 @@
-using Operations.Domain.Enumerations;
+using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 using Shouldly;
 
@@ -6,90 +6,90 @@ namespace Operations.Domain.UnitTests;
 
 public sealed class FlightTests
 {
-    private static Operations.Domain.Flights.Flight ScheduleFlight(params ServiceSnapshot[] planned)
-    {
-        var result = Operations.Domain.Flights.Flight.ScheduleNew(
-            TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
-            TestData.Schedule(), aircraftType: null, planned, assignedEmployees: [],
-            contractId: null, contractNumber: null, createdByUserId: Guid.NewGuid(), now: TestData.Now);
-        result.IsSuccess.ShouldBeTrue();
-        return result.Value;
-    }
+    private static Flight ScheduleFlight(params ServiceSnapshot[] services) =>
+        Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
+            TestData.Schedule(), null, services, [], Guid.NewGuid(), TestData.Now).Value;
 
     [Fact]
-    public void ScheduleNew_StartsScheduled_AndPreservesOriginalNumber()
+    public void ScheduleNew_StoresPlanningListsDirectly_WithoutDuplicates()
     {
-        var flight = ScheduleFlight(TestData.Service());
+        var service = TestData.Service();
+        var employee = TestData.Staff();
+        var flight = Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
+            TestData.Schedule(), TestData.AircraftType(), [service, service], [employee, employee], Guid.NewGuid(), TestData.Now).Value;
 
-        flight.Status.ShouldBe(FlightStatus.Scheduled);
-        flight.OriginalFlightNumber.ShouldBe("SV1020");
         flight.FlightNumber.Value.ShouldBe("SV1020");
+        flight.PlannedServices.ShouldHaveSingleItem().Service.ShouldBe(service);
+        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(employee);
+        flight.AircraftType.ShouldNotBeNull();
+        flight.CreatedAtUtc.ShouldBe(TestData.Now);
     }
 
     [Fact]
-    public void ScheduleNew_WithoutPlannedServices_Fails()
+    public void ScheduleNew_WithoutServices_IsRejected()
     {
-        var result = Operations.Domain.Flights.Flight.ScheduleNew(
-            TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
-            TestData.Schedule(), null, [], [],
-            null, null, Guid.NewGuid(), TestData.Now);
+        var result = Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
+            TestData.Schedule(), null, [], [], Guid.NewGuid(), TestData.Now);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("Operations.PlannedServices.Required");
     }
 
     [Fact]
-    public void ScheduleNew_WithPerLandingMix_Fails()
-    {
-        var result = Operations.Domain.Flights.Flight.ScheduleNew(
-            TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
-            TestData.Schedule(), null, [TestData.PerLandingService(), TestData.Service()], [],
-            null, null, Guid.NewGuid(), TestData.Now);
-
-        result.IsFailure.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void ChangeFlightNumber_KeepsOriginal_UpdatesCurrent()
+    public void FlightNumberAndSchedule_CanBeEdited()
     {
         var flight = ScheduleFlight(TestData.Service());
+        var schedule = ScheduledTime.Create(TestData.Now.AddHours(2), TestData.Now.AddHours(3)).Value;
 
-        var change = flight.ChangeFlightNumber(TestData.FlightNo("SV999"), TestData.Now);
+        flight.ChangeFlightNumber(TestData.FlightNo("SV999"), TestData.Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+        flight.UpdatePlanning(schedule, null, flight.PlannedServices.Select(service => service.Service).ToList(), null, TestData.Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
 
-        change.IsSuccess.ShouldBeTrue();
-        flight.OriginalFlightNumber.ShouldBe("SV1020");
         flight.FlightNumber.Value.ShouldBe("SV999");
+        flight.Schedule.ShouldBe(schedule);
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now.AddMinutes(2));
     }
 
     [Fact]
-    public void PerLandingFlight_IsPerLanding_True()
+    public void ReplacingLists_ReplacesPlanning_AndDeduplicatesStaff()
+    {
+        var flight = ScheduleFlight(TestData.Service());
+        var service = TestData.Service();
+        var employee = TestData.Staff();
+
+        flight.UpdatePlanning(flight.Schedule, flight.AircraftType, [service], [employee, employee], TestData.Now).IsSuccess.ShouldBeTrue();
+
+        flight.PlannedServices.ShouldHaveSingleItem().Service.ShouldBe(service);
+        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(employee);
+    }
+
+    [Fact]
+    public void InvalidPlanningUpdate_LeavesScheduleServicesAndRosterIntact()
+    {
+        var service = TestData.Service();
+        var staff = TestData.Staff();
+        var flight = Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
+            TestData.Schedule(), null, [service], [staff], Guid.NewGuid(), TestData.Now).Value;
+        var schedule = ScheduledTime.Create(TestData.Now.AddHours(2), TestData.Now.AddHours(3)).Value;
+
+        var result = flight.UpdatePlanning(schedule, TestData.AircraftType(), [TestData.PerLandingService()], null, TestData.Now.AddMinutes(1));
+
+        result.Error.Code.ShouldBe("Operations.PerLanding.AssignmentNotAllowed");
+        flight.Schedule.Sta.ShouldBe(TestData.Now);
+        flight.AircraftType.ShouldBeNull();
+        flight.PlannedServices.ShouldHaveSingleItem().Service.ShouldBe(service);
+        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(staff);
+        flight.UpdatedAtUtc.ShouldBeNull();
+    }
+
+    [Fact]
+    public void PerLanding_CannotHaveAssignedStaff_OrBeMixedWithOtherServices()
     {
         var flight = ScheduleFlight(TestData.PerLandingService());
+
         flight.IsPerLanding.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void AssignEmployees_IsIdempotentPerStaffMember()
-    {
-        var flight = ScheduleFlight(TestData.Service());
-        var staff = TestData.Staff();
-
-        flight.AssignEmployees([staff], TestData.Now);
-        flight.AssignEmployees([staff], TestData.Now);
-
-        flight.AssignedEmployees.Count.ShouldBe(1);
-    }
-
-    [Fact]
-    public void MergedFlight_DisallowsFurtherUpdates()
-    {
-        var flight = ScheduleFlight(TestData.Service());
-        var merge = flight.MarkMergedInto(Guid.NewGuid(), TestData.Now);
-
-        merge.IsSuccess.ShouldBeTrue();
-        flight.Status.ShouldBe(FlightStatus.Merged);
-        flight.IsUpdateLocked.ShouldBeTrue();
-        flight.ChangeFlightNumber(TestData.FlightNo("SV999"), TestData.Now).Error.Code.ShouldBe("Operations.Flight.Locked");
-        flight.AssignEmployees([TestData.Staff()], TestData.Now).Error.Code.ShouldBe("Operations.Flight.Locked");
+        flight.ReplaceAssignedEmployees([TestData.Staff()], TestData.Now).Error.Code.ShouldBe("Operations.PerLanding.AssignmentNotAllowed");
+        flight.UpdatePlanning(flight.Schedule, flight.AircraftType, [TestData.PerLandingService(), TestData.Service()], null, TestData.Now).Error.Code.ShouldBe("Operations.PerLanding.NoMix");
+        flight.PlannedServices.ShouldHaveSingleItem().IsAircraftPerLanding.ShouldBeTrue();
+        flight.AssignedEmployees.ShouldBeEmpty();
     }
 }

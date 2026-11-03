@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Auth;
 using OperationsSystem.Blazor.Client.Features.Notifications;
-using OperationsSystem.Blazor.Client.Features.Operations;
 using OperationsSystem.Blazor.Client.State;
 using Radzen;
 
@@ -34,7 +33,6 @@ public static class PortalClientServices
         services.AddScoped<AuthSession>();
         services.AddScoped<NotificationCenterState>();
         services.AddScoped<NotificationsRealtimeClient>();
-        services.AddScoped<OperationsDashboardRealtimeClient>();
 
         services.AddAuthorizationCore();
         services.AddCascadingAuthenticationState();

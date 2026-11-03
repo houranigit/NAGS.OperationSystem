@@ -12,9 +12,6 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
         builder.HasKey(f => f.Id);
         builder.Property(f => f.Id).ValueGeneratedNever();
 
-        builder.Property(f => f.OriginalFlightNumber).HasMaxLength(12).IsRequired();
-        builder.Property(f => f.Status).HasConversion<int>();
-        builder.Property(f => f.ContractNumber).HasMaxLength(50);
         builder.Property(f => f.CreatedAtUtc).IsRequired();
         builder.Property(f => f.RowVersion).IsRowVersion();
 
@@ -54,36 +51,11 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
             a.Property(p => p.Model).HasColumnName("AircraftModel").HasMaxLength(50);
         });
 
-        builder.HasMany(f => f.PlannedServices).WithOne().HasForeignKey(p => p.FlightId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(f => f.PlannedServices).WithOne().HasForeignKey(s => s.FlightId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(f => f.AssignedEmployees).WithOne().HasForeignKey(e => e.FlightId).OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(f => f.Status);
-        builder.HasIndex(f => f.OriginalFlightNumber);
-
         builder.Ignore(f => f.IsPerLanding);
-        builder.Ignore(f => f.IsUpdateLocked);
-        builder.Ignore(f => f.CanEditScheduledDetails);
         builder.Ignore(f => f.DomainEvents);
-    }
-}
-
-public sealed class PlannedServiceConfiguration : IEntityTypeConfiguration<PlannedService>
-{
-    public void Configure(EntityTypeBuilder<PlannedService> builder)
-    {
-        builder.ToTable("flight_planned_services");
-        builder.HasKey(p => p.Id);
-        builder.Property(p => p.Id).ValueGeneratedNever();
-        builder.Property(p => p.FlightId).IsRequired();
-
-        builder.OwnsOne(p => p.Service, s =>
-        {
-            s.Property(x => x.ServiceId).HasColumnName("ServiceId").IsRequired();
-            s.Property(x => x.Name).HasColumnName("ServiceName").HasMaxLength(200).IsRequired();
-        });
-
-        builder.HasIndex(p => p.FlightId);
-        builder.Ignore(p => p.IsAircraftPerLanding);
     }
 }
 
@@ -107,20 +79,20 @@ public sealed class FlightAssignedEmployeeConfiguration : IEntityTypeConfigurati
     }
 }
 
-public sealed class FlightTimelineEntryConfiguration : IEntityTypeConfiguration<FlightTimelineEntry>
+public sealed class PlannedServiceConfiguration : IEntityTypeConfiguration<PlannedService>
 {
-    public void Configure(EntityTypeBuilder<FlightTimelineEntry> builder)
+    public void Configure(EntityTypeBuilder<PlannedService> builder)
     {
-        builder.ToTable("flight_timeline_entries");
-        builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).ValueGeneratedNever();
-        builder.Property(e => e.FlightId).IsRequired();
-        builder.Property(e => e.EventType).HasConversion<int>();
-        builder.Property(e => e.OccurredAtUtc).IsRequired();
-        builder.Property(e => e.ActorUserId).IsRequired();
-        builder.Property(e => e.ActorName).HasMaxLength(200);
-        builder.Property(e => e.Details).HasMaxLength(1000);
-
-        builder.HasIndex(e => new { e.FlightId, e.OccurredAtUtc });
+        builder.ToTable("flight_planned_services");
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.FlightId).IsRequired();
+        builder.OwnsOne(s => s.Service, service =>
+        {
+            service.Property(s => s.ServiceId).HasColumnName("ServiceId").IsRequired();
+            service.Property(s => s.Name).HasColumnName("ServiceName").HasMaxLength(200).IsRequired();
+        });
+        builder.HasIndex(s => s.FlightId);
+        builder.Ignore(s => s.IsAircraftPerLanding);
     }
 }

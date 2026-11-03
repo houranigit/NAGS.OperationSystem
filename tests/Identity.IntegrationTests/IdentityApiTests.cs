@@ -164,7 +164,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
                 name = roleName,
                 description = "CEO dashboard viewer",
                 compatibleUserType = "ViewerOnly",
-                permissions = new[] { "operations.dashboard.view" }
+                permissions = new[] { "operations.flights.view" }
             });
         createRole.StatusCode.ShouldBe(HttpStatusCode.Created);
         var roleId = await createRole.Content.ReadFromJsonAsync<Guid>();
@@ -205,7 +205,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         me.UserType.ShouldBe("ViewerOnly");
         me.ExternalReferenceId.ShouldBeNull();
         me.PortalSource.ShouldBe("Direct");
-        me.Permissions.ShouldBe(["operations.dashboard.view"]);
+        me.Permissions.ShouldBe(["operations.flights.view"]);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
                 name = $"InvitedViewer-{Guid.NewGuid():N}",
                 description = "Invitation transition viewer",
                 compatibleUserType = "ViewerOnly",
-                permissions = new[] { "operations.dashboard.view" }
+                permissions = new[] { "operations.flights.view" }
             });
         viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();
@@ -299,7 +299,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
                 name = $"AccessViewer-{Guid.NewGuid():N}",
                 description = "Direct transition test viewer",
                 compatibleUserType = "ViewerOnly",
-                permissions = new[] { "operations.dashboard.view" }
+                permissions = new[] { "operations.flights.view" }
             });
         viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();
@@ -361,7 +361,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         var viewerMe = await viewer.GetFromJsonAsync<MeResponse>($"{Base}/me");
         viewerMe!.RoleId.ShouldBe(viewerRoleId);
         viewerMe.UserType.ShouldBe("ViewerOnly");
-        viewerMe.Permissions.ShouldBe(["operations.dashboard.view"]);
+        viewerMe.Permissions.ShouldBe(["operations.flights.view"]);
 
         // Successful sign-in updates LastLoginAtUtc and therefore the user's rowversion. Reload
         // before making the next administrative access decision.
@@ -434,7 +434,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
                 name = $"RaceViewer-{Guid.NewGuid():N}",
                 description = "Concurrent access transition target",
                 compatibleUserType = "ViewerOnly",
-                permissions = new[] { "operations.dashboard.view" }
+                permissions = new[] { "operations.flights.view" }
             });
         viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();
@@ -530,7 +530,7 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
                 name = $"EmptyViewerRole-{Guid.NewGuid():N}",
                 description = (string?)null,
                 compatibleUserType = "ViewerOnly",
-                permissions = new[] { "identity.sessions.view", "operations.dashboard.export" }
+                permissions = new[] { "identity.sessions.view", "masterdata.reference.view-options" }
             });
 
         create.StatusCode.ShouldBe(HttpStatusCode.BadRequest);

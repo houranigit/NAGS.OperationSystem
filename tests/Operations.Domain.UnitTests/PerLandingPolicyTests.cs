@@ -21,13 +21,11 @@ public sealed class PerLandingPolicyTests
     }
 
     [Fact]
-    public void EmptyPlannedServices_IsRejected_UnlessExplicitlyAllowed()
+    public void EmptyPlannedServices_IsRejected()
     {
         var rejected = PerLandingPolicy.ValidatePlannedServices([]);
         rejected.IsFailure.ShouldBeTrue();
         rejected.Error.Code.ShouldBe("Operations.PlannedServices.Required");
 
-        var allowed = PerLandingPolicy.ValidatePlannedServices([], allowEmpty: true);
-        allowed.IsSuccess.ShouldBeTrue();
     }
 }

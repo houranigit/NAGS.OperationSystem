@@ -20,7 +20,7 @@ Provide via environment variables or a secrets store (never in source control):
 | `Identity:Jwt:Issuer`, `Identity:Jwt:Audience` | Required. |
 | `Identity:Admin:Email`, `Identity:Admin:DisplayName` | Bootstrap administrator. **Leave `Identity:Admin:Password` unset in production** — the admin is then created as an emailed invitation (no default password). |
 | `Identity:ActivationUrlBase`, `Identity:PasswordResetUrlBase`, `Identity:EmailChangeConfirmUrlBase` | Public portal URLs for emailed activation, reset-password, and linked-email verification links. |
-| `EmailSettings:*` with `EnableEmailNotifications=true` | SMTP host/port/credentials/from. Invitations, password reset, email verification, MFA, and opted-in work-order submission receipts depend on durable email delivery. |
+| `EmailSettings:*` with `EnableEmailNotifications=true` | SMTP host/port/credentials/from. Invitations, password reset, email verification, and MFA depend on durable email delivery. |
 | `Security:RateLimit:AnonymousAuthPermitLimit` / `...WindowSeconds` | Defaults 10/60. Tune per environment. |
 | `FileStorage:RootPath` | Persistent volume for customer logos (object/file storage, not the served path). |
 | `Notifications:Fcm:Enabled` | Set `true` in environments that deliver Android alerts. The persisted inbox and SignalR remain active when false. |
@@ -72,6 +72,113 @@ password requires updating the database login as well as `.env` when retaining i
 SQL Server uses `linux/amd64`, including emulation on Apple Silicon. The API and portal use
 native .NET 10 images. This local HTTP configuration is not a production deployment recipe;
 production still requires the configuration, migrations, TLS, and backup steps in this runbook.
+
+### Concurrent local environments
+
+Main/release is the stable baseline. The earlier stack on this machine is **HandOver** and
+remains preserved pending a later explicit removal. The environments use
+separate Compose projects, API/portal images, SQL data, file storage, key volumes, and networks:
+
+| Environment | Compose project | Portal | API readiness | SQL | Database |
+|---|---|---|---|---|---|
+| HandOver (retained; removal pending) | `operationsystem` | [localhost:5080](http://localhost:5080) | [localhost:5212/health/ready](http://localhost:5212/health/ready) | `127.0.0.1:1433` | `OperationsSystemHandOver` |
+| Operation module baseline | `operationssystem-operation-module` | [127.0.0.1:5081](http://127.0.0.1:5081) | [127.0.0.1:5213/health/ready](http://127.0.0.1:5213/health/ready) | `127.0.0.1:1434` | `OperationsSystemOperationModuleMain` |
+| Main / release | `operationssystem-main` | [main.localhost:5082](http://main.localhost:5082) | [127.0.0.1:5214/health/ready](http://127.0.0.1:5214/health/ready) | `127.0.0.1:1435` | `OperationsSystemMain` |
+
+Use these exact portal hostnames to keep browser cookies separate; ports alone do not isolate
+cookies. With all three stacks running in an 8 GB Docker VM, finish image builds before
+starting SQL Testcontainers integration suites to avoid concurrent memory pressure. The generic root Compose instructions above describe the default deployment template.
+Use the named helpers below to rebuild main or the Operation module environment. Keep the
+existing HandOver containers on their existing images when working in another branch.
+[Docker documents project names as the environment isolation boundary](https://docs.docker.com/compose/how-tos/project-name/).
+
+### Main / release stack
+
+`docker-compose.main.yml` builds `operationssystem-main-api:local` and
+`operationssystem-main-portal:local` from main source, independently of the HandOver and
+Operation module images. Copy `.env.main.example` to the ignored `.env.main` and provide
+unique SQL/JWT secrets and the required bootstrap administrator settings. The API explicitly
+binds every module connection string to local `OperationsSystemMain`.
+
+Use the helper from the repository root:
+
+```bash
+./scripts/main-docker.sh up -d --build --wait
+./scripts/main-docker.sh ps
+./scripts/main-docker.sh down
+```
+
+With no arguments, the helper also runs `up -d --build --wait`. If the current checkout is
+`main`, it builds that working source. From another branch, it builds a detached worktree at
+`artifacts/docker-main-source`, refreshed to local `main` only when that worktree is clean.
+It leaves the current branch and working changes in place and does not check out the `main`
+branch in the additional worktree. Update the local `main` ref through the normal Git workflow
+before selecting a newer main revision; the helper does not fetch remote changes. Images carry
+the selected revision, release version, and main-branch labels.
+
+For this environment's initial data, export a fresh copy of the remote SQL database using
+[SqlPackage Export](https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-export?view=sql-server-ver17)
+and import it into the separate local `OperationsSystemMain` database before starting
+the API. The export reads the remote source; imports and startup migrations target only the
+local copy. Main's automatic work-order processing, flight reminders, outbox dispatch, email,
+and Android push are disabled to prevent copied queued work from being delivered by these
+background services. The helper's `down` retains its SQL, file, and key volumes.
+
+A SQL/BACPAC export does not include remote uploaded files or the ASP.NET Core Data Protection
+key ring. Those require separate source artifacts. Any separately copied locally available
+storage and keys must be verified against the remote data; they do not establish that remote
+attachments are available or that stored MFA secrets can be decrypted. Existing database users
+retain their stored password hashes, and bootstrap settings do not reset their passwords.
+
+### Isolated Operation module branch stack
+
+Use `docker-compose.operation-module.yml` for `codex/Operation-Module-ImplementationI`.
+The `scripts/operation-module.sh` wrapper always selects that standalone Compose file,
+`.env.operation-module`, and project `operationssystem-operation-module`; it does not merge
+the default Compose files. Its API/portal images, SQL data, uploaded files, API and portal
+Data Protection key volumes, and default network are separate from the HandOver and
+main/release stacks.
+
+This branch is based on `main`. Its database target is a **new**
+`OperationsSystemOperationModuleMain` database initialized from a main-compatible copy:
+
+1. Copy `.env.operation-module.example` to the ignored `.env.operation-module` and provide
+   unique branch SQL and JWT secrets. Keep these local credentials out of source control.
+2. Before starting the branch API, take a SQL Server `COPY_ONLY` full backup of the intended
+   main-compatible local source and restore it as `OperationsSystemOperationModuleMain` on
+   the branch SQL service. Preserve the previous HandOver-derived
+   `OperationsSystemOperationModule` database under its existing name; do not overwrite or
+   reuse it as the input to this main-based migration chain.
+   [A copy-only backup leaves the existing differential backup base unchanged](https://learn.microsoft.com/en-us/sql/relational-databases/backup-restore/copy-only-backups-sql-server?view=sql-server-ver17).
+3. Copy the matching source file-storage and API Data Protection keys into the branch's
+   separate volumes, mounting source volumes read-only during the file copy. Verify that
+   the files and key ring match the chosen database source; a SQL copy alone does not prove
+   uploaded-file availability or MFA-secret decryption.
+4. Start the branch API and portal after the restore and volume copies. Startup migrations
+   apply only to the new branch database; see the [flight scheduling reset](#flight-scheduling-baseline).
+
+The branch stack's outbox dispatch, email, and Android push are disabled. Bootstrap administrator
+settings do not reset an existing copied account. Main/release and HandOver run in separate
+projects; rebuilding this branch does not rebuild their images or overwrite their databases.
+
+From the repository root, use:
+
+```bash
+./scripts/operation-module.sh up -d --build --wait
+./scripts/operation-module.sh ps
+./scripts/operation-module.sh down
+```
+
+Running the wrapper with no arguments also runs `up -d --build --wait`. `down` retains the
+branch database, files, and keys; `down -v` deletes those branch volumes. The wrapper checks
+the current branch before `up`, `build`, `run`, or `create`.
+
+Open the branch portal at `http://127.0.0.1:5081`, with API readiness at
+`http://127.0.0.1:5213/health/ready` and SQL at `127.0.0.1:1434`. Keep using
+`http://localhost:5080` for the HandOver portal: the different hostnames separate browser cookies;
+ports alone do not. Commit or stash working changes before switching branches. The containers
+have no source bind mounts, so a checkout does not change either running application's image;
+rebuild/start this branch through its wrapper when its code changes.
 
 ### Launch from Visual Studio
 
@@ -127,17 +234,11 @@ development, `Database:ApplyMigrationsOnStartup` may be enabled to apply them au
 production and production-like remote testing, keep it disabled, use reviewed SQL scripts, and take a
 backup first.
 
-### 2026-10 work-order reference numbers
+### Flight scheduling baseline
 
-Apply `20261030192847_Operations_WorkOrderReferenceNumbers` before deploying the updated API
-and portal. It adds nullable `WorkPackageNumber` on work orders and nullable
-`CustomerReferenceNumber` on service lines and tasks. All three columns accept up to 200 characters;
-existing rows retain null values. Portal and Android work-order entry keep these fields optional,
-including customer references on return-to-ramp services and tasks. Existing draft and queued mobile
-requests without the new fields remain readable.
+The current Operations module is scheduling-only; see [Operations Module Foundation](../modules/operations-foundation.md). This branch is based on `main`. `Operations_FlightSchedulingBaseline` preserves flights and the existing direct planned-service/staff tables in place, and removes retired work-order/workflow tables and flight columns. It changes only the Operations schema. Keep the prior main migrations for new and existing main-compatible database upgrade paths; HandOver migrations are not prerequisites.
 
-Keep automatic migrations disabled for remote testing. Deploy the additive migration through the
-reviewed database-change process before starting an API that reads the new columns.
+This is a destructive workflow-data reset. Back up any existing database and review the migration SQL before deployment. Its rollback cannot recover removed work-order/history data; restore the database backup with the earlier application instead. Development startup migrations are disabled in this branch so launching the API does not apply the reset automatically. Do not enable automatic migrations against a shared or remote database. Existing Android operational clients are incompatible with the reset API. Blob storage is left intact and requires a separate retention decision.
 
 ### 2026-10 legacy system IDs
 
@@ -152,61 +253,7 @@ Whitespace is trimmed; clearing the portal field removes the mapping. Older clie
 omit the field preserve any existing mapping. Protected system records allow mapping-only
 edits while their names, classification, and lifecycle protections remain in force.
 
-The Flights Excel export adds **Legacy Services and Resources** beside the existing five
-worksheets. It preserves the original item rows and flight/work-order values, replacing
-catalog names with current legacy mappings by record ID. It also includes operation-type
-and assigned staff manpower-type IDs. Manpower types come from each staff member's current
-master-data record. Blank IDs are reported in **Missing Legacy IDs** and must be reviewed
-before importing into another system. CSV/PDF/dashboard exports and mobile catalog/sync
-contracts are unchanged. No Android update is required for this release.
-
-### 2026-09 work-order submission emails
-
-Apply `20260912201828_Identity_WorkOrderEmailPreference` before deploying the updated API and clients.
-It adds the per-account preference, defaulting to off for existing and new users. Employees can change
-**Email me submitted work orders** in the portal account page or the mobile profile; both use the same
-Identity setting.
-
-With SMTP and outbox dispatch enabled, initial work-order submissions from either client queue a
-receipt for the opted-in submitting employee, including completion, cancellation, and ad-hoc work
-orders. The attached PDF uses the existing print layout and is marked as awaiting approval. Its
-contents are captured with the submission, so later edits do not change the receipt. Editing,
-approving, or merging an existing work order does not create another submission receipt. Preference
-changes affect future submissions; receipts already queued retain their original recipient and PDF.
-
-Receipt preparation and work-order persistence succeed together; a PDF preparation failure leaves
-the submission unsaved. SMTP failures retry through the existing outbox after submission. Delivery
-is at least once: a process crash after SMTP acceptance can cause a retry to resend the message.
-Disabling `EnableEmailNotifications` keeps the existing development behavior of logging and
-consuming queued emails without sending them; it is not a delivery pause.
-
-### 2026-08 resource usage and return-to-ramp rollout
-
-Apply the MasterData resource-calculation migration before the Operations resource-usage migrations.
-The reviewed order within those two contexts is:
-
-1. `MasterData_ResourceCalculationTypes` — backfills every existing Tool to Duration and every existing Material/General Support record to Quantity.
-2. `Operations_ReturnToRampOccurrences` — creates one clearly labelled synthetic occurrence per work order containing legacy RTR-flagged activity. Historical occurrence boundaries cannot be reconstructed from the old flags, so all flagged rows for that work order are grouped honestly into that single migrated record.
-3. `Operations_ResourceUsageCalculationTypes` — converts existing tool usage to Duration using the owning task window, retains Material/General Support quantities, and adds branch-specific database checks. The tool task-window conversion is the only deterministic temporal backfill available from the old schema.
-4. `Operations_ReturnToRampCompositeOwnership` — enforces that every RTR child and its occurrence belong to the same work order.
-
-Keep the legacy mobile return-to-ramp route and quantity-only tool bridge enabled until supported Android versions have drained their persisted outboxes. New clients use nested occurrence payloads and explicit resource usage; UTC remains the storage/API instant and clients perform local-zone input/display conversion.
-
-### 2026-09 numbered RTR records and signatures
-
-Apply `Operations_ReturnToRampNumbersAndSignatures` before deploying the updated API. It assigns existing RTR records a stable number within each work order in creation order and adds optional signature metadata. New RTR numbers increase within the work order; editing, reordering, or deleting a record does not reuse a number.
-
-Work-order detail responses now contain normal performed services and tasks in their main collections and RTR work exclusively under `returnToRamps`. Each RTR has its own `sequence` and optional `customerSignature`. Deploy the updated portal and mobile client with this API change. Existing mobile outbox requests remain supported, including retries created before RTR signatures were introduced.
-
-Signatures use the same PNG format and 2 MB limit as work-order signatures. Omitting a nested signature preserves the saved image; `removeCustomerSignature: true` removes it. Signatures are stored in the existing file store and must be included in its backup. A merged work order receives new unsigned RTR records; signatures remain on the original records. Printed work orders include a separate section for each RTR and its own optional signature.
-
-### ATA chapter rollout
-
-Apply `MasterData_AtaChapters` and `Operations_WorkOrderTaskAtaChapters` before starting the updated API. Startup seeds the supplied ATA list once using stable IDs: five categories and 66 entries, retaining the combined `01-05` row. `Propeller / Rotor (60s)` and its seven chapters start inactive; all other seed rows start active. Later startup runs preserve administrator changes to names, codes, category assignments, and status.
-
-ATA categories and chapters have independent status controls. A chapter is available for a new task selection only when both are active. Updates publish an `ata-chapters` refresh event; mobile refreshes its cached active list through the existing catalogs endpoint and Room 15-to-16 migration preserves drafts and queued writes. The API rechecks availability when offline submissions arrive.
-
-The task selection is optional. Normal and RTR tasks store the selected chapter ID, code, and title as a historical snapshot; unchanged selections retain that snapshot when the catalog is renamed or disabled. Existing tasks without ATA information remain valid. Deploy the matching portal/mobile versions to expose the new selectors and administration screens.
+The current Operations baseline does not expose the former flight/billing exports, submission emails, RTR workflows, or operational ATA task selection. MasterData catalog administration and historical migration files remain available independently. Earlier rollout instructions for retired Operations features are superseded by the scheduling baseline above.
 
 ## SQL performance settings
 

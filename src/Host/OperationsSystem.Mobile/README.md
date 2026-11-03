@@ -1,5 +1,7 @@
 # NAGS Operations — Mobile
 
+This is the released main-branch Android client. Its Operations workflows are deferred on the flight scheduling implementation branch and are incompatible with that branch's reduced API. See [the current module scope](../../../docs/modules/operations-foundation.md).
+
 Native Android client for Operations System v1.0.0. A rewrite of the legacy app that keeps its
 proven offline-first engine and screens while consuming the new backend's flight and work-order
 shape and business rules.

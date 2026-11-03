@@ -140,12 +140,7 @@ public sealed class PermissionCatalogIntegrityTests
             MasterDataPermissions.StaffMembers.View,
             MasterDataPermissions.StaffAllocation.View,
             MasterDataPermissions.Customers.View,
-            OperationsPermissions.Dashboard.View,
-            OperationsPermissions.Dashboard.ViewAnalytics,
-            OperationsPermissions.Dashboard.Export,
-            OperationsPermissions.Flights.View,
-            OperationsPermissions.Flights.Export,
-            OperationsPermissions.WorkOrders.View
+            OperationsPermissions.Flights.View
         ];
         string[] expectedPortalPages =
         [
@@ -167,10 +162,7 @@ public sealed class PermissionCatalogIntegrityTests
             MasterDataPermissions.StaffMembers.View,
             MasterDataPermissions.StaffAllocation.View,
             MasterDataPermissions.Customers.View,
-            OperationsPermissions.Dashboard.View,
-            OperationsPermissions.Dashboard.ViewAnalytics,
-            OperationsPermissions.Flights.View,
-            OperationsPermissions.WorkOrders.View
+            OperationsPermissions.Flights.View
         ];
 
         registry.CompatiblePermissions(UserType.ViewerOnly)

@@ -91,12 +91,8 @@
 
             <AuthorizeView Context="operations">
                 @{
-                    var canOpsDashboard = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.DashboardAnalyticsView);
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
-                    var canOpsWorkOrders = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersView);
-                    var canStaffAllocation = Auth.HasGlobalReadScope
-                        && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffAllocationView);
-                    var canOperations = canOpsDashboard || canOpsFlights || canOpsWorkOrders || canStaffAllocation;
+                    var canOperations = canOpsFlights;
                     var operationsActive = IsNavGroupActive("operations");
                 }
                 @if (canOperations)
@@ -111,36 +107,11 @@
                         </button>
                         <div id="os-nav-operations" class="os-nav-children">
                             <span class="os-nav-flyout-title">Operations</span>
-                            @if (canOpsDashboard)
-                            {
-                                <NavLink href="/operations/dashboard" class="os-nav-link" title="@UiStrings.OperationsDashboard.Title" @onclick="CloseNav">
-                                    <RadzenIcon Icon="monitoring" />
-                                    <span>@UiStrings.OperationsDashboard.NavLabel</span>
-                                </NavLink>
-                            }
                             @if (canOpsFlights)
                             {
-                                <NavLink href="/operations/calendar" class="os-nav-link" title="Flight calendar" @onclick="CloseNav">
-                                    <RadzenIcon Icon="calendar_month" />
-                                    <span>Calendar</span>
-                                </NavLink>
                                 <NavLink href="/operations/flights" class="os-nav-link" title="Flights" @onclick="CloseNav">
                                     <RadzenIcon Icon="flight" />
                                     <span>Flights</span>
-                                </NavLink>
-                            }
-                            @if (canOpsWorkOrders)
-                            {
-                                <NavLink href="/operations/work-orders" class="os-nav-link" title="Work orders" @onclick="CloseNav">
-                                    <RadzenIcon Icon="fact_check" />
-                                    <span>Work Orders</span>
-                                </NavLink>
-                            }
-                            @if (canStaffAllocation)
-                            {
-                                <NavLink href="/operations/staff-allocation" class="os-nav-link" title="Staff allocation" @onclick="CloseNav">
-                                    <RadzenIcon Icon="group_work" />
-                                    <span>Staff allocation</span>
                                 </NavLink>
                             }
                         </div>
@@ -381,7 +352,7 @@
     private bool ShowSidebar => Auth.User is not { } user
         || PortalNavigationPolicy.ShouldShowSidebar(user.UserType, user.Permissions);
     private bool CanShowDashboardNavigation =>
-        !Auth.IsViewerOnly || Auth.HasPermission(OperationsPermissions.DashboardView);
+        !Auth.IsViewerOnly;
 
     protected override async Task OnInitializedAsync()
     {
@@ -547,7 +518,6 @@
         if (RequiresMfaEnrollment ||
             !Auth.IsViewerOnly ||
             CurrentPath.Length != 0 ||
-            Auth.HasPermission(OperationsPermissions.DashboardView) ||
             Auth.User is not { } user)
         {
             return;

@@ -6,10 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Notifications.Application.Abstractions;
-using Notifications.Application.IntegrationEvents;
 using Notifications.Infrastructure.Persistence;
 using Notifications.Infrastructure.Push;
-using Operations.Contracts;
 
 namespace Notifications.Infrastructure;
 
@@ -37,9 +35,6 @@ public static class NotificationsInfrastructureExtensions
         services.AddScoped<INotificationTransport, FcmNotificationPusher>();
         services.AddScoped<INotificationPusher, CompositeNotificationPusher>();
 
-        services.AddIntegrationEventHandler<FlightEmployeeAssigned, FlightEmployeeAssignedHandler>();
-        services.AddIntegrationEventHandler<FlightScheduleUpdated, FlightScheduleUpdatedHandler>();
-        services.AddIntegrationEventHandler<FlightReminderDue, FlightReminderDueHandler>();
         return services;
     }
 

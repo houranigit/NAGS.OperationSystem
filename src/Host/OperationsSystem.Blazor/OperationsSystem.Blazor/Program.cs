@@ -51,7 +51,6 @@ app.UseWebSockets();
 app.MapStaticAssets();
 app.MapApiProxy();
 app.MapNotificationsHubProxy();
-app.MapOperationsDashboardHubProxy();
 app.MapUserManual();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

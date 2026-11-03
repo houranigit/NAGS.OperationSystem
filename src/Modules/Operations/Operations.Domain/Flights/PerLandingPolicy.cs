@@ -5,9 +5,7 @@ using Operations.Domain.ValueObjects;
 namespace Operations.Domain.Flights;
 
 /// <summary>
-/// Enforces the Per-Landing service rules while service selection is manual (later these move to the
-/// Contracts module): a flight's planned services may contain "Aircraft Per Landing" only as the sole
-/// planned service.
+/// A flight's planned services may contain Aircraft Per Landing only as the sole service.
 /// </summary>
 public static class PerLandingPolicy
 {
@@ -15,12 +13,11 @@ public static class PerLandingPolicy
         serviceId == WellKnownMasterDataIds.AircraftPerLandingService;
 
     /// <summary>
-    /// Validates the planned-service set: it cannot be empty unless explicitly allowed, and Aircraft
-    /// Per Landing cannot be mixed with any other service.
+    /// Validates that services are present and Aircraft Per Landing is not mixed with other services.
     /// </summary>
-    public static Result ValidatePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices, bool allowEmpty = false)
+    public static Result ValidatePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices)
     {
-        if (plannedServices.Count == 0 && !allowEmpty)
+        if (plannedServices.Count == 0)
         {
             return Error.Validation(
                 "At least one planned service is required.",

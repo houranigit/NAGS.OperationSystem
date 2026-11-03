@@ -1,0 +1,81 @@
+using MasterData.Contracts.Readers;
+
+namespace Operations.Application.UnitTests;
+
+internal sealed class SchedulingMasterDataReader : IMasterDataReader
+{
+    public Guid StationId { get; } = Guid.NewGuid();
+    public Guid ServiceId { get; } = Guid.NewGuid();
+    public Dictionary<Guid, StaffMemberReadSnapshot> StaffMembers { get; } = [];
+
+    public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult<CustomerReadSnapshot?>(new(id, "SV", null, "Saudia", true));
+
+    public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult<StationReadSnapshot?>(new(id, "RUH", null, "Riyadh", true));
+
+    public Task<OperationTypeReadSnapshot?> GetOperationTypeAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult<OperationTypeReadSnapshot?>(new(id, "Transit", true));
+
+    public Task<AircraftTypeReadSnapshot?> GetAircraftTypeAsync(Guid id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<ServiceReadSnapshot?> GetServiceAsync(Guid id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<ServiceReadSnapshot>> GetServicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<ServiceReadSnapshot>>(ids.Select(id => new ServiceReadSnapshot(id, "Planned service", true)).ToList());
+
+    public Task<StaffMemberReadSnapshot?> GetStaffMemberAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(StaffMembers.GetValueOrDefault(id));
+
+    public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetStaffMembersAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken)
+    {
+        var members = ids.Where(StaffMembers.ContainsKey).Select(id => StaffMembers[id]).ToList();
+        return Task.FromResult<IReadOnlyList<StaffMemberReadSnapshot>>(members);
+    }
+
+    public Task<IReadOnlyList<StaffMemberReadSnapshot>> GetActiveStaffMembersForStationAsync(Guid stationId, CancellationToken cancellationToken)
+    {
+        var members = StaffMembers.Values.Where(member => member.StationId == stationId && member.IsActive).ToList();
+        return Task.FromResult<IReadOnlyList<StaffMemberReadSnapshot>>(members);
+    }
+
+    public Task<AtaChapterReadSnapshot?> GetAtaChapterAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult<AtaChapterReadSnapshot?>(null);
+    public Task<IReadOnlyList<AtaChapterReadSnapshot>> GetActiveAtaChaptersAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AtaChapterReadSnapshot>>([]);
+
+    public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlySet<Guid>> GetAllowedActiveServiceIdsAsync(Guid manpowerTypeId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>());
+
+    public Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<ToolReadSnapshot>> GetActiveToolsAsync(CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<MaterialReadSnapshot>> GetActiveMaterialsAsync(CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<GeneralSupportReadSnapshot>> GetActiveGeneralSupportsAsync(CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<CustomerReadSnapshot>> GetActiveCustomersAsync(CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
+    public Task<IReadOnlyList<AircraftTypeReadSnapshot>> GetActiveAircraftTypesAsync(CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+}

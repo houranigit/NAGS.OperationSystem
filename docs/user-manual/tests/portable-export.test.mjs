@@ -26,14 +26,13 @@ test("static export is relocatable beneath /manual/", async () => {
     new URL(`assets/${javascriptFile}`, staticDirectory),
     "utf8",
   );
-  assert.match(javascript, /screenshots\/portal-flights-populated\.png/);
-  assert.match(javascript, /downloads\/work-order-KAI-0001\.pdf/);
+  assert.match(javascript, /screenshots\/portal-login\.png/);
+  assert.doesNotMatch(javascript, /downloads\/work-order-KAI-0001\.pdf/);
   assert.doesNotMatch(javascript, /["'`]\/(?:screenshots|downloads)\//);
 
   await Promise.all([
-    access(new URL("screenshots/portal-flights-populated.png", staticDirectory)),
-    access(new URL("screenshots/mobile-return-to-ramp.png", staticDirectory)),
-    access(new URL("downloads/work-order-KAI-0001.pdf", staticDirectory)),
+    access(new URL("screenshots/portal-login.png", staticDirectory)),
+    access(new URL("screenshots/portal-service-create.png", staticDirectory)),
   ]);
 });
 
@@ -44,14 +43,14 @@ test("email export is a single classic-script HTML document", async () => {
   ]);
 
   assert.ok(
-    fileDetails.size > 5_000_000,
+    fileDetails.size > 100_000,
     "The standalone document should contain the real screenshot data.",
   );
   assert.match(html, /<style>[\s\S]+<\/style>/);
   assert.match(html, /<script>[\s\S]+<\/script>/);
   assert.match(html, /data:image\/png;base64,/);
   assert.match(html, /data:image\/svg\+xml;base64,/);
-  assert.match(html, /data:application\/pdf;base64,/);
+  assert.doesNotMatch(html, /data:application\/pdf;base64,/);
   assert.match(html, /Captured from the running applications/);
   assert.ok(
     html.indexOf('<div id="root"></div>') < html.indexOf("<script>"),

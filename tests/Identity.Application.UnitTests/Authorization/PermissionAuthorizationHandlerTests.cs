@@ -28,7 +28,7 @@ public sealed class PermissionAuthorizationHandlerTests
     [Fact]
     public async Task Viewer_only_with_compatible_view_claim_is_authorized()
     {
-        var permission = OperationsPermissions.Dashboard.View;
+        var permission = OperationsPermissions.Flights.View;
         var context = ContextForViewer(permission);
 
         await Handler().HandleAsync(context);

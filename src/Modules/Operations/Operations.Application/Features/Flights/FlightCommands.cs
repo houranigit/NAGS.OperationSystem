@@ -1,7 +1,5 @@
 using BuildingBlocks.Application.Abstractions;
-using BuildingBlocks.Application.Auditing;
 using BuildingBlocks.Application.Messaging;
-using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -10,9 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
-using Operations.Application.Features.Mobile;
 using Operations.Domain.Authorization;
-using Operations.Domain.Enumerations;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 
@@ -47,10 +43,7 @@ public sealed class ScheduleFlightCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
-    IFlightTimelineWriter timeline,
-    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
-    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<ScheduleFlightCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(ScheduleFlightCommand request, CancellationToken cancellationToken)
@@ -90,25 +83,12 @@ public sealed class ScheduleFlightCommandHandler(
         var now = timeProvider.GetUtcNow();
         var b = build.Value;
         var flight = Flight.ScheduleNew(b.Customer, b.Station, b.OperationType, b.FlightNumber, b.Schedule, b.AircraftType,
-            b.PlannedServices, employees.Value, contractId: null, contractNumber: null,
+            b.PlannedServices, employees.Value,
             createdByUserId: user.UserId ?? Guid.Empty, now: now);
         if (flight.IsFailure)
             return flight.Error;
 
         db.Flights.Add(flight.Value);
-
-        await timeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.FlightScheduled, now, cancellationToken: cancellationToken);
-        foreach (var employee in employees.Value)
-            await timeline.AppendAsync(flight.Value.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
-
-        FlightAssignmentEvents.Enqueue(
-            db,
-            flight.Value,
-            employees.Value.Select(employee => employee.StaffMemberId),
-            user,
-            auditContext,
-            now);
-        MobileFlightSync.EnqueueUpsert(mobileSync, flight.Value);
 
         await db.SaveChangesAsync(cancellationToken);
         return flight.Value.Id;
@@ -148,10 +128,7 @@ public sealed class ScheduleFlightsCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
-    IFlightTimelineWriter timeline,
-    IMobileSyncBroadcaster mobileSync,
     IUserContext user,
-    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<ScheduleFlightsCommand, IReadOnlyList<Guid>>
 {
     public async Task<Result<IReadOnlyList<Guid>>> Handle(ScheduleFlightsCommand request, CancellationToken cancellationToken)
@@ -203,7 +180,6 @@ public sealed class ScheduleFlightsCommandHandler(
 
         var now = timeProvider.GetUtcNow();
         var ids = new List<Guid>(selectedDates.Count);
-        var flights = new List<Flight>(selectedDates.Count);
 
         foreach (var selectedDate in selectedDates)
         {
@@ -229,52 +205,13 @@ public sealed class ScheduleFlightsCommandHandler(
 
             var b = built.Value;
             var flight = Flight.ScheduleNew(b.Customer, b.Station, b.OperationType, b.FlightNumber, b.Schedule, b.AircraftType,
-                b.PlannedServices, FlightBuildHelpers.CopyStaffMembers(employees.Value), contractId: null, contractNumber: null,
+                b.PlannedServices, FlightBuildHelpers.CopyStaffMembers(employees.Value),
                 createdByUserId: user.UserId ?? Guid.Empty, now: now);
             if (flight.IsFailure)
                 return Error.Validation($"Flight on {selectedDate:yyyy-MM-dd}: {flight.Error.Description}", "Operations.Flight.BatchItemInvalid");
 
             db.Flights.Add(flight.Value);
-            flights.Add(flight.Value);
             ids.Add(flight.Value.Id);
-        }
-
-        foreach (var flight in flights)
-        {
-            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.FlightScheduled, now, cancellationToken: cancellationToken);
-            foreach (var employee in flight.AssignedEmployees)
-                await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.Employee.FullName, cancellationToken: cancellationToken);
-
-        }
-
-        if (flights.Count == 1)
-        {
-            var flight = flights[0];
-            MobileFlightSync.EnqueueUpsert(mobileSync, flight);
-            FlightAssignmentEvents.Enqueue(
-                db,
-                flight,
-                flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId),
-                user,
-                auditContext,
-                now);
-        }
-        else
-        {
-            MobileFlightSync.EnqueueBulkRefresh(mobileSync, flights, now);
-            foreach (var staffMemberId in flights
-                         .SelectMany(flight => flight.AssignedEmployees)
-                         .Select(employee => employee.Employee.StaffMemberId)
-                         .Distinct())
-            {
-                db.Enqueue(new global::Operations.Contracts.FlightScheduleUpdated
-                {
-                    StaffMemberId = staffMemberId,
-                    FlightCount = flights.Count,
-                    UpdatedByUserId = user.UserId,
-                    OccurredOnUtc = now
-                });
-            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -376,7 +313,8 @@ public sealed record UpdateScheduledFlightCommand(
     DateTimeOffset ScheduledDepartureUtc,
     Guid? AircraftTypeId,
     IReadOnlyList<Guid> PlannedServiceIds,
-    byte[] RowVersion) : ICommand;
+    byte[] RowVersion,
+    IReadOnlyList<Guid>? AssignedStaffMemberIds = null) : ICommand;
 
 public sealed class UpdateScheduledFlightCommandValidator : AbstractValidator<UpdateScheduledFlightCommand>
 {
@@ -391,7 +329,7 @@ public sealed class UpdateScheduledFlightCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
-    IMobileSyncBroadcaster mobileSync,
+    IUserContext user,
     TimeProvider timeProvider) : ICommandHandler<UpdateScheduledFlightCommand>
 {
     public async Task<Result> Handle(UpdateScheduledFlightCommand request, CancellationToken cancellationToken)
@@ -410,10 +348,6 @@ public sealed class UpdateScheduledFlightCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
-        var editCheck = flight.EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
-
         var aircraft = await resolver.AircraftTypeAsync(request.AircraftTypeId, cancellationToken);
         if (aircraft.IsFailure)
             return aircraft.Error;
@@ -426,27 +360,27 @@ public sealed class UpdateScheduledFlightCommandHandler(
         if (services.IsFailure)
             return services.Error;
 
-        var now = timeProvider.GetUtcNow();
-        var wasPerLanding = flight.IsPerLanding;
-        var updateSchedule = flight.UpdateSchedule(schedule.Value, aircraft.Value, now);
-        if (updateSchedule.IsFailure)
-            return updateSchedule.Error;
-
-        var updateServices = flight.ReplacePlannedServices(services.Value, now);
-        if (updateServices.IsFailure)
-            return updateServices.Error;
-
-        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
-        if (wasPerLanding && !flight.IsPerLanding)
+        IReadOnlyList<StaffMemberSnapshot>? employees = null;
+        if (request.AssignedStaffMemberIds is { } staffIds)
         {
-            // The flight left the Per-Landing plane; tell the station caches to drop it.
-            mobileSync.Enqueue(new MobileSyncChange(
-                MobileSyncTables.FlightsPerLanding,
-                MobileSyncOps.Delete,
-                flight.Id.ToString(),
-                MobileSyncAudience.Station(flight.Station.IataCode),
-                now));
+            var currentIds = flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId).ToHashSet();
+            if (!currentIds.SetEquals(staffIds))
+            {
+                if (!user.HasPermission(OperationsPermissions.Flights.Assign))
+                    return Error.Forbidden(
+                        "Changing assigned staff requires flight assignment permission.",
+                        "Operations.Flight.AssignForbidden");
+
+                var resolved = await resolver.StaffMembersForStationAsync(staffIds, flight.Station.StationId, cancellationToken);
+                if (resolved.IsFailure)
+                    return resolved.Error;
+                employees = resolved.Value;
+            }
         }
+
+        var update = flight.UpdatePlanning(schedule.Value, aircraft.Value, services.Value, employees, timeProvider.GetUtcNow());
+        if (update.IsFailure)
+            return update.Error;
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
         try
@@ -479,7 +413,6 @@ public sealed class ChangeFlightNumberCommandValidator : AbstractValidator<Chang
 public sealed class ChangeFlightNumberCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
-    IMobileSyncBroadcaster mobileSync,
     TimeProvider timeProvider) : ICommandHandler<ChangeFlightNumberCommand>
 {
     public async Task<Result> Handle(ChangeFlightNumberCommand request, CancellationToken cancellationToken)
@@ -498,10 +431,6 @@ public sealed class ChangeFlightNumberCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
-        var editCheck = flight.EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
-
         var number = FlightNumber.Create(request.FlightNumber);
         if (number.IsFailure)
             return number.Error;
@@ -509,8 +438,6 @@ public sealed class ChangeFlightNumberCommandHandler(
         var change = flight.ChangeFlightNumber(number.Value, timeProvider.GetUtcNow());
         if (change.IsFailure)
             return change.Error;
-
-        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
         try
@@ -544,10 +471,6 @@ public sealed class AssignEmployeesCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
-    IFlightTimelineWriter timeline,
-    IMobileSyncBroadcaster mobileSync,
-    IUserContext user,
-    IAuditContext auditContext,
     TimeProvider timeProvider) : ICommandHandler<AssignEmployeesCommand>
 {
     public async Task<Result> Handle(AssignEmployeesCommand request, CancellationToken cancellationToken)
@@ -559,18 +482,12 @@ public sealed class AssignEmployeesCommandHandler(
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        // Assign permission replaces the scheduled flight roster within the caller's data scope.
-        // Invite permission uses the add-only command below.
         var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
         if (scopeResult.IsFailure)
             return scopeResult.Error;
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
         if (accessCheck.IsFailure)
             return accessCheck.Error;
-
-        var editCheck = flight.EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
 
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
@@ -580,119 +497,11 @@ public sealed class AssignEmployeesCommandHandler(
             return employees.Error;
 
         var now = timeProvider.GetUtcNow();
-        var alreadyAssigned = flight.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToHashSet();
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
         var assign = flight.ReplaceAssignedEmployees(employees.Value, now);
         if (assign.IsFailure)
             return assign.Error;
-
-        var newlyAssigned = employees.Value.Where(e => !alreadyAssigned.Contains(e.StaffMemberId)).ToList();
-        foreach (var employee in newlyAssigned)
-            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
-
-        FlightAssignmentEvents.Enqueue(
-            db,
-            flight,
-            newlyAssigned.Select(employee => employee.StaffMemberId),
-            user,
-            auditContext,
-            now);
-
-        // Current roster gets an upsert; staff removed from the roster get a targeted delete so the
-        // flight disappears from their "my flights" cache immediately.
-        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
-        var currentRoster = employees.Value.Select(e => e.StaffMemberId).ToHashSet();
-        foreach (var removedStaffId in alreadyAssigned.Where(id => !currentRoster.Contains(id)))
-            MobileFlightSync.EnqueueFlightForStaffMember(mobileSync, flight, removedStaffId, MobileSyncOps.Delete);
-
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return ConcurrencyErrors.Stale;
-        }
-
-        return Result.Success();
-    }
-}
-
-// --- Invite/forward employees onto a scheduled non-Per-Landing flight -------
-
-public sealed record InviteEmployeesToFlightCommand(Guid FlightId, IReadOnlyList<Guid> StaffMemberIds, byte[] RowVersion) : ICommand;
-
-public sealed class InviteEmployeesToFlightCommandValidator : AbstractValidator<InviteEmployeesToFlightCommand>
-{
-    public InviteEmployeesToFlightCommandValidator()
-    {
-        RuleFor(x => x.FlightId).NotEmpty();
-        RuleFor(x => x.StaffMemberIds).NotEmpty();
-        RuleFor(x => x.RowVersion).NotEmpty();
-    }
-}
-
-public sealed class InviteEmployeesToFlightCommandHandler(
-    IOperationsDbContext db,
-    IOperationsScope scope,
-    MasterDataResolver resolver,
-    IFlightTimelineWriter timeline,
-    IMobileSyncBroadcaster mobileSync,
-    IUserContext user,
-    IAuditContext auditContext,
-    TimeProvider timeProvider) : ICommandHandler<InviteEmployeesToFlightCommand>
-{
-    public async Task<Result> Handle(InviteEmployeesToFlightCommand request, CancellationToken cancellationToken)
-    {
-        var flight = await db.Flights
-            .Include(f => f.AssignedEmployees)
-            .Include(f => f.PlannedServices)
-            .FirstOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
-        if (flight is null)
-            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-
-        var scopeResult = await scope.ResolveForWriteAsync(cancellationToken);
-        if (scopeResult.IsFailure)
-            return scopeResult.Error;
-        var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
-        if (accessCheck.IsFailure)
-            return accessCheck.Error;
-
-        var editCheck = flight.EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
-
-        if (flight.IsPerLanding)
-            return PerLandingAssignmentGuard.Error();
-
-        var alreadyAssigned = flight.AssignedEmployees.Select(e => e.Employee.StaffMemberId).ToHashSet();
-        var requested = request.StaffMemberIds.Distinct().Where(id => !alreadyAssigned.Contains(id)).ToList();
-        if (requested.Count == 0)
-            return Result.Success();
-
-        var employees = await resolver.StaffMembersForStationAsync(requested, flight.Station.StationId, cancellationToken);
-        if (employees.IsFailure)
-            return employees.Error;
-
-        var now = timeProvider.GetUtcNow();
-        db.SetOriginalRowVersion(flight, request.RowVersion);
-        var assign = flight.AssignEmployees(employees.Value, now);
-        if (assign.IsFailure)
-            return assign.Error;
-
-        foreach (var employee in employees.Value)
-            await timeline.AppendAsync(flight.Id, FlightTimelineEventType.EmployeeAssigned, now, details: employee.FullName, cancellationToken: cancellationToken);
-
-        FlightAssignmentEvents.Enqueue(
-            db,
-            flight,
-            employees.Value.Select(employee => employee.StaffMemberId),
-            user,
-            auditContext,
-            now,
-            global::Operations.Contracts.FlightAssignmentSource.Invite);
-        MobileFlightSync.EnqueueUpsert(mobileSync, flight);
 
         try
         {

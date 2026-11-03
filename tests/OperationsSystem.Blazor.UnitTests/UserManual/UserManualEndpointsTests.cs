@@ -13,7 +13,8 @@ public sealed class UserManualEndpointsTests
 
         var html = reader.ReadToEnd();
 
-        html.Length.ShouldBeGreaterThan(1_000_000);
+        html.ShouldContain("Flight scheduling baseline");
+        html.ShouldContain("Mobile is not supported by this backend baseline");
         html.ShouldContain("NAGS Operations Field Guide");
         html.ShouldContain("Captured from the running applications");
         html.ShouldContain("data:image/png;base64,");

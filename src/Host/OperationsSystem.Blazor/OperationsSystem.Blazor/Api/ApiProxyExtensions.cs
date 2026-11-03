@@ -72,20 +72,6 @@ public static class ApiProxyExtensions
         return endpoints;
     }
 
-    /// <summary>
-    /// Same-origin proxy for the permission-protected operations-dashboard invalidation hub.
-    /// </summary>
-    public static IEndpointRouteBuilder MapOperationsDashboardHubProxy(this IEndpointRouteBuilder endpoints)
-    {
-        endpoints.MapMethods(
-                "/hubs/operations-dashboard/{**path}",
-                ProxiedMethods,
-                ProxyOperationsDashboardHubAsync)
-            .AllowAnonymous()
-            .DisableAntiforgery();
-        return endpoints;
-    }
-
     private static async Task ProxyAsync(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
@@ -112,17 +98,6 @@ public static class ApiProxyExtensions
             context,
             httpClientFactory,
             BuildNotificationsHubTargetUri(context, options.Value));
-    }
-
-    private static async Task ProxyOperationsDashboardHubAsync(
-        HttpContext context,
-        IHttpClientFactory httpClientFactory,
-        IOptions<ApiProxyOptions> options)
-    {
-        await ProxyHubAsync(
-            context,
-            httpClientFactory,
-            BuildOperationsDashboardHubTargetUri(context, options.Value));
     }
 
     private static async Task ProxyHubAsync(
@@ -165,9 +140,6 @@ public static class ApiProxyExtensions
 
     internal static Uri BuildNotificationsHubTargetUri(HttpContext context, ApiProxyOptions options)
         => BuildHubTargetUri(context, options, "notifications");
-
-    internal static Uri BuildOperationsDashboardHubTargetUri(HttpContext context, ApiProxyOptions options)
-        => BuildHubTargetUri(context, options, "operations-dashboard");
 
     private static Uri BuildHubTargetUri(HttpContext context, ApiProxyOptions options, string hubName)
     {

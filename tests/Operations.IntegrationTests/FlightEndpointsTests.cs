@@ -1,12 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text;
-using ClosedXML.Excel;
-using Microsoft.Extensions.DependencyInjection;
-using Operations.Application.Contracts;
-using Operations.Domain.Flights;
-using Operations.Domain.ValueObjects;
-using Operations.Infrastructure.Persistence;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -14,311 +7,36 @@ namespace Operations.IntegrationTests;
 public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassFixture<OperationsApiFactory>
 {
     [Fact]
-    public async Task GetFlights_WithoutAuthentication_Returns401()
+    public async Task Flight_reads_and_scheduling_require_authentication()
     {
-        var client = factory.CreateClient();
-        var response = await client.GetAsync($"{OperationsApiFactory.Base}/flights");
-        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-    }
+        using var client = factory.CreateClient();
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("&report=billing")]
-    public async Task ExportFlights_WithoutAuthentication_Returns401(string reportQuery)
-    {
-        var client = factory.CreateClient();
-
-        var response = await client.GetAsync($"{OperationsApiFactory.Base}/flights/export?format=xlsx{reportQuery}");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.GetAsync($"{OperationsApiFactory.Base}/flights"))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.GetAsync($"{OperationsApiFactory.Base}/flights/{Guid.NewGuid()}"))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights", new { }))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights/bulk", new { }))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
-    public async Task ExportBilling_AsAdmin_ReturnsSeparateWorkbookWithHeadersForEmptyActivitySelection()
+    public async Task Deferred_operation_endpoints_are_not_mapped()
     {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var flightNumber = await SeedFlightAsync();
-        var response = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/flights/export?format=xlsx&report=billing&search={Uri.EscapeDataString(flightNumber)}&timeZoneId=America%2FChicago");
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var flightId = Guid.NewGuid();
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        var disposition = response.Content.Headers.ContentDisposition!;
-        (disposition.FileNameStar ?? disposition.FileName)!.Trim('"').ShouldStartWith("billing-report-");
-        using var workbook = new XLWorkbook(new MemoryStream(await response.Content.ReadAsByteArrayAsync()));
-        workbook.Worksheets.Select(sheet => sheet.Name).ShouldBe(["Billing Report"]);
-        workbook.Worksheet(1).Cell(1, 1).GetString().ShouldBe("WO ID");
-        workbook.Worksheet(1).Cell(1, 20).GetString().ShouldBe("End Time");
-        workbook.Worksheet(1).LastRowUsed()!.RowNumber().ShouldBe(1);
-        workbook.Properties.Subject.ShouldNotBeNull().ShouldContain("America/Chicago");
-    }
-
-    [Theory]
-    [InlineData("csv", "billing")]
-    [InlineData("pdf", "billing")]
-    [InlineData("xlsx", "unknown")]
-    public async Task ExportBilling_InvalidReportOrFormat_ReturnsValidationProblem(string format, string report)
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var response = await admin.GetAsync($"{OperationsApiFactory.Base}/flights/export?format={format}&report={report}");
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).ShouldContain("Operations.Flight.ExportReportInvalid");
-    }
-
-    [Theory]
-    [InlineData("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")]
-    [InlineData("csv", "text/csv", ".csv")]
-    [InlineData("pdf", "application/pdf", ".pdf")]
-    public async Task ExportFlights_AsAdmin_ReturnsNativeAttachment(
-        string format,
-        string expectedMediaType,
-        string expectedExtension)
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        await SeedFlightAsync();
-
-        var response = await admin.GetAsync($"{OperationsApiFactory.Base}/flights/export?format={format}");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        response.Content.Headers.ContentType.ShouldNotBeNull();
-        response.Content.Headers.ContentType!.MediaType.ShouldBe(expectedMediaType);
-
-        var disposition = response.Content.Headers.ContentDisposition;
-        disposition.ShouldNotBeNull();
-        disposition!.DispositionType.ShouldBe("attachment");
-
-        var fileName = (disposition.FileNameStar ?? disposition.FileName)?.Trim('"');
-        fileName.ShouldNotBeNullOrWhiteSpace();
-        fileName!.ShouldStartWith("flights-report-");
-        fileName.EndsWith(expectedExtension, StringComparison.OrdinalIgnoreCase).ShouldBeTrue();
-
-        var content = await response.Content.ReadAsByteArrayAsync();
-        content.ShouldNotBeEmpty();
-
-        switch (format)
+        foreach (var path in new[]
         {
-            case "xlsx":
-                content.Length.ShouldBeGreaterThanOrEqualTo(2);
-                content[0].ShouldBe((byte)'P');
-                content[1].ShouldBe((byte)'K');
-
-                using (var stream = new MemoryStream(content))
-                using (var workbook = new XLWorkbook(stream))
-                {
-                    var sheet = workbook.Worksheet("Flights");
-                    var lastRow = sheet.LastRowUsed()!.RowNumber();
-                    sheet.Cell(5, 1).GetString().ShouldBe("#");
-                    sheet.Cell(5, 22).GetString().ShouldBe("Tools");
-                    sheet.Cell(5, 23).GetString().ShouldBe("Materials");
-                    sheet.Cell(5, 24).GetString().ShouldBe("General Support");
-                    sheet.Cell(5, 27).GetString().ShouldBe("Status");
-                    sheet.Cell(5, 28).GetString().ShouldBe("Tasks");
-                    sheet.Cell(6, 1).GetValue<int>().ShouldBe(1);
-                    sheet.Cell(6, 2).GetString().ShouldBe("-");
-                    sheet.Cell(6, 4).IsEmpty().ShouldBeTrue();
-                    sheet.Cell(6, 17).IsEmpty().ShouldBeTrue();
-                    sheet.Cell(6, 21).IsEmpty().ShouldBeTrue();
-                    sheet.Cell(6, 22).IsEmpty().ShouldBeTrue();
-                    sheet.Cell(6, 23).IsEmpty().ShouldBeTrue();
-                    sheet.Cell(6, 24).IsEmpty().ShouldBeTrue();
-                    sheet.Cell(6, 26).IsEmpty().ShouldBeTrue();
-
-                    for (var row = 6; row <= lastRow; row++)
-                    {
-                        var statusCell = sheet.Cell(row, 27);
-                        var expectedColors = statusCell.GetString() switch
-                        {
-                            "Completed" => (Background: "#DDF7E7", Foreground: "#18733A"),
-                            "Canceled" => (Background: "#FDE5E7", Foreground: "#A32632"),
-                            "In progress" => (Background: "#FFF2C7", Foreground: "#9A5800"),
-                            _ => (Background: "#E9EEF5", Foreground: "#536274")
-                        };
-
-                        statusCell.Style.Fill.BackgroundColor.Color.ToArgb()
-                            .ShouldBe(XLColor.FromHtml(expectedColors.Background).Color.ToArgb());
-                        statusCell.Style.Font.FontColor.Color.ToArgb()
-                            .ShouldBe(XLColor.FromHtml(expectedColors.Foreground).Color.ToArgb());
-                    }
-                }
-                break;
-            case "csv":
-                response.Content.Headers.ContentType.CharSet.ShouldBe("utf-8");
-                content.Length.ShouldBeGreaterThanOrEqualTo(3);
-                content[0].ShouldBe((byte)0xEF);
-                content[1].ShouldBe((byte)0xBB);
-                content[2].ShouldBe((byte)0xBF);
-
-                var csv = Encoding.UTF8.GetString(content, 3, content.Length - 3);
-                var header = csv.Split('\n', 2)[0].TrimEnd('\r');
-                header.ShouldBe("#,WO#,Flight#,WO Flight#,STA,STD,ATA,ATD,Arrival Delay,Departure Delay,Scheduled Duration,Actual Duration,Customer IATA Code,Customer Name,Station IATA Code,Station Name,Aircraft Manufacturer,Aircraft Model,Aircraft Tail Number,Planned Services,Services,Tools,Materials,General Support,Assigned Employees,Remarks,Status,Tasks");
-                csv.ShouldContain("Export Customer");
-                break;
-            case "pdf":
-                content.Length.ShouldBeGreaterThanOrEqualTo(4);
-                Encoding.ASCII.GetString(content, 0, 4).ShouldBe("%PDF");
-                break;
+            $"{OperationsApiFactory.Base}/work-orders",
+            $"{OperationsApiFactory.Base}/flights/{flightId}/operation",
+            $"{OperationsApiFactory.Base}/flights/{flightId}/timeline",
+            $"{OperationsApiFactory.Base}/dashboard",
+            "/api/v1/mobile/flights"
+        })
+        {
+            (await admin.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.NotFound, path);
         }
     }
-
-    [Fact]
-    public async Task ExportFlights_WithSearchFilter_ReturnsOnlyMatchingRows()
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var matchingFlightNumber = await SeedFlightAsync();
-        await SeedFlightAsync();
-
-        var response = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/flights/export?format=csv&search={Uri.EscapeDataString(matchingFlightNumber)}");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var content = await response.Content.ReadAsByteArrayAsync();
-        var csv = Encoding.UTF8.GetString(content, 3, content.Length - 3);
-        var lines = csv.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-
-        lines.Length.ShouldBe(2);
-        lines[1].ShouldContain(matchingFlightNumber);
-    }
-
-    [Fact]
-    public async Task ExportFlights_OmittedTimeZoneDefaultsToRiyadhPresentation()
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var seed = await SeedFlightDetailsAsync();
-        var response = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/flights/export?format=xlsx&search={Uri.EscapeDataString(seed.FlightNumber)}");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        await using var stream = await response.Content.ReadAsStreamAsync();
-        using var workbook = new XLWorkbook(stream);
-        var sheet = workbook.Worksheet("Flights");
-        sheet.Cell(6, 5).GetDateTime().ShouldBe(seed.ScheduledArrivalUtc.AddHours(3).DateTime);
-        sheet.Column(5).Style.DateFormat.Format.ShouldContain("Asia/Riyadh");
-        sheet.Cell(2, 1).GetString().ShouldContain("[Asia/Riyadh]");
-    }
-
-    [Fact]
-    public async Task ExportFlights_InvalidTimeZoneReturnsValidationProblem()
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-
-        var response = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/flights/export?format=csv&timeZoneId=Moon%2FBase");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).ShouldContain("Operations.Flight.ExportTimeZoneInvalid");
-    }
-
-    [Fact]
-    public async Task DashboardAndFlights_WithEquivalentFilters_ExportTheSameCanonicalCsv()
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var seed = await SeedFlightDetailsAsync();
-        var flightsUrl =
-            $"{OperationsApiFactory.Base}/flights/export?format=csv&stationId={seed.StationId}&customerId={seed.CustomerId}&timeZoneId=UTC";
-        var dashboardUrl =
-            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=csv&stationIds={seed.StationId}&customerIds={seed.CustomerId}";
-
-        var flightsResponse = await admin.GetAsync(flightsUrl);
-        var dashboardResponse = await admin.GetAsync(dashboardUrl);
-
-        flightsResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        dashboardResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var flightsCsv = await flightsResponse.Content.ReadAsByteArrayAsync();
-        var dashboardCsv = await dashboardResponse.Content.ReadAsByteArrayAsync();
-        dashboardCsv.ShouldBe(flightsCsv);
-    }
-
-    private async Task<string> SeedFlightAsync() =>
-        (await SeedFlightDetailsAsync()).FlightNumber;
-
-    [Fact]
-    public async Task Dashboard_exports_use_the_requested_browser_zone_in_every_format()
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var seed = await SeedFlightDetailsAsync();
-        var filters = $"stationIds={seed.StationId}&customerIds={seed.CustomerId}&timeZoneId=America%2FChicago";
-
-        var dashboardCsv = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=csv&{filters}");
-        var flightsCsv = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/flights/export?format=csv&stationId={seed.StationId}&customerId={seed.CustomerId}&timeZoneId=America%2FChicago");
-
-        dashboardCsv.StatusCode.ShouldBe(HttpStatusCode.OK);
-        flightsCsv.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var csv = await dashboardCsv.Content.ReadAsByteArrayAsync();
-        csv.ShouldBe(await flightsCsv.Content.ReadAsByteArrayAsync());
-        Encoding.UTF8.GetString(csv).ShouldContain("2026-07-11T07:00:00-05:00 [America/Chicago]");
-
-        var xlsx = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=xlsx&{filters}");
-        xlsx.StatusCode.ShouldBe(HttpStatusCode.OK);
-        using var stream = new MemoryStream(await xlsx.Content.ReadAsByteArrayAsync());
-        using var workbook = new XLWorkbook(stream);
-        var sheet = workbook.Worksheet("Flights");
-        sheet.Cell(6, 5).GetDateTime().ShouldBe(new DateTime(2026, 7, 11, 7, 0, 0));
-        sheet.Column(5).Style.DateFormat.Format.ShouldContain("America/Chicago");
-        sheet.Cell(2, 1).GetString().ShouldContain("[America/Chicago]");
-
-        var pdf = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/analytics-dashboard/flights/export?format=pdf&{filters}");
-        pdf.StatusCode.ShouldBe(HttpStatusCode.OK);
-        Encoding.ASCII.GetString(await pdf.Content.ReadAsByteArrayAsync(), 0, 5).ShouldBe("%PDF-");
-    }
-
-    [Fact]
-    public async Task Dashboard_analytics_group_real_sql_rows_by_the_requested_local_calendar()
-    {
-        var admin = await factory.CreateAuthenticatedAdminClientAsync();
-        var seed = await SeedFlightDetailsAsync();
-        var filters = $"stationIds={seed.StationId}&customerIds={seed.CustomerId}&includeOptions=false";
-
-        var response = await admin.GetAsync(
-            $"{OperationsApiFactory.Base}/analytics-dashboard?{filters}&timeZoneId=America%2FChicago");
-        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
-        var local = await response.Content.ReadFromJsonAsync<OperationsDashboardDto>();
-        local.ShouldNotBeNull();
-        local.TotalFlights.ShouldBe(1);
-        local.Hourly.Single(point => point.Key == "07").FlightCount.ShouldBe(1);
-        local.Hourly.Single(point => point.Key == "12").FlightCount.ShouldBe(0);
-        local.Timeline.Single(point => point.FlightCount == 1).BucketUtc
-            .ShouldBe(seed.ScheduledArrivalUtc);
-
-        var utc = await admin.GetFromJsonAsync<OperationsDashboardDto>(
-            $"{OperationsApiFactory.Base}/analytics-dashboard?{filters}");
-        utc.ShouldNotBeNull();
-        utc.Hourly.Single(point => point.Key == "12").FlightCount.ShouldBe(1);
-    }
-
-    private async Task<SeededFlight> SeedFlightDetailsAsync()
-    {
-        await using var scope = factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
-        var now = new DateTimeOffset(2026, 7, 11, 12, 0, 0, TimeSpan.Zero);
-        var flightNumber = $"RPT{Guid.NewGuid():N}"[..12];
-        var customerId = Guid.NewGuid();
-        var stationId = Guid.NewGuid();
-        var flight = Flight.ScheduleNew(
-            new CustomerSnapshot(customerId, "EX", "Export Customer"),
-            new StationSnapshot(stationId, "DMM", "Dammam"),
-            new OperationTypeSnapshot(Guid.NewGuid(), "Report operation"),
-            FlightNumber.Create(flightNumber).Value,
-            ScheduledTime.Create(now, now.AddHours(2).AddMinutes(10)).Value,
-            aircraftType: null,
-            plannedServices: [new ServiceSnapshot(Guid.NewGuid(), "Report service")],
-            assignedEmployees: [],
-            contractId: null,
-            contractNumber: null,
-            createdByUserId: Guid.NewGuid(),
-            now: now).Value;
-
-        db.Flights.Add(flight);
-        await db.SaveChangesAsync();
-        return new SeededFlight(flightNumber, customerId, stationId, now);
-    }
-
-    private sealed record SeededFlight(
-        string FlightNumber,
-        Guid CustomerId,
-        Guid StationId,
-        DateTimeOffset ScheduledArrivalUtc);
 }

@@ -14,54 +14,17 @@ public sealed class PortalNavigationPolicyTests
     }
 
     [Fact]
-    public void Dashboard_only_viewer_lands_on_dashboard_without_sidebar()
+    public void Flights_only_viewer_lands_on_the_grid_without_sidebar()
     {
-        var permissions = new[] { OperationsPermissions.DashboardView };
+        var permissions = new[] { OperationsPermissions.FlightsView };
 
         PortalNavigationPolicy.ResolvePostLogin(UserTypes.ViewerOnly, permissions, null)
-            .ShouldBe("/");
+            .ShouldBe("/operations/flights");
+        PortalNavigationPolicy.GetPrimaryDestinations(permissions)
+            .Select(destination => destination.Path)
+            .ShouldBe(["/operations/flights"]);
         PortalNavigationPolicy.ShouldShowSidebar(UserTypes.ViewerOnly, permissions)
             .ShouldBeFalse();
-    }
-
-    [Fact]
-    public void Operations_dashboard_only_viewer_lands_there_without_sidebar()
-    {
-        var permissions = new[] { OperationsPermissions.DashboardAnalyticsView };
-
-        PortalNavigationPolicy.ResolvePostLogin(UserTypes.ViewerOnly, permissions, null)
-            .ShouldBe("/operations/dashboard");
-        PortalNavigationPolicy.ShouldShowSidebar(UserTypes.ViewerOnly, permissions)
-            .ShouldBeFalse();
-    }
-
-    [Fact]
-    public void Both_dashboards_land_on_main_dashboard_and_show_sidebar()
-    {
-        var permissions = new[]
-        {
-            OperationsPermissions.DashboardAnalyticsView,
-            OperationsPermissions.DashboardView
-        };
-
-        PortalNavigationPolicy.ResolvePostLogin(UserTypes.ViewerOnly, permissions, null)
-            .ShouldBe("/");
-        PortalNavigationPolicy.ShouldShowSidebar(UserTypes.ViewerOnly, permissions)
-            .ShouldBeTrue();
-    }
-
-    [Fact]
-    public void Flights_view_grants_calendar_and_list_as_two_destinations()
-    {
-        var destinations = PortalNavigationPolicy
-            .GetPrimaryDestinations([OperationsPermissions.FlightsView]);
-
-        destinations.Select(destination => destination.Path)
-            .ShouldBe(["/operations/calendar", "/operations/flights"]);
-        PortalNavigationPolicy.ShouldShowSidebar(
-                UserTypes.ViewerOnly,
-                [OperationsPermissions.FlightsView])
-            .ShouldBeTrue();
     }
 
     [Fact]
@@ -71,20 +34,19 @@ public sealed class PortalNavigationPolicyTests
         {
             MasterDataPermissions.CustomersView,
             IdentityPermissions.UsersView,
-            OperationsPermissions.WorkOrdersView
+            OperationsPermissions.FlightsView
         };
 
         PortalNavigationPolicy.GetPrimaryDestinations(permissions)
             .Select(destination => destination.Path)
-            .ShouldBe(["/users", "/operations/work-orders", "/master-data/customers"]);
+            .ShouldBe(["/users", "/operations/flights", "/master-data/customers"]);
         PortalNavigationPolicy.ResolveLandingPage(permissions).ShouldBe("/users");
     }
 
     [Fact]
-    public void Authorized_detail_return_url_is_preserved()
+    public void Authorized_grid_return_url_is_preserved()
     {
-        var flightId = Guid.NewGuid();
-        var returnUrl = $"/operations/flights/{flightId}?tab=work-orders#latest";
+        const string returnUrl = "/operations/flights?search=123";
 
         PortalNavigationPolicy.ResolvePostLogin(
                 UserTypes.ViewerOnly,
@@ -97,14 +59,17 @@ public sealed class PortalNavigationPolicyTests
     [InlineData("/users")]
     [InlineData("/users/not-a-guid")]
     [InlineData("/operations/dashboard")]
+    [InlineData("/operations/calendar")]
+    [InlineData("/operations/work-orders")]
+    [InlineData("/operations/flights/00000000-0000-0000-0000-000000000001")]
     [InlineData("/unknown")]
     public void Unauthorized_or_unknown_viewer_return_url_falls_back_to_landing(string returnUrl)
     {
         PortalNavigationPolicy.ResolvePostLogin(
                 UserTypes.ViewerOnly,
-                [OperationsPermissions.DashboardView],
+                [OperationsPermissions.FlightsView],
                 returnUrl)
-            .ShouldBe("/");
+            .ShouldBe("/operations/flights");
     }
 
     [Theory]
@@ -117,9 +82,9 @@ public sealed class PortalNavigationPolicyTests
     {
         PortalNavigationPolicy.ResolvePostLogin(
                 UserTypes.ViewerOnly,
-                [OperationsPermissions.DashboardAnalyticsView],
+                [OperationsPermissions.FlightsView],
                 returnUrl)
-            .ShouldBe("/operations/dashboard");
+            .ShouldBe("/operations/flights");
     }
 
     [Fact]

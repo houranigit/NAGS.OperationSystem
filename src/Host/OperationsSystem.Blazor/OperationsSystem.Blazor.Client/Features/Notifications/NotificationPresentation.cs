@@ -33,6 +33,6 @@ public static class NotificationPresentation
 
     public static string? DeepLink(NotificationDto notification) =>
         TryGetFlightId(notification, out var flightId)
-            ? $"/operations/flights/{flightId}"
+            ? $"/operations/flights?search={flightId}"
             : null;
 }

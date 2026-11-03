@@ -3,11 +3,9 @@
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
 @inject NotificationService Notifications
-@inject NavigationManager Navigation
 @inject GridPreferences GridPrefs
 @inject AuthSession Auth
 @inject UserTimeZone UserTimeZone
-@using OperationsSystem.Blazor.Client.Features.Operations
 
 <PageTitle>Flights</PageTitle>
 
@@ -34,9 +32,7 @@
             <Filters>
                 <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
                 <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
-                <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
                 <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
-                <DataListFilter TValue="IEnumerable<string>" Placeholder="All service types" Data="@serviceCategoryOptions" Value="@serviceCategoryFilters" ValueChanged="@OnServiceCategoryFilterChangedAsync" Multiple="true" Chips="true" />
                 <div class="ofl-date-range">
                     <RadzenDatePicker TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
                                       DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
@@ -46,32 +42,6 @@
                                       Placeholder="To date" class="ofl-date-filter" />
                 </div>
             </Filters>
-            <Toolbar>
-                <AuthorizeView Context="approveAccess">
-                    @if (approveAccess.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.WorkOrdersApprove))
-                    {
-                        <a class="ofl-extract-link" href="@BuildPerLandingExtractUrl()" target="_blank" rel="noopener noreferrer">
-                            <RadzenIcon Icon="open_in_new" />
-                            <span>Per Landing</span>
-                        </a>
-                    }
-                </AuthorizeView>
-                <AuthorizeView Context="exportAccess">
-                    @if (exportAccess.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsExport))
-                    {
-                        <div class="ofl-export-menu">
-                            <RowActionMenu Label="@UiStrings.Flights.Export" BusyLabel="@UiStrings.Flights.Exporting"
-                                           ShowLabel="true" TriggerIcon="download" EndIcon="expand_more"
-                                           Disabled="@(isLoading || loadError || totalCount <= 0)" Busy="@isExporting">
-                                <RowAction Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view" OnClick="@(() => ExportAsync("xlsx"))" />
-                                <RowAction Text="@UiStrings.Flights.CsvFile" Icon="csv" OnClick="@(() => ExportAsync("csv"))" />
-                                <RowAction Text="@UiStrings.Flights.PdfReport" Icon="picture_as_pdf" OnClick="@(() => ExportAsync("pdf"))" />
-                                <RowAction Text="@UiStrings.Flights.ExportBilling" Icon="receipt_long" OnClick="@(() => ExportAsync("billing"))" />
-                            </RowActionMenu>
-                        </div>
-                    }
-                </AuthorizeView>
-            </Toolbar>
             <Columns>
                 <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" Title="Flight #">
                     <Template Context="flight">
@@ -80,9 +50,9 @@
                             <div class="os-role-cell-text">
                                 <div class="os-role-cell-title">
                                     <strong>@DisplayFlightNumber(flight)</strong>
-                                    @if (FlightServicePresentation.Badge(flight.IsPerLanding, flight.IsOnCall) is { } serviceBadge)
+                                    @if (flight.IsPerLanding)
                                     {
-                                        <span class="ofl-per-landing-badge">@serviceBadge.Label</span>
+                                        <span class="ofl-per-landing-badge">Per Landing</span>
                                     }
                                 </div>
                                 <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) @UserTimeZone.Id</span>
@@ -90,38 +60,16 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIata" Title="Station" Width="120px" />
+                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIataCode" Title="Station" Width="120px" />
                 <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" Title="Operation" Width="120px" />
                 <RadzenDataGridColumn TItem="FlightListItem" Title="Duration" Sortable="false" Width="120px">
                     <Template Context="flight">@DurationDisplay(flight)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Title="Status" Sortable="false" Width="150px">
-                    <Template Context="flight"><StatusBadge Label="@flight.Status" Tone="@FlightStatusTone(flight.Status)" /></Template>
-                </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
                 <RowActionMenu>
-                    <ChildContent>
-                    <RowAction Text="Open" Icon="visibility" OnClick="@(() => OpenFlight(flight.Id))" />
                     <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                               Visible="@CanEditFlight(flight)" OnClick="@(() => OpenEditAsync(flight.Id))" />
-                    <RowAction Text="Invite employee" Icon="person_add" Permission="@OperationsPermissions.FlightsInvite"
-                               Visible="@CanInviteFlight(flight)" OnClick="@(() => OpenInviteAsync(flight))" />
-                    <RowAction Text="Resolve duplicates" Icon="merge_type" Permission="@OperationsPermissions.FlightsMerge"
-                               Visible="@CanMergeFlight(flight)" OnClick="@(() => OpenMergeAsync(flight.Id))" />
-                    <RowAction Separator="true" />
-                    <RowAction Text="Open work order" Icon="task_alt" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                               Visible="@CanAuthorWorkOrder(flight)" OnClick="@(() => OpenCompletionWorkOrderAsync(flight))" />
-                    <RowAction Text="Record return to ramp" Icon="u_turn_left" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                               Visible="@CanRecordReturnToRamp(flight)" OnClick="@(() => RecordReturnToRampAsync(flight))" />
-                    <RowAction Text="Cancel flight" Icon="cancel" Permission="@OperationsPermissions.WorkOrdersAuthor"
-                               Visible="@CanAuthorWorkOrder(flight)" Danger="true" OnClick="@(() => OpenCancellationWorkOrderAsync(flight))" />
-                    <RowAction Text="@UiStrings.Flights.PrintWorkOrder" Icon="print" Permission="@OperationsPermissions.WorkOrdersView"
-                               Visible="@CanPrintWorkOrder(flight)" OnClick="@(() => PrintWorkOrderAsync(flight))" />
-                    </ChildContent>
-                    <MenuContent>
-                        <FlightWorkOrderMenu FlightId="@flight.Id" Changed="@ReloadAsync" />
-                    </MenuContent>
+                               OnClick="@(() => OpenEditAsync(flight.Id))" />
                 </RowActionMenu>
             </RowActions>
         </DataListCard>
@@ -129,6 +77,8 @@
 </RequirePermission>
 
 @code {
+    [SupplyParameterFromQuery(Name = "search")] private string? SearchQuery { get; set; }
+
     private const string GridKey = "operations-flights";
     private static readonly int[] PageSizes = [10, 25, 50, 100];
 
@@ -137,11 +87,8 @@
     private int totalCount;
     private bool isLoading;
     private bool loadError;
-    private bool isExporting;
-    private bool isPrintingWorkOrder;
     private string searchTerm = string.Empty;
-    private IReadOnlyList<string> statusFilters = [];
-    private IReadOnlyList<string> serviceCategoryFilters = [];
+    private string? appliedSearchQuery;
     private Guid? stationFilter;
     private Guid? customerFilter;
     private Guid? operationTypeFilter;
@@ -153,31 +100,17 @@
     private IReadOnlyList<StationFilterOption> stationOptions = [];
     private IReadOnlyList<CustomerFilterOption> customerOptions = [];
     private IReadOnlyList<OperationTypeFilterOption> operationTypeOptions = [];
-    private readonly IReadOnlyList<StatusFilterOption> statusOptions =
-    [
-        new("Scheduled", "Scheduled"),
-        new("In progress", "InProgress"),
-        new("Completed", "Completed"),
-        new("Canceled", "Canceled")
-    ];
-    private readonly IReadOnlyList<StatusFilterOption> serviceCategoryOptions =
-    [
-        new("Per Landing (no performed services)", "PerLanding"),
-        new("On Call (performed services)", "OnCall"),
-        new("Other (not Per Landing)", "Other")
-    ];
-
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)
         + (customerFilter.HasValue ? 1 : 0)
-        + (statusFilters.Count > 0 ? 1 : 0)
-        + (serviceCategoryFilters.Count > 0 ? 1 : 0)
         + (operationTypeFilter.HasValue ? 1 : 0)
         + (fromFilter.HasValue ? 1 : 0)
         + (toFilter.HasValue ? 1 : 0);
 
     protected override async Task OnInitializedAsync()
     {
+        appliedSearchQuery = SearchQuery;
+        searchTerm = SearchQuery ?? string.Empty;
         await UserTimeZone.InitializeAsync();
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
         await Task.WhenAll(
@@ -186,6 +119,16 @@
             LoadOperationTypeOptionsAsync());
 
         await FetchAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.Equals(appliedSearchQuery, SearchQuery, StringComparison.Ordinal))
+            return;
+
+        appliedSearchQuery = SearchQuery;
+        searchTerm = SearchQuery ?? string.Empty;
+        await ReloadAsync();
     }
 
     private bool CanLoadLookup(string resourceViewPermission) =>
@@ -260,18 +203,6 @@
         await ReloadAsync();
     }
 
-    private async Task OnStatusFilterChangedAsync(IEnumerable<string>? values)
-    {
-        statusFilters = values?.Distinct().ToList() ?? [];
-        await ReloadAsync();
-    }
-
-    private async Task OnServiceCategoryFilterChangedAsync(IEnumerable<string>? values)
-    {
-        serviceCategoryFilters = values?.Distinct().ToList() ?? [];
-        await ReloadAsync();
-    }
-
     private async Task OnOperationTypeFilterChangedAsync(Guid? value)
     {
         operationTypeFilter = value;
@@ -297,8 +228,6 @@
 
         stationFilter = null;
         customerFilter = null;
-        statusFilters = [];
-        serviceCategoryFilters = [];
         operationTypeFilter = null;
         fromFilter = null;
         toFilter = null;
@@ -333,7 +262,7 @@
         {
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
                 string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, stationFilter, customerFilter, operationTypeFilter,
-                statusFilters, DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), serviceCategoryFilters, currentSort);
+                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort);
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -371,8 +300,6 @@
         }
     }
 
-    private void OpenFlight(Guid id) => Navigation.NavigateTo($"/operations/flights/{id}");
-
     private async Task OpenEditAsync(Guid id)
     {
         var result = await DialogService.OpenAsync<ScheduleFlightDialog>("Edit flight",
@@ -385,212 +312,6 @@
             await ReloadAsync();
         }
     }
-
-    private async Task OpenInviteAsync(FlightListItem flight)
-    {
-        var result = await DialogService.OpenAsync<FlightInviteDialog>("Invite employee",
-            new Dictionary<string, object?> { [nameof(FlightInviteDialog.FlightId)] = flight.Id },
-            new DialogOptions { Width = "760px" });
-
-        if (result is true)
-        {
-            Notifications.Notify(NotificationSeverity.Success, "Employee invited", "The selected employee was assigned to the flight.");
-            await ReloadAsync();
-        }
-    }
-
-    private async Task OpenMergeAsync(Guid flightId)
-    {
-        var result = await DialogService.OpenAsync<FlightMergeDialog>("Resolve duplicate flights",
-            new Dictionary<string, object?> { [nameof(FlightMergeDialog.PrimaryFlightId)] = flightId },
-            new DialogOptions { Width = "980px" });
-
-        if (result is true)
-        {
-            Notifications.Notify(NotificationSeverity.Success, "Flights merged");
-            await ReloadAsync();
-        }
-    }
-
-    private static bool CanEditFlight(FlightListItem flight) => flight.Status is "Scheduled";
-    private static bool CanInviteFlight(FlightListItem flight) => flight.Status is "Scheduled" && !flight.IsPerLanding;
-    private static bool CanMergeFlight(FlightListItem flight) => flight.Status is not "Completed" and not "Canceled" and not "Merged";
-    private static bool CanAuthorWorkOrder(FlightListItem flight) => flight.Status is "Scheduled" or "InProgress";
-    private static bool CanRecordReturnToRamp(FlightListItem flight) => ReturnToRampPortalPolicy.CanRecordForFlightStatus(flight.Status);
-    private static bool CanPrintWorkOrder(FlightListItem flight) => flight.Status is "Completed";
-
-    private Task OpenCompletionWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Completion");
-    private Task OpenCancellationWorkOrderAsync(FlightListItem flight) => OpenWorkOrderAsync(flight, "Cancellation");
-
-    private async Task RecordReturnToRampAsync(FlightListItem flight)
-    {
-        try
-        {
-            var detail = await Operations.GetFlightAsync(flight.Id);
-            var draft = new ReturnToRampDraft
-            {
-                FromLocal = UserTimeZone.ToLocalDateTime(detail.ScheduledArrivalUtc),
-                ToLocal = UserTimeZone.ToLocalDateTime(detail.ScheduledDepartureUtc)
-            };
-            var result = await DialogService.OpenAsync<ReturnToRampEditorDialog>(
-                "Add RTR",
-                new Dictionary<string, object?>
-                {
-                    [nameof(ReturnToRampEditorDialog.StationId)] = detail.StationId,
-                    [nameof(ReturnToRampEditorDialog.Draft)] = draft
-                },
-                new DialogOptions { Width = "1080px" });
-
-            if (result is not ReturnToRampEditorResult saved)
-                return;
-
-            await Operations.RecordFlightReturnToRampAsync(
-                flight.Id,
-                ReturnToRampDraftMapper.ToRequest(saved.Draft, UserTimeZone));
-            Notifications.Notify(NotificationSeverity.Success, "RTR recorded", "The RTR, its services and tasks, and any customer signature were saved in the work order's RTR collection.");
-            await ReloadAsync();
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(NotificationSeverity.Error, "Return to ramp unavailable", ex.ToDisplayMessage("Could not record the return to ramp."));
-        }
-    }
-
-    private async Task OpenWorkOrderAsync(FlightListItem flight, string type)
-    {
-        try
-        {
-            var mine = await Operations.GetMyWorkOrderForFlightAsync(flight.Id);
-            var viewOnly = mine?.Status == "Approved";
-            if (mine is not null && mine.Type != type && !viewOnly)
-            {
-                var confirmed = await DialogService.Confirm(
-                    $"You already have a {mine.Type} work order for this flight. Convert it to {type}?",
-                    "Convert work order",
-                    new ConfirmOptions { OkButtonText = "Convert", CancelButtonText = "Cancel" });
-                if (confirmed is not true)
-                    return;
-            }
-
-            var result = await DialogService.OpenAsync<WorkOrderEditorDialog>(
-                viewOnly ? "Work order" : $"{type} work order",
-                new Dictionary<string, object?>
-                {
-                    [nameof(WorkOrderEditorDialog.FlightId)] = flight.Id,
-                    [nameof(WorkOrderEditorDialog.WorkOrderId)] = mine?.Id,
-                    [nameof(WorkOrderEditorDialog.Type)] = type,
-                    [nameof(WorkOrderEditorDialog.ViewOnly)] = viewOnly
-                },
-                new DialogOptions { Width = "760px" });
-
-            if (IsWorkOrderDialogSuccess(result))
-            {
-                Notifications.Notify(NotificationSeverity.Success, WorkOrderDialogSuccessTitle(result, "Work order saved"));
-                await ReloadAsync();
-            }
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(NotificationSeverity.Error, "Work order unavailable", ex.ToDisplayMessage("Could not open the work order."));
-        }
-    }
-
-    private async Task ExportAsync(string format)
-    {
-        if (!Auth.HasPermission(OperationsPermissions.FlightsExport) ||
-            isExporting ||
-            isLoading ||
-            loadError ||
-            totalCount <= 0)
-            return;
-
-        isExporting = true;
-        StateHasChanged();
-
-        try
-        {
-            await Operations.ExportFlightsAsync(
-                format == "billing" ? "xlsx" : format,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm,
-                stationFilter,
-                customerFilter,
-                operationTypeFilter,
-                statusFilters,
-                DateBoundaryUtc(fromFilter, false),
-                DateBoundaryUtc(toFilter, true),
-                serviceCategoryFilters,
-                currentSort,
-                UserTimeZone.Id,
-                report: format == "billing" ? "billing" : null);
-
-            Notifications.Notify(
-                NotificationSeverity.Success,
-                UiStrings.Flights.ExportReady,
-                string.Format(UiStrings.Flights.ExportReadyDetail, ExportFormatLabel(format)));
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(
-                NotificationSeverity.Error,
-                UiStrings.Flights.ExportFailed,
-                ex.ToDisplayMessage(UiStrings.Flights.ExportFailedDetail));
-        }
-        catch (JSException)
-        {
-            Notifications.Notify(
-                NotificationSeverity.Error,
-                UiStrings.Flights.ExportFailed,
-                UiStrings.Flights.ExportFailedDetail);
-        }
-        finally
-        {
-            isExporting = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task PrintWorkOrderAsync(FlightListItem flight)
-    {
-        if (isPrintingWorkOrder || !CanPrintWorkOrder(flight))
-            return;
-
-        isPrintingWorkOrder = true;
-        try
-        {
-            await Operations.DownloadApprovedWorkOrderAsync(flight.Id, UserTimeZone.Id);
-            Notifications.Notify(
-                NotificationSeverity.Success,
-                UiStrings.Flights.WorkOrderDownloadReady,
-                UiStrings.Flights.WorkOrderDownloadReadyDetail);
-        }
-        catch (ApiException ex)
-        {
-            Notifications.Notify(
-                NotificationSeverity.Error,
-                UiStrings.Flights.WorkOrderDownloadFailed,
-                ex.ToDisplayMessage(UiStrings.Flights.WorkOrderDownloadFailedDetail));
-        }
-        catch (JSException)
-        {
-            Notifications.Notify(
-                NotificationSeverity.Error,
-                UiStrings.Flights.WorkOrderDownloadFailed,
-                UiStrings.Flights.WorkOrderDownloadFailedDetail);
-        }
-        finally
-        {
-            isPrintingWorkOrder = false;
-        }
-    }
-
-    private static bool IsWorkOrderDialogSuccess(object? result) => result is true or "approved" or "returned";
-
-    private static string WorkOrderDialogSuccessTitle(object? result, string fallback) => result switch
-    {
-        "approved" => "Work order approved",
-        "returned" => "Work order returned",
-        _ => fallback
-    };
 
     private string DateTimeDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
 
@@ -640,47 +361,6 @@
             ? customer.Name
             : $"{customer.IataCode.Trim().ToUpperInvariant()} · {customer.Name}";
 
-    private static string FlightStatusTone(string status) => status switch
-    {
-        "Completed" => "success",
-        "Canceled" or "Merged" => "danger",
-        "InProgress" => "warning",
-        _ => "neutral"
-    };
-
-    private static string ExportFormatLabel(string format) => format switch
-    {
-        "xlsx" => UiStrings.Flights.ExcelWorkbook,
-        "csv" => UiStrings.Flights.CsvFile,
-        "pdf" => UiStrings.Flights.PdfReport,
-        "billing" => UiStrings.Flights.ExportBilling,
-        _ => UiStrings.Flights.Export
-    };
-
-    private string BuildPerLandingExtractUrl()
-    {
-        var query = new List<string>();
-        AddQuery(query, "search", string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm.Trim());
-        AddQuery(query, "stationId", stationFilter?.ToString());
-        AddQuery(query, "customerId", customerFilter?.ToString());
-        AddQuery(query, "operationTypeId", operationTypeFilter?.ToString());
-        AddQuery(query, "status", statusFilters.Count > 0 ? string.Join(',', statusFilters) : null);
-        AddQuery(query, "fromUtc", DateBoundaryUtc(fromFilter, false)?.ToString("O"));
-        AddQuery(query, "toUtc", DateBoundaryUtc(toFilter, true)?.ToString("O"));
-        AddQuery(query, "serviceCategory", serviceCategoryFilters.Count > 0 ? string.Join(',', serviceCategoryFilters) : null);
-        AddQuery(query, "sort", currentSort);
-        return query.Count == 0
-            ? "/operations/flights/per-landing-extract"
-            : $"/operations/flights/per-landing-extract?{string.Join('&', query)}";
-    }
-
-    private static void AddQuery(List<string> query, string key, string? value)
-    {
-        if (!string.IsNullOrWhiteSpace(value))
-            query.Add($"{key}={Uri.EscapeDataString(value)}");
-    }
-
-    private sealed record StatusFilterOption(string Label, string Value);
     private sealed record StationFilterOption(string Label, Guid? Value);
     private sealed record CustomerFilterOption(string Label, Guid? Value);
     private sealed record OperationTypeFilterOption(string Label, Guid? Value);

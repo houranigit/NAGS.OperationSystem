@@ -207,7 +207,7 @@ public class Phase1SecurityTests(IdentityApiFactory factory) : IClassFixture<Ide
                 name = $"AuditAccessViewer-{Guid.NewGuid():N}",
                 description = (string?)null,
                 compatibleUserType = "ViewerOnly",
-                permissions = new[] { "operations.dashboard.view" }
+                permissions = new[] { "operations.flights.view" }
             });
         viewerRoleResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         var viewerRoleId = await viewerRoleResponse.Content.ReadFromJsonAsync<Guid>();

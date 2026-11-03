@@ -1,20 +1,15 @@
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
-using Operations.Domain.Enumerations;
-using Operations.Domain.Events;
 using Operations.Domain.ValueObjects;
 
 namespace Operations.Domain.Flights;
 
-/// <summary>
-/// A serviced aircraft event. The aggregate owns scheduling, planned services, assigned employees,
-/// and flight-number history. Work orders drive completion and cancellation settlement.
-/// </summary>
+/// <summary>A scheduled flight with its planned services and assigned staff.</summary>
 public sealed class Flight : AggregateRoot<Guid>, IAuditable
 {
-    private readonly List<FlightAssignedEmployee> _assignedEmployees = [];
     private readonly List<PlannedService> _plannedServices = [];
+    private readonly List<FlightAssignedEmployee> _assignedEmployees = [];
 
     private Flight() { }
 
@@ -25,32 +20,16 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     public StationSnapshot Station { get; private set; } = null!;
     public OperationTypeSnapshot OperationType { get; private set; } = null!;
     public FlightNumber FlightNumber { get; private set; } = null!;
-
-    /// <summary>The flight number captured at creation, preserved even when the current number changes.</summary>
-    public string OriginalFlightNumber { get; private set; } = null!;
-
     public ScheduledTime Schedule { get; private set; } = null!;
     public AircraftTypeSnapshot? AircraftType { get; private set; }
-    public FlightStatus Status { get; private set; }
-
-    // Contract seam (no contract logic yet).
-    public Guid? ContractId { get; private set; }
-    public string? ContractNumber { get; private set; }
-
-    // Merge metadata.
-    public Guid? MergedIntoFlightId { get; private set; }
-
     public Guid CreatedByUserId { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
-    public IReadOnlyList<FlightAssignedEmployee> AssignedEmployees => _assignedEmployees.AsReadOnly();
     public IReadOnlyList<PlannedService> PlannedServices => _plannedServices.AsReadOnly();
-
-    public bool IsPerLanding => _plannedServices.Any(s => s.IsAircraftPerLanding);
-    public bool IsUpdateLocked => Status is FlightStatus.Completed or FlightStatus.Canceled or FlightStatus.Merged;
-    public bool CanEditScheduledDetails => Status == FlightStatus.Scheduled;
+    public IReadOnlyList<FlightAssignedEmployee> AssignedEmployees => _assignedEmployees.AsReadOnly();
+    public bool IsPerLanding => _plannedServices.Any(service => service.IsAircraftPerLanding);
 
     public static Result<Flight> ScheduleNew(
         CustomerSnapshot customer,
@@ -61,216 +40,89 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         AircraftTypeSnapshot? aircraftType,
         IReadOnlyList<ServiceSnapshot> plannedServices,
         IReadOnlyList<StaffMemberSnapshot> assignedEmployees,
-        Guid? contractId,
-        string? contractNumber,
         Guid createdByUserId,
         DateTimeOffset now,
-        Guid? id = null,
-        bool allowEmptyPlannedServices = false)
+        Guid? id = null)
     {
-        var perLanding = PerLandingPolicy.ValidatePlannedServices(plannedServices, allowEmptyPlannedServices);
-        if (perLanding.IsFailure)
-            return perLanding.Error;
+        var servicesCheck = PerLandingPolicy.ValidatePlannedServices(plannedServices);
+        if (servicesCheck.IsFailure)
+            return servicesCheck.Error;
+        if (plannedServices.Any(service => PerLandingPolicy.IsAircraftPerLanding(service.ServiceId)) && assignedEmployees.Count > 0)
+            return PerLandingAssignmentError();
 
-        var flightId = id ?? Guid.NewGuid();
         var flight = new Flight
         {
-            Id = flightId,
+            Id = id ?? Guid.NewGuid(),
             Customer = customer,
             Station = station,
             OperationType = operationType,
             FlightNumber = flightNumber,
-            OriginalFlightNumber = flightNumber.Value,
             Schedule = schedule,
             AircraftType = aircraftType,
-            Status = FlightStatus.Scheduled,
-            ContractId = contractId,
-            ContractNumber = contractNumber,
             CreatedByUserId = createdByUserId,
             CreatedAtUtc = now
         };
-
-        flight.ReplacePlannedServicesInternal(plannedServices);
-        flight.ReplaceAssignedEmployeesInternal(assignedEmployees);
-        flight.RaiseDomainEvent(new FlightScheduled(flightId));
+        flight.SetPlannedServices(plannedServices);
+        flight.SetAssignedEmployees(assignedEmployees);
         return flight;
     }
 
     public Result ChangeFlightNumber(FlightNumber newNumber, DateTimeOffset now)
     {
-        var editCheck = EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
-
         if (FlightNumber == newNumber)
             return Result.Success();
-
-        var previous = FlightNumber.Value;
         FlightNumber = newNumber;
         UpdatedAtUtc = now;
-        RaiseDomainEvent(new FlightNumberChanged(Id, OriginalFlightNumber, newNumber.Value));
-        _ = previous;
         return Result.Success();
     }
 
-    public Result UpdateSchedule(ScheduledTime schedule, AircraftTypeSnapshot? aircraftType, DateTimeOffset now)
+    public Result UpdatePlanning(
+        ScheduledTime schedule,
+        AircraftTypeSnapshot? aircraftType,
+        IReadOnlyList<ServiceSnapshot> plannedServices,
+        IReadOnlyList<StaffMemberSnapshot>? assignedEmployees,
+        DateTimeOffset now)
     {
-        var editCheck = EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
+        var check = PerLandingPolicy.ValidatePlannedServices(plannedServices);
+        if (check.IsFailure)
+            return check.Error;
+        var employeeCount = assignedEmployees?.Count ?? _assignedEmployees.Count;
+        if (plannedServices.Any(service => PerLandingPolicy.IsAircraftPerLanding(service.ServiceId)) && employeeCount > 0)
+            return PerLandingAssignmentError();
 
         Schedule = schedule;
         AircraftType = aircraftType;
-        UpdatedAtUtc = now;
-        return Result.Success();
-    }
-
-    public Result ReplacePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices, DateTimeOffset now)
-    {
-        var editCheck = EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
-
-        var perLanding = PerLandingPolicy.ValidatePlannedServices(plannedServices);
-        if (perLanding.IsFailure)
-            return perLanding.Error;
-
-        ReplacePlannedServicesInternal(plannedServices);
-        UpdatedAtUtc = now;
-        return Result.Success();
-    }
-
-    public Result AssignEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
-    {
-        if (IsUpdateLocked)
-            return LockedError();
-
-        foreach (var employee in employees)
-        {
-            if (_assignedEmployees.Any(e => e.Employee.StaffMemberId == employee.StaffMemberId))
-                continue;
-
-            _assignedEmployees.Add(new FlightAssignedEmployee(Guid.NewGuid(), Id, employee));
-            RaiseDomainEvent(new EmployeeAssignedToFlight(Id, employee.StaffMemberId));
-        }
-
+        SetPlannedServices(plannedServices);
+        if (assignedEmployees is not null)
+            SetAssignedEmployees(assignedEmployees);
         UpdatedAtUtc = now;
         return Result.Success();
     }
 
     public Result ReplaceAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
-        var editCheck = EnsureScheduledDetailsEditable();
-        if (editCheck.IsFailure)
-            return editCheck.Error;
-
-        ReplaceAssignedEmployeesInternal(employees);
+        if (IsPerLanding && employees.Count > 0)
+            return PerLandingAssignmentError();
+        SetAssignedEmployees(employees);
         UpdatedAtUtc = now;
         return Result.Success();
     }
 
-    public Result RemoveAssignment(Guid staffMemberId, DateTimeOffset now)
-    {
-        if (IsUpdateLocked)
-            return LockedError();
-
-        var existing = _assignedEmployees.FirstOrDefault(e => e.Employee.StaffMemberId == staffMemberId);
-        if (existing is null)
-            return Error.NotFound("The staff member is not assigned to this flight.", "Operations.Flight.AssignmentNotFound");
-
-        _assignedEmployees.Remove(existing);
-        UpdatedAtUtc = now;
-        return Result.Success();
-    }
-
-    /// <summary>Records the caller claiming a Per-Landing flight (adds them to the roster).</summary>
-    public Result Claim(StaffMemberSnapshot employee, DateTimeOffset now)
-    {
-        if (!IsPerLanding)
-            return Error.Conflict("Only Per Landing flights can be claimed.", "Operations.Flight.NotPerLanding");
-
-        return AssignEmployees([employee], now);
-    }
-
-    public Result MarkMergedInto(Guid survivorFlightId, DateTimeOffset now)
-    {
-        if (Status == FlightStatus.Merged)
-            return Error.Conflict("Flight is already merged.", "Operations.Flight.AlreadyMerged");
-
-        Status = FlightStatus.Merged;
-        MergedIntoFlightId = survivorFlightId;
-        UpdatedAtUtc = now;
-        RaiseDomainEvent(new FlightMerged(Id, survivorFlightId));
-        return Result.Success();
-    }
-
-    public Result OnWorkOrderSubmitted(DateTimeOffset now)
-    {
-        if (Status == FlightStatus.Scheduled)
-        {
-            Status = FlightStatus.InProgress;
-            UpdatedAtUtc = now;
-        }
-
-        return Status == FlightStatus.InProgress
-            ? Result.Success()
-            : Error.Conflict("Work orders can only be submitted for scheduled or in-progress flights.", "Operations.Flight.WorkOrderNotAllowed");
-    }
-
-    public Result SettleCompleted(DateTimeOffset now)
-    {
-        if (Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
-            return Error.Conflict("Only open flights can be completed.", "Operations.Flight.CannotComplete");
-
-        Status = FlightStatus.Completed;
-        UpdatedAtUtc = now;
-        return Result.Success();
-    }
-
-    public Result SettleCanceled(DateTimeOffset now)
-    {
-        if (Status is not (FlightStatus.Scheduled or FlightStatus.InProgress))
-            return Error.Conflict("Only open flights can be canceled.", "Operations.Flight.CannotCancel");
-
-        Status = FlightStatus.Canceled;
-        UpdatedAtUtc = now;
-        return Result.Success();
-    }
-
-    public Result ReopenToInProgress(DateTimeOffset now)
-    {
-        if (Status is not (FlightStatus.Completed or FlightStatus.Canceled))
-            return Error.Conflict("Only settled flights can be reopened.", "Operations.Flight.CannotReopen");
-
-        Status = FlightStatus.InProgress;
-        UpdatedAtUtc = now;
-        return Result.Success();
-    }
-
-    private void ReplacePlannedServicesInternal(IReadOnlyList<ServiceSnapshot> plannedServices)
+    private void SetPlannedServices(IReadOnlyList<ServiceSnapshot> services)
     {
         _plannedServices.Clear();
-        foreach (var service in plannedServices.GroupBy(s => s.ServiceId).Select(g => g.First()))
+        foreach (var service in services.DistinctBy(service => service.ServiceId))
             _plannedServices.Add(new PlannedService(Guid.NewGuid(), Id, service));
     }
 
-    private void ReplaceAssignedEmployeesInternal(IReadOnlyList<StaffMemberSnapshot> employees)
+    private void SetAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees)
     {
         _assignedEmployees.Clear();
-        foreach (var employee in employees.GroupBy(e => e.StaffMemberId).Select(g => g.First()))
+        foreach (var employee in employees.DistinctBy(employee => employee.StaffMemberId))
             _assignedEmployees.Add(new FlightAssignedEmployee(Guid.NewGuid(), Id, employee));
     }
 
-    public Result EnsureScheduledDetailsEditable()
-    {
-        if (IsUpdateLocked)
-            return LockedError();
-
-        return CanEditScheduledDetails
-            ? Result.Success()
-            : Error.Conflict("Only scheduled flights can be edited.", "Operations.Flight.NotEditable");
-    }
-
-    private static Error LockedError() =>
-        Error.Conflict("This flight is settled and can no longer be modified.", "Operations.Flight.Locked");
+    private static Error PerLandingAssignmentError() => Error.Validation(
+        "Per Landing flights are station-wide and cannot have assigned staff.",
+        "Operations.PerLanding.AssignmentNotAllowed");
 }
