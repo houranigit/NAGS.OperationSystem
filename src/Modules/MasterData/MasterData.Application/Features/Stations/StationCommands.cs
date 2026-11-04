@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
@@ -54,7 +55,7 @@ public sealed class CreateStationCommandValidator : AbstractValidator<CreateStat
     }
 }
 
-public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserContext userContext, TimeProvider timeProvider)
+public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserContext userContext, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateStationCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateStationCommand request, CancellationToken cancellationToken)
@@ -127,6 +128,8 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        if (request.Staff is { Count: > 0 })
+            mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return station.Id;
     }
 
@@ -201,7 +204,7 @@ public sealed class UpdateStationCommandValidator : AbstractValidator<UpdateStat
     }
 }
 
-public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateStationCommand>
 {
     public async Task<Result> Handle(UpdateStationCommand request, CancellationToken cancellationToken)
@@ -218,6 +221,7 @@ public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMaster
         if (countryCheck.IsFailure)
             return countryCheck.Error;
 
+        var previousIataCode = station.IataCode;
         var result = station.Update(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, timeProvider.GetUtcNow());
         if (result.IsFailure)
             return result.Error;
@@ -234,11 +238,15 @@ public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMaster
                 return legacyIdResult.Error;
         }
 
+        var staffOptionsChanged = station.IataCode != previousIataCode
+            && await db.StaffMembers.AnyAsync(s => s.StationId == station.Id && s.IsActive, cancellationToken);
         db.SetOriginalRowVersion(station, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (staffOptionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -255,7 +263,7 @@ public sealed record ActivateStationCommand(Guid Id, byte[] RowVersion) : IComma
 
 public sealed record DeactivateStationCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateStationCommand>
 {
     public async Task<Result> Handle(ActivateStationCommand request, CancellationToken cancellationToken)
@@ -268,12 +276,17 @@ public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, IMast
         if (station is null)
             return Error.NotFound("Station not found.", "MasterData.Station.NotFound");
 
+        var wasActive = station.IsActive;
         station.Activate(timeProvider.GetUtcNow());
+        var staffScopeChanged = station.IsActive != wasActive
+            && await db.StaffMembers.AnyAsync(s => s.StationId == station.Id && s.IsActive, cancellationToken);
         db.SetOriginalRowVersion(station, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (staffScopeChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -284,7 +297,7 @@ public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, IMast
     }
 }
 
-public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateStationCommand>
 {
     public async Task<Result> Handle(DeactivateStationCommand request, CancellationToken cancellationToken)
@@ -298,6 +311,7 @@ public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, IMa
             return Error.NotFound("Station not found.", "MasterData.Station.NotFound");
 
         var now = timeProvider.GetUtcNow();
+        var wasActive = station.IsActive;
 
         if (station.IsActive)
         {
@@ -314,11 +328,15 @@ public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, IMa
         }
 
         station.Deactivate(now);
+        var staffScopeChanged = station.IsActive != wasActive
+            && await db.StaffMembers.AnyAsync(s => s.StationId == station.Id && s.IsActive, cancellationToken);
         db.SetOriginalRowVersion(station, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (staffScopeChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

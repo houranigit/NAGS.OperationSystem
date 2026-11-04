@@ -640,6 +640,211 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         await live.ExpectNoRefreshAsync();
     }
 
+    [Fact]
+    public async Task Station_staff_options_preserve_station_scope_active_filter_and_read_permissions()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var first = await SetupMasterDataAsync(admin);
+        var second = await SetupMasterDataAsync(admin);
+        var lookupRole = await CreateCatalogRoleAsync(admin, "StationStaff", "masterdata.reference.view-options");
+        var (lookup, ownStaffId) = await CreateStaffLoginAsync(admin, first, lookupRole);
+        var viewRole = await CreateCatalogRoleAsync(admin, "StationStaff", "masterdata.staff-members.view");
+        var (staffViewer, _) = await CreateStaffLoginAsync(admin, first, viewRole);
+        await SetCatalogActiveAsync(admin, "staff-members", first.StaffMemberId, active: false);
+
+        foreach (var client in new[] { lookup, staffViewer })
+        {
+            var own = await CatalogOptionsAsync(client, "staff-members");
+            own.EnumerateArray().ShouldNotBeEmpty();
+            own.EnumerateArray().All(option => option.GetProperty("stationId").GetGuid() == first.StationId).ShouldBeTrue();
+            own.EnumerateArray().ShouldNotContain(option => option.GetProperty("id").GetGuid() == first.StaffMemberId);
+            own.EnumerateArray().ShouldNotContain(option => option.GetProperty("id").GetGuid() == second.StaffMemberId);
+            var crossStation = await client.GetFromJsonAsync<JsonElement>(
+                $"{MasterDataBase}/staff-members/options?stationId={second.StationId}");
+            crossStation.EnumerateArray().ShouldBeEmpty();
+        }
+
+        var global = await CatalogOptionsAsync(admin, "staff-members");
+        FindOption(global, ownStaffId).GetProperty("stationId").GetGuid().ShouldBe(first.StationId);
+        FindOption(global, second.StaffMemberId).GetProperty("stationId").GetGuid().ShouldBe(second.StationId);
+        var staffOption = FindOption(global, ownStaffId);
+        staffOption.GetProperty("fullName").GetString().ShouldNotBeNullOrWhiteSpace();
+        staffOption.GetProperty("employeeId").GetString().ShouldNotBeNullOrWhiteSpace();
+        staffOption.GetProperty("stationCode").GetString().ShouldNotBeNullOrWhiteSpace();
+        staffOption.GetProperty("manpowerTypeName").GetString().ShouldNotBeNullOrWhiteSpace();
+        staffOption.TryGetProperty("email", out _).ShouldBeFalse();
+        staffOption.TryGetProperty("licenses", out _).ShouldBeFalse();
+        staffOption.TryGetProperty("rowVersion", out _).ShouldBeFalse();
+
+        var viewerRole = await CreateCatalogRoleAsync(admin, "ViewerOnly", "operations.flights.view", "masterdata.reference.view-options");
+        var email = $"staff-catalog-viewer-{Guid.NewGuid():N}@example.com";
+        (await admin.PostAsJsonAsync($"{IdentityBase}/users/invite", new
+        {
+            email, displayName = "Staff catalog viewer", roleId = viewerRole
+        })).StatusCode.ShouldBe(HttpStatusCode.Created);
+        var viewer = await ActivateCatalogClientAsync(admin, email);
+        var viewerOptions = await CatalogOptionsAsync(viewer, "staff-members");
+        FindOption(viewerOptions, ownStaffId).GetProperty("stationId").GetGuid().ShouldBe(first.StationId);
+        FindOption(viewerOptions, second.StaffMemberId).GetProperty("stationId").GetGuid().ShouldBe(second.StationId);
+        (await viewer.PostAsJsonAsync($"{MasterDataBase}/staff-members", new { fullName = "Denied" }))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Station_staff_mutations_refresh_only_staff_after_commit_and_preserve_both_station_views()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var first = await SetupMasterDataAsync(admin);
+        var second = await SetupMasterDataAsync(admin);
+        var lookupRole = await CreateCatalogRoleAsync(admin, "StationStaff", "masterdata.reference.view-options");
+        var (firstClient, _) = await CreateStaffLoginAsync(admin, first, lookupRole);
+        var (secondClient, _) = await CreateStaffLoginAsync(admin, second, lookupRole);
+        await using var firstLive = await CatalogLiveSubscription.ConnectAsync(factory, firstClient);
+        await using var secondLive = await CatalogLiveSubscription.ConnectAsync(factory, secondClient);
+        async Task ExpectRefresh() => await Task.WhenAll(
+            firstLive.ExpectRefreshAsync("staff-members"), secondLive.ExpectRefreshAsync("staff-members"));
+        async Task ExpectNone() => await Task.WhenAll(firstLive.ExpectNoRefreshAsync(), secondLive.ExpectNoRefreshAsync());
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var name = $"Live staff {suffix}";
+        var employeeId = $"LIVE-{suffix}";
+        var email = $"live-staff-{suffix}@example.com";
+        var stationId = first.StationId;
+        object Body() => StaffCatalogBody(name, employeeId, email, stationId, first.ManpowerTypeId);
+
+        var id = await PostForIdAsync(admin, $"{MasterDataBase}/staff-members", Body());
+        await ExpectRefresh();
+        FindOption(await CatalogOptionsAsync(firstClient, "staff-members"), id).GetProperty("fullName").GetString().ShouldBe(name);
+        (await CatalogOptionsAsync(secondClient, "staff-members")).EnumerateArray()
+            .ShouldNotContain(option => option.GetProperty("id").GetGuid() == id);
+        var originalVersion = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/staff-members/{id}"))!.RowVersion;
+        (await admin.PostAsJsonAsync($"{MasterDataBase}/staff-members", Body())).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        await ExpectNone();
+
+        name += " edited";
+        employeeId += "X";
+        (await UpdateCatalogAsync(admin, "staff-members", id, Body(), originalVersion)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectRefresh();
+        var edited = FindOption(await CatalogOptionsAsync(firstClient, "staff-members"), id);
+        edited.GetProperty("fullName").GetString().ShouldBe(name);
+        edited.GetProperty("employeeId").GetString().ShouldBe(employeeId.ToUpperInvariant());
+        var version = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/staff-members/{id}"))!.RowVersion;
+        email = $"metadata-staff-{suffix}@example.com";
+        (await UpdateCatalogAsync(admin, "staff-members", id, Body(), version)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await admin.GetFromJsonAsync<JsonElement>($"{MasterDataBase}/staff-members/{id}"))
+            .GetProperty("email").GetString().ShouldBe(email);
+        await ExpectNone();
+
+        var staleBody = StaffCatalogBody(name + " stale", employeeId, email, stationId, first.ManpowerTypeId);
+        (await UpdateCatalogAsync(admin, "staff-members", id, staleBody, originalVersion)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        await ExpectNone();
+        (await ReassignStaffAsync(admin, id, second.StationId)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectRefresh();
+        (await CatalogOptionsAsync(firstClient, "staff-members")).EnumerateArray()
+            .ShouldNotContain(option => option.GetProperty("id").GetGuid() == id);
+        FindOption(await CatalogOptionsAsync(secondClient, "staff-members"), id)
+            .GetProperty("stationId").GetGuid().ShouldBe(second.StationId);
+        (await ReassignStaffAsync(admin, id, second.StationId)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        await ExpectNone();
+
+        await SetCatalogActiveAsync(admin, "staff-members", id, active: false);
+        await ExpectRefresh();
+        (await CatalogOptionsAsync(secondClient, "staff-members")).EnumerateArray()
+            .ShouldNotContain(option => option.GetProperty("id").GetGuid() == id);
+        await SetCatalogActiveAsync(admin, "staff-members", id, active: false);
+        await ExpectNone();
+        stationId = second.StationId;
+        name += " inactive";
+        version = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/staff-members/{id}"))!.RowVersion;
+        (await UpdateCatalogAsync(admin, "staff-members", id, Body(), version)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectNone();
+        await SetCatalogActiveAsync(admin, "staff-members", id, active: true);
+        await ExpectRefresh();
+        FindOption(await CatalogOptionsAsync(secondClient, "staff-members"), id).GetProperty("fullName").GetString().ShouldBe(name);
+        await SetCatalogActiveAsync(admin, "staff-members", id, active: true);
+        await ExpectNone();
+    }
+
+    [Fact]
+    public async Task Station_staff_option_dependencies_and_embedded_creation_publish_only_staff_refreshes()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        await using var live = await CatalogLiveSubscription.ConnectAsync(factory, admin);
+        var station = await admin.GetFromJsonAsync<JsonElement>($"{MasterDataBase}/stations/{refs.StationId}");
+        var stationCode = NextThreeLetterCode();
+        object StationBody(string name) => new
+        {
+            iataCode = stationCode, icaoCode = (string?)null, name, city = "City", countryId = refs.CountryId
+        };
+        var stationName = station.GetProperty("name").GetString()!;
+        (await UpdateCatalogAsync(admin, "stations", refs.StationId, StationBody(stationName),
+            station.GetProperty("rowVersion").GetString()!)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await live.ExpectRefreshAsync("staff-members");
+        FindOption(await CatalogOptionsAsync(admin, "staff-members"), refs.StaffMemberId)
+            .GetProperty("stationCode").GetString().ShouldBe(stationCode);
+        var version = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/stations/{refs.StationId}"))!.RowVersion;
+        (await UpdateCatalogAsync(admin, "stations", refs.StationId, StationBody(stationName + " display only"), version))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await live.ExpectNoRefreshAsync();
+        await SetCatalogActiveAsync(admin, "stations", refs.StationId, active: false);
+        await live.ExpectRefreshAsync("staff-members");
+        await SetCatalogActiveAsync(admin, "stations", refs.StationId, active: false);
+        await live.ExpectNoRefreshAsync();
+        await SetCatalogActiveAsync(admin, "stations", refs.StationId, active: true);
+        await live.ExpectRefreshAsync("staff-members");
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var manpowerName = $"Live manpower {suffix}";
+        version = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/manpower-types/{refs.ManpowerTypeId}"))!.RowVersion;
+        (await UpdateCatalogAsync(admin, "manpower-types", refs.ManpowerTypeId,
+            new { name = manpowerName, description = (string?)null }, version)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await live.ExpectRefreshAsync("staff-members");
+        FindOption(await CatalogOptionsAsync(admin, "staff-members"), refs.StaffMemberId)
+            .GetProperty("manpowerTypeName").GetString().ShouldBe(manpowerName);
+        version = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/manpower-types/{refs.ManpowerTypeId}"))!.RowVersion;
+        (await UpdateCatalogAsync(admin, "manpower-types", refs.ManpowerTypeId,
+            new { name = manpowerName, description = "Metadata only" }, version)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await live.ExpectNoRefreshAsync();
+
+        var employeeId = $"EMBED-{suffix}";
+        var embeddedStationId = await PostForIdAsync(admin, $"{MasterDataBase}/stations", new
+        {
+            iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Embedded station {suffix}", city = "City", countryId = refs.CountryId,
+            staff = new[] { new
+            {
+                fullName = $"Embedded staff {suffix}", employeeId, email = $"embedded-staff-{suffix}@example.com",
+                manpowerTypeId = refs.ManpowerTypeId, employmentContract = (object?)null,
+                workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null
+            } }
+        });
+        await live.ExpectRefreshAsync("staff-members");
+        (await CatalogOptionsAsync(admin, "staff-members")).EnumerateArray()
+            .Single(option => option.GetProperty("employeeId").GetString() == employeeId.ToUpperInvariant())
+            .GetProperty("stationId").GetGuid().ShouldBe(embeddedStationId);
+        await PostForIdAsync(admin, $"{MasterDataBase}/stations", new
+        {
+            iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Empty station {suffix}", city = "City", countryId = refs.CountryId
+        });
+        await live.ExpectNoRefreshAsync();
+    }
+
+    private static object StaffCatalogBody(string name, string employeeId, string email, Guid stationId, Guid manpowerTypeId) => new
+    {
+        fullName = name, employeeId, email, stationId, manpowerTypeId,
+        employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null
+    };
+
+    private static async Task<HttpResponseMessage> ReassignStaffAsync(HttpClient admin, Guid staffId, Guid stationId)
+    {
+        var version = (await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/staff-members/{staffId}"))!.RowVersion;
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/staff-members/{staffId}/reassign-station")
+        {
+            Content = JsonContent.Create(new { stationId })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", version);
+        return await admin.SendAsync(request);
+    }
+
     private static async Task<HttpResponseMessage> UpdateCatalogAsync(
         HttpClient admin, string catalog, Guid id, object body, string rowVersion)
     {
@@ -725,7 +930,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
 
     private static readonly string[] SharedCatalogs =
     [
-        "customers", "aircraft-types", "services", "tools", "materials", "general-supports", "ata-chapters"
+        "customers", "aircraft-types", "services", "tools", "materials", "general-supports", "ata-chapters", "staff-members"
     ];
 
     private static Task<Guid> CreateCatalogRoleAsync(HttpClient admin, string userType, params string[] permissions) =>

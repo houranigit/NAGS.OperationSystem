@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -63,7 +64,7 @@ public sealed class UpdateManpowerTypeCommandValidator : AbstractValidator<Updat
     }
 }
 
-public sealed class UpdateManpowerTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider)
+public sealed class UpdateManpowerTypeCommandHandler(IMasterDataDbContext db, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateManpowerTypeCommand>
 {
     public async Task<Result> Handle(UpdateManpowerTypeCommand request, CancellationToken cancellationToken)
@@ -77,6 +78,7 @@ public sealed class UpdateManpowerTypeCommandHandler(IMasterDataDbContext db, Ti
         if (nameTaken)
             return Error.Conflict("A manpower type with this name already exists.", "MasterData.ManpowerType.DuplicateName");
 
+        var previousName = manpowerType.Name;
         var result = manpowerType.Update(request.Name, request.Description, timeProvider.GetUtcNow());
         if (result.IsFailure)
             return result.Error;
@@ -89,11 +91,15 @@ public sealed class UpdateManpowerTypeCommandHandler(IMasterDataDbContext db, Ti
                 return legacyIdResult.Error;
         }
 
+        var staffOptionsChanged = manpowerType.Name != previousName
+            && await db.StaffMembers.AnyAsync(s => s.ManpowerTypeId == manpowerType.Id && s.IsActive, cancellationToken);
         db.SetOriginalRowVersion(manpowerType, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (staffOptionsChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

@@ -11,6 +11,7 @@ enum class SharedCatalog(val storageKey: String, val endpointPath: String) {
     Materials("materials", "api/v1/masterdata/materials/options"),
     GeneralSupports("general-supports", "api/v1/masterdata/general-supports/options"),
     AtaChapters("ata-chapters", "api/v1/masterdata/ata-chapters/options"),
+    StationStaff("staff-members", "api/v1/masterdata/staff-members/options"),
 }
 
 data class CatalogSyncStatus(
@@ -34,6 +35,16 @@ data class ServiceCatalogItem(val id: String, val name: String, val isAircraftPe
 
 @Serializable
 data class ResourceCatalogItem(val id: String, val name: String, val calculationType: String)
+
+@Serializable
+data class StaffCatalogItem(
+    val id: String,
+    val fullName: String,
+    val employeeId: String,
+    val stationId: String,
+    val stationCode: String,
+    val manpowerTypeName: String,
+)
 
 @Serializable
 data class AtaChapterCatalogItem(

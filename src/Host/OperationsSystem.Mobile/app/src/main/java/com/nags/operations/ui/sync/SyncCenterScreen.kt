@@ -522,4 +522,5 @@ private fun catalogName(kind: SharedCatalog): Int = when (kind) {
     SharedCatalog.Materials -> R.string.catalog_materials
     SharedCatalog.GeneralSupports -> R.string.catalog_general_supports
     SharedCatalog.AtaChapters -> R.string.catalog_ata_chapters
+    SharedCatalog.StationStaff -> R.string.catalog_station_staff
 }

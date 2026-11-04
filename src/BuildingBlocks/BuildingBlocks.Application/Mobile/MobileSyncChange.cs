@@ -59,6 +59,9 @@ public static class MobileSyncTables
     /// <summary>Active staff members at the calling staff member's station.</summary>
     public const string Employees = "employees";
 
+    /// <summary>Active staff options from the permission-scoped MasterData API.</summary>
+    public const string StaffMembers = "staff-members";
+
     /// <summary>Active services catalog.</summary>
     public const string Services = "services";
 

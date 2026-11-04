@@ -78,6 +78,7 @@ private val catalogDisplayOrder = listOf(
     SharedCatalog.GeneralSupports,
     SharedCatalog.Customers,
     SharedCatalog.AircraftTypes,
+    SharedCatalog.StationStaff,
 )
 
 internal fun catalogSyncRows(statuses: List<CatalogSyncStatus>, now: Long): List<SyncRowState> {

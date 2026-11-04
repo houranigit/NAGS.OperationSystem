@@ -8,6 +8,7 @@ import com.nags.operations.data.CustomerCatalogItem
 import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.ServiceCatalogItem
 import com.nags.operations.data.SharedCatalog
+import com.nags.operations.data.StaffCatalogItem
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.HttpClientFactory
 import com.nags.operations.data.api.SharedCatalogsApi
@@ -81,6 +82,7 @@ class SharedCatalogsRepository internal constructor(
     fun materialsFlow(): Flow<List<ResourceCatalogItem>> = catalogFlow(SharedCatalog.Materials)
     fun generalSupportsFlow(): Flow<List<ResourceCatalogItem>> = catalogFlow(SharedCatalog.GeneralSupports)
     fun ataChaptersFlow(): Flow<List<AtaChapterCatalogItem>> = catalogFlow(SharedCatalog.AtaChapters)
+    fun stationStaffFlow(): Flow<List<StaffCatalogItem>> = catalogFlow(SharedCatalog.StationStaff)
 
     private inline fun <reified T> catalogFlow(kind: SharedCatalog): Flow<List<T>> = observeSnapshots().map { snapshots ->
         snapshots.firstOrNull { it.catalog == kind.storageKey && !it.permissionDenied }
@@ -160,6 +162,8 @@ class SharedCatalogsRepository internal constructor(
         SharedCatalog.Tools, SharedCatalog.Materials, SharedCatalog.GeneralSupports ->
             json.decodeFromString<List<ResourceCatalogItem>>(payload).let { json.encodeToString(it) to it.size }
         SharedCatalog.AtaChapters -> json.decodeFromString<List<AtaChapterCatalogItem>>(payload)
+            .let { json.encodeToString(it) to it.size }
+        SharedCatalog.StationStaff -> json.decodeFromString<List<StaffCatalogItem>>(payload)
             .let { json.encodeToString(it) to it.size }
     }
 }

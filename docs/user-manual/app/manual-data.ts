@@ -515,7 +515,7 @@ export const manualArticles = [
     "id": "android-catalog-sync",
     "title": "Keep shared catalogs synchronized",
     "eyebrow": "Android reference data",
-    "summary": "Refresh the local aircraft, customer, service, tool, material, general-support, and ATA chapter catalogs.",
+    "summary": "Refresh the local aircraft, customer, service, tool, material, general-support, ATA chapter, and station staff catalogs.",
     "keywords": [
       "mobile",
       "android",
@@ -544,7 +544,7 @@ export const manualArticles = [
       {
         "id": "access",
         "title": "Resolve catalog access errors",
-        "body": "Catalog access follows your Master Data permissions. Access denied clears that catalog's cached records; ask an administrator to review your access. Signing out or changing accounts clears the shared catalog cache."
+        "body": "Catalog access follows your Master Data permissions. Station staff uses the current staff lookup API: station accounts receive active staff from their own station, global readers keep their existing scope, and access denied clears the staff cache. Staff changes refresh only the Station staff card; employee invitations still load current eligible staff for the selected flight. Ask an administrator to review access errors. Signing out or changing accounts clears the shared catalog cache."
       }
     ],
     "callouts": [

@@ -26,7 +26,7 @@ class SyncCenterViewModelTest {
         val rows = catalogSyncRows(emptyList(), now)
         assertEquals(listOf(SharedCatalog.AtaChapters, SharedCatalog.Services, SharedCatalog.Tools,
             SharedCatalog.Materials, SharedCatalog.GeneralSupports, SharedCatalog.Customers,
-            SharedCatalog.AircraftTypes), rows.map { it.table })
+            SharedCatalog.AircraftTypes, SharedCatalog.StationStaff), rows.map { it.table })
         assertTrue(rows.all { it.rowCount == 0 && it.lastSyncedAt == null && it.lastDurationMs == null })
     }
 

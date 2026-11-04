@@ -138,4 +138,5 @@
         <item quantity="many">%d صفًا محفوظًا</item>
         <item quantity="other">%d صف محفوظ</item>
     </plurals>
+    <string name="catalog_station_staff">موظفو المحطة</string>
 </resources>

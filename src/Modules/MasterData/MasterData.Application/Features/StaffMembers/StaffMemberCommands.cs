@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
@@ -51,7 +52,8 @@ public sealed class CreateStaffMemberCommandHandler(
     IMasterDataDbContext db,
     IMasterDataScope scope,
     IUserContext userContext,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<CreateStaffMemberCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateStaffMemberCommand request, CancellationToken cancellationToken)
@@ -126,6 +128,7 @@ public sealed class CreateStaffMemberCommandHandler(
 
         db.StaffMembers.Add(staff);
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return staff.Id;
     }
 }
@@ -161,7 +164,7 @@ public sealed class UpdateStaffMemberCommandValidator : AbstractValidator<Update
     }
 }
 
-public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<UpdateStaffMemberCommand>
 {
     public async Task<Result> Handle(UpdateStaffMemberCommand request, CancellationToken cancellationToken)
@@ -199,6 +202,10 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
 
         var now = timeProvider.GetUtcNow();
         var previousEmail = staff.Email;
+        var previousFullName = staff.FullName;
+        var previousEmployeeId = staff.EmployeeId;
+        var previousStationId = staff.StationId;
+        var previousManpowerTypeId = staff.ManpowerTypeId;
         var result = staff.Update(
             request.FullName, request.EmployeeId, request.Email, request.StationId, request.ManpowerTypeId,
             contract.Value, schedule.Value, now);
@@ -242,6 +249,9 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (staff.IsActive && (staff.FullName != previousFullName || staff.EmployeeId != previousEmployeeId
+                || staff.StationId != previousStationId || staff.ManpowerTypeId != previousManpowerTypeId))
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -276,7 +286,8 @@ public sealed class ReassignStaffMemberStationCommandValidator : AbstractValidat
 public sealed class ReassignStaffMemberStationCommandHandler(
     IMasterDataDbContext db,
     IMasterDataScope scope,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ReassignStaffMemberStationCommand>
 {
     public async Task<Result> Handle(ReassignStaffMemberStationCommand request, CancellationToken cancellationToken)
@@ -303,6 +314,7 @@ public sealed class ReassignStaffMemberStationCommandHandler(
         if (stationCheck.IsFailure)
             return stationCheck.Error;
 
+        var previousStationId = staff.StationId;
         var reassignment = staff.ReassignStation(request.StationId, timeProvider.GetUtcNow());
         if (reassignment.IsFailure)
             return reassignment.Error;
@@ -319,6 +331,8 @@ public sealed class ReassignStaffMemberStationCommandHandler(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        if (staff.StationId != previousStationId)
+            mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return Result.Success();
     }
 }
@@ -329,7 +343,7 @@ public sealed record ActivateStaffMemberCommand(Guid Id, byte[] RowVersion) : IC
 
 public sealed record DeactivateStaffMemberCommand(Guid Id, byte[] RowVersion) : ICommand;
 
-public sealed class ActivateStaffMemberCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class ActivateStaffMemberCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<ActivateStaffMemberCommand>
 {
     public async Task<Result> Handle(ActivateStaffMemberCommand request, CancellationToken cancellationToken)
@@ -346,12 +360,15 @@ public sealed class ActivateStaffMemberCommandHandler(IMasterDataDbContext db, I
         if (staff is null)
             return StaffMemberGuards.NotFoundOrForbidden(resolved.Value);
 
+        var wasActive = staff.IsActive;
         staff.Activate(timeProvider.GetUtcNow());
         db.SetOriginalRowVersion(staff, request.RowVersion);
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (staff.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -362,7 +379,7 @@ public sealed class ActivateStaffMemberCommandHandler(IMasterDataDbContext db, I
     }
 }
 
-public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider)
+public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, TimeProvider timeProvider, IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<DeactivateStaffMemberCommand>
 {
     public async Task<Result> Handle(DeactivateStaffMemberCommand request, CancellationToken cancellationToken)
@@ -380,6 +397,7 @@ public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db,
             return StaffMemberGuards.NotFoundOrForbidden(resolved.Value);
 
         var now = timeProvider.GetUtcNow();
+        var wasActive = staff.IsActive;
 
         // Deactivating a staff member deactivates the linked portal user and revokes its sessions.
         // Scope resolution fails immediately (record inactive); the linked account is suspended async.
@@ -395,6 +413,8 @@ public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db,
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (staff.IsActive != wasActive)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

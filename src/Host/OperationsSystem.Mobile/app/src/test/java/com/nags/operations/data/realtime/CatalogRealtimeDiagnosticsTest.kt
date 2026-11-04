@@ -82,6 +82,6 @@ class CatalogRealtimeDiagnosticsTest {
             assertEquals(catalog, diagnostics.acceptChange(connection, catalog.storageKey, index.toLong()))
         }
         assertNull(diagnostics.acceptChange(connection, "unknown-catalog", 100))
-        assertEquals(6L, diagnostics.lastEventAt.value)
+        assertEquals(SharedCatalog.entries.lastIndex.toLong(), diagnostics.lastEventAt.value)
     }
 }

@@ -94,6 +94,7 @@
     <string name="catalog_materials">Materials</string>
     <string name="catalog_general_supports">General support</string>
     <string name="catalog_ata_chapters">ATA chapters</string>
+    <string name="catalog_station_staff">Station staff</string>
     <string name="sync_center_title">Sync Center</string>
     <string name="sync_center_open">Open Sync Center</string>
     <string name="sync_center_subtitle">Shared catalog data saved for offline use.</string>

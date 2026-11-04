@@ -82,6 +82,84 @@ class SharedCatalogsRepositoryTest {
     }
 
     @Test
+    fun staffRefreshCachesOnlyCanonicalOptionsAndLeavesOtherCatalogsUntouched() = runBlocking {
+        val fetched = mutableListOf<SharedCatalog>()
+        var staffName = "Employee"
+        val repository = repository { kind ->
+            fetched += kind
+            payload(kind).let { if (kind == SharedCatalog.StationStaff) it.replace("Employee", staffName) else it }
+        }
+        repository.refresh()
+        val previous = dao.rows.value.associateBy { it.catalog }
+        fetched.clear()
+        dao.writes.clear()
+        clock = "2026-11-04T10:01:00Z"
+        staffName = "Updated employee"
+
+        repository.refresh(setOf(SharedCatalog.StationStaff))
+
+        assertEquals(listOf(SharedCatalog.StationStaff), fetched)
+        assertEquals(listOf("staff-members"), dao.writes.map { it.catalog })
+        val staff = repository.stationStaffFlow().first().single()
+        assertEquals("Updated employee", staff.fullName)
+        assertEquals("EMP-1", staff.employeeId)
+        assertEquals("station", staff.stationId)
+        assertEquals("AAA", staff.stationCode)
+        assertEquals("Technician", staff.manpowerTypeName)
+        val snapshot = dao.snapshot("account-a", "staff-members")!!
+        assertEquals(clock, snapshot.lastSuccessUtc)
+        assertFalse(snapshot.payloadJson.contains("email"))
+        for ((catalog, original) in previous.filterKeys { it != "staff-members" }) {
+            assertEquals(original, dao.snapshot("account-a", catalog))
+        }
+    }
+
+    @Test
+    fun aNewStationStaffSnapshotRemovesPreviouslyVisibleStationRows() = runBlocking {
+        var moved = false
+        val repository = repository { kind ->
+            payload(kind).let {
+                if (moved && kind == SharedCatalog.StationStaff) {
+                    it.replace("\"staff\"", "\"next-staff\"")
+                        .replace("\"station\"", "\"new-station\"")
+                } else it
+            }
+        }
+        repository.refresh(setOf(SharedCatalog.StationStaff))
+        assertEquals("station", repository.stationStaffFlow().first().single().stationId)
+        moved = true
+
+        repository.refresh(setOf(SharedCatalog.StationStaff))
+
+        val staff = repository.stationStaffFlow().first()
+        assertEquals(listOf("next-staff"), staff.map { it.id })
+        assertEquals(listOf("new-station"), staff.map { it.stationId })
+    }
+
+    @Test
+    fun deniedStaffRefreshEvictsStaffAndKeepsOtherCatalogSnapshots() = runBlocking {
+        var denied = false
+        val repository = repository { kind ->
+            if (denied && kind == SharedCatalog.StationStaff) throw ApiException(403, "Denied")
+            payload(kind)
+        }
+        repository.refresh()
+        val previous = dao.rows.value.filter { it.catalog != "staff-members" }
+        denied = true
+
+        repository.refresh(setOf(SharedCatalog.StationStaff))
+
+        assertTrue(repository.stationStaffFlow().first().isEmpty())
+        val status = repository.observeStatus().first().single { it.kind == SharedCatalog.StationStaff }
+        assertTrue(status.permissionDenied)
+        assertEquals(0, status.itemCount)
+        assertNull(status.lastSuccessUtc)
+        for (snapshot in previous) {
+            assertEquals(snapshot, dao.snapshot("account-a", snapshot.catalog))
+        }
+    }
+
+    @Test
     fun subsetRefreshFetchesOnlyRequestedCatalogsInCanonicalOrder() = runBlocking {
         val fetched = mutableListOf<SharedCatalog>()
         val repository = repository { kind -> fetched += kind; payload(kind) }
@@ -272,6 +350,7 @@ class SharedCatalogsRepositoryTest {
         SharedCatalog.Materials -> """[{"id":"material","name":"Material","calculationType":"Quantity"}]"""
         SharedCatalog.GeneralSupports -> """[{"id":"support","name":"Support","calculationType":"Quantity"}]"""
         SharedCatalog.AtaChapters -> """[{"id":"chapter","categoryId":"category","categoryName":"General","code":"05","title":"Time limits","isActive":true,"categoryIsActive":true,"rowVersion":"ignored"}]"""
+        SharedCatalog.StationStaff -> """[{"id":"staff","fullName":"Employee","employeeId":"EMP-1","stationId":"station","stationCode":"AAA","manpowerTypeName":"Technician","email":"ignored@example.test"}]"""
     }
 }
 
