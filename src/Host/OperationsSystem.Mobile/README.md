@@ -74,6 +74,39 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 
 These are verification commands, not a claim that a particular device journey has been observed. Report build/unit/lint results separately from emulator checks.
 
+### Run main and Operation Module together
+
+The local debug apps have separate Android identities and API environments:
+
+| Launcher name | Application ID | Emulator API |
+|---|---|---|
+| Operations Module | `com.nags.operations` | `http://10.0.2.2:5213` |
+| Operations Main | `com.nags.operations.main` | `http://10.0.2.2:5214` |
+
+The Operation Module debug build keeps its existing application ID, login, and
+cache. Its debug-only launcher label distinguishes it from main; release naming
+and identity remain unchanged. Each installed app has its own login and local
+storage. Main requires a separate sign-in.
+
+From the repository root, build the main app with:
+
+```sh
+./scripts/android-main.sh
+```
+
+The helper builds local `main` in the ignored detached checkout
+`artifacts/android-main-source`. An external Gradle init script supplies only
+the debug application-ID suffix and label; the existing API override targets
+main's Docker API. Main's tracked source and the current checkout are unchanged.
+The resulting APK is copied to `artifacts/android-apps/`.
+
+Install that APK alongside the normal Operation Module debug APK using
+`adb install -r /absolute/path/to/the.apk`, then open either app from the launcher
+or Recent apps. Do not uninstall the Operation Module app to switch environments.
+Both Docker APIs must be running. The main debug clone does not copy another
+package's Firebase configuration; its local build uses the existing debug mode
+without Firebase push registration.
+
 ## Release configuration
 
 Release does not read `local.properties`. Supply a compatible baseline backend URL with Gradle property `operations.api.release.base.url` or environment variable `OPERATIONS_API_RELEASE_BASE_URL`. The build validates an absolute HTTP/HTTPS URL, rejects emulator/loopback hosts and embedded credentials, and rejects queries/fragments.

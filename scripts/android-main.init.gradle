@@ -1,0 +1,11 @@
+// Apply local debug identity without changing the stable main checkout.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        project.extensions.getByName('androidComponents').finalizeDsl { android ->
+            android.buildTypes.getByName('debug').applicationIdSuffix = '.main'
+            android.sourceSets.getByName('debug').res.srcDir(
+                project.providers.gradleProperty('operations.android.main.resources').get()
+            )
+        }
+    }
+}
