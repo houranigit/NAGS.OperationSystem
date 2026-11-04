@@ -33,7 +33,27 @@ class FlightModelsContractTest {
         assertTrue(page.hasPreviousPage)
         assertTrue(page.hasNextPage)
         assertNull(page.items.single().customerIataCode)
+        assertNull(page.items.single().aircraftTypeModel) // Previously saved registers omit this field.
         assertEquals("2026-11-03T08:00:00+00:00", page.items.single().scheduledArrivalUtc)
+    }
+
+    @Test
+    fun aircraftModelSurvivesRegisterCacheSerialization() {
+        val page = json.decodeFromString<FlightPage>(
+            """
+            {"items":[{
+              "id":"flight-1","flightNumber":"TEST","customerName":"Customer",
+              "stationIataCode":"RUH","operationTypeName":"HAJJ","aircraftTypeModel":"A310",
+              "scheduledArrivalUtc":"2026-11-04T10:00:00Z",
+              "scheduledDepartureUtc":"2026-11-04T12:00:00Z","isPerLanding":false
+            }]}
+            """.trimIndent(),
+        )
+
+        val cached = json.decodeFromString<List<FlightListItem>>(json.encodeToString(page.items))
+
+        assertEquals("A310", page.items.single().aircraftTypeModel)
+        assertEquals("A310", cached.single().aircraftTypeModel)
     }
 
     @Test

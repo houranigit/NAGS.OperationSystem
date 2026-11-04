@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,10 +35,13 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nags.operations.ui.invite.InviteEmployeesDialog
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -50,6 +54,7 @@ import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.components.FlightOverviewBanner
 import java.time.ZoneId
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +64,23 @@ fun FlightsScreen(
     onNotificationHandled: (String?) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+    LaunchedEffect(viewModel, listState) {
+        snapshotFlow {
+            val current = state
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            current.page.takeIf {
+                current.items.isNotEmpty() && current.hasMore && !current.isLoading &&
+                    !current.isRefreshing && !current.isLoadingMore && current.error == null &&
+                    current.loadMoreError == null && lastVisible >= current.items.lastIndex - 4
+            }
+        }.distinctUntilChanged().collect { page ->
+            if (page != null) viewModel.loadMore()
+        }
+    }
+    LaunchedEffect(state.search) {
+        listState.scrollToItem(0)
+    }
     LifecycleResumeEffect(viewModel) {
         viewModel.refresh()
         onPauseOrDispose { }
@@ -109,7 +131,7 @@ fun FlightsScreen(
             OutlinedTextField(
                 value = state.search,
                 onValueChange = viewModel::setSearch,
-                placeholder = { Text(stringResource(R.string.flights_search)) },
+                placeholder = { Text(stringResource(R.string.flights_search), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
@@ -133,30 +155,41 @@ fun FlightsScreen(
                         actionLabel = stringResource(R.string.flights_refresh_short), onAction = viewModel::refresh)
                 }
                 else -> LazyColumn(
+                    state = listState,
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     state.error?.let { error ->
-                        item {
+                        item(key = "list-error") {
                             Text(error, color = MaterialTheme.colorScheme.error)
                             TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.flights_retry)) }
                         }
                     }
-                    items(state.items, key = { it.id }) { flight ->
+                    items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
                         FlightCard(flight = flight, onClick = { viewModel.openFlight(flight.id) })
                     }
-                    item {
-                        Text(stringResource(R.string.flights_showing_count, state.items.size, state.totalCount),
+                    item(key = "flight-count") {
+                        Text(pluralStringResource(R.plurals.flights_showing_count,
+                            state.totalCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(), state.items.size, state.totalCount),
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.padding(vertical = 4.dp))
                     }
-                    if (state.hasMore) {
-                        item {
-                            Button(onClick = viewModel::loadMore, enabled = !state.isLoadingMore,
-                                modifier = Modifier.fillMaxWidth()) {
-                                if (state.isLoadingMore) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                else Text(stringResource(R.string.flights_load_more))
+                    if (state.isLoadingMore) {
+                        item(key = "loading-flights") {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                Text(stringResource(R.string.flights_loading_more), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    state.loadMoreError?.let { error ->
+                        item(key = "paging-error") {
+                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(error, color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = viewModel::loadMore) { Text(stringResource(R.string.flights_retry)) }
                             }
                         }
                     }

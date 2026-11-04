@@ -60,6 +60,75 @@ class FlightsViewModelTest {
     }
 
     @Test
+    fun repeatedLoadMoreOnlyRequestsOnceUntilThePageCompletes() {
+        val nextPage = CompletableDeferred<FlightPage>()
+        val requests = mutableListOf<Int>()
+        val vm = model(list = { number, _, _ ->
+            requests += number
+            if (number == 1) page("one").copy(totalCount = 2, hasNextPage = true) else nextPage.await()
+        })
+        vm.refresh()
+        vm.loadMore()
+        vm.loadMore()
+        assertEquals(listOf(1, 2), requests)
+        assertTrue(vm.state.value.isLoadingMore)
+
+        nextPage.complete(page("two").copy(page = 2, totalCount = 2))
+        vm.loadMore()
+        assertEquals(listOf(1, 2), requests)
+        assertEquals(listOf("one", "two"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.isLoadingMore)
+        assertFalse(vm.state.value.hasMore)
+    }
+
+    @Test
+    fun failedNextPageKeepsVisibleRowsAndRetriesTheSamePage() {
+        var fail = true
+        val requests = mutableListOf<Int>()
+        val vm = model(list = { number, _, _ ->
+            requests += number
+            if (number == 1) page("one").copy(totalCount = 2, hasNextPage = true)
+            else if (fail) throw IOException("Connection lost")
+            else FlightPage(items = listOf(row("one"), row("two")), page = 2, totalCount = 2)
+        })
+        vm.refresh()
+        vm.loadMore()
+        assertEquals(listOf("one"), vm.state.value.items.map { it.id })
+        assertEquals(1, vm.state.value.page)
+        assertTrue(vm.state.value.hasMore)
+        assertNotNull(vm.state.value.loadMoreError)
+        assertNull(vm.state.value.error)
+        assertFalse(vm.state.value.isLoadingMore)
+
+        fail = false
+        vm.loadMore()
+        assertEquals(listOf(1, 2, 2), requests)
+        assertEquals(listOf("one", "two"), vm.state.value.items.map { it.id })
+        assertNull(vm.state.value.loadMoreError)
+        assertFalse(vm.state.value.hasMore)
+    }
+
+    @Test
+    fun aNewSearchCancelsAnInFlightNextPage() {
+        val nextPage = CompletableDeferred<FlightPage>()
+        val vm = model(list = { number, _, search ->
+            when {
+                search != null -> page("new")
+                number == 1 -> page("one").copy(totalCount = 2, hasNextPage = true)
+                else -> nextPage.await()
+            }
+        })
+        vm.refresh()
+        vm.loadMore()
+        vm.setSearch("new")
+        vm.refresh()
+        nextPage.complete(page("old").copy(page = 2, totalCount = 2))
+        assertEquals(listOf("new"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.isLoadingMore)
+        assertNull(vm.state.value.loadMoreError)
+    }
+
+    @Test
     fun aPreviousSearchResponseCannotReplaceTheNewSearch() {
         val firstResponse = CompletableDeferred<FlightPage>()
         val vm = model(list = { _, _, search ->

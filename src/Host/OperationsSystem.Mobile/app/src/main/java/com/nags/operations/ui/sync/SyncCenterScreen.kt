@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -57,7 +58,6 @@ import com.nags.operations.ui.theme.BrandRedDark
 import com.nags.operations.ui.theme.BrandRedLight
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 /** The established Sync Center layout for basic flight and shared catalog cache diagnostics. */
 @Composable
@@ -261,7 +261,7 @@ private fun LiveChannelCard(
 @Composable
 private fun formatLastEvent(lastEventAt: Long?, now: Long): String {
     val ts = lastEventAt ?: return stringResource(R.string.sync_center_awaiting_event)
-    val absolute = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(ts))
+    val absolute = SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0]).format(Date(ts))
     val age = (now - ts).coerceAtLeast(0)
     return "$absolute · ${humanizeAge(age)}"
 }
@@ -504,7 +504,7 @@ private fun MetadataPair(label: String, value: String) {
 @Composable
 private fun formatLastSync(row: SyncRowState): String {
     val ts = row.lastSyncedAt ?: return stringResource(R.string.sync_center_never)
-    val absolute = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(ts))
+    val absolute = SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0]).format(Date(ts))
     val age = row.ageMs ?: return absolute
     val relative = humanizeAge(age)
     return "$absolute · $relative"

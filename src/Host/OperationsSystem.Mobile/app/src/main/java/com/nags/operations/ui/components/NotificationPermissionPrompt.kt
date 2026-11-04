@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import com.nags.operations.R
 import com.nags.operations.BuildConfig
 
@@ -31,14 +32,14 @@ fun NotificationPermissionPrompt() {
         )
     }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        preferences.edit().putBoolean("asked", true).apply()
+        preferences.edit { putBoolean("asked", true) }
         shouldPrompt.value = false
     }
     if (!shouldPrompt.value) return
 
     AlertDialog(
         onDismissRequest = {
-            preferences.edit().putBoolean("asked", true).apply()
+            preferences.edit { putBoolean("asked", true) }
             shouldPrompt.value = false
         },
         title = { Text(stringResource(R.string.notifications_permission_title)) },
@@ -50,7 +51,7 @@ fun NotificationPermissionPrompt() {
         },
         dismissButton = {
             TextButton(onClick = {
-                preferences.edit().putBoolean("asked", true).apply()
+                preferences.edit { putBoolean("asked", true) }
                 shouldPrompt.value = false
             }) { Text(stringResource(R.string.notifications_permission_not_now)) }
         },

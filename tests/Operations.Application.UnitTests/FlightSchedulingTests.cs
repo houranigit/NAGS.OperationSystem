@@ -35,6 +35,24 @@ public sealed class FlightSchedulingTests
         page.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(result.Value);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("A310")]
+    public async Task FlightRegister_IncludesTheOptionalAircraftModel(string? aircraftModel)
+    {
+        await using var db = NewDb();
+        var aircraft = aircraftModel is null ? null : new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", aircraftModel);
+        var flight = NewFlight(Guid.NewGuid(), [], aircraftType: aircraft);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var result = await new GetFlightsQueryHandler(db, AdminScope())
+            .Handle(new GetFlightsQuery(), CancellationToken.None);
+
+        result.Value.Items.ShouldHaveSingleItem().AircraftTypeModel.ShouldBe(aircraftModel);
+    }
+
     [Fact]
     public async Task GridStationSort_UsesTheColumnPropertyName()
     {
@@ -205,11 +223,11 @@ public sealed class FlightSchedulingTests
         db.ChangeTracker.HasChanges().ShouldBeFalse();
     }
 
-    private static Flight NewFlight(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false, string stationIata = "RUH", int arrivalDay = 1) =>
+    private static Flight NewFlight(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false, string stationIata = "RUH", int arrivalDay = 1, AircraftTypeSnapshot? aircraftType = null) =>
         Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
             new StationSnapshot(stationId, stationIata, "Station"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
             FlightNumber.Create("123").Value, ScheduledTime.Create(new DateTimeOffset(2026, 7, arrivalDay, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, arrivalDay, 10, 0, 0, TimeSpan.Zero)).Value,
-            null, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Service")],
+            aircraftType, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Service")],
             staff, Guid.NewGuid(), DateTimeOffset.UtcNow).Value;
 
     private static OperationsDbContext NewDb() => new(new DbContextOptionsBuilder<OperationsDbContext>()

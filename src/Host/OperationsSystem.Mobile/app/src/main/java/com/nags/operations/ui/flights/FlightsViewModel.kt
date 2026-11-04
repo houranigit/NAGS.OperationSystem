@@ -45,6 +45,7 @@ data class FlightsUiState(
     val isLoadingMore: Boolean = false,
     val permissionDenied: Boolean = false,
     val error: String? = null,
+    val loadMoreError: String? = null,
     val selectedFlightId: String? = null,
     val lastUnavailableFlightId: String? = null,
     val detail: FlightDetail? = null,
@@ -138,7 +139,7 @@ class FlightsViewModel internal constructor(
                 invitationOptions = emptyList(), availableInvitationIds = emptySet(), selectedInvitationIds = emptySet(),
                 invitationOptionsLoaded = false, invitationError = null, invitationStale = false, invitationSent = false,
                 isUsingCachedList = false, canInviteEmployees = false, permissionDenied = permissionDenied,
-                error = if (permissionDenied) VIEW_PERMISSION_MESSAGE else null)
+                error = if (permissionDenied) VIEW_PERMISSION_MESSAGE else null, loadMoreError = null)
         }
     }
 
@@ -157,7 +158,7 @@ class FlightsViewModel internal constructor(
         val search = _state.value.search
         _state.update {
             it.copy(isLoading = it.items.isEmpty(), isRefreshing = it.items.isNotEmpty(),
-                isLoadingMore = false, error = null)
+                isLoadingMore = false, error = null, loadMoreError = null)
         }
         listJob = scope.launch {
             try {
@@ -180,7 +181,7 @@ class FlightsViewModel internal constructor(
     fun loadMore() {
         val current = _state.value
         if (!current.hasMore || current.isLoading || current.isRefreshing || current.isLoadingMore) return
-        _state.update { it.copy(isLoadingMore = true, error = null) }
+        _state.update { it.copy(isLoadingMore = true, error = null, loadMoreError = null) }
         listJob = scope.launch {
             try {
                 val result = fetchFlights(current.page + 1, PAGE_SIZE, current.search.trim().ifEmpty { null })
@@ -384,7 +385,7 @@ class FlightsViewModel internal constructor(
             it.copy(items = emptyList(), detail = null, canInviteEmployees = false,
                 permissionDenied = true, totalCount = 0, hasMore = false,
                 isLoading = false, isRefreshing = false,
-                isLoadingMore = false, error = VIEW_PERMISSION_MESSAGE)
+                isLoadingMore = false, error = VIEW_PERMISSION_MESSAGE, loadMoreError = null)
         }
         clearCachedFlights()
         return false
@@ -393,11 +394,15 @@ class FlightsViewModel internal constructor(
     private fun listFailed(error: Exception) {
         _state.update {
             val forbidden = error is ApiException && error.statusCode == 403
-            it.copy(items = if (forbidden) emptyList() else it.items,
-                totalCount = if (forbidden) 0 else it.totalCount,
-                hasMore = if (forbidden) false else it.hasMore,
-                permissionDenied = forbidden, isLoading = false, isRefreshing = false,
-                isLoadingMore = false, error = error.userMessage())
+            if (it.isLoadingMore && !forbidden) {
+                it.copy(isLoadingMore = false, loadMoreError = error.userMessage())
+            } else {
+                it.copy(items = if (forbidden) emptyList() else it.items,
+                    totalCount = if (forbidden) 0 else it.totalCount,
+                    hasMore = if (forbidden) false else it.hasMore,
+                    permissionDenied = forbidden, isLoading = false, isRefreshing = false,
+                    isLoadingMore = false, error = error.userMessage(), loadMoreError = null)
+            }
         }
     }
 

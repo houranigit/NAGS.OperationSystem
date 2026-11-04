@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -63,7 +64,6 @@ import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.theme.BrandRed
 import com.nags.operations.ui.util.formatIsoForDisplay
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -241,7 +241,7 @@ private fun NotificationCard(
     onClick: () -> Unit,
     onArchive: () -> Unit,
 ) {
-    val arabic = Locale.getDefault().language.equals("ar", ignoreCase = true)
+    val arabic = LocalConfiguration.current.locales[0].language.equals("ar", ignoreCase = true)
     val title = if (arabic) notification.titleAr else notification.titleEn
     val body = if (arabic) notification.bodyAr else notification.bodyEn
     Card(

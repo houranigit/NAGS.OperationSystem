@@ -37,9 +37,9 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun ErrorState(
-    title: String = "Couldn't load",
     message: String,
     modifier: Modifier = Modifier,
+    title: String = "Couldn't load",
     icon: ImageVector = Icons.Default.ErrorOutline,
     onRetry: (() -> Unit)? = null,
     retryLabel: String = "Try again",

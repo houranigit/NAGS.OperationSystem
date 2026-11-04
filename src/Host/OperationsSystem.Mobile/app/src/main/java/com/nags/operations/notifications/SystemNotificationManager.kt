@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import com.nags.operations.MainActivity
 import com.nags.operations.R
 import com.nags.operations.data.notifications.NotificationPushPayload
@@ -83,7 +84,7 @@ class SystemNotificationManager(private val context: Context) {
         val ids = preferences.getStringSet(key, emptySet()).orEmpty().toSet()
         val manager = NotificationManagerCompat.from(context)
         ids.forEach { manager.cancel(it.hashCode()) }
-        preferences.edit().remove(key).commit()
+        preferences.edit(commit = true) { remove(key) }
     }
 
     /** Defensive cleanup for an older build or an unreadable session owner. */
@@ -92,7 +93,7 @@ class SystemNotificationManager(private val context: Context) {
         val manager = NotificationManagerCompat.from(context)
         keys.flatMap { preferences.getStringSet(it, emptySet()).orEmpty() }
             .forEach { manager.cancel(it.hashCode()) }
-        preferences.edit().also { editor -> keys.forEach(editor::remove) }.commit()
+        preferences.edit(commit = true) { keys.forEach(::remove) }
     }
 
     private fun rememberPostedNotification(recipientUserId: String, notificationId: String) =
@@ -101,7 +102,7 @@ class SystemNotificationManager(private val context: Context) {
             val ids = preferences.getStringSet(key, emptySet()).orEmpty().toMutableSet()
             ids += notificationId
             // Commit before posting so a process death cannot leave an untracked visible alert.
-            preferences.edit().putStringSet(key, ids).commit()
+            preferences.edit(commit = true) { putStringSet(key, ids) }
         }
 
     private fun accountKey(recipientUserId: String): String =

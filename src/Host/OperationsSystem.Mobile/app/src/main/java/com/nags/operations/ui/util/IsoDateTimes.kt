@@ -28,3 +28,36 @@ fun formatIsoForDisplay(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): S
     } catch (_: Exception) {
         iso
     }
+
+fun formatIsoDateForDisplay(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): String =
+    try {
+        parseInUserZone(iso, zoneId).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+            .withLocale(Locale.getDefault()))
+    } catch (_: Exception) {
+        iso
+    }
+
+fun formatIsoTimeForDisplay(iso: String, zoneId: ZoneId = ZoneId.systemDefault()): String =
+    try {
+        parseInUserZone(iso, zoneId).format(DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()))
+    } catch (_: Exception) {
+        iso
+    }
+
+/** The date range uses local calendar days; the card's STA and STD fields contain times only. */
+fun formatFlightDateRangeForDisplay(arrivalIso: String, departureIso: String, zoneId: ZoneId = ZoneId.systemDefault()): String =
+    try {
+        val arrival = parseInUserZone(arrivalIso, zoneId).toLocalDate()
+        val departure = parseInUserZone(departureIso, zoneId).toLocalDate()
+        val locale = Locale.getDefault()
+        val monthDay = DateTimeFormatter.ofPattern("MMM d", locale)
+        val fullDate = DateTimeFormatter.ofPattern("MMM d yyyy", locale)
+        when {
+            arrival == departure -> formatIsoDateForDisplay(arrivalIso, zoneId)
+            arrival.year != departure.year -> "${arrival.format(fullDate)}-${departure.format(fullDate)}"
+            arrival.month != departure.month -> "${arrival.format(monthDay)}-${departure.format(fullDate)}"
+            else -> "${arrival.format(monthDay)}-${departure.format(DateTimeFormatter.ofPattern("d yyyy", locale))}"
+        }
+    } catch (_: Exception) {
+        formatIsoDateForDisplay(arrivalIso, zoneId)
+    }

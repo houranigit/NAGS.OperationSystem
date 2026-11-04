@@ -9,7 +9,8 @@ public sealed record FlightListItemDto(
     string OperationTypeName,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
-    bool IsPerLanding);
+    bool IsPerLanding,
+    string? AircraftTypeModel = null);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);

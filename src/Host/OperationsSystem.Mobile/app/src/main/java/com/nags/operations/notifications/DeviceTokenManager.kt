@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
+import androidx.core.content.edit
 import com.nags.operations.BuildConfig
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.NotificationsApi
@@ -68,7 +69,7 @@ class DeviceTokenManager(
         // register() also invokes onRegistered for an unchanged cached FID. Only a genuinely new
         // destination may wake the collector, otherwise register -> callback -> register loops.
         if (!destinationState.update(token)) return
-        preferences.edit().putString(KEY_REGISTRATION_ID, token).apply()
+        preferences.edit { putString(KEY_REGISTRATION_ID, token) }
         registrationGeneration.value++
     }
 
@@ -80,7 +81,7 @@ class DeviceTokenManager(
         }
         withTimeoutOrNull(4_000L) { runCatching { unregisterFirebaseInstallation() } }
         destinationState.clear()
-        preferences.edit().remove(KEY_REGISTRATION_ID).apply()
+        preferences.edit { remove(KEY_REGISTRATION_ID) }
     }
 
     private suspend fun registerCurrentTokenWithRetry() {
@@ -118,7 +119,7 @@ class DeviceTokenManager(
     private fun installationDeviceId(): String {
         preferences.getString(KEY_DEVICE_ID, null)?.takeIf(String::isNotBlank)?.let { return it }
         return UUID.randomUUID().toString().also {
-            preferences.edit().putString(KEY_DEVICE_ID, it).apply()
+            preferences.edit { putString(KEY_DEVICE_ID, it) }
         }
     }
 

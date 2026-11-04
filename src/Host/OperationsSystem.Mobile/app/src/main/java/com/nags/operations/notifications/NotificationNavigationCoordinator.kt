@@ -3,6 +3,7 @@ package com.nags.operations.notifications
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.nags.operations.data.notifications.NotificationKinds
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.data.notifications.NotificationPushPayload
@@ -86,7 +87,8 @@ class NotificationNavigationCoordinator internal constructor(private val prefere
 
     /** Explicit logout/account switching ends the old account's navigation, even if opening failed. */
     fun clearForSessionEnd() {
-        preferences.edit().clear().commit()
+        // Wait for removal before publishing completion; an asynchronous write could replay after process death.
+        preferences.edit(commit = true) { clear() }
         _pending.value = null
     }
 
@@ -104,7 +106,7 @@ class NotificationNavigationCoordinator internal constructor(private val prefere
         )
         if (request.isExpiredReminder()) {
             // Commit synchronously during startup so a second coordinator cannot restore it again.
-            preferences.edit().clear().commit()
+            preferences.edit(commit = true) { clear() }
             return null
         }
         return request

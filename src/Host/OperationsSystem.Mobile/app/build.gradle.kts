@@ -1,11 +1,9 @@
 import java.net.URI
 import java.util.Properties
 import java.util.Locale
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -134,12 +132,12 @@ val hasCompleteReleaseSigningConfiguration =
 
 android {
     namespace = "com.nags.operations"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.nags.operations"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 9
         versionName = "1.0.14"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -196,24 +194,16 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
-
-    applicationVariants.all {
-        val apkAppName = "Operations"
-        val buildLabel = buildType.name.replaceFirstChar { it.uppercaseChar() }
-        val apkVersion = requireNotNull(versionName) {
-            "versionName must be configured before building an APK."
-        }
-
-        outputs.all {
-            val apkOutput = this as com.android.build.gradle.api.ApkVariantOutput
-            apkOutput.outputFileName = "$apkAppName-$buildLabel-v$apkVersion.apk"
-        }
-    }
 }
 
-kotlin {
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
+androidComponents {
+    onVariants { variant ->
+        val buildLabel = variant.buildType.orEmpty().replaceFirstChar { it.uppercaseChar() }
+        variant.outputs.forEach { output ->
+            output.outputFileName.set(output.versionName.map { version ->
+                "Operations-$buildLabel-v$version.apk"
+            })
+        }
     }
 }
 

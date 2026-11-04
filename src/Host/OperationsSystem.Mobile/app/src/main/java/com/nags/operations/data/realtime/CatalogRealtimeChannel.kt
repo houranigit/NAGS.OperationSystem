@@ -162,7 +162,7 @@ internal class CatalogRealtimeDiagnostics {
         if (attemptId == generation) _state.value = RealtimeChannelState.Reconnecting
     }
 
-    fun disconnect(attemptId: Long? = null, clearLastEvent: Boolean = false) = synchronized(lock) {
+    fun disconnect(attemptId: Long? = null, clearLastEvent: Boolean = false): Unit = synchronized(lock) {
         if (attemptId != null && attemptId != generation) return
         generation++
         _state.value = RealtimeChannelState.Disconnected

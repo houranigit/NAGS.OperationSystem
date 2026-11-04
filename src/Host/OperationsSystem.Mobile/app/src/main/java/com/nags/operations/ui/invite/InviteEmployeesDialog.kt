@@ -29,7 +29,7 @@ import com.nags.operations.ui.flights.FlightsViewModel
 fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
     val busy = state.isInviting || state.isLoadingInvitations
     val canSend = state.isOnline && state.detail?.fromCache == false && !busy && state.invitationOptionsLoaded && state.canInviteEmployees &&
-        state.detail?.isPerLanding == false && state.selectedInvitationIds.isNotEmpty() &&
+        !state.detail.isPerLanding && state.selectedInvitationIds.isNotEmpty() &&
         state.availableInvitationIds.containsAll(state.selectedInvitationIds)
     AlertDialog(
         onDismissRequest = viewModel::closeInvitations,

@@ -4,7 +4,7 @@ The native Kotlin/Compose client supports the current [flight baseline](../../..
 
 ## Current journey
 
-Sign in, browse the paged Flights list, search, refresh, and open a flight's details. Dates and times are displayed in the device time zone. Details show customer, station, operation type, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees.
+Sign in, browse the virtualized Flights list, search, refresh, and open a flight's details. Scrolling near the end automatically loads the next page; a failed page can be retried in place. Compact cards keep the flight number, customer, aircraft, and operation on single lines, with N/A for a missing aircraft model. The footer shows one local date or date range and times-only STA/STD values. Dates and times are displayed in the device time zone. Details show customer, station, operation type, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees.
 
 An account with `operations.flights.invite` can invite active, unassigned employees at the flight's station from the details sheet. Invitations are online, add only to the existing roster, and require its current rowversion. They are unavailable for Per Landing flights. A stale response retains the selection for review against refreshed options/version; it does not silently resend the request.
 
@@ -60,7 +60,9 @@ Shared catalog calls use the `customers`, `aircraft-types`, `services`, `tools`,
 
 ## Local development
 
-Use JDK 17 with the pinned Gradle 8.9 / Android Gradle Plugin 8.7.3 toolchain. The API URL is selected at build time through `BuildConfig.API_BASE_URL`.
+Use JDK 17 with the pinned Gradle 9.8.2 / Android Gradle Plugin 9.5.0 toolchain, Android SDK platform 37, and SDK Build Tools 36.0.0. AGP uses built-in Kotlin with an explicit Kotlin Gradle plugin 2.4.21 classpath override; the Compose and serialization compiler plugins use the same version, and Room uses KSP 2.3.13. Do not apply the separate `kotlin-android` plugin. APK naming uses the public `androidComponents` API. The app compiles and targets Android 17 (API 37), with minimum API 26 retained. See the [AGP compatibility requirements](https://developer.android.com/build/releases/agp-9-5-0-release-notes) and [built-in Kotlin migration](https://developer.android.com/build/migrate-to-built-in-kotlin).
+
+The dependency refresh uses Compose BOM 2026.09.00 / Material3 1.4.0, Room 2.8.5, DataStore 1.3.0, WorkManager 2.12.0, and Firebase BOM 35.1.0. The HTTP/realtime libraries use Ktor 3.6.1, kotlinx.serialization 1.12.0, kotlinx.coroutines 1.11.0, and SignalR 10.0.14. Existing Room schemas and explicit migrations remain unchanged. Validate Android 16/17 back navigation, edge-to-edge insets, large-screen resizing, and notification navigation on representative devices before release; a successful build or lint run alone does not establish runtime compatibility. The API URL is selected at build time through `BuildConfig.API_BASE_URL`.
 
 For the current branch's Docker API, set the ignored `local.properties` entry:
 
@@ -68,7 +70,7 @@ For the current branch's Docker API, set the ignored `local.properties` entry:
 operations.api.debug.base.url=http://10.0.2.2:5213
 ```
 
-`10.0.2.2` is the Android emulator's host-loopback alias. A physical device needs a reachable address for the same branch API. Changing the property requires rebuilding the app.
+`10.0.2.2` is the Android emulator's host-loopback alias. A physical device needs a reachable address for the same branch API. Changing the property requires rebuilding the app. On Android 17, a configured private IP or `.local` backend prompts once for Nearby devices (local-network access). If denied, cached reads remain available; enable the permission in app Settings to reconnect. Public hosted API endpoints do not prompt. Use a private IP or `.local` hostname for a local backend; other DNS names resolving to LAN addresses are not detected by this startup prompt.
 
 Run debug checks from this directory, explicitly selecting that endpoint when desired:
 
