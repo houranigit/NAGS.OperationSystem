@@ -34,6 +34,7 @@ class FlightModelsContractTest {
         assertTrue(page.hasNextPage)
         assertNull(page.items.single().customerIataCode)
         assertNull(page.items.single().aircraftTypeModel) // Previously saved registers omit this field.
+        assertNull(page.items.single().customerId)
         assertEquals("2026-11-03T08:00:00+00:00", page.items.single().scheduledArrivalUtc)
     }
 
@@ -43,7 +44,7 @@ class FlightModelsContractTest {
             """
             {"items":[{
               "id":"flight-1","flightNumber":"TEST","customerName":"Customer",
-              "stationIataCode":"RUH","operationTypeName":"HAJJ","aircraftTypeModel":"A310",
+              "stationIataCode":"RUH","operationTypeName":"HAJJ","aircraftTypeModel":"A310","customerId":"customer-1",
               "scheduledArrivalUtc":"2026-11-04T10:00:00Z",
               "scheduledDepartureUtc":"2026-11-04T12:00:00Z","isPerLanding":false
             }]}
@@ -54,6 +55,7 @@ class FlightModelsContractTest {
 
         assertEquals("A310", page.items.single().aircraftTypeModel)
         assertEquals("A310", cached.single().aircraftTypeModel)
+        assertEquals("customer-1", cached.single().customerId)
     }
 
     @Test

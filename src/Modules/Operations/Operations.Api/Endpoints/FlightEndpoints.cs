@@ -32,6 +32,14 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
+        flights.MapGet("/customer-logos/{customerId:guid}", async (Guid customerId, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetFlightCustomerLogoQuery(customerId), ct);
+            return result.IsFailure
+                ? ApiResults.Problem(result.Error)
+                : Results.File(result.Value.Content, result.Value.ContentType, enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
         flights.MapPost("/", async (ScheduleFlightRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new ScheduleFlightCommand(

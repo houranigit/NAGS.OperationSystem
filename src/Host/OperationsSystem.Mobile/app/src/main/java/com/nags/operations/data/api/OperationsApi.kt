@@ -12,17 +12,35 @@ import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpStatusCode
+import io.ktor.utils.io.readBuffer
+import kotlinx.io.readByteArray
+import java.io.IOException
+import java.util.UUID
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 
 /** Scoped flight reads and add-only staff invitations shared with the web portal. */
-class OperationsApi(
-    tokenStore: TokenStore,
-    private val client: HttpClient = HttpClientFactory.create(tokenStore),
-) {
+class OperationsApi internal constructor(private val client: HttpClient) {
+    constructor(tokenStore: TokenStore, client: HttpClient = HttpClientFactory.create(tokenStore)) : this(client)
+
+    /** The authenticated API proxies raster logo bytes; no storage URL or bearer is exposed to UI. */
+    suspend fun customerLogo(customerId: String): ByteArray? {
+        val id = UUID.fromString(customerId)
+        return client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/customer-logos/$id")).execute { response ->
+            if (response.status == HttpStatusCode.NotFound) return@execute null
+            if (!response.status.isSuccess()) throw ApiException(response.status.value, "Could not load customer logo.")
+            val bytes = response.bodyAsChannel().readBuffer(MAX_LOGO_BYTES + 1L).readByteArray()
+            if (bytes.size > MAX_LOGO_BYTES) throw IOException("Customer logo exceeds the size limit.")
+            bytes.takeIf { it.isNotEmpty() }
+        }
+    }
+
     suspend fun flights(page: Int = 1, pageSize: Int = 20, search: String? = null): FlightPage =
         client.get(HttpClientFactory.url("api/v1/operations/flights")) {
             parameter("page", page)
@@ -45,5 +63,9 @@ class OperationsApi(
         if (!response.status.isSuccess()) {
             throw ApiException(response.status.value, response.bodyAsText())
         }
+    }
+
+    private companion object {
+        const val MAX_LOGO_BYTES = 2 * 1024 * 1024
     }
 }

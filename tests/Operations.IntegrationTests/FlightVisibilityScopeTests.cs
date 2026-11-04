@@ -66,6 +66,41 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         list!.Items.ShouldNotContain(f => f.Id == otherStationFlightId);
     }
 
+    [Fact]
+    public async Task Customer_logos_require_a_visible_flight_without_granting_customer_catalog_access()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var dispatcher = await CreateStaffLoginAsync(admin, refs, DispatcherPermissions);
+        var regular = await CreateStaffLoginAsync(admin, refs, RegularStaffPermissions);
+        await ScheduleFlightAsync(admin, refs.StationId, refs, "LOG100");
+        var path = $"{Base}/flights/customer-logos/{refs.CustomerId}";
+
+        (await dispatcher.Client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var logoBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGQkAAAAASUVORK5CYII=");
+        var customer = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/customers/{refs.CustomerId}");
+        using var form = new MultipartFormDataContent();
+        using var file = new ByteArrayContent(logoBytes);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        form.Add(file, "file", "logo.png");
+        using var upload = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/customers/{refs.CustomerId}/logo")
+        {
+            Content = form
+        };
+        upload.Headers.TryAddWithoutValidation("If-Match", customer!.RowVersion);
+        (await admin.SendAsync(upload)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        using var logo = await dispatcher.Client.GetAsync(path);
+        logo.StatusCode.ShouldBe(HttpStatusCode.OK);
+        logo.Content.Headers.ContentType!.MediaType.ShouldBe("image/png");
+        (await logo.Content.ReadAsByteArrayAsync()).ShouldBe(logoBytes);
+        (await regular.Client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await dispatcher.Client.GetAsync($"{Base}/flights/customer-logos/{Guid.NewGuid()}"))
+            .StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await dispatcher.Client.GetAsync($"{MasterDataBase}/customers/{refs.CustomerId}/logo"))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
     // --- Helpers ---------------------------------------------------------------
 
     private sealed record MasterDataRefs(

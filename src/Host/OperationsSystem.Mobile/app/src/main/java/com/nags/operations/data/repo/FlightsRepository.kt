@@ -50,12 +50,14 @@ class FlightsRepository internal constructor(
     private val now: () -> String = { Instant.now().toString() },
     private val json: Json = HttpClientFactory.json,
     private val monotonicNanos: () -> Long = System::nanoTime,
+    private val fetchCustomerLogo: suspend (String) -> ByteArray? = { null },
 ) {
     constructor(api: OperationsApi, db: CatalogDatabase, tokenStore: TokenStore, online: StateFlow<Boolean>) : this(
         fetchFlights = api::flights,
         fetchFlight = api::flight,
         fetchInvitationOptions = api::invitationOptions,
         sendInvitation = api::invite,
+        fetchCustomerLogo = api::customerLogo,
         dao = db.flightCacheDao(),
         ownerFlow = combine(tokenStore.accessTokenFlow, tokenStore.sessionSubjectFlow) { token, subject ->
             if (token.isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
@@ -119,6 +121,16 @@ class FlightsRepository internal constructor(
                 cachedDetailOrNull(session, id) ?: throw error
             }
         }
+    }
+
+    /** Logo absence never changes a flight's visibility or persisted planning data. */
+    suspend fun customerLogo(customerId: String): ByteArray? {
+        val session = requireSession()
+        if (!isOnline()) return null
+        ensureCurrent(session)
+        val bytes = fetchCustomerLogo(customerId)
+        ensureCurrent(session)
+        return bytes
     }
 
     suspend fun invitationOptions(id: String): List<AssignedEmployee> {

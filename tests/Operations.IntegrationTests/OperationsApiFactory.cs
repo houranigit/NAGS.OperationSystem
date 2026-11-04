@@ -22,6 +22,7 @@ namespace Operations.IntegrationTests;
 public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly MsSqlContainer _sql = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+    private readonly string _storageRoot = Path.Combine(Path.GetTempPath(), "operations-integration-tests", Guid.NewGuid().ToString("N"));
     private string? _adminMfaSecret;
 
     public const string AdminEmail = "admin@nags.sa";
@@ -43,6 +44,7 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
         var connectionString = _sql.GetConnectionString().Replace("Database=master", "Database=OperationsTests");
 
         builder.UseSetting("ConnectionStrings:Default", connectionString);
+        builder.UseSetting("FileStorage:RootPath", _storageRoot);
         builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
         builder.UseSetting("Identity:DemoData:Enabled", "false");
         builder.UseSetting("Messaging:OutboxDispatchEnabled", "false");
@@ -55,6 +57,7 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Default"] = connectionString,
+                ["FileStorage:RootPath"] = _storageRoot,
                 ["Database:ApplyMigrationsOnStartup"] = "true",
                 ["Identity:Jwt:Issuer"] = "operations-system",
                 ["Identity:Jwt:Audience"] = "operations-system",
@@ -175,6 +178,8 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
     {
         await _sql.DisposeAsync();
         await base.DisposeAsync();
+        if (Directory.Exists(_storageRoot))
+            Directory.Delete(_storageRoot, recursive: true);
     }
 
     private sealed record TokenResponse(string AccessToken, DateTimeOffset ExpiresAtUtc);

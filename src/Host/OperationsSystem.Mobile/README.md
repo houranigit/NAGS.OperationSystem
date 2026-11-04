@@ -4,13 +4,13 @@ The native Kotlin/Compose client supports the current [flight baseline](../../..
 
 ## Current journey
 
-Sign in, browse the virtualized Flights list, search, refresh, and open a flight's details. Scrolling near the end automatically loads the next page; a failed page can be retried in place. Compact cards keep the flight number, customer, aircraft, and operation on single lines, with N/A for a missing aircraft model. The footer shows one local date or date range and times-only STA/STD values. Dates and times are displayed in the device time zone. Details show customer, station, operation type, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees.
+Sign in, browse the virtualized Flights list, search, refresh, and open a flight's details. Scrolling near the end automatically loads the next page; a failed page can be retried in place. Compact cards keep the flight number, customer, aircraft, and operation on single lines, with N/A for a missing aircraft model. The card avatar shows the current customer logo, with the flight icon while the logo is missing, loading, or unavailable. The footer shows one local date or date range and times-only STA/STD values. Dates and times are displayed in the device time zone. Details show customer, station, operation type, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees.
 
 An account with `operations.flights.invite` can invite active, unassigned employees at the flight's station from the details sheet. Invitations are online, add only to the existing roster, and require its current rowversion. They are unavailable for Per Landing flights. A stale response retains the selection for review against refreshed options/version; it does not silently resend the request.
 
 The server enforces the same account/station scope as the portal. Administrators and Viewers can read within their granted scope; station staff see assigned flights and station-wide Per Landing flights, with wider station visibility when separately granted. Viewers cannot invite. A successful sign-in alone does not grant flight access.
 
-The flight list and previously opened basic details can be read from the current account's local cache when disconnected. Live reads remain the first choice while online. Employee invitations require a live connection and a fresh detail/eligibility check; no flight mutation is queued. Work orders, status actions, drafts, scratch creation, return-to-ramp, and flight printing remain outside this client baseline.
+The flight list and previously opened basic details can be read from the current account's local cache when disconnected. Live reads remain the first choice while online. Logo images use only the current flight screen's memory cache and reload on refresh; image files are not stored in the offline database. Employee invitations require a live connection and a fresh detail/eligibility check; no flight mutation is queued. Work orders, status actions, drafts, scratch creation, return-to-ramp, and flight printing remain outside this client baseline.
 
 ## Flight synchronization
 
@@ -53,6 +53,7 @@ Flight calls use the existing shared API:
 
 - `GET /api/v1/operations/flights?page=1&pageSize=20&search=...`
 - `GET /api/v1/operations/flights/{id}`
+- `GET /api/v1/operations/flights/customer-logos/{customerId}` for customers on a currently visible flight
 - `GET /api/v1/operations/flights/{id}/invitation-options`
 - `POST /api/v1/operations/flights/{id}/invite` with `{ "staffMemberIds": [...] }` and `If-Match`.
 

@@ -15,6 +15,8 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await client.GetAsync($"{OperationsApiFactory.Base}/flights/{Guid.NewGuid()}"))
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.GetAsync($"{OperationsApiFactory.Base}/flights/customer-logos/{Guid.NewGuid()}"))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights", new { }))
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights/bulk", new { }))

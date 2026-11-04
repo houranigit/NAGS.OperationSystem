@@ -1,9 +1,7 @@
 package com.nags.operations.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,12 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,7 +41,13 @@ import com.nags.operations.ui.util.formatIsoTimeForDisplay
 private val ScheduledBlue = Color(0xFF007AFF)
 
 @Composable
-fun FlightCard(flight: FlightListItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun FlightCard(
+    flight: FlightListItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    loadCustomerLogo: suspend (String) -> ByteArray? = { null },
+    logoRevision: Long = 0,
+) {
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -72,14 +73,7 @@ fun FlightCard(flight: FlightListItem, onClick: () -> Unit, modifier: Modifier =
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier.size(36.dp)
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.FlightTakeoff, null, tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(23.dp))
-                }
+                CustomerLogo(flight.customerId, logoRevision, loadCustomerLogo, Modifier.size(36.dp))
                 Column(Modifier.weight(1f)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(

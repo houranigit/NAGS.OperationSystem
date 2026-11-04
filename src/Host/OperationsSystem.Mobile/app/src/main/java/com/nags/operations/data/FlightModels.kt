@@ -27,6 +27,7 @@ data class FlightListItem(
     val scheduledDepartureUtc: String,
     val isPerLanding: Boolean,
     val aircraftTypeModel: String? = null,
+    val customerId: String? = null,
 )
 
 @Serializable

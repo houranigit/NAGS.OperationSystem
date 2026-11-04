@@ -167,7 +167,8 @@ fun FlightsScreen(
                         }
                     }
                     items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
-                        FlightCard(flight = flight, onClick = { viewModel.openFlight(flight.id) })
+                        FlightCard(flight = flight, onClick = { viewModel.openFlight(flight.id) },
+                            loadCustomerLogo = viewModel::customerLogo, logoRevision = state.logoRevision)
                     }
                     item(key = "flight-count") {
                         Text(pluralStringResource(R.plurals.flights_showing_count,

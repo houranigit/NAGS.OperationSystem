@@ -46,6 +46,7 @@ data class FlightsUiState(
     val permissionDenied: Boolean = false,
     val error: String? = null,
     val loadMoreError: String? = null,
+    val logoRevision: Long = 0,
     val selectedFlightId: String? = null,
     val lastUnavailableFlightId: String? = null,
     val detail: FlightDetail? = null,
@@ -75,6 +76,7 @@ class FlightsViewModel internal constructor(
     cacheChanges: Flow<Unit> = emptyFlow(),
     private val cacheStatus: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
     private val clearCachedFlights: suspend () -> Unit = {},
+    private val fetchCustomerLogo: suspend (String) -> ByteArray? = { null },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor) : this(
         fetchProfile = authRepository::profile,
@@ -86,6 +88,7 @@ class FlightsViewModel internal constructor(
         cacheChanges = repository.cacheChanges,
         cacheStatus = repository.syncStatus,
         clearCachedFlights = repository::clearLocal,
+        fetchCustomerLogo = repository::customerLogo,
     )
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope
@@ -94,6 +97,7 @@ class FlightsViewModel internal constructor(
     private var listJob: Job? = null
     private var detailJob: Job? = null
     private var invitationJob: Job? = null
+    private val customerLogos = CustomerLogoCache(scope, fetchCustomerLogo)
 
     init {
         scope.launch {
@@ -128,11 +132,12 @@ class FlightsViewModel internal constructor(
     }
 
     private fun clearVisibleFlights(permissionDenied: Boolean) {
+        customerLogos.clear()
         listJob?.cancel()
         detailJob?.cancel()
         invitationJob?.cancel()
         _state.update {
-            it.copy(items = emptyList(), totalCount = 0, hasMore = false,
+            it.copy(items = emptyList(), totalCount = 0, hasMore = false, logoRevision = it.logoRevision + 1,
                 selectedFlightId = null, lastUnavailableFlightId = null, detail = null, detailError = null,
                 isLoading = false, isRefreshing = false, isLoadingMore = false, isLoadingDetail = false,
                 isInvitationOpen = false, isLoadingInvitations = false, isInviting = false,
@@ -153,12 +158,15 @@ class FlightsViewModel internal constructor(
 
     fun refresh() = loadList()
 
+    suspend fun customerLogo(customerId: String): ByteArray? = customerLogos.load(customerId)
+
     private fun loadList(debounce: Boolean = false) {
+        customerLogos.clear()
         listJob?.cancel()
         val search = _state.value.search
         _state.update {
             it.copy(isLoading = it.items.isEmpty(), isRefreshing = it.items.isNotEmpty(),
-                isLoadingMore = false, error = null, loadMoreError = null)
+                isLoadingMore = false, error = null, loadMoreError = null, logoRevision = it.logoRevision + 1)
         }
         listJob = scope.launch {
             try {
@@ -381,8 +389,9 @@ class FlightsViewModel internal constructor(
         }
         _state.update { it.copy(canInviteEmployees = INVITE_PERMISSION in profile.permissions) }
         if (VIEW_PERMISSION in profile.permissions) return true
+        customerLogos.clear()
         _state.update {
-            it.copy(items = emptyList(), detail = null, canInviteEmployees = false,
+            it.copy(items = emptyList(), detail = null, canInviteEmployees = false, logoRevision = it.logoRevision + 1,
                 permissionDenied = true, totalCount = 0, hasMore = false,
                 isLoading = false, isRefreshing = false,
                 isLoadingMore = false, error = VIEW_PERMISSION_MESSAGE, loadMoreError = null)
@@ -392,8 +401,9 @@ class FlightsViewModel internal constructor(
     }
 
     private fun listFailed(error: Exception) {
+        val forbidden = error is ApiException && error.statusCode == 403
+        if (forbidden) customerLogos.clear()
         _state.update {
-            val forbidden = error is ApiException && error.statusCode == 403
             if (it.isLoadingMore && !forbidden) {
                 it.copy(isLoadingMore = false, loadMoreError = error.userMessage())
             } else {

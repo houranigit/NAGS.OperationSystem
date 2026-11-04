@@ -33,6 +33,7 @@ class FlightsRepositoryCacheTest {
     private var detailNumber = "123"
     private var invitationReads = 0
     private var invitationWrites = 0
+    private var logoLoader: suspend (String) -> ByteArray? = { null }
     private var pageLoader: suspend (Int, Int, String?) -> FlightPage = { page, size, _ ->
         listFailure?.let { throw it }
         pageReads += page to size
@@ -51,6 +52,7 @@ class FlightsRepositoryCacheTest {
         fetchFlight = { detailLoader(it) },
         fetchInvitationOptions = { invitationReads++; emptyList() },
         sendInvitation = { _, _, _ -> invitationWrites++ },
+        fetchCustomerLogo = { logoLoader(it) },
         dao = dao, ownerFlow = owner, currentOwner = { owner.value }, isOnline = { online }, now = { clock },
     )
 
@@ -291,6 +293,41 @@ class FlightsRepositoryCacheTest {
         kotlinx.coroutines.yield()
         assertEquals(1, changes)
         observer.cancel()
+    }
+
+    @Test
+    fun missingLogosAndOfflineReadsKeepFlightPlanningCachesIntact() = runBlocking {
+        var reads = 0
+        logoLoader = { reads++; null }
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val snapshot = dao.snapshot(owner.value!!)
+
+        assertNull(repository.customerLogo("customer"))
+        assertEquals(snapshot, dao.snapshot(owner.value!!))
+        assertNotNull(dao.detail(owner.value!!, "one"))
+        online = false
+        assertNull(repository.customerLogo("customer"))
+        assertEquals(1, reads)
+    }
+
+    @Test
+    fun lateLogoBytesAreRejectedAfterAccountChangeOrSameAccountCleanup() = runBlocking {
+        for (switchAccount in listOf(true, false)) {
+            owner.value = "http://branch/|account"
+            val response = CompletableDeferred<ByteArray?>()
+            logoLoader = { response.await() }
+            val repository = repository()
+            val pending = async(start = CoroutineStart.UNDISPATCHED) {
+                runCatching { repository.customerLogo("customer") }
+            }
+            if (switchAccount) owner.value = "http://branch/|other" else repository.clearLocal()
+            response.complete(byteArrayOf(1, 2, 3))
+
+            assertTrue(pending.await().exceptionOrNull() is IllegalStateException)
+            assertFalse(dao.hasAnyCache())
+        }
     }
 
     @Test

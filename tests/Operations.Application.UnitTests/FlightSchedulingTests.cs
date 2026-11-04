@@ -50,7 +50,9 @@ public sealed class FlightSchedulingTests
         var result = await new GetFlightsQueryHandler(db, AdminScope())
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
-        result.Value.Items.ShouldHaveSingleItem().AircraftTypeModel.ShouldBe(aircraftModel);
+        var item = result.Value.Items.ShouldHaveSingleItem();
+        item.AircraftTypeModel.ShouldBe(aircraftModel);
+        item.CustomerId.ShouldBe(flight.Customer.CustomerId);
     }
 
     [Fact]

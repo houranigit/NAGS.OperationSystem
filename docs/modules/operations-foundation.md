@@ -24,6 +24,7 @@ All flight routes are under `/api/v1/operations/flights`:
 |---|---|---|
 | GET | `/` | Filtered, sorted, paged flight register |
 | GET | `/{id}` | Flight planning details and rowversion |
+| GET | `/customer-logos/{customerId}` | Customer logo when at least one flight for that customer is visible to the caller |
 | POST | `/` | Schedule one flight |
 | POST | `/bulk` | Schedule selected dates |
 | PUT | `/{id}` | Update scheduled details |
@@ -33,6 +34,8 @@ All flight routes are under `/api/v1/operations/flights`:
 | POST | `/{id}/invite` | Add selected employees without replacing the roster |
 
 Edits and invitations retain the existing `If-Match` rowversion precondition. Invitations require `operations.flights.invite`, an administrator or station-staff account, and access to the flight. They accept only active staff at that flight's station and are unavailable for Per Landing flights. Invitations add distinct employees immediately to the existing roster; repeated selections do not replace assignments or create duplicate invitation events. A stale version that would add employees fails without changing the roster. The retained invitation event queues the existing bilingual inbox/push notification for linked recipients, suppressing self-notifications; transport delivery remains separate from the accepted flight change.
+
+Customer logo reads require `operations.flights.view` and the existing flight visibility scope. Operations checks for a visible flight before reading logo content through the MasterData-owned reader contract. MasterData retains logo storage and customer-management permissions. Missing logos or files return `404` for the card's flight-icon fallback.
 
 Operations work-order, legacy mobile BFF, timeline, lifecycle, reporting, and dashboard endpoints are removed. The shared change hub remains owned by the API host because MasterData publishes catalog hints and Operations publishes basic-flight hints.
 

@@ -43,7 +43,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             .Select(f => new FlightListItemDto(f.Id, f.FlightNumber.Value, f.Customer.IataCode,
                 f.Customer.Name, f.Station.IataCode, f.OperationType.Name, f.Schedule.Sta, f.Schedule.Std,
                 f.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
-                f.AircraftType == null ? null : f.AircraftType.Model))
+                f.AircraftType == null ? null : f.AircraftType.Model, f.Customer.CustomerId))
             .ToListAsync(cancellationToken);
         return paging.ToResult(items, total);
     }
