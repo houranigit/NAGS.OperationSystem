@@ -72,10 +72,11 @@ fun FlightsScreen(
             onNotificationHandled(request.notificationId)
         }
     }
-    LaunchedEffect(notificationOpenRequest, state.detail, state.detailError) {
+    LaunchedEffect(notificationOpenRequest, state.detail, state.detailError, state.permissionDenied, state.lastUnavailableFlightId) {
         val request = notificationOpenRequest ?: return@LaunchedEffect
-        if (request.flightId != null && request.flightId == state.selectedFlightId &&
-            (state.detail != null || state.detailError != null)) {
+        val current = viewModel.state.value
+        if (request.flightId != null && (current.permissionDenied || current.lastUnavailableFlightId == request.flightId ||
+            (request.flightId == current.selectedFlightId && (current.detail != null || current.detailError != null)))) {
             onNotificationHandled(request.notificationId)
         }
     }
@@ -98,6 +99,11 @@ fun FlightsScreen(
             IconButton(onClick = viewModel::refresh, enabled = !state.isLoading && !state.isRefreshing) {
                 Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.flights_refresh))
             }
+        }
+        if (state.isUsingCachedList || !state.isOnline) {
+            Text(stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
         if (!state.permissionDenied) {
             OutlinedTextField(
@@ -179,6 +185,8 @@ fun FlightsScreen(
                         onRetry = { state.selectedFlightId?.let(viewModel::openFlight) })
                     state.detail != null -> {
                         val flight = state.detail!!
+                        if (flight.fromCache) Text(stringResource(R.string.flights_cached_detail),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         FlightOverviewBanner(customerIataCode = flight.customerIataCode.orEmpty(),
                             customerName = flight.customerName, stationCode = flight.stationIata,
                             operationTypeCode = flight.operationTypeName, flightNumber = flight.flightNumber,
@@ -187,7 +195,7 @@ fun FlightsScreen(
                             stdDisplay = formatIsoForDisplay(flight.scheduledDepartureUtc))
                         Text(flight.stationName, style = MaterialTheme.typography.bodyMedium)
                         if (state.canInviteEmployees && !flight.isPerLanding) {
-                            Button(onClick = viewModel::openInvitations, modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = viewModel::openInvitations, enabled = state.isOnline && !flight.fromCache, modifier = Modifier.fillMaxWidth()) {
                                 Text(stringResource(R.string.flights_invite_employees))
                             }
                         }

@@ -151,7 +151,7 @@ public sealed class FlightInvitationTests
     }
 
     private static InviteEmployeesToFlightCommandHandler Handler(OperationsDbContext db, SchedulingMasterDataReader reader, IOperationsScope scope) =>
-        new(db, scope, new MasterDataResolver(reader), new Actor(), new AuditActor(), TimeProvider.System);
+        new(db, scope, new MasterDataResolver(reader), new Actor(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
 
     private static StaffMemberReadSnapshot Staff(Guid stationId, string name, bool active = true) =>
         new(Guid.NewGuid(), name, name, stationId, Guid.NewGuid(), active);

@@ -177,6 +177,70 @@ class CatalogSyncSchedulerTest {
     }
 
     @Test
+    fun flightHintsDoNotRefreshUnrelatedCatalogsAndCatalogHintsDoNotRefreshFlights() = runBlocking {
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        var flightRefreshes = 0
+        val scheduler = CatalogSyncScheduler(MutableStateFlow("token"), MutableStateFlow(true),
+            { batches += it }, {}, scope, refreshFlightCache = { flightRefreshes++ })
+        scheduler.start()
+        settle()
+        assertEquals(listOf(allCatalogs), batches)
+        assertEquals(1, flightRefreshes)
+        scheduler.refreshFlights()
+        settle()
+        assertEquals(listOf(allCatalogs), batches)
+        assertEquals(2, flightRefreshes)
+        scheduler.refreshCatalog(SharedCatalog.Tools)
+        settle()
+        assertEquals(listOf(allCatalogs, setOf(SharedCatalog.Tools)), batches)
+        assertEquals(2, flightRefreshes)
+        scheduler.stop()
+        scheduler.refreshFlights()
+        settle()
+        assertEquals(2, flightRefreshes)
+    }
+
+    @Test
+    fun pendingFullRefreshRetainsBothFlightsAndCatalogsDuringFlightWork() = runBlocking {
+        val finishInitialFlightRefresh = CompletableDeferred<Unit>()
+        val batches = mutableListOf<Set<SharedCatalog>>()
+        var flightRefreshes = 0
+        val scheduler = CatalogSyncScheduler(MutableStateFlow("token"), MutableStateFlow(true),
+            { batches += it }, {}, scope, refreshFlightCache = {
+                flightRefreshes++
+                if (flightRefreshes == 1) finishInitialFlightRefresh.await()
+            })
+        scheduler.start()
+        settle()
+        scheduler.refreshFlights()
+        scheduler.refreshCatalog(SharedCatalog.Tools)
+        scheduler.refreshNow()
+        scheduler.refreshCatalog(SharedCatalog.Customers)
+        settle()
+        assertEquals(1, flightRefreshes)
+        finishInitialFlightRefresh.complete(Unit)
+        settle()
+        assertEquals(listOf(allCatalogs, allCatalogs), batches)
+        assertEquals(2, flightRefreshes)
+        scheduler.stop()
+    }
+
+    @Test
+    fun catalogFailureDoesNotSkipThePendingFlightRefresh() = runBlocking {
+        var flightRefreshes = 0
+        val scheduler = CatalogSyncScheduler(MutableStateFlow("token"), MutableStateFlow(true),
+            { throw IOException("Catalog unavailable") }, {}, scope,
+            refreshFlightCache = { flightRefreshes++ })
+        scheduler.start()
+        settle()
+        assertEquals(1, flightRefreshes)
+        scheduler.refreshFlights()
+        settle()
+        assertEquals(2, flightRefreshes)
+        scheduler.stop()
+    }
+
+    @Test
     fun losingCredentialsCancelsTheOldRequestBeforeClearingTheCache() = runBlocking {
         val tokens = MutableStateFlow<String?>("token")
         val started = CompletableDeferred<Unit>()

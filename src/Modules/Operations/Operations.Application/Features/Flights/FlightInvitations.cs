@@ -1,6 +1,7 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Auditing;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -73,7 +74,8 @@ public sealed class InviteEmployeesToFlightCommandHandler(
     MasterDataResolver resolver,
     IUserContext user,
     IAuditContext auditContext,
-    TimeProvider timeProvider) : ICommandHandler<InviteEmployeesToFlightCommand>
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync) : ICommandHandler<InviteEmployeesToFlightCommand>
 {
     public async Task<Result> Handle(InviteEmployeesToFlightCommand request, CancellationToken cancellationToken)
     {
@@ -126,6 +128,7 @@ public sealed class InviteEmployeesToFlightCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

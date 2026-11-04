@@ -1,6 +1,8 @@
 package com.nags.operations.ui.sync
 
 import com.nags.operations.data.CatalogSyncStatus
+import com.nags.operations.data.FlightSyncStatus
+import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.data.SharedCatalog
 import com.nags.operations.data.realtime.RealtimeChannelState
 import java.time.Instant
@@ -26,7 +28,7 @@ class SyncCenterViewModelTest {
         val rows = catalogSyncRows(emptyList(), now)
         assertEquals(listOf(SharedCatalog.AtaChapters, SharedCatalog.Services, SharedCatalog.Tools,
             SharedCatalog.Materials, SharedCatalog.GeneralSupports, SharedCatalog.Customers,
-            SharedCatalog.AircraftTypes, SharedCatalog.StationStaff), rows.map { it.table })
+            SharedCatalog.AircraftTypes, SharedCatalog.StationStaff).map { SyncTarget.Catalog(it) }, rows.map { it.target })
         assertTrue(rows.all { it.rowCount == 0 && it.lastSyncedAt == null && it.lastDurationMs == null })
     }
 
@@ -36,7 +38,7 @@ class SyncCenterViewModelTest {
         val status = CatalogSyncStatus(SharedCatalog.AircraftTypes, itemCount = 12,
             lastAttemptUtc = "2026-11-03T19:59:00Z", lastSuccessUtc = success,
             error = "refresh failed", lastDurationMs = 74L)
-        val row = catalogSyncRows(listOf(status), now).first { it.table == SharedCatalog.AircraftTypes }
+        val row = catalogSyncRows(listOf(status), now).first { it.target == SyncTarget.Catalog(SharedCatalog.AircraftTypes) }
         assertEquals(12, row.rowCount)
         assertEquals(Instant.parse(success).toEpochMilli(), row.lastSyncedAt)
         assertEquals(120_000L, row.ageMs)
@@ -52,9 +54,26 @@ class SyncCenterViewModelTest {
             CatalogSyncStatus(SharedCatalog.Services, lastSuccessUtc = "2026-11-03T20:01:00Z"),
             CatalogSyncStatus(SharedCatalog.Tools, permissionDenied = true),
         ), now)
-        assertNull(rows.first { it.table == SharedCatalog.Customers }.lastSyncedAt)
-        assertEquals(0L, rows.first { it.table == SharedCatalog.Services }.ageMs)
-        assertTrue(rows.first { it.table == SharedCatalog.Tools }.permissionDenied)
+        assertNull(rows.first { it.target == SyncTarget.Catalog(SharedCatalog.Customers) }.lastSyncedAt)
+        assertEquals(0L, rows.first { it.target == SyncTarget.Catalog(SharedCatalog.Services) }.ageMs)
+        assertTrue(rows.first { it.target == SyncTarget.Catalog(SharedCatalog.Tools) }.permissionDenied)
+    }
+
+    @Test
+    fun flightCardUsesItsOwnCountFreshnessAndAccessState() {
+        val synced = "2026-11-03T19:59:00Z"
+        val rows = mobileSyncRows(listOf(CatalogSyncStatus(SharedCatalog.Tools, itemCount = 9)),
+            FlightSyncStatus(itemCount = 31, lastSuccessUtc = synced, lastDurationMs = 84L), now)
+        val flight = rows.first()
+        assertEquals(SyncTarget.Flights, flight.target)
+        assertEquals(31, flight.rowCount)
+        assertEquals(60_000L, flight.ageMs)
+        assertEquals(84L, flight.lastDurationMs)
+        assertEquals(9, rows.first { it.target == SyncTarget.Catalog(SharedCatalog.Tools) }.rowCount)
+        val denied = mobileSyncRows(emptyList(), FlightSyncStatus(permissionDenied = true, error = "Denied"), now).first()
+        assertTrue(denied.permissionDenied)
+        assertNull(denied.lastSyncedAt)
+        assertEquals(0, denied.rowCount)
     }
 
     @Test
@@ -67,7 +86,7 @@ class SyncCenterViewModelTest {
             MutableStateFlow(RealtimeChannelState.Disconnected), MutableStateFlow(null),
             { refreshes++ }, scope, { now })
         val observer = scope.launch { model.rows.collect { } }
-        assertEquals(3, model.rows.value.first { it.table == SharedCatalog.Customers }.rowCount)
+        assertEquals(3, model.rows.value.first { it.target == SyncTarget.Catalog(SharedCatalog.Customers) }.rowCount)
         model.refreshNow()
         assertEquals(0, refreshes)
         online.value = true
@@ -79,7 +98,7 @@ class SyncCenterViewModelTest {
         assertEquals(1, refreshes)
         statuses.value = listOf(CatalogSyncStatus(SharedCatalog.Customers, itemCount = 4,
             lastSuccessUtc = "2026-11-03T20:00:00Z", lastDurationMs = 28L))
-        val updated = model.rows.value.first { it.table == SharedCatalog.Customers }
+        val updated = model.rows.value.first { it.target == SyncTarget.Catalog(SharedCatalog.Customers) }
         assertEquals(4, updated.rowCount)
         assertEquals(28L, updated.lastDurationMs)
         observer.cancel()

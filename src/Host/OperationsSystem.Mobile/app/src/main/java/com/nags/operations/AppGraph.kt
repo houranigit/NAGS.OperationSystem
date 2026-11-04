@@ -19,6 +19,7 @@ import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.repo.SharedCatalogsRepository
 import com.nags.operations.data.realtime.CatalogRealtimeChannel
 import com.nags.operations.data.sync.CatalogSyncScheduler
+import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.notifications.DeviceTokenManager
 import com.nags.operations.notifications.NotificationNavigationCoordinator
 import com.nags.operations.notifications.SystemNotificationManager
@@ -27,10 +28,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Process-scoped dependencies for online flights, shared catalogs, identity, and notifications. */
+/** Process-scoped dependencies for flights, shared catalogs, identity, and notifications. */
 class AppGraph private constructor(context: Context) {
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val tokenStore: TokenStore = TokenStore(context.applicationContext)
@@ -43,22 +47,34 @@ class AppGraph private constructor(context: Context) {
     private val database = NotificationsDatabase.get(context.applicationContext)
     private val catalogDatabase = CatalogDatabase.get(context.applicationContext)
 
-    val flightsRepository: FlightsRepository = FlightsRepository(operationsApi)
+    val networkMonitor: NetworkMonitor = NetworkMonitor(context.applicationContext, appScope)
+    val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline)
     val notificationsRepository: NotificationsRepository =
         NotificationsRepository(notificationsApi, database, tokenStore)
     val sharedCatalogsRepository = SharedCatalogsRepository(sharedCatalogsApi, catalogDatabase, tokenStore)
-    val networkMonitor: NetworkMonitor = NetworkMonitor(context.applicationContext, appScope)
+    val isSyncing = combine(sharedCatalogsRepository.isSyncing, flightsRepository.isSyncing) { catalogs, flights ->
+        catalogs || flights
+    }.stateIn(appScope, SharingStarted.Eagerly, false)
     private val catalogSyncScheduler = CatalogSyncScheduler(
         accessTokens = tokenStore.accessTokenFlow,
         online = networkMonitor.isOnline,
         refreshCatalogs = sharedCatalogsRepository::refresh,
-        clearCatalogs = sharedCatalogsRepository::clearLocal,
+        clearCatalogs = {
+            sharedCatalogsRepository.clearLocal()
+            flightsRepository.clearLocal()
+        },
         appScope = appScope,
+        refreshFlightCache = flightsRepository::refreshCache,
     )
     private val catalogRealtimeChannel = CatalogRealtimeChannel(
         accessTokens = tokenStore.accessTokenFlow,
         online = networkMonitor.isOnline,
-        requestCatalogRefresh = catalogSyncScheduler::refreshCatalog,
+        requestRefresh = { target ->
+            when (target) {
+                is SyncTarget.Catalog -> catalogSyncScheduler.refreshCatalog(target.catalog)
+                SyncTarget.Flights -> catalogSyncScheduler.refreshFlights()
+            }
+        },
         requestFullRefresh = catalogSyncScheduler::refreshNow,
         appScope = appScope,
     )
@@ -111,12 +127,13 @@ class AppGraph private constructor(context: Context) {
             authRepository.logout()
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
+            flightsRepository.clearLocal()
         }
     }
 
     fun refreshCatalogs() = catalogSyncScheduler.refreshNow()
 
-    /** Flight screens refresh separately; catalogs and the inbox badge refresh on foreground. */
+    /** Recheck read-only caches and the inbox badge when the app returns to the foreground. */
     fun onForeground() {
         if (secureStorageReady) {
             catalogSyncScheduler.refreshNow()
@@ -146,6 +163,7 @@ class AppGraph private constructor(context: Context) {
             tokenStore.clearTokens()
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
+            flightsRepository.clearLocal()
             tokenStore.clearAll()
         }
     }

@@ -36,7 +36,7 @@ fun MainShellScreen(
     val unreadNotifications by graph.notificationsRepository.observeUnreadCount()
         .collectAsStateWithLifecycle(initialValue = 0)
     val isOnline by graph.networkMonitor.isOnline.collectAsStateWithLifecycle()
-    val isSyncing by graph.sharedCatalogsRepository.isSyncing.collectAsStateWithLifecycle()
+    val isSyncing by graph.isSyncing.collectAsStateWithLifecycle()
     val subject by graph.tokenStore.sessionSubjectFlow.collectAsStateWithLifecycle(initialValue = null)
     val flights: FlightsViewModel = viewModel(key = "flights:$subject", factory = factory)
     NotificationPermissionPrompt()

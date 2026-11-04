@@ -441,12 +441,12 @@ export const manualArticles = [
       {
         "id": "refresh",
         "title": "Refresh the list",
-        "body": "Pull down or tap Refresh flights to request current records. Flights also refresh when the screen resumes. A connection is required; if a request fails, check the connection and retry."
+        "body": "Pull down or tap Refresh flights to request current records. Flights also refresh after successful flight sync and when the screen resumes. When disconnected, the app can search and page through the last successful flight snapshot for the current account; a cached-data notice identifies it."
       },
       {
         "id": "details",
         "title": "Open the flight details",
-        "body": "Tap a flight card to view its customer, station, operation type, scheduled arrival and departure, optional aircraft type, planned services, assigned staff, and flight ID. Times use the device time zone shown above the list."
+        "body": "Tap a flight card to view its customer, station, operation type, scheduled arrival and departure, optional aircraft type, planned services, assigned staff, and flight ID. Times use the device time zone shown above the list. Details are saved when opened online. While offline, previously opened details remain readable with a cached-data notice; unopened details require a connection."
       }
     ],
     "callouts": [
@@ -481,7 +481,7 @@ export const manualArticles = [
       {
         "id": "open",
         "title": "Open Invite employees",
-        "body": "Open the flight details and tap Invite employees. This action appears only with flight invite permission and is unavailable for Per Landing flights."
+        "body": "Open the flight details while connected and tap Invite employees. This action requires flight invite permission, fresh online details and eligibility, and is unavailable for Per Landing flights. Invitations cannot be sent or queued from cached details."
       },
       {
         "id": "choose",
@@ -513,9 +513,9 @@ export const manualArticles = [
   },
   {
     "id": "android-catalog-sync",
-    "title": "Keep shared catalogs synchronized",
+    "title": "Keep flights and catalogs synchronized",
     "eyebrow": "Android reference data",
-    "summary": "Refresh the local aircraft, customer, service, tool, material, general-support, ATA chapter, and station staff catalogs.",
+    "summary": "Refresh the scoped flight register and local aircraft, customer, service, tool, material, general-support, ATA chapter, and station staff catalogs.",
     "keywords": [
       "mobile",
       "android",
@@ -529,29 +529,29 @@ export const manualArticles = [
       {
         "id": "open",
         "title": "Open Sync Center",
-        "body": "Tap the sync-status icon in the app header, or open My profile → Sync Center. The page shows network and live-channel status, the last catalog event, and a separate card for each catalog with its cached record count, last successful sync time and age, duration, and any refresh error."
+        "body": "Tap the sync-status icon in the app header, or open My profile → Sync Center. The page shows network and live-channel status, the last accepted event, a Flights card, and separate catalog cards with cached counts, last successful sync time and age, duration, and any refresh error."
       },
       {
         "id": "refresh",
         "title": "Refresh the catalogs",
-        "body": "While connected, catalog creates, edits, activations, and deactivations in the portal refresh only the affected catalog. Other catalogs keep their previous Last sync time. Last sync means the last successful fetch, even when the fetched data has not changed. Refresh now checks all catalogs, as do automatic refreshes after sign-in, returning to the app, reconnecting, and periodically while the app process is running."
+        "body": "While connected, flight changes refresh flights only; catalog changes refresh the affected catalog. Staff station or active-state changes and station active-state changes also recheck flight visibility. Unaffected catalogs keep their previous Last sync time. Last sync means the last successful fetch, even when the data has not changed. Refresh now checks flights and all catalogs, as do sign-in, foreground, reconnect, and periodic checks."
       },
       {
         "id": "offline",
         "title": "Check the last successful sync",
-        "body": "A connection failure keeps the last successful catalog cache for the current account. The displayed refresh time shows its age. Reconnect and retry if a catalog has not refreshed."
+        "body": "A connection failure keeps the last successful flight and catalog caches for the current account. The displayed refresh time shows their age. Previously opened flight details can be viewed offline, but invitations need a connection. Offline records reflect the last successful access check; reconnect to apply server changes."
       },
       {
         "id": "access",
         "title": "Resolve catalog access errors",
-        "body": "Catalog access follows your Master Data permissions. Station staff uses the current staff lookup API: station accounts receive active staff from their own station, global readers keep their existing scope, and access denied clears the staff cache. Staff changes refresh only the Station staff card; employee invitations still load current eligible staff for the selected flight. Ask an administrator to review access errors. Signing out or changing accounts clears the shared catalog cache."
+        "body": "Catalog access follows your Master Data permissions. Station staff uses the current staff lookup API: station accounts receive active staff from their own station, global readers keep their existing scope, and access denied clears the staff cache. Ordinary staff changes refresh only the Station staff card; station or access changes also recheck flights. Employee invitations still load current eligible staff for the selected flight. Ask an administrator to review access errors. Signing out or changing accounts clears the shared catalog cache."
       }
     ],
     "callouts": [
       {
         "tone": "info",
         "title": "Catalog caching and flight access",
-        "body": "Shared catalog synchronization does not queue work orders or other changes. Loading current flights, opening flight details, and sending employee invitations still require a connection."
+        "body": "Synchronization does not queue work orders or other changes. Flight caches contain only previously authorized basic data, and denied or no-longer-visible flights are removed during online revalidation. Sending employee invitations and opening details never saved online require a connection."
       }
     ],
     "sectionId": "android",

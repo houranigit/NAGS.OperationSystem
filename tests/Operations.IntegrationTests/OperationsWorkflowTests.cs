@@ -422,6 +422,206 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     }
 
     [Fact]
+    public async Task Flight_sync_schedule_and_batch_publish_one_scoped_refresh_after_commit()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var otherRefs = await SetupMasterDataAsync(admin);
+        var (own, ownStaffId) = await CreateStaffLoginAsync(admin, refs);
+        var (other, _) = await CreateStaffLoginAsync(admin, otherRefs);
+        await using var adminLive = await CatalogLiveSubscription.ConnectAsync(factory, admin);
+        await using var ownLive = await CatalogLiveSubscription.ConnectAsync(factory, own);
+        await using var otherLive = await CatalogLiveSubscription.ConnectAsync(factory, other);
+        async Task ExpectFlight() => await Task.WhenAll(adminLive.ExpectRefreshAsync("flights"),
+            ownLive.ExpectRefreshAsync("flights"), otherLive.ExpectRefreshAsync("flights"));
+        async Task ExpectNone() => await Task.WhenAll(adminLive.ExpectNoRefreshAsync(),
+            ownLive.ExpectNoRefreshAsync(), otherLive.ExpectNoRefreshAsync());
+
+        var id = await ScheduleFlightAsync(admin, refs, "SYNC901", assignedStaffIds: [ownStaffId]);
+        await ExpectFlight();
+        (await FlightIdsAsync(admin)).ShouldContain(id);
+        (await FlightIdsAsync(own)).ShouldContain(id);
+        (await FlightIdsAsync(other)).ShouldNotContain(id);
+        await ExpectNone();
+
+        var invalid = await admin.PostAsJsonAsync($"{Base}/flights", new
+        {
+            customerId = refs.CustomerId, stationId = refs.StationId, operationTypeId = refs.OperationTypeId,
+            flightNumber = "SYNC902", scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
+            scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4), aircraftTypeId = (Guid?)null,
+            plannedServiceIds = Array.Empty<Guid>(), assignedStaffMemberIds = Array.Empty<Guid>()
+        });
+        invalid.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        await ExpectNone();
+
+        var dates = new[] { new DateOnly(2026, 11, 10), new DateOnly(2026, 11, 12), new DateOnly(2026, 11, 10) };
+        var bulk = await admin.PostAsJsonAsync($"{Base}/flights/bulk", new
+        {
+            customerId = refs.CustomerId, stationId = refs.StationId, operationTypeId = refs.OperationTypeId,
+            flightNumber = "SYNC903", scheduledArrivalTimeUtc = new TimeOnly(10, 0),
+            scheduledDepartureTimeUtc = new TimeOnly(12, 0), selectedDates = dates,
+            aircraftTypeId = (Guid?)null, plannedServiceIds = new[] { refs.ServiceId },
+            assignedStaffMemberIds = new[] { ownStaffId }
+        });
+        bulk.StatusCode.ShouldBe(HttpStatusCode.OK, await bulk.Content.ReadAsStringAsync());
+        var ids = (await bulk.Content.ReadFromJsonAsync<List<Guid>>())!;
+        ids.Count.ShouldBe(2);
+        await ExpectFlight();
+        var ownFlights = await FlightIdsAsync(own);
+        var otherFlights = await FlightIdsAsync(other);
+        foreach (var flightId in ids)
+        {
+            ownFlights.ShouldContain(flightId);
+            otherFlights.ShouldNotContain(flightId);
+            (await GetFlightAsync(admin, flightId)).FlightNumber.ShouldBe("SYNC903");
+        }
+        // A batch is one invalidation, never one event per created row or another dataset.
+        await ExpectNone();
+    }
+
+    [Fact]
+    public async Task Flight_sync_updates_numbers_rosters_and_invitations_without_failure_or_noop_hints()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var otherRefs = await SetupMasterDataAsync(admin);
+        var inviteRole = await CreateInviteRoleAsync(admin);
+        var (first, firstStaffId) = await CreateStaffLoginAsync(admin, refs, inviteRole);
+        var (second, secondStaffId) = await CreateStaffLoginAsync(admin, refs, inviteRole);
+        var (other, otherStaffId) = await CreateStaffLoginAsync(admin, otherRefs);
+        var id = await ScheduleFlightAsync(admin, refs, "SYNC910", assignedStaffIds: [firstStaffId]);
+        var original = await GetFlightAsync(admin, id);
+        await using var adminLive = await CatalogLiveSubscription.ConnectAsync(factory, admin);
+        await using var firstLive = await CatalogLiveSubscription.ConnectAsync(factory, first);
+        await using var secondLive = await CatalogLiveSubscription.ConnectAsync(factory, second);
+        await using var otherLive = await CatalogLiveSubscription.ConnectAsync(factory, other);
+        async Task ExpectFlight() => await Task.WhenAll(adminLive.ExpectRefreshAsync("flights"),
+            firstLive.ExpectRefreshAsync("flights"), secondLive.ExpectRefreshAsync("flights"), otherLive.ExpectRefreshAsync("flights"));
+        async Task ExpectNone() => await Task.WhenAll(adminLive.ExpectNoRefreshAsync(),
+            firstLive.ExpectNoRefreshAsync(), secondLive.ExpectNoRefreshAsync(), otherLive.ExpectNoRefreshAsync());
+
+        var arrival = original.ScheduledArrivalUtc.AddHours(1);
+        IReadOnlyList<Guid> services = [refs.ServiceId];
+        IReadOnlyList<Guid> roster = [firstStaffId];
+        object PlanningBody() => new
+        {
+            customerId = refs.CustomerId, stationId = refs.StationId, operationTypeId = refs.OperationTypeId,
+            scheduledArrivalUtc = arrival, scheduledDepartureUtc = arrival.AddHours(2),
+            aircraftTypeId = refs.AircraftTypeId, plannedServiceIds = services, assignedStaffMemberIds = roster
+        };
+        (await FlightMutationAsync(admin, HttpMethod.Put, id, null, PlanningBody(), original.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectFlight();
+        var changed = await GetFlightAsync(admin, id);
+        changed.ScheduledArrivalUtc.ShouldBe(arrival);
+        (await FlightMutationAsync(admin, HttpMethod.Put, id, null, PlanningBody(), changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectNone();
+
+        changed = await GetFlightAsync(admin, id);
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "SYNC911" }, changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectFlight();
+        changed = await GetFlightAsync(admin, id);
+        changed.FlightNumber.ShouldBe("SYNC911");
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "SYNC911" }, changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectNone();
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "SYNC912" }, original.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        await ExpectNone();
+
+        changed = await GetFlightAsync(admin, id);
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "assign", new { staffMemberIds = new[] { secondStaffId } }, changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectFlight();
+        (await FlightIdsAsync(first)).ShouldNotContain(id);
+        (await first.GetAsync($"{Base}/flights/{id}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await FlightIdsAsync(second)).ShouldContain(id);
+        (await FlightIdsAsync(other)).ShouldNotContain(id);
+        changed = await GetFlightAsync(admin, id);
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "assign", new { staffMemberIds = new[] { secondStaffId } }, changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectNone();
+
+        changed = await GetFlightAsync(second, id);
+        using (var invitation = InvitationRequest(id, [firstStaffId], changed.RowVersion))
+            (await second.SendAsync(invitation)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectFlight();
+        (await FlightIdsAsync(first)).ShouldContain(id);
+        (await GetFlightAsync(second, id)).AssignedEmployees.Select(employee => employee.StaffMemberId)
+            .ShouldBe([firstStaffId, secondStaffId], ignoreOrder: true);
+        // Repeating an already accepted invite remains a no-op even with the earlier version.
+        using (var invitation = InvitationRequest(id, [firstStaffId], changed.RowVersion))
+            (await second.SendAsync(invitation)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectNone();
+
+        changed = await GetFlightAsync(admin, id);
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "assign", new { staffMemberIds = new[] { otherStaffId } }, changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        await ExpectNone();
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "assign", new { staffMemberIds = Array.Empty<Guid>() }, original.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        await ExpectNone();
+
+        services = [WellKnownMasterDataIds.AircraftPerLandingService];
+        roster = [];
+        changed = await GetFlightAsync(admin, id);
+        (await FlightMutationAsync(admin, HttpMethod.Put, id, null, PlanningBody(), changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectFlight();
+        (await GetFlightAsync(first, id)).IsPerLanding.ShouldBeTrue();
+        (await FlightIdsAsync(second)).ShouldContain(id);
+        (await FlightIdsAsync(other)).ShouldNotContain(id);
+        services = [refs.ServiceId];
+        changed = await GetFlightAsync(admin, id);
+        (await FlightMutationAsync(admin, HttpMethod.Put, id, null, PlanningBody(), changed.RowVersion))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectFlight();
+        (await FlightIdsAsync(first)).ShouldNotContain(id);
+        (await FlightIdsAsync(second)).ShouldNotContain(id);
+        (await FlightIdsAsync(admin)).ShouldContain(id);
+        await ExpectNone();
+    }
+
+    [Fact]
+    public async Task Flight_sync_visibility_rechecks_after_staff_moves_and_station_access_changes()
+    {
+        var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var firstRefs = await SetupMasterDataAsync(admin);
+        var secondRefs = await SetupMasterDataAsync(admin);
+        var (first, firstStaffId) = await CreateStaffLoginAsync(admin, firstRefs);
+        var (second, _) = await CreateStaffLoginAsync(admin, secondRefs);
+        var assigned = await ScheduleFlightAsync(admin, firstRefs, "SYNC920", assignedStaffIds: [firstStaffId]);
+        var firstPerLanding = await ScheduleFlightAsync(admin, firstRefs, "SYNC921", [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var secondPerLanding = await ScheduleFlightAsync(admin, secondRefs, "SYNC922", [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var unassigned = await ScheduleFlightAsync(admin, secondRefs, "SYNC923");
+        (await FlightIdsAsync(first)).ShouldBe([assigned, firstPerLanding], ignoreOrder: true);
+        await using var firstLive = await CatalogLiveSubscription.ConnectAsync(factory, first);
+        await using var secondLive = await CatalogLiveSubscription.ConnectAsync(factory, second);
+        async Task ExpectScopeChange() => await Task.WhenAll(
+            firstLive.ExpectRefreshesAsync("staff-members", "flights"), secondLive.ExpectRefreshesAsync("staff-members", "flights"));
+
+        (await ReassignStaffAsync(admin, firstStaffId, secondRefs.StationId)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await ExpectScopeChange();
+        var visible = await FlightIdsAsync(first);
+        visible.ShouldContain(secondPerLanding);
+        visible.ShouldNotContain(assigned);
+        visible.ShouldNotContain(firstPerLanding);
+        visible.ShouldNotContain(unassigned);
+        (await first.GetAsync($"{Base}/flights/{assigned}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await FlightIdsAsync(second)).ShouldContain(secondPerLanding);
+
+        await SetCatalogActiveAsync(admin, "stations", secondRefs.StationId, active: false);
+        await ExpectScopeChange();
+        (await first.GetAsync($"{Base}/flights")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await second.GetAsync($"{Base}/flights")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        // Global readers retain the existing API scope; the hint itself contains no flight IDs.
+        (await FlightIdsAsync(admin)).ShouldContain(assigned);
+        await Task.WhenAll(firstLive.ExpectNoRefreshAsync(), secondLive.ExpectNoRefreshAsync());
+    }
+
+    [Fact]
     public async Task Shared_catalog_options_keep_flight_and_lookup_permissions_separate()
     {
         using var anonymous = factory.CreateClient();
@@ -691,7 +891,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     }
 
     [Fact]
-    public async Task Station_staff_mutations_refresh_only_staff_after_commit_and_preserve_both_station_views()
+    public async Task Station_staff_mutations_refresh_staff_and_recheck_flight_visibility_after_commit()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var first = await SetupMasterDataAsync(admin);
@@ -701,8 +901,9 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var (secondClient, _) = await CreateStaffLoginAsync(admin, second, lookupRole);
         await using var firstLive = await CatalogLiveSubscription.ConnectAsync(factory, firstClient);
         await using var secondLive = await CatalogLiveSubscription.ConnectAsync(factory, secondClient);
-        async Task ExpectRefresh() => await Task.WhenAll(
-            firstLive.ExpectRefreshAsync("staff-members"), secondLive.ExpectRefreshAsync("staff-members"));
+        async Task ExpectRefresh(bool scopeChanged = false) => await Task.WhenAll(
+            firstLive.ExpectRefreshesAsync(scopeChanged ? ["staff-members", "flights"] : ["staff-members"]),
+            secondLive.ExpectRefreshesAsync(scopeChanged ? ["staff-members", "flights"] : ["staff-members"]));
         async Task ExpectNone() => await Task.WhenAll(firstLive.ExpectNoRefreshAsync(), secondLive.ExpectNoRefreshAsync());
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var name = $"Live staff {suffix}";
@@ -738,7 +939,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         (await UpdateCatalogAsync(admin, "staff-members", id, staleBody, originalVersion)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
         await ExpectNone();
         (await ReassignStaffAsync(admin, id, second.StationId)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        await ExpectRefresh();
+        await ExpectRefresh(scopeChanged: true);
         (await CatalogOptionsAsync(firstClient, "staff-members")).EnumerateArray()
             .ShouldNotContain(option => option.GetProperty("id").GetGuid() == id);
         FindOption(await CatalogOptionsAsync(secondClient, "staff-members"), id)
@@ -747,7 +948,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         await ExpectNone();
 
         await SetCatalogActiveAsync(admin, "staff-members", id, active: false);
-        await ExpectRefresh();
+        await ExpectRefresh(scopeChanged: true);
         (await CatalogOptionsAsync(secondClient, "staff-members")).EnumerateArray()
             .ShouldNotContain(option => option.GetProperty("id").GetGuid() == id);
         await SetCatalogActiveAsync(admin, "staff-members", id, active: false);
@@ -758,14 +959,14 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         (await UpdateCatalogAsync(admin, "staff-members", id, Body(), version)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await ExpectNone();
         await SetCatalogActiveAsync(admin, "staff-members", id, active: true);
-        await ExpectRefresh();
+        await ExpectRefresh(scopeChanged: true);
         FindOption(await CatalogOptionsAsync(secondClient, "staff-members"), id).GetProperty("fullName").GetString().ShouldBe(name);
         await SetCatalogActiveAsync(admin, "staff-members", id, active: true);
         await ExpectNone();
     }
 
     [Fact]
-    public async Task Station_staff_option_dependencies_and_embedded_creation_publish_only_staff_refreshes()
+    public async Task Station_staff_option_dependencies_refresh_affected_data_and_embedded_staff()
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -787,11 +988,11 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await live.ExpectNoRefreshAsync();
         await SetCatalogActiveAsync(admin, "stations", refs.StationId, active: false);
-        await live.ExpectRefreshAsync("staff-members");
+        await live.ExpectRefreshesAsync("staff-members", "flights");
         await SetCatalogActiveAsync(admin, "stations", refs.StationId, active: false);
         await live.ExpectNoRefreshAsync();
         await SetCatalogActiveAsync(admin, "stations", refs.StationId, active: true);
-        await live.ExpectRefreshAsync("staff-members");
+        await live.ExpectRefreshesAsync("staff-members", "flights");
 
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var manpowerName = $"Live manpower {suffix}";
@@ -898,15 +1099,22 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             }
         }
 
-        public async Task ExpectRefreshAsync(string catalog)
+        public Task ExpectRefreshAsync(string table) => ExpectRefreshesAsync(table);
+
+        public async Task ExpectRefreshesAsync(params string[] tables)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var change = await changes.Reader.ReadAsync(timeout.Token);
-            change.Table.ShouldBe(catalog);
-            change.Op.ShouldBe(MobileSyncOps.Refresh);
-            change.Audience.ShouldBe(MobileSyncAudience.AllStations);
-            change.EntityId.ShouldBeNull();
-            change.Payload.ShouldBeNull();
+            var received = new List<string>();
+            foreach (var _ in tables)
+            {
+                var change = await changes.Reader.ReadAsync(timeout.Token);
+                received.Add(change.Table);
+                change.Op.ShouldBe(MobileSyncOps.Refresh);
+                change.Audience.ShouldBe(MobileSyncAudience.AllStations);
+                change.EntityId.ShouldBeNull();
+                change.Payload.ShouldBeNull();
+            }
+            received.ShouldBe(tables, ignoreOrder: true);
         }
 
         public async Task ExpectNoRefreshAsync()
@@ -968,6 +1176,31 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         request.Headers.TryAddWithoutValidation("If-Match", detail!.RowVersion);
         var response = await admin.SendAsync(request);
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task<HashSet<Guid>> FlightIdsAsync(HttpClient client)
+    {
+        var ids = new HashSet<Guid>();
+        for (var page = 1; ; page++)
+        {
+            var response = await client.GetAsync($"{Base}/flights?page={page}&pageSize=200");
+            response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+            var result = (await response.Content.ReadFromJsonAsync<PagedList<FlightListItem>>())!;
+            foreach (var item in result.Items) ids.Add(item.Id);
+            if (result.Page * result.PageSize >= result.TotalCount) return ids;
+        }
+    }
+
+    private static async Task<HttpResponseMessage> FlightMutationAsync(
+        HttpClient client, HttpMethod method, Guid id, string? operation, object body, string rowVersion)
+    {
+        using var request = new HttpRequestMessage(method,
+            $"{Base}/flights/{id}{(operation is null ? string.Empty : "/" + operation)}")
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", rowVersion);
+        return await client.SendAsync(request);
     }
 
     private static HttpRequestMessage InvitationRequest(Guid flightId, IReadOnlyList<Guid> staffIds, string? rowVersion = null)

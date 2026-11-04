@@ -28,7 +28,7 @@ import com.nags.operations.ui.flights.FlightsViewModel
 @Composable
 fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
     val busy = state.isInviting || state.isLoadingInvitations
-    val canSend = !busy && state.invitationOptionsLoaded && state.canInviteEmployees &&
+    val canSend = state.isOnline && state.detail?.fromCache == false && !busy && state.invitationOptionsLoaded && state.canInviteEmployees &&
         state.detail?.isPerLanding == false && state.selectedInvitationIds.isNotEmpty() &&
         state.availableInvitationIds.containsAll(state.selectedInvitationIds)
     AlertDialog(
@@ -37,6 +37,9 @@ fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.flights_invite_hint))
+                if (!state.isOnline || state.detail?.fromCache == true) {
+                    Text(stringResource(R.string.flights_invite_online_required), color = MaterialTheme.colorScheme.error)
+                }
                 if (state.invitationStale) {
                     Text(stringResource(R.string.flights_invite_stale), color = MaterialTheme.colorScheme.error)
                 }
@@ -54,7 +57,7 @@ fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
                     items(state.invitationOptions, key = { it.staffMemberId }) { employee ->
                         val selected = employee.staffMemberId in state.selectedInvitationIds
                         val available = employee.staffMemberId in state.availableInvitationIds
-                        val enabled = !busy && (available || selected)
+                        val enabled = state.isOnline && !busy && (available || selected)
                         Row(modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) {
                             viewModel.selectInvitation(employee.staffMemberId, !selected)
                         }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -71,7 +74,7 @@ fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
                         }
                     }
                 }
-                TextButton(onClick = viewModel::refreshInvitations, enabled = !busy) {
+                TextButton(onClick = viewModel::refreshInvitations, enabled = state.isOnline && !busy) {
                     Text(stringResource(R.string.flights_invite_refresh))
                 }
             }

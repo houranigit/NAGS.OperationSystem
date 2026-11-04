@@ -1,6 +1,7 @@
 package com.nags.operations.data.realtime
 
 import com.nags.operations.data.SharedCatalog
+import com.nags.operations.data.sync.SyncTarget
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -9,17 +10,17 @@ import org.junit.Test
 
 class CatalogRealtimeDiagnosticsTest {
     @Test
-    fun onlyAcceptedSharedCatalogChangesAdvanceTheLastEventTime() {
+    fun onlyAcceptedReadDatasetChangesAdvanceTheLastEventTime() {
         val diagnostics = CatalogRealtimeDiagnostics()
         val connection = diagnostics.beginAttempt(reconnecting = false)
         assertNull(diagnostics.lastEventAt.value)
         assertNull(diagnostics.acceptChange(connection, "customers", 100))
         assertTrue(diagnostics.connected(connection))
         assertNull(diagnostics.lastEventAt.value)
-        assertNull(diagnostics.acceptChange(connection, "flights", 200))
+        assertEquals(SyncTarget.Flights, diagnostics.acceptChange(connection, "flights", 200))
         assertNull(diagnostics.acceptChange(connection, "work-orders", 200))
         assertNull(diagnostics.acceptChange(connection, null, 200))
-        assertEquals(SharedCatalog.Customers, diagnostics.acceptChange(connection, "customers", 300))
+        assertEquals(SyncTarget.Catalog(SharedCatalog.Customers), diagnostics.acceptChange(connection, "customers", 300))
         assertEquals(300L, diagnostics.lastEventAt.value)
 
         // Network loss changes the badge without erasing the useful last-event timestamp.
@@ -50,7 +51,7 @@ class CatalogRealtimeDiagnosticsTest {
         assertNull(diagnostics.acceptChange(first, "services", 300))
         assertEquals(RealtimeChannelState.Connected, diagnostics.state.value)
         assertEquals(100L, diagnostics.lastEventAt.value)
-        assertEquals(SharedCatalog.AircraftTypes, diagnostics.acceptChange(second, "aircraft-types", 400))
+        assertEquals(SyncTarget.Catalog(SharedCatalog.AircraftTypes), diagnostics.acceptChange(second, "aircraft-types", 400))
         assertEquals(400L, diagnostics.lastEventAt.value)
     }
 
@@ -79,8 +80,10 @@ class CatalogRealtimeDiagnosticsTest {
         diagnostics.connected(connection)
 
         SharedCatalog.entries.forEachIndexed { index, catalog ->
-            assertEquals(catalog, diagnostics.acceptChange(connection, catalog.storageKey, index.toLong()))
+            assertEquals(SyncTarget.Catalog(catalog), diagnostics.acceptChange(connection, catalog.storageKey, index.toLong()))
         }
+        assertNull(diagnostics.acceptChange(connection, "flights-per-landing", 100))
+        assertNull(diagnostics.acceptChange(connection, "flights-ad-hoc", 100))
         assertNull(diagnostics.acceptChange(connection, "unknown-catalog", 100))
         assertEquals(SharedCatalog.entries.lastIndex.toLong(), diagnostics.lastEventAt.value)
     }

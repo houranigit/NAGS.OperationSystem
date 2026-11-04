@@ -97,10 +97,10 @@
     <string name="catalog_station_staff">Station staff</string>
     <string name="sync_center_title">Sync Center</string>
     <string name="sync_center_open">Open Sync Center</string>
-    <string name="sync_center_subtitle">Shared catalog data saved for offline use.</string>
+    <string name="sync_center_subtitle">Basic flights and shared catalog data saved for offline use.</string>
     <string name="sync_center_cached_data">Cached data</string>
     <string name="sync_center_live_channel">Live channel</string>
-    <string name="sync_center_live_hint">Live updates for shared catalogs.</string>
+    <string name="sync_center_live_hint">Live updates for flights and shared catalogs.</string>
     <string name="sync_center_connected">Connected</string>
     <string name="sync_center_connecting">Connecting…</string>
     <string name="sync_center_reconnecting">Reconnecting…</string>
@@ -127,4 +127,9 @@
         <item quantity="one">%d row cached</item>
         <item quantity="other">%d rows cached</item>
     </plurals>
+    <string name="flights_cached_list">Showing saved flights. Reconnect to check for changes.</string>
+    <string name="flights_cached_detail">Saved details from the last successful read.</string>
+    <string name="flights_offline_hint">Offline. Saved flights are available; invitations require a connection.</string>
+    <string name="flights_invite_online_required">Connect to load current flight details and invite employees.</string>
+    <string name="flights_sync_failed">Could not refresh flights. Saved data is kept; try again when connected.</string>
 </resources>

@@ -1,5 +1,6 @@
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
+using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
@@ -44,7 +45,8 @@ public sealed class ScheduleFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IUserContext user,
-    TimeProvider timeProvider) : ICommandHandler<ScheduleFlightCommand, Guid>
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync) : ICommandHandler<ScheduleFlightCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(ScheduleFlightCommand request, CancellationToken cancellationToken)
     {
@@ -91,6 +93,7 @@ public sealed class ScheduleFlightCommandHandler(
         db.Flights.Add(flight.Value);
 
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return flight.Value.Id;
     }
 }
@@ -129,7 +132,8 @@ public sealed class ScheduleFlightsCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IUserContext user,
-    TimeProvider timeProvider) : ICommandHandler<ScheduleFlightsCommand, IReadOnlyList<Guid>>
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync) : ICommandHandler<ScheduleFlightsCommand, IReadOnlyList<Guid>>
 {
     public async Task<Result<IReadOnlyList<Guid>>> Handle(ScheduleFlightsCommand request, CancellationToken cancellationToken)
     {
@@ -215,6 +219,7 @@ public sealed class ScheduleFlightsCommandHandler(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return ids;
     }
 
@@ -330,7 +335,8 @@ public sealed class UpdateScheduledFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IUserContext user,
-    TimeProvider timeProvider) : ICommandHandler<UpdateScheduledFlightCommand>
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync) : ICommandHandler<UpdateScheduledFlightCommand>
 {
     public async Task<Result> Handle(UpdateScheduledFlightCommand request, CancellationToken cancellationToken)
     {
@@ -378,6 +384,12 @@ public sealed class UpdateScheduledFlightCommandHandler(
             }
         }
 
+        var planningChanged = flight.Schedule != schedule.Value || flight.AircraftType != aircraft.Value
+            || !flight.PlannedServices.Select(service => service.Service).OrderBy(service => service.ServiceId)
+                .SequenceEqual(services.Value.OrderBy(service => service.ServiceId))
+            || (employees is not null && !flight.AssignedEmployees.Select(employee => employee.Employee)
+                .OrderBy(employee => employee.StaffMemberId)
+                .SequenceEqual(employees.OrderBy(employee => employee.StaffMemberId)));
         var update = flight.UpdatePlanning(schedule.Value, aircraft.Value, services.Value, employees, timeProvider.GetUtcNow());
         if (update.IsFailure)
             return update.Error;
@@ -386,6 +398,8 @@ public sealed class UpdateScheduledFlightCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (planningChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -413,7 +427,8 @@ public sealed class ChangeFlightNumberCommandValidator : AbstractValidator<Chang
 public sealed class ChangeFlightNumberCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
-    TimeProvider timeProvider) : ICommandHandler<ChangeFlightNumberCommand>
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync) : ICommandHandler<ChangeFlightNumberCommand>
 {
     public async Task<Result> Handle(ChangeFlightNumberCommand request, CancellationToken cancellationToken)
     {
@@ -435,6 +450,7 @@ public sealed class ChangeFlightNumberCommandHandler(
         if (number.IsFailure)
             return number.Error;
 
+        var numberChanged = flight.FlightNumber != number.Value;
         var change = flight.ChangeFlightNumber(number.Value, timeProvider.GetUtcNow());
         if (change.IsFailure)
             return change.Error;
@@ -443,6 +459,8 @@ public sealed class ChangeFlightNumberCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (numberChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -471,7 +489,8 @@ public sealed class AssignEmployeesCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
-    TimeProvider timeProvider) : ICommandHandler<AssignEmployeesCommand>
+    TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync) : ICommandHandler<AssignEmployeesCommand>
 {
     public async Task<Result> Handle(AssignEmployeesCommand request, CancellationToken cancellationToken)
     {
@@ -496,6 +515,9 @@ public sealed class AssignEmployeesCommandHandler(
         if (employees.IsFailure)
             return employees.Error;
 
+        var rosterChanged = !flight.AssignedEmployees.Select(employee => employee.Employee)
+            .OrderBy(employee => employee.StaffMemberId)
+            .SequenceEqual(employees.Value.OrderBy(employee => employee.StaffMemberId));
         var now = timeProvider.GetUtcNow();
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
@@ -506,6 +528,8 @@ public sealed class AssignEmployeesCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (rosterChanged)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

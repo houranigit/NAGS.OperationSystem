@@ -4,7 +4,7 @@ import android.util.Log
 import com.microsoft.signalr.HubConnection
 import com.microsoft.signalr.HubConnectionBuilder
 import com.microsoft.signalr.HubConnectionState
-import com.nags.operations.data.SharedCatalog
+import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.data.api.HttpClientFactory
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Single
@@ -31,11 +31,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** Catalog invalidation hints only. Flight and retired mutation messages are never applied. */
+/** Invalidation hints for read-only flights and catalogs; retired mutation messages stay ignored. */
 class CatalogRealtimeChannel(
     private val accessTokens: Flow<String?>,
     private val online: StateFlow<Boolean>,
-    private val requestCatalogRefresh: (SharedCatalog) -> Unit,
+    private val requestRefresh: (SyncTarget) -> Unit,
     private val requestFullRefresh: () -> Unit,
     private val appScope: CoroutineScope,
 ) {
@@ -86,7 +86,7 @@ class CatalogRealtimeChannel(
                 connection.on("change", { change ->
                     if (enabled) {
                         diagnostics.acceptChange(attemptId, change.table, System.currentTimeMillis())
-                            ?.let(requestCatalogRefresh)
+                            ?.let(requestRefresh)
                     }
                 }, CatalogChangeEnvelope::class.java)
                 connection.start().awaitCompletion()
@@ -169,13 +169,13 @@ internal class CatalogRealtimeDiagnostics {
         if (clearLastEvent) _lastEventAt.value = null
     }
 
-    fun acceptChange(attemptId: Long, table: String?, receivedAt: Long): SharedCatalog? = synchronized(lock) {
+    fun acceptChange(attemptId: Long, table: String?, receivedAt: Long): SyncTarget? = synchronized(lock) {
         if (attemptId != generation || _state.value != RealtimeChannelState.Connected) {
             return null
         }
-        val catalog = SharedCatalog.entries.firstOrNull { it.storageKey == table } ?: return null
+        val target = SyncTarget.fromTable(table) ?: return null
         _lastEventAt.value = receivedAt
-        catalog
+        target
     }
 }
 

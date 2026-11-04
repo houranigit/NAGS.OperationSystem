@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Serializes catalog refresh hints and keeps a periodic fallback for changes without broadcasts. */
+/** Serializes read-only cache refreshes and keeps a periodic fallback for missed broadcasts. */
 class CatalogSyncScheduler(
     private val accessTokens: Flow<String?>,
     private val online: StateFlow<Boolean>,
@@ -27,10 +27,11 @@ class CatalogSyncScheduler(
     private val clearCatalogs: suspend () -> Unit,
     private val appScope: CoroutineScope,
     private val pollIntervalMs: Long = 5L * 60L * 1_000L,
+    private val refreshFlightCache: suspend () -> Unit = {},
 ) {
     private val requests = Channel<Unit>(Channel.CONFLATED)
     private val lifecycleLock = Any()
-    private val pendingCatalogs = mutableSetOf<SharedCatalog>()
+    private val pendingTargets = mutableSetOf<SyncTarget>()
     @Volatile private var enabled = false
     private var loop: Job? = null
 
@@ -59,18 +60,13 @@ class CatalogSyncScheduler(
                     coroutineScope {
                         launch {
                             for (request in requests) {
-                                val catalogs = synchronized(lifecycleLock) {
-                                    pendingCatalogs.toSet().also { pendingCatalogs.clear() }
+                                val targets = synchronized(lifecycleLock) {
+                                    pendingTargets.toSet().also { pendingTargets.clear() }
                                 }
-                                if (catalogs.isEmpty()) continue
-                                try {
-                                    refreshCatalogs(catalogs)
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (_: Exception) {
-                                    // The repository retains per-catalog errors and successful rows.
-                                    // A failed refresh must not stop later reconnect/manual retries.
-                                }
+                                val catalogs = targets.filterIsInstance<SyncTarget.Catalog>()
+                                    .mapTo(mutableSetOf()) { it.catalog }
+                                if (catalogs.isNotEmpty()) runRefresh { refreshCatalogs(catalogs) }
+                                if (SyncTarget.Flights in targets) runRefresh { refreshFlightCache() }
                             }
                         }
                         while (true) {
@@ -82,18 +78,31 @@ class CatalogSyncScheduler(
         }
     }
 
-    /** Foreground/manual/session/reconnect refreshes recheck all shared catalogs. */
-    fun refreshNow() = enqueue(SharedCatalog.entries)
+    /** Foreground/manual/session/reconnect refreshes recheck every read-only dataset. */
+    fun refreshNow() = enqueue(SyncTarget.all)
 
-    /** Live hints merge affected catalogs into the pending batch without losing distinct changes. */
-    fun refreshCatalog(catalog: SharedCatalog) = enqueue(setOf(catalog))
+    fun refreshCatalog(catalog: SharedCatalog) = enqueue(setOf(SyncTarget.Catalog(catalog)))
 
-    private fun enqueue(catalogs: Collection<SharedCatalog>) {
+    fun refreshFlights() = enqueue(setOf(SyncTarget.Flights))
+
+    /** Live hints merge into the pending batch without losing distinct datasets. */
+    private fun enqueue(targets: Collection<SyncTarget>) {
         synchronized(lifecycleLock) {
             if (enabled) {
-                pendingCatalogs.addAll(catalogs)
+                pendingTargets.addAll(targets)
                 requests.trySend(Unit)
             }
+        }
+    }
+
+    private suspend fun runRefresh(refresh: suspend () -> Unit) {
+        try {
+            refresh()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // Each repository retains errors and successful snapshots. One failed dataset must
+            // not stop the other pending datasets or later manual/reconnect retries.
         }
     }
 
@@ -101,7 +110,7 @@ class CatalogSyncScheduler(
     suspend fun stop() {
         val job = synchronized(lifecycleLock) {
             enabled = false
-            pendingCatalogs.clear()
+            pendingTargets.clear()
             loop.also { loop = null }
         }
         job?.cancelAndJoin()

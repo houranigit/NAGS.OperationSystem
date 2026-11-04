@@ -104,10 +104,10 @@
     <string name="catalog_ata_chapters">فصول ATA</string>
     <string name="sync_center_title">مركز المزامنة</string>
     <string name="sync_center_open">فتح مركز المزامنة</string>
-    <string name="sync_center_subtitle">بيانات مرجعية مشتركة محفوظة للاستخدام دون اتصال.</string>
+    <string name="sync_center_subtitle">الرحلات الأساسية والبيانات المرجعية المحفوظة للاستخدام دون اتصال.</string>
     <string name="sync_center_cached_data">البيانات المحفوظة</string>
     <string name="sync_center_live_channel">القناة المباشرة</string>
-    <string name="sync_center_live_hint">تحديثات مباشرة للبيانات المرجعية المشتركة.</string>
+    <string name="sync_center_live_hint">تحديثات مباشرة للرحلات والبيانات المرجعية.</string>
     <string name="sync_center_connected">متصل</string>
     <string name="sync_center_connecting">جارٍ الاتصال…</string>
     <string name="sync_center_reconnecting">جارٍ إعادة الاتصال…</string>
@@ -139,4 +139,9 @@
         <item quantity="other">%d صف محفوظ</item>
     </plurals>
     <string name="catalog_station_staff">موظفو المحطة</string>
+    <string name="flights_cached_list">يتم عرض الرحلات المحفوظة. أعد الاتصال للتحقق من التغييرات.</string>
+    <string name="flights_cached_detail">تفاصيل محفوظة من آخر قراءة ناجحة.</string>
+    <string name="flights_offline_hint">غير متصل. تتوفر الرحلات المحفوظة؛ تتطلب دعوة الموظفين اتصالاً.</string>
+    <string name="flights_invite_online_required">اتصل لتحميل تفاصيل الرحلة الحالية ودعوة الموظفين.</string>
+    <string name="flights_sync_failed">تعذر تحديث الرحلات. تم الاحتفاظ بالبيانات المحفوظة؛ حاول عند الاتصال.</string>
 </resources>

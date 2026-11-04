@@ -13,11 +13,11 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
         LoginViewModel::class.java -> LoginViewModel(graph.authRepository)
-        FlightsViewModel::class.java -> FlightsViewModel(graph.flightsRepository, graph.authRepository)
+        FlightsViewModel::class.java -> FlightsViewModel(graph.flightsRepository, graph.authRepository, graph.networkMonitor)
         AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
         SyncCenterViewModel::class.java -> SyncCenterViewModel(
-            graph.sharedCatalogsRepository, graph.networkMonitor, graph.catalogConnectionState,
-            graph.lastCatalogEventAt, graph::refreshCatalogs,
+            graph.sharedCatalogsRepository, graph.flightsRepository, graph.networkMonitor, graph.catalogConnectionState,
+            graph.lastCatalogEventAt, graph::refreshCatalogs, graph.isSyncing,
         )
         NotificationsViewModel::class.java -> NotificationsViewModel(graph.notificationsRepository)
         else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")

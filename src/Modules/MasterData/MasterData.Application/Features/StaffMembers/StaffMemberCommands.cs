@@ -252,6 +252,9 @@ public sealed class UpdateStaffMemberCommandHandler(IMasterDataDbContext db, IMa
             if (staff.IsActive && (staff.FullName != previousFullName || staff.EmployeeId != previousEmployeeId
                 || staff.StationId != previousStationId || staff.ManpowerTypeId != previousManpowerTypeId))
                 mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+            // Moving an active caller changes which flights their current session may read.
+            if (staff.IsActive && staff.StationId != previousStationId)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -332,7 +335,10 @@ public sealed class ReassignStaffMemberStationCommandHandler(
 
         await transaction.CommitAsync(cancellationToken);
         if (staff.StationId != previousStationId)
+        {
             mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+            mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+        }
         return Result.Success();
     }
 }
@@ -368,7 +374,10 @@ public sealed class ActivateStaffMemberCommandHandler(IMasterDataDbContext db, I
         {
             await db.SaveChangesAsync(cancellationToken);
             if (staff.IsActive != wasActive)
+            {
                 mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+            }
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -414,7 +423,10 @@ public sealed class DeactivateStaffMemberCommandHandler(IMasterDataDbContext db,
         {
             await db.SaveChangesAsync(cancellationToken);
             if (staff.IsActive != wasActive)
+            {
                 mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+            }
         }
         catch (DbUpdateConcurrencyException)
         {

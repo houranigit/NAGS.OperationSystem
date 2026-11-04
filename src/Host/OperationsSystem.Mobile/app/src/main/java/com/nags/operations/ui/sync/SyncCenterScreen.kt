@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.BuildConfig
 import com.nags.operations.R
 import com.nags.operations.data.SharedCatalog
+import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.data.realtime.RealtimeChannelState
 import com.nags.operations.ui.theme.BrandRed
 import com.nags.operations.ui.theme.BrandRedDark
@@ -58,7 +59,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** The established Sync Center layout, limited to shared catalog cache diagnostics. */
+/** The established Sync Center layout for basic flight and shared catalog cache diagnostics. */
 @Composable
 fun SyncCenterScreen(
     viewModel: SyncCenterViewModel,
@@ -108,7 +109,7 @@ fun SyncCenterScreen(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            items(rows, key = { it.table.storageKey }) { row ->
+            items(rows, key = { it.target.storageKey }) { row ->
                 SyncRowCard(row)
             }
             item(key = "app-version") {
@@ -401,7 +402,7 @@ private fun SyncRowCard(row: SyncRowState) {
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = stringResource(catalogName(row.table)),
+                    text = stringResource(targetName(row.target)),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -434,7 +435,11 @@ private fun SyncRowCard(row: SyncRowState) {
                     .padding(12.dp),
             ) {
                 Text(
-                    text = stringResource(if (row.permissionDenied) R.string.catalog_sync_denied else R.string.catalog_sync_failed),
+                    text = stringResource(when {
+                        row.permissionDenied -> R.string.catalog_sync_denied
+                        row.target == SyncTarget.Flights -> R.string.flights_sync_failed
+                        else -> R.string.catalog_sync_failed
+                    }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     maxLines = 3,
@@ -512,6 +517,11 @@ private fun humanizeAge(ms: Long): String = when {
     ms < 3_600_000 -> stringResource(R.string.sync_center_minutes_ago, ms / 60_000)
     ms < 86_400_000 -> stringResource(R.string.sync_center_hours_ago, ms / 3_600_000)
     else -> stringResource(R.string.sync_center_days_ago, ms / 86_400_000)
+}
+
+private fun targetName(target: SyncTarget): Int = when (target) {
+    SyncTarget.Flights -> R.string.flights_title
+    is SyncTarget.Catalog -> catalogName(target.catalog)
 }
 
 private fun catalogName(kind: SharedCatalog): Int = when (kind) {

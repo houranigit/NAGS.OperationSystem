@@ -286,7 +286,10 @@ public sealed class ActivateStationCommandHandler(IMasterDataDbContext db, IMast
         {
             await db.SaveChangesAsync(cancellationToken);
             if (staffScopeChanged)
+            {
                 mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+            }
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -336,7 +339,10 @@ public sealed class DeactivateStationCommandHandler(IMasterDataDbContext db, IMa
         {
             await db.SaveChangesAsync(cancellationToken);
             if (staffScopeChanged)
+            {
                 mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+            }
         }
         catch (DbUpdateConcurrencyException)
         {

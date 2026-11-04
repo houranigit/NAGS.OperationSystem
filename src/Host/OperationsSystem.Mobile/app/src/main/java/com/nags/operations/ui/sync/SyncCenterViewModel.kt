@@ -3,10 +3,13 @@ package com.nags.operations.ui.sync
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.CatalogSyncStatus
+import com.nags.operations.data.FlightSyncStatus
 import com.nags.operations.data.SharedCatalog
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.realtime.RealtimeChannelState
 import com.nags.operations.data.repo.SharedCatalogsRepository
+import com.nags.operations.data.repo.FlightsRepository
+import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.ui.util.parseOffsetDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -15,9 +18,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 
-/** Shared-catalog snapshots and live connection diagnostics for the existing Sync Center. */
+/** Read-only flight/catalog cache snapshots and shared live connection diagnostics. */
 class SyncCenterViewModel internal constructor(
     statuses: Flow<List<CatalogSyncStatus>>,
     val isSyncing: StateFlow<Boolean>,
@@ -27,20 +31,24 @@ class SyncCenterViewModel internal constructor(
     private val requestRefresh: () -> Unit,
     coroutineScope: CoroutineScope? = null,
     private val clock: () -> Long = System::currentTimeMillis,
+    flightStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
+        flights: FlightsRepository,
         networkMonitor: NetworkMonitor,
         realtimeState: StateFlow<RealtimeChannelState>,
         lastRealtimeEventAt: StateFlow<Long?>,
         refreshCatalogs: () -> Unit,
+        syncing: StateFlow<Boolean>,
     ) : this(
         statuses = catalogs.observeStatus(),
-        isSyncing = catalogs.isSyncing,
+        isSyncing = syncing,
         isOnline = networkMonitor.isOnline,
         realtimeState = realtimeState,
         lastRealtimeEventAt = lastRealtimeEventAt,
         requestRefresh = refreshCatalogs,
+        flightStatuses = flights.syncStatus,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -51,8 +59,8 @@ class SyncCenterViewModel internal constructor(
         }
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000L), clock())
 
-    val rows: StateFlow<List<SyncRowState>> = combine(statuses, nowTick, ::catalogSyncRows)
-        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), catalogSyncRows(emptyList(), clock()))
+    val rows: StateFlow<List<SyncRowState>> = combine(statuses, flightStatuses, nowTick, ::mobileSyncRows)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), mobileSyncRows(emptyList(), FlightSyncStatus(), clock()))
 
     fun refreshNow() {
         if (isOnline.value && !isSyncing.value) requestRefresh()
@@ -60,7 +68,7 @@ class SyncCenterViewModel internal constructor(
 }
 
 data class SyncRowState(
-    val table: SharedCatalog,
+    val target: SyncTarget,
     val rowCount: Int,
     val lastSyncedAt: Long?,
     val lastDurationMs: Long?,
@@ -69,7 +77,7 @@ data class SyncRowState(
     val permissionDenied: Boolean,
 )
 
-/** Keep the former catalog card order; workflow caches are not part of shared catalogs. */
+/** Preserve the reference catalog order after the basic Flights card. */
 private val catalogDisplayOrder = listOf(
     SharedCatalog.AtaChapters,
     SharedCatalog.Services,
@@ -89,7 +97,7 @@ internal fun catalogSyncRows(statuses: List<CatalogSyncStatus>, now: Long): List
             runCatching { parseOffsetDateTime(value).toInstant().toEpochMilli() }.getOrNull()
         }
         SyncRowState(
-            table = kind,
+            target = SyncTarget.Catalog(kind),
             rowCount = status?.itemCount ?: 0,
             lastSyncedAt = lastSyncedAt,
             lastDurationMs = status?.lastDurationMs,
@@ -98,4 +106,20 @@ internal fun catalogSyncRows(statuses: List<CatalogSyncStatus>, now: Long): List
             permissionDenied = status?.permissionDenied ?: false,
         )
     }
+}
+
+internal fun mobileSyncRows(statuses: List<CatalogSyncStatus>, flights: FlightSyncStatus, now: Long): List<SyncRowState> {
+    val syncedAt = flights.lastSuccessUtc?.let { value ->
+        runCatching { parseOffsetDateTime(value).toInstant().toEpochMilli() }.getOrNull()
+    }
+    val flightRow = SyncRowState(
+        target = SyncTarget.Flights,
+        rowCount = flights.itemCount,
+        lastSyncedAt = syncedAt,
+        lastDurationMs = flights.lastDurationMs,
+        lastError = flights.error,
+        ageMs = syncedAt?.let { (now - it).coerceAtLeast(0L) },
+        permissionDenied = flights.permissionDenied,
+    )
+    return listOf(flightRow) + catalogSyncRows(statuses, now)
 }

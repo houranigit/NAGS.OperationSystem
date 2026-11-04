@@ -12,6 +12,7 @@ data class FlightPage(
     val totalPages: Int = 0,
     val hasPreviousPage: Boolean = false,
     val hasNextPage: Boolean = false,
+    @kotlinx.serialization.Transient val fromCache: Boolean = false,
 )
 
 @Serializable
@@ -63,6 +64,7 @@ data class FlightDetail(
     val createdAtUtc: String,
     val updatedAtUtc: String? = null,
     val rowVersion: String,
+    @kotlinx.serialization.Transient val fromCache: Boolean = false,
 )
 
 @Serializable

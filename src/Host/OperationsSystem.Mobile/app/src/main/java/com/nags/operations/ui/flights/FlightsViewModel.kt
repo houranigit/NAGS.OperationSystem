@@ -8,14 +8,25 @@ import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
+import com.nags.operations.data.FlightSyncStatus
+import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.FlightsRepository
 import com.nags.operations.data.userMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import java.io.IOException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import kotlinx.serialization.SerializationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -23,6 +34,8 @@ import kotlinx.coroutines.launch
 
 data class FlightsUiState(
     val items: List<FlightListItem> = emptyList(),
+    val isOnline: Boolean = true,
+    val isUsingCachedList: Boolean = false,
     val search: String = "",
     val page: Int = 1,
     val totalCount: Long = 0,
@@ -33,6 +46,7 @@ data class FlightsUiState(
     val permissionDenied: Boolean = false,
     val error: String? = null,
     val selectedFlightId: String? = null,
+    val lastUnavailableFlightId: String? = null,
     val detail: FlightDetail? = null,
     val isLoadingDetail: Boolean = false,
     val detailError: String? = null,
@@ -56,21 +70,77 @@ class FlightsViewModel internal constructor(
     private val fetchInvitationOptions: suspend (String) -> List<AssignedEmployee>,
     private val sendInvitations: suspend (String, List<String>, String) -> Unit,
     private val coroutineScope: CoroutineScope? = null,
+    private val online: StateFlow<Boolean> = MutableStateFlow(true),
+    cacheChanges: Flow<Unit> = emptyFlow(),
+    private val cacheStatus: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
+    private val clearCachedFlights: suspend () -> Unit = {},
 ) : ViewModel() {
-    constructor(repository: FlightsRepository, authRepository: AuthRepository) : this(
+    constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor) : this(
         fetchProfile = authRepository::profile,
         fetchFlights = repository::flights,
         fetchFlight = repository::flight,
         fetchInvitationOptions = repository::invitationOptions,
         sendInvitations = repository::invite,
+        online = networkMonitor.isOnline,
+        cacheChanges = repository.cacheChanges,
+        cacheStatus = repository.syncStatus,
+        clearCachedFlights = repository::clearLocal,
     )
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope
-    private val _state = MutableStateFlow(FlightsUiState())
+    private val _state = MutableStateFlow(FlightsUiState(isOnline = online.value))
     val state: StateFlow<FlightsUiState> = _state.asStateFlow()
     private var listJob: Job? = null
     private var detailJob: Job? = null
     private var invitationJob: Job? = null
+
+    init {
+        scope.launch {
+            online.collect { connected ->
+                if (!connected && !_state.value.isInviting) {
+                    invitationJob?.cancel()
+                    _state.update { it.copy(isLoadingInvitations = false, invitationOptionsLoaded = false) }
+                }
+                _state.update { it.copy(isOnline = connected) }
+            }
+        }
+        scope.launch {
+            // A failed first sync may revoke a live list even before a successful snapshot exists.
+            cacheStatus.map { it.permissionDenied }.distinctUntilChanged().collect { denied ->
+                if (denied) clearVisibleFlights(permissionDenied = true)
+            }
+        }
+        scope.launch {
+            cacheChanges.collect {
+                val cached = cacheStatus.first()
+                if (cached.permissionDenied || cached.lastSuccessUtc == null) {
+                    clearVisibleFlights(cached.permissionDenied || _state.value.permissionDenied)
+                } else {
+                    val current = _state.value
+                    loadList()
+                    current.selectedFlightId?.takeIf { !current.isInviting && !current.isLoadingInvitations && !current.isLoadingDetail }?.let { id ->
+                        if (current.isInvitationOpen && online.value) refreshInvitations() else openFlight(id)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun clearVisibleFlights(permissionDenied: Boolean) {
+        listJob?.cancel()
+        detailJob?.cancel()
+        invitationJob?.cancel()
+        _state.update {
+            it.copy(items = emptyList(), totalCount = 0, hasMore = false,
+                selectedFlightId = null, lastUnavailableFlightId = null, detail = null, detailError = null,
+                isLoading = false, isRefreshing = false, isLoadingMore = false, isLoadingDetail = false,
+                isInvitationOpen = false, isLoadingInvitations = false, isInviting = false,
+                invitationOptions = emptyList(), availableInvitationIds = emptySet(), selectedInvitationIds = emptySet(),
+                invitationOptionsLoaded = false, invitationError = null, invitationStale = false, invitationSent = false,
+                isUsingCachedList = false, canInviteEmployees = false, permissionDenied = permissionDenied,
+                error = if (permissionDenied) VIEW_PERMISSION_MESSAGE else null)
+        }
+    }
 
     fun setSearch(search: String) {
         if (search == _state.value.search) return
@@ -97,7 +167,7 @@ class FlightsViewModel internal constructor(
                 _state.update {
                     it.copy(items = result.items, page = result.page, totalCount = result.totalCount,
                         hasMore = result.hasNextPage, isLoading = false, isRefreshing = false,
-                        permissionDenied = false, error = null)
+                        permissionDenied = false, error = null, isUsingCachedList = result.fromCache)
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -117,7 +187,8 @@ class FlightsViewModel internal constructor(
                 _state.update {
                     it.copy(items = (it.items + result.items).distinctBy { flight -> flight.id },
                         page = result.page, totalCount = result.totalCount,
-                        hasMore = result.hasNextPage, isLoadingMore = false)
+                        hasMore = result.hasNextPage, isLoadingMore = false,
+                        isUsingCachedList = it.isUsingCachedList || result.fromCache)
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -130,7 +201,8 @@ class FlightsViewModel internal constructor(
     fun openFlight(id: String) {
         detailJob?.cancel()
         _state.update {
-            it.copy(selectedFlightId = id, detail = null, isLoadingDetail = true, detailError = null, invitationSent = false)
+            it.copy(selectedFlightId = id, lastUnavailableFlightId = null, detail = null,
+                isLoadingDetail = true, detailError = null, invitationSent = false)
         }
         detailJob = scope.launch {
             try {
@@ -143,7 +215,9 @@ class FlightsViewModel internal constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _state.update { it.copy(isLoadingDetail = false, detailError = error.userMessage()) }
+                if (!handleFlightAccessFailure(id, error, detailReadSucceeded = false)) {
+                    _state.update { it.copy(isLoadingDetail = false, detailError = error.userMessage()) }
+                }
             }
         }
     }
@@ -161,7 +235,7 @@ class FlightsViewModel internal constructor(
     fun openInvitations() {
         val current = _state.value
         val flight = current.detail ?: return
-        if (!current.canInviteEmployees || flight.isPerLanding) return
+        if (!current.canInviteEmployees || flight.isPerLanding || !online.value || flight.fromCache) return
         _state.update {
             it.copy(isInvitationOpen = true, selectedInvitationIds = emptySet(), invitationOptions = emptyList(),
                 availableInvitationIds = emptySet(), invitationError = null, invitationStale = false,
@@ -178,7 +252,7 @@ class FlightsViewModel internal constructor(
 
     fun selectInvitation(staffMemberId: String, selected: Boolean) {
         val current = _state.value
-        if (current.isInviting || current.isLoadingInvitations ||
+        if (!online.value || current.isInviting || current.isLoadingInvitations ||
             (selected && staffMemberId !in current.availableInvitationIds)) return
         _state.update {
             it.copy(selectedInvitationIds = if (selected) it.selectedInvitationIds + staffMemberId
@@ -188,16 +262,23 @@ class FlightsViewModel internal constructor(
 
     fun refreshInvitations() {
         val id = _state.value.selectedFlightId ?: return
-        if (_state.value.isInviting) return
+        if (_state.value.isInviting || !online.value || _state.value.detail?.fromCache == true) return
         invitationJob?.cancel()
         invitationJob = scope.launch { loadInvitationOptions(id) }
     }
 
     private suspend fun loadInvitationOptions(id: String) {
         _state.update { it.copy(isLoadingInvitations = true, invitationOptionsLoaded = false) }
+        var detailReadSucceeded = false
         try {
             val flight = fetchFlight(id)
+            detailReadSucceeded = true
             _state.update { it.copy(detail = flight) }
+            if (flight.fromCache || !online.value) {
+                _state.update { it.copy(isLoadingInvitations = false, invitationOptionsLoaded = false,
+                    invitationError = INVITE_ONLINE_MESSAGE) }
+                return
+            }
             val options = fetchInvitationOptions(id)
             val availableIds = options.map { it.staffMemberId }.toSet()
             _state.update {
@@ -211,14 +292,48 @@ class FlightsViewModel internal constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            _state.update { it.copy(isLoadingInvitations = false, invitationError = error.userMessage()) }
+            if (!handleFlightAccessFailure(id, error, detailReadSucceeded)) {
+                _state.update { it.copy(isLoadingInvitations = false, invitationError = error.userMessage()) }
+            }
         }
+    }
+
+    /** A denied flight read evicts one visible flight; denied invitation access keeps authorized details. */
+    private fun handleFlightAccessFailure(id: String, error: Exception, detailReadSucceeded: Boolean): Boolean {
+        if (error !is ApiException || error.statusCode !in setOf(401, 403, 404)) return false
+        if (error.statusCode == 401) {
+            clearVisibleFlights(permissionDenied = false)
+            return true
+        }
+        _state.update { current ->
+            if (detailReadSucceeded) {
+                if (current.selectedFlightId != id) current else current.copy(
+                    canInviteEmployees = false, isLoadingInvitations = false, isInviting = false,
+                    invitationOptionsLoaded = false, invitationOptions = emptyList(),
+                    availableInvitationIds = emptySet(), selectedInvitationIds = emptySet(),
+                    invitationError = error.userMessage(), invitationStale = false, invitationSent = false)
+            } else {
+                val rows = current.items.filterNot { it.id == id }
+                val removed = current.items.size - rows.size
+                val total = (current.totalCount - removed).coerceAtLeast(0)
+                val withoutRow = current.copy(items = rows, totalCount = total, lastUnavailableFlightId = id,
+                    hasMore = current.hasMore && total > 0)
+                if (current.selectedFlightId != id) withoutRow else withoutRow.copy(
+                    selectedFlightId = null, detail = null, isLoadingDetail = false,
+                    detailError = error.userMessage(), error = error.userMessage(),
+                    isInvitationOpen = false, isLoadingInvitations = false, isInviting = false,
+                    invitationOptionsLoaded = false, invitationOptions = emptyList(),
+                    availableInvitationIds = emptySet(), selectedInvitationIds = emptySet(),
+                    invitationError = null, invitationStale = false, invitationSent = false)
+            }
+        }
+        return true
     }
 
     fun inviteSelectedEmployees() {
         val current = _state.value
         val flight = current.detail ?: return
-        if (!current.isInvitationOpen || current.isInviting || current.isLoadingInvitations ||
+        if (!online.value || flight.fromCache || !current.isInvitationOpen || current.isInviting || current.isLoadingInvitations ||
             !current.invitationOptionsLoaded || !current.canInviteEmployees || flight.isPerLanding ||
             current.selectedInvitationIds.isEmpty() ||
             !current.availableInvitationIds.containsAll(current.selectedInvitationIds)) return
@@ -233,6 +348,7 @@ class FlightsViewModel internal constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                if (handleFlightAccessFailure(flight.id, error, detailReadSucceeded = true)) return@launch
                 _state.update { it.copy(isInviting = false, invitationError = error.userMessage(),
                     invitationStale = error is ApiException && error.statusCode == 409) }
                 if (error is ApiException && error.statusCode == 409) loadInvitationOptions(flight.id)
@@ -241,14 +357,36 @@ class FlightsViewModel internal constructor(
     }
 
     private suspend fun ensureViewPermission(): Boolean {
-        val profile = fetchProfile()
+        if (!online.value) {
+            _state.update { it.copy(canInviteEmployees = false) }
+            return true // The repository exposes only this signed-in owner's last authorized cache.
+        }
+        val profile = try {
+            fetchProfile()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            if (error is ApiException && error.statusCode in setOf(401, 403)) {
+                if (error.statusCode == 403) {
+                    _state.update { it.copy(permissionDenied = true, error = VIEW_PERMISSION_MESSAGE) }
+                }
+                clearCachedFlights()
+                throw error
+            }
+            if (error !is IOException && error !is HttpRequestTimeoutException && error !is SerializationException &&
+                !(error is ApiException && (error.statusCode in 500..599 || error.statusCode in setOf(408, 429)))) throw error
+            _state.update { it.copy(canInviteEmployees = false) }
+            return true // Server flight reads still authorize; transient failure may use owned cache.
+        }
         _state.update { it.copy(canInviteEmployees = INVITE_PERMISSION in profile.permissions) }
         if (VIEW_PERMISSION in profile.permissions) return true
         _state.update {
-            it.copy(items = emptyList(), detail = null, permissionDenied = true, totalCount = 0,
-                hasMore = false, isLoading = false, isRefreshing = false,
+            it.copy(items = emptyList(), detail = null, canInviteEmployees = false,
+                permissionDenied = true, totalCount = 0, hasMore = false,
+                isLoading = false, isRefreshing = false,
                 isLoadingMore = false, error = VIEW_PERMISSION_MESSAGE)
         }
+        clearCachedFlights()
         return false
     }
 
@@ -268,5 +406,6 @@ class FlightsViewModel internal constructor(
         const val INVITE_PERMISSION = "operations.flights.invite"
         const val VIEW_PERMISSION = "operations.flights.view"
         const val VIEW_PERMISSION_MESSAGE = "Your account does not have permission to view flights."
+        const val INVITE_ONLINE_MESSAGE = "Connect to load current flight details and invite employees."
     }
 }
