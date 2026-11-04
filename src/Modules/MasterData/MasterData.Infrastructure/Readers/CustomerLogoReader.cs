@@ -8,6 +8,20 @@ namespace MasterData.Infrastructure.Readers;
 /// <summary>Resolves customer logo content without exposing the owner's file-storage reference.</summary>
 public sealed class CustomerLogoReader(MasterDataDbContext db, IFileStorage storage) : ICustomerLogoReader
 {
+    public async Task<IReadOnlyDictionary<Guid, string>> GetLogoVersionsAsync(
+        IReadOnlyCollection<Guid> customerIds, CancellationToken cancellationToken)
+    {
+        if (customerIds.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        var references = await db.Customers.AsNoTracking()
+            .Where(customer => customerIds.Contains(customer.Id))
+            .Select(customer => new { customer.Id, customer.LogoFileReference })
+            .ToListAsync(cancellationToken);
+        return references.ToDictionary(customer => customer.Id,
+            customer => CustomerLogoVersions.FromReference(customer.LogoFileReference));
+    }
+
     public async Task<CustomerLogoReadContent?> GetLogoAsync(Guid customerId, CancellationToken cancellationToken)
     {
         var reference = await db.Customers.AsNoTracking()
@@ -25,7 +39,7 @@ public sealed class CustomerLogoReader(MasterDataDbContext db, IFileStorage stor
         await stream.CopyToAsync(memory, cancellationToken);
         var content = memory.ToArray();
         return ContentType(content) is { } contentType
-            ? new CustomerLogoReadContent(content, contentType)
+            ? new CustomerLogoReadContent(content, contentType, CustomerLogoVersions.FromReference(reference))
             : null;
     }
 

@@ -2,6 +2,7 @@ using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Seeding;
+using MasterData.Contracts.Readers;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
@@ -21,7 +22,7 @@ public sealed record GetFlightsQuery(
     DateTimeOffset? ToUtc = null,
     string? Sort = null) : IQuery<PagedResult<FlightListItemDto>>;
 
-public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos)
     : IQueryHandler<GetFlightsQuery, PagedResult<FlightListItemDto>>
 {
     public async Task<Result<PagedResult<FlightListItemDto>>> Handle(GetFlightsQuery request, CancellationToken cancellationToken)
@@ -45,7 +46,14 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 f.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
                 f.AircraftType == null ? null : f.AircraftType.Model, f.Customer.CustomerId))
             .ToListAsync(cancellationToken);
-        return paging.ToResult(items, total);
+        var customerIds = items.Select(item => item.CustomerId.GetValueOrDefault()).Distinct().ToArray();
+        var versions = await logos.GetLogoVersionsAsync(customerIds, cancellationToken);
+        var versionedItems = items.Select(item => item with
+        {
+            CustomerLogoVersion = versions.TryGetValue(item.CustomerId.GetValueOrDefault(), out var version)
+                ? version : CustomerLogoVersions.None
+        }).ToList();
+        return paging.ToResult(versionedItems, total);
     }
 }
 

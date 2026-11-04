@@ -30,9 +30,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.nags.operations.data.repo.CustomerLogoStore
+import com.nags.operations.data.repo.sharedCatalogOwnerKey
+import java.io.File
 
 /** Process-scoped dependencies for flights, shared catalogs, identity, and notifications. */
 class AppGraph private constructor(context: Context) {
@@ -48,10 +52,22 @@ class AppGraph private constructor(context: Context) {
     private val catalogDatabase = CatalogDatabase.get(context.applicationContext)
 
     val networkMonitor: NetworkMonitor = NetworkMonitor(context.applicationContext, appScope)
-    val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline)
+    private val logoOwners = combine(tokenStore.accessTokenFlow, tokenStore.sessionSubjectFlow) { token, subject ->
+        if (token.isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
+    }.distinctUntilChanged()
+    private val customerLogos = CustomerLogoStore(
+        root = File(context.noBackupFilesDir, "customer-logos"), fetch = operationsApi::customerLogo,
+        ownerFlow = logoOwners,
+        currentOwner = {
+            if (tokenStore.getAccessToken().isNullOrBlank()) null
+            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+        },
+        online = networkMonitor.isOnline, scope = appScope,
+    )
+    val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos)
     val notificationsRepository: NotificationsRepository =
         NotificationsRepository(notificationsApi, database, tokenStore)
-    val sharedCatalogsRepository = SharedCatalogsRepository(sharedCatalogsApi, catalogDatabase, tokenStore)
+    val sharedCatalogsRepository = SharedCatalogsRepository(sharedCatalogsApi, catalogDatabase, tokenStore, customerLogos)
     val isSyncing = combine(sharedCatalogsRepository.isSyncing, flightsRepository.isSyncing) { catalogs, flights ->
         catalogs || flights
     }.stateIn(appScope, SharingStarted.Eagerly, false)

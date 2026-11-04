@@ -13,7 +13,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,21 +27,6 @@ class FlightsViewModelTest {
 
     @After
     fun tearDown() = scope.cancel()
-
-    @Test
-    fun refreshingTheListReloadsCustomerLogosAndKeepsNormalFlightRows() = runBlocking {
-        var reads = 0
-        val vm = model(logo = { byteArrayOf((++reads).toByte()) })
-        vm.refresh()
-        assertArrayEquals(byteArrayOf(1), vm.customerLogo("customer"))
-        assertArrayEquals(byteArrayOf(1), vm.customerLogo("customer"))
-        val firstRevision = vm.state.value.logoRevision
-        vm.refresh()
-        assertArrayEquals(byteArrayOf(2), vm.customerLogo("customer"))
-        assertTrue(vm.state.value.logoRevision > firstRevision)
-        assertEquals(listOf("one"), vm.state.value.items.map { it.id })
-        assertNull(vm.state.value.error)
-    }
 
     @Test
     fun missingViewPermissionDoesNotReadFlightsOrDetails() {
@@ -506,12 +490,11 @@ class FlightsViewModelTest {
         cacheStatus: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
         profile: (suspend () -> AuthenticatedUser)? = null,
         clearCache: suspend () -> Unit = {},
-        logo: suspend (String) -> ByteArray? = { null },
     ) = FlightsViewModel(
         fetchProfile = profile ?: { AuthenticatedUser("user", "staff@example.test", "Staff", "StationStaff", permissions = permissions) },
         fetchFlights = list, fetchFlight = readDetail, fetchInvitationOptions = options,
         sendInvitations = send, coroutineScope = scope, online = online,
-        cacheChanges = changes, cacheStatus = cacheStatus, clearCachedFlights = clearCache, fetchCustomerLogo = logo,
+        cacheChanges = changes, cacheStatus = cacheStatus, clearCachedFlights = clearCache,
     )
 
     private fun page(id: String) = FlightPage(items = listOf(row(id)), totalCount = 1)

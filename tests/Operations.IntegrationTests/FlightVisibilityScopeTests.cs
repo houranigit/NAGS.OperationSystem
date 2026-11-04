@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -77,23 +78,58 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         var path = $"{Base}/flights/customer-logos/{refs.CustomerId}";
 
         (await dispatcher.Client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var beforeOptions = await admin.GetFromJsonAsync<List<CustomerLogoOption>>($"{MasterDataBase}/customers/options");
+        beforeOptions!.Single(customer => customer.Id == refs.CustomerId).LogoVersion.ShouldBe("none");
         var logoBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGQkAAAAASUVORK5CYII=");
-        var customer = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/customers/{refs.CustomerId}");
-        using var form = new MultipartFormDataContent();
-        using var file = new ByteArrayContent(logoBytes);
-        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
-        form.Add(file, "file", "logo.png");
-        using var upload = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/customers/{refs.CustomerId}/logo")
+        async Task UploadLogoAsync(byte[] content)
         {
-            Content = form
-        };
-        upload.Headers.TryAddWithoutValidation("If-Match", customer!.RowVersion);
-        (await admin.SendAsync(upload)).StatusCode.ShouldBe(HttpStatusCode.OK);
+            var customer = await admin.GetFromJsonAsync<ConcurrencyDetail>($"{MasterDataBase}/customers/{refs.CustomerId}");
+            using var form = new MultipartFormDataContent();
+            using var file = new ByteArrayContent(content);
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+            form.Add(file, "file", "logo.png");
+            using var upload = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/customers/{refs.CustomerId}/logo")
+            {
+                Content = form
+            };
+            upload.Headers.TryAddWithoutValidation("If-Match", customer!.RowVersion);
+            (await admin.SendAsync(upload)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+        await UploadLogoAsync(logoBytes);
+        var options = await admin.GetFromJsonAsync<List<CustomerLogoOption>>($"{MasterDataBase}/customers/options");
+        var version = options!.Single(customer => customer.Id == refs.CustomerId).LogoVersion;
+        version.ShouldNotBeNull();
+        version.ShouldNotBe("none");
+        var flights = await dispatcher.Client.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights");
+        flights!.Items.Single(flight => flight.CustomerId == refs.CustomerId).CustomerLogoVersion.ShouldBe(version);
 
-        using var logo = await dispatcher.Client.GetAsync(path);
+        using var logo = await dispatcher.Client.GetAsync($"{path}?expectedVersion={version}");
         logo.StatusCode.ShouldBe(HttpStatusCode.OK);
         logo.Content.Headers.ContentType!.MediaType.ShouldBe("image/png");
         (await logo.Content.ReadAsByteArrayAsync()).ShouldBe(logoBytes);
+        logo.Headers.ETag!.Tag.ShouldBe($"\"{version}\"");
+        logo.Headers.ETag.IsWeak.ShouldBeFalse();
+        using var mismatch = await dispatcher.Client.GetAsync($"{path}?expectedVersion=none");
+        mismatch.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed);
+        (await mismatch.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.Flight.CustomerLogoChanged");
+
+        await UploadLogoAsync(logoBytes);
+        using var unchangedLogo = await dispatcher.Client.GetAsync($"{path}?expectedVersion={version}");
+        unchangedLogo.StatusCode.ShouldBe(HttpStatusCode.OK);
+        unchangedLogo.Headers.ETag!.Tag.ShouldBe(logo.Headers.ETag.Tag);
+
+        var replacementBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        await UploadLogoAsync(replacementBytes);
+        (await dispatcher.Client.GetAsync($"{path}?expectedVersion={version}")).StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed);
+        var replacementOptions = await admin.GetFromJsonAsync<List<CustomerLogoOption>>($"{MasterDataBase}/customers/options");
+        var replacementVersion = replacementOptions!.Single(customer => customer.Id == refs.CustomerId).LogoVersion;
+        replacementVersion.ShouldNotBe(version);
+        using var replacementLogo = await dispatcher.Client.GetAsync($"{path}?expectedVersion={replacementVersion}");
+        replacementLogo.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await replacementLogo.Content.ReadAsByteArrayAsync()).ShouldBe(replacementBytes);
+        replacementLogo.Headers.ETag!.Tag.ShouldBe($"\"{replacementVersion}\"");
+
         (await regular.Client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await dispatcher.Client.GetAsync($"{Base}/flights/customer-logos/{Guid.NewGuid()}"))
             .StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -236,6 +272,8 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
 
     private sealed record CountryItem(Guid Id, string Name, string IsoCode, bool IsActive);
 
-    private sealed record FlightListItem(Guid Id, string FlightNumber, bool IsPerLanding);
+    private sealed record FlightListItem(Guid Id, string FlightNumber, bool IsPerLanding,
+        Guid? CustomerId = null, string? CustomerLogoVersion = null);
+    private sealed record CustomerLogoOption(Guid Id, string? LogoVersion);
 
 }

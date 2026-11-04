@@ -35,6 +35,9 @@ public sealed record Error
     public static Error Conflict(string description, string code = "General.Conflict") =>
         new(code, description, ErrorType.Conflict);
 
+    public static Error PreconditionFailed(string description, string code = "General.PreconditionFailed") =>
+        new(code, description, ErrorType.PreconditionFailed);
+
     public static Error Unauthorized(string description = "Unauthorized.", string code = "General.Unauthorized") =>
         new(code, description, ErrorType.Unauthorized);
 

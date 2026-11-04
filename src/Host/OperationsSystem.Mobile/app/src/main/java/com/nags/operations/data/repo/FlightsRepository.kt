@@ -50,14 +50,14 @@ class FlightsRepository internal constructor(
     private val now: () -> String = { Instant.now().toString() },
     private val json: Json = HttpClientFactory.json,
     private val monotonicNanos: () -> Long = System::nanoTime,
-    private val fetchCustomerLogo: suspend (String) -> ByteArray? = { null },
+    private val logoStore: CustomerLogoStore? = null,
 ) {
-    constructor(api: OperationsApi, db: CatalogDatabase, tokenStore: TokenStore, online: StateFlow<Boolean>) : this(
+    constructor(api: OperationsApi, db: CatalogDatabase, tokenStore: TokenStore, online: StateFlow<Boolean>, logoStore: CustomerLogoStore? = null) : this(
         fetchFlights = api::flights,
         fetchFlight = api::flight,
         fetchInvitationOptions = api::invitationOptions,
         sendInvitation = api::invite,
-        fetchCustomerLogo = api::customerLogo,
+        logoStore = logoStore,
         dao = db.flightCacheDao(),
         ownerFlow = combine(tokenStore.accessTokenFlow, tokenStore.sessionSubjectFlow) { token, subject ->
             if (token.isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
@@ -86,18 +86,24 @@ class FlightsRepository internal constructor(
 
     suspend fun flights(page: Int = 1, pageSize: Int = 20, search: String? = null): FlightPage {
         val session = requireSession()
-        if (!isOnline()) return cachedPage(session, page, pageSize, search)
+        val logoRead = logoStore?.beginMetadataRead()
+        if (!isOnline()) return cachedPage(session, page, pageSize, search).also {
+            reconcileLogos(it.items, logoRead, fromCache = true)
+        }
         val revision = listRevision
         try {
             val result = fetchFlights(page, pageSize, search)
             ensureCurrent(session)
-            return if (revision == listRevision) result else cachedPage(session, page, pageSize, search)
+            return if (revision == listRevision) result.also { reconcileLogos(it.items, logoRead) }
+                else cachedPage(session, page, pageSize, search).also { reconcileLogos(it.items, logoRead, fromCache = true) }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             handleAccessError(session, error)
             if (!error.isTransient()) throw error
-            return cachedPageOrNull(session, page, pageSize, search) ?: throw error
+            return cachedPageOrNull(session, page, pageSize, search)?.also {
+                reconcileLogos(it.items, logoRead, fromCache = true)
+            } ?: throw error
         }
     }
 
@@ -123,14 +129,16 @@ class FlightsRepository internal constructor(
         }
     }
 
-    /** Logo absence never changes a flight's visibility or persisted planning data. */
-    suspend fun customerLogo(customerId: String): ByteArray? {
-        val session = requireSession()
-        if (!isOnline()) return null
-        ensureCurrent(session)
-        val bytes = fetchCustomerLogo(customerId)
-        ensureCurrent(session)
-        return bytes
+    fun customerLogo(customerId: String): Flow<ByteArray?> = logoStore?.observe(customerId) ?: flowOf(null)
+
+    private suspend fun reconcileLogos(items: List<FlightListItem>, read: LogoMetadataRead?, complete: Boolean = false, fromCache: Boolean = false) {
+        if (fromCache) return // Cached rows cannot renew flight authorization or roll back asset metadata.
+        try {
+            logoStore?.reconcileFlights(items.mapNotNull { item -> item.customerId?.let {
+                it to item.customerLogoVersion
+            } }.toMap(), read, complete)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* A logo file failure doesn't invalidate flight planning data. */ }
     }
 
     suspend fun invitationOptions(id: String): List<AssignedEmployee> {
@@ -151,6 +159,7 @@ class FlightsRepository internal constructor(
         try {
             if (!isOnline()) return
             val session = captureSession() ?: return
+            val logoRead = logoStore?.beginMetadataRead()
             val attemptedAt = now()
             val started = monotonicNanos()
             try {
@@ -179,6 +188,7 @@ class FlightsRepository internal constructor(
                     dao.replace(FlightSnapshotEntity(session.owner, json.encodeToString(items), items.size,
                         attemptedAt, now(), lastDurationMs = duration), details)
                     listRevision++
+                    reconcileLogos(items, logoRead, complete = true)
                 }
                 _cacheChanges.tryEmit(Unit)
             } catch (error: CancellationException) {
@@ -205,6 +215,7 @@ class FlightsRepository internal constructor(
             dao.clearAll()
             listRevision++
         }
+        logoStore?.clearAll()
         // An explicit session purge also clears a live-only UI that never persisted a snapshot.
         _cacheChanges.tryEmit(Unit)
     }
@@ -279,6 +290,7 @@ class FlightsRepository internal constructor(
                 generation++
                 val hadCache = dao.hasAnyCache()
                 dao.clearAll()
+                logoStore?.clearOwner(session.owner)
                 listRevision++
                 hadCache
             }
@@ -293,6 +305,7 @@ class FlightsRepository internal constructor(
                 val hadCache = previous?.lastSuccessUtc != null || dao.details(session.owner).isNotEmpty()
                 dao.replace(FlightSnapshotEntity(session.owner, lastAttemptUtc = now(),
                     error = "Flight access is not permitted.", permissionDenied = true), emptyList())
+                logoStore?.clearOwner(session.owner)
                 listRevision++
                 hadCache
             }
@@ -313,6 +326,11 @@ class FlightsRepository internal constructor(
                 if (hadCache) {
                     dao.replace(previous.copy(payloadJson = json.encodeToString(retained), itemCount = retained.size), retainedDetails)
                     listRevision++
+                    if (previous.lastSuccessUtc != null && invalidatePending) {
+                        val stillVisible = retained.mapNotNull { it.customerId }.toSet()
+                        val lostCustomers = originalItems.filter { it.id == flightId }.mapNotNull { it.customerId }.toSet() - stillVisible
+                        logoStore?.revokeCustomers(lostCustomers)
+                    }
                 }
                 hadCache
             }

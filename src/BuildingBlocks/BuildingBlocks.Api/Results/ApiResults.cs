@@ -35,6 +35,7 @@ public static class ApiResults
         ErrorType.Forbidden => StatusCodes.Status403Forbidden,
         ErrorType.NotFound => StatusCodes.Status404NotFound,
         ErrorType.Conflict => StatusCodes.Status409Conflict,
+        ErrorType.PreconditionFailed => StatusCodes.Status412PreconditionFailed,
         _ => StatusCodes.Status500InternalServerError
     };
 
@@ -45,6 +46,7 @@ public static class ApiResults
         ErrorType.Forbidden => "Forbidden",
         ErrorType.NotFound => "Resource not found",
         ErrorType.Conflict => "Conflict",
+        ErrorType.PreconditionFailed => "Precondition failed",
         _ => "An unexpected error occurred"
     };
 

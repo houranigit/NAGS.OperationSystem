@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Abstractions;
+using MasterData.Contracts.Readers;
 using MasterData.Domain.Customers;
 using MasterData.Infrastructure.Persistence;
 using MasterData.Infrastructure.Readers;
@@ -64,6 +65,7 @@ public sealed class CustomerLogoReaderTests
         result.ShouldNotBeNull();
         result.Content.ShouldBe(content);
         result.ContentType.ShouldBe(contentType);
+        result.Version.ShouldBe("7e18fa219fa44ad7a00e81334210d260678710c2fbac17cea23e8a64d22fe09b");
         storage.OpenedKeys.ShouldBe(["customer-logos/upload.bin"]);
         storage.ReceivedToken.ShouldBe(cancellation.Token);
         file.CopyToken.ShouldBe(cancellation.Token);
@@ -101,6 +103,50 @@ public sealed class CustomerLogoReaderTests
 
         file.CopyToken.ShouldBe(cancellation.Token);
         file.Disposed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Versions_cover_only_requested_existing_customers_without_opening_files()
+    {
+        await using var db = NewDb();
+        var withLogo = CustomerWithLogo("customer-logos/upload.bin");
+        withLogo.Deactivate(DateTimeOffset.UtcNow).IsSuccess.ShouldBeTrue();
+        var withoutLogo = CustomerWithLogo(null);
+        var unrequested = CustomerWithLogo("customer-logos/another.png");
+        db.Customers.AddRange(withLogo, withoutLogo, unrequested);
+        await db.SaveChangesAsync();
+        var unknown = Guid.NewGuid();
+        var storage = new ReadOnlyStorage(null);
+
+        var versions = await new CustomerLogoReader(db, storage).GetLogoVersionsAsync(
+            [withLogo.Id, withoutLogo.Id, unknown, withLogo.Id], CancellationToken.None);
+
+        versions.Count.ShouldBe(2);
+        versions[withLogo.Id].ShouldBe("7e18fa219fa44ad7a00e81334210d260678710c2fbac17cea23e8a64d22fe09b");
+        versions[withoutLogo.Id].ShouldBe(CustomerLogoVersions.None);
+        versions.ContainsKey(unknown).ShouldBeFalse();
+        versions.ContainsKey(unrequested.Id).ShouldBeFalse();
+        storage.OpenedKeys.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Removing_the_logo_reference_changes_its_metadata_to_none()
+    {
+        await using var db = NewDb();
+        var customer = CustomerWithLogo("customer-logos/upload.png");
+        db.Customers.Add(customer);
+        await db.SaveChangesAsync();
+        var storage = new ReadOnlyStorage(null);
+        var reader = new CustomerLogoReader(db, storage);
+        var before = await reader.GetLogoVersionsAsync([customer.Id], CancellationToken.None);
+        before[customer.Id].ShouldNotBe("none");
+
+        customer.SetLogo(null, DateTimeOffset.UtcNow).IsSuccess.ShouldBeTrue();
+        await db.SaveChangesAsync();
+        var after = await reader.GetLogoVersionsAsync([customer.Id], CancellationToken.None);
+
+        after[customer.Id].ShouldBe("none");
+        storage.OpenedKeys.ShouldBeEmpty();
     }
 
     private static Customer CustomerWithLogo(string? reference) => Customer.Create(null, null, "Customer", Guid.NewGuid(),

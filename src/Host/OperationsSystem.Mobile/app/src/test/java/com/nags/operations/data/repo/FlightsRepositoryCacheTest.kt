@@ -1,5 +1,7 @@
 package com.nags.operations.data.repo
 
+import com.nags.operations.data.CustomerLogoDownload
+
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
@@ -8,6 +10,8 @@ import com.nags.operations.data.db.dao.FlightCacheDao
 import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import java.io.IOException
+import java.nio.file.Files
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -33,7 +37,7 @@ class FlightsRepositoryCacheTest {
     private var detailNumber = "123"
     private var invitationReads = 0
     private var invitationWrites = 0
-    private var logoLoader: suspend (String) -> ByteArray? = { null }
+    private var logoStore: CustomerLogoStore? = null
     private var pageLoader: suspend (Int, Int, String?) -> FlightPage = { page, size, _ ->
         listFailure?.let { throw it }
         pageReads += page to size
@@ -52,7 +56,7 @@ class FlightsRepositoryCacheTest {
         fetchFlight = { detailLoader(it) },
         fetchInvitationOptions = { invitationReads++; emptyList() },
         sendInvitation = { _, _, _ -> invitationWrites++ },
-        fetchCustomerLogo = { logoLoader(it) },
+        logoStore = logoStore,
         dao = dao, ownerFlow = owner, currentOwner = { owner.value }, isOnline = { online }, now = { clock },
     )
 
@@ -296,38 +300,47 @@ class FlightsRepositoryCacheTest {
     }
 
     @Test
-    fun missingLogosAndOfflineReadsKeepFlightPlanningCachesIntact() = runBlocking {
+    fun listSearchAndUnchangedSyncReuseLogosWhileLostFlightAccessPurgesThem() = runBlocking {
+        val folder = Files.createTempDirectory("flight-logos").toFile()
         var reads = 0
-        logoLoader = { reads++; null }
-        val repository = repository()
-        repository.refreshCache()
-        repository.flight("one")
-        val snapshot = dao.snapshot(owner.value!!)
-
-        assertNull(repository.customerLogo("customer"))
-        assertEquals(snapshot, dao.snapshot(owner.value!!))
-        assertNotNull(dao.detail(owner.value!!, "one"))
-        online = false
-        assertNull(repository.customerLogo("customer"))
-        assertEquals(1, reads)
+        logoStore = CustomerLogoStore(folder, { _, version -> reads++; CustomerLogoDownload(version!!, byteArrayOf(1)) },
+            owner, { owner.value }, MutableStateFlow(true), this, Dispatchers.Unconfined)
+        try {
+            serverItems = listOf(item("one").copy(customerId = "customer", customerLogoVersion = "v1"))
+            val repository = repository()
+            repository.refreshCache()
+            assertArrayEquals(byteArrayOf(1), logoStore!!.load("customer"))
+            repository.flights(search = "123")
+            repository.refreshCache()
+            assertArrayEquals(byteArrayOf(1), logoStore!!.load("customer"))
+            assertEquals(1, reads)
+            listFailure = ApiException(403, "Denied")
+            assertTrue(runCatching { repository.flights() }.isFailure)
+            assertFalse(folder.walkTopDown().any { it.isFile })
+        } finally { folder.deleteRecursively() }
     }
 
     @Test
-    fun lateLogoBytesAreRejectedAfterAccountChangeOrSameAccountCleanup() = runBlocking {
-        for (switchAccount in listOf(true, false)) {
-            owner.value = "http://branch/|account"
-            val response = CompletableDeferred<ByteArray?>()
-            logoLoader = { response.await() }
+    fun cachedPagesCannotKeepCustomerFilesAfterAFreshCompleteVisibilityRevocation() = runBlocking {
+        val folder = Files.createTempDirectory("revoked-flight-logos").toFile()
+        logoStore = CustomerLogoStore(folder, { _, version -> CustomerLogoDownload(version!!, byteArrayOf(1)) },
+            owner, { owner.value }, MutableStateFlow(true), this, Dispatchers.Unconfined)
+        try {
+            serverItems = listOf(item("one").copy(customerId = "customer", customerLogoVersion = "v1"))
             val repository = repository()
-            val pending = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.customerLogo("customer") }
-            }
-            if (switchAccount) owner.value = "http://branch/|other" else repository.clearLocal()
-            response.complete(byteArrayOf(1, 2, 3))
-
-            assertTrue(pending.await().exceptionOrNull() is IllegalStateException)
-            assertFalse(dao.hasAnyCache())
-        }
+            repository.refreshCache()
+            logoStore!!.load("customer")
+            val response = CompletableDeferred<FlightPage>()
+            pageLoader = { _, _, _ -> response.await() }
+            val refresh = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+            online = false
+            assertEquals(1, repository.flights().items.size)
+            online = true
+            response.complete(FlightPage(emptyList(), page = 1, pageSize = 100))
+            refresh.join()
+            assertNull(logoStore!!.load("customer"))
+            assertFalse(folder.walkTopDown().any { it.extension == "img" })
+        } finally { folder.deleteRecursively() }
     }
 
     @Test

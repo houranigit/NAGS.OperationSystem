@@ -12,5 +12,6 @@ public enum ErrorType
     Conflict = 3,
     Unauthorized = 4,
     Forbidden = 5,
-    Failure = 6
+    Failure = 6,
+    PreconditionFailed = 7
 }

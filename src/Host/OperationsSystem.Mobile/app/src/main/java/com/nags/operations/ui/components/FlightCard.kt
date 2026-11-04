@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
@@ -45,8 +47,7 @@ fun FlightCard(
     flight: FlightListItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    loadCustomerLogo: suspend (String) -> ByteArray? = { null },
-    logoRevision: Long = 0,
+    loadCustomerLogo: (String) -> Flow<ByteArray?> = { flowOf(null) },
 ) {
     Card(
         onClick = onClick,
@@ -73,7 +74,7 @@ fun FlightCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CustomerLogo(flight.customerId, logoRevision, loadCustomerLogo, Modifier.size(36.dp))
+                CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(36.dp))
                 Column(Modifier.weight(1f)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(

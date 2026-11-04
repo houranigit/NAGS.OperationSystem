@@ -6,6 +6,8 @@ import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.InviteEmployeesRequest
 import com.nags.operations.data.TokenStore
+import com.nags.operations.data.CustomerLogoDownload
+import io.ktor.http.HttpHeaders
 import com.nags.operations.data.api.HttpClientFactory.bodyOrThrow
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -30,14 +32,21 @@ class OperationsApi internal constructor(private val client: HttpClient) {
     constructor(tokenStore: TokenStore, client: HttpClient = HttpClientFactory.create(tokenStore)) : this(client)
 
     /** The authenticated API proxies raster logo bytes; no storage URL or bearer is exposed to UI. */
-    suspend fun customerLogo(customerId: String): ByteArray? {
+    suspend fun customerLogo(customerId: String, expectedVersion: String? = null): CustomerLogoDownload? {
         val id = UUID.fromString(customerId)
-        return client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/customer-logos/$id")).execute { response ->
+        return client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/customer-logos/$id")) {
+            expectedVersion?.let { parameter("expectedVersion", it) }
+        }.execute { response ->
             if (response.status == HttpStatusCode.NotFound) return@execute null
             if (!response.status.isSuccess()) throw ApiException(response.status.value, "Could not load customer logo.")
+            val etag = response.headers[HttpHeaders.ETag]
+            val version = etag?.takeIf { it.startsWith('"') && it.endsWith('"') }?.removeSurrounding("\"")
+                ?.takeIf { it.isNotBlank() && it != "none" }
+                ?: throw IOException("Customer logo has no valid version.")
+            if (expectedVersion != null && version != expectedVersion) throw IOException("Customer logo version changed.")
             val bytes = response.bodyAsChannel().readBuffer(MAX_LOGO_BYTES + 1L).readByteArray()
             if (bytes.size > MAX_LOGO_BYTES) throw IOException("Customer logo exceeds the size limit.")
-            bytes.takeIf { it.isNotEmpty() }
+            bytes.takeIf { it.isNotEmpty() }?.let { CustomerLogoDownload(version, it) }
         }
     }
 

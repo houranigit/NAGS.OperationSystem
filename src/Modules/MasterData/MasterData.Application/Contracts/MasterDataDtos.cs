@@ -287,7 +287,7 @@ public sealed record CustomerDto(
     IReadOnlyList<CustomerContactDto> Contacts,
     string? LegacySystemId = null);
 
-public sealed record CustomerOptionDto(Guid Id, string? IataCode, string Name);
+public sealed record CustomerOptionDto(Guid Id, string? IataCode, string Name, string? LogoVersion = null);
 
 // --- StaffMembers ----------------------------------------------------------
 

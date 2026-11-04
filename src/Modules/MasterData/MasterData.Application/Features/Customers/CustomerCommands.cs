@@ -433,7 +433,9 @@ public sealed class UpdateCustomerContactCommandHandler(IMasterDataDbContext db,
 
 public sealed record SetCustomerLogoCommand(Guid Id, byte[] Content, string FileName, string ContentType, byte[] RowVersion) : ICommand<string>;
 
-public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMasterDataScope scope, IFileStorage storage, TimeProvider timeProvider)
+public sealed class SetCustomerLogoCommandHandler(
+    IMasterDataDbContext db, IMasterDataScope scope, IFileStorage storage, TimeProvider timeProvider,
+    IMobileSyncBroadcaster mobileSync)
     : ICommandHandler<SetCustomerLogoCommand, string>
 {
     public const int MaxLogoBytes = 2 * 1024 * 1024;
@@ -464,7 +466,22 @@ public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMast
         if (!AllowedContentTypes.Contains(request.ContentType) || !HasImageSignature(request.Content))
             return Error.Validation("The logo must be a PNG, JPEG, WEBP, or GIF image.", "MasterData.Customer.LogoInvalidType");
 
+        // A no-op must still honor the caller's concurrency precondition.
+        if (!customer.RowVersion.AsSpan().SequenceEqual(request.RowVersion))
+            return ConcurrencyErrors.Stale;
+
         var previousKey = customer.LogoFileReference;
+        if (!string.IsNullOrWhiteSpace(previousKey))
+        {
+            await using var previous = await storage.OpenAsync(previousKey, cancellationToken);
+            if (previous is not null)
+            {
+                using var previousContent = new MemoryStream();
+                await previous.CopyToAsync(previousContent, cancellationToken);
+                if (previousContent.ToArray().AsSpan().SequenceEqual(request.Content))
+                    return previousKey;
+            }
+        }
 
         using var stream = new MemoryStream(request.Content);
         var stored = await storage.SaveAsync("customer-logos", request.FileName, request.ContentType, stream, cancellationToken);
@@ -475,6 +492,7 @@ public sealed class SetCustomerLogoCommandHandler(IMasterDataDbContext db, IMast
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Customers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

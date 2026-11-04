@@ -28,21 +28,23 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 internal fun CustomerLogo(
     customerId: String?,
-    revision: Long,
-    load: suspend (String) -> ByteArray?,
+    load: (String) -> Flow<ByteArray?>,
     modifier: Modifier = Modifier,
 ) {
     val targetPixels = with(LocalDensity.current) { 36.dp.roundToPx() }.coerceAtLeast(1)
-    var bitmap by remember(customerId, revision, load, targetPixels) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(customerId, revision, load, targetPixels) {
+    var bitmap by remember(customerId, load, targetPixels) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(customerId, load, targetPixels) {
         if (customerId.isNullOrBlank()) return@LaunchedEffect
         try {
-            val bytes = load(customerId) ?: return@LaunchedEffect
-            bitmap = withContext(Dispatchers.Default) { decodeLogo(bytes, targetPixels) }
+            load(customerId).collectLatest { bytes ->
+                bitmap = if (bytes == null) null else withContext(Dispatchers.Default) { decodeLogo(bytes, targetPixels) }
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

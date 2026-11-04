@@ -42,9 +42,11 @@ class SharedCatalogsRepository internal constructor(
     private val now: () -> String = { Instant.now().toString() },
     private val json: Json = HttpClientFactory.json,
     private val monotonicNanos: () -> Long = System::nanoTime,
+    private val logoStore: CustomerLogoStore? = null,
 ) {
-    constructor(api: SharedCatalogsApi, db: CatalogDatabase, tokenStore: TokenStore) : this(
+    constructor(api: SharedCatalogsApi, db: CatalogDatabase, tokenStore: TokenStore, logoStore: CustomerLogoStore? = null) : this(
         fetchCatalog = api::catalog,
+        logoStore = logoStore,
         dao = db.sharedCatalogDao(),
         ownerFlow = combine(tokenStore.accessTokenFlow, tokenStore.sessionSubjectFlow) { token, subject ->
             if (token.isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
@@ -101,6 +103,7 @@ class SharedCatalogsRepository internal constructor(
                 if (!isCurrent(owner, expectedGeneration)) return
                 val attemptedAt = now()
                 val startedNanos = monotonicNanos()
+                val logoRead = if (kind == SharedCatalog.Customers) logoStore?.beginMetadataRead() else null
                 try {
                     val (payload, count) = normalizedSnapshot(kind, fetchCatalog(kind))
                     val elapsedMs = ((monotonicNanos() - startedNanos).coerceAtLeast(0L)) / 1_000_000L
@@ -108,6 +111,13 @@ class SharedCatalogsRepository internal constructor(
                         if (!isCurrent(owner, expectedGeneration)) return
                         dao.put(SharedCatalogSnapshotEntity(owner, kind.storageKey, payload, count,
                             attemptedAt, now(), lastDurationMs = elapsedMs))
+                        if (kind == SharedCatalog.Customers) {
+                            try {
+                                logoStore?.reconcileCustomers(json.decodeFromString<List<CustomerCatalogItem>>(payload)
+                                    .associate { it.id to it.logoVersion }, logoRead)
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                            catch (_: Exception) { /* Logo file failures don't change catalog snapshot status. */ }
+                        }
                     }
                 } catch (error: CancellationException) {
                     throw error
@@ -121,6 +131,7 @@ class SharedCatalogsRepository internal constructor(
                             if (activeOwner == null || activeOwner == owner) {
                                 generation++
                                 dao.clearAll()
+                                logoStore?.clearOwner(owner)
                             }
                             return
                         }

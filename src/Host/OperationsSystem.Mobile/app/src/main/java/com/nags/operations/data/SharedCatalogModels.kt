@@ -28,7 +28,7 @@ data class CatalogSyncStatus(
 data class AircraftTypeCatalogItem(val id: String, val manufacturer: String, val model: String)
 
 @Serializable
-data class CustomerCatalogItem(val id: String, val iataCode: String? = null, val name: String)
+data class CustomerCatalogItem(val id: String, val iataCode: String? = null, val name: String, val logoVersion: String? = null)
 
 @Serializable
 data class ServiceCatalogItem(val id: String, val name: String, val isAircraftPerLanding: Boolean)
@@ -54,3 +54,6 @@ data class AtaChapterCatalogItem(
     val code: String,
     val title: String,
 )
+
+/** Image payload, kept outside the JSON/Room flight and catalog snapshots. */
+data class CustomerLogoDownload(val version: String, val bytes: ByteArray)

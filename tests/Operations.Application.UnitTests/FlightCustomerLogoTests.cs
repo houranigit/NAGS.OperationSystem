@@ -104,6 +104,49 @@ public sealed class FlightCustomerLogoTests
         logos.Calls.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData("logo-v1", true)]
+    [InlineData("older-logo", false)]
+    public async Task ExpectedVersion_IsComparedWithTheActualReturnedContent(string expectedVersion, bool matches)
+    {
+        await using var db = NewDb();
+        var customerId = Guid.NewGuid();
+        db.Flights.Add(NewFlight(customerId, Guid.NewGuid()));
+        await db.SaveChangesAsync();
+        var result = await new GetFlightCustomerLogoQueryHandler(db,
+            new StaticScope(new OperationsScopeContext(UserType.ViewerOnly, null, null)), new LogoReader())
+            .Handle(new GetFlightCustomerLogoQuery(customerId, expectedVersion), CancellationToken.None);
+
+        result.IsSuccess.ShouldBe(matches);
+        if (matches) result.Value.Version.ShouldBe(expectedVersion);
+        else result.Error.Type.ShouldBe(ErrorType.PreconditionFailed);
+    }
+
+    [Fact]
+    public async Task FlightList_BatchesVersionsForDistinctVisibleCustomersWithoutReadingImageBytes()
+    {
+        await using var db = NewDb();
+        var customerId = Guid.NewGuid();
+        var withoutLogoId = Guid.NewGuid();
+        var hiddenCustomerId = Guid.NewGuid();
+        var stationId = Guid.NewGuid();
+        db.Flights.AddRange(NewFlight(customerId, stationId), NewFlight(customerId, stationId),
+            NewFlight(withoutLogoId, stationId), NewFlight(hiddenCustomerId, Guid.NewGuid()));
+        await db.SaveChangesAsync();
+        var logos = new LogoReader();
+        logos.Versions[customerId] = "logo-v1";
+        var result = await new GetFlightsQueryHandler(db,
+            new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), true)), logos)
+            .Handle(new GetFlightsQuery(), CancellationToken.None);
+
+        logos.VersionCalls.ShouldBe(1);
+        logos.RequestedCustomerIds.ShouldBe([customerId, withoutLogoId], ignoreOrder: true);
+        logos.Calls.ShouldBe(0);
+        result.Value.Items.Where(item => item.CustomerId == customerId)
+            .ShouldAllBe(item => item.CustomerLogoVersion == "logo-v1");
+        result.Value.Items.Single(item => item.CustomerId == withoutLogoId).CustomerLogoVersion.ShouldBe("none");
+    }
+
     private static OperationsDbContext NewDb() => new(new DbContextOptionsBuilder<OperationsDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
@@ -131,9 +174,20 @@ public sealed class FlightCustomerLogoTests
 
     private sealed class LogoReader : ICustomerLogoReader
     {
-        public CustomerLogoReadContent? Content { get; init; } = new([137, 80, 78, 71], "image/png");
+        public CustomerLogoReadContent? Content { get; init; } = new([137, 80, 78, 71], "image/png", "logo-v1");
+        public Dictionary<Guid, string> Versions { get; } = [];
+        public int VersionCalls { get; private set; }
+        public Guid[] RequestedCustomerIds { get; private set; } = [];
         public int Calls { get; private set; }
         public Guid? CustomerId { get; private set; }
+
+        public Task<IReadOnlyDictionary<Guid, string>> GetLogoVersionsAsync(IReadOnlyCollection<Guid> customerIds,
+            CancellationToken cancellationToken)
+        {
+            VersionCalls++;
+            RequestedCustomerIds = customerIds.ToArray();
+            return Task.FromResult<IReadOnlyDictionary<Guid, string>>(Versions);
+        }
 
         public Task<CustomerLogoReadContent?> GetLogoAsync(Guid customerId, CancellationToken cancellationToken)
         {

@@ -6,6 +6,7 @@ using BuildingBlocks.Domain.Results;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
 using MasterData.Application.Contracts;
+using MasterData.Contracts.Readers;
 using MasterData.Contracts.Seeding;
 using MasterData.Domain.Customers;
 using Microsoft.EntityFrameworkCore;
@@ -192,11 +193,15 @@ public sealed class GetActiveCustomerOptionsQueryHandler(IMasterDataDbContext db
             query = query.Where(c => c.Id == scopedCustomer);
         }
 
-        IReadOnlyList<CustomerOptionDto> options = await query
+        var customers = await query
             .OrderBy(c => c.IataCode)
             .ThenBy(c => c.Id)
-            .Select(c => new CustomerOptionDto(c.Id, c.IataCode, c.Name))
+            .Select(c => new { c.Id, c.IataCode, c.Name, c.LogoFileReference })
             .ToListAsync(cancellationToken);
+        IReadOnlyList<CustomerOptionDto> options = customers
+            .Select(customer => new CustomerOptionDto(customer.Id, customer.IataCode, customer.Name,
+                CustomerLogoVersions.FromReference(customer.LogoFileReference)))
+            .ToList();
 
         return Result.Success(options);
     }

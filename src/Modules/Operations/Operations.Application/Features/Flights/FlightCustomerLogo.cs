@@ -7,7 +7,7 @@ using Operations.Application.Authorization;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record GetFlightCustomerLogoQuery(Guid CustomerId) : IQuery<CustomerLogoReadContent>;
+public sealed record GetFlightCustomerLogoQuery(Guid CustomerId, string? ExpectedVersion = null) : IQuery<CustomerLogoReadContent>;
 
 public sealed class GetFlightCustomerLogoQueryHandler(
     IOperationsDbContext db,
@@ -27,7 +27,12 @@ public sealed class GetFlightCustomerLogoQueryHandler(
 
         // MasterData owns logo references and storage. Read only after flight visibility is established.
         var logo = await logos.GetLogoAsync(request.CustomerId, cancellationToken);
-        return logo is null ? LogoNotFound() : logo;
+        if (logo is null)
+            return LogoNotFound();
+        if (request.ExpectedVersion is { } expectedVersion && expectedVersion != logo.Version)
+            return Error.PreconditionFailed("The customer logo changed. Refresh its metadata and retry.",
+                "Operations.Flight.CustomerLogoChanged");
+        return logo;
     }
 
     private static Error LogoNotFound() =>

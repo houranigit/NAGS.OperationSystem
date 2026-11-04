@@ -30,7 +30,7 @@ public sealed class FlightSchedulingTests
         db.ChangeTracker.Clear();
         var flight = await db.Flights.Include(f => f.PlannedServices).SingleAsync();
         flight.PlannedServices.ShouldHaveSingleItem().Service.ServiceId.ShouldBe(reader.ServiceId);
-        var page = await new GetFlightsQueryHandler(db, AdminScope())
+        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
             .Handle(new GetFlightsQuery(Search: "SV-123"), CancellationToken.None);
         page.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(result.Value);
     }
@@ -47,7 +47,7 @@ public sealed class FlightSchedulingTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var result = await new GetFlightsQueryHandler(db, AdminScope())
+        var result = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
         var item = result.Value.Items.ShouldHaveSingleItem();
@@ -64,7 +64,7 @@ public sealed class FlightSchedulingTests
         db.Flights.AddRange(first, second);
         await db.SaveChangesAsync();
 
-        var result = await new GetFlightsQueryHandler(db, AdminScope())
+        var result = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
             .Handle(new GetFlightsQuery(Sort: "StationIataCode:asc"), CancellationToken.None);
 
         result.Value.Items.Select(flight => flight.Id).ShouldBe([first.Id, second.Id]);
@@ -130,7 +130,7 @@ public sealed class FlightSchedulingTests
         db.Flights.AddRange(assigned, perLanding, NewFlight(stationId, []), NewFlight(Guid.NewGuid(), [], perLanding: true));
         await db.SaveChangesAsync();
 
-        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, staffId)))
+        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, staffId)), NoopCustomerLogoReader.Instance)
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
         result.Value.Items.Select(flight => flight.Id).ShouldBe([assigned.Id, perLanding.Id], ignoreOrder: true);
@@ -145,7 +145,7 @@ public sealed class FlightSchedulingTests
         db.Flights.AddRange(flight, NewFlight(Guid.NewGuid(), []));
         await db.SaveChangesAsync();
 
-        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), CanViewStationWide: true)))
+        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), CanViewStationWide: true)), NoopCustomerLogoReader.Instance)
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
         result.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(flight.Id);

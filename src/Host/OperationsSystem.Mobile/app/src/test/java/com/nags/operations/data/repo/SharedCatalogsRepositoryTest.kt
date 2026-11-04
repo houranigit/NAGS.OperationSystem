@@ -5,6 +5,9 @@ import com.nags.operations.data.SharedCatalog
 import com.nags.operations.data.db.dao.SharedCatalogDao
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
 import java.io.IOException
+import java.nio.file.Files
+import com.nags.operations.data.CustomerLogoDownload
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +25,40 @@ class SharedCatalogsRepositoryTest {
     private var clock = "2026-11-03T10:00:00Z"
     private var elapsedNanos = 0L
     private var durationMs = 25L
+
+    @Test
+    fun customerMetadataUpdatesOnlyChangedImagesAndCatalogDenialKeepsFlightAuthorizedFiles() = runBlocking {
+        val folder = Files.createTempDirectory("catalog-logos").toFile()
+        var reads = 0
+        var version = "v1"
+        var denied = false
+        val logos = CustomerLogoStore(folder, { _, expected -> reads++; CustomerLogoDownload(expected!!, expected.toByteArray()) },
+            owner, { owner.value }, MutableStateFlow(true), this, Dispatchers.Unconfined)
+        val repository = SharedCatalogsRepository(
+            fetchCatalog = { if (denied) throw ApiException(403, "Denied") else """[{"id":"customer","name":"Customer","logoVersion":"$version"}]""" },
+            dao = dao, ownerFlow = owner, currentOwner = { owner.value }, now = { clock }, logoStore = logos,
+        )
+        try {
+            logos.reconcileFlights(mapOf("customer" to "v1"), logos.beginMetadataRead(), complete = true)
+            repository.refresh(setOf(SharedCatalog.Customers))
+            assertArrayEquals("v1".toByteArray(), logos.load("customer"))
+            repository.refresh(setOf(SharedCatalog.Customers))
+            assertArrayEquals("v1".toByteArray(), logos.load("customer"))
+            assertEquals(1, reads)
+            assertEquals("v1", repository.customersFlow().first().single().logoVersion)
+            assertEquals(1, repository.observeStatus().first().single { it.kind == SharedCatalog.Customers }.itemCount)
+            denied = true
+            repository.refresh(setOf(SharedCatalog.Customers))
+            assertArrayEquals("v1".toByteArray(), logos.load("customer"))
+            assertEquals(1, reads)
+            denied = false; version = "v2"
+            repository.refresh(setOf(SharedCatalog.Customers))
+            assertArrayEquals("v2".toByteArray(), logos.load("customer"))
+            assertEquals(2, reads)
+            assertEquals(1, repository.observeStatus().first().single { it.kind == SharedCatalog.Customers }.itemCount)
+            assertFalse(dao.snapshot("account-a", "customers")!!.payloadJson.contains("bytes"))
+        } finally { folder.deleteRecursively() }
+    }
 
     @Test
     fun successfulRefreshPersistsAllCanonicalCatalogsAndTheirMetadata() = runBlocking {
