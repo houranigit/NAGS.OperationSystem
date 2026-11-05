@@ -41,7 +41,7 @@ fun MainShellScreen(
     val flights: FlightsViewModel = viewModel(key = "flights:$subject", factory = factory)
     NotificationPermissionPrompt()
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(WindowInsetsSides.Horizontal),
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
