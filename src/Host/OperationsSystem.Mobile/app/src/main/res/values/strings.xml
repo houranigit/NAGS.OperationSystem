@@ -43,6 +43,11 @@
     <string name="flights_time_zone">Times: %1$s</string>
     <string name="flights_refresh">Refresh flights</string>
     <string name="flights_search">Search flight number, customer or ID</string>
+    <string name="flights_search_placeholder">Search</string>
+    <string name="flights_search_clear">Clear search</string>
+    <string name="flights_search_close">Close search</string>
+    <string name="flights_search_voice">Search by voice</string>
+    <string name="flights_search_voice_unavailable">Voice search is not available on this device.</string>
     <string name="flights_access">Flights access</string>
     <string name="flights_view_forbidden">Your account does not have permission to view flights.</string>
     <string name="flights_load_failed">Could not load flights</string>

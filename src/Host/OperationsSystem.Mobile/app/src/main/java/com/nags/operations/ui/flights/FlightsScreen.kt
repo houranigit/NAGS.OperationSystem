@@ -1,5 +1,12 @@
 package com.nags.operations.ui.flights
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,19 +14,23 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,7 +38,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -38,10 +48,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nags.operations.ui.invite.InviteEmployeesDialog
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -65,6 +75,14 @@ fun FlightsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+    val searchPrompt = stringResource(R.string.flights_search)
+    val voiceSearch = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }?.let(viewModel::setSearch)
+        }
+    }
     LaunchedEffect(viewModel, listState) {
         snapshotFlow {
             val current = state
@@ -110,92 +128,101 @@ fun FlightsScreen(
         viewModel.closeFlight()
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.flights_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.flights_time_zone, ZoneId.systemDefault().id), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Box(Modifier.fillMaxSize()
+        .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)).imePadding()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.flights_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.flights_time_zone, ZoneId.systemDefault().id), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = viewModel::refresh, enabled = !state.isLoading && !state.isRefreshing) {
+                    Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.flights_refresh))
+                }
             }
-            IconButton(onClick = viewModel::refresh, enabled = !state.isLoading && !state.isRefreshing) {
-                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.flights_refresh))
+            if (state.isUsingCachedList || !state.isOnline) {
+                Text(stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             }
-        }
-        if (state.isUsingCachedList || !state.isOnline) {
-            Text(stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = viewModel::refresh,
+                modifier = Modifier.weight(1f)) {
+                when {
+                    state.isLoading && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    state.error != null && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        ErrorState(title = stringResource(if (state.permissionDenied) R.string.flights_access else R.string.flights_load_failed),
+                            message = if (state.permissionDenied) stringResource(R.string.flights_view_forbidden) else state.error!!, onRetry = viewModel::refresh)
+                    }
+                    state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        EmptyState(icon = Icons.Default.FlightTakeoff,
+                            title = stringResource(if (state.search.isBlank()) R.string.flights_empty else R.string.flights_no_matches),
+                            message = stringResource(if (state.search.isBlank()) R.string.flights_empty_hint else R.string.flights_search_hint),
+                            actionLabel = stringResource(R.string.flights_refresh_short), onAction = viewModel::refresh)
+                    }
+                    else -> LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 80.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        state.error?.let { error ->
+                            item(key = "list-error") {
+                                Text(error, color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.flights_retry)) }
+                            }
+                        }
+                        items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
+                            FlightCard(flight = flight, onClick = { viewModel.openFlight(flight.id) },
+                                loadCustomerLogo = viewModel::customerLogo)
+                        }
+                        item(key = "flight-count") {
+                            Text(pluralStringResource(R.plurals.flights_showing_count,
+                                state.totalCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(), state.items.size, state.totalCount),
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        if (state.isLoadingMore) {
+                            item(key = "loading-flights") {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    Text(stringResource(R.string.flights_loading_more), style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                        state.loadMoreError?.let { error ->
+                            item(key = "paging-error") {
+                                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(error, color = MaterialTheme.colorScheme.error)
+                                    TextButton(onClick = viewModel::loadMore) { Text(stringResource(R.string.flights_retry)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         if (!state.permissionDenied) {
-            OutlinedTextField(
-                value = state.search,
-                onValueChange = viewModel::setSearch,
-                placeholder = { Text(stringResource(R.string.flights_search), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            FlightSearchBar(
+                query = state.search,
+                onQueryChange = viewModel::setSearch,
+                onVoiceSearch = {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        .putExtra(RecognizerIntent.EXTRA_PROMPT, searchPrompt)
+                    try {
+                        voiceSearch.launch(intent)
+                    } catch (_: ActivityNotFoundException) {
+                        Toast.makeText(context, R.string.flights_search_voice_unavailable, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 8.dp, vertical = 8.dp),
             )
-        }
-        PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = viewModel::refresh,
-            modifier = Modifier.weight(1f)) {
-            when {
-                state.isLoading && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-                state.error != null && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    ErrorState(title = stringResource(if (state.permissionDenied) R.string.flights_access else R.string.flights_load_failed),
-                        message = if (state.permissionDenied) stringResource(R.string.flights_view_forbidden) else state.error!!, onRetry = viewModel::refresh)
-                }
-                state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    EmptyState(icon = Icons.Default.FlightTakeoff,
-                        title = stringResource(if (state.search.isBlank()) R.string.flights_empty else R.string.flights_no_matches),
-                        message = stringResource(if (state.search.isBlank()) R.string.flights_empty_hint else R.string.flights_search_hint),
-                        actionLabel = stringResource(R.string.flights_refresh_short), onAction = viewModel::refresh)
-                }
-                else -> LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    state.error?.let { error ->
-                        item(key = "list-error") {
-                            Text(error, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.flights_retry)) }
-                        }
-                    }
-                    items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
-                        FlightCard(flight = flight, onClick = { viewModel.openFlight(flight.id) },
-                            loadCustomerLogo = viewModel::customerLogo)
-                    }
-                    item(key = "flight-count") {
-                        Text(pluralStringResource(R.plurals.flights_showing_count,
-                            state.totalCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(), state.items.size, state.totalCount),
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(vertical = 4.dp))
-                    }
-                    if (state.isLoadingMore) {
-                        item(key = "loading-flights") {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                                Text(stringResource(R.string.flights_loading_more), style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                    state.loadMoreError?.let { error ->
-                        item(key = "paging-error") {
-                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(error, color = MaterialTheme.colorScheme.error)
-                                TextButton(onClick = viewModel::loadMore) { Text(stringResource(R.string.flights_retry)) }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
     if (state.selectedFlightId != null) {
