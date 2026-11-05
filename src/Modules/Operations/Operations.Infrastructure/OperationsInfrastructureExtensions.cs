@@ -31,6 +31,7 @@ public static class OperationsInfrastructureExtensions
 
         services.AddScoped<IOperationsDbContext>(sp => sp.GetRequiredService<OperationsDbContext>());
         services.AddScoped<IOperationsScope, OperationsScope>();
+        services.AddScoped<IMobileFlightScope, MobileFlightScope>();
         services.AddScoped<MasterDataResolver>();
 
         services.TryAddSingleton(TimeProvider.System);

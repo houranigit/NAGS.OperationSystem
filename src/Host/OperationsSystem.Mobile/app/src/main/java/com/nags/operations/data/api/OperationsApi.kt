@@ -2,6 +2,7 @@ package com.nags.operations.data.api
 
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
+import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.InviteEmployeesRequest
@@ -27,14 +28,14 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 
-/** Scoped flight reads and add-only staff invitations shared with the web portal. */
+/** Station- and time-bounded mobile flight reads and add-only staff invitations. */
 class OperationsApi internal constructor(private val client: HttpClient) {
     constructor(tokenStore: TokenStore, client: HttpClient = HttpClientFactory.create(tokenStore)) : this(client)
 
     /** The authenticated API proxies raster logo bytes; no storage URL or bearer is exposed to UI. */
     suspend fun customerLogo(customerId: String, expectedVersion: String? = null): CustomerLogoDownload? {
         val id = UUID.fromString(customerId)
-        return client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/customer-logos/$id")) {
+        return client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/mobile/customer-logos/$id")) {
             expectedVersion?.let { parameter("expectedVersion", it) }
         }.execute { response ->
             if (response.status == HttpStatusCode.NotFound) return@execute null
@@ -50,21 +51,22 @@ class OperationsApi internal constructor(private val client: HttpClient) {
         }
     }
 
-    suspend fun flights(page: Int = 1, pageSize: Int = 20, search: String? = null): FlightPage =
-        client.get(HttpClientFactory.url("api/v1/operations/flights")) {
+    suspend fun flights(page: Int = 1, pageSize: Int = 20, search: String? = null, category: FlightCategory? = null): FlightPage =
+        client.get(HttpClientFactory.url("api/v1/operations/flights/mobile")) {
             parameter("page", page)
             parameter("pageSize", pageSize)
+            category?.let { parameter("category", it.name) }
             search?.trim()?.takeIf(String::isNotEmpty)?.let { parameter("search", it) }
         }.bodyOrThrow()
 
     suspend fun flight(id: String): FlightDetail =
-        client.get(HttpClientFactory.url("api/v1/operations/flights/$id")).bodyOrThrow()
+        client.get(HttpClientFactory.url("api/v1/operations/flights/mobile/$id")).bodyOrThrow()
 
     suspend fun invitationOptions(id: String): List<AssignedEmployee> =
-        client.get(HttpClientFactory.url("api/v1/operations/flights/$id/invitation-options")).bodyOrThrow()
+        client.get(HttpClientFactory.url("api/v1/operations/flights/mobile/$id/invitation-options")).bodyOrThrow()
 
     suspend fun invite(id: String, staffMemberIds: List<String>, rowVersion: String) {
-        val response = client.post(HttpClientFactory.url("api/v1/operations/flights/$id/invite")) {
+        val response = client.post(HttpClientFactory.url("api/v1/operations/flights/mobile/$id/invite")) {
             contentType(ContentType.Application.Json)
             headers { append("If-Match", "\"$rowVersion\"") }
             setBody(InviteEmployeesRequest(staffMemberIds))

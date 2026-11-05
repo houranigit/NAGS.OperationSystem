@@ -32,7 +32,7 @@ class OperationsLogoApiTest {
             assertEquals("v1", result.version)
             assertEquals("v1", engine.request?.url?.parameters?.get("expectedVersion"))
             assertEquals(HttpMethod.Get, engine.request?.method)
-            assertEquals(HttpClientFactory.url("api/v1/operations/flights/customer-logos/$customerId"), engine.request?.url.toString()?.substringBefore('?'))
+            assertEquals(HttpClientFactory.url("api/v1/operations/flights/mobile/customer-logos/$customerId"), engine.request?.url.toString().substringBefore('?'))
         }
     }
 

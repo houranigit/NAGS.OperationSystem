@@ -12,34 +12,48 @@ using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Contracts;
 using Operations.Contracts;
+using Operations.Domain.Flights;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record GetFlightInvitationOptionsQuery(Guid FlightId) : IQuery<IReadOnlyList<AssignedEmployeeDto>>;
+public sealed record GetFlightInvitationOptionsQuery(Guid FlightId, bool MobileOnly = false) : IQuery<IReadOnlyList<AssignedEmployeeDto>>;
 
 public sealed class GetFlightInvitationOptionsQueryHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
-    IMasterDataReader masterData)
+    IMasterDataReader masterData,
+    IMobileFlightScope mobileScope)
     : IQueryHandler<GetFlightInvitationOptionsQuery, IReadOnlyList<AssignedEmployeeDto>>
 {
     public async Task<Result<IReadOnlyList<AssignedEmployeeDto>>> Handle(
         GetFlightInvitationOptionsQuery request,
         CancellationToken cancellationToken)
     {
-        var flight = await db.Flights.AsNoTracking()
+        var query = db.Flights.AsNoTracking();
+        if (request.MobileOnly)
+        {
+            var mobile = await mobileScope.ResolveAsync(cancellationToken);
+            if (mobile.IsFailure)
+                return mobile.Error;
+            query = MobileFlightQuery.ApplyScope(query, mobile.Value);
+        }
+
+        var flight = await query
             .Include(flight => flight.PlannedServices)
             .Include(flight => flight.AssignedEmployees)
             .FirstOrDefaultAsync(flight => flight.Id == request.FlightId, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var resolvedScope = await scope.ResolveForWriteAsync(cancellationToken);
-        if (resolvedScope.IsFailure)
-            return resolvedScope.Error;
-        var access = resolvedScope.Value.EnsureFlightAccess(flight);
-        if (access.IsFailure)
-            return access.Error;
+        if (!request.MobileOnly)
+        {
+            var resolvedScope = await scope.ResolveForWriteAsync(cancellationToken);
+            if (resolvedScope.IsFailure)
+                return resolvedScope.Error;
+            var access = resolvedScope.Value.EnsureFlightAccess(flight);
+            if (access.IsFailure)
+                return access.Error;
+        }
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
 
@@ -56,7 +70,8 @@ public sealed class GetFlightInvitationOptionsQueryHandler(
 public sealed record InviteEmployeesToFlightCommand(
     Guid FlightId,
     IReadOnlyList<Guid> StaffMemberIds,
-    byte[] RowVersion) : ICommand;
+    byte[] RowVersion,
+    bool MobileOnly = false) : ICommand;
 
 public sealed class InviteEmployeesToFlightCommandValidator : AbstractValidator<InviteEmployeesToFlightCommand>
 {
@@ -75,23 +90,36 @@ public sealed class InviteEmployeesToFlightCommandHandler(
     IUserContext user,
     IAuditContext auditContext,
     TimeProvider timeProvider,
-    IMobileSyncBroadcaster mobileSync) : ICommandHandler<InviteEmployeesToFlightCommand>
+    IMobileSyncBroadcaster mobileSync,
+    IMobileFlightScope mobileScope) : ICommandHandler<InviteEmployeesToFlightCommand>
 {
     public async Task<Result> Handle(InviteEmployeesToFlightCommand request, CancellationToken cancellationToken)
     {
-        var flight = await db.Flights
+        IQueryable<Flight> query = db.Flights;
+        if (request.MobileOnly)
+        {
+            var mobile = await mobileScope.ResolveAsync(cancellationToken);
+            if (mobile.IsFailure)
+                return mobile.Error;
+            query = MobileFlightQuery.ApplyScope(query, mobile.Value);
+        }
+
+        var flight = await query
             .Include(flight => flight.PlannedServices)
             .Include(flight => flight.AssignedEmployees)
             .FirstOrDefaultAsync(flight => flight.Id == request.FlightId, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
-        var resolvedScope = await scope.ResolveForWriteAsync(cancellationToken);
-        if (resolvedScope.IsFailure)
-            return resolvedScope.Error;
-        var access = resolvedScope.Value.EnsureFlightAccess(flight);
-        if (access.IsFailure)
-            return access.Error;
+        if (!request.MobileOnly)
+        {
+            var resolvedScope = await scope.ResolveForWriteAsync(cancellationToken);
+            if (resolvedScope.IsFailure)
+                return resolvedScope.Error;
+            var access = resolvedScope.Value.EnsureFlightAccess(flight);
+            if (access.IsFailure)
+                return access.Error;
+        }
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
 

@@ -78,7 +78,14 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         if (access.IsFailure)
             return access.Error;
 
-        return new FlightDetailDto(flight.Id, flight.FlightNumber.Value,
+        return FlightDetails.Map(flight);
+    }
+}
+
+internal static class FlightDetails
+{
+    public static FlightDetailDto Map(Flight flight) =>
+        new(flight.Id, flight.FlightNumber.Value,
             flight.Customer.CustomerId, flight.Customer.IataCode, flight.Customer.Name,
             flight.Station.StationId, flight.Station.IataCode, flight.Station.Name,
             flight.OperationType.OperationTypeId, flight.OperationType.Name,
@@ -89,7 +96,6 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             flight.AssignedEmployees.Select(employee => new AssignedEmployeeDto(employee.Employee.StaffMemberId,
                 employee.Employee.FullName, employee.Employee.EmployeeId)).ToList(),
             flight.CreatedAtUtc, flight.UpdatedAtUtc, Convert.ToBase64String(flight.RowVersion));
-    }
 }
 
 internal sealed record FlightListFilter(
@@ -135,7 +141,12 @@ internal static class FlightListQuery
             query = query.Where(f => f.Schedule.Sta >= from);
         if (filter.ToUtc is { } to)
             query = query.Where(f => f.Schedule.Sta <= to);
-        if (SearchFilter.Term(filter.Search) is { } term)
+        return ApplySearch(query, filter.Search);
+    }
+
+    public static IQueryable<Flight> ApplySearch(IQueryable<Flight> query, string? search)
+    {
+        if (SearchFilter.Term(search) is { } term)
         {
             var compactFlightTerm = CompactFlightSearchTerm(term);
             var flightIdTerm = ParseFlightIdSearchTerm(term);

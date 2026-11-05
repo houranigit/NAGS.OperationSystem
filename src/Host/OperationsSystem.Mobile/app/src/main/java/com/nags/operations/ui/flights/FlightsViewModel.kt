@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.AuthenticatedUser
 import com.nags.operations.data.AssignedEmployee
+import com.nags.operations.data.FlightCategory
+import com.nags.operations.data.isInFlightWindow
+import com.nags.operations.data.matches
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
@@ -17,6 +20,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import java.io.IOException
+import java.time.Duration
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.serialization.SerializationException
 import kotlinx.coroutines.delay
@@ -33,6 +41,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class FlightsUiState(
+    val category: FlightCategory = FlightCategory.MyFlights,
+    val stationId: String? = null,
     val items: List<FlightListItem> = emptyList(),
     val isOnline: Boolean = true,
     val isUsingCachedList: Boolean = false,
@@ -66,7 +76,7 @@ data class FlightsUiState(
 
 class FlightsViewModel internal constructor(
     private val fetchProfile: suspend () -> AuthenticatedUser,
-    private val fetchFlights: suspend (Int, Int, String?) -> FlightPage,
+    private val fetchFlights: suspend (FlightCategory, Int, Int, String?) -> FlightPage,
     private val fetchFlight: suspend (String) -> FlightDetail,
     private val fetchInvitationOptions: suspend (String) -> List<AssignedEmployee>,
     private val sendInvitations: suspend (String, List<String>, String) -> Unit,
@@ -76,6 +86,9 @@ class FlightsViewModel internal constructor(
     private val cacheStatus: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
     private val clearCachedFlights: suspend () -> Unit = {},
     private val observeCustomerLogo: (String) -> Flow<ByteArray?> = { flowOf(null) },
+    private val pruneCachedFlights: suspend () -> Unit = {},
+    private val now: () -> Instant = Instant::now,
+    private val waitForExpiryCheck: suspend (Long) -> Unit = { delay(it) },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor) : this(
         fetchProfile = authRepository::profile,
@@ -88,6 +101,7 @@ class FlightsViewModel internal constructor(
         cacheStatus = repository.syncStatus,
         clearCachedFlights = repository::clearLocal,
         observeCustomerLogo = repository::customerLogo,
+        pruneCachedFlights = repository::pruneExpired,
     )
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope
@@ -96,8 +110,10 @@ class FlightsViewModel internal constructor(
     private var listJob: Job? = null
     private var detailJob: Job? = null
     private var invitationJob: Job? = null
+    private var expiryJob: Job? = null
 
     init {
+        scheduleExpiryChecks()
         scope.launch {
             online.collect { connected ->
                 if (!connected && !_state.value.isInviting) {
@@ -134,7 +150,7 @@ class FlightsViewModel internal constructor(
         detailJob?.cancel()
         invitationJob?.cancel()
         _state.update {
-            it.copy(items = emptyList(), totalCount = 0, hasMore = false,
+            it.copy(items = emptyList(), stationId = null, totalCount = 0, hasMore = false,
                 selectedFlightId = null, lastUnavailableFlightId = null, detail = null, detailError = null,
                 isLoading = false, isRefreshing = false, isLoadingMore = false, isLoadingDetail = false,
                 isInvitationOpen = false, isLoadingInvitations = false, isInviting = false,
@@ -145,6 +161,14 @@ class FlightsViewModel internal constructor(
         }
     }
 
+    fun setCategory(category: FlightCategory) {
+        if (category == _state.value.category) return
+        _state.update {
+            it.copy(category = category, items = emptyList(), page = 1, totalCount = 0, hasMore = false)
+        }
+        loadList()
+    }
+
     fun setSearch(search: String) {
         if (search == _state.value.search) return
         _state.update {
@@ -153,13 +177,17 @@ class FlightsViewModel internal constructor(
         loadList(debounce = true)
     }
 
-    fun refresh() = loadList()
+    fun refresh() {
+        expireVisibleFlights()
+        loadList()
+    }
 
     fun customerLogo(customerId: String): Flow<ByteArray?> = observeCustomerLogo(customerId)
 
     private fun loadList(debounce: Boolean = false) {
         listJob?.cancel()
         val search = _state.value.search
+        val category = _state.value.category
         _state.update {
             it.copy(isLoading = it.items.isEmpty(), isRefreshing = it.items.isNotEmpty(),
                 isLoadingMore = false, error = null, loadMoreError = null)
@@ -168,12 +196,19 @@ class FlightsViewModel internal constructor(
             try {
                 if (debounce) delay(300)
                 if (!ensureViewPermission()) return@launch
-                val result = fetchFlights(1, PAGE_SIZE, search.trim().ifEmpty { null })
+                val result = fetchFlights(category, 1, PAGE_SIZE, search.trim().ifEmpty { null })
+                currentCoroutineContext().ensureActive()
+                val rows = result.items.filter { it.matches(category) && it.isInFlightWindow(now()) }
+                val previousStation = _state.value.stationId ?: _state.value.detail?.stationId
+                if (result.stationId != null && previousStation != null && result.stationId != previousStation) {
+                    clearSelectedFlight()
+                }
                 _state.update {
-                    it.copy(items = result.items, page = result.page, totalCount = result.totalCount,
+                    it.copy(items = rows, stationId = result.stationId, page = result.page, totalCount = (result.totalCount - (result.items.size - rows.size)).coerceAtLeast(0),
                         hasMore = result.hasNextPage, isLoading = false, isRefreshing = false,
                         permissionDenied = false, error = null, isUsingCachedList = result.fromCache)
                 }
+                scheduleExpiryChecks()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -188,13 +223,24 @@ class FlightsViewModel internal constructor(
         _state.update { it.copy(isLoadingMore = true, error = null, loadMoreError = null) }
         listJob = scope.launch {
             try {
-                val result = fetchFlights(current.page + 1, PAGE_SIZE, current.search.trim().ifEmpty { null })
+                val result = fetchFlights(current.category, current.page + 1, PAGE_SIZE, current.search.trim().ifEmpty { null })
+                currentCoroutineContext().ensureActive()
+                if (result.stationId != null && current.stationId != null && result.stationId != current.stationId) {
+                    clearSelectedFlight()
+                    _state.update { it.copy(items = emptyList(), stationId = result.stationId,
+                        page = 1, totalCount = 0, hasMore = false) }
+                    loadList()
+                    return@launch
+                }
+                val rows = result.items.filter { it.matches(current.category) && it.isInFlightWindow(now()) }
                 _state.update {
-                    it.copy(items = (it.items + result.items).distinctBy { flight -> flight.id },
+                    it.copy(items = (it.items + rows).distinctBy { flight -> flight.id },
                         page = result.page, totalCount = result.totalCount,
                         hasMore = result.hasNextPage, isLoadingMore = false,
                         isUsingCachedList = it.isUsingCachedList || result.fromCache)
                 }
+                expireVisibleFlights()
+                scheduleExpiryChecks()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -216,7 +262,13 @@ class FlightsViewModel internal constructor(
                     return@launch
                 }
                 val detail = fetchFlight(id)
+                currentCoroutineContext().ensureActive()
+                if (!detail.isInFlightWindow(now())) {
+                    handleFlightAccessFailure(id, ApiException(404, FLIGHT_EXPIRED_MESSAGE), detailReadSucceeded = false)
+                    return@launch
+                }
                 _state.update { it.copy(detail = detail, isLoadingDetail = false) }
+                scheduleExpiryChecks()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -277,6 +329,8 @@ class FlightsViewModel internal constructor(
         var detailReadSucceeded = false
         try {
             val flight = fetchFlight(id)
+            currentCoroutineContext().ensureActive()
+            if (!flight.isInFlightWindow(now())) throw ApiException(404, FLIGHT_EXPIRED_MESSAGE)
             detailReadSucceeded = true
             _state.update { it.copy(detail = flight) }
             if (flight.fromCache || !online.value) {
@@ -285,6 +339,11 @@ class FlightsViewModel internal constructor(
                 return
             }
             val options = fetchInvitationOptions(id)
+            currentCoroutineContext().ensureActive()
+            if (!flight.isInFlightWindow(now())) {
+                handleFlightAccessFailure(id, ApiException(404, FLIGHT_EXPIRED_MESSAGE), detailReadSucceeded = false)
+                return
+            }
             val availableIds = options.map { it.staffMemberId }.toSet()
             _state.update {
                 val previousSelected = it.invitationOptions.filter { option ->
@@ -338,6 +397,10 @@ class FlightsViewModel internal constructor(
     fun inviteSelectedEmployees() {
         val current = _state.value
         val flight = current.detail ?: return
+        if (!flight.isInFlightWindow(now())) {
+            expireVisibleFlights()
+            return
+        }
         if (!online.value || flight.fromCache || !current.isInvitationOpen || current.isInviting || current.isLoadingInvitations ||
             !current.invitationOptionsLoaded || !current.canInviteEmployees || flight.isPerLanding ||
             current.selectedInvitationIds.isEmpty() ||
@@ -346,6 +409,7 @@ class FlightsViewModel internal constructor(
         invitationJob = scope.launch {
             try {
                 sendInvitations(flight.id, current.selectedInvitationIds.toList(), flight.rowVersion)
+                currentCoroutineContext().ensureActive()
                 _state.update { it.copy(isInviting = false, isInvitationOpen = false) }
                 openFlight(flight.id)
                 _state.update { it.copy(invitationSent = true) }
@@ -358,6 +422,58 @@ class FlightsViewModel internal constructor(
                     invitationStale = error is ApiException && error.statusCode == 409) }
                 if (error is ApiException && error.statusCode == 409) loadInvitationOptions(flight.id)
             }
+        }
+    }
+
+    /** Recheck the moving window even when no network or synchronization event arrives. */
+    private fun scheduleExpiryChecks() {
+        expiryJob?.cancel()
+        expiryJob = scope.launch {
+            while (true) {
+                val current = _state.value
+                val departures = current.items.map { it.scheduledDepartureUtc } +
+                    listOfNotNull(current.detail?.scheduledDepartureUtc)
+                val nextExpiry = departures.mapNotNull {
+                    runCatching { Instant.parse(it).plus(12, ChronoUnit.HOURS) }.getOrNull()
+                }.minOrNull()
+                val delayMillis = nextExpiry?.let {
+                    (Duration.between(now(), it).toMillis() + 1).coerceIn(1, 30_000)
+                } ?: 30_000L
+                waitForExpiryCheck(delayMillis)
+                expireVisibleFlights()
+                try {
+                    pruneCachedFlights()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Reads and the next tick retry persistence cleanup; expired UI rows stay removed.
+                }
+            }
+        }
+    }
+
+    private fun expireVisibleFlights() {
+        val at = now()
+        val current = _state.value
+        val rows = current.items.filter { it.isInFlightWindow(at) }
+        val expiredDetail = current.detail?.isInFlightWindow(at) == false ||
+            current.items.any { it.id == current.selectedFlightId && !it.isInFlightWindow(at) }
+        if (rows.size == current.items.size && !expiredDetail) return
+        if (expiredDetail) clearSelectedFlight()
+        _state.update {
+            it.copy(items = rows, totalCount = (it.totalCount - (current.items.size - rows.size)).coerceAtLeast(0))
+        }
+    }
+
+    private fun clearSelectedFlight() {
+        detailJob?.cancel()
+        invitationJob?.cancel()
+        _state.update {
+            it.copy(selectedFlightId = null, detail = null, isLoadingDetail = false, detailError = null,
+                isInvitationOpen = false, isLoadingInvitations = false, isInviting = false,
+                invitationOptionsLoaded = false, invitationOptions = emptyList(),
+                availableInvitationIds = emptySet(), selectedInvitationIds = emptySet(),
+                invitationError = null, invitationStale = false, invitationSent = false)
         }
     }
 
@@ -397,24 +513,26 @@ class FlightsViewModel internal constructor(
 
     private fun listFailed(error: Exception) {
         val forbidden = error is ApiException && error.statusCode == 403
+        if (forbidden) {
+            clearVisibleFlights(permissionDenied = true)
+            return
+        }
         _state.update {
-            if (it.isLoadingMore && !forbidden) {
+            if (it.isLoadingMore) {
                 it.copy(isLoadingMore = false, loadMoreError = error.userMessage())
             } else {
-                it.copy(items = if (forbidden) emptyList() else it.items,
-                    totalCount = if (forbidden) 0 else it.totalCount,
-                    hasMore = if (forbidden) false else it.hasMore,
-                    permissionDenied = forbidden, isLoading = false, isRefreshing = false,
+                it.copy(permissionDenied = false, isLoading = false, isRefreshing = false,
                     isLoadingMore = false, error = error.userMessage(), loadMoreError = null)
             }
         }
     }
 
     private companion object {
+        const val FLIGHT_EXPIRED_MESSAGE = "This flight is outside the current 24-hour window."
         const val PAGE_SIZE = 20
         const val INVITE_PERMISSION = "operations.flights.invite"
         const val VIEW_PERMISSION = "operations.flights.view"
-        const val VIEW_PERMISSION_MESSAGE = "Your account does not have permission to view flights."
+        const val VIEW_PERMISSION_MESSAGE = "Flights require an active staff account linked to a station and permission to view flights."
         const val INVITE_ONLINE_MESSAGE = "Connect to load current flight details and invite employees."
     }
 }

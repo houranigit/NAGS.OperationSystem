@@ -3,6 +3,8 @@ package com.nags.operations.ui
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,6 +20,7 @@ import com.nags.operations.AppGraph
 import com.nags.operations.ui.account.AccountScreen
 import com.nags.operations.ui.account.AccountViewModel
 import com.nags.operations.ui.home.MainShellScreen
+import com.nags.operations.ui.flights.FlightSearchScreen
 import com.nags.operations.ui.login.LoginScreen
 import com.nags.operations.ui.login.LoginViewModel
 import com.nags.operations.ui.notifications.NotificationsScreen
@@ -29,6 +32,7 @@ import kotlinx.coroutines.launch
 private object Routes {
     const val Login = "login"
     const val Flights = "flights"
+    const val Search = "search"
     const val Notifications = "notifications"
     const val Account = "account"
     const val SyncCenter = "sync"
@@ -94,12 +98,19 @@ fun OperationsApp() {
             })
         }
         composable(Routes.Flights) {
-            MainShellScreen(graph = graph, factory = factory, onLogout = ::signOut,
+            MainShellScreen(graph = graph, factory = factory,
                 onOpenNotifications = { navController.navigate(Routes.Notifications) },
                 onOpenAccount = { navController.navigate(Routes.Account) },
-                onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) },
+                onOpenSearch = { navController.navigate(Routes.Search) { launchSingleTop = true } },
                 notificationOpenRequest = pendingNotification,
                 onNotificationHandled = graph.notificationNavigation::consume)
+        }
+        composable(Routes.Search,
+            enterTransition = { slideInHorizontally(tween(280)) { it } },
+            exitTransition = { fadeOut(tween(160)) },
+            popEnterTransition = { fadeIn(tween(160)) },
+            popExitTransition = { slideOutHorizontally(tween(280)) { it } }) {
+            FlightSearchScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.Account) {
             val model: AccountViewModel = viewModel(key = "account:$subject", factory = factory)

@@ -3,11 +3,15 @@ package com.nags.operations.ui.flights
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.AuthenticatedUser
+import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.FlightSyncStatus
 import java.io.IOException
+import java.time.Instant
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -479,6 +483,107 @@ class FlightsViewModelTest {
         assertNotNull(vm.state.value.invitationError)
     }
 
+    @Test
+    fun switchingTabsRequestsItsCategoryAndDoesNotKeepThePreviousRows() {
+        val requests = mutableListOf<Pair<FlightCategory, Int>>()
+        val oldPage = CompletableDeferred<FlightPage>()
+        val vm = model(categoryList = { category, number, _, _ ->
+            requests += category to number
+            when (category) {
+                FlightCategory.MyFlights -> if (number == 1) page("mine").copy(hasNextPage = true) else oldPage.await()
+                FlightCategory.PerLanding -> page("landing").copy(items = listOf(row("landing").copy(isMyFlight = false, isPerLanding = true)))
+                FlightCategory.AdHoc -> page("adhoc").copy(items = listOf(row("adhoc").copy(isMyFlight = false, isMyAdHocFlight = true)))
+            }
+        })
+        vm.refresh()
+        vm.loadMore()
+        vm.setCategory(FlightCategory.PerLanding)
+        oldPage.complete(page("late-mine").copy(page = 2))
+        assertEquals(listOf("landing"), vm.state.value.items.map { it.id })
+        vm.setCategory(FlightCategory.AdHoc)
+        assertEquals(listOf("adhoc"), vm.state.value.items.map { it.id })
+        assertEquals(FlightCategory.AdHoc, vm.state.value.category)
+        assertEquals(listOf(FlightCategory.MyFlights to 1, FlightCategory.MyFlights to 2,
+            FlightCategory.PerLanding to 1, FlightCategory.AdHoc to 1), requests)
+    }
+
+    @Test
+    fun offlineClockExpiryRemovesCardsAndClosesDetailsAndInvitations() {
+        var at = Instant.parse("2026-11-04T00:00:00Z")
+        var prunes = 0
+        val ticks = Channel<Unit>(Channel.UNLIMITED)
+        val online = MutableStateFlow(true)
+        val vm = model(permissions = listOf("operations.flights.view", "operations.flights.invite"),
+            online = online, now = { at }, expiryWait = { ticks.receive() }, pruneCache = { prunes++ },
+            options = { listOf(AssignedEmployee("a", "Employee", "A")) })
+        vm.refresh()
+        vm.openFlight("one")
+        vm.openInvitations()
+        vm.selectInvitation("a", true)
+        online.value = false
+        ticks.trySend(Unit)
+        assertEquals(listOf("one"), vm.state.value.items.map { it.id }) // inclusive boundary
+        assertNotNull(vm.state.value.detail)
+
+        at = at.plusNanos(1)
+        ticks.trySend(Unit)
+        assertTrue(vm.state.value.items.isEmpty())
+        assertNull(vm.state.value.detail)
+        assertNull(vm.state.value.selectedFlightId)
+        assertFalse(vm.state.value.isInvitationOpen)
+        assertTrue(vm.state.value.selectedInvitationIds.isEmpty())
+        assertEquals(0L, vm.state.value.totalCount)
+        assertTrue(prunes >= 2)
+    }
+
+    @Test
+    fun aConfirmedStationChangeClosesThePreviousStationsDetailsAndInvitations() {
+        var station = "station"
+        val vm = model(permissions = listOf("operations.flights.view", "operations.flights.invite"),
+            list = { _, _, _ -> page("one").copy(stationId = station) },
+            options = { listOf(AssignedEmployee("a", "Employee", "A")) })
+        vm.refresh()
+        vm.openFlight("one")
+        vm.openInvitations()
+        vm.selectInvitation("a", true)
+        station = "another-station"
+        vm.refresh()
+        assertEquals(station, vm.state.value.stationId)
+        assertNull(vm.state.value.detail)
+        assertNull(vm.state.value.selectedFlightId)
+        assertFalse(vm.state.value.isInvitationOpen)
+        assertTrue(vm.state.value.selectedInvitationIds.isEmpty())
+    }
+
+    @Test
+    fun aStationChangeOnNextPageRestartsPagingInsteadOfCombiningStations() {
+        var station = "station"
+        val requests = mutableListOf<Pair<String, Int>>()
+        val vm = model(list = { number, _, _ ->
+            requests += station to number
+            page("$station-$number").copy(stationId = station, page = number, hasNextPage = number == 1)
+        })
+        vm.refresh()
+        vm.openFlight("station-1")
+        station = "another-station"
+        vm.loadMore()
+        assertEquals(listOf("another-station-1"), vm.state.value.items.map { it.id })
+        assertEquals(station, vm.state.value.stationId)
+        assertEquals(1, vm.state.value.page)
+        assertNull(vm.state.value.detail)
+        assertNull(vm.state.value.selectedFlightId)
+        assertEquals(listOf("station" to 1, "another-station" to 2, "another-station" to 1), requests)
+    }
+
+    @Test
+    fun anExpiredNotificationDetailIsNeverDisplayed() {
+        val vm = model(now = { Instant.parse("2026-11-04T00:00:00.000000001Z") })
+        vm.openFlight("one")
+        assertNull(vm.state.value.detail)
+        assertNull(vm.state.value.selectedFlightId)
+        assertEquals("one", vm.state.value.lastUnavailableFlightId)
+    }
+
     private fun model(
         permissions: List<String> = listOf("operations.flights.view"),
         list: suspend (Int, Int, String?) -> FlightPage = { _, _, _ -> page("one") },
@@ -490,17 +595,23 @@ class FlightsViewModelTest {
         cacheStatus: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
         profile: (suspend () -> AuthenticatedUser)? = null,
         clearCache: suspend () -> Unit = {},
+        categoryList: (suspend (FlightCategory, Int, Int, String?) -> FlightPage)? = null,
+        now: () -> Instant = { Instant.parse("2026-11-03T11:00:00Z") },
+        expiryWait: suspend (Long) -> Unit = { delay(it) },
+        pruneCache: suspend () -> Unit = {},
     ) = FlightsViewModel(
         fetchProfile = profile ?: { AuthenticatedUser("user", "staff@example.test", "Staff", "StationStaff", permissions = permissions) },
-        fetchFlights = list, fetchFlight = readDetail, fetchInvitationOptions = options,
+        fetchFlights = categoryList ?: { _, number, size, search -> list(number, size, search) },
+        fetchFlight = readDetail, fetchInvitationOptions = options,
         sendInvitations = send, coroutineScope = scope, online = online,
         cacheChanges = changes, cacheStatus = cacheStatus, clearCachedFlights = clearCache,
+        now = now, waitForExpiryCheck = expiryWait, pruneCachedFlights = pruneCache,
     )
 
     private fun page(id: String) = FlightPage(items = listOf(row(id)), totalCount = 1)
     private fun row(id: String) = FlightListItem(id, "123", customerName = "Airline", stationIataCode = "JED",
         operationTypeName = "Transit", scheduledArrivalUtc = "2026-11-03T10:00:00Z",
-        scheduledDepartureUtc = "2026-11-03T12:00:00Z", isPerLanding = false)
+        scheduledDepartureUtc = "2026-11-03T12:00:00Z", isPerLanding = false, isMyFlight = true)
     private fun detail(id: String) = FlightDetail(id, "123", "customer", customerName = "Airline",
         stationId = "station", stationIata = "JED", stationName = "Jeddah", operationTypeId = "operation",
         operationTypeName = "Transit", scheduledArrivalUtc = "2026-11-03T10:00:00Z",

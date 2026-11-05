@@ -1,6 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using MasterData.Contracts.Seeding;
+using Microsoft.Extensions.DependencyInjection;
+using Operations.Application.Contracts;
+using Operations.Domain.Flights;
+using Operations.Domain.ValueObjects;
+using Operations.Infrastructure.Persistence;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -135,6 +141,78 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
             .StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await dispatcher.Client.GetAsync($"{MasterDataBase}/customers/{refs.CustomerId}/logo"))
             .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Mobile_routes_limit_categories_station_and_overlap_without_narrowing_portal_reads()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs,
+            ["operations.flights.view", "operations.flights.view-station", "operations.flights.invite"]);
+        using var client = staff.Client;
+        var me = await client.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me");
+        var userId = me.GetProperty("id").GetGuid();
+        var assignedId = await ScheduleFlightAsync(admin, refs.StationId, refs, "MOB100", [staff.StaffId]);
+        var unassignedId = await ScheduleFlightAsync(admin, refs.StationId, refs, "MOB200");
+        var now = DateTimeOffset.UtcNow;
+
+        Flight SeedFlight(string number, bool perLanding = false, bool adHoc = false,
+            Guid? creator = null, Guid? stationId = null, int arrivalHours = 0, int departureHours = 1) =>
+            Flight.ScheduleNew(new CustomerSnapshot(refs.CustomerId, "SV", "Mobile customer"),
+                new StationSnapshot(stationId ?? refs.StationId, "TST", "Mobile station"),
+                new OperationTypeSnapshot(adHoc ? WellKnownMasterDataIds.AdHocOperationType : refs.OperationTypeId,
+                    adHoc ? "Ad Hoc" : "Transit"), FlightNumber.Create(number).Value,
+                ScheduledTime.Create(now.AddHours(arrivalHours), now.AddHours(departureHours)).Value,
+                null, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : refs.ServiceId, "Service")],
+                !perLanding && !adHoc ? [new StaffMemberSnapshot(staff.StaffId, "Staff", "E1")] : [],
+                creator ?? userId, now).Value;
+
+        var landing = SeedFlight("MOB300", perLanding: true);
+        var ownAdHoc = SeedFlight("MOB400", adHoc: true);
+        var ownMixed = SeedFlight("MOB500", perLanding: true, adHoc: true);
+        var otherAdHoc = SeedFlight("MOB600", adHoc: true, creator: Guid.NewGuid());
+        var otherMixed = SeedFlight("MOB700", perLanding: true, adHoc: true, creator: Guid.NewGuid());
+        var spanning = SeedFlight("MOB800", arrivalHours: -20, departureHours: 1);
+        var outdated = SeedFlight("MOB900", arrivalHours: -50, departureHours: -49);
+        var otherStation = SeedFlight("MOB999", stationId: Guid.NewGuid());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            db.Flights.AddRange(landing, ownAdHoc, ownMixed, otherAdHoc, otherMixed, spanning, outdated, otherStation);
+            await db.SaveChangesAsync();
+        }
+
+        var mobile = $"{Base}/flights/mobile";
+        var page = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?pageSize=100");
+        page.ShouldNotBeNull();
+        page!.StationId.ShouldBe(refs.StationId);
+        page.WindowStartUtc.ShouldBe(page.AsOfUtc.AddHours(-12));
+        page.WindowEndUtc.ShouldBe(page.AsOfUtc.AddHours(12));
+        page.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id, landing.Id, ownAdHoc.Id, ownMixed.Id], ignoreOrder: true);
+        page.Items.ShouldAllBe(f => f.StationId == refs.StationId);
+        var mine = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=MyFlights");
+        mine!.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id], ignoreOrder: true);
+        var perLanding = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=PerLanding");
+        perLanding!.Items.ShouldHaveSingleItem().Id.ShouldBe(landing.Id);
+        var adHoc = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=AdHoc");
+        adHoc!.Items.Select(f => f.Id).ShouldBe([ownAdHoc.Id, ownMixed.Id], ignoreOrder: true);
+        adHoc.Items.ShouldAllBe(f => f.IsMyAdHocFlight && !f.IsMyFlight);
+        (await client.GetAsync($"{mobile}?category=unknown")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await admin.GetAsync(mobile)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await client.GetAsync($"{mobile}/{spanning.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        foreach (var id in new[] { outdated.Id, otherStation.Id, otherAdHoc.Id, otherMixed.Id, unassignedId })
+        {
+            (await client.GetAsync($"{mobile}/{id}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+            (await client.GetAsync($"{mobile}/{id}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        }
+        // A caller cannot widen this surface by attaching the portal's date/station parameters.
+        var ignoredFilters = await client.GetFromJsonAsync<MobileFlightPageDto>(
+            $"{mobile}?pageSize=100&stationId={otherStation.Station.StationId}&fromUtc=2000-01-01&toUtc=2100-01-01");
+        ignoredFilters!.Items.Select(f => f.Id).ShouldBe(page.Items.Select(f => f.Id), ignoreOrder: true);
+
+        (await admin.GetAsync($"{Base}/flights/{outdated.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.GetAsync($"{Base}/flights/{unassignedId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     // --- Helpers ---------------------------------------------------------------

@@ -1,0 +1,6 @@
+{
+  "my_flights_has_no_per_landing_badges": true,
+  "per_landing_cards_have_badges": true,
+  "adhoc_empty_state_visible": true,
+  "card_assertion_basis": "Clickable card groups; partially visible rows do not skew counts"
+}

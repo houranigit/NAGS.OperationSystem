@@ -35,7 +35,7 @@ public sealed class FlightInvitationTests
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
 
-        var result = await new GetFlightInvitationOptionsQueryHandler(db, AdminScope(), reader)
+        var result = await new GetFlightInvitationOptionsQueryHandler(db, AdminScope(), reader, MobileScope(AdminScope()))
             .Handle(new GetFlightInvitationOptionsQuery(flight.Id), CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
@@ -106,7 +106,7 @@ public sealed class FlightInvitationTests
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
 
-        var options = await new GetFlightInvitationOptionsQueryHandler(db, AdminScope(), reader)
+        var options = await new GetFlightInvitationOptionsQueryHandler(db, AdminScope(), reader, MobileScope(AdminScope()))
             .Handle(new GetFlightInvitationOptionsQuery(flight.Id), CancellationToken.None);
         var invitation = await Handler(db, reader, AdminScope()).Handle(new InviteEmployeesToFlightCommand(
             flight.Id, [Guid.NewGuid()], flight.RowVersion), CancellationToken.None);
@@ -129,7 +129,7 @@ public sealed class FlightInvitationTests
         await db.SaveChangesAsync();
         var scope = new StaticScope(new OperationsScopeContext(userType, Guid.NewGuid(), Guid.NewGuid()));
 
-        var options = await new GetFlightInvitationOptionsQueryHandler(db, scope, reader)
+        var options = await new GetFlightInvitationOptionsQueryHandler(db, scope, reader, MobileScope(scope))
             .Handle(new GetFlightInvitationOptionsQuery(flight.Id), CancellationToken.None);
         var invitation = await Handler(db, reader, scope).Handle(new InviteEmployeesToFlightCommand(
             flight.Id, [Guid.NewGuid()], flight.RowVersion), CancellationToken.None);
@@ -151,7 +151,9 @@ public sealed class FlightInvitationTests
     }
 
     private static InviteEmployeesToFlightCommandHandler Handler(OperationsDbContext db, SchedulingMasterDataReader reader, IOperationsScope scope) =>
-        new(db, scope, new MasterDataResolver(reader), new Actor(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
+        new(db, scope, new MasterDataResolver(reader), new Actor(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance, MobileScope(scope));
+
+    private static MobileFlightScope MobileScope(IOperationsScope scope) => new(scope, new Actor(), TimeProvider.System);
 
     private static StaffMemberReadSnapshot Staff(Guid stationId, string name, bool active = true) =>
         new(Guid.NewGuid(), name, name, stationId, Guid.NewGuid(), active);

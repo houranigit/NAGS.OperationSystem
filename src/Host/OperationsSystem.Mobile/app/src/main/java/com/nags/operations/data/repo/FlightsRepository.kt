@@ -2,9 +2,11 @@ package com.nags.operations.data.repo
 
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
+import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
+import com.nags.operations.data.FlightScope
 import com.nags.operations.data.FlightSyncStatus
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.HttpClientFactory
@@ -13,6 +15,9 @@ import com.nags.operations.data.db.CatalogDatabase
 import com.nags.operations.data.db.dao.FlightCacheDao
 import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
+import com.nags.operations.data.isInFlightWindow
+import com.nags.operations.data.matches
+import com.nags.operations.data.scopeOrNull
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import java.io.IOException
 import java.time.Instant
@@ -32,6 +37,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -39,7 +45,7 @@ import kotlinx.serialization.json.Json
 /** Scoped read-only snapshots; employee invitations always use the live API. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FlightsRepository internal constructor(
-    private val fetchFlights: suspend (Int, Int, String?) -> FlightPage,
+    private val fetchFlights: suspend (Int, Int, String?, FlightCategory?) -> FlightPage,
     private val fetchFlight: suspend (String) -> FlightDetail,
     private val fetchInvitationOptions: suspend (String) -> List<AssignedEmployee>,
     private val sendInvitation: suspend (String, List<String>, String) -> Unit,
@@ -80,30 +86,44 @@ class FlightsRepository internal constructor(
     val syncStatus: Flow<FlightSyncStatus> = ownerFlow.flatMapLatest { owner ->
         if (owner == null) flowOf(null) else dao.observe(owner)
     }.map { snapshot ->
-        FlightSyncStatus(snapshot?.itemCount ?: 0, snapshot?.lastAttemptUtc, snapshot?.lastSuccessUtc,
-            snapshot?.error, snapshot?.permissionDenied ?: false, snapshot?.lastDurationMs)
+        val payload = snapshot?.let(::decodeSnapshot)
+        if (snapshot == null || payload == null) FlightSyncStatus()
+        else FlightSyncStatus(payload.items.count { it.isInFlightWindow(Instant.parse(now())) },
+            snapshot.lastAttemptUtc, snapshot.lastSuccessUtc, snapshot.error,
+            snapshot.permissionDenied, snapshot.lastDurationMs)
     }.distinctUntilChanged()
 
-    suspend fun flights(page: Int = 1, pageSize: Int = 20, search: String? = null): FlightPage {
+    /** The complete eligible union is used by synchronization, never the portal register. */
+    suspend fun flights(page: Int = 1, pageSize: Int = 20, search: String? = null): FlightPage =
+        flightsPage(null, page, pageSize, search)
+
+    suspend fun flights(category: FlightCategory, page: Int = 1, pageSize: Int = 20, search: String? = null): FlightPage =
+        flightsPage(category, page, pageSize, search)
+
+    private suspend fun flightsPage(category: FlightCategory?, page: Int, pageSize: Int, search: String?): FlightPage {
         val session = requireSession()
-        val logoRead = logoStore?.beginMetadataRead()
-        if (!isOnline()) return cachedPage(session, page, pageSize, search).also {
-            reconcileLogos(it.items, logoRead, fromCache = true)
-        }
+        var logoRead = logoStore?.beginMetadataRead()
+        if (!isOnline()) return cachedPage(session, category, page, pageSize, search)
         val revision = listRevision
         try {
-            val result = fetchFlights(page, pageSize, search)
-            ensureCurrent(session)
-            return if (revision == listRevision) result.also { reconcileLogos(it.items, logoRead) }
-                else cachedPage(session, page, pageSize, search).also { reconcileLogos(it.items, logoRead, fromCache = true) }
+            val result = fetchFlights(page, pageSize, search, category)
+            val scope = requireScope(result, category)
+            val accepted = mutationMutex.withLock {
+                ensureCurrent(session)
+                if (revision != listRevision) return@withLock false
+                if (acceptScopeLocked(session, scope)) logoRead = logoStore?.beginMetadataRead()
+                true
+            }
+            if (!accepted) return cachedPage(session, category, page, pageSize, search)
+            val bounded = result.copy(items = result.items.filter { it.isInFlightWindow(Instant.parse(now())) })
+            reconcileLogos(bounded.items, logoRead)
+            return bounded
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             handleAccessError(session, error)
             if (!error.isTransient()) throw error
-            return cachedPageOrNull(session, page, pageSize, search)?.also {
-                reconcileLogos(it.items, logoRead, fromCache = true)
-            } ?: throw error
+            return cachedPageOrNull(session, category, page, pageSize, search) ?: throw error
         }
     }
 
@@ -116,7 +136,15 @@ class FlightsRepository internal constructor(
                 val detail = fetchFlight(id)
                 mutationMutex.withLock {
                     ensureCurrent(session)
-                    dao.putDetails(listOf(FlightDetailCacheEntity(session.owner, id, json.encodeToString(detail))))
+                    val saved = scopedSnapshotLocked(session)
+                    val scope = saved?.second?.scope ?: dao.snapshot(session.owner)?.let(::decodeSnapshot)?.scope
+                    if (!detail.isInFlightWindow(Instant.parse(now())) || (scope != null && detail.stationId != scope.stationId)) {
+                        throw ApiException(404, "This flight is outside your current flight window.")
+                    }
+                    // Only the complete scoped manifest authorizes an offline detail.
+                    if (saved?.second?.items?.any { it.id == id } == true) {
+                        dao.putDetails(listOf(FlightDetailCacheEntity(session.owner, id, json.encodeToString(detail))))
+                    }
                 }
                 detail
             } catch (error: CancellationException) {
@@ -131,8 +159,7 @@ class FlightsRepository internal constructor(
 
     fun customerLogo(customerId: String): Flow<ByteArray?> = logoStore?.observe(customerId) ?: flowOf(null)
 
-    private suspend fun reconcileLogos(items: List<FlightListItem>, read: LogoMetadataRead?, complete: Boolean = false, fromCache: Boolean = false) {
-        if (fromCache) return // Cached rows cannot renew flight authorization or roll back asset metadata.
+    private suspend fun reconcileLogos(items: List<FlightListItem>, read: LogoMetadataRead?, complete: Boolean = false) {
         try {
             logoStore?.reconcileFlights(items.mapNotNull { item -> item.customerId?.let {
                 it to item.customerLogoVersion
@@ -151,6 +178,15 @@ class FlightsRepository internal constructor(
         sendInvitation(id, staffMemberIds, rowVersion)
     }
 
+    /** Removes expired rows and details even when the device is offline. */
+    suspend fun pruneExpired() {
+        val session = captureSession() ?: return
+        mutationMutex.withLock {
+            ensureCurrent(session)
+            scopedSnapshotLocked(session)
+        }
+    }
+
     /** Replaces only a complete scoped list; partial downloads never become an offline snapshot. */
     suspend fun refreshCache() {
         if (!isOnline()) return
@@ -159,14 +195,18 @@ class FlightsRepository internal constructor(
         try {
             if (!isOnline()) return
             val session = captureSession() ?: return
-            val logoRead = logoStore?.beginMetadataRead()
+            var logoRead = logoStore?.beginMetadataRead()
             val attemptedAt = now()
             val started = monotonicNanos()
+            val revision = listRevision
             try {
-                val items = readCompleteList(session).toMutableList()
+                val (downloaded, acceptedLogoRead) = readCompleteList(session, revision, logoRead)
+                logoRead = acceptedLogoRead
+                val downloadedScope = checkNotNull(downloaded.scope)
+                val items = downloaded.items.filter { it.isInFlightWindow(Instant.parse(now())) }.toMutableList()
                 val visibleIds = items.mapTo(mutableSetOf()) { it.id }
                 val previousDetails = mutationMutex.withLock {
-                    ensureCurrent(session)
+                    ensureCompatibleScope(session, revision, downloadedScope)
                     dao.details(session.owner).filter { it.flightId in visibleIds }
                 }
                 val details = mutableListOf<FlightDetailCacheEntity>()
@@ -174,6 +214,9 @@ class FlightsRepository internal constructor(
                     ensureCurrent(session)
                     try {
                         val detail = fetchFlight(previous.flightId)
+                        if (detail.stationId != downloadedScope.stationId || !detail.isInFlightWindow(Instant.parse(now()))) {
+                            throw ApiException(404, "This flight is outside your current flight window.")
+                        }
                         details += FlightDetailCacheEntity(session.owner, previous.flightId, json.encodeToString(detail))
                     } catch (error: ApiException) {
                         if (error.statusCode != 403 && error.statusCode != 404) throw error
@@ -183,12 +226,19 @@ class FlightsRepository internal constructor(
                     }
                 }
                 mutationMutex.withLock {
-                    ensureCurrent(session)
+                    ensureCompatibleScope(session, revision, downloadedScope)
+                    val previousScope = dao.snapshot(session.owner)?.let(::decodeSnapshot)?.scope
+                    if (previousScope != null && previousScope.stationId != downloadedScope.stationId) {
+                        logoStore?.clearOwner(session.owner)
+                        logoRead = logoStore?.beginMetadataRead()
+                    }
+                    val retained = items.filter { it.isInFlightWindow(Instant.parse(now())) }
+                    val ids = retained.mapTo(mutableSetOf()) { it.id }
                     val duration = (monotonicNanos() - started).coerceAtLeast(0L) / 1_000_000L
-                    dao.replace(FlightSnapshotEntity(session.owner, json.encodeToString(items), items.size,
-                        attemptedAt, now(), lastDurationMs = duration), details)
+                    dao.replace(FlightSnapshotEntity(session.owner, json.encodeToString(downloaded.copy(items = retained)), retained.size,
+                        attemptedAt, now(), lastDurationMs = duration), details.filter { it.flightId in ids })
                     listRevision++
-                    reconcileLogos(items, logoRead, complete = true)
+                    reconcileLogos(retained, logoRead, complete = true)
                 }
                 _cacheChanges.tryEmit(Unit)
             } catch (error: CancellationException) {
@@ -197,7 +247,8 @@ class FlightsRepository internal constructor(
                 val handled = handleAccessError(session, error)
                 if (!handled) mutationMutex.withLock {
                     if (!isCurrent(session)) return
-                    val previous = dao.snapshot(session.owner) ?: FlightSnapshotEntity(session.owner)
+                    scopedSnapshotLocked(session)
+                    val previous = dao.snapshot(session.owner) ?: emptySnapshot(session.owner)
                     dao.putSnapshot(previous.copy(lastAttemptUtc = attemptedAt,
                         error = "Could not refresh flights. Saved data is kept; retry when connected."))
                 }
@@ -216,21 +267,37 @@ class FlightsRepository internal constructor(
             listRevision++
         }
         logoStore?.clearAll()
-        // An explicit session purge also clears a live-only UI that never persisted a snapshot.
         _cacheChanges.tryEmit(Unit)
     }
 
-    private suspend fun readCompleteList(session: FlightCacheSession): List<FlightListItem> {
+    private suspend fun readCompleteList(
+        session: FlightCacheSession,
+        revision: Long,
+        initialLogoRead: LogoMetadataRead?,
+    ): Pair<ScopedFlightSnapshot, LogoMetadataRead?> {
+        var logoRead = initialLogoRead
         val items = linkedMapOf<String, FlightListItem>()
         var pageNumber = 1
         var expectedTotal: Long? = null
+        var scope: FlightScope? = null
         while (true) {
             ensureCurrent(session)
-            val page = fetchFlights(pageNumber, SYNC_PAGE_SIZE, null)
+            val page = fetchFlights(pageNumber, SYNC_PAGE_SIZE, null, null)
+            val incoming = requireScope(page, null)
+            val stationChanged = mutationMutex.withLock {
+                ensureCompatibleScope(session, revision, incoming)
+                acceptScopeLocked(session, incoming).also { changed ->
+                    if (changed) logoRead = logoStore?.beginMetadataRead()
+                }
+            }
+            // New station metadata revokes old rows even if the remaining download fails.
+            if (stationChanged) _cacheChanges.tryEmit(Unit)
             if (page.page != pageNumber || page.pageSize !in 1..SYNC_PAGE_SIZE || page.totalCount < 0 ||
-                (expectedTotal != null && page.totalCount != expectedTotal)) {
+                (expectedTotal != null && page.totalCount != expectedTotal) ||
+                (scope != null && scope.stationId != incoming.stationId)) {
                 throw IOException("Flight list changed during sync; retry.")
             }
+            scope = incoming
             expectedTotal = page.totalCount
             for (item in page.items) {
                 if (items.put(item.id, item) != null) throw IOException("Flight pages overlap; retry.")
@@ -242,28 +309,64 @@ class FlightsRepository internal constructor(
             pageNumber++
         }
         if (items.size.toLong() != expectedTotal) throw IOException("Flight pagination is incomplete; retry.")
-        return items.values.toList()
+        return ScopedFlightSnapshot(CACHE_SCOPE_VERSION, scope, items.values.toList()) to logoRead
     }
 
-    private suspend fun cachedPage(session: FlightCacheSession, page: Int, size: Int, search: String?): FlightPage =
-        cachedPageOrNull(session, page, size, search)
+    /** Caller holds mutationMutex. Scope metadata can revoke old data without saving partial rows. */
+    private suspend fun acceptScopeLocked(session: FlightCacheSession, incoming: FlightScope): Boolean {
+        val previous = dao.snapshot(session.owner)
+        val saved = previous?.let(::decodeSnapshot)
+        if (saved?.scope?.stationId != null && saved.scope.stationId != incoming.stationId) {
+            dao.replace(emptySnapshot(session.owner, incoming), emptyList())
+            logoStore?.clearOwner(session.owner)
+            listRevision++
+            return true
+        }
+        if (previous?.lastSuccessUtc == null) {
+            if (saved?.scope == null) listRevision++
+            dao.putSnapshot(emptySnapshot(session.owner, incoming))
+        }
+        return false
+    }
+
+    /** Caller holds mutationMutex; a newer confirmed station wins over a pending full response. */
+    private suspend fun ensureCompatibleScope(session: FlightCacheSession, revision: Long, incoming: FlightScope) {
+        ensureCurrent(session)
+        val current = dao.snapshot(session.owner)?.let(::decodeSnapshot)?.scope
+        if (revision != listRevision && current != null && current.stationId != incoming.stationId) {
+            throw IOException("Flight station changed during sync; retry.")
+        }
+    }
+
+    private fun requireScope(page: FlightPage, category: FlightCategory?): FlightScope {
+        val scope = page.scopeOrNull() ?: throw IOException("The mobile flight scope is missing or invalid.")
+        val at = Instant.parse(scope.asOfUtc)
+        if (page.items.any { it.stationId != scope.stationId || !it.matches(category) || !it.isInFlightWindow(at) }) {
+            throw IOException("A flight is outside the mobile flight scope.")
+        }
+        return scope
+    }
+
+    private suspend fun cachedPage(session: FlightCacheSession, category: FlightCategory?, page: Int, size: Int, search: String?): FlightPage =
+        cachedPageOrNull(session, category, page, size, search)
             ?: throw IllegalStateException("Connect to download the flight list before viewing it offline.")
 
-    private suspend fun cachedPageOrNull(session: FlightCacheSession, page: Int, size: Int, search: String?): FlightPage? =
+    private suspend fun cachedPageOrNull(session: FlightCacheSession, category: FlightCategory?, page: Int, size: Int, search: String?): FlightPage? =
         mutationMutex.withLock {
             ensureCurrent(session)
-            val snapshot = dao.snapshot(session.owner)?.takeIf { it.lastSuccessUtc != null && !it.permissionDenied }
-                ?: return@withLock null
+            val (_, payload) = scopedSnapshotLocked(session) ?: return@withLock null
+            val scope = payload.scope ?: return@withLock null
             val term = search?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotEmpty)
-            val filtered = json.decodeFromString<List<FlightListItem>>(snapshot.payloadJson)
-                .filter { term == null || it.matchesSearch(term) }
+            val filtered = payload.items.filter { it.matches(category) && (term == null || it.matchesSearch(term)) }
             val normalizedPage = page.coerceAtLeast(1)
             val pageSize = size.coerceIn(1, SYNC_PAGE_SIZE)
             val totalPages = if (filtered.isEmpty()) 0 else ((filtered.size - 1) / pageSize) + 1
             val skip = (normalizedPage.toLong() - 1L) * pageSize
             FlightPage(if (skip >= filtered.size) emptyList() else filtered.drop(skip.toInt()).take(pageSize),
                 normalizedPage, pageSize, filtered.size.toLong(), totalPages,
-                normalizedPage > 1, normalizedPage < totalPages, fromCache = true)
+                normalizedPage > 1, normalizedPage < totalPages, fromCache = true,
+                stationId = scope.stationId, asOfUtc = scope.asOfUtc,
+                windowStartUtc = scope.windowStartUtc, windowEndUtc = scope.windowEndUtc)
         }
 
     private suspend fun cachedDetail(session: FlightCacheSession, id: String): FlightDetail =
@@ -272,8 +375,44 @@ class FlightsRepository internal constructor(
 
     private suspend fun cachedDetailOrNull(session: FlightCacheSession, id: String): FlightDetail? = mutationMutex.withLock {
         ensureCurrent(session)
-        dao.detail(session.owner, id)?.let { json.decodeFromString<FlightDetail>(it.payloadJson).copy(fromCache = true) }
+        val (_, payload) = scopedSnapshotLocked(session) ?: return@withLock null
+        if (payload.items.none { it.id == id }) return@withLock null
+        dao.detail(session.owner, id)?.let { entity ->
+            runCatching { json.decodeFromString<FlightDetail>(entity.payloadJson) }.getOrNull()
+                ?.takeIf { it.stationId == payload.scope?.stationId && it.isInFlightWindow(Instant.parse(now())) }
+                ?.copy(fromCache = true)
+        }
     }
+
+    /** Caller holds mutationMutex. Expired cache data cannot be served or renew logo membership. */
+    private suspend fun scopedSnapshotLocked(session: FlightCacheSession): Pair<FlightSnapshotEntity, ScopedFlightSnapshot>? {
+        val snapshot = dao.snapshot(session.owner)?.takeIf { it.lastSuccessUtc != null && !it.permissionDenied } ?: return null
+        val payload = decodeSnapshot(snapshot) ?: return null
+        val retained = payload.items.filter { it.isInFlightWindow(Instant.parse(now())) }
+        if (retained.size == payload.items.size) return snapshot to payload
+        val ids = retained.mapTo(mutableSetOf()) { it.id }
+        val updatedPayload = payload.copy(items = retained)
+        val updated = snapshot.copy(payloadJson = json.encodeToString(updatedPayload), itemCount = retained.size)
+        dao.replace(updated, dao.details(session.owner).filter { it.flightId in ids })
+        val customers = retained.mapNotNull { it.customerId }.toSet()
+        logoStore?.revokeCustomers(payload.items.mapNotNull { it.customerId }.toSet() - customers)
+        listRevision++
+        _cacheChanges.tryEmit(Unit)
+        return updated to updatedPayload
+    }
+
+    private fun decodeSnapshot(snapshot: FlightSnapshotEntity): ScopedFlightSnapshot? = runCatching {
+        val payload = json.decodeFromString<ScopedFlightSnapshot>(snapshot.payloadJson)
+        check(payload.version == CACHE_SCOPE_VERSION)
+        if (snapshot.lastSuccessUtc != null) {
+            val scope = checkNotNull(payload.scope).also { check(it.isValid()) }
+            check(payload.items.all { it.stationId == scope.stationId && it.matches(null) })
+        } else check(payload.items.isEmpty())
+        payload
+    }.getOrNull()
+
+    private fun emptySnapshot(owner: String, scope: FlightScope? = null): FlightSnapshotEntity =
+        FlightSnapshotEntity(owner, payloadJson = json.encodeToString(ScopedFlightSnapshot(CACHE_SCOPE_VERSION, scope)))
 
     private suspend fun handleAccessError(
         session: FlightCacheSession,
@@ -303,7 +442,7 @@ class FlightsRepository internal constructor(
                 generation++
                 val previous = dao.snapshot(session.owner)
                 val hadCache = previous?.lastSuccessUtc != null || dao.details(session.owner).isNotEmpty()
-                dao.replace(FlightSnapshotEntity(session.owner, lastAttemptUtc = now(),
+                dao.replace(emptySnapshot(session.owner).copy(lastAttemptUtc = now(),
                     error = "Flight access is not permitted.", permissionDenied = true), emptyList())
                 logoStore?.clearOwner(session.owner)
                 listRevision++
@@ -315,20 +454,19 @@ class FlightsRepository internal constructor(
         if (flightId != null && (error.statusCode == 403 || error.statusCode == 404)) {
             val changed = mutationMutex.withLock {
                 if (!isCurrent(session)) return@withLock false
-                // Full sync already holds the detail-fetch lock and may continue revalidating.
                 if (invalidatePending) generation++
-                val previous = dao.snapshot(session.owner) ?: FlightSnapshotEntity(session.owner)
-                val originalItems = json.decodeFromString<List<FlightListItem>>(previous.payloadJson)
+                val previous = dao.snapshot(session.owner) ?: emptySnapshot(session.owner)
+                val payload = decodeSnapshot(previous) ?: ScopedFlightSnapshot(CACHE_SCOPE_VERSION)
                 val originalDetails = dao.details(session.owner)
-                val retained = originalItems.filter { it.id != flightId }
+                val retained = payload.items.filter { it.id != flightId }
                 val retainedDetails = originalDetails.filter { it.flightId != flightId }
-                val hadCache = retained.size != originalItems.size || retainedDetails.size != originalDetails.size
+                val hadCache = retained.size != payload.items.size || retainedDetails.size != originalDetails.size
                 if (hadCache) {
-                    dao.replace(previous.copy(payloadJson = json.encodeToString(retained), itemCount = retained.size), retainedDetails)
+                    dao.replace(previous.copy(payloadJson = json.encodeToString(payload.copy(items = retained)), itemCount = retained.size), retainedDetails)
                     listRevision++
                     if (previous.lastSuccessUtc != null && invalidatePending) {
                         val stillVisible = retained.mapNotNull { it.customerId }.toSet()
-                        val lostCustomers = originalItems.filter { it.id == flightId }.mapNotNull { it.customerId }.toSet() - stillVisible
+                        val lostCustomers = payload.items.filter { it.id == flightId }.mapNotNull { it.customerId }.toSet() - stillVisible
                         logoStore?.revokeCustomers(lostCustomers)
                     }
                 }
@@ -345,7 +483,16 @@ class FlightsRepository internal constructor(
     }
 
     private suspend fun captureSession(): FlightCacheSession? = mutationMutex.withLock {
-        currentOwner()?.let { FlightCacheSession(it, generation) }
+        val owner = currentOwner() ?: return@withLock null
+        val previous = dao.snapshot(owner)
+        // The former cache was the broad portal register. Never interpret it as the mobile scope.
+        if (previous == null || decodeSnapshot(previous) == null) {
+            generation++
+            dao.replace(emptySnapshot(owner), emptyList())
+            logoStore?.clearOwner(owner)
+            listRevision++
+        }
+        FlightCacheSession(owner, generation)
     }
     private suspend fun requireSession(): FlightCacheSession = captureSession()
         ?: throw IllegalStateException("Sign in to view flights.")
@@ -357,8 +504,16 @@ class FlightsRepository internal constructor(
 
     private companion object {
         const val SYNC_PAGE_SIZE = 100
+        const val CACHE_SCOPE_VERSION = 1
     }
 }
+
+@Serializable
+private data class ScopedFlightSnapshot(
+    val version: Int,
+    val scope: FlightScope? = null,
+    val items: List<FlightListItem> = emptyList(),
+)
 
 private data class FlightCacheSession(val owner: String, val generation: Long)
 
@@ -372,6 +527,5 @@ private fun FlightListItem.matchesSearch(term: String): Boolean {
     val iata = customerIataCode?.lowercase(Locale.ROOT)
     return (idTerm && id.replace("-", "").lowercase(Locale.ROOT) == compactTerm) ||
         flightNumber.lowercase(Locale.ROOT).contains(term) || customerName.lowercase(Locale.ROOT).contains(term) ||
-        (iata != null && ((iata + "-" + flightNumber.lowercase(Locale.ROOT)).contains(term) ||
-            (iata + flightNumber.lowercase(Locale.ROOT)).contains(compactTerm)))
+        (iata != null && (iata + flightNumber.lowercase(Locale.ROOT)).replace("-", "").replace(" ", "").contains(compactTerm))
 }

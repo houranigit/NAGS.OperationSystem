@@ -1,333 +1,126 @@
 package com.nags.operations.ui.components
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.sp
 import com.nags.operations.R
-import com.nags.operations.ui.theme.BrandRed
-import com.nags.operations.ui.theme.BrandRedDark
-import com.nags.operations.ui.theme.BrandRedLight
 
-/**
- * Branded top header shown on every authenticated screen. Renders a
- * brand-red gradient panel, either an initials avatar or a tappable sync
- * status control, a two-line greeting, and a profile (or logout) affordance on the
- * right.
- *
- * The gradient draws **behind** the status bar; icons stay readable via the
- * activity's light status-bar appearance. Bottom corners match Sync Center.
- *
- * @param displayName the signed-in employee's name (or login handle). When
- *   null / blank the header gracefully falls back to "Hello, there".
- * @param onLogout invoked when the user taps the logout pill.
- * @param subtitle optional eyebrow above the greeting — defaults to
- *   "Welcome back", which reads correctly on a returning home surface but
- *   can be swapped per screen (e.g. "Today's flights").
- * @param onSyncCenterClick when non-null, replaces the initials avatar with a
- *   sync-status icon that navigates to the Sync Center when tapped.
- */
+/** Compact home header; page tabs belong to the content below it. */
 @Composable
 fun AppHeader(
     displayName: String?,
-    onLogout: () -> Unit,
+    onProfileClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
     modifier: Modifier = Modifier,
-    subtitle: String = "Welcome back",
-    onSyncCenterClick: (() -> Unit)? = null,
-    isOnline: Boolean = true,
-    isSyncing: Boolean = false,
-    onNotificationsClick: (() -> Unit)? = null,
     unreadNotifications: Int = 0,
-    onProfileClick: (() -> Unit)? = null,
+    onAdHocClick: () -> Unit = {},
 ) {
-    val brandGradient = Brush.verticalGradient(
-        colors = listOf(BrandRedDark, BrandRed, BrandRedLight),
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-            .background(brandGradient),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            if (onSyncCenterClick != null) {
-                SyncStatusHeaderButton(
-                    isOnline = isOnline,
-                    isSyncing = isSyncing,
-                    onClick = onSyncCenterClick,
-                )
-            } else {
-                InitialsAvatar(displayName = displayName)
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.78f),
-                )
-                Text(
-                    text = "Hello, ${friendlyOf(displayName)}",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            if (onNotificationsClick != null) {
-                NotificationBellButton(
-                    unreadCount = unreadNotifications,
-                    onClick = onNotificationsClick,
-                )
-            }
-            if (onProfileClick != null) {
-                IconButton(
-                    onClick = onProfileClick,
-                    modifier = Modifier.size(44.dp).clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.16f))
-                        .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape),
-                ) {
-                    Icon(
-                        Icons.Default.AccountCircle,
-                        contentDescription = stringResource(R.string.account_open),
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            } else {
-                LogoutButton(onClick = onLogout)
-            }
-        }
-    }
-}
-
-@Composable
-private fun NotificationBellButton(unreadCount: Int, onClick: () -> Unit) {
-    val description = if (unreadCount > 0) {
-        pluralStringResource(R.plurals.notifications_bell_with_count, unreadCount, unreadCount)
+    val foreground = Color(0xFF17181B)
+    val muted = Color(0xFF6B7076)
+    val controlFill = Color(0xFFF2F3F5)
+    val friendlyName = displayName?.trim()?.takeIf { it.isNotEmpty() }
+        ?.split(Regex("\\s+"))?.firstOrNull()
+    val greeting = if (friendlyName == null) stringResource(R.string.home_greeting_fallback)
+        else stringResource(R.string.home_greeting, friendlyName)
+    val notificationDescription = if (unreadNotifications > 0) {
+        pluralStringResource(R.plurals.notifications_bell_with_count, unreadNotifications, unreadNotifications)
     } else {
         stringResource(R.string.notifications_bell)
     }
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.16f))
-            .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape)
-            .semantics { contentDescription = description },
-    ) {
-        BadgedBox(
-            badge = {
-                if (unreadCount > 0) {
-                    Badge(containerColor = Color.White, contentColor = BrandRedDark) {
-                        Text(if (unreadCount > 99) "99+" else unreadCount.toString())
-                    }
-                }
-            },
-        ) {
-            Icon(
-                Icons.Default.Notifications,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(21.dp),
-            )
-        }
-    }
-}
 
-@Composable
-private fun SyncStatusHeaderButton(
-    isOnline: Boolean,
-    isSyncing: Boolean,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(52.dp)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.18f))
-                .border(
-                    width = 1.dp,
-                    color = Color.White.copy(alpha = 0.32f),
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
+    Column(modifier.fillMaxWidth().background(Color.White).statusBarsPadding()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            val iconModifier = Modifier.size(26.dp)
-            when {
-                isSyncing -> {
-                    val infiniteTransition = rememberInfiniteTransition(label = "syncHeaderIcon")
-                    val rotation by infiniteTransition.animateFloat(
-                        initialValue = 0f,
-                        targetValue = 360f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1100, easing = LinearEasing),
-                            repeatMode = RepeatMode.Restart,
-                        ),
-                        label = "rotation",
-                    )
-                    Icon(
-                        imageVector = Icons.Default.Sync,
-                        contentDescription = stringResource(R.string.sync_center_open),
-                        tint = Color.White,
-                        modifier = iconModifier.rotate(rotation),
-                    )
+            IconButton(onClick = onProfileClick, modifier = Modifier.size(48.dp)) {
+                Box(Modifier.size(40.dp).background(controlFill, CircleShape),
+                    contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.AccountCircle,
+                        contentDescription = stringResource(R.string.account_open),
+                        tint = foreground, modifier = Modifier.size(28.dp))
                 }
-                else -> {
-                    Icon(
-                        imageVector = if (!isOnline) Icons.Default.CloudOff else Icons.Default.CloudDone,
-                        contentDescription = stringResource(R.string.sync_center_open),
-                        tint = Color.White,
-                        modifier = iconModifier,
-                    )
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.home_welcome_back),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(greeting,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 20.sp, lineHeight = 24.sp),
+                    fontWeight = FontWeight.Bold, color = foreground,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Box(
+                modifier = Modifier.widthIn(min = 74.dp).heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button, onClick = onAdHocClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier.widthIn(min = 74.dp).heightIn(min = 32.dp)
+                        .background(controlFill, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(stringResource(R.string.home_adhoc),
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp,
+                            lineHeight = 20.sp, letterSpacing = 0.sp),
+                        fontWeight = FontWeight.SemiBold, color = foreground, maxLines = 1)
+                }
+            }
+            IconButton(
+                onClick = onNotificationsClick,
+                modifier = Modifier.size(48.dp).semantics { contentDescription = notificationDescription },
+            ) {
+                BadgedBox(badge = {
+                    if (unreadNotifications > 0) {
+                        Badge(containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary) {
+                            Text(if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
+                                fontSize = 10.sp, lineHeight = 12.sp)
+                        }
+                    }
+                }) {
+                    Icon(Icons.Outlined.NotificationsNone, contentDescription = null,
+                        tint = foreground, modifier = Modifier.size(24.dp))
                 }
             }
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(if (isOnline) Color(0xFF22B07D) else Color(0xFF94A3B8)),
-        )
-    }
-}
-
-@Composable
-private fun InitialsAvatar(displayName: String?) {
-    Box(
-        modifier = Modifier
-            .size(52.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.18f))
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.32f),
-                shape = CircleShape,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = initialsOf(displayName),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-        )
-    }
-}
-
-@Composable
-private fun LogoutButton(onClick: () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.16f))
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.24f),
-                shape = CircleShape,
-            ),
-    ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.Logout,
-            contentDescription = "Sign out",
-            tint = Color.White,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-/**
- * The big greeting prefers the first name ("Ahmed" out of "Ahmed Mohamed Al
- * Saud") because it reads as friendlier in a one-line headline. When all we
- * have is a single-word handle (e.g. the JWT username before /me has been
- * fetched), we use it as-is so the avatar and greeting agree.
- */
-private fun friendlyOf(name: String?): String {
-    val cleaned = name?.trim().orEmpty()
-    if (cleaned.isEmpty()) return "there"
-    return cleaned.split(Regex("\\s+")).firstOrNull()?.takeIf { it.isNotBlank() } ?: "there"
-}
-
-/**
- * Two-letter monogram for the avatar: first letter of the first word + first
- * letter of the last word ("Ahmed Saud" -> "AS"). Single-word names collapse
- * to a single letter so the avatar never feels crowded.
- */
-private fun initialsOf(name: String?): String {
-    val cleaned = name?.trim().orEmpty()
-    if (cleaned.isEmpty()) return "?"
-    val words = cleaned.split(Regex("\\s+")).filter { it.isNotBlank() }
-    return when (words.size) {
-        0 -> "?"
-        1 -> words[0].first().uppercaseChar().toString()
-        else -> "${words.first().first().uppercaseChar()}${words.last().first().uppercaseChar()}"
+        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEDEFF2))
     }
 }

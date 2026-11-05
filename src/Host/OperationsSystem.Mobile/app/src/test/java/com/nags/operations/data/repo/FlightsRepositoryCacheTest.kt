@@ -3,6 +3,7 @@ package com.nags.operations.data.repo
 import com.nags.operations.data.CustomerLogoDownload
 
 import com.nags.operations.data.ApiException
+import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
@@ -10,6 +11,9 @@ import com.nags.operations.data.db.dao.FlightCacheDao
 import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import java.io.IOException
+import java.time.Instant
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
@@ -38,6 +42,9 @@ class FlightsRepositoryCacheTest {
     private var invitationReads = 0
     private var invitationWrites = 0
     private var logoStore: CustomerLogoStore? = null
+    private var serverStation = "station"
+    private var includeScope = true
+    private val categoryReads = mutableListOf<FlightCategory?>()
     private var pageLoader: suspend (Int, Int, String?) -> FlightPage = { page, size, _ ->
         listFailure?.let { throw it }
         pageReads += page to size
@@ -52,7 +59,17 @@ class FlightsRepositoryCacheTest {
     }
 
     private fun repository() = FlightsRepository(
-        fetchFlights = { page, size, search -> pageLoader(page, size, search) },
+        fetchFlights = { page, size, search, category ->
+            categoryReads += category
+            pageLoader(page, size, search).let { result ->
+                val filtered = result.copy(items = result.items.filter { category == null || when (category) {
+                    FlightCategory.MyFlights -> it.isMyFlight
+                    FlightCategory.PerLanding -> it.isPerLanding && !it.isMyAdHocFlight
+                    FlightCategory.AdHoc -> it.isMyAdHocFlight
+                } })
+                if (includeScope) scoped(filtered) else filtered
+            }
+        },
         fetchFlight = { detailLoader(it) },
         fetchInvitationOptions = { invitationReads++; emptyList() },
         sendInvitation = { _, _, _ -> invitationWrites++ },
@@ -203,7 +220,8 @@ class FlightsRepositoryCacheTest {
         repository.clearLocal()
         response.complete(FlightPage(listOf(item("old")), 1, 100, 1, 1))
         pending.join()
-        assertFalse(dao.hasAnyCache())
+        assertNull(dao.snapshot(owner.value!!)?.lastSuccessUtc)
+        assertTrue(dao.details(owner.value!!).isEmpty())
         assertFalse(repository.isSyncing.value)
     }
 
@@ -359,8 +377,177 @@ class FlightsRepositoryCacheTest {
         assertEquals(1, invitationWrites)
     }
 
+    @Test
+    fun offlineTabsUseServerMembershipAndKeepAdHocPrecedenceForMixedFlights() = runBlocking {
+        serverItems = listOf(
+            item("mine"),
+            item("per-landing").copy(isMyFlight = false, isPerLanding = true),
+            item("ad-hoc").copy(isMyFlight = false, isMyAdHocFlight = true),
+            item("mixed").copy(isMyFlight = false, isPerLanding = true, isMyAdHocFlight = true),
+        )
+        val repository = repository()
+        repository.refreshCache()
+        assertEquals(listOf<FlightCategory?>(null), categoryReads)
+        online = false
+
+        assertEquals(listOf("mine"), repository.flights(FlightCategory.MyFlights).items.map { it.id })
+        assertEquals(listOf("per-landing"), repository.flights(FlightCategory.PerLanding).items.map { it.id })
+        assertEquals(listOf("ad-hoc", "mixed"), repository.flights(FlightCategory.AdHoc).items.map { it.id })
+        assertEquals(4, repository.flights().items.size)
+        online = true
+        repository.flights(FlightCategory.AdHoc)
+        assertEquals(FlightCategory.AdHoc, categoryReads.last())
+    }
+
+    @Test
+    fun legacyBroadSnapshotAndOrphanDetailsAreNeverUsedOffline() = runBlocking {
+        val subject = owner.value!!
+        dao.putSnapshot(FlightSnapshotEntity(subject, Json.encodeToString(serverItems), serverItems.size,
+            lastSuccessUtc = clock))
+        dao.putDetails(listOf(FlightDetailCacheEntity(subject, "one", Json.encodeToString(detail("one")))))
+        online = false
+        val repository = repository()
+
+        assertNull(repository.syncStatus.first().lastSuccessUtc)
+        assertTrue(runCatching { repository.flights() }.isFailure)
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+        assertTrue(dao.details(subject).isEmpty())
+        assertNull(dao.snapshot(subject)!!.lastSuccessUtc)
+        assertFalse(dao.snapshot(subject)!!.payloadJson.startsWith("["))
+    }
+
+    @Test
+    fun rollingWindowPrunesSavedRowsAndTheirDetailsAtTheInclusiveBoundary() = runBlocking {
+        serverItems = listOf(
+            item("long").copy(scheduledArrivalUtc = "2026-11-02T00:00:00Z"),
+            item("boundary").copy(scheduledArrivalUtc = "2026-11-03T21:00:00Z",
+                scheduledDepartureUtc = "2026-11-03T22:00:00Z"),
+        )
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("boundary")
+        online = false
+        assertEquals(listOf("long", "boundary"), repository.flights().items.map { it.id })
+        clock = "2026-11-04T10:00:00.001Z"
+
+        repository.pruneExpired()
+
+        assertEquals(listOf("long"), repository.flights().items.map { it.id })
+        assertNull(dao.detail(owner.value!!, "boundary"))
+        assertTrue(runCatching { repository.flight("boundary") }.isFailure)
+        assertEquals(1, repository.syncStatus.first().itemCount)
+        clock = "2026-11-05T00:00:00Z"
+        assertTrue(repository.flights().items.isEmpty())
+        assertEquals(0, repository.syncStatus.first().itemCount)
+    }
+
+    @Test
+    fun liveDetailsRequireCompleteScopedMembershipBeforeTheyCanBeSavedOffline() = runBlocking {
+        val repository = repository()
+        assertFalse(repository.flight("one").fromCache)
+        assertTrue(dao.details(owner.value!!).isEmpty())
+        online = false
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+        online = true
+        repository.refreshCache()
+        repository.flight("one")
+        online = false
+        assertTrue(repository.flight("one").fromCache)
+    }
+
+    @Test
+    fun missingScopeAndWrongStationResponsesCannotBecomeAnOfflineSnapshot() = runBlocking {
+        includeScope = false
+        val repository = repository()
+        assertTrue(runCatching { repository.flights() }.exceptionOrNull() is IOException)
+        repository.refreshCache()
+        assertNull(repository.syncStatus.first().lastSuccessUtc)
+        includeScope = true
+        serverItems = listOf(item("foreign").copy(stationId = "other-station"))
+        repository.refreshCache()
+        assertNull(repository.syncStatus.first().lastSuccessUtc)
+        online = false
+        assertTrue(runCatching { repository.flights() }.isFailure)
+    }
+
+    @Test
+    fun newlyConfirmedStationCannotFallBackToThePreviousStationSnapshot() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        serverStation = "new-station"
+        serverItems = listOf(item("new").copy(stationId = serverStation))
+
+        assertEquals(listOf("new"), repository.flights().items.map { it.id })
+
+        assertTrue(dao.details(owner.value!!).isEmpty())
+        online = false
+        assertTrue(runCatching { repository.flights() }.isFailure)
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+    }
+
+    @Test
+    fun pendingFullSnapshotCannotRestoreAPreviouslyConfirmedStation() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val oldResponse = scoped(FlightPage(serverItems, 1, 100, 2, 1))
+        val delayed = CompletableDeferred<FlightPage>()
+        pageLoader = { page, size, _ ->
+            if (size == 100) delayed.await()
+            else FlightPage(serverItems, page, size, serverItems.size.toLong(), 1)
+        }
+        val pending = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+        serverStation = "new-station"
+        serverItems = listOf(item("new").copy(stationId = serverStation))
+        assertEquals(listOf("new"), repository.flights().items.map { it.id })
+
+        delayed.complete(oldResponse)
+        pending.join()
+
+        assertNull(repository.syncStatus.first().lastSuccessUtc)
+        assertTrue(dao.details(owner.value!!).isEmpty())
+        online = false
+        assertTrue(runCatching { repository.flights() }.isFailure)
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+    }
+
+    @Test
+    fun newStationMetadataRevokesOldCacheEvenWhenBackgroundPaginationFails() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        var changes = 0
+        val observer = launch(start = CoroutineStart.UNDISPATCHED) { repository.cacheChanges.collect { changes++ } }
+        serverStation = "new-station"
+        pageLoader = { page, size, _ ->
+            if (page == 2) throw IOException("Disconnected")
+            FlightPage(listOf(item("new").copy(stationId = serverStation)), page, size, 2, 2, false, true)
+        }
+
+        repository.refreshCache()
+        kotlinx.coroutines.yield()
+
+        assertEquals(1, changes)
+        assertNull(repository.syncStatus.first().lastSuccessUtc)
+        assertTrue(dao.details(owner.value!!).isEmpty())
+        online = false
+        assertTrue(runCatching { repository.flights() }.isFailure)
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+        observer.cancel()
+    }
+
+    private fun scoped(page: FlightPage): FlightPage {
+        if (page.stationId != null) return page
+        val at = Instant.parse(clock)
+        return page.copy(stationId = serverStation, asOfUtc = clock,
+            windowStartUtc = at.minusSeconds(12 * 60 * 60).toString(),
+            windowEndUtc = at.plusSeconds(12 * 60 * 60).toString())
+    }
+
     private fun item(id: String, number: String = "123") = FlightListItem(
         id, number, "XY", "Airline", "AAA", "Scheduled", "2026-11-04T10:00:00Z", "2026-11-04T11:00:00Z", false,
+        stationId = "station", isMyFlight = true,
     )
     private fun detail(id: String, number: String = "123") = FlightDetail(
         id, number, "customer", "XY", "Airline", "station", "AAA", "Station", "operation", "Scheduled",

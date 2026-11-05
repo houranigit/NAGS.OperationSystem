@@ -18,6 +18,45 @@ internal static class FlightEndpoints
     {
         var flights = group.MapGroup("/flights").WithTags("Operations.Flights");
 
+        var mobile = flights.MapGroup("/mobile");
+        mobile.MapGet("/", async (ISender sender, CancellationToken ct,
+            int page = 1, int pageSize = 20, string? search = null, string? sort = null, string? category = null) =>
+        {
+            var result = await sender.Send(new GetMobileFlightsQuery(page, pageSize, search, sort, category), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
+        mobile.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetMobileFlightByIdQuery(id), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
+        mobile.MapGet("/customer-logos/{customerId:guid}", async (Guid customerId, ISender sender, CancellationToken ct,
+            string? expectedVersion = null) =>
+        {
+            var result = await sender.Send(new GetMobileFlightCustomerLogoQuery(customerId, expectedVersion), ct);
+            return result.IsFailure
+                ? ApiResults.Problem(result.Error)
+                : Results.File(result.Value.Content, result.Value.ContentType, enableRangeProcessing: false,
+                    entityTag: new EntityTagHeaderValue($"\"{result.Value.Version}\""));
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
+        mobile.MapGet("/{id:guid}/invitation-options", async (Guid id, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetFlightInvitationOptionsQuery(id, MobileOnly: true), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Invite);
+
+        mobile.MapPost("/{id:guid}/invite", async (Guid id, AssignEmployeesRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+            var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds ?? [], rowVersion, MobileOnly: true), ct);
+            return result.ToNoContent();
+        }).RequirePermission(OperationsPermissions.Flights.Invite);
+
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
             Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>

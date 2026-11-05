@@ -2,7 +2,7 @@ package com.nags.operations.data
 
 import kotlinx.serialization.Serializable
 
-/** The Operations flight register uses the same paged response on mobile and the portal. */
+/** The mobile feed is restricted by station, membership and the rolling 24-hour window. */
 @Serializable
 data class FlightPage(
     val items: List<FlightListItem> = emptyList(),
@@ -13,6 +13,10 @@ data class FlightPage(
     val hasPreviousPage: Boolean = false,
     val hasNextPage: Boolean = false,
     @kotlinx.serialization.Transient val fromCache: Boolean = false,
+    val stationId: String? = null,
+    val asOfUtc: String? = null,
+    val windowStartUtc: String? = null,
+    val windowEndUtc: String? = null,
 )
 
 @Serializable
@@ -29,6 +33,9 @@ data class FlightListItem(
     val aircraftTypeModel: String? = null,
     val customerId: String? = null,
     val customerLogoVersion: String? = null,
+    val stationId: String? = null,
+    val isMyFlight: Boolean = false,
+    val isMyAdHocFlight: Boolean = false,
 )
 
 @Serializable
