@@ -261,7 +261,7 @@ public sealed class MobileFlightTests
         Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
             new StationSnapshot(stationId ?? StationId, "RUH", "Riyadh"),
             new OperationTypeSnapshot(adHoc ? WellKnownMasterDataIds.AdHocOperationType : Guid.NewGuid(), adHoc ? "Ad Hoc" : "Transit"),
-            FlightNumber.Create($"SV{number}").Value, ScheduledTime.Create(sta ?? Now, std ?? Now.AddHours(1)).Value,
+            FlightNumber.Create($"SV{number}", "SV").Value, ScheduledTime.Create(sta ?? Now, std ?? Now.AddHours(1)).Value,
             null, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Service")],
             assigned && !perLanding ? [new StaffMemberSnapshot(StaffId, "Assigned staff", "E1")] : [], createdBy ?? UserId, Now).Value;
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -25,7 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -93,6 +94,10 @@ fun FlightsScreen(
     onSelectTab: (Int) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Keep each list alive even when the pager disposes an offscreen page.
+    val listStates = key(state.search, state.stationId, state.permissionDenied) {
+        List(FlightCategory.entries.size) { rememberLazyListState() }
+    }
     val pagerState = rememberPagerState(initialPage = selectedTab) { FlightCategory.entries.size }
     val pagerScope = rememberCoroutineScope()
     val notifyTabSelection by rememberUpdatedState(onSelectTab)
@@ -114,7 +119,7 @@ fun FlightsScreen(
         }
     }
     LifecycleResumeEffect(viewModel) {
-        viewModel.refresh()
+        viewModel.refreshSilently()
         onPauseOrDispose { }
     }
     LaunchedEffect(notificationOpenRequest) {
@@ -122,7 +127,7 @@ fun FlightsScreen(
         if (request.flightId != null) {
             viewModel.openFlight(request.flightId)
         } else {
-            viewModel.refresh()
+            viewModel.refreshSilently()
             onNotificationHandled(request.notificationId)
         }
     }
@@ -148,9 +153,7 @@ fun FlightsScreen(
                 pagerState.animateScrollToPage(page,
                     animationSpec = tween(TAB_SLIDE_MILLIS, easing = FastOutSlowInEasing))
             }
-        },
-            onRefresh = viewModel::refresh,
-            refreshEnabled = !state.isLoading && !state.isRefreshing)
+        })
         Text(stringResource(R.string.flights_time_zone, ZoneId.systemDefault().id),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -162,13 +165,8 @@ fun FlightsScreen(
         }
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) { page ->
             val category = FlightCategory.entries[page]
-            // Neighbor pages load after settling; a canceled swipe keeps the current feed intact.
-            val pageState = when {
-                state.category == category -> state
-                state.permissionDenied -> state.copy(category = category)
-                else -> FlightsUiState(category = category, isOnline = state.isOnline)
-            }
-            FlightListPage(state = pageState, viewModel = viewModel,
+            FlightListPage(state = state.forCategory(category), viewModel = viewModel,
+                listState = listStates[page],
                 active = page == pagerState.settledPage && state.category == category)
         }
     }
@@ -226,9 +224,13 @@ fun FlightsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FlightListPage(state: FlightsUiState, viewModel: FlightsViewModel, active: Boolean) {
-    // Each pager page owns its scroll state; only the settled feed can prefetch.
-    val listState = rememberLazyListState()
+private fun FlightListPage(
+    state: FlightsUiState,
+    viewModel: FlightsViewModel,
+    listState: LazyListState,
+    active: Boolean,
+) {
+    // Only the settled feed can prefetch; tab selection does not reset its scroll position.
     val currentState by rememberUpdatedState(state)
     LaunchedEffect(viewModel, listState, active) {
         if (!active) return@LaunchedEffect
@@ -239,26 +241,23 @@ private fun FlightListPage(state: FlightsUiState, viewModel: FlightsViewModel, a
             if (page != null) viewModel.loadMore()
         }
     }
-    LaunchedEffect(state.search, state.stationId, active) {
-        if (active) listState.scrollToItem(0)
-    }
     val onRefresh: () -> Unit = { if (active) viewModel.refresh() }
     val onLoadMore: () -> Unit = { if (active) viewModel.loadMore() }
-    PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = onRefresh,
+    PullToRefreshBox(isRefreshing = state.showRefreshIndicator, onRefresh = onRefresh,
         modifier = if (active) Modifier.fillMaxSize() else Modifier.fillMaxSize().clearAndSetSemantics { }) {
         when {
-            state.items.isEmpty() && (state.isLoading || state.isRefreshing ||
+            !state.hasLoadedList && state.items.isEmpty() && (state.isLoading || state.isRefreshing ||
                 (state.hasMore && state.error == null && state.loadMoreError == null)) ->
                 FlightListSkeleton(Modifier.fillMaxSize())
-            state.error != null && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            state.error != null && state.items.isEmpty() -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
                 ErrorState(title = stringResource(if (state.permissionDenied) R.string.flights_access else R.string.flights_load_failed),
                     message = if (state.permissionDenied) stringResource(R.string.flights_view_forbidden) else state.error, onRetry = onRefresh)
             }
-            state.items.isEmpty() && state.loadMoreError != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            state.items.isEmpty() && state.loadMoreError != null -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
                 ErrorState(title = stringResource(R.string.flights_load_failed),
                     message = state.loadMoreError, onRetry = onLoadMore)
             }
-            state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            state.items.isEmpty() -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
                 EmptyState(icon = Icons.Default.FlightTakeoff,
                     title = stringResource(if (state.search.isNotBlank()) R.string.flights_no_matches
                         else when (state.category) {
@@ -266,8 +265,7 @@ private fun FlightListPage(state: FlightsUiState, viewModel: FlightsViewModel, a
                             FlightCategory.AdHoc -> R.string.flights_adhoc_empty
                             FlightCategory.MyFlights -> R.string.flights_empty
                         }),
-                    message = stringResource(if (state.search.isBlank()) R.string.flights_empty_hint else R.string.flights_search_hint),
-                    actionLabel = stringResource(R.string.flights_refresh_short), onAction = onRefresh)
+                    message = stringResource(if (state.search.isBlank()) R.string.flights_empty_hint else R.string.flights_search_hint))
             }
             else -> LazyColumn(
                 state = listState,
@@ -313,8 +311,6 @@ private const val TAB_SLIDE_MILLIS = 240
 private fun FlightsPageTabs(
     pagerState: PagerState,
     onSelectTab: (Int) -> Unit,
-    onRefresh: () -> Unit,
-    refreshEnabled: Boolean,
 ) {
     val labels = listOf(stringResource(R.string.flights_tab_my),
         stringResource(R.string.flights_tab_per_landing), stringResource(R.string.flights_tab_adhoc))
@@ -360,9 +356,6 @@ private fun FlightsPageTabs(
                             fontWeight = FontWeight(weight), color = ink.copy(alpha = 0.55f + 0.45f * emphasis), maxLines = 1)
                     }
                 }
-            }
-            IconButton(onClick = onRefresh, enabled = refreshEnabled) {
-                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.flights_refresh))
             }
         }
         HorizontalDivider(color = ink.copy(alpha = 0.1f))

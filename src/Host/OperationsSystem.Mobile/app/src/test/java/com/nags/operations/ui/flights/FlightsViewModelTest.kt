@@ -289,6 +289,154 @@ class FlightsViewModelTest {
     }
 
     @Test
+    fun aFlightSyncRefreshesTheLoadedRangeSilentlyAndStillBlocksPagination() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val cached = MutableStateFlow(FlightSyncStatus(lastSuccessUtc = "2026-11-03T11:00:00Z"))
+        val refreshedSecondPage = CompletableDeferred<FlightPage>()
+        var updated = false
+        val requests = mutableListOf<Int>()
+        val vm = model(changes = changes, cacheStatus = cached, list = { number, _, _ ->
+            requests += number
+            when {
+                !updated -> page("old-$number").copy(page = number, totalCount = 3, hasNextPage = true)
+                number == 1 -> page("new-1").copy(totalCount = 2, hasNextPage = true)
+                else -> refreshedSecondPage.await()
+            }
+        })
+        vm.refreshSilently()
+        vm.loadMore()
+        updated = true
+        changes.tryEmit(Unit)
+
+        assertEquals(listOf("old-1", "old-2"), vm.state.value.items.map { it.id })
+        assertEquals(2, vm.state.value.page)
+        assertTrue(vm.state.value.isRefreshing)
+        assertFalse(vm.state.value.showRefreshIndicator)
+        assertFalse(vm.state.value.isLoading)
+        vm.loadMore()
+        assertEquals(listOf(1, 2, 1, 2), requests)
+
+        refreshedSecondPage.complete(page("new-2").copy(page = 2, totalCount = 2))
+        assertEquals(listOf("new-1", "new-2"), vm.state.value.items.map { it.id })
+        assertEquals(2, vm.state.value.page)
+        assertFalse(vm.state.value.isRefreshing)
+        assertFalse(vm.state.value.showRefreshIndicator)
+    }
+
+    @Test
+    fun anAutomaticUpdateKeepsAnOngoingManualIndicatorUntilItsReplacementCompletes() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val cached = MutableStateFlow(FlightSyncStatus(lastSuccessUtc = "2026-11-03T11:00:00Z"))
+        val manual = CompletableDeferred<FlightPage>()
+        val replacement = CompletableDeferred<FlightPage>()
+        var reads = 0
+        val vm = model(changes = changes, cacheStatus = cached, list = { _, _, _ ->
+            when (++reads) {
+                1 -> page("old")
+                2 -> manual.await()
+                else -> replacement.await()
+            }
+        })
+        vm.refreshSilently()
+        vm.refresh()
+        assertTrue(vm.state.value.showRefreshIndicator)
+        changes.tryEmit(Unit)
+        assertEquals(3, reads)
+        assertTrue(vm.state.value.showRefreshIndicator)
+        assertEquals(listOf("old"), vm.state.value.items.map { it.id })
+
+        manual.complete(page("obsolete"))
+        assertTrue(vm.state.value.showRefreshIndicator)
+        assertEquals(listOf("old"), vm.state.value.items.map { it.id })
+        replacement.complete(page("updated"))
+        assertEquals(listOf("updated"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.showRefreshIndicator)
+        assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
+    fun aLoadedEmptyListCanRefreshSilentlyAndManualFailureStopsItsIndicator() {
+        val silent = CompletableDeferred<FlightPage>()
+        val manual = CompletableDeferred<FlightPage>()
+        var reads = 0
+        val vm = model(list = { _, _, _ ->
+            when (++reads) {
+                1 -> FlightPage()
+                2 -> silent.await()
+                else -> manual.await()
+            }
+        })
+        vm.refreshSilently()
+        vm.refreshSilently()
+        assertTrue(vm.state.value.hasLoadedList)
+        assertTrue(vm.state.value.items.isEmpty())
+        assertFalse(vm.state.value.isLoading)
+        assertTrue(vm.state.value.isRefreshing)
+        assertFalse(vm.state.value.showRefreshIndicator)
+
+        vm.refresh()
+        assertTrue(vm.state.value.showRefreshIndicator)
+        assertFalse(vm.state.value.isLoading)
+        silent.complete(page("obsolete"))
+        manual.completeExceptionally(IOException("Connection lost"))
+        assertTrue(vm.state.value.hasLoadedList)
+        assertTrue(vm.state.value.items.isEmpty())
+        assertNotNull(vm.state.value.error)
+        assertFalse(vm.state.value.showRefreshIndicator)
+        assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
+    fun aSilentFirstReadRetainsInitialLoadingWithoutAManualIndicator() {
+        val first = CompletableDeferred<FlightPage>()
+        val vm = model(list = { _, _, _ -> first.await() })
+        vm.refreshSilently()
+        assertTrue(vm.state.value.isLoading)
+        assertFalse(vm.state.value.hasLoadedList)
+        assertFalse(vm.state.value.isRefreshing)
+        assertFalse(vm.state.value.showRefreshIndicator)
+
+        first.complete(page("one"))
+        assertTrue(vm.state.value.hasLoadedList)
+        assertFalse(vm.state.value.isLoading)
+        assertFalse(vm.state.value.showRefreshIndicator)
+    }
+
+    @Test
+    fun manualIndicatorsAreNotRetainedWhenSwitchingTabs() {
+        val manual = CompletableDeferred<FlightPage>()
+        val returned = CompletableDeferred<FlightPage>()
+        var mineReads = 0
+        val vm = model(categoryList = { category, _, _, _ ->
+            if (category != FlightCategory.MyFlights) tabPage(category)
+            else when (++mineReads) {
+                1 -> tabPage(category, "old")
+                2 -> manual.await()
+                else -> returned.await()
+            }
+        })
+        vm.refreshSilently()
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.setCategory(FlightCategory.MyFlights)
+        vm.refresh()
+        assertTrue(vm.state.value.showRefreshIndicator)
+        assertFalse(vm.state.value.forCategory(FlightCategory.PerLanding).showRefreshIndicator)
+
+        vm.setCategory(FlightCategory.PerLanding)
+        assertFalse(vm.state.value.showRefreshIndicator)
+        assertFalse(vm.state.value.forCategory(FlightCategory.MyFlights).showRefreshIndicator)
+        vm.setCategory(FlightCategory.MyFlights)
+        assertTrue(vm.state.value.isRefreshing)
+        assertFalse(vm.state.value.showRefreshIndicator)
+        assertEquals(listOf("old"), vm.state.value.items.map { it.id })
+        manual.complete(tabPage(FlightCategory.MyFlights, "obsolete"))
+        returned.complete(tabPage(FlightCategory.MyFlights, "updated"))
+        assertEquals(3, mineReads)
+        assertEquals(listOf("updated"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.showRefreshIndicator)
+    }
+
+    @Test
     fun deniedOrClearedCacheEventsRemoveVisibleDataWithoutRefetching() {
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val cached = MutableStateFlow(FlightSyncStatus(itemCount = 1, lastSuccessUtc = "2026-11-04T10:00:00Z"))
@@ -583,6 +731,232 @@ class FlightsViewModelTest {
         assertNull(vm.state.value.selectedFlightId)
         assertEquals("one", vm.state.value.lastUnavailableFlightId)
     }
+
+    @Test
+    fun loadedTabsRetainAllPagesAndSuccessfulEmptyResultsWithoutReadingAgain() {
+        val requests = mutableListOf<Pair<FlightCategory, Int>>()
+        val vm = model(categoryList = { category, number, _, _ ->
+            requests += category to number
+            if (category == FlightCategory.MyFlights) tabPage(category, "mine-$number").copy(
+                page = number, totalCount = 3, hasNextPage = true)
+            else tabPage(category).copy(items = emptyList(), totalCount = 0)
+        })
+        vm.refresh()
+        vm.loadMore()
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(listOf("mine-1", "mine-2"), vm.state.value.items.map { it.id })
+        assertEquals(2, vm.state.value.page)
+        assertTrue(vm.state.value.hasMore)
+        assertFalse(vm.state.value.isLoading)
+        assertTrue(vm.state.value.forCategory(FlightCategory.PerLanding).hasLoadedList)
+        vm.setCategory(FlightCategory.PerLanding)
+        assertTrue(vm.state.value.items.isEmpty())
+        assertTrue(vm.state.value.hasLoadedList)
+        assertFalse(vm.state.value.isLoading)
+        assertEquals(listOf(FlightCategory.MyFlights to 1, FlightCategory.MyFlights to 2,
+            FlightCategory.PerLanding to 1), requests)
+    }
+
+    @Test
+    fun aCanceledNextPageKeepsTheLoadedTabAndRetriesThatNextPage() {
+        val pending = CompletableDeferred<FlightPage>()
+        var continuationReads = 0
+        val requests = mutableListOf<Pair<FlightCategory, Int>>()
+        val vm = model(categoryList = { category, number, _, _ ->
+            requests += category to number
+            if (category == FlightCategory.MyFlights && number == 2 && continuationReads++ == 0) pending.await()
+            else tabPage(category, "$category-$number").copy(page = number, totalCount = 2,
+                hasNextPage = number == 1)
+        })
+        vm.refresh()
+        vm.loadMore()
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(listOf("MyFlights-1"), vm.state.value.items.map { it.id })
+        assertEquals(1, vm.state.value.page)
+        assertFalse(vm.state.value.isLoadingMore)
+        vm.loadMore()
+        pending.complete(tabPage(FlightCategory.MyFlights, "late").copy(page = 2))
+        assertEquals(listOf("MyFlights-1", "MyFlights-2"), vm.state.value.items.map { it.id })
+        assertEquals(listOf(FlightCategory.MyFlights to 1, FlightCategory.MyFlights to 2,
+            FlightCategory.PerLanding to 1, FlightCategory.MyFlights to 2), requests)
+    }
+
+    @Test
+    fun aTabWhoseFirstLoadWasCanceledIsReadWhenRevisited() {
+        val pending = CompletableDeferred<FlightPage>()
+        var mineReads = 0
+        val vm = model(categoryList = { category, _, _, _ ->
+            if (category == FlightCategory.MyFlights && ++mineReads == 1) pending.await()
+            else tabPage(category, "current")
+        })
+        vm.refresh()
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.setCategory(FlightCategory.MyFlights)
+        pending.complete(tabPage(FlightCategory.MyFlights, "late"))
+        assertEquals(2, mineReads)
+        assertEquals(listOf("current"), vm.state.value.items.map { it.id })
+        assertTrue(vm.state.value.hasLoadedList)
+    }
+
+    @Test
+    fun anInvalidatedTabKeepsItsPagesVisibleUntilTheLoadedRangeIsRevalidated() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val cached = MutableStateFlow(FlightSyncStatus(lastSuccessUtc = "2026-11-03T11:00:00Z"))
+        val secondPage = CompletableDeferred<FlightPage>()
+        var updated = false
+        val requests = mutableListOf<Pair<FlightCategory, Int>>()
+        val vm = model(changes = changes, cacheStatus = cached, categoryList = { category, number, _, _ ->
+            requests += category to number
+            when {
+                category != FlightCategory.MyFlights -> tabPage(category)
+                !updated -> tabPage(category, "old-$number").copy(page = number, totalCount = 3, hasNextPage = true)
+                number == 1 -> tabPage(category, "new-1", "new-2").copy(totalCount = 3, hasNextPage = true, fromCache = true)
+                else -> secondPage.await()
+            }
+        })
+        vm.refresh()
+        vm.loadMore()
+        vm.setCategory(FlightCategory.PerLanding)
+        updated = true
+        changes.tryEmit(Unit)
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(listOf("old-1", "old-2"), vm.state.value.items.map { it.id })
+        assertEquals(2, vm.state.value.page)
+        assertTrue(vm.state.value.isRefreshing)
+        assertFalse(vm.state.value.isLoading)
+        secondPage.complete(tabPage(FlightCategory.MyFlights, "new-2", "new-3").copy(page = 2, totalCount = 3))
+        assertEquals(listOf("new-1", "new-2", "new-3"), vm.state.value.items.map { it.id })
+        assertEquals(2, vm.state.value.page)
+        assertEquals(3L, vm.state.value.totalCount)
+        assertTrue(vm.state.value.isUsingCachedList)
+        assertFalse(vm.state.value.isRefreshing)
+        assertEquals(listOf(FlightCategory.MyFlights to 1, FlightCategory.MyFlights to 2,
+            FlightCategory.PerLanding to 1, FlightCategory.PerLanding to 1,
+            FlightCategory.MyFlights to 1, FlightCategory.MyFlights to 2), requests)
+    }
+
+    @Test
+    fun cancelingAnInvalidatedTabsRefreshKeepsItsRefreshRequirement() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val cached = MutableStateFlow(FlightSyncStatus(lastSuccessUtc = "2026-11-03T11:00:00Z"))
+        val pending = CompletableDeferred<FlightPage>()
+        var mineReads = 0
+        val vm = model(changes = changes, cacheStatus = cached, categoryList = { category, _, _, _ ->
+            if (category != FlightCategory.MyFlights) tabPage(category)
+            else when (++mineReads) {
+                1 -> tabPage(category, "old")
+                2 -> pending.await()
+                else -> tabPage(category, "new")
+            }
+        })
+        vm.refresh()
+        vm.setCategory(FlightCategory.PerLanding)
+        changes.tryEmit(Unit)
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(listOf("old"), vm.state.value.items.map { it.id })
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.setCategory(FlightCategory.MyFlights)
+        pending.complete(tabPage(FlightCategory.MyFlights, "late"))
+        assertEquals(3, mineReads)
+        assertEquals(listOf("new"), vm.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun inactiveTabsExpireAndCanReturnAsLoadedEmptyWithoutARead() {
+        var at = Instant.parse("2026-11-03T11:00:00Z")
+        val ticks = Channel<Unit>(Channel.UNLIMITED)
+        var reads = 0
+        val vm = model(now = { at }, expiryWait = { ticks.receive() }, categoryList = { category, _, _, _ ->
+            reads++
+            val page = tabPage(category, "$category")
+            if (category == FlightCategory.PerLanding) page.copy(items = page.items.map {
+                it.copy(scheduledDepartureUtc = "2026-11-04T12:00:00Z")
+            }) else page
+        })
+        vm.refresh()
+        vm.setCategory(FlightCategory.PerLanding)
+        at = Instant.parse("2026-11-04T00:00:00.000000001Z")
+        ticks.trySend(Unit)
+        assertTrue(vm.state.value.forCategory(FlightCategory.MyFlights).items.isEmpty())
+        assertTrue(vm.state.value.items.isNotEmpty())
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(2, reads)
+        assertTrue(vm.state.value.items.isEmpty())
+        assertTrue(vm.state.value.hasLoadedList)
+        assertFalse(vm.state.value.isLoading)
+    }
+
+    @Test
+    fun aConfirmedStationChangeEvictsEveryRetainedTabAndNormalSwitchKeepsTheStation() {
+        var station = "station-a"
+        val vm = model(categoryList = { category, _, _, _ ->
+            tabPage(category, "$station-$category").copy(stationId = station)
+        })
+        vm.refresh()
+        vm.setCategory(FlightCategory.PerLanding)
+        assertEquals("station-a", vm.state.value.stationId)
+        assertEquals(listOf("station-a-MyFlights"), vm.state.value.forCategory(FlightCategory.MyFlights).items.map { it.id })
+        station = "station-b"
+        vm.refresh()
+        assertTrue(vm.state.value.retainedTabs.isEmpty())
+        assertFalse(vm.state.value.forCategory(FlightCategory.MyFlights).hasLoadedList)
+        assertEquals("station-b", vm.state.value.forCategory(FlightCategory.MyFlights).stationId)
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(listOf("station-b-MyFlights"), vm.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun accessDenialClearsAllRetainedTabs() {
+        val cached = MutableStateFlow(FlightSyncStatus())
+        val vm = model(cacheStatus = cached, categoryList = { category, _, _, _ -> tabPage(category) })
+        vm.refresh()
+        vm.setCategory(FlightCategory.PerLanding)
+        assertTrue(vm.state.value.retainedTabs.isNotEmpty())
+        cached.value = FlightSyncStatus(permissionDenied = true)
+        assertTrue(vm.state.value.retainedTabs.isEmpty())
+        assertTrue(vm.state.value.forCategory(FlightCategory.MyFlights).items.isEmpty())
+        assertFalse(vm.state.value.hasLoadedList)
+    }
+
+    @Test
+    fun deniedFlightDetailsRemoveTheFlightFromAnInactiveTab() {
+        var reads = 0
+        val vm = model(categoryList = { category, _, _, _ ->
+            reads++
+            if (category == FlightCategory.MyFlights) tabPage(category, "denied", "allowed") else tabPage(category)
+        }, readDetail = { throw ApiException(404, "Flight unavailable") })
+        vm.refresh()
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.openFlight("denied")
+        assertEquals(listOf("allowed"), vm.state.value.forCategory(FlightCategory.MyFlights).items.map { it.id })
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(2, reads)
+        assertEquals(listOf("allowed"), vm.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun changingGlobalSearchInvalidatesOtherTabsOldQuery() {
+        val requests = mutableListOf<Pair<FlightCategory, String?>>()
+        val vm = model(categoryList = { category, _, _, search ->
+            requests += category to search
+            tabPage(category, search ?: "old")
+        })
+        vm.refresh()
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.setSearch("new")
+        vm.refresh()
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(listOf("new"), vm.state.value.items.map { it.id })
+        assertEquals(listOf(FlightCategory.MyFlights to null, FlightCategory.PerLanding to null,
+            FlightCategory.PerLanding to "new", FlightCategory.MyFlights to "new"), requests)
+    }
+
+    private fun tabPage(category: FlightCategory, vararg ids: String = arrayOf("$category")) = FlightPage(
+        items = ids.map { id -> row(id).copy(isMyFlight = category == FlightCategory.MyFlights,
+            isPerLanding = category == FlightCategory.PerLanding, isMyAdHocFlight = category == FlightCategory.AdHoc) },
+        totalCount = ids.size.toLong(), stationId = "station")
 
     private fun model(
         permissions: List<String> = listOf("operations.flights.view"),

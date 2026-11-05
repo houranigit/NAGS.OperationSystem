@@ -70,14 +70,7 @@ internal static class FlightBuildHelpers
         if (aircraft.IsFailure)
             return aircraft.Error;
 
-        var prefix = customer.Value.IataCode?.Trim();
-        if (!string.IsNullOrWhiteSpace(prefix) && !string.IsNullOrWhiteSpace(flightNumber) &&
-            !flightNumber.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-        {
-            flightNumber = $"{prefix}{flightNumber.Trim()}";
-        }
-
-        var number = FlightNumber.Create(flightNumber);
+        var number = FlightNumber.Create(flightNumber, customer.Value.IataCode);
         if (number.IsFailure)
             return number.Error;
 
@@ -101,7 +94,7 @@ internal static class FlightBuildHelpers
             Copy(references.Customer),
             Copy(references.Station),
             Copy(references.OperationType),
-            FlightNumber.Create(references.FlightNumber.Value).Value,
+            FlightNumber.Create(references.FlightNumber.Value, references.Customer.IataCode).Value,
             schedule.Value,
             references.AircraftType is null ? null : Copy(references.AircraftType),
             CopyServices(references.PlannedServices));

@@ -55,7 +55,6 @@
     <string name="flights_skeleton_loading">Loading flights</string>
     <string name="flights_title">Flights</string>
     <string name="flights_time_zone">Times: %1$s</string>
-    <string name="flights_refresh">Refresh flights</string>
     <string name="flights_search">Search flight number, customer or ID</string>
     <string name="flights_search_placeholder">Search</string>
     <string name="flights_search_clear">Clear search</string>
@@ -64,9 +63,8 @@
     <string name="flights_load_failed">Could not load flights</string>
     <string name="flights_empty">No flights yet</string>
     <string name="flights_no_matches">No matching flights</string>
-    <string name="flights_empty_hint">Pull down or tap refresh to check again.</string>
+    <string name="flights_empty_hint">Pull to refresh.</string>
     <string name="flights_search_hint">Try another flight number, customer or ID.</string>
-    <string name="flights_refresh_short">Refresh</string>
     <string name="flights_retry">Try again</string>
     <plurals name="flights_showing_count">
         <item quantity="one">Showing %1$d of %2$d flight</item>

@@ -43,7 +43,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             customerId = refs.CustomerId,
             stationId = refs.StationId,
             operationTypeId = refs.OperationTypeId,
-            flightNumber = "NGS100",
+            flightNumber = "1100",
             scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
             scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4),
             aircraftTypeId = (Guid?)null,
@@ -65,7 +65,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             customerId = refs.CustomerId,
             stationId = refs.StationId,
             operationTypeId = refs.OperationTypeId,
-            flightNumber = "NGS101",
+            flightNumber = "1101",
             scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
             scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4),
             aircraftTypeId = (Guid?)null,
@@ -87,7 +87,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             customerId = refs.CustomerId,
             stationId = refs.StationId,
             operationTypeId = refs.OperationTypeId,
-            flightNumber = "NGS102",
+            flightNumber = "1102",
             scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
             scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4),
             aircraftTypeId = (Guid?)null,
@@ -116,7 +116,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             customerId = refs.CustomerId,
             stationId = refs.StationId,
             operationTypeId = refs.OperationTypeId,
-            flightNumber = "NGS150",
+            flightNumber = "1150",
             scheduledArrivalTimeUtc = new TimeOnly(23, 30),
             scheduledDepartureTimeUtc = new TimeOnly(1, 15),
             selectedDates,
@@ -136,7 +136,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             var expectedArrival = new DateTimeOffset(selectedDates[i].ToDateTime(new TimeOnly(23, 30), DateTimeKind.Utc));
             var expectedDeparture = new DateTimeOffset(selectedDates[i].AddDays(1).ToDateTime(new TimeOnly(1, 15), DateTimeKind.Utc));
 
-            flight.FlightNumber.ShouldBe("NGS150");
+            flight.FlightNumber.ShouldBe("1150");
             flight.ScheduledArrivalUtc.ShouldBe(expectedArrival);
             flight.ScheduledDepartureUtc.ShouldBe(expectedDeparture);
             flight.PlannedServices.ShouldContain(service => service.ServiceId == refs.ServiceId);
@@ -149,23 +149,23 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var flightId = await ScheduleFlightAsync(admin, refs, "NGS160");
+        var flightId = await ScheduleFlightAsync(admin, refs, "1160");
         var flight = await GetFlightAsync(admin, flightId);
 
         using var first = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/change-number")
         {
-            Content = JsonContent.Create(new { flightNumber = "NGS161" })
+            Content = JsonContent.Create(new { flightNumber = "1161" })
         };
         first.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
         (await admin.SendAsync(first)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         using var stale = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/change-number")
         {
-            Content = JsonContent.Create(new { flightNumber = "NGS162" })
+            Content = JsonContent.Create(new { flightNumber = "1162" })
         };
         stale.Headers.TryAddWithoutValidation("If-Match", flight.RowVersion);
         (await admin.SendAsync(stale)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
-        (await GetFlightAsync(admin, flightId)).FlightNumber.ShouldBe("NGS161");
+        (await GetFlightAsync(admin, flightId)).FlightNumber.ShouldBe("1161");
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var (assignedClient, assignedStaffId) = await CreateStaffLoginAsync(admin, refs);
         var (unassignedClient, _) = await CreateStaffLoginAsync(admin, refs);
 
-        var flightId = await ScheduleFlightAsync(admin, refs, "NGS400", assignedStaffIds: [assignedStaffId]);
+        var flightId = await ScheduleFlightAsync(admin, refs, "1400", assignedStaffIds: [assignedStaffId]);
 
         (await assignedClient.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await unassignedClient.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -194,7 +194,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var refs = await SetupMasterDataAsync(admin);
         var (staffClient, _) = await CreateStaffLoginAsync(admin, refs);
 
-        var flightId = await ScheduleFlightAsync(admin, refs, "NGS401",
+        var flightId = await ScheduleFlightAsync(admin, refs, "1401",
             plannedServiceIds: [WellKnownMasterDataIds.AircraftPerLandingService]);
 
         (await staffClient.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -207,7 +207,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var flightId = await ScheduleFlightAsync(admin, refs, "NGS402",
+        var flightId = await ScheduleFlightAsync(admin, refs, "1402",
             plannedServiceIds: [WellKnownMasterDataIds.AircraftPerLandingService]);
         var flight = await GetFlightAsync(admin, flightId);
 
@@ -228,7 +228,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
         var (_, replacementStaffId) = await CreateStaffLoginAsync(admin, refs);
-        var flightId = await ScheduleFlightAsync(admin, refs, "NGS403", assignedStaffIds: [refs.StaffMemberId]);
+        var flightId = await ScheduleFlightAsync(admin, refs, "1403", assignedStaffIds: [refs.StaffMemberId]);
         var flight = await GetFlightAsync(admin, flightId);
 
         using var replaceRequest = new HttpRequestMessage(HttpMethod.Post, $"{Base}/flights/{flightId}/assign")
@@ -259,7 +259,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var flightId = await ScheduleFlightAsync(admin, refs, "NGS404", assignedStaffIds: [refs.StaffMemberId]);
+        var flightId = await ScheduleFlightAsync(admin, refs, "1404", assignedStaffIds: [refs.StaffMemberId]);
         var flight = await GetFlightAsync(admin, flightId);
 
         using var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{flightId}")
@@ -295,7 +295,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var roleId = await CreateInviteRoleAsync(admin);
         var (inviter, inviterId) = await CreateStaffLoginAsync(admin, refs, roleId);
         var (invitee, inviteeId) = await CreateStaffLoginAsync(admin, refs);
-        var flightId = await ScheduleFlightAsync(admin, refs, "INV100", assignedStaffIds: [inviterId]);
+        var flightId = await ScheduleFlightAsync(admin, refs, "2100", assignedStaffIds: [inviterId]);
         var flight = await GetFlightAsync(inviter, flightId);
 
         var options = await inviter.GetFromJsonAsync<List<AssignedEmployee>>($"{Base}/flights/{flightId}/invitation-options");
@@ -327,7 +327,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
         var (staff, staffId) = await CreateStaffLoginAsync(admin, refs);
-        var flightId = await ScheduleFlightAsync(admin, refs, "INV200", assignedStaffIds: [staffId]);
+        var flightId = await ScheduleFlightAsync(admin, refs, "2200", assignedStaffIds: [staffId]);
         var flight = await GetFlightAsync(staff, flightId);
 
         (await staff.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -345,7 +345,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var roleId = await CreateInviteRoleAsync(admin);
         var (inviter, _) = await CreateStaffLoginAsync(admin, refs, roleId);
         var flightRefs = otherStation ? await SetupMasterDataAsync(admin) : refs;
-        var flightId = await ScheduleFlightAsync(admin, flightRefs, "INV300");
+        var flightId = await ScheduleFlightAsync(admin, flightRefs, "2300");
         var flight = await GetFlightAsync(admin, flightId);
 
         (await inviter.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -359,7 +359,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var flightId = await ScheduleFlightAsync(admin, refs, "INV400", [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var flightId = await ScheduleFlightAsync(admin, refs, "2400", [WellKnownMasterDataIds.AircraftPerLandingService]);
         var flight = await GetFlightAsync(admin, flightId);
 
         (await admin.GetAsync($"{Base}/flights/{flightId}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -374,7 +374,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
         var (_, secondStaffId) = await CreateStaffLoginAsync(admin, refs);
-        var flightId = await ScheduleFlightAsync(admin, refs, "INV500");
+        var flightId = await ScheduleFlightAsync(admin, refs, "2500");
         var flight = await GetFlightAsync(admin, flightId);
 
         using var missingVersion = InvitationRequest(flightId, [refs.StaffMemberId]);
@@ -399,7 +399,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
     {
         var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
-        var flightId = await ScheduleFlightAsync(admin, refs, "INV600");
+        var flightId = await ScheduleFlightAsync(admin, refs, "2600");
         var flight = await GetFlightAsync(admin, flightId);
         var roleId = await PostForIdAsync(admin, $"{IdentityBase}/roles", new
         {
@@ -437,7 +437,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         async Task ExpectNone() => await Task.WhenAll(adminLive.ExpectNoRefreshAsync(),
             ownLive.ExpectNoRefreshAsync(), otherLive.ExpectNoRefreshAsync());
 
-        var id = await ScheduleFlightAsync(admin, refs, "SYNC901", assignedStaffIds: [ownStaffId]);
+        var id = await ScheduleFlightAsync(admin, refs, "3901", assignedStaffIds: [ownStaffId]);
         await ExpectFlight();
         (await FlightIdsAsync(admin)).ShouldContain(id);
         (await FlightIdsAsync(own)).ShouldContain(id);
@@ -447,7 +447,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var invalid = await admin.PostAsJsonAsync($"{Base}/flights", new
         {
             customerId = refs.CustomerId, stationId = refs.StationId, operationTypeId = refs.OperationTypeId,
-            flightNumber = "SYNC902", scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
+            flightNumber = "3902", scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
             scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4), aircraftTypeId = (Guid?)null,
             plannedServiceIds = Array.Empty<Guid>(), assignedStaffMemberIds = Array.Empty<Guid>()
         });
@@ -458,7 +458,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var bulk = await admin.PostAsJsonAsync($"{Base}/flights/bulk", new
         {
             customerId = refs.CustomerId, stationId = refs.StationId, operationTypeId = refs.OperationTypeId,
-            flightNumber = "SYNC903", scheduledArrivalTimeUtc = new TimeOnly(10, 0),
+            flightNumber = "3903", scheduledArrivalTimeUtc = new TimeOnly(10, 0),
             scheduledDepartureTimeUtc = new TimeOnly(12, 0), selectedDates = dates,
             aircraftTypeId = (Guid?)null, plannedServiceIds = new[] { refs.ServiceId },
             assignedStaffMemberIds = new[] { ownStaffId }
@@ -473,7 +473,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         {
             ownFlights.ShouldContain(flightId);
             otherFlights.ShouldNotContain(flightId);
-            (await GetFlightAsync(admin, flightId)).FlightNumber.ShouldBe("SYNC903");
+            (await GetFlightAsync(admin, flightId)).FlightNumber.ShouldBe("3903");
         }
         // A batch is one invalidation, never one event per created row or another dataset.
         await ExpectNone();
@@ -489,7 +489,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var (first, firstStaffId) = await CreateStaffLoginAsync(admin, refs, inviteRole);
         var (second, secondStaffId) = await CreateStaffLoginAsync(admin, refs, inviteRole);
         var (other, otherStaffId) = await CreateStaffLoginAsync(admin, otherRefs);
-        var id = await ScheduleFlightAsync(admin, refs, "SYNC910", assignedStaffIds: [firstStaffId]);
+        var id = await ScheduleFlightAsync(admin, refs, "3910", assignedStaffIds: [firstStaffId]);
         var original = await GetFlightAsync(admin, id);
         await using var adminLive = await CatalogLiveSubscription.ConnectAsync(factory, admin);
         await using var firstLive = await CatalogLiveSubscription.ConnectAsync(factory, first);
@@ -519,15 +519,15 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         await ExpectNone();
 
         changed = await GetFlightAsync(admin, id);
-        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "SYNC911" }, changed.RowVersion))
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "3911" }, changed.RowVersion))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await ExpectFlight();
         changed = await GetFlightAsync(admin, id);
-        changed.FlightNumber.ShouldBe("SYNC911");
-        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "SYNC911" }, changed.RowVersion))
+        changed.FlightNumber.ShouldBe("3911");
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "3911" }, changed.RowVersion))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await ExpectNone();
-        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "SYNC912" }, original.RowVersion))
+        (await FlightMutationAsync(admin, HttpMethod.Post, id, "change-number", new { flightNumber = "3912" }, original.RowVersion))
             .StatusCode.ShouldBe(HttpStatusCode.Conflict);
         await ExpectNone();
 
@@ -592,10 +592,10 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var secondRefs = await SetupMasterDataAsync(admin);
         var (first, firstStaffId) = await CreateStaffLoginAsync(admin, firstRefs);
         var (second, _) = await CreateStaffLoginAsync(admin, secondRefs);
-        var assigned = await ScheduleFlightAsync(admin, firstRefs, "SYNC920", assignedStaffIds: [firstStaffId]);
-        var firstPerLanding = await ScheduleFlightAsync(admin, firstRefs, "SYNC921", [WellKnownMasterDataIds.AircraftPerLandingService]);
-        var secondPerLanding = await ScheduleFlightAsync(admin, secondRefs, "SYNC922", [WellKnownMasterDataIds.AircraftPerLandingService]);
-        var unassigned = await ScheduleFlightAsync(admin, secondRefs, "SYNC923");
+        var assigned = await ScheduleFlightAsync(admin, firstRefs, "3920", assignedStaffIds: [firstStaffId]);
+        var firstPerLanding = await ScheduleFlightAsync(admin, firstRefs, "3921", [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var secondPerLanding = await ScheduleFlightAsync(admin, secondRefs, "3922", [WellKnownMasterDataIds.AircraftPerLandingService]);
+        var unassigned = await ScheduleFlightAsync(admin, secondRefs, "3923");
         (await FlightIdsAsync(first)).ShouldBe([assigned, firstPerLanding], ignoreOrder: true);
         await using var firstLive = await CatalogLiveSubscription.ConnectAsync(factory, first);
         await using var secondLive = await CatalogLiveSubscription.ConnectAsync(factory, second);

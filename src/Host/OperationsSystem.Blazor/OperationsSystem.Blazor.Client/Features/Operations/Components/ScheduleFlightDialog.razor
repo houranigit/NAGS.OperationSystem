@@ -1,3 +1,4 @@
+@using System.Text.RegularExpressions
 @inject OperationsApiClient Operations
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
@@ -153,7 +154,7 @@
                         }
                     </span>
                     <RadzenTextBox @bind-Value="model.FlightNumber" Name="@flightNumberName" MaxLength="12"
-                                   class="opf-control opf-control-icon opf-flight-number-control" Placeholder="e.g. NGS104" />
+                                   class="opf-control opf-control-icon opf-flight-number-control" Placeholder="e.g. 123A or 123/01" />
                 </div>
             </div>
         </div>
@@ -446,6 +447,9 @@
             await LoadStaffForSelectedStationAsync();
             if (errorMessage is not null)
                 return;
+            errorMessage = ValidateDetails();
+            if (errorMessage is not null)
+                return;
         }
 
         if (IsBulkCreate && step == 0)
@@ -622,20 +626,17 @@
     private CustomerOption? SelectedCustomer =>
         customers.FirstOrDefault(customer => customer.Id == model.CustomerId);
 
-    private string? CustomerIataCode =>
-        original is null ? SelectedCustomer?.IataCode : original.CustomerIataCode;
-
     private bool HasCustomerIataPrefix =>
-        !string.IsNullOrWhiteSpace(CustomerIataCode);
+        !string.IsNullOrWhiteSpace(SelectedCustomer?.IataCode);
 
     private bool ShowCustomerFlightPrefixDivider =>
-        original is not null || SelectedCustomer is not null;
+        SelectedCustomer is not null;
 
     private string CustomerIataPrefix =>
-        original is null && SelectedCustomer is null
+        SelectedCustomer is null
             ? "-"
             : HasCustomerIataPrefix
-                ? CustomerIataCode!.Trim().ToUpperInvariant()
+                ? SelectedCustomer.IataCode!.Trim().ToUpperInvariant()
                 : "N/A";
 
     private void TogglePlannedService(ServiceOption service)
@@ -810,7 +811,7 @@
             model.CustomerId,
             model.StationId,
             model.OperationTypeId,
-            model.FlightNumber.Trim().ToUpperInvariant(),
+            model.FlightNumber,
             ToUtc(model.ScheduledArrivalUtc!.Value),
             ToUtc(model.ScheduledDepartureUtc!.Value),
             model.AircraftTypeId,
@@ -824,7 +825,7 @@
             model.CustomerId,
             model.StationId,
             model.OperationTypeId,
-            model.FlightNumber.Trim().ToUpperInvariant(),
+            model.FlightNumber,
             TimeOnly.FromDateTime(model.ScheduledArrivalTimeUtc!.Value),
             TimeOnly.FromDateTime(model.ScheduledDepartureTimeUtc!.Value),
             SelectedScheduleDates,
@@ -840,18 +841,11 @@
     {
         var version = rowVersion ?? string.Empty;
 
-        var number = model.FlightNumber.Trim().ToUpperInvariant();
-        if (original is not null && !string.Equals(original.FlightNumber, number, StringComparison.OrdinalIgnoreCase))
+        if (original is not null && !string.Equals(original.FlightNumber, model.FlightNumber, StringComparison.OrdinalIgnoreCase))
         {
-            if (HasCustomerIataPrefix && !number.StartsWith(CustomerIataPrefix, StringComparison.OrdinalIgnoreCase))
-                number = $"{CustomerIataPrefix}{number}";
-
-            if (!string.Equals(original.FlightNumber, number, StringComparison.OrdinalIgnoreCase))
-            {
-                await Operations.ChangeFlightNumberAsync(id, new ChangeFlightNumberRequestModel(number), version);
-                var refreshed = await Operations.GetFlightAsync(id);
-                version = refreshed.RowVersion;
-            }
+            await Operations.ChangeFlightNumberAsync(id, new ChangeFlightNumberRequestModel(model.FlightNumber), version);
+            var refreshed = await Operations.GetFlightAsync(id);
+            version = refreshed.RowVersion;
         }
 
         await Operations.UpdateFlightAsync(id, new UpdateScheduledFlightRequestModel(
@@ -879,6 +873,17 @@
     {
         if (string.IsNullOrWhiteSpace(model.FlightNumber))
             return "Flight number is required.";
+        if (original is null || !string.Equals(original.FlightNumber, model.FlightNumber, StringComparison.OrdinalIgnoreCase))
+        {
+            const string format = @"\A[0-9]{1,4}(?:[A-Za-z]|/[0-9]{1,2})?\z";
+            var number = model.FlightNumber;
+            var prefix = (original is null ? SelectedCustomer?.IataCode : original.CustomerIataCode)?.Trim();
+            var validNumber = Regex.IsMatch(number, format, RegexOptions.CultureInvariant);
+            if (!validNumber && !string.IsNullOrEmpty(prefix) && number.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                validNumber = Regex.IsMatch(number[prefix.Length..], format, RegexOptions.CultureInvariant);
+            if (!validNumber)
+                return "Use 1-4 flight digits, optionally followed by one letter or '/' and 1-2 route digits. Spaces and other characters are not allowed.";
+        }
         if (model.CustomerId == Guid.Empty)
             return "Customer is required.";
         if (model.StationId == Guid.Empty)

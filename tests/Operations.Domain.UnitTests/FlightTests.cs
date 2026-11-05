@@ -50,29 +50,29 @@ public sealed class FlightTests
     }
 
     [Theory]
-    [InlineData("123")]
-    [InlineData("XY123")]
-    [InlineData("ASV123")]
-    [InlineData("SV")]
-    public void ScheduleNew_RequiresCustomerIataCodeFollowedByFlightNumber(string number)
+    [InlineData(null, "123", "Operations.FlightNumber.CustomerPrefixRequired")]
+    [InlineData("XY", "XY123", "Operations.FlightNumber.InvalidFormat")]
+    [InlineData("5Y", "5Y123/12", "Operations.FlightNumber.InvalidFormat")]
+    public void ScheduleNew_RequiresTheFlightCustomersCode(string? numberCustomerCode, string number, string errorCode)
     {
-        var result = Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(number),
+        var flightNumber = FlightNumber.Create(number, numberCustomerCode).Value;
+        var result = Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), flightNumber,
             TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now);
 
         result.IsFailure.ShouldBeTrue();
-        result.Error.Code.ShouldBe("Operations.FlightNumber.CustomerPrefixRequired");
+        result.Error.Code.ShouldBe(errorCode);
     }
 
     [Theory]
-    [InlineData(" sv ", " sv123 ", "SV123")]
-    [InlineData("5Y", "5y123", "5Y123")]
-    [InlineData(null, "123", "123")]
+    [InlineData(" sv ", "sv123", "SV123")]
+    [InlineData("5Y", "5y123/12", "5Y123/12")]
+    [InlineData(null, "123/1", "123/1")]
     [InlineData("", "123", "123")]
     [InlineData("  ", "123", "123")]
-    public void ScheduleNew_UsesNormalizedIataCode_WhenPresent(string? iataCode, string number, string expected)
+    public void ScheduleNew_AcceptsNumbersForItsCustomer(string? iataCode, string number, string expected)
     {
         var result = Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), iataCode, "Customer"),
-            TestData.Station(), TestData.OperationType(), TestData.FlightNo(number),
+            TestData.Station(), TestData.OperationType(), FlightNumber.Create(number, iataCode).Value,
             TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now);
 
         result.IsSuccess.ShouldBeTrue();
@@ -80,17 +80,17 @@ public sealed class FlightTests
     }
 
     [Theory]
-    [InlineData("123")]
-    [InlineData("XY123")]
-    [InlineData("SV")]
-    public void ChangeFlightNumber_RejectsInvalidCustomerPrefix_WithoutMutation(string number)
+    [InlineData(null, "123", "Operations.FlightNumber.CustomerPrefixRequired")]
+    [InlineData("XY", "XY123", "Operations.FlightNumber.InvalidFormat")]
+    public void ChangeFlightNumber_RejectsAnotherCustomersNumber_WithoutMutation(string? numberCustomerCode, string number, string errorCode)
     {
         var flight = ScheduleFlight(TestData.Service());
+        var newNumber = FlightNumber.Create(number, numberCustomerCode).Value;
 
-        var result = flight.ChangeFlightNumber(TestData.FlightNo(number), TestData.Now.AddMinutes(1));
+        var result = flight.ChangeFlightNumber(newNumber, TestData.Now.AddMinutes(1));
 
         result.IsFailure.ShouldBeTrue();
-        result.Error.Code.ShouldBe("Operations.FlightNumber.CustomerPrefixRequired");
+        result.Error.Code.ShouldBe(errorCode);
         flight.FlightNumber.Value.ShouldBe("SV1020");
         flight.UpdatedAtUtc.ShouldBeNull();
     }
@@ -102,10 +102,10 @@ public sealed class FlightTests
     public void ChangeFlightNumber_WithoutCustomerIataCode_DoesNotRequirePrefix(string? iataCode)
     {
         var flight = Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), iataCode, "Customer"),
-            TestData.Station(), TestData.OperationType(), TestData.FlightNo("123"),
+            TestData.Station(), TestData.OperationType(), FlightNumber.Create("123").Value,
             TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now).Value;
 
-        var result = flight.ChangeFlightNumber(TestData.FlightNo("456"), TestData.Now.AddMinutes(1));
+        var result = flight.ChangeFlightNumber(FlightNumber.Create("456").Value, TestData.Now.AddMinutes(1));
 
         result.IsSuccess.ShouldBeTrue();
         flight.FlightNumber.Value.ShouldBe("456");

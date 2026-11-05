@@ -148,11 +148,12 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     private static Result ValidateCustomerFlightNumber(CustomerSnapshot customer, FlightNumber number)
     {
-        if (string.IsNullOrWhiteSpace(customer.IataCode))
-            return Result.Success();
+        var validated = FlightNumber.Create(number.Value, customer.IataCode);
+        if (validated.IsFailure)
+            return validated.Error;
 
-        var prefix = customer.IataCode.Trim().ToUpperInvariant();
-        if (!number.Value.StartsWith(prefix, StringComparison.Ordinal) || number.Value.Length <= prefix.Length)
+        var prefix = customer.IataCode?.Trim().ToUpperInvariant();
+        if (number != validated.Value)
             return Error.Validation(
                 $"Flight number must start with customer IATA code '{prefix}' followed by the flight number.",
                 "Operations.FlightNumber.CustomerPrefixRequired");

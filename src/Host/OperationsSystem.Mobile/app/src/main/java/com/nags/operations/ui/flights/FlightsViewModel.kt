@@ -40,9 +40,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Only list data is retained; details and invitation state remain owned by the active screen. */
+data class FlightTabState(
+    val stationId: String?,
+    val items: List<FlightListItem>,
+    val isUsingCachedList: Boolean,
+    val page: Int,
+    val totalCount: Long,
+    val hasMore: Boolean,
+    val error: String?,
+    val loadMoreError: String?,
+    val needsRefresh: Boolean = false,
+)
+
 data class FlightsUiState(
     val category: FlightCategory = FlightCategory.MyFlights,
     val stationId: String? = null,
+    val retainedTabs: Map<FlightCategory, FlightTabState> = emptyMap(),
+    val hasLoadedList: Boolean = false,
     val items: List<FlightListItem> = emptyList(),
     val isOnline: Boolean = true,
     val isUsingCachedList: Boolean = false,
@@ -52,6 +67,7 @@ data class FlightsUiState(
     val hasMore: Boolean = false,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
+    val showRefreshIndicator: Boolean = false,
     val isLoadingMore: Boolean = false,
     val permissionDenied: Boolean = false,
     val error: String? = null,
@@ -73,6 +89,35 @@ data class FlightsUiState(
     val invitationStale: Boolean = false,
     val invitationSent: Boolean = false,
 )
+
+/** Provides the loaded neighboring page while swiping without restoring its global screen state. */
+fun FlightsUiState.forCategory(category: FlightCategory): FlightsUiState {
+    if (this.category == category) return this
+    val retained = retainedTabs[category]?.takeIf { stationId == null || it.stationId == stationId }
+    return copy(category = category, stationId = stationId ?: retained?.stationId,
+        items = if (permissionDenied) emptyList() else retained?.items.orEmpty(),
+        hasLoadedList = !permissionDenied && retained != null,
+        isUsingCachedList = retained?.isUsingCachedList ?: false,
+        page = retained?.page ?: 1, totalCount = if (permissionDenied) 0 else retained?.totalCount ?: 0,
+        hasMore = !permissionDenied && (retained?.hasMore ?: false),
+        isLoading = !permissionDenied && retained == null, isRefreshing = false, showRefreshIndicator = false, isLoadingMore = false,
+        error = if (permissionDenied) error else retained?.error, loadMoreError = retained?.loadMoreError)
+}
+
+private fun FlightsUiState.tabSnapshot() = FlightTabState(stationId, items, isUsingCachedList,
+    page, totalCount, hasMore, error, loadMoreError, retainedTabs[category]?.needsRefresh == true)
+
+private fun FlightTabState.withoutFlight(id: String): FlightTabState {
+    val rows = items.filterNot { it.id == id }
+    val total = (totalCount - (items.size - rows.size)).coerceAtLeast(0)
+    return copy(items = rows, totalCount = total, hasMore = hasMore && total > 0)
+}
+
+private fun FlightTabState.withinWindow(at: Instant): FlightTabState {
+    val rows = items.filter { it.isInFlightWindow(at) }
+    return if (rows.size == items.size) this else copy(items = rows,
+        totalCount = (totalCount - (items.size - rows.size)).coerceAtLeast(0))
+}
 
 class FlightsViewModel internal constructor(
     private val fetchProfile: suspend () -> AuthenticatedUser,
@@ -136,6 +181,7 @@ class FlightsViewModel internal constructor(
                     clearVisibleFlights(cached.permissionDenied || _state.value.permissionDenied)
                 } else {
                     val current = _state.value
+                    invalidateRetainedTabs()
                     loadList()
                     current.selectedFlightId?.takeIf { !current.isInviting && !current.isLoadingInvitations && !current.isLoadingDetail }?.let { id ->
                         if (current.isInvitationOpen && online.value) refreshInvitations() else openFlight(id)
@@ -150,9 +196,10 @@ class FlightsViewModel internal constructor(
         detailJob?.cancel()
         invitationJob?.cancel()
         _state.update {
-            it.copy(items = emptyList(), stationId = null, totalCount = 0, hasMore = false,
+            it.copy(items = emptyList(), stationId = null, retainedTabs = emptyMap(), hasLoadedList = false,
+                totalCount = 0, hasMore = false,
                 selectedFlightId = null, lastUnavailableFlightId = null, detail = null, detailError = null,
-                isLoading = false, isRefreshing = false, isLoadingMore = false, isLoadingDetail = false,
+                isLoading = false, isRefreshing = false, showRefreshIndicator = false, isLoadingMore = false, isLoadingDetail = false,
                 isInvitationOpen = false, isLoadingInvitations = false, isInviting = false,
                 invitationOptions = emptyList(), availableInvitationIds = emptySet(), selectedInvitationIds = emptySet(),
                 invitationOptionsLoaded = false, invitationError = null, invitationStale = false, invitationSent = false,
@@ -163,58 +210,116 @@ class FlightsViewModel internal constructor(
 
     fun setCategory(category: FlightCategory) {
         if (category == _state.value.category) return
-        _state.update {
-            it.copy(category = category, items = emptyList(), page = 1, totalCount = 0, hasMore = false)
+        listJob?.cancel()
+        expireVisibleFlights()
+        _state.update { current ->
+            val tabs = if (current.hasLoadedList) current.retainedTabs + (current.category to current.tabSnapshot())
+                else current.retainedTabs - current.category
+            current.copy(retainedTabs = tabs).forCategory(category)
         }
-        loadList()
+        if (!_state.value.hasLoadedList || _state.value.retainedTabs[category]?.needsRefresh == true) loadList()
     }
 
     fun setSearch(search: String) {
         if (search == _state.value.search) return
         _state.update {
-            it.copy(search = search, items = emptyList(), totalCount = 0, hasMore = false)
+            it.copy(search = search, items = emptyList(), retainedTabs = emptyMap(), hasLoadedList = false,
+                page = 1, totalCount = 0, hasMore = false)
         }
         loadList(debounce = true)
     }
 
-    fun refresh() {
+    fun refresh() = refreshList(showIndicator = true)
+
+    fun refreshSilently() = refreshList(showIndicator = false)
+
+    private fun refreshList(showIndicator: Boolean) {
         expireVisibleFlights()
-        loadList()
+        invalidateRetainedTabs()
+        loadList(showIndicator = showIndicator)
+    }
+
+    private fun invalidateRetainedTabs() {
+        _state.update { current ->
+            val tabs = if (current.hasLoadedList) current.retainedTabs + (current.category to current.tabSnapshot())
+                else current.retainedTabs
+            current.copy(retainedTabs = tabs.mapValues { (_, tab) -> tab.copy(needsRefresh = true) })
+        }
     }
 
     fun customerLogo(customerId: String): Flow<ByteArray?> = observeCustomerLogo(customerId)
 
-    private fun loadList(debounce: Boolean = false) {
+    private fun loadList(debounce: Boolean = false, showIndicator: Boolean = false) {
         listJob?.cancel()
         val search = _state.value.search
         val category = _state.value.category
+        val loadedDepth = if (_state.value.hasLoadedList) _state.value.page else 1
         _state.update {
-            it.copy(isLoading = it.items.isEmpty(), isRefreshing = it.items.isNotEmpty(),
+            it.copy(isLoading = !it.hasLoadedList, isRefreshing = it.hasLoadedList,
+                // An automatic update replacing a manual pull keeps that indicator until completion.
+                showRefreshIndicator = it.hasLoadedList && (showIndicator || it.showRefreshIndicator),
                 isLoadingMore = false, error = null, loadMoreError = null)
         }
         listJob = scope.launch {
             try {
                 if (debounce) delay(300)
                 if (!ensureViewPermission()) return@launch
-                val result = fetchFlights(category, 1, PAGE_SIZE, search.trim().ifEmpty { null })
+                var depth = loadedDepth
+                var result = fetchFlights(category, 1, PAGE_SIZE, search.trim().ifEmpty { null })
                 currentCoroutineContext().ensureActive()
-                val rows = result.items.filter { it.matches(category) && it.isInFlightWindow(now()) }
-                val previousStation = _state.value.stationId ?: _state.value.detail?.stationId
-                if (result.stationId != null && previousStation != null && result.stationId != previousStation) {
-                    clearSelectedFlight()
+                if (acceptStation(result.stationId)) depth = 1
+                if (result.page != 1) throw IOException("Flight pagination changed. Refresh the list.")
+                var fromCache = result.fromCache
+                val rows = result.items.toMutableList()
+                while (result.hasNextPage && result.page < depth) {
+                    val next = fetchFlights(category, result.page + 1, PAGE_SIZE, search.trim().ifEmpty { null })
+                    currentCoroutineContext().ensureActive()
+                    if (acceptStation(next.stationId)) {
+                        // A station transfer cannot combine the old first page with a new station's next page.
+                        result = fetchFlights(category, 1, PAGE_SIZE, search.trim().ifEmpty { null })
+                        currentCoroutineContext().ensureActive()
+                        acceptStation(result.stationId)
+                        rows.clear()
+                        rows.addAll(result.items)
+                        fromCache = result.fromCache
+                        depth = 1
+                    } else {
+                        if (next.page != result.page + 1) throw IOException("Flight pagination changed. Refresh the list.")
+                        result = next
+                        rows.addAll(result.items)
+                        fromCache = fromCache || result.fromCache
+                    }
                 }
+                val eligible = rows.filter { it.matches(category) && it.isInFlightWindow(now()) }
+                val retained = eligible.distinctBy { it.id }
                 _state.update {
-                    it.copy(items = rows, stationId = result.stationId, page = result.page, totalCount = (result.totalCount - (result.items.size - rows.size)).coerceAtLeast(0),
-                        hasMore = result.hasNextPage, isLoading = false, isRefreshing = false,
-                        permissionDenied = false, error = null, isUsingCachedList = result.fromCache)
+                    it.copy(items = retained, stationId = result.stationId ?: it.stationId, hasLoadedList = true,
+                        retainedTabs = it.retainedTabs - category,
+                        page = result.page, totalCount = (result.totalCount - (rows.size - eligible.size)).coerceAtLeast(0),
+                        hasMore = result.hasNextPage, isLoading = false, isRefreshing = false, showRefreshIndicator = false,
+                        permissionDenied = false, error = null, isUsingCachedList = fromCache)
                 }
                 scheduleExpiryChecks()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
                 listFailed(error)
             }
         }
+    }
+
+    private fun acceptStation(stationId: String?): Boolean {
+        if (stationId == null) return false
+        val previous = _state.value.stationId ?: _state.value.detail?.stationId
+        val changed = previous != null && previous != stationId
+        if (changed) clearSelectedFlight()
+        _state.update {
+            if (!changed) it.copy(stationId = stationId) else it.copy(stationId = stationId,
+                items = emptyList(), retainedTabs = emptyMap(), hasLoadedList = false,
+                page = 1, totalCount = 0, hasMore = false, isLoading = true, isRefreshing = false, showRefreshIndicator = false)
+        }
+        return changed
     }
 
     fun loadMore() {
@@ -225,10 +330,7 @@ class FlightsViewModel internal constructor(
             try {
                 val result = fetchFlights(current.category, current.page + 1, PAGE_SIZE, current.search.trim().ifEmpty { null })
                 currentCoroutineContext().ensureActive()
-                if (result.stationId != null && current.stationId != null && result.stationId != current.stationId) {
-                    clearSelectedFlight()
-                    _state.update { it.copy(items = emptyList(), stationId = result.stationId,
-                        page = 1, totalCount = 0, hasMore = false) }
+                if (acceptStation(result.stationId)) {
                     loadList()
                     return@launch
                 }
@@ -244,6 +346,7 @@ class FlightsViewModel internal constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
                 listFailed(error)
             }
         }
@@ -380,7 +483,8 @@ class FlightsViewModel internal constructor(
                 val rows = current.items.filterNot { it.id == id }
                 val removed = current.items.size - rows.size
                 val total = (current.totalCount - removed).coerceAtLeast(0)
-                val withoutRow = current.copy(items = rows, totalCount = total, lastUnavailableFlightId = id,
+                val withoutRow = current.copy(items = rows, totalCount = total,
+                    retainedTabs = current.retainedTabs.mapValues { (_, tab) -> tab.withoutFlight(id) }, lastUnavailableFlightId = id,
                     hasMore = current.hasMore && total > 0)
                 if (current.selectedFlightId != id) withoutRow else withoutRow.copy(
                     selectedFlightId = null, detail = null, isLoadingDetail = false,
@@ -413,7 +517,7 @@ class FlightsViewModel internal constructor(
                 _state.update { it.copy(isInviting = false, isInvitationOpen = false) }
                 openFlight(flight.id)
                 _state.update { it.copy(invitationSent = true) }
-                refresh()
+                refreshSilently()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -432,6 +536,7 @@ class FlightsViewModel internal constructor(
             while (true) {
                 val current = _state.value
                 val departures = current.items.map { it.scheduledDepartureUtc } +
+                    current.retainedTabs.values.flatMap { tab -> tab.items.map { it.scheduledDepartureUtc } } +
                     listOfNotNull(current.detail?.scheduledDepartureUtc)
                 val nextExpiry = departures.mapNotNull {
                     runCatching { Instant.parse(it).plus(12, ChronoUnit.HOURS) }.getOrNull()
@@ -456,12 +561,14 @@ class FlightsViewModel internal constructor(
         val at = now()
         val current = _state.value
         val rows = current.items.filter { it.isInFlightWindow(at) }
+        val tabs = current.retainedTabs.mapValues { (_, tab) -> tab.withinWindow(at) }
         val expiredDetail = current.detail?.isInFlightWindow(at) == false ||
             current.items.any { it.id == current.selectedFlightId && !it.isInFlightWindow(at) }
-        if (rows.size == current.items.size && !expiredDetail) return
+        if (rows.size == current.items.size && tabs == current.retainedTabs && !expiredDetail) return
         if (expiredDetail) clearSelectedFlight()
         _state.update {
-            it.copy(items = rows, totalCount = (it.totalCount - (current.items.size - rows.size)).coerceAtLeast(0))
+            it.copy(items = rows, retainedTabs = tabs,
+                totalCount = (it.totalCount - (current.items.size - rows.size)).coerceAtLeast(0))
         }
     }
 
@@ -488,9 +595,7 @@ class FlightsViewModel internal constructor(
             throw error
         } catch (error: Exception) {
             if (error is ApiException && error.statusCode in setOf(401, 403)) {
-                if (error.statusCode == 403) {
-                    _state.update { it.copy(permissionDenied = true, error = VIEW_PERMISSION_MESSAGE) }
-                }
+                clearVisibleFlights(permissionDenied = error.statusCode == 403)
                 clearCachedFlights()
                 throw error
             }
@@ -501,27 +606,21 @@ class FlightsViewModel internal constructor(
         }
         _state.update { it.copy(canInviteEmployees = INVITE_PERMISSION in profile.permissions) }
         if (VIEW_PERMISSION in profile.permissions) return true
-        _state.update {
-            it.copy(items = emptyList(), detail = null, canInviteEmployees = false,
-                permissionDenied = true, totalCount = 0, hasMore = false,
-                isLoading = false, isRefreshing = false,
-                isLoadingMore = false, error = VIEW_PERMISSION_MESSAGE, loadMoreError = null)
-        }
+        clearVisibleFlights(permissionDenied = true)
         clearCachedFlights()
         return false
     }
 
     private fun listFailed(error: Exception) {
-        val forbidden = error is ApiException && error.statusCode == 403
-        if (forbidden) {
-            clearVisibleFlights(permissionDenied = true)
+        if (error is ApiException && error.statusCode in setOf(401, 403)) {
+            clearVisibleFlights(permissionDenied = error.statusCode == 403)
             return
         }
         _state.update {
             if (it.isLoadingMore) {
                 it.copy(isLoadingMore = false, loadMoreError = error.userMessage())
             } else {
-                it.copy(permissionDenied = false, isLoading = false, isRefreshing = false,
+                it.copy(permissionDenied = false, isLoading = false, isRefreshing = false, showRefreshIndicator = false,
                     isLoadingMore = false, error = error.userMessage(), loadMoreError = null)
             }
         }

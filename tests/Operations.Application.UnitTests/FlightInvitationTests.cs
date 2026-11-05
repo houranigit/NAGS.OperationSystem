@@ -163,7 +163,7 @@ public sealed class FlightInvitationTests
     private static Flight FlightFor(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false) =>
         Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
             new StationSnapshot(stationId, "RUH", "Riyadh"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
-            FlightNumber.Create("SV200").Value,
+            FlightNumber.Create("SV200", "SV").Value,
             ScheduledTime.Create(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)).Value,
             null, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Planned service")],
             staff, Guid.NewGuid(), DateTimeOffset.UtcNow).Value;

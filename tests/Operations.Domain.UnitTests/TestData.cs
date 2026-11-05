@@ -15,7 +15,7 @@ internal static class TestData
     public static ServiceSnapshot Service() => new(Guid.NewGuid(), "Marshalling");
     public static ServiceSnapshot PerLandingService() => new(WellKnownMasterDataIds.AircraftPerLandingService, "Aircraft Per Landing");
 
-    public static FlightNumber FlightNo(string value = "SV1020") => FlightNumber.Create(value).Value;
+    public static FlightNumber FlightNo(string value = "SV1020") => FlightNumber.Create(value, "SV").Value;
 
     public static ScheduledTime Schedule() =>
         ScheduledTime.Create(Now, Now.AddHours(1)).Value;

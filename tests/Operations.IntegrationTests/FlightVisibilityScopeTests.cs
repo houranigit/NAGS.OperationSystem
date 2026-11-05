@@ -45,7 +45,7 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         var regular = await CreateStaffLoginAsync(admin, refs, RegularStaffPermissions);
 
         // A non-Per-Landing flight with nobody assigned.
-        var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "VIS100");
+        var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "4100");
 
         // Dispatcher: full station-wide visibility without assignment.
         (await dispatcher.Client.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -66,7 +66,7 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         var otherStationId = await CreateStationAsync(admin, refs.CountryId);
         var dispatcher = await CreateStaffLoginAsync(admin, refs, DispatcherPermissions);
 
-        var otherStationFlightId = await ScheduleFlightAsync(admin, otherStationId, refs, "VIS200");
+        var otherStationFlightId = await ScheduleFlightAsync(admin, otherStationId, refs, "4200");
 
         (await dispatcher.Client.GetAsync($"{Base}/flights/{otherStationFlightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var list = await dispatcher.Client.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
@@ -80,7 +80,7 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         var refs = await SetupMasterDataAsync(admin);
         var dispatcher = await CreateStaffLoginAsync(admin, refs, DispatcherPermissions);
         var regular = await CreateStaffLoginAsync(admin, refs, RegularStaffPermissions);
-        await ScheduleFlightAsync(admin, refs.StationId, refs, "LOG100");
+        await ScheduleFlightAsync(admin, refs.StationId, refs, "5100");
         var path = $"{Base}/flights/customer-logos/{refs.CustomerId}";
 
         (await dispatcher.Client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -153,8 +153,8 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         using var client = staff.Client;
         var me = await client.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me");
         var userId = me.GetProperty("id").GetGuid();
-        var assignedId = await ScheduleFlightAsync(admin, refs.StationId, refs, "MOB100", [staff.StaffId]);
-        var unassignedId = await ScheduleFlightAsync(admin, refs.StationId, refs, "MOB200");
+        var assignedId = await ScheduleFlightAsync(admin, refs.StationId, refs, "6100", [staff.StaffId]);
+        var unassignedId = await ScheduleFlightAsync(admin, refs.StationId, refs, "6200");
         var now = DateTimeOffset.UtcNow;
 
         Flight SeedFlight(string number, bool perLanding = false, bool adHoc = false,
@@ -168,14 +168,14 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
                 !perLanding && !adHoc ? [new StaffMemberSnapshot(staff.StaffId, "Staff", "E1")] : [],
                 creator ?? userId, now).Value;
 
-        var landing = SeedFlight("MOB300", perLanding: true);
-        var ownAdHoc = SeedFlight("MOB400", adHoc: true);
-        var ownMixed = SeedFlight("MOB500", perLanding: true, adHoc: true);
-        var otherAdHoc = SeedFlight("MOB600", adHoc: true, creator: Guid.NewGuid());
-        var otherMixed = SeedFlight("MOB700", perLanding: true, adHoc: true, creator: Guid.NewGuid());
-        var spanning = SeedFlight("MOB800", arrivalHours: -20, departureHours: 1);
-        var outdated = SeedFlight("MOB900", arrivalHours: -50, departureHours: -49);
-        var otherStation = SeedFlight("MOB999", stationId: Guid.NewGuid());
+        var landing = SeedFlight("6300", perLanding: true);
+        var ownAdHoc = SeedFlight("6400", adHoc: true);
+        var ownMixed = SeedFlight("6500", perLanding: true, adHoc: true);
+        var otherAdHoc = SeedFlight("6600", adHoc: true, creator: Guid.NewGuid());
+        var otherMixed = SeedFlight("6700", perLanding: true, adHoc: true, creator: Guid.NewGuid());
+        var spanning = SeedFlight("6800", arrivalHours: -20, departureHours: 1);
+        var outdated = SeedFlight("6900", arrivalHours: -50, departureHours: -49);
+        var otherStation = SeedFlight("6999", stationId: Guid.NewGuid());
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();

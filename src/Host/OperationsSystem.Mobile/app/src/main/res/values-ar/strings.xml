@@ -63,7 +63,6 @@
     <string name="flights_skeleton_loading">جارٍ تحميل الرحلات</string>
     <string name="flights_title">الرحلات</string>
     <string name="flights_time_zone">الأوقات: %1$s</string>
-    <string name="flights_refresh">تحديث الرحلات</string>
     <string name="flights_search">ابحث برقم الرحلة أو العميل أو المعرّف</string>
     <string name="flights_search_placeholder">بحث</string>
     <string name="flights_search_clear">مسح البحث</string>
@@ -72,9 +71,8 @@
     <string name="flights_load_failed">تعذر تحميل الرحلات</string>
     <string name="flights_empty">لا توجد رحلات حاليًا</string>
     <string name="flights_no_matches">لا توجد رحلات مطابقة</string>
-    <string name="flights_empty_hint">اسحب للأسفل أو اضغط على التحديث للتحقق مجددًا.</string>
+    <string name="flights_empty_hint">اسحب لتحديث الرحلات.</string>
     <string name="flights_search_hint">جرّب رقم رحلة أو عميلًا أو معرّفًا آخر.</string>
-    <string name="flights_refresh_short">تحديث</string>
     <string name="flights_retry">إعادة المحاولة</string>
     <plurals name="flights_showing_count">
         <item quantity="zero">عرض %1$d من أصل %2$d رحلة</item>

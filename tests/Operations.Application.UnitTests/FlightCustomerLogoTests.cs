@@ -153,7 +153,7 @@ public sealed class FlightCustomerLogoTests
     private static Flight NewFlight(Guid customerId, Guid stationId, Guid? assignedStaffId = null, bool perLanding = false) =>
         Flight.ScheduleNew(new CustomerSnapshot(customerId, "SV", "Saudia"),
             new StationSnapshot(stationId, "RUH", "Station"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
-            FlightNumber.Create("SV123").Value,
+            FlightNumber.Create("SV123", "SV").Value,
             ScheduledTime.Create(new DateTimeOffset(2026, 11, 4, 10, 0, 0, TimeSpan.Zero),
                 new DateTimeOffset(2026, 11, 4, 12, 0, 0, TimeSpan.Zero)).Value,
             null, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Service")],

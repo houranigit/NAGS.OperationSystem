@@ -446,7 +446,7 @@ public sealed class ChangeFlightNumberCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
-        var number = FlightNumber.Create(request.FlightNumber);
+        var number = FlightNumber.Create(request.FlightNumber, flight.Customer.IataCode);
         if (number.IsFailure)
             return number.Error;
 
