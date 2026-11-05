@@ -622,17 +622,20 @@
     private CustomerOption? SelectedCustomer =>
         customers.FirstOrDefault(customer => customer.Id == model.CustomerId);
 
+    private string? CustomerIataCode =>
+        original is null ? SelectedCustomer?.IataCode : original.CustomerIataCode;
+
     private bool HasCustomerIataPrefix =>
-        !string.IsNullOrWhiteSpace(SelectedCustomer?.IataCode);
+        !string.IsNullOrWhiteSpace(CustomerIataCode);
 
     private bool ShowCustomerFlightPrefixDivider =>
-        SelectedCustomer is not null;
+        original is not null || SelectedCustomer is not null;
 
     private string CustomerIataPrefix =>
-        SelectedCustomer is null
+        original is null && SelectedCustomer is null
             ? "-"
             : HasCustomerIataPrefix
-                ? SelectedCustomer.IataCode!.Trim().ToUpperInvariant()
+                ? CustomerIataCode!.Trim().ToUpperInvariant()
                 : "N/A";
 
     private void TogglePlannedService(ServiceOption service)
@@ -837,11 +840,18 @@
     {
         var version = rowVersion ?? string.Empty;
 
-        if (original is not null && !string.Equals(original.FlightNumber, model.FlightNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+        var number = model.FlightNumber.Trim().ToUpperInvariant();
+        if (original is not null && !string.Equals(original.FlightNumber, number, StringComparison.OrdinalIgnoreCase))
         {
-            await Operations.ChangeFlightNumberAsync(id, new ChangeFlightNumberRequestModel(model.FlightNumber.Trim().ToUpperInvariant()), version);
-            var refreshed = await Operations.GetFlightAsync(id);
-            version = refreshed.RowVersion;
+            if (HasCustomerIataPrefix && !number.StartsWith(CustomerIataPrefix, StringComparison.OrdinalIgnoreCase))
+                number = $"{CustomerIataPrefix}{number}";
+
+            if (!string.Equals(original.FlightNumber, number, StringComparison.OrdinalIgnoreCase))
+            {
+                await Operations.ChangeFlightNumberAsync(id, new ChangeFlightNumberRequestModel(number), version);
+                var refreshed = await Operations.GetFlightAsync(id);
+                version = refreshed.RowVersion;
+            }
         }
 
         await Operations.UpdateFlightAsync(id, new UpdateScheduledFlightRequestModel(

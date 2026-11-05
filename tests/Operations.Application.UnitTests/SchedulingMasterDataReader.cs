@@ -2,14 +2,14 @@ using MasterData.Contracts.Readers;
 
 namespace Operations.Application.UnitTests;
 
-internal sealed class SchedulingMasterDataReader : IMasterDataReader
+internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV") : IMasterDataReader
 {
     public Guid StationId { get; } = Guid.NewGuid();
     public Guid ServiceId { get; } = Guid.NewGuid();
     public Dictionary<Guid, StaffMemberReadSnapshot> StaffMembers { get; } = [];
 
     public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
-        Task.FromResult<CustomerReadSnapshot?>(new(id, "SV", null, "Saudia", true));
+        Task.FromResult<CustomerReadSnapshot?>(new(id, customerIataCode, null, "Saudia", true));
 
     public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult<StationReadSnapshot?>(new(id, "RUH", null, "Riyadh", true));

@@ -1,5 +1,7 @@
 package com.nags.operations.ui.flights
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -34,17 +39,29 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,6 +78,10 @@ import com.nags.operations.ui.invite.InviteEmployeesDialog
 import com.nags.operations.ui.util.formatIsoForDisplay
 import java.time.ZoneId
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,22 +93,25 @@ fun FlightsScreen(
     onSelectTab: (Int) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val listState = rememberLazyListState()
-    val selectedCategory = FlightCategory.entries.getOrElse(selectedTab) { FlightCategory.MyFlights }
-    val visibleFlights = if (state.category == selectedCategory) state.items else emptyList()
-    LaunchedEffect(viewModel, selectedCategory) {
-        viewModel.setCategory(selectedCategory)
-    }
-    LaunchedEffect(viewModel, listState, selectedTab) {
-        snapshotFlow {
-            nextFlightPageToLoad(state, selectedTab, state.items.size,
-                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1)
-        }.distinctUntilChanged().collect { page ->
-            if (page != null) viewModel.loadMore()
+    val pagerState = rememberPagerState(initialPage = selectedTab) { FlightCategory.entries.size }
+    val pagerScope = rememberCoroutineScope()
+    val notifyTabSelection by rememberUpdatedState(onSelectTab)
+    val requestedTab = if (notificationOpenRequest != null) 0 else selectedTab
+    LaunchedEffect(viewModel, requestedTab, notificationOpenRequest) {
+        // A selection echoed by the host must not interrupt the next swipe.
+        if (pagerState.settledPage != requestedTab ||
+            (notificationOpenRequest != null && pagerState.isScrollInProgress)) {
+            pagerState.animateScrollToPage(requestedTab,
+                animationSpec = tween(TAB_SLIDE_MILLIS, easing = FastOutSlowInEasing))
         }
+        viewModel.setCategory(FlightCategory.entries[requestedTab])
     }
-    LaunchedEffect(state.search, selectedTab) {
-        listState.scrollToItem(0)
+    LaunchedEffect(viewModel, pagerState) {
+        // Restoration is handled above; only a completed swipe or tap selects a new feed.
+        snapshotFlow { pagerState.settledPage }.drop(1).distinctUntilChanged().collect { page ->
+            viewModel.setCategory(FlightCategory.entries[page])
+            notifyTabSelection(page)
+        }
     }
     LifecycleResumeEffect(viewModel) {
         viewModel.refresh()
@@ -119,9 +143,11 @@ fun FlightsScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        FlightsPageTabs(selectedTab = selectedTab, onSelectTab = {
-            viewModel.setCategory(FlightCategory.entries[it])
-            onSelectTab(it)
+        FlightsPageTabs(pagerState = pagerState, onSelectTab = { page ->
+            pagerScope.launch {
+                pagerState.animateScrollToPage(page,
+                    animationSpec = tween(TAB_SLIDE_MILLIS, easing = FastOutSlowInEasing))
+            }
         },
             onRefresh = viewModel::refresh,
             refreshEnabled = !state.isLoading && !state.isRefreshing)
@@ -134,66 +160,16 @@ fun FlightsScreen(
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
-        PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = viewModel::refresh,
-            modifier = Modifier.weight(1f)) {
-            when {
-                visibleFlights.isEmpty() && (state.category != selectedCategory || state.isLoading || state.isRefreshing ||
-                    (state.hasMore && state.error == null && state.loadMoreError == null)) ->
-                    FlightListSkeleton(Modifier.fillMaxSize())
-                state.error != null && visibleFlights.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    ErrorState(title = stringResource(if (state.permissionDenied) R.string.flights_access else R.string.flights_load_failed),
-                        message = if (state.permissionDenied) stringResource(R.string.flights_view_forbidden) else state.error!!, onRetry = viewModel::refresh)
-                }
-                visibleFlights.isEmpty() && state.loadMoreError != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    ErrorState(title = stringResource(R.string.flights_load_failed),
-                        message = state.loadMoreError!!, onRetry = viewModel::loadMore)
-                }
-                visibleFlights.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    EmptyState(icon = Icons.Default.FlightTakeoff,
-                        title = stringResource(if (state.search.isNotBlank()) R.string.flights_no_matches
-                            else when (selectedCategory) {
-                                FlightCategory.PerLanding -> R.string.flights_per_landing_empty
-                                FlightCategory.AdHoc -> R.string.flights_adhoc_empty
-                                FlightCategory.MyFlights -> R.string.flights_empty
-                            }),
-                        message = stringResource(if (state.search.isBlank()) R.string.flights_empty_hint else R.string.flights_search_hint),
-                        actionLabel = stringResource(R.string.flights_refresh_short), onAction = viewModel::refresh)
-                }
-                else -> LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    state.error?.let { error ->
-                        item(key = "list-error") {
-                            Text(error, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.flights_retry)) }
-                        }
-                    }
-                    items(visibleFlights, key = { it.id }, contentType = { "flight" }) { flight ->
-                        FlightCard(flight = flight, onClick = { viewModel.openFlight(flight.id) },
-                            loadCustomerLogo = viewModel::customerLogo)
-                    }
-                    item(key = "flight-count") {
-                        Text(pluralStringResource(R.plurals.flights_showing_count,
-                            state.totalCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(), state.items.size, state.totalCount),
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(vertical = 4.dp))
-                    }
-                    if (state.isLoadingMore) {
-                        item(key = "loading-flights") { FlightCardSkeleton() }
-                    }
-                    state.loadMoreError?.let { error ->
-                        item(key = "paging-error") {
-                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(error, color = MaterialTheme.colorScheme.error)
-                                TextButton(onClick = viewModel::loadMore) { Text(stringResource(R.string.flights_retry)) }
-                            }
-                        }
-                    }
-                }
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) { page ->
+            val category = FlightCategory.entries[page]
+            // Neighbor pages load after settling; a canceled swipe keeps the current feed intact.
+            val pageState = when {
+                state.category == category -> state
+                state.permissionDenied -> state.copy(category = category)
+                else -> FlightsUiState(category = category, isOnline = state.isOnline)
             }
+            FlightListPage(state = pageState, viewModel = viewModel,
+                active = page == pagerState.settledPage && state.category == category)
         }
     }
     if (state.selectedFlightId != null) {
@@ -248,9 +224,94 @@ fun FlightsScreen(
 
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FlightListPage(state: FlightsUiState, viewModel: FlightsViewModel, active: Boolean) {
+    // Each pager page owns its scroll state; only the settled feed can prefetch.
+    val listState = rememberLazyListState()
+    val currentState by rememberUpdatedState(state)
+    LaunchedEffect(viewModel, listState, active) {
+        if (!active) return@LaunchedEffect
+        snapshotFlow {
+            nextFlightPageToLoad(currentState, currentState.category.ordinal, currentState.items.size,
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1)
+        }.distinctUntilChanged().collect { page ->
+            if (page != null) viewModel.loadMore()
+        }
+    }
+    LaunchedEffect(state.search, state.stationId, active) {
+        if (active) listState.scrollToItem(0)
+    }
+    val onRefresh: () -> Unit = { if (active) viewModel.refresh() }
+    val onLoadMore: () -> Unit = { if (active) viewModel.loadMore() }
+    PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = onRefresh,
+        modifier = if (active) Modifier.fillMaxSize() else Modifier.fillMaxSize().clearAndSetSemantics { }) {
+        when {
+            state.items.isEmpty() && (state.isLoading || state.isRefreshing ||
+                (state.hasMore && state.error == null && state.loadMoreError == null)) ->
+                FlightListSkeleton(Modifier.fillMaxSize())
+            state.error != null && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                ErrorState(title = stringResource(if (state.permissionDenied) R.string.flights_access else R.string.flights_load_failed),
+                    message = if (state.permissionDenied) stringResource(R.string.flights_view_forbidden) else state.error, onRetry = onRefresh)
+            }
+            state.items.isEmpty() && state.loadMoreError != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                ErrorState(title = stringResource(R.string.flights_load_failed),
+                    message = state.loadMoreError, onRetry = onLoadMore)
+            }
+            state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(icon = Icons.Default.FlightTakeoff,
+                    title = stringResource(if (state.search.isNotBlank()) R.string.flights_no_matches
+                        else when (state.category) {
+                            FlightCategory.PerLanding -> R.string.flights_per_landing_empty
+                            FlightCategory.AdHoc -> R.string.flights_adhoc_empty
+                            FlightCategory.MyFlights -> R.string.flights_empty
+                        }),
+                    message = stringResource(if (state.search.isBlank()) R.string.flights_empty_hint else R.string.flights_search_hint),
+                    actionLabel = stringResource(R.string.flights_refresh_short), onAction = onRefresh)
+            }
+            else -> LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                state.error?.let { error ->
+                    item(key = "list-error") {
+                        Text(error, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = onRefresh) { Text(stringResource(R.string.flights_retry)) }
+                    }
+                }
+                items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
+                    FlightCard(flight = flight, onClick = { if (active) viewModel.openFlight(flight.id) },
+                        loadCustomerLogo = viewModel::customerLogo)
+                }
+                item(key = "flight-count") {
+                    Text(pluralStringResource(R.plurals.flights_showing_count,
+                        state.totalCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(), state.items.size, state.totalCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(vertical = 4.dp))
+                }
+                if (state.isLoadingMore) {
+                    item(key = "loading-flights") { FlightCardSkeleton() }
+                }
+                state.loadMoreError?.let { error ->
+                    item(key = "paging-error") {
+                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(error, color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = onLoadMore) { Text(stringResource(R.string.flights_retry)) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private const val TAB_SLIDE_MILLIS = 240
+
 @Composable
 private fun FlightsPageTabs(
-    selectedTab: Int,
+    pagerState: PagerState,
     onSelectTab: (Int) -> Unit,
     onRefresh: () -> Unit,
     refreshEnabled: Boolean,
@@ -258,20 +319,45 @@ private fun FlightsPageTabs(
     val labels = listOf(stringResource(R.string.flights_tab_my),
         stringResource(R.string.flights_tab_per_landing), stringResource(R.string.flights_tab_adhoc))
     val ink = MaterialTheme.colorScheme.onSurface
+    val tabBounds = remember(labels) { mutableStateMapOf<Int, Rect>() }
+    // Recompose text only when its font weight changes; draw the marker at exact swipe progress.
+    val textPositionSteps by remember(pagerState) {
+        derivedStateOf {
+            ((pagerState.currentPage + pagerState.currentPageOffsetFraction) * 100).roundToInt()
+        }
+    }
+    val tabPadding = with(LocalDensity.current) { 12.dp.toPx() }
     Column {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup()) {
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup()
+                .drawBehind {
+                    val tabPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                        .coerceIn(0f, labels.lastIndex.toFloat())
+                    val firstIndex = tabPosition.toInt()
+                    val first = tabBounds[firstIndex] ?: return@drawBehind
+                    val next = tabBounds[(firstIndex + 1).coerceAtMost(labels.lastIndex)] ?: first
+                    val fraction = tabPosition - firstIndex
+                    val left = first.left + (next.left - first.left) * fraction
+                    val right = first.right + (next.right - first.right) * fraction
+                    drawRect(ink, Offset(left, size.height - 2.dp.toPx()), Size(right - left, 2.dp.toPx()))
+                }) {
                 labels.forEachIndexed { index, label ->
-                    val selected = index == selectedTab
-                    Box(Modifier.selectable(selected = selected, onClick = { onSelectTab(index) }, role = Role.Tab)
+                    val selected = index == pagerState.currentPage
+                    val emphasis = (1f - abs(textPositionSteps / 100f - index)).coerceIn(0f, 1f)
+                    val weight = (500 + 100 * emphasis).roundToInt()
+                    Box(Modifier.onGloballyPositioned { coordinates ->
+                            val left = coordinates.positionInParent().x + tabPadding
+                            tabBounds[index] = Rect(left, 0f, left + coordinates.size.width - 2 * tabPadding, 0f)
+                        }
+                        .selectable(selected = selected, onClick = { onSelectTab(index) }, role = Role.Tab)
                         .padding(horizontal = 12.dp)
-                        .heightIn(min = 48.dp)
-                        .drawBehind {
-                            if (selected) drawRect(ink, Offset(0f, size.height - 2.dp.toPx()), Size(size.width, 2.dp.toPx()))
-                        }, contentAlignment = Alignment.Center) {
+                        .heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                        // Reserve the bold label's width so the marker does not jitter as weight changes.
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                            color = if (selected) ink else ink.copy(alpha = 0.55f), maxLines = 1)
+                            fontWeight = FontWeight.SemiBold, color = Color.Transparent, maxLines = 1,
+                            modifier = Modifier.clearAndSetSemantics { })
+                        Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                            fontWeight = FontWeight(weight), color = ink.copy(alpha = 0.55f + 0.45f * emphasis), maxLines = 1)
                     }
                 }
             }

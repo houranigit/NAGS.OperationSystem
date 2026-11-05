@@ -44,6 +44,10 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         DateTimeOffset now,
         Guid? id = null)
     {
+        var numberCheck = ValidateCustomerFlightNumber(customer, flightNumber);
+        if (numberCheck.IsFailure)
+            return numberCheck.Error;
+
         var servicesCheck = PerLandingPolicy.ValidatePlannedServices(plannedServices);
         if (servicesCheck.IsFailure)
             return servicesCheck.Error;
@@ -69,6 +73,10 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result ChangeFlightNumber(FlightNumber newNumber, DateTimeOffset now)
     {
+        var numberCheck = ValidateCustomerFlightNumber(Customer, newNumber);
+        if (numberCheck.IsFailure)
+            return numberCheck.Error;
+
         if (FlightNumber == newNumber)
             return Result.Success();
         FlightNumber = newNumber;
@@ -136,6 +144,20 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         _assignedEmployees.Clear();
         foreach (var employee in employees.DistinctBy(employee => employee.StaffMemberId))
             _assignedEmployees.Add(new FlightAssignedEmployee(Guid.NewGuid(), Id, employee));
+    }
+
+    private static Result ValidateCustomerFlightNumber(CustomerSnapshot customer, FlightNumber number)
+    {
+        if (string.IsNullOrWhiteSpace(customer.IataCode))
+            return Result.Success();
+
+        var prefix = customer.IataCode.Trim().ToUpperInvariant();
+        if (!number.Value.StartsWith(prefix, StringComparison.Ordinal) || number.Value.Length <= prefix.Length)
+            return Error.Validation(
+                $"Flight number must start with customer IATA code '{prefix}' followed by the flight number.",
+                "Operations.FlightNumber.CustomerPrefixRequired");
+
+        return Result.Success();
     }
 
     private static Error PerLandingAssignmentError() => Error.Validation(

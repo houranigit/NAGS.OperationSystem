@@ -49,7 +49,7 @@
                             <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
                             <div class="os-role-cell-text">
                                 <div class="os-role-cell-title">
-                                    <strong>@DisplayFlightNumber(flight)</strong>
+                                    <strong>@flight.FlightNumber</strong>
                                     @if (flight.IsPerLanding)
                                     {
                                         <span class="ofl-per-landing-badge">Per Landing</span>
@@ -350,11 +350,6 @@
 
         return UserTimeZone.DateBoundaryUtc(date, endOfDay);
     }
-
-    private static string DisplayFlightNumber(FlightListItem flight) =>
-        string.IsNullOrWhiteSpace(flight.CustomerIataCode)
-            ? flight.FlightNumber
-            : $"{flight.CustomerIataCode.Trim().ToUpperInvariant()}-{flight.FlightNumber}";
 
     private static string CustomerFilterLabel(CustomerOption customer) =>
         string.IsNullOrWhiteSpace(customer.IataCode)

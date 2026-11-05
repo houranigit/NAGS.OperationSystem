@@ -49,6 +49,68 @@ public sealed class FlightTests
         flight.UpdatedAtUtc.ShouldBe(TestData.Now.AddMinutes(2));
     }
 
+    [Theory]
+    [InlineData("123")]
+    [InlineData("XY123")]
+    [InlineData("ASV123")]
+    [InlineData("SV")]
+    public void ScheduleNew_RequiresCustomerIataCodeFollowedByFlightNumber(string number)
+    {
+        var result = Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(number),
+            TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.FlightNumber.CustomerPrefixRequired");
+    }
+
+    [Theory]
+    [InlineData(" sv ", " sv123 ", "SV123")]
+    [InlineData("5Y", "5y123", "5Y123")]
+    [InlineData(null, "123", "123")]
+    [InlineData("", "123", "123")]
+    [InlineData("  ", "123", "123")]
+    public void ScheduleNew_UsesNormalizedIataCode_WhenPresent(string? iataCode, string number, string expected)
+    {
+        var result = Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), iataCode, "Customer"),
+            TestData.Station(), TestData.OperationType(), TestData.FlightNo(number),
+            TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.FlightNumber.Value.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("123")]
+    [InlineData("XY123")]
+    [InlineData("SV")]
+    public void ChangeFlightNumber_RejectsInvalidCustomerPrefix_WithoutMutation(string number)
+    {
+        var flight = ScheduleFlight(TestData.Service());
+
+        var result = flight.ChangeFlightNumber(TestData.FlightNo(number), TestData.Now.AddMinutes(1));
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("Operations.FlightNumber.CustomerPrefixRequired");
+        flight.FlightNumber.Value.ShouldBe("SV1020");
+        flight.UpdatedAtUtc.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void ChangeFlightNumber_WithoutCustomerIataCode_DoesNotRequirePrefix(string? iataCode)
+    {
+        var flight = Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), iataCode, "Customer"),
+            TestData.Station(), TestData.OperationType(), TestData.FlightNo("123"),
+            TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now).Value;
+
+        var result = flight.ChangeFlightNumber(TestData.FlightNo("456"), TestData.Now.AddMinutes(1));
+
+        result.IsSuccess.ShouldBeTrue();
+        flight.FlightNumber.Value.ShouldBe("456");
+    }
+
     [Fact]
     public void ReplacingLists_ReplacesPlanning_AndDeduplicatesStaff()
     {

@@ -12,6 +12,8 @@ Creation/update timestamps, creator ID, and SQL rowversion support persistence a
 
 The existing flight grid and scheduling dialog support a single flight, multiple selected dates, and basic schedule edits. Required fields are customer, station, operation type, flight number, arrival/departure, and at least one planned service. Aircraft type and assigned staff remain optional. Staff assignments require the existing assignment permission and active staff at the selected station.
 
+The scheduling input shows the customer code as a separate prefix. On single or batch creation, the backend adds the customer's IATA code when the entered number does not already start with it; entering `123` or `SV123` for customer `SV` stores `SV123`. The complete saved number retains trim/uppercase normalization and the 12-character limit, and the grid displays it directly. Backend validation requires the saved customer's snapshot IATA code followed by the flight number when creating or changing a number; customers without an IATA code have no prefix requirement. Existing stored numbers are not rewritten, and planning-only edits preserve them.
+
 Aircraft Per Landing remains an exclusive planned designation and cannot be combined with other planned services or assigned staff. Ad Hoc is unavailable for scheduling. Batch scheduling retains the supplied time-zone conversion and overnight departure behavior; invalid or ambiguous local times fail validation rather than silently shifting the schedule.
 
 ## Authorization and API

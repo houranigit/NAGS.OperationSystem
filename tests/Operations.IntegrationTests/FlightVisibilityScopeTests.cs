@@ -159,7 +159,7 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
 
         Flight SeedFlight(string number, bool perLanding = false, bool adHoc = false,
             Guid? creator = null, Guid? stationId = null, int arrivalHours = 0, int departureHours = 1) =>
-            Flight.ScheduleNew(new CustomerSnapshot(refs.CustomerId, "SV", "Mobile customer"),
+            Flight.ScheduleNew(new CustomerSnapshot(refs.CustomerId, null, "Mobile customer"),
                 new StationSnapshot(stationId ?? refs.StationId, "TST", "Mobile station"),
                 new OperationTypeSnapshot(adHoc ? WellKnownMasterDataIds.AdHocOperationType : refs.OperationTypeId,
                     adHoc ? "Ad Hoc" : "Transit"), FlightNumber.Create(number).Value,

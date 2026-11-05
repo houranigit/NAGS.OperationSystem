@@ -16,23 +16,33 @@ namespace Operations.Application.UnitTests;
 
 public sealed class FlightSchedulingTests
 {
-    [Fact]
-    public async Task SingleFlight_PersistsItsPlanningAndCanBeReadFromTheGrid()
+    [Theory]
+    [InlineData("SV", "123", "SV123")]
+    [InlineData("SV", "SV123", "SV123")]
+    [InlineData("SV", " sv123 ", "SV123")]
+    [InlineData("SV", "XY123", "SVXY123")]
+    [InlineData("SV", "1234567890", "SV1234567890")]
+    [InlineData(null, "123", "123")]
+    [InlineData("  ", "123", "123")]
+    public async Task SingleFlight_PersistsTheNormalizedFullNumberAndCanBeReadFromTheGrid(string? customerCode, string flightNumber, string expectedNumber)
     {
         await using var db = NewDb();
-        var reader = new SchedulingMasterDataReader();
+        var reader = new SchedulingMasterDataReader(customerCode);
         var now = new DateTimeOffset(2026, 7, 3, 10, 0, 0, TimeSpan.Zero);
         var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
-            .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+            .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
                 now, now.AddHours(1), null, [reader.ServiceId], []), CancellationToken.None);
 
         result.IsSuccess.ShouldBeTrue();
         db.ChangeTracker.Clear();
         var flight = await db.Flights.Include(f => f.PlannedServices).SingleAsync();
+        flight.FlightNumber.Value.ShouldBe(expectedNumber);
         flight.PlannedServices.ShouldHaveSingleItem().Service.ServiceId.ShouldBe(reader.ServiceId);
         var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
-            .Handle(new GetFlightsQuery(Search: "SV-123"), CancellationToken.None);
-        page.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(result.Value);
+            .Handle(new GetFlightsQuery(Search: expectedNumber), CancellationToken.None);
+        var item = page.Value.Items.ShouldHaveSingleItem();
+        item.Id.ShouldBe(result.Value);
+        item.FlightNumber.ShouldBe(expectedNumber);
     }
 
     [Theory]
@@ -70,14 +80,20 @@ public sealed class FlightSchedulingTests
         result.Value.Items.Select(flight => flight.Id).ShouldBe([first.Id, second.Id]);
     }
 
-    [Fact]
-    public async Task BatchSchedule_DeduplicatesDatesAndPreservesOvernightLocalTimes()
+    [Theory]
+    [InlineData("SV", "123", "SV123")]
+    [InlineData("SV", "SV123", "SV123")]
+    [InlineData("SV", " sv123 ", "SV123")]
+    [InlineData("SV", "XY123", "SVXY123")]
+    [InlineData("SV", "1234567890", "SV1234567890")]
+    [InlineData(null, "123", "123")]
+    public async Task BatchSchedule_NormalizesTheFullNumberDeduplicatesDatesAndPreservesOvernightLocalTimes(string? customerCode, string flightNumber, string expectedNumber)
     {
         await using var db = NewDb();
-        var reader = new SchedulingMasterDataReader();
+        var reader = new SchedulingMasterDataReader(customerCode);
         var firstDate = new DateOnly(2026, 7, 3);
         var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
-            .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+            .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
                 new TimeOnly(23, 30), new TimeOnly(1, 30), [firstDate.AddDays(1), firstDate, firstDate],
                 null, [reader.ServiceId], [], "Asia/Riyadh"), CancellationToken.None);
 
@@ -88,8 +104,76 @@ public sealed class FlightSchedulingTests
         flights[0].Schedule.Sta.ShouldBe(new DateTimeOffset(2026, 7, 3, 20, 30, 0, TimeSpan.Zero));
         flights[0].Schedule.Std.ShouldBe(new DateTimeOffset(2026, 7, 3, 22, 30, 0, TimeSpan.Zero));
         flights[1].Schedule.Sta.ShouldBe(flights[0].Schedule.Sta.AddDays(1));
+        flights.ShouldAllBe(flight => flight.FlightNumber.Value == expectedNumber);
         flights.All(flight => flight.PlannedServices.Count == 1).ShouldBeTrue();
         flights[0].PlannedServices[0].Id.ShouldNotBe(flights[1].PlannedServices[0].Id);
+        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
+            .Handle(new GetFlightsQuery(Search: expectedNumber), CancellationToken.None);
+        page.Value.Items.Select(item => item.Id).ShouldBe(result.Value, ignoreOrder: true);
+        page.Value.Items.ShouldAllBe(item => item.FlightNumber == expectedNumber);
+    }
+
+    [Theory]
+    [InlineData("SV", "Operations.FlightNumber.CustomerPrefixRequired")]
+    [InlineData("12345678901", "Operations.FlightNumber.TooLong")]
+    [InlineData("", "Operations.FlightNumber.Required")]
+    [InlineData("  ", "Operations.FlightNumber.Required")]
+    public async Task SingleFlight_RejectsPrefixOnlyEmptyOrOversizedFullNumbers(string flightNumber, string expectedErrorCode)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader();
+        var now = new DateTimeOffset(2026, 7, 3, 10, 0, 0, TimeSpan.Zero);
+
+        var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
+                now, now.AddHours(1), null, [reader.ServiceId], []), CancellationToken.None);
+
+        result.Error.Code.ShouldBe(expectedErrorCode);
+        (await db.Flights.CountAsync()).ShouldBe(0);
+        db.ChangeTracker.HasChanges().ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("SV", "Operations.Flight.BatchItemInvalid")]
+    [InlineData("12345678901", "Operations.FlightNumber.TooLong")]
+    [InlineData("", "Operations.FlightNumber.Required")]
+    [InlineData("  ", "Operations.FlightNumber.Required")]
+    public async Task BatchSchedule_RejectsPrefixOnlyEmptyOrOversizedFullNumbers(string flightNumber, string expectedErrorCode)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader();
+        var date = new DateOnly(2026, 7, 3);
+
+        var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
+                new TimeOnly(10, 0), new TimeOnly(11, 0), [date, date.AddDays(1)],
+                null, [reader.ServiceId], []), CancellationToken.None);
+
+        result.Error.Code.ShouldBe(expectedErrorCode);
+        (await db.Flights.CountAsync()).ShouldBe(0);
+        db.ChangeTracker.HasChanges().ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("123")]
+    [InlineData("XY123")]
+    [InlineData("SV")]
+    public async Task ChangeFlightNumber_RejectsInvalidPrefixWithoutChangingTheFlight(string flightNumber)
+    {
+        await using var db = NewDb();
+        var flight = NewFlight(Guid.NewGuid(), []);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+
+        var result = await new ChangeFlightNumberCommandHandler(db, AdminScope(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new ChangeFlightNumberCommand(flight.Id, flightNumber, flight.RowVersion), CancellationToken.None);
+
+        result.Error.Code.ShouldBe("Operations.FlightNumber.CustomerPrefixRequired");
+        flight.FlightNumber.Value.ShouldBe("SV123");
+        flight.UpdatedAtUtc.ShouldBeNull();
+        db.ChangeTracker.HasChanges().ShouldBeFalse();
+        db.ChangeTracker.Clear();
+        (await db.Flights.SingleAsync()).FlightNumber.Value.ShouldBe("SV123");
     }
 
     [Fact]
@@ -98,7 +182,7 @@ public sealed class FlightSchedulingTests
         await using var db = NewDb();
         var reader = new SchedulingMasterDataReader();
         var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(false), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
-            .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+            .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "SV123",
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), null, [reader.ServiceId], [Guid.NewGuid()]), CancellationToken.None);
 
         result.Error.Code.ShouldBe("Operations.Flight.AssignForbidden");
@@ -112,7 +196,7 @@ public sealed class FlightSchedulingTests
         var scope = new StaticScope(new OperationsScopeContext(UserType.StationStaff, Guid.NewGuid(), Guid.NewGuid()));
         var reader = new SchedulingMasterDataReader();
         var result = await new ScheduleFlightCommandHandler(db, scope, new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
-            .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+            .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "SV123",
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), null, [reader.ServiceId], []), CancellationToken.None);
 
         result.Error.Code.ShouldBe("Operations.Scope.Forbidden");
@@ -228,7 +312,7 @@ public sealed class FlightSchedulingTests
     private static Flight NewFlight(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false, string stationIata = "RUH", int arrivalDay = 1, AircraftTypeSnapshot? aircraftType = null) =>
         Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
             new StationSnapshot(stationId, stationIata, "Station"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
-            FlightNumber.Create("123").Value, ScheduledTime.Create(new DateTimeOffset(2026, 7, arrivalDay, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, arrivalDay, 10, 0, 0, TimeSpan.Zero)).Value,
+            FlightNumber.Create("SV123").Value, ScheduledTime.Create(new DateTimeOffset(2026, 7, arrivalDay, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, arrivalDay, 10, 0, 0, TimeSpan.Zero)).Value,
             aircraftType, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Service")],
             staff, Guid.NewGuid(), DateTimeOffset.UtcNow).Value;
 

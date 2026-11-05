@@ -70,6 +70,13 @@ internal static class FlightBuildHelpers
         if (aircraft.IsFailure)
             return aircraft.Error;
 
+        var prefix = customer.Value.IataCode?.Trim();
+        if (!string.IsNullOrWhiteSpace(prefix) && !string.IsNullOrWhiteSpace(flightNumber) &&
+            !flightNumber.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            flightNumber = $"{prefix}{flightNumber.Trim()}";
+        }
+
         var number = FlightNumber.Create(flightNumber);
         if (number.IsFailure)
             return number.Error;
