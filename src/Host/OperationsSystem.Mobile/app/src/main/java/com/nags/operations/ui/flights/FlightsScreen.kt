@@ -1,5 +1,6 @@
 package com.nags.operations.ui.flights
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -29,7 +31,6 @@ import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +59,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -95,9 +98,21 @@ fun FlightsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     // Keep each list alive even when the pager disposes an offscreen page.
-    val listStates = key(state.search, state.stationId, state.permissionDenied) {
+    val normalListStates = key(state.stationId, state.permissionDenied) {
         List(FlightCategory.entries.size) { rememberLazyListState() }
     }
+    val searchListStates = key(state.search, state.stationId, state.permissionDenied) {
+        List(FlightCategory.entries.size) { rememberLazyListState() }
+    }
+    val listStates = if (state.search.isNotBlank()) searchListStates else normalListStates
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    fun closeSearch() {
+        keyboard?.hide()
+        focusManager.clearFocus()
+        viewModel.closeSearch()
+    }
+    BackHandler(enabled = state.isSearchOpen && state.selectedFlightId == null) { closeSearch() }
     val pagerState = rememberPagerState(initialPage = selectedTab) { FlightCategory.entries.size }
     val pagerScope = rememberCoroutineScope()
     val notifyTabSelection by rememberUpdatedState(onSelectTab)
@@ -147,13 +162,18 @@ fun FlightsScreen(
         viewModel.closeFlight()
     }
 
-    Column(Modifier.fillMaxSize()) {
-        FlightsPageTabs(pagerState = pagerState, onSelectTab = { page ->
-            pagerScope.launch {
-                pagerState.animateScrollToPage(page,
-                    animationSpec = tween(TAB_SLIDE_MILLIS, easing = FastOutSlowInEasing))
-            }
-        })
+    val selectTab: (Int) -> Unit = { page ->
+        pagerScope.launch {
+            pagerState.animateScrollToPage(page,
+                animationSpec = tween(TAB_SLIDE_MILLIS, easing = FastOutSlowInEasing))
+        }
+    }
+    Column(Modifier.fillMaxSize().imePadding()) {
+        FlightTabSearchHeader(isSearchOpen = state.isSearchOpen, query = state.search,
+            onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
+            onCloseSearch = ::closeSearch) {
+            FlightsPageTabs(pagerState = pagerState, onSelectTab = selectTab, enabled = !state.isSearchOpen)
+        }
         Text(stringResource(R.string.flights_time_zone, ZoneId.systemDefault().id),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -168,6 +188,10 @@ fun FlightsScreen(
             FlightListPage(state = state.forCategory(category), viewModel = viewModel,
                 listState = listStates[page],
                 active = page == pagerState.settledPage && state.category == category)
+        }
+        if (state.isSearchOpen) {
+            FlightSearchScopeTabs(selectedTab = pagerState.currentPage, onSelectTab = selectTab,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
         }
     }
     if (state.selectedFlightId != null) {
@@ -232,6 +256,8 @@ private fun FlightListPage(
 ) {
     // Only the settled feed can prefetch; tab selection does not reset its scroll position.
     val currentState by rememberUpdatedState(state)
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     LaunchedEffect(viewModel, listState, active) {
         if (!active) return@LaunchedEffect
         snapshotFlow {
@@ -280,7 +306,13 @@ private fun FlightListPage(
                     }
                 }
                 items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
-                    FlightCard(flight = flight, onClick = { if (active) viewModel.openFlight(flight.id) },
+                    FlightCard(flight = flight, onClick = {
+                        if (active) {
+                            keyboard?.hide()
+                            focusManager.clearFocus()
+                            viewModel.openFlight(flight.id)
+                        }
+                    },
                         loadCustomerLogo = viewModel::customerLogo)
                 }
                 item(key = "flight-count") {
@@ -311,6 +343,7 @@ private const val TAB_SLIDE_MILLIS = 240
 private fun FlightsPageTabs(
     pagerState: PagerState,
     onSelectTab: (Int) -> Unit,
+    enabled: Boolean = true,
 ) {
     val labels = listOf(stringResource(R.string.flights_tab_my),
         stringResource(R.string.flights_tab_per_landing), stringResource(R.string.flights_tab_adhoc))
@@ -345,7 +378,7 @@ private fun FlightsPageTabs(
                             val left = coordinates.positionInParent().x + tabPadding
                             tabBounds[index] = Rect(left, 0f, left + coordinates.size.width - 2 * tabPadding, 0f)
                         }
-                        .selectable(selected = selected, onClick = { onSelectTab(index) }, role = Role.Tab)
+                        .selectable(selected = selected, enabled = enabled, onClick = { onSelectTab(index) }, role = Role.Tab)
                         .padding(horizontal = 12.dp)
                         .heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
                         // Reserve the bold label's width so the marker does not jitter as weight changes.
@@ -358,6 +391,5 @@ private fun FlightsPageTabs(
                 }
             }
         }
-        HorizontalDivider(color = ink.copy(alpha = 0.1f))
     }
 }

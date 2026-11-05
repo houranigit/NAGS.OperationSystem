@@ -58,6 +58,8 @@
     <string name="flights_search">Search flight number, customer or ID</string>
     <string name="flights_search_placeholder">Search</string>
     <string name="flights_search_clear">Clear search</string>
+    <string name="flights_search_open">Search this tab</string>
+    <string name="flights_search_close">Close search</string>
     <string name="flights_access">Flights access</string>
     <string name="flights_view_forbidden">Flights require an active staff account linked to a station and permission to view flights.</string>
     <string name="flights_load_failed">Could not load flights</string>

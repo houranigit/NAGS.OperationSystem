@@ -66,6 +66,8 @@
     <string name="flights_search">ابحث برقم الرحلة أو العميل أو المعرّف</string>
     <string name="flights_search_placeholder">بحث</string>
     <string name="flights_search_clear">مسح البحث</string>
+    <string name="flights_search_open">البحث في التبويب الحالي</string>
+    <string name="flights_search_close">إغلاق البحث</string>
     <string name="flights_access">الوصول إلى الرحلات</string>
     <string name="flights_view_forbidden">يتطلب عرض الرحلات حساب موظف نشط مرتبطًا بمحطة مع صلاحية عرض الرحلات.</string>
     <string name="flights_load_failed">تعذر تحميل الرحلات</string>

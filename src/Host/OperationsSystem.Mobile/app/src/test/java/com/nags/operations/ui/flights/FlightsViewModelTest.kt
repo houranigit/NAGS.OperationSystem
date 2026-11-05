@@ -54,6 +54,7 @@ class FlightsViewModelTest {
             FlightPage(items = listOf(row("$number")), page = number, totalCount = 2,
                 hasNextPage = number == 1)
         })
+        vm.openSearch()
         vm.setSearch(" 123 ")
         vm.refresh()
         vm.loadMore()
@@ -124,6 +125,7 @@ class FlightsViewModelTest {
         })
         vm.refresh()
         vm.loadMore()
+        vm.openSearch()
         vm.setSearch("new")
         vm.refresh()
         nextPage.complete(page("old").copy(page = 2, totalCount = 2))
@@ -139,6 +141,7 @@ class FlightsViewModelTest {
             if (search == null) firstResponse.await() else page("new")
         })
         vm.refresh()
+        vm.openSearch()
         vm.setSearch("new")
         vm.refresh()
         firstResponse.complete(page("old"))
@@ -945,12 +948,219 @@ class FlightsViewModelTest {
         })
         vm.refresh()
         vm.setCategory(FlightCategory.PerLanding)
+        vm.openSearch()
         vm.setSearch("new")
         vm.refresh()
         vm.setCategory(FlightCategory.MyFlights)
         assertEquals(listOf("new"), vm.state.value.items.map { it.id })
         assertEquals(listOf(FlightCategory.MyFlights to null, FlightCategory.PerLanding to null,
             FlightCategory.PerLanding to "new", FlightCategory.MyFlights to "new"), requests)
+    }
+
+    @Test
+    fun closingSearchRestoresNormalPagesWithoutRefetchingThem() {
+        val requests = mutableListOf<Triple<FlightCategory, Int, String?>>()
+        val vm = model(searchDebounce = {}, categoryList = { category, number, _, query ->
+            requests += Triple(category, number, query)
+            tabPage(category, if (query == null) "normal-$number" else "match").copy(
+                page = number, totalCount = if (query == null) 2 else 1,
+                hasNextPage = query == null && number == 1)
+        })
+        vm.refreshSilently()
+        vm.loadMore()
+        vm.openSearch()
+        assertTrue(vm.state.value.isSearchOpen)
+        assertEquals(2, requests.size)
+        vm.setSearch("123")
+        assertEquals(listOf("match"), vm.state.value.items.map { it.id })
+        vm.closeSearch()
+        assertFalse(vm.state.value.isSearchOpen)
+        assertEquals("", vm.state.value.search)
+        assertEquals(listOf("normal-1", "normal-2"), vm.state.value.items.map { it.id })
+        assertEquals(2, vm.state.value.page)
+        assertTrue(vm.state.value.hasLoadedList)
+        assertFalse(vm.state.value.isLoading)
+        assertEquals(listOf(Triple(FlightCategory.MyFlights, 1, null), Triple(FlightCategory.MyFlights, 2, null),
+            Triple(FlightCategory.MyFlights, 1, "123")), requests)
+    }
+
+    @Test
+    fun searchLocationKeepsTheQueryAndClearRestoresThatTabsNormalEmptyResult() {
+        val requests = mutableListOf<Pair<FlightCategory, String?>>()
+        val vm = model(searchDebounce = {}, categoryList = { category, _, _, query ->
+            requests += category to query
+            if (query == null && category == FlightCategory.PerLanding) tabPage(category, *emptyArray())
+            else tabPage(category, query ?: "normal")
+        })
+        vm.refreshSilently()
+        vm.setCategory(FlightCategory.PerLanding)
+        vm.setCategory(FlightCategory.MyFlights)
+        vm.openSearch()
+        vm.setSearch("456")
+        vm.setCategory(FlightCategory.PerLanding)
+        assertTrue(vm.state.value.isSearchOpen)
+        assertEquals("456", vm.state.value.search)
+        assertEquals(listOf("456"), vm.state.value.items.map { it.id })
+        vm.setSearch("")
+        assertTrue(vm.state.value.isSearchOpen)
+        assertTrue(vm.state.value.hasLoadedList)
+        assertTrue(vm.state.value.items.isEmpty())
+        assertFalse(vm.state.value.isLoading)
+        vm.closeSearch()
+        assertFalse(vm.state.value.isSearchOpen)
+        vm.setCategory(FlightCategory.MyFlights)
+        assertEquals(listOf("normal"), vm.state.value.items.map { it.id })
+        assertEquals(listOf(FlightCategory.MyFlights to null, FlightCategory.PerLanding to null,
+            FlightCategory.MyFlights to "456", FlightCategory.PerLanding to "456"), requests)
+    }
+
+    @Test
+    fun closingSearchRejectsQueuedInputAndLateRepliesBeforeTheyCanReplaceNormalRows() {
+        val pending = CompletableDeferred<FlightPage>()
+        val requests = mutableListOf<String?>()
+        val vm = model(searchDebounce = {}, categoryList = { category, _, _, query ->
+            requests += query
+            if (query == null) tabPage(category, "normal") else pending.await()
+        })
+        vm.refreshSilently()
+        vm.openSearch()
+        vm.setSearch("pending")
+        assertTrue(vm.state.value.isLoading)
+        vm.closeSearch()
+        vm.setSearch("queued IME value")
+        pending.complete(tabPage(FlightCategory.MyFlights, "late-search"))
+        assertEquals(listOf("normal"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.isSearchOpen)
+        assertEquals("", vm.state.value.search)
+        assertFalse(vm.state.value.isLoading)
+        assertEquals(listOf(null, "pending"), requests)
+    }
+
+    @Test
+    fun aChangedStationDuringSearchCannotRestoreThePreviousStationsNormalCache() {
+        var station = "station-a"
+        val newNormal = CompletableDeferred<FlightPage>()
+        val vm = model(searchDebounce = {}, categoryList = { category, _, _, query ->
+            if (station == "station-b" && query == null) newNormal.await()
+            else tabPage(category, "$station-${query ?: "normal"}").copy(stationId = station)
+        })
+        vm.refreshSilently()
+        vm.openSearch()
+        station = "station-b"
+        vm.setSearch("match")
+        assertEquals("station-b", vm.state.value.stationId)
+        vm.closeSearch()
+        assertTrue(vm.state.value.items.isEmpty())
+        assertFalse(vm.state.value.hasLoadedList)
+        assertEquals("station-b", vm.state.value.stationId)
+        newNormal.complete(tabPage(FlightCategory.MyFlights, "station-b-normal").copy(stationId = station))
+        assertEquals(listOf("station-b-normal"), vm.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun hiddenNormalSearchCacheExpiresBeforeItCanBeRestored() {
+        var at = Instant.parse("2026-11-03T11:00:00Z")
+        val ticks = Channel<Unit>(Channel.UNLIMITED)
+        var reads = 0
+        val vm = model(now = { at }, expiryWait = { ticks.receive() }, searchDebounce = {},
+            categoryList = { category, _, _, query ->
+                reads++
+                val result = tabPage(category, query ?: "normal")
+                if (query == null) result else result.copy(items = result.items.map {
+                    it.copy(scheduledDepartureUtc = "2026-11-04T12:00:00Z")
+                })
+            })
+        vm.refreshSilently()
+        vm.openSearch()
+        vm.setSearch("lasting")
+        at = Instant.parse("2026-11-04T00:00:00.000000001Z")
+        ticks.trySend(Unit)
+        assertEquals(listOf("lasting"), vm.state.value.items.map { it.id })
+        vm.closeSearch()
+        assertTrue(vm.state.value.items.isEmpty())
+        assertTrue(vm.state.value.hasLoadedList)
+        assertEquals(2, reads)
+    }
+
+    @Test
+    fun knownAccessLossDuringSearchCannotReviveTheNormalCache() {
+        var denied = false
+        val vm = model(searchDebounce = {}, categoryList = { category, _, _, _ ->
+            if (denied) throw ApiException(403, "Access lost")
+            tabPage(category, "normal")
+        })
+        vm.refreshSilently()
+        vm.openSearch()
+        denied = true
+        vm.setSearch("denied")
+        assertTrue(vm.state.value.permissionDenied)
+        vm.closeSearch()
+        assertTrue(vm.state.value.items.isEmpty())
+        assertTrue(vm.state.value.retainedTabs.isEmpty())
+        assertFalse(vm.state.value.hasLoadedList)
+        assertTrue(vm.state.value.permissionDenied)
+    }
+
+    @Test
+    fun syncWhileSearchingKeepsNormalPagesVisibleUntilTheyAreRevalidatedAfterClose() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val cached = MutableStateFlow(FlightSyncStatus(lastSuccessUtc = "2026-11-03T11:00:00Z"))
+        val pendingNormal = CompletableDeferred<FlightPage>()
+        var updated = false
+        val vm = model(searchDebounce = {}, changes = changes, cacheStatus = cached,
+            categoryList = { category, _, _, query ->
+                when {
+                    query != null -> tabPage(category, "match")
+                    updated -> pendingNormal.await()
+                    else -> tabPage(category, "normal")
+                }
+            })
+        vm.refreshSilently()
+        vm.openSearch()
+        vm.setSearch("match")
+        updated = true
+        changes.tryEmit(Unit)
+        vm.closeSearch()
+        assertEquals(listOf("normal"), vm.state.value.items.map { it.id })
+        assertTrue(vm.state.value.isRefreshing)
+        assertFalse(vm.state.value.showRefreshIndicator)
+        pendingNormal.complete(tabPage(FlightCategory.MyFlights, "updated"))
+        assertEquals(listOf("updated"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
+    fun rapidQueryChangesDebounceToOnlyTheLatestScopedRequest() {
+        val debounce = CompletableDeferred<Unit>()
+        val requests = mutableListOf<String?>()
+        val vm = model(searchDebounce = { debounce.await() }, list = { _, _, query ->
+            requests += query
+            page(query ?: "normal")
+        })
+        vm.refreshSilently()
+        vm.openSearch()
+        vm.setSearch("first")
+        vm.setSearch("latest")
+        assertEquals(listOf<String?>(null), requests)
+        debounce.complete(Unit)
+        assertEquals(listOf(null, "latest"), requests)
+        assertEquals(listOf("latest"), vm.state.value.items.map { it.id })
+        vm.closeSearch()
+        assertEquals(listOf("normal"), vm.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun aDeniedDetailDuringSearchIsAlsoRemovedFromHiddenNormalRows() {
+        val vm = model(searchDebounce = {}, categoryList = { category, _, _, query ->
+            if (query == null) tabPage(category, "denied", "allowed") else tabPage(category, "match")
+        }, readDetail = { throw ApiException(404, "Flight unavailable") })
+        vm.refreshSilently()
+        vm.openSearch()
+        vm.setSearch("match")
+        vm.openFlight("denied")
+        vm.closeSearch()
+        assertEquals(listOf("allowed"), vm.state.value.items.map { it.id })
+        assertEquals(1L, vm.state.value.totalCount)
     }
 
     private fun tabPage(category: FlightCategory, vararg ids: String = arrayOf("$category")) = FlightPage(
@@ -973,6 +1183,7 @@ class FlightsViewModelTest {
         now: () -> Instant = { Instant.parse("2026-11-03T11:00:00Z") },
         expiryWait: suspend (Long) -> Unit = { delay(it) },
         pruneCache: suspend () -> Unit = {},
+        searchDebounce: suspend () -> Unit = { delay(300) },
     ) = FlightsViewModel(
         fetchProfile = profile ?: { AuthenticatedUser("user", "staff@example.test", "Staff", "StationStaff", permissions = permissions) },
         fetchFlights = categoryList ?: { _, number, size, search -> list(number, size, search) },
@@ -980,6 +1191,7 @@ class FlightsViewModelTest {
         sendInvitations = send, coroutineScope = scope, online = online,
         cacheChanges = changes, cacheStatus = cacheStatus, clearCachedFlights = clearCache,
         now = now, waitForExpiryCheck = expiryWait, pruneCachedFlights = pruneCache,
+        waitForSearchDebounce = searchDebounce,
     )
 
     private fun page(id: String) = FlightPage(items = listOf(row(id)), totalCount = 1)

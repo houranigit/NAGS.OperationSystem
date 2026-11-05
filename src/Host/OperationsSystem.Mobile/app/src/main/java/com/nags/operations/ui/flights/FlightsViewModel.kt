@@ -62,6 +62,7 @@ data class FlightsUiState(
     val isOnline: Boolean = true,
     val isUsingCachedList: Boolean = false,
     val search: String = "",
+    val isSearchOpen: Boolean = false,
     val page: Int = 1,
     val totalCount: Long = 0,
     val hasMore: Boolean = false,
@@ -93,7 +94,11 @@ data class FlightsUiState(
 /** Provides the loaded neighboring page while swiping without restoring its global screen state. */
 fun FlightsUiState.forCategory(category: FlightCategory): FlightsUiState {
     if (this.category == category) return this
-    val retained = retainedTabs[category]?.takeIf { stationId == null || it.stationId == stationId }
+    return withTab(category, retainedTabs[category])
+}
+
+private fun FlightsUiState.withTab(category: FlightCategory, tab: FlightTabState?): FlightsUiState {
+    val retained = tab?.takeIf { stationId == null || it.stationId == stationId }
     return copy(category = category, stationId = stationId ?: retained?.stationId,
         items = if (permissionDenied) emptyList() else retained?.items.orEmpty(),
         hasLoadedList = !permissionDenied && retained != null,
@@ -134,6 +139,7 @@ class FlightsViewModel internal constructor(
     private val pruneCachedFlights: suspend () -> Unit = {},
     private val now: () -> Instant = Instant::now,
     private val waitForExpiryCheck: suspend (Long) -> Unit = { delay(it) },
+    private val waitForSearchDebounce: suspend () -> Unit = { delay(300) },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor) : this(
         fetchProfile = authRepository::profile,
@@ -156,6 +162,7 @@ class FlightsViewModel internal constructor(
     private var detailJob: Job? = null
     private var invitationJob: Job? = null
     private var expiryJob: Job? = null
+    private var normalTabs: Map<FlightCategory, FlightTabState> = emptyMap()
 
     init {
         scheduleExpiryChecks()
@@ -192,6 +199,7 @@ class FlightsViewModel internal constructor(
     }
 
     private fun clearVisibleFlights(permissionDenied: Boolean) {
+        normalTabs = emptyMap()
         listJob?.cancel()
         detailJob?.cancel()
         invitationJob?.cancel()
@@ -220,13 +228,55 @@ class FlightsViewModel internal constructor(
         if (!_state.value.hasLoadedList || _state.value.retainedTabs[category]?.needsRefresh == true) loadList()
     }
 
+    fun openSearch() {
+        if (_state.value.isSearchOpen) return
+        rememberNormalTabs()
+        _state.update { it.copy(isSearchOpen = true) }
+    }
+
+    fun closeSearch() {
+        if (!_state.value.isSearchOpen) return
+        expireVisibleFlights()
+        if (_state.value.search.isBlank()) {
+            normalTabs = emptyMap()
+            _state.update { it.copy(isSearchOpen = false, search = "") }
+        } else {
+            listJob?.cancel()
+            restoreNormalTabs(searchOpen = false)
+        }
+    }
+
     fun setSearch(search: String) {
-        if (search == _state.value.search) return
+        if (!_state.value.isSearchOpen || search == _state.value.search) return
+        if (_state.value.search.isBlank()) rememberNormalTabs()
+        listJob?.cancel()
+        if (search.isBlank()) {
+            expireVisibleFlights()
+            restoreNormalTabs(searchOpen = true, query = search)
+            return
+        }
         _state.update {
             it.copy(search = search, items = emptyList(), retainedTabs = emptyMap(), hasLoadedList = false,
-                page = 1, totalCount = 0, hasMore = false)
+                page = 1, totalCount = 0, hasMore = false, showRefreshIndicator = false)
         }
         loadList(debounce = true)
+    }
+
+    private fun rememberNormalTabs() {
+        val current = _state.value
+        if (current.search.isNotBlank()) return
+        normalTabs = if (current.hasLoadedList) current.retainedTabs + (current.category to current.tabSnapshot())
+            else current.retainedTabs - current.category
+    }
+
+    private fun restoreNormalTabs(searchOpen: Boolean, query: String = "") {
+        val current = _state.value
+        _state.update {
+            it.copy(search = query, isSearchOpen = searchOpen, retainedTabs = normalTabs)
+                .withTab(current.category, normalTabs[current.category])
+        }
+        if (!searchOpen) normalTabs = emptyMap()
+        if (!_state.value.hasLoadedList || _state.value.retainedTabs[current.category]?.needsRefresh == true) loadList()
     }
 
     fun refresh() = refreshList(showIndicator = true)
@@ -240,6 +290,7 @@ class FlightsViewModel internal constructor(
     }
 
     private fun invalidateRetainedTabs() {
+        normalTabs = normalTabs.mapValues { (_, tab) -> tab.copy(needsRefresh = true) }
         _state.update { current ->
             val tabs = if (current.hasLoadedList) current.retainedTabs + (current.category to current.tabSnapshot())
                 else current.retainedTabs
@@ -262,7 +313,7 @@ class FlightsViewModel internal constructor(
         }
         listJob = scope.launch {
             try {
-                if (debounce) delay(300)
+                if (debounce) waitForSearchDebounce()
                 if (!ensureViewPermission()) return@launch
                 var depth = loadedDepth
                 var result = fetchFlights(category, 1, PAGE_SIZE, search.trim().ifEmpty { null })
@@ -313,7 +364,10 @@ class FlightsViewModel internal constructor(
         if (stationId == null) return false
         val previous = _state.value.stationId ?: _state.value.detail?.stationId
         val changed = previous != null && previous != stationId
-        if (changed) clearSelectedFlight()
+        if (changed) {
+            normalTabs = emptyMap()
+            clearSelectedFlight()
+        }
         _state.update {
             if (!changed) it.copy(stationId = stationId) else it.copy(stationId = stationId,
                 items = emptyList(), retainedTabs = emptyMap(), hasLoadedList = false,
@@ -472,6 +526,7 @@ class FlightsViewModel internal constructor(
             clearVisibleFlights(permissionDenied = false)
             return true
         }
+        if (!detailReadSucceeded) normalTabs = normalTabs.mapValues { (_, tab) -> tab.withoutFlight(id) }
         _state.update { current ->
             if (detailReadSucceeded) {
                 if (current.selectedFlightId != id) current else current.copy(
@@ -537,6 +592,7 @@ class FlightsViewModel internal constructor(
                 val current = _state.value
                 val departures = current.items.map { it.scheduledDepartureUtc } +
                     current.retainedTabs.values.flatMap { tab -> tab.items.map { it.scheduledDepartureUtc } } +
+                    normalTabs.values.flatMap { tab -> tab.items.map { it.scheduledDepartureUtc } } +
                     listOfNotNull(current.detail?.scheduledDepartureUtc)
                 val nextExpiry = departures.mapNotNull {
                     runCatching { Instant.parse(it).plus(12, ChronoUnit.HOURS) }.getOrNull()
@@ -562,6 +618,7 @@ class FlightsViewModel internal constructor(
         val current = _state.value
         val rows = current.items.filter { it.isInFlightWindow(at) }
         val tabs = current.retainedTabs.mapValues { (_, tab) -> tab.withinWindow(at) }
+        normalTabs = normalTabs.mapValues { (_, tab) -> tab.withinWindow(at) }
         val expiredDetail = current.detail?.isInFlightWindow(at) == false ||
             current.items.any { it.id == current.selectedFlightId && !it.isInFlightWindow(at) }
         if (rows.size == current.items.size && tabs == current.retainedTabs && !expiredDetail) return

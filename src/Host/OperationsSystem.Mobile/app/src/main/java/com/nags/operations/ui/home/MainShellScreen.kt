@@ -39,7 +39,6 @@ fun MainShellScreen(
     factory: AppViewModelFactory,
     onOpenNotifications: () -> Unit,
     onOpenAccount: () -> Unit,
-    onOpenSearch: () -> Unit,
     notificationOpenRequest: NotificationOpenRequest? = null,
     onNotificationHandled: (String?) -> Unit = {},
 ) {
@@ -48,16 +47,18 @@ fun MainShellScreen(
         .collectAsStateWithLifecycle(initialValue = 0)
     val subject by graph.tokenStore.sessionSubjectFlow.collectAsStateWithLifecycle(initialValue = null)
     val flights: FlightsViewModel = viewModel(key = "flights:$subject", factory = factory)
+    val flightState by flights.state.collectAsStateWithLifecycle()
     var selectedPage by rememberSaveable { mutableIntStateOf(0) }
     var selectedFlightTab by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(notificationOpenRequest) {
         if (notificationOpenRequest != null) {
+            flights.closeSearch()
             selectedPage = 0
             selectedFlightTab = 0
         }
     }
-    BackHandler(enabled = selectedPage != 0 || selectedFlightTab != 0) {
+    BackHandler(enabled = !flightState.isSearchOpen && (selectedPage != 0 || selectedFlightTab != 0)) {
         if (selectedPage != 0) selectedPage = 0 else selectedFlightTab = 0
     }
     NotificationPermissionPrompt()
@@ -76,9 +77,14 @@ fun MainShellScreen(
                         notificationOpenRequest = notificationOpenRequest,
                         onNotificationHandled = onNotificationHandled)
                 }
-                MainBottomNavigation(selectedPage = selectedPage, onSelectPage = { selectedPage = it },
-                    onSearch = onOpenSearch,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
+                if (!flightState.isSearchOpen) {
+                    MainBottomNavigation(selectedPage = selectedPage, onSelectPage = { selectedPage = it },
+                        onSearch = {
+                            selectedPage = 0
+                            flights.openSearch()
+                        },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
+                }
             }
         }
     }
