@@ -41,7 +41,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,8 +58,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -69,7 +71,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
@@ -80,7 +81,6 @@ import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import kotlinx.coroutines.flow.Flow
 
-private val DetailBlue = Color(0xFF007AFF)
 private val DetailFill = Color(0xFFF5F7FA)
 private val DetailEdge = Color(0xFFE7EBF0)
 
@@ -112,9 +112,10 @@ internal fun FlightDetailsSheet(
             Column(Modifier.fillMaxWidth().semantics { paneTitle = detailsTitle }) {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(detailsTitle, modifier = Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = {}, modifier = Modifier.size(44.dp).background(DetailFill, RoundedCornerShape(12.dp))) {
+                    Text(detailsTitle, modifier = Modifier.weight(1f).semantics { heading() },
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    IconButton(onClick = {}, modifier = Modifier.size(48.dp).background(DetailFill, RoundedCornerShape(12.dp))) {
                         Icon(Icons.Outlined.Share, stringResource(R.string.flights_share), modifier = Modifier.size(21.dp))
                     }
                 }
@@ -155,14 +156,14 @@ internal fun FlightDetailsSheet(
                                 expanded = servicesExpanded, onToggle = { servicesExpanded = !servicesExpanded },
                             )
                             DetailDivider()
-                            Button(onClick = {}, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 46.dp),
+                            Button(onClick = {}, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = 48.dp),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = DetailBlue, contentColor = Color.White)) {
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary, contentColor = MaterialTheme.colorScheme.onTertiary)) {
                                 Text(stringResource(R.string.flights_manage), fontWeight = FontWeight.SemiBold)
                             }
                             if (state.canInviteEmployees && !flight.isPerLanding) {
                                 TextButton(onClick = onInvite, enabled = state.isOnline && !flight.fromCache && !state.isInviting,
-                                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = DetailBlue)) {
+                                    modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary)) {
                                     Text(stringResource(R.string.flights_invite_employees), fontWeight = FontWeight.SemiBold)
                                 }
                             }
@@ -176,31 +177,30 @@ internal fun FlightDetailsSheet(
 
 @Composable
 private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(40.dp))
-        VerticalDivider(Modifier.height(32.dp), color = DetailEdge)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(44.dp))
         Column(Modifier.weight(1f)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
-                        modifier = Modifier.weight(1f, fill = false), fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (flight.isPerLanding) {
-                        Surface(Modifier.widthIn(max = 76.dp), shape = RoundedCornerShape(6.dp),
+                        Surface(Modifier.widthIn(max = 88.dp), shape = RoundedCornerShape(6.dp),
                             color = MaterialTheme.colorScheme.primaryContainer) {
                             Text(stringResource(R.string.flights_per_landing), Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                style = MaterialTheme.typography.labelSmall,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
-                Surface(Modifier.widthIn(max = 92.dp), shape = RoundedCornerShape(50), color = DetailBlue.copy(alpha = 0.11f)) {
+                Surface(Modifier.widthIn(max = 92.dp), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.11f)) {
                     Text(stringResource(R.string.flights_scheduled), Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = DetailBlue,
+                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall,
+            Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -298,33 +298,36 @@ private fun DetailPeopleRow(
     val disclosureState = stringResource(if (expanded) R.string.flights_section_expanded else R.string.flights_section_collapsed)
     val expandedRotation = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -90f else 90f
     val rotation by animateFloatAsState(if (expanded) expandedRotation else 0f, label = "Details disclosure")
+    val disclosure = if (names.isNotEmpty()) Modifier.clickable(role = Role.Button, onClickLabel = action, onClick = onToggle)
+        .semantics { stateDescription = disclosureState } else Modifier
     Column {
-        Row(Modifier.fillMaxWidth().clickable(enabled = names.isNotEmpty(), role = Role.Button,
-            onClickLabel = action, onClick = onToggle).semantics { stateDescription = disclosureState }.heightIn(min = 52.dp),
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).then(disclosure).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (names.isEmpty()) Text(emptyLabel, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (names.isNotEmpty()) {
-                InitialsAvatarStack(names, maxVisible = 3, avatarSize = 28.dp)
+                if (!expanded) InitialsAvatarStack(names, maxVisible = 3, avatarSize = 28.dp)
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation })
-            } else {
-                Text(emptyLabel, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         AnimatedVisibility(visible = expanded && names.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().padding(start = 30.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().padding(start = 30.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 names.forEachIndexed { index, name ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.clearAndSetSemantics { }) {
                             InitialsAvatarStack(listOf(name), avatarSize = 28.dp)
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             secondary.getOrNull(index)?.takeIf { it.isNotBlank() }?.let {
-                                Text(it, style = MaterialTheme.typography.labelSmall,
+                                Text(it, style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
@@ -337,9 +340,49 @@ private fun DetailPeopleRow(
 
 @Composable
 private fun FlightDetailsSkeleton() {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(40.dp, 20.dp, 44.dp, 52.dp, 52.dp).forEach { height ->
-            Box(Modifier.fillMaxWidth().height(height).background(DetailFill, RoundedCornerShape(12.dp)))
+    Column(Modifier.fillMaxWidth().clearAndSetSemantics { progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate }) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            SkeletonBlock(Modifier.size(44.dp))
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    SkeletonBlock(Modifier.width(84.dp).height(30.dp))
+                    SkeletonBlock(Modifier.width(72.dp).height(22.dp))
+                }
+                SkeletonBlock(Modifier.fillMaxWidth(0.75f).height(20.dp))
+            }
         }
+        Spacer(Modifier.height(8.dp))
+        SkeletonBlock(Modifier.width(200.dp).height(16.dp))
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SkeletonBlock(Modifier.width(96.dp).height(12.dp))
+                SkeletonBlock(Modifier.fillMaxWidth(0.8f).height(26.dp))
+                SkeletonBlock(Modifier.width(44.dp).height(14.dp))
+            }
+            Column(Modifier.width(136.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SkeletonBlock(Modifier.fillMaxWidth().height(12.dp))
+                SkeletonBlock(Modifier.fillMaxWidth().height(26.dp))
+                SkeletonBlock(Modifier.width(96.dp).height(14.dp))
+            }
+        }
+        repeat(2) {
+            DetailDivider()
+            Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                SkeletonBlock(Modifier.size(20.dp))
+                SkeletonBlock(Modifier.weight(1f).height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+                    repeat(3) { Box(Modifier.size(28.dp).background(DetailFill, CircleShape)) }
+                }
+            }
+        }
+        DetailDivider()
+        Box(Modifier.fillMaxWidth().padding(top = 16.dp).height(48.dp).background(DetailFill, RoundedCornerShape(14.dp)))
     }
+}
+
+@Composable
+private fun SkeletonBlock(modifier: Modifier) {
+    Box(modifier.background(DetailFill, RoundedCornerShape(6.dp)))
 }
