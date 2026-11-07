@@ -127,20 +127,7 @@ fun FlightCard(
                     )
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FlightCardField(
-                    stringResource(R.string.flights_card_aircraft),
-                    flight.aircraftTypeModel?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.flights_card_aircraft_unavailable),
-                    Modifier.weight(1f, fill = false),
-                )
-                VerticalDivider(Modifier.height(14.dp), color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
-                FlightCardField(stringResource(R.string.flights_operation), flight.operationTypeName, Modifier.weight(1.5f, fill = false))
-            }
+            FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
             HorizontalDivider(color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -168,6 +155,24 @@ fun FlightCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun FlightAircraftOperationRow(aircraftModel: String?, operationName: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FlightCardField(
+            stringResource(R.string.flights_card_aircraft),
+            aircraftModel?.takeIf { it.isNotBlank() }
+                ?: stringResource(R.string.flights_card_aircraft_unavailable),
+            Modifier.weight(1f, fill = false),
+        )
+        VerticalDivider(Modifier.height(14.dp), color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
+        FlightCardField(stringResource(R.string.flights_operation), operationName, Modifier.weight(1.5f, fill = false))
     }
 }
 

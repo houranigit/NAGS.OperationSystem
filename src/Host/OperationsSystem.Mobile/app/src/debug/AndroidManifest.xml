@@ -2,7 +2,7 @@
 <manifest
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Emulator development is the only variant allowed to use cleartext HTTP. -->
+    <!-- Debug development allows HTTP only for the hosts in its network security config. -->
     <application
         android:usesCleartextTraffic="true"
         tools:replace="android:usesCleartextTraffic" />

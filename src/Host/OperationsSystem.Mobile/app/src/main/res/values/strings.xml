@@ -73,12 +73,16 @@
         <item quantity="other">Showing %1$d of %2$d flights</item>
     </plurals>
     <string name="flights_details">Flight details</string>
-    <string name="flights_close_details">Close flight details</string>
-    <string name="flights_planned_services">Planned services</string>
+    <string name="flights_share">Share flight</string>
+    <string name="flights_manage">Manage</string>
+    <string name="flights_show_details">Show details</string>
+    <string name="flights_hide_details">Hide details</string>
+    <string name="flights_section_expanded">Expanded</string>
+    <string name="flights_section_collapsed">Collapsed</string>
+    <string name="flights_planned_services">Planned Services</string>
     <string name="flights_no_planned_services">No planned services</string>
-    <string name="flights_assigned_staff">Assigned staff</string>
+    <string name="flights_assigned_staff">Assigned Employees</string>
     <string name="flights_no_assigned_staff">No staff assigned</string>
-    <string name="flights_id">Flight ID: %1$s</string>
     <string name="flights_per_landing">Per Landing</string>
     <string name="flights_scheduled">Scheduled</string>
     <string name="flights_card_aircraft_unavailable">N/A</string>
@@ -86,8 +90,6 @@
     <string name="flights_card_sta">STA</string>
     <string name="flights_card_std">STD</string>
     <string name="flights_operation">Operation</string>
-    <string name="flights_arrival">Arrival</string>
-    <string name="flights_departure">Departure</string>
     <string name="flights_invite_employees">Invite employees</string>
     <string name="flights_invite_hint">Select available employees from this flight’s station. Existing assignments are kept.</string>
     <string name="flights_invite_stale">This flight changed. Review your selections and try again.</string>
@@ -98,7 +100,6 @@
     <string name="flights_invite_sent">Employees invited.</string>
     <string name="flights_cancel">Cancel</string>
     <string name="account_profile_offline">Connect to refresh your profile.</string>
-    <string name="flights_aircraft">Aircraft type</string>
     <string name="catalog_sync_denied">Not available for this account.</string>
     <string name="catalog_sync_failed">Could not refresh this catalog. Saved data is kept; try again when connected.</string>
     <string name="catalog_aircraft_types">Aircraft types</string>

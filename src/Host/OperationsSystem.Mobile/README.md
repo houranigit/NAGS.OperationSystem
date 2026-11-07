@@ -4,7 +4,7 @@ The native Kotlin/Compose client supports the current [flight baseline](../../..
 
 ## Current journey
 
-Sign in, browse the virtualized Flights list, refresh, and open a flight's details. Scrolling near the end automatically loads the next page; a failed page can be retried in place. Compact cards keep the flight number, customer, aircraft, and operation on single lines, with N/A for a missing aircraft model. The card avatar shows the current customer logo, with the flight icon while the logo is missing, loading, or unavailable. The footer shows one local date or date range and times-only STA/STD values. Dates and times are displayed in the device time zone. Details show customer, station, operation type, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees.
+Sign in, browse the virtualized Flights list, refresh, and open a flight's details. Scrolling near the end automatically loads the next page; a failed page can be retried in place. Compact cards keep the flight number, customer, aircraft, and operation on single lines, with N/A for a missing aircraft model. The card avatar shows the current customer logo, with the flight icon while the logo is missing, loading, or unavailable. The footer shows one local date or date range and times-only STA/STD values. Dates and times are displayed in the device time zone. The compact white details sheet has a Flight details header and Share placeholder, a customer/flight/status summary, the same labelled aircraft/operation row as the cards, and a local date/range with label-over-time STA–STD values. Icon-led Assigned Employees and Planned Services rows place overlapping initials stacks on the right; expanding them reveals names and employee IDs. Manage is directly below Planned Services. Share and Manage have no action yet; dismiss the sheet by dragging it down, tapping outside, or using Back. The sheet omits station, time-zone, and flight ID fields. Cached-data notices and the existing invitation controls remain available.
 
 The light home shell has a compact profile/greeting header, an inert AdHoc button, and the existing Notifications entry. Four icon-only bottom items share a floating navigation capsule; The destinations are Flights, Hand Over flights, Page 3, and Page 4; only Flights currently has page content. Profile retains access to sign-out and Sync Center. The separate bottom search button opens the same inline Flights search as the tab-toolbar action. Page selection and the Flights tab survive returning from profile, notifications, or search; a flight notification returns to My Flights before opening its details.
 
@@ -74,7 +74,7 @@ Shared catalog calls use the `customers`, `aircraft-types`, `services`, `tools`,
 
 ## Local development
 
-Use JDK 17 with the pinned Gradle 9.8.2 / Android Gradle Plugin 9.5.0 toolchain, Android SDK platform 37, and SDK Build Tools 36.0.0. AGP uses built-in Kotlin with an explicit Kotlin Gradle plugin 2.4.21 classpath override; the Compose and serialization compiler plugins use the same version, and Room uses KSP 2.3.13. Do not apply the separate `kotlin-android` plugin. APK naming uses the public `androidComponents` API. The app compiles and targets Android 17 (API 37), with minimum API 26 retained. See the [AGP compatibility requirements](https://developer.android.com/build/releases/agp-9-5-0-release-notes) and [built-in Kotlin migration](https://developer.android.com/build/migrate-to-built-in-kotlin).
+Use Android Studio Rabbit 2 (2026.2.2) or newer with support for AGP 9.5; older Studio versions can reject Gradle sync even when command-line builds succeed. See the [Android Studio/AGP compatibility table](https://developer.android.com/build/releases/about-agp#android_gradle_plugin_and_android_studio_compatibility). Use JDK 17 with the pinned Gradle 9.8.2 / Android Gradle Plugin 9.5.0 toolchain, Android SDK platform 37, and SDK Build Tools 36.0.0. AGP uses built-in Kotlin with an explicit Kotlin Gradle plugin 2.4.21 classpath override; the Compose and serialization compiler plugins use the same version, and Room uses KSP 2.3.13. Do not apply the separate `kotlin-android` plugin. APK naming uses the public `androidComponents` API. The app compiles and targets Android 17 (API 37), with minimum API 26 retained. See the [AGP compatibility requirements](https://developer.android.com/build/releases/agp-9-5-0-release-notes) and [built-in Kotlin migration](https://developer.android.com/build/migrate-to-built-in-kotlin).
 
 The dependency refresh uses Compose BOM 2026.09.00 / Material3 1.4.0, Room 2.8.5, DataStore 1.3.0, WorkManager 2.12.0, and Firebase BOM 35.1.0. The HTTP/realtime libraries use Ktor 3.6.1, kotlinx.serialization 1.12.0, kotlinx.coroutines 1.11.0, and SignalR 10.0.14. Existing Room schemas and explicit migrations remain unchanged. Validate Android 16/17 back navigation, edge-to-edge insets, large-screen resizing, and notification navigation on representative devices before release; a successful build or lint run alone does not establish runtime compatibility. The API URL is selected at build time through `BuildConfig.API_BASE_URL`.
 
@@ -84,7 +84,29 @@ For the current branch's Docker API, set the ignored `local.properties` entry:
 operations.api.debug.base.url=http://10.0.2.2:5213
 ```
 
-`10.0.2.2` is the Android emulator's host-loopback alias. A physical device needs a reachable address for the same branch API. Changing the property requires rebuilding the app. On Android 17, a configured private IP or `.local` backend prompts once for Nearby devices (local-network access). If denied, cached reads remain available; enable the permission in app Settings to reconnect. Public hosted API endpoints do not prompt. Use a private IP or `.local` hostname for a local backend; other DNS names resolving to LAN addresses are not detected by this startup prompt.
+`10.0.2.2` is the Android emulator's host-loopback alias. Changing the property requires rebuilding the app.
+
+### Run on a USB-connected phone
+
+Keep the branch's Docker API running and reachable on the computer at `http://127.0.0.1:5213`. Enable USB debugging on the phone, connect it, and accept its USB debugging authorization prompt. For this workflow, replace the ignored `local.properties` API entry with:
+
+```properties
+operations.api.debug.base.url=http://127.0.0.1:5213
+```
+
+From this directory, list devices and replace `YOUR_PHONE_SERIAL` with the phone's serial below. `adb` must be on `PATH` (on this Mac it is in `~/Library/Android/sdk/platform-tools`). Selecting the serial avoids deploying to an emulator that is also running.
+
+```sh
+adb devices -l
+phone_serial=YOUR_PHONE_SERIAL
+adb -s "$phone_serial" reverse tcp:5213 tcp:5213
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+ANDROID_SERIAL="$phone_serial" ./gradlew :app:installDebug
+```
+
+The install task rebuilds the app with the configured URL. Open **Operations Module** on the phone, or select the connected Huawei phone in Android Studio and run **app** after syncing. [ADB reverse port forwarding](https://developer.android.com/develop/ui/views/layout/webapps/access-local-server) sends the phone's loopback port to the computer's API; repeat the reverse command after reconnecting the phone. To return to the emulator workflow, restore `operations.api.debug.base.url=http://10.0.2.2:5213` in `local.properties` and rebuild.
+
+For a LAN connection instead of USB forwarding, use a reachable private IP or `.local` hostname for the same branch API. On Android 17, a configured private IP or `.local` backend prompts once for Nearby devices (local-network access). If denied, cached reads remain available; enable the permission in app Settings to reconnect. Public hosted API endpoints do not prompt. Other DNS names resolving to LAN addresses are not detected by this startup prompt.
 
 Run debug checks from this directory, explicitly selecting that endpoint when desired:
 

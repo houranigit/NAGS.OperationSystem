@@ -85,12 +85,16 @@
         <item quantity="other">عرض %1$d من أصل %2$d رحلة</item>
     </plurals>
     <string name="flights_details">تفاصيل الرحلة</string>
-    <string name="flights_close_details">إغلاق تفاصيل الرحلة</string>
+    <string name="flights_share">مشاركة الرحلة</string>
+    <string name="flights_manage">إدارة</string>
+    <string name="flights_show_details">عرض التفاصيل</string>
+    <string name="flights_hide_details">إخفاء التفاصيل</string>
+    <string name="flights_section_expanded">موسّع</string>
+    <string name="flights_section_collapsed">مطوي</string>
     <string name="flights_planned_services">الخدمات المخططة</string>
     <string name="flights_no_planned_services">لا توجد خدمات مخططة</string>
     <string name="flights_assigned_staff">الموظفون المعيّنون</string>
     <string name="flights_no_assigned_staff">لم يتم تعيين موظفين</string>
-    <string name="flights_id">معرّف الرحلة: %1$s</string>
     <string name="flights_per_landing">لكل هبوط</string>
     <string name="flights_scheduled">مجدولة</string>
     <string name="flights_card_aircraft_unavailable">غير متاح</string>
@@ -98,8 +102,6 @@
     <string name="flights_card_sta">الوصول</string>
     <string name="flights_card_std">المغادرة</string>
     <string name="flights_operation">العملية</string>
-    <string name="flights_arrival">الوصول</string>
-    <string name="flights_departure">المغادرة</string>
     <string name="flights_invite_employees">دعوة موظفين</string>
     <string name="flights_invite_hint">اختر الموظفين المتاحين في محطة هذه الرحلة. ستبقى التعيينات الحالية كما هي.</string>
     <string name="flights_invite_stale">تم تعديل هذه الرحلة. راجع اختياراتك وحاول مجددًا.</string>
@@ -110,7 +112,6 @@
     <string name="flights_invite_sent">تمت دعوة الموظفين.</string>
     <string name="flights_cancel">إلغاء</string>
     <string name="account_profile_offline">اتصل بالإنترنت لتحديث ملفك الشخصي.</string>
-    <string name="flights_aircraft">نوع الطائرة</string>
     <string name="catalog_sync_denied">غير متاحة لهذا الحساب.</string>
     <string name="catalog_sync_failed">تعذر تحديث هذه البيانات المرجعية. تم الاحتفاظ بالبيانات المحفوظة؛ حاول مجددًا عند الاتصال.</string>
     <string name="catalog_aircraft_types">أنواع الطائرات</string>

@@ -26,19 +26,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
@@ -77,9 +70,7 @@ import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.FlightCard
-import com.nags.operations.ui.components.FlightOverviewBanner
 import com.nags.operations.ui.invite.InviteEmployeesDialog
-import com.nags.operations.ui.util.formatIsoForDisplay
 import java.time.ZoneId
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -195,52 +186,9 @@ fun FlightsScreen(
         }
     }
     if (state.selectedFlightId != null) {
-        ModalBottomSheet(onDismissRequest = ::closeFlight,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.flights_details), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f))
-                    IconButton(onClick = ::closeFlight) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.flights_close_details))
-                    }
-                }
-                if (state.invitationSent) Text(stringResource(R.string.flights_invite_sent),
-                    color = MaterialTheme.colorScheme.primary)
-                when {
-                    state.isLoadingDetail -> CircularProgressIndicator(Modifier.padding(20.dp))
-                    state.detailError != null -> ErrorState(message = state.detailError!!,
-                        onRetry = { state.selectedFlightId?.let(viewModel::openFlight) })
-                    state.detail != null -> {
-                        val flight = state.detail!!
-                        if (flight.fromCache) Text(stringResource(R.string.flights_cached_detail),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FlightOverviewBanner(customerIataCode = flight.customerIataCode.orEmpty(),
-                            customerName = flight.customerName, stationCode = flight.stationIata,
-                            operationTypeCode = flight.operationTypeName, flightNumber = flight.flightNumber,
-                            aircraftModel = flight.aircraftTypeModel,
-                            staDisplay = formatIsoForDisplay(flight.scheduledArrivalUtc),
-                            stdDisplay = formatIsoForDisplay(flight.scheduledDepartureUtc))
-                        Text(flight.stationName, style = MaterialTheme.typography.bodyMedium)
-                        if (state.canInviteEmployees && !flight.isPerLanding) {
-                            Button(onClick = viewModel::openInvitations, enabled = state.isOnline && !flight.fromCache, modifier = Modifier.fillMaxWidth()) {
-                                Text(stringResource(R.string.flights_invite_employees))
-                            }
-                        }
-                        Text(stringResource(R.string.flights_planned_services), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        if (flight.plannedServices.isEmpty()) Text(stringResource(R.string.flights_no_planned_services))
-                        flight.plannedServices.forEach { service -> Text(service.name) }
-                        Text(stringResource(R.string.flights_assigned_staff), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        if (flight.assignedEmployees.isEmpty()) Text(stringResource(R.string.flights_no_assigned_staff))
-                        flight.assignedEmployees.forEach { employee -> Text("${employee.fullName} · ${employee.employeeId}") }
-                        Text(stringResource(R.string.flights_id, flight.id), style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
+        FlightDetailsSheet(state = state, onClose = ::closeFlight,
+            onRetry = { state.selectedFlightId?.let(viewModel::openFlight) },
+            onInvite = viewModel::openInvitations, loadCustomerLogo = viewModel::customerLogo)
     }
     if (state.isInvitationOpen) InviteEmployeesDialog(state, viewModel)
 
