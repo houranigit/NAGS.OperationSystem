@@ -76,52 +76,57 @@ fun FlightCard(
             ) {
                 CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(36.dp))
                 Column(Modifier.weight(1f)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            flight.flightNumber.ifBlank {
-                                flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—"
-                            },
-                            modifier = Modifier.weight(1f, fill = false),
-                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (flight.isPerLanding) {
-                            Surface(
-                                modifier = Modifier.widthIn(max = 76.dp),
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                            ) {
-                                Text(
-                                    stringResource(R.string.flights_per_landing),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                flight.flightNumber.ifBlank {
+                                    flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—"
+                                },
+                                modifier = Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (flight.isPerLanding) {
+                                Surface(
+                                    modifier = Modifier.widthIn(max = 76.dp),
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.flights_per_landing),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
+                        }
+                        Surface(
+                            modifier = Modifier.widthIn(max = 92.dp),
+                            shape = RoundedCornerShape(50),
+                            color = ScheduledBlue.copy(alpha = 0.11f),
+                        ) {
+                            Text(
+                                stringResource(R.string.flights_scheduled),
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                     Text(
                         flight.customerName,
+                        modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Surface(
-                    modifier = Modifier.widthIn(max = 92.dp),
-                    shape = RoundedCornerShape(50),
-                    color = ScheduledBlue.copy(alpha = 0.11f),
-                ) {
-                    Text(
-                        stringResource(R.string.flights_scheduled),
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.tertiary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

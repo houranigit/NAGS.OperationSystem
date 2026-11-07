@@ -6,7 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,13 +54,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -173,53 +180,102 @@ private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> F
         CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(40.dp))
         VerticalDivider(Modifier.height(32.dp), color = DetailEdge)
         Column(Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
-                    modifier = Modifier.weight(1f, fill = false), fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (flight.isPerLanding) {
-                    Surface(Modifier.widthIn(max = 76.dp), shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer) {
-                        Text(stringResource(R.string.flights_per_landing), Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
+                        modifier = Modifier.weight(1f, fill = false), fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (flight.isPerLanding) {
+                        Surface(Modifier.widthIn(max = 76.dp), shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer) {
+                            Text(stringResource(R.string.flights_per_landing), Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
+                Surface(Modifier.widthIn(max = 92.dp), shape = RoundedCornerShape(50), color = DetailBlue.copy(alpha = 0.11f)) {
+                    Text(stringResource(R.string.flights_scheduled), Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = DetailBlue,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-            Text(flight.customerName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Surface(Modifier.widthIn(max = 92.dp), shape = RoundedCornerShape(50), color = DetailBlue.copy(alpha = 0.11f)) {
-            Text(stringResource(R.string.flights_scheduled), Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = DetailBlue,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
 private fun FlightSchedule(flight: FlightDetail) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        Text(formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc), modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), fontWeight = FontWeight.Medium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        VerticalDivider(Modifier.height(28.dp), color = DetailEdge)
-        Row(Modifier.weight(1.2f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            ScheduleTime(stringResource(R.string.flights_card_sta), formatIsoTimeForDisplay(flight.scheduledArrivalUtc), Modifier.weight(1f))
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-            ScheduleTime(stringResource(R.string.flights_card_std), formatIsoTimeForDisplay(flight.scheduledDepartureUtc), Modifier.weight(1f))
+    val labelStyle = MaterialTheme.typography.labelSmall
+    val valueStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+        if (maxWidth < 320.dp * fontScale) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                FlightScheduleStation(flight, labelStyle, valueStyle)
+                FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.align(Alignment.End))
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                FlightScheduleStation(flight, labelStyle, valueStyle, Modifier.weight(1f).alignBy(FirstBaseline))
+                FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.alignBy(FirstBaseline))
+            }
         }
     }
 }
 
 @Composable
-private fun ScheduleTime(label: String, time: String, modifier: Modifier) {
-    Column(modifier) {
-        Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(time, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun FlightScheduleStation(flight: FlightDetail, labelStyle: TextStyle, valueStyle: TextStyle, modifier: Modifier = Modifier) {
+    val stationName = flight.stationName.ifBlank { flight.stationIata }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(R.string.flights_scheduled_arrival), style = labelStyle,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(stationName, style = valueStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (flight.stationIata.isNotBlank() && !flight.stationIata.equals(stationName, ignoreCase = true)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.LocationOn, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                Text(flight.stationIata, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlightScheduleTimeGroup(flight: FlightDetail, labelStyle: TextStyle, valueStyle: TextStyle, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        FlightScheduleTimes(flight, labelStyle, valueStyle)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            Text(formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc),
+                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, textAlign = TextAlign.End,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun FlightScheduleTimes(flight: FlightDetail, labelStyle: TextStyle, timeStyle: TextStyle, modifier: Modifier = Modifier) {
+    val timeGap = 8.dp
+    val arrowSize = 18.dp
+    // Both rows share their intrinsic width; the value row centers the arrow on the times.
+    Column(modifier.width(IntrinsicSize.Min), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.flights_card_sta), Modifier.weight(1f), style = labelStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.width(arrowSize + timeGap * 2))
+            Text(stringResource(R.string.flights_card_std), Modifier.weight(1f), style = labelStyle, textAlign = TextAlign.End,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(timeGap), verticalAlignment = Alignment.CenterVertically) {
+            Text(formatIsoTimeForDisplay(flight.scheduledArrivalUtc), Modifier.weight(1f), style = timeStyle,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(arrowSize))
+            Text(formatIsoTimeForDisplay(flight.scheduledDepartureUtc), Modifier.weight(1f), style = timeStyle, textAlign = TextAlign.End,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 

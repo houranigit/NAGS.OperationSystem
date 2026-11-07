@@ -108,9 +108,10 @@ internal fun FlightTabSearchHeader(
     }
 
     Column(modifier.fillMaxWidth()) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(56.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
+            HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
             val controlWidth = 48.dp + (maxWidth - 24.dp - 48.dp) * progress
-            Box(Modifier.align(Alignment.CenterStart).fillMaxWidth().padding(end = 72.dp)
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(end = 72.dp)
                 .graphicsLayer { alpha = 1f - progress }
                 .then(if (isSearchOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
                 tabs()
@@ -190,7 +191,6 @@ internal fun FlightTabSearchHeader(
                 }
             }
         }
-        HorizontalDivider(color = foreground.copy(alpha = 0.1f))
     }
 }
 

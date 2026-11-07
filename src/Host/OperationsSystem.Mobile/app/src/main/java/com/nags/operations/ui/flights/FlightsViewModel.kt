@@ -8,6 +8,7 @@ import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.isInFlightWindow
 import com.nags.operations.data.matches
+import com.nags.operations.data.parseFlightInstant
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
@@ -595,7 +596,7 @@ class FlightsViewModel internal constructor(
                     normalTabs.values.flatMap { tab -> tab.items.map { it.scheduledDepartureUtc } } +
                     listOfNotNull(current.detail?.scheduledDepartureUtc)
                 val nextExpiry = departures.mapNotNull {
-                    runCatching { Instant.parse(it).plus(12, ChronoUnit.HOURS) }.getOrNull()
+                    runCatching { parseFlightInstant(it).plus(12, ChronoUnit.HOURS) }.getOrNull()
                 }.minOrNull()
                 val delayMillis = nextExpiry?.let {
                     (Duration.between(now(), it).toMillis() + 1).coerceIn(1, 30_000)

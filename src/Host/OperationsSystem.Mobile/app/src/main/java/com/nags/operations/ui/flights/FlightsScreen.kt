@@ -71,7 +71,6 @@ import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.invite.InviteEmployeesDialog
-import java.time.ZoneId
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -165,10 +164,6 @@ fun FlightsScreen(
             onCloseSearch = ::closeSearch) {
             FlightsPageTabs(pagerState = pagerState, onSelectTab = selectTab, enabled = !state.isSearchOpen)
         }
-        Text(stringResource(R.string.flights_time_zone, ZoneId.systemDefault().id),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 2.dp))
         if (state.isUsingCachedList || !state.isOnline) {
             Text(stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -303,9 +298,9 @@ private fun FlightsPageTabs(
             ((pagerState.currentPage + pagerState.currentPageOffsetFraction) * 100).roundToInt()
         }
     }
-    val tabPadding = with(LocalDensity.current) { 12.dp.toPx() }
+    val tabPadding = with(LocalDensity.current) { 10.dp.toPx() }
     Column {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup()
                 .drawBehind {
                     val tabPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
@@ -327,13 +322,13 @@ private fun FlightsPageTabs(
                             tabBounds[index] = Rect(left, 0f, left + coordinates.size.width - 2 * tabPadding, 0f)
                         }
                         .selectable(selected = selected, enabled = enabled, onClick = { onSelectTab(index) }, role = Role.Tab)
-                        .padding(horizontal = 12.dp)
+                        .padding(horizontal = 10.dp)
                         .heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
                         // Reserve the bold label's width so the marker does not jitter as weight changes.
-                        Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                        Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                             fontWeight = FontWeight.SemiBold, color = Color.Transparent, maxLines = 1,
                             modifier = Modifier.clearAndSetSemantics { })
-                        Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                        Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                             fontWeight = FontWeight(weight), color = ink.copy(alpha = 0.55f + 0.45f * emphasis), maxLines = 1)
                     }
                 }

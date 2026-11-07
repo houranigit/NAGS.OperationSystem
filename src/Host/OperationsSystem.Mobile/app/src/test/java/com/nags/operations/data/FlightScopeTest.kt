@@ -22,6 +22,26 @@ class FlightScopeTest {
     }
 
     @Test
+    fun numericOffsetsAndFractionalSecondsPreserveFlightWindowBoundaries() {
+        val at = parseFlightInstant("2026-11-05T15:00:00.1234567+03:00")
+        assertEquals(Instant.parse("2026-11-05T12:00:00.1234567Z"), at)
+        assertTrue(row("2026-11-06T03:00:00.1234567+03:00",
+            "2026-11-06T03:00:00.1234567+03:00").isInFlightWindow(at))
+        assertFalse(row("2026-11-06T00:00:00.1234568+00:00",
+            "2026-11-06T01:00:00+00:00").isInFlightWindow(at))
+    }
+
+    @Test
+    fun serverScopeAcceptsNumericOffsetsWithoutRelaxingItsWindow() {
+        val page = FlightPage(stationId = "station", asOfUtc = "2026-11-05T12:00:00.1234567+00:00",
+            windowStartUtc = "2026-11-05T03:00:00.1234567+03:00",
+            windowEndUtc = "2026-11-06T00:00:00.1234567+00:00")
+
+        assertNotNull(page.scopeOrNull())
+        assertEquals(null, page.copy(windowEndUtc = "2026-11-06T00:00:00.1234568+00:00").scopeOrNull())
+    }
+
+    @Test
     fun mobileContractReadsScopeAndServerMembershipWithoutInferringOperationNames() {
         val page = Json.decodeFromString<FlightPage>(
             """{"items":[{"id":"one","flightNumber":"123","customerName":"Customer",

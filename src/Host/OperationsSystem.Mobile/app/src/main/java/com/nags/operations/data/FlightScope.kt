@@ -2,6 +2,7 @@ package com.nags.operations.data
 
 import java.time.Duration
 import java.time.Instant
+import java.time.OffsetDateTime
 import kotlinx.serialization.Serializable
 
 enum class FlightCategory { MyFlights, PerLanding, AdHoc }
@@ -21,10 +22,13 @@ fun FlightDetail.isInFlightWindow(at: Instant): Boolean =
     overlapsFlightWindow(scheduledArrivalUtc, scheduledDepartureUtc, at)
 
 private fun overlapsFlightWindow(arrival: String, departure: String, at: Instant): Boolean = runCatching {
-    val sta = Instant.parse(arrival)
-    val std = Instant.parse(departure)
+    val sta = parseFlightInstant(arrival)
+    val std = parseFlightInstant(departure)
     !std.isBefore(sta) && !sta.isAfter(at.plus(FLIGHT_WINDOW_HALF)) && !std.isBefore(at.minus(FLIGHT_WINDOW_HALF))
 }.getOrDefault(false)
+
+// Older Android Instant parsers reject the numeric offsets returned by the API.
+internal fun parseFlightInstant(value: String): Instant = OffsetDateTime.parse(value).toInstant()
 
 internal val FLIGHT_WINDOW_HALF: Duration = Duration.ofHours(12)
 
@@ -36,9 +40,9 @@ internal data class FlightScope(
     val windowEndUtc: String,
 ) {
     fun isValid(): Boolean = stationId.isNotBlank() && runCatching {
-        val at = Instant.parse(asOfUtc)
-        Instant.parse(windowStartUtc) == at.minus(FLIGHT_WINDOW_HALF) &&
-            Instant.parse(windowEndUtc) == at.plus(FLIGHT_WINDOW_HALF)
+        val at = parseFlightInstant(asOfUtc)
+        parseFlightInstant(windowStartUtc) == at.minus(FLIGHT_WINDOW_HALF) &&
+            parseFlightInstant(windowEndUtc) == at.plus(FLIGHT_WINDOW_HALF)
     }.getOrDefault(false)
 }
 

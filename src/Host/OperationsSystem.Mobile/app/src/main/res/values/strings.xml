@@ -54,7 +54,6 @@
     <string name="flights_adhoc_empty">No AdHoc flights</string>
     <string name="flights_skeleton_loading">Loading flights</string>
     <string name="flights_title">Flights</string>
-    <string name="flights_time_zone">Times: %1$s</string>
     <string name="flights_search">Search flight number, customer or ID</string>
     <string name="flights_search_placeholder">Search</string>
     <string name="flights_search_clear">Clear search</string>
@@ -72,6 +71,7 @@
         <item quantity="one">Showing %1$d of %2$d flight</item>
         <item quantity="other">Showing %1$d of %2$d flights</item>
     </plurals>
+    <string name="flights_scheduled_arrival">Scheduled arrival</string>
     <string name="flights_details">Flight details</string>
     <string name="flights_share">Share flight</string>
     <string name="flights_manage">Manage</string>

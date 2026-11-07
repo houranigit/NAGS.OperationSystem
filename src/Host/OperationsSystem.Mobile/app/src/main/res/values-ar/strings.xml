@@ -62,7 +62,6 @@
     <string name="flights_adhoc_empty">لا توجد رحلات AdHoc</string>
     <string name="flights_skeleton_loading">جارٍ تحميل الرحلات</string>
     <string name="flights_title">الرحلات</string>
-    <string name="flights_time_zone">الأوقات: %1$s</string>
     <string name="flights_search">ابحث برقم الرحلة أو العميل أو المعرّف</string>
     <string name="flights_search_placeholder">بحث</string>
     <string name="flights_search_clear">مسح البحث</string>
@@ -84,6 +83,7 @@
         <item quantity="many">عرض %1$d من أصل %2$d رحلة</item>
         <item quantity="other">عرض %1$d من أصل %2$d رحلة</item>
     </plurals>
+    <string name="flights_scheduled_arrival">الوصول المجدول</string>
     <string name="flights_details">تفاصيل الرحلة</string>
     <string name="flights_share">مشاركة الرحلة</string>
     <string name="flights_manage">إدارة</string>

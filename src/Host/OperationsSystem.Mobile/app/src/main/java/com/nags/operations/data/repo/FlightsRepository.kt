@@ -17,6 +17,7 @@ import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import com.nags.operations.data.isInFlightWindow
 import com.nags.operations.data.matches
+import com.nags.operations.data.parseFlightInstant
 import com.nags.operations.data.scopeOrNull
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import java.io.IOException
@@ -340,7 +341,7 @@ class FlightsRepository internal constructor(
 
     private fun requireScope(page: FlightPage, category: FlightCategory?): FlightScope {
         val scope = page.scopeOrNull() ?: throw IOException("The mobile flight scope is missing or invalid.")
-        val at = Instant.parse(scope.asOfUtc)
+        val at = parseFlightInstant(scope.asOfUtc)
         if (page.items.any { it.stationId != scope.stationId || !it.matches(category) || !it.isInFlightWindow(at) }) {
             throw IOException("A flight is outside the mobile flight scope.")
         }

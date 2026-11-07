@@ -78,6 +78,30 @@ class FlightsRepositoryCacheTest {
     )
 
     @Test
+    fun apiOffsetTimestampsSupportLiveReadsAndOfflineFlightSnapshots() = runBlocking {
+        val arrival = "2026-11-04T13:00:00+03:00"
+        val departure = "2026-11-04T11:00:00+00:00"
+        val response = FlightPage(items = listOf(item("one").copy(
+            scheduledArrivalUtc = arrival, scheduledDepartureUtc = departure)), totalCount = 1,
+            totalPages = 1, stationId = serverStation, asOfUtc = "2026-11-04T10:00:00.1234567+00:00",
+            windowStartUtc = "2026-11-03T22:00:00.1234567+00:00",
+            windowEndUtc = "2026-11-04T22:00:00.1234567+00:00")
+        pageLoader = { page, size, _ -> response.copy(page = page, pageSize = size) }
+        detailLoader = { id -> detail(id).copy(scheduledArrivalUtc = arrival, scheduledDepartureUtc = departure) }
+        val repository = repository()
+
+        assertEquals(listOf("one"), repository.flights(FlightCategory.MyFlights).items.map { it.id })
+        repository.refreshCache()
+        assertNull(repository.syncStatus.first().error)
+        assertEquals(1, repository.syncStatus.first().itemCount)
+        assertEquals(departure, repository.flight("one").scheduledDepartureUtc)
+        online = false
+        assertEquals(listOf("one"), repository.flights().items.map { it.id })
+        assertTrue(repository.flights().fromCache)
+        assertTrue(repository.flight("one").fromCache)
+    }
+
+    @Test
     fun completePagedListsAreCachedWithServerOrderAndOfflineSearchPaging() = runBlocking {
         serverItems = (1..101).map { item(it.toString(), if (it == 101) "999" else "123") }
         val repository = repository()
