@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -50,9 +48,8 @@ fun AppHeader(
     unreadNotifications: Int = 0,
     onAdHocClick: () -> Unit = {},
 ) {
-    val foreground = Color(0xFF17181B)
-    val muted = Color(0xFF6B7076)
-    val controlFill = Color(0xFFF2F3F5)
+    val foreground = MaterialTheme.colorScheme.onSurface
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val friendlyName = displayName?.trim()?.takeIf { it.isNotEmpty() }
         ?.split(Regex("\\s+"))?.firstOrNull()
     val greeting = if (friendlyName == null) stringResource(R.string.home_greeting_fallback)
@@ -63,44 +60,43 @@ fun AppHeader(
         stringResource(R.string.notifications_bell)
     }
 
-    Column(modifier.fillMaxWidth().background(Color.White).statusBarsPadding()) {
+    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             IconButton(onClick = onProfileClick, modifier = Modifier.size(48.dp)) {
-                Box(Modifier.size(40.dp).background(controlFill, CircleShape),
+                Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                     contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.AccountCircle,
                         contentDescription = stringResource(R.string.account_open),
-                        tint = foreground, modifier = Modifier.size(28.dp))
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(stringResource(R.string.home_welcome_back),
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    style = MaterialTheme.typography.bodySmall,
                     color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(greeting,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 20.sp, lineHeight = 24.sp),
-                    fontWeight = FontWeight.Bold, color = foreground,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = foreground,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Box(
-                modifier = Modifier.widthIn(min = 74.dp).heightIn(min = 48.dp)
+                modifier = Modifier.widthIn(min = 68.dp).heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button, onClick = onAdHocClick),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
-                    modifier = Modifier.widthIn(min = 74.dp).heightIn(min = 32.dp)
-                        .background(controlFill, RoundedCornerShape(8.dp))
+                    modifier = Modifier.widthIn(min = 68.dp).heightIn(min = 32.dp)
+                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(stringResource(R.string.home_adhoc),
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp,
-                            lineHeight = 20.sp, letterSpacing = 0.sp),
-                        fontWeight = FontWeight.SemiBold, color = foreground, maxLines = 1)
+                        style = MaterialTheme.typography.labelMedium.copy(lineHeight = 16.sp, letterSpacing = 0.sp),
+                        fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimary, maxLines = 1)
                 }
             }
             IconButton(
@@ -117,10 +113,9 @@ fun AppHeader(
                     }
                 }) {
                     Icon(Icons.Outlined.NotificationsNone, contentDescription = null,
-                        tint = foreground, modifier = Modifier.size(24.dp))
+                        tint = muted, modifier = Modifier.size(24.dp))
                 }
             }
         }
-        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEDEFF2))
     }
 }

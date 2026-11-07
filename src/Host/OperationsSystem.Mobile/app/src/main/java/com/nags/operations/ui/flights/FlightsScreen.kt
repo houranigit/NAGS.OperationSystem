@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
@@ -238,7 +239,7 @@ private fun FlightListPage(
             }
             else -> LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 80.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -290,7 +291,8 @@ private fun FlightsPageTabs(
 ) {
     val labels = listOf(stringResource(R.string.flights_tab_my),
         stringResource(R.string.flights_tab_per_landing), stringResource(R.string.flights_tab_adhoc))
-    val ink = MaterialTheme.colorScheme.onSurface
+    val activeInk = MaterialTheme.colorScheme.primary
+    val inactiveInk = MaterialTheme.colorScheme.onSurfaceVariant
     val tabBounds = remember(labels) { mutableStateMapOf<Int, Rect>() }
     // Recompose text only when its font weight changes; draw the marker at exact swipe progress.
     val textPositionSteps by remember(pagerState) {
@@ -298,9 +300,9 @@ private fun FlightsPageTabs(
             ((pagerState.currentPage + pagerState.currentPageOffsetFraction) * 100).roundToInt()
         }
     }
-    val tabPadding = with(LocalDensity.current) { 10.dp.toPx() }
+    val tabPadding = with(LocalDensity.current) { 8.dp.toPx() }
     Column {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup()
                 .drawBehind {
                     val tabPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
@@ -311,7 +313,7 @@ private fun FlightsPageTabs(
                     val fraction = tabPosition - firstIndex
                     val left = first.left + (next.left - first.left) * fraction
                     val right = first.right + (next.right - first.right) * fraction
-                    drawRect(ink, Offset(left, size.height - 2.dp.toPx()), Size(right - left, 2.dp.toPx()))
+                    drawRect(activeInk, Offset(left, size.height - 2.dp.toPx()), Size(right - left, 2.dp.toPx()))
                 }) {
                 labels.forEachIndexed { index, label ->
                     val selected = index == pagerState.currentPage
@@ -322,14 +324,14 @@ private fun FlightsPageTabs(
                             tabBounds[index] = Rect(left, 0f, left + coordinates.size.width - 2 * tabPadding, 0f)
                         }
                         .selectable(selected = selected, enabled = enabled, onClick = { onSelectTab(index) }, role = Role.Tab)
-                        .padding(horizontal = 10.dp)
+                        .padding(horizontal = 8.dp)
                         .heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
                         // Reserve the bold label's width so the marker does not jitter as weight changes.
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                             fontWeight = FontWeight.SemiBold, color = Color.Transparent, maxLines = 1,
                             modifier = Modifier.clearAndSetSemantics { })
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                            fontWeight = FontWeight(weight), color = ink.copy(alpha = 0.55f + 0.45f * emphasis), maxLines = 1)
+                            fontWeight = FontWeight(weight), color = lerp(inactiveInk, activeInk, emphasis), maxLines = 1)
                     }
                 }
             }
