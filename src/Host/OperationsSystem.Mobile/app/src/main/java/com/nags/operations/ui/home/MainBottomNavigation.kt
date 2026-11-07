@@ -1,5 +1,8 @@
 package com.nags.operations.ui.home
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,13 +25,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 
@@ -43,6 +52,11 @@ internal fun MainBottomNavigation(
     val colors = MaterialTheme.colorScheme
     val icons = listOf(Icons.Default.Flight, Icons.AutoMirrored.Outlined.CompareArrows,
         Icons.Outlined.EmojiEvents, Icons.Outlined.AccountBalanceWallet)
+    val highlightPosition by animateFloatAsState(
+        targetValue = selectedPage.toFloat(),
+        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        label = "Navigation highlight",
+    )
 
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -53,7 +67,20 @@ internal fun MainBottomNavigation(
             modifier = Modifier.weight(1f).heightIn(min = 54.dp)
                 .clip(CircleShape).background(colors.surface, CircleShape)
                 .border(1.dp, colors.outline.copy(alpha = 0.65f), CircleShape)
-                .selectableGroup().padding(horizontal = 8.dp),
+                .selectableGroup().padding(horizontal = 8.dp)
+                .drawBehind {
+                    val itemWidth = size.width / icons.size
+                    val logicalCenter = itemWidth * (highlightPosition + 0.5f)
+                    val center = if (layoutDirection == LayoutDirection.Rtl) size.width - logicalCenter else logicalCenter
+                    val width = 52.dp.toPx().coerceAtMost(itemWidth)
+                    val height = 36.dp.toPx()
+                    drawRoundRect(
+                        color = colors.primaryContainer,
+                        topLeft = Offset(center - width / 2f, (size.height - height) / 2f),
+                        size = Size(width, height),
+                        cornerRadius = CornerRadius(height / 2f),
+                    )
+                },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             icons.forEachIndexed { index, icon ->
@@ -70,10 +97,6 @@ internal fun MainBottomNavigation(
                         .semantics { contentDescription = description },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (selected) {
-                        Box(Modifier.size(width = 52.dp, height = 36.dp)
-                            .background(colors.primaryContainer, CircleShape))
-                    }
                     Icon(icon, contentDescription = null,
                         tint = if (selected) colors.primary else colors.onSurfaceVariant,
                         modifier = Modifier.size(24.dp))

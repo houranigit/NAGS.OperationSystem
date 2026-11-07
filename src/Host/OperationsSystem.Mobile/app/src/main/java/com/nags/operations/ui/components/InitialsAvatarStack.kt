@@ -23,20 +23,28 @@ import androidx.compose.ui.unit.sp
 import java.text.Normalizer
 
 private val AvatarPalette = listOf(
+    Color(0xFFFFE9E9) to Color(0xFF7E1414),
     Color(0xFFE7F1FF) to Color(0xFF285A91),
-    Color(0xFFE4F3EF) to Color(0xFF326958),
-    Color(0xFFEDF0F5) to Color(0xFF4F5B6B),
-    Color(0xFFE8EEF8) to Color(0xFF4D6284),
+    Color(0xFFE0F3ED) to Color(0xFF245F50),
+    Color(0xFFFFF0D6) to Color(0xFF88500B),
+    Color(0xFFEEE8FF) to Color(0xFF64438F),
+    Color(0xFFDFF1F6) to Color(0xFF285F70),
+    Color(0xFFEBEFF5) to Color(0xFF46546A),
+    Color(0xFFFFE9DD) to Color(0xFF8C4325),
 )
 private val NameSeparators = Regex("[\\p{Z}\\s]+")
 
-/** Compact visual summary; callers can expose the full roster or service list on expansion. */
+/**
+ * Compact visual summary; colorOffset keeps expanded rows aligned with their stack position.
+ * Callers can expose the full roster or service list on expansion.
+ */
 @Composable
 fun InitialsAvatarStack(
     names: List<String>,
     modifier: Modifier = Modifier,
     maxVisible: Int = 4,
     avatarSize: Dp = 32.dp,
+    colorOffset: Int = 0,
 ) {
     if (names.isEmpty()) return
     val visibleNames = names.take(maxVisible.coerceAtLeast(1))
@@ -50,12 +58,13 @@ fun InitialsAvatarStack(
         horizontalArrangement = Arrangement.spacedBy(-size * 0.28f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        visibleNames.forEach { name ->
-            val (background, foreground) = AvatarPalette[Math.floorMod(name.trim().hashCode(), AvatarPalette.size)]
+        visibleNames.forEachIndexed { index, name ->
+            val (background, foreground) = AvatarPalette[Math.floorMod(colorOffset + index, AvatarPalette.size)]
             InitialsAvatar(avatarInitials(name), size, background, foreground, outline)
         }
         if (remaining > 0) {
-            InitialsAvatar("+$remaining", size, Color(0xFFEDF0F5), Color(0xFF4F5B6B), outline)
+            val (background, foreground) = AvatarPalette[Math.floorMod(colorOffset + visibleNames.size, AvatarPalette.size)]
+            InitialsAvatar("+$remaining", size, background, foreground, outline)
         }
     }
 }

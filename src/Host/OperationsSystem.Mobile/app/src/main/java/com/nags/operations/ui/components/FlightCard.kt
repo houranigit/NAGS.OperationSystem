@@ -91,19 +91,7 @@ fun FlightCard(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             if (flight.isPerLanding) {
-                                Surface(
-                                    modifier = Modifier.widthIn(max = 76.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                ) {
-                                    Text(
-                                        stringResource(R.string.flights_per_landing),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
+                                PerLandingBadge()
                             }
                         }
                         Surface(

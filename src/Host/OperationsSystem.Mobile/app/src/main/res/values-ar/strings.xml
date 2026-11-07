@@ -91,8 +91,8 @@
     <string name="flights_hide_details">إخفاء التفاصيل</string>
     <string name="flights_section_expanded">موسّع</string>
     <string name="flights_section_collapsed">مطوي</string>
-    <string name="flights_planned_services">الخدمات المخططة</string>
-    <string name="flights_no_planned_services">لا توجد خدمات مخططة</string>
+    <string name="flights_planned_services">الخدمات المجدولة</string>
+    <string name="flights_no_planned_services">لا توجد خدمات مجدولة</string>
     <string name="flights_assigned_staff">الموظفون المعيّنون</string>
     <string name="flights_no_assigned_staff">لم يتم تعيين موظفين</string>
     <string name="flights_per_landing">لكل هبوط</string>

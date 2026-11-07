@@ -219,7 +219,7 @@ internal fun FlightSearchScopeTabs(
                         .background(if (selected) Color.White else Color.Transparent, RoundedCornerShape(22.dp)))
                     Text(label, modifier = Modifier.padding(horizontal = 8.dp), color = if (selected) accent else secondary,
                         style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
             }

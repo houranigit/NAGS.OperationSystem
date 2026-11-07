@@ -79,8 +79,8 @@
     <string name="flights_hide_details">Hide details</string>
     <string name="flights_section_expanded">Expanded</string>
     <string name="flights_section_collapsed">Collapsed</string>
-    <string name="flights_planned_services">Planned Services</string>
-    <string name="flights_no_planned_services">No planned services</string>
+    <string name="flights_planned_services">Scheduled Services</string>
+    <string name="flights_no_planned_services">No scheduled services</string>
     <string name="flights_assigned_staff">Assigned Employees</string>
     <string name="flights_no_assigned_staff">No staff assigned</string>
     <string name="flights_per_landing">Per Landing</string>

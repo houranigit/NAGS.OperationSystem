@@ -297,7 +297,7 @@ private fun FlightsPageTabs(
     val activeInk = MaterialTheme.colorScheme.primary
     val inactiveInk = MaterialTheme.colorScheme.onSurfaceVariant
     val tabBounds = remember(labels) { mutableStateMapOf<Int, Rect>() }
-    // Recompose text only when its font weight changes; draw the marker at exact swipe progress.
+    // Recompose color at bounded swipe steps; draw the marker at exact swipe progress.
     val textPositionSteps by remember(pagerState) {
         derivedStateOf {
             ((pagerState.currentPage + pagerState.currentPageOffsetFraction) * 100).roundToInt()
@@ -322,7 +322,6 @@ private fun FlightsPageTabs(
                 labels.forEachIndexed { index, label ->
                     val selected = index == pagerState.currentPage
                     val emphasis = (1f - abs(textPositionSteps / 100f - index)).coerceIn(0f, 1f)
-                    val weight = (500 + 100 * emphasis).roundToInt()
                     Box(Modifier.onGloballyPositioned { coordinates ->
                             val left = coordinates.positionInParent().x + tabPadding
                             tabBounds[index] = Rect(left, 0f, left + coordinates.size.width - 2 * tabPadding, 0f)
@@ -331,13 +330,13 @@ private fun FlightsPageTabs(
                         .widthIn(min = 48.dp, max = maximumTabWidth)
                         .padding(horizontal = 8.dp)
                         .heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
-                        // Reserve the bold label's width so the marker does not jitter as weight changes.
+                        // Keep the label's measured width stable throughout the swipe.
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                            fontWeight = FontWeight.SemiBold, color = Color.Transparent, maxLines = 1,
+                            fontWeight = FontWeight.Bold, color = Color.Transparent, maxLines = 1,
                             softWrap = false, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clearAndSetSemantics { })
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                            fontWeight = FontWeight(weight), color = lerp(inactiveInk, activeInk, emphasis), maxLines = 1,
+                            fontWeight = FontWeight.Bold, color = lerp(inactiveInk, activeInk, emphasis), maxLines = 1,
                             softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                 }
