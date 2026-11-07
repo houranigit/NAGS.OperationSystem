@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -61,6 +63,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -239,7 +242,7 @@ private fun FlightListPage(
             }
             else -> LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 80.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -302,8 +305,9 @@ private fun FlightsPageTabs(
     }
     val tabPadding = with(LocalDensity.current) { 8.dp.toPx() }
     Column {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup()
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            val maximumTabWidth = (maxWidth / labels.size).coerceIn(48.dp, 160.dp)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup()
                 .drawBehind {
                     val tabPosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
                         .coerceIn(0f, labels.lastIndex.toFloat())
@@ -324,14 +328,17 @@ private fun FlightsPageTabs(
                             tabBounds[index] = Rect(left, 0f, left + coordinates.size.width - 2 * tabPadding, 0f)
                         }
                         .selectable(selected = selected, enabled = enabled, onClick = { onSelectTab(index) }, role = Role.Tab)
+                        .widthIn(min = 48.dp, max = maximumTabWidth)
                         .padding(horizontal = 8.dp)
                         .heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
                         // Reserve the bold label's width so the marker does not jitter as weight changes.
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                             fontWeight = FontWeight.SemiBold, color = Color.Transparent, maxLines = 1,
+                            softWrap = false, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clearAndSetSemantics { })
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                            fontWeight = FontWeight(weight), color = lerp(inactiveInk, activeInk, emphasis), maxLines = 1)
+                            fontWeight = FontWeight(weight), color = lerp(inactiveInk, activeInk, emphasis), maxLines = 1,
+                            softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

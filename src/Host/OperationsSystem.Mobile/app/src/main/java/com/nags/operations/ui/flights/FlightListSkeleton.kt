@@ -41,7 +41,7 @@ import com.nags.operations.R
 @Composable
 internal fun FlightListSkeleton(modifier: Modifier = Modifier) {
     val description = stringResource(R.string.flights_skeleton_loading)
-    Column(modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 80.dp)
+    Column(modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp)
         .clearAndSetSemantics { contentDescription = description; liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         repeat(3) { FlightCardSkeleton() }

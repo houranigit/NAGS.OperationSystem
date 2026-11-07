@@ -20,12 +20,11 @@ import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.automirrored.outlined.CompareArrows
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -41,10 +40,7 @@ internal fun MainBottomNavigation(
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val foreground = Color(0xFF17181B)
-    val muted = Color(0xFF858991)
-    val fill = Color.White.copy(alpha = 0.94f)
-    val edge = Color(0xFFD8DCE2).copy(alpha = 0.85f)
+    val colors = MaterialTheme.colorScheme
     val icons = listOf(Icons.Default.Flight, Icons.AutoMirrored.Outlined.CompareArrows,
         Icons.Outlined.EmojiEvents, Icons.Outlined.AccountBalanceWallet)
 
@@ -55,10 +51,8 @@ internal fun MainBottomNavigation(
     ) {
         Row(
             modifier = Modifier.weight(1f).heightIn(min = 54.dp)
-                .shadow(5.dp, CircleShape, clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.08f),
-                    spotColor = Color.Black.copy(alpha = 0.08f))
-                .clip(CircleShape).background(fill, CircleShape).border(0.75.dp, edge, CircleShape)
+                .clip(CircleShape).background(colors.surface, CircleShape)
+                .border(1.dp, colors.outline.copy(alpha = 0.65f), CircleShape)
                 .selectableGroup().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -68,15 +62,20 @@ internal fun MainBottomNavigation(
                     1 -> stringResource(R.string.home_nav_hand_over)
                     else -> stringResource(R.string.home_nav_page, index + 1)
                 }
+                val selected = selectedPage == index
                 Box(
-                    modifier = Modifier.weight(1f).heightIn(min = 54.dp)
-                        .selectable(selected = selectedPage == index, role = Role.Tab,
+                    modifier = Modifier.weight(1f).heightIn(min = 54.dp).clip(CircleShape)
+                        .selectable(selected = selected, role = Role.Tab,
                             onClick = { onSelectPage(index) })
                         .semantics { contentDescription = description },
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (selected) {
+                        Box(Modifier.size(width = 52.dp, height = 36.dp)
+                            .background(colors.primaryContainer, CircleShape))
+                    }
                     Icon(icon, contentDescription = null,
-                        tint = if (selectedPage == index) foreground else muted,
+                        tint = if (selected) colors.primary else colors.onSurfaceVariant,
                         modifier = Modifier.size(24.dp))
                 }
             }
@@ -84,13 +83,11 @@ internal fun MainBottomNavigation(
         IconButton(
             onClick = onSearch,
             modifier = Modifier.size(54.dp)
-                .shadow(5.dp, CircleShape, clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.08f),
-                    spotColor = Color.Black.copy(alpha = 0.08f))
-                .background(fill, CircleShape).border(0.75.dp, edge, CircleShape),
+                .background(colors.surface, CircleShape)
+                .border(1.dp, colors.outline.copy(alpha = 0.65f), CircleShape),
         ) {
             Icon(Icons.Default.Search, contentDescription = stringResource(R.string.home_search),
-                tint = foreground, modifier = Modifier.size(24.dp))
+                tint = colors.onSurface, modifier = Modifier.size(24.dp))
         }
     }
 }

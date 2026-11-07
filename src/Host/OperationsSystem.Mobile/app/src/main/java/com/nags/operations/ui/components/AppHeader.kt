@@ -77,11 +77,11 @@ fun AppHeader(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(stringResource(R.string.home_welcome_back),
                     style = MaterialTheme.typography.bodySmall,
-                    color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    color = muted, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                 Text(greeting,
                     style = MaterialTheme.typography.titleMedium,
                     color = foreground,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
             Box(
                 modifier = Modifier.widthIn(min = 68.dp).heightIn(min = 48.dp)

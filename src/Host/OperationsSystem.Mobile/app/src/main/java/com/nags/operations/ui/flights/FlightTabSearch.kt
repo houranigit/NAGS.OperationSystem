@@ -109,6 +109,7 @@ internal fun FlightTabSearchHeader(
     }
 
     Column(modifier.fillMaxWidth()) {
+        HorizontalDivider(color = foreground.copy(alpha = 0.1f))
         BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
             HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
             val controlWidth = 48.dp + (maxWidth - 32.dp - 48.dp) * progress
@@ -159,7 +160,7 @@ internal fun FlightTabSearchHeader(
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
                                         if (query.isEmpty()) Text(stringResource(R.string.flights_search_placeholder),
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            color = secondary, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                         innerTextField()
                                     }
                                 })
@@ -219,7 +220,7 @@ internal fun FlightSearchScopeTabs(
                     Text(label, modifier = Modifier.padding(horizontal = 8.dp), color = if (selected) accent else secondary,
                         style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
