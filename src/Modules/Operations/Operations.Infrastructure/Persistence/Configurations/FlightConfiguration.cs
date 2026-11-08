@@ -53,6 +53,7 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
 
         builder.HasMany(f => f.PlannedServices).WithOne().HasForeignKey(s => s.FlightId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(f => f.AssignedEmployees).WithOne().HasForeignKey(e => e.FlightId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(f => f.ArrivalSubmissions).WithOne().HasForeignKey(a => a.FlightId).OnDelete(DeleteBehavior.Cascade);
 
         builder.Ignore(f => f.IsPerLanding);
         builder.Ignore(f => f.DomainEvents);

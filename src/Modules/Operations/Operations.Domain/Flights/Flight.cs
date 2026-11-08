@@ -5,11 +5,12 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Domain.Flights;
 
-/// <summary>A scheduled flight with its planned services and assigned staff.</summary>
+/// <summary>A scheduled flight with its planned services, assigned staff, and actual arrival submissions.</summary>
 public sealed class Flight : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<PlannedService> _plannedServices = [];
     private readonly List<FlightAssignedEmployee> _assignedEmployees = [];
+    private readonly List<FlightArrivalSubmission> _arrivalSubmissions = [];
 
     private Flight() { }
 
@@ -29,6 +30,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     public IReadOnlyList<PlannedService> PlannedServices => _plannedServices.AsReadOnly();
     public IReadOnlyList<FlightAssignedEmployee> AssignedEmployees => _assignedEmployees.AsReadOnly();
+    public IReadOnlyList<FlightArrivalSubmission> ArrivalSubmissions => _arrivalSubmissions.AsReadOnly();
     public bool IsPerLanding => _plannedServices.Any(service => service.IsAircraftPerLanding);
 
     public static Result<Flight> ScheduleNew(
@@ -130,6 +132,42 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         }
 
         return Result.Success();
+    }
+
+    public Result<FlightArrivalSubmission> SubmitArrival(
+        StaffMemberSnapshot? submittedByEmployee,
+        ArrivalDetails? details,
+        Guid submittedByUserId,
+        DateTimeOffset now)
+    {
+        if (submittedByEmployee is null || submittedByEmployee.StaffMemberId == Guid.Empty)
+            return Error.Validation("Submitting employee is required.", "Operations.ArrivalSubmission.SubmittedByEmployeeRequired");
+        if (submittedByUserId == Guid.Empty)
+            return Error.Validation("Submitting user is required.", "Operations.ArrivalSubmission.SubmittedByUserRequired");
+        if (details is null)
+            return Error.Validation("Arrival details are required.", "Operations.ArrivalSubmission.DetailsRequired");
+
+        var submission = _arrivalSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
+        if (submission is not null)
+        {
+            if (submission.Details == details)
+                return submission;
+
+            submission.UpdateDetails(details, submittedByUserId, now.ToUniversalTime());
+        }
+        else
+        {
+            var isAccepted = _arrivalSubmissions.Count == 0;
+            foreach (var existing in _arrivalSubmissions)
+                existing.ClearAcceptance();
+
+            submission = new FlightArrivalSubmission(Guid.NewGuid(), Id, submittedByEmployee, details,
+                isAccepted, submittedByUserId, now.ToUniversalTime());
+            _arrivalSubmissions.Add(submission);
+        }
+
+        UpdatedAtUtc = now.ToUniversalTime();
+        return submission;
     }
 
     private void SetPlannedServices(IReadOnlyList<ServiceSnapshot> services)

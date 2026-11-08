@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,6 +85,8 @@ import kotlinx.coroutines.flow.Flow
 
 private val DetailFill = Color(0xFFF5F7FA)
 private val DetailEdge = Color(0xFFE7EBF0)
+private val ArrivalActionGreen = Color(0xFF198754)
+private val CancellationActionRed = Color(0xFFDC3545)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,6 +95,7 @@ internal fun FlightDetailsSheet(
     onClose: () -> Unit,
     onRetry: () -> Unit,
     onInvite: () -> Unit,
+    onArrived: () -> Unit,
     loadCustomerLogo: (String) -> Flow<ByteArray?>,
 ) {
     val detailsTitle = stringResource(R.string.flights_details)
@@ -163,11 +167,7 @@ internal fun FlightDetailsSheet(
                                 )
                                 DetailDivider()
                             }
-                            Button(onClick = {}, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = 48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary, contentColor = MaterialTheme.colorScheme.onTertiary)) {
-                                Text(stringResource(R.string.flights_manage), fontWeight = FontWeight.SemiBold)
-                            }
+                            FlightRecordingActions(onArrived = onArrived)
                             if (state.canInviteEmployees && !flight.isPerLanding) {
                                 TextButton(onClick = onInvite, enabled = state.isOnline && !flight.fromCache && !state.isInviting,
                                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary)) {
@@ -178,6 +178,35 @@ internal fun FlightDetailsSheet(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Arrival opens the local form; cancellation remains a visual placeholder. */
+@Composable
+private fun FlightRecordingActions(loading: Boolean = false, onArrived: () -> Unit = {}) {
+    // Keep cancellation on the physical left and arrival on the right in both directions.
+    val firstIsArrival = LocalLayoutDirection.current == LayoutDirection.Rtl
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        FlightRecordingAction(arrival = firstIsArrival, loading = loading, modifier = Modifier.weight(1f), onArrived = onArrived)
+        FlightRecordingAction(arrival = !firstIsArrival, loading = loading, modifier = Modifier.weight(1f), onArrived = onArrived)
+    }
+}
+
+@Composable
+private fun FlightRecordingAction(arrival: Boolean, loading: Boolean, modifier: Modifier, onArrived: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    if (loading) {
+        Box(modifier.height(48.dp).background(DetailFill, shape))
+    } else {
+        Button(onClick = { if (arrival) onArrived() }, modifier = modifier.heightIn(min = 48.dp), shape = shape,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (arrival) ArrivalActionGreen else CancellationActionRed,
+                contentColor = Color.White,
+            )) {
+            Text(stringResource(if (arrival) R.string.flights_arrived else R.string.flights_canceled),
+                fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -227,7 +256,7 @@ private fun FlightSchedule(flight: FlightDetail) {
 private fun FlightScheduleStation(flight: FlightDetail, labelStyle: TextStyle, valueStyle: TextStyle, modifier: Modifier = Modifier) {
     val stationName = flight.stationName.ifBlank { flight.stationIata }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.flights_scheduled_arrival), style = labelStyle,
+        Text(stringResource(R.string.flights_schedule), style = labelStyle,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(stationName, style = valueStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
         if (flight.stationIata.isNotBlank() && !flight.stationIata.equals(stationName, ignoreCase = true)) {
@@ -376,7 +405,7 @@ private fun FlightDetailsSkeleton(showPeople: Boolean) {
             }
         }
         DetailDivider()
-        Box(Modifier.fillMaxWidth().padding(top = 16.dp).height(48.dp).background(DetailFill, RoundedCornerShape(14.dp)))
+        FlightRecordingActions(loading = true)
     }
 }
 

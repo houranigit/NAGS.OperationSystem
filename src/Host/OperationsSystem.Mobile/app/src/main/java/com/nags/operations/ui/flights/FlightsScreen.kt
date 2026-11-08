@@ -40,6 +40,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,6 +74,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.R
 import com.nags.operations.data.FlightCategory
+import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
@@ -184,10 +189,28 @@ fun FlightsScreen(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
         }
     }
-    if (state.selectedFlightId != null) {
+    if (state.selectedFlightId != null) key(state.selectedFlightId) {
+        var arrivalOpen by rememberSaveable { mutableStateOf(false) }
+        var arrivalFlight by remember { mutableStateOf<FlightDetail?>(null) }
+        val arrivalFormState = rememberSaveableStateHolder()
         FlightDetailsSheet(state = state, onClose = ::closeFlight,
             onRetry = { state.selectedFlightId?.let(viewModel::openFlight) },
-            onInvite = viewModel::openInvitations, loadCustomerLogo = viewModel::customerLogo)
+            onInvite = viewModel::openInvitations, onArrived = { arrivalFlight = state.detail; arrivalOpen = true },
+            loadCustomerLogo = viewModel::customerLogo)
+        // An ordinary silent detail refresh must not replace an open form or discard its edits.
+        val flight = arrivalFlight ?: state.detail
+        if (arrivalOpen && flight != null) {
+            val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
+            val stationStaff by viewModel.arrivalStationStaff.collectAsStateWithLifecycle(initialValue = emptyList())
+            arrivalFormState.SaveableStateProvider("arrival") {
+                FlightArrivalForm(flight, aircraftTypes, stationStaff, viewModel::customerLogo,
+                    onClose = {
+                        arrivalOpen = false
+                        arrivalFlight = null
+                        arrivalFormState.removeState("arrival")
+                    })
+            }
+        }
     }
     if (state.isInvitationOpen) InviteEmployeesDialog(state, viewModel)
 

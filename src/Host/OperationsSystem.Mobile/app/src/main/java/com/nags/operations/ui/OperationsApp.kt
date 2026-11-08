@@ -24,6 +24,7 @@ import com.nags.operations.ui.notifications.NotificationsScreen
 import com.nags.operations.ui.notifications.NotificationsViewModel
 import com.nags.operations.ui.sync.SyncCenterScreen
 import com.nags.operations.ui.sync.SyncCenterViewModel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -34,6 +35,9 @@ private object Routes {
     const val SyncCenter = "sync"
 }
 
+/** A null UI session means DataStore has not emitted yet, rather than a signed-out account. */
+private class UiSession(val accessToken: String?, val subject: String?)
+
 @Composable
 fun OperationsApp() {
     val context = LocalContext.current
@@ -41,9 +45,15 @@ fun OperationsApp() {
     val factory = remember(graph) { AppViewModelFactory(graph) }
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
-    val accessToken by graph.tokenStore.accessTokenFlow.collectAsStateWithLifecycle(initialValue = null)
+    val sessionFlow = remember(graph) {
+        combine(graph.tokenStore.accessTokenFlow, graph.tokenStore.sessionSubjectFlow) { token, subject -> UiSession(token, subject) }
+    }
+    val session by sessionFlow.collectAsStateWithLifecycle(initialValue = null)
     val pendingNotification by graph.notificationNavigation.pending.collectAsStateWithLifecycle(initialValue = null)
-    val subject by graph.tokenStore.sessionSubjectFlow.collectAsStateWithLifecycle(initialValue = null)
+    // Preserve the restored back stack and account-owned ViewModels while the initial read is pending.
+    val loadedSession = session ?: return
+    val accessToken = loadedSession.accessToken
+    val subject = loadedSession.subject
 
     fun navigateToLogin() {
         if (navController.currentDestination?.route == Routes.Login) return
@@ -94,7 +104,7 @@ fun OperationsApp() {
             })
         }
         composable(Routes.Flights) {
-            MainShellScreen(graph = graph, factory = factory,
+            MainShellScreen(graph = graph, factory = factory, subject = subject,
                 onOpenNotifications = { navController.navigate(Routes.Notifications) },
                 onOpenAccount = { navController.navigate(Routes.Account) },
                 notificationOpenRequest = pendingNotification,

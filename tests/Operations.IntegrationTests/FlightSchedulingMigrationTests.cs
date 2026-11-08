@@ -95,7 +95,7 @@ public sealed class FlightSchedulingMigrationTests : IAsyncLifetime
         db.OutboxMessages.Add(pendingInvitation);
         await db.SaveChangesAsync();
 
-        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync("20261103214037_Operations_FlightSchedulingBaseline");
         var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         appliedMigrations.Length.ShouldBe(previousMigrations.Length + 1);
         appliedMigrations.Take(previousMigrations.Length).ShouldBe(previousMigrations);

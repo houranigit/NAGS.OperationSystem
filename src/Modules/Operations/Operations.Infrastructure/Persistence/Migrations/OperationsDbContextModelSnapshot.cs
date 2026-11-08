@@ -100,6 +100,46 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("flights", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightArrivalSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsAccepted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("SubmittedByStaffMemberId")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("SubmittedByStaffMemberId");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightId")
+                        .IsUnique()
+                        .HasFilter("[IsAccepted] = 1");
+
+                    b.HasIndex("FlightId", "SubmittedByStaffMemberId")
+                        .IsUnique();
+
+                    b.ToTable("flight_arrival_submissions", "operations");
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.FlightAssignedEmployee", b =>
                 {
                     b.Property<Guid>("Id")
@@ -299,6 +339,145 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightArrivalSubmission", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.Flight", null)
+                        .WithMany("ArrivalSubmissions")
+                        .HasForeignKey("FlightId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "SubmittedByEmployee", b1 =>
+                        {
+                            b1.Property<Guid>("FlightArrivalSubmissionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("EmployeeId")
+                                .IsRequired()
+                                .HasMaxLength(50)
+                                .HasColumnType("nvarchar(50)")
+                                .HasColumnName("SubmittedByStaffEmployeeId");
+
+                            b1.Property<string>("FullName")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("SubmittedByStaffFullName");
+
+                            b1.Property<Guid>("StaffMemberId")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("SubmittedByStaffMemberId");
+
+                            b1.HasKey("FlightArrivalSubmissionId");
+
+                            b1.ToTable("flight_arrival_submissions", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightArrivalSubmissionId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.ArrivalDetails", "Details", b1 =>
+                        {
+                            b1.Property<Guid>("FlightArrivalSubmissionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("AircraftTailNumber")
+                                .IsRequired()
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("AircraftTailNumber");
+
+                            b1.Property<DateTimeOffset>("Ata")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ActualArrivalUtc");
+
+                            b1.Property<string>("CustomerWorkReferenceNumber")
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("CustomerWorkReferenceNumber");
+
+                            b1.Property<string>("Remarks")
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("Remarks");
+
+                            b1.HasKey("FlightArrivalSubmissionId");
+
+                            b1.ToTable("flight_arrival_submissions", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightArrivalSubmissionId");
+
+                            b1.OwnsOne("Operations.Domain.ValueObjects.AircraftTypeSnapshot", "AircraftType", b2 =>
+                                {
+                                    b2.Property<Guid>("ArrivalDetailsFlightArrivalSubmissionId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<Guid>("AircraftTypeId")
+                                        .HasColumnType("uniqueidentifier")
+                                        .HasColumnName("AircraftTypeId");
+
+                                    b2.Property<string>("Manufacturer")
+                                        .IsRequired()
+                                        .HasMaxLength(100)
+                                        .HasColumnType("nvarchar(100)")
+                                        .HasColumnName("AircraftManufacturer");
+
+                                    b2.Property<string>("Model")
+                                        .IsRequired()
+                                        .HasMaxLength(50)
+                                        .HasColumnType("nvarchar(50)")
+                                        .HasColumnName("AircraftModel");
+
+                                    b2.HasKey("ArrivalDetailsFlightArrivalSubmissionId");
+
+                                    b2.ToTable("flight_arrival_submissions", "operations");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("ArrivalDetailsFlightArrivalSubmissionId");
+                                });
+
+                            b1.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "ReceivedByEmployee", b2 =>
+                                {
+                                    b2.Property<Guid>("ArrivalDetailsFlightArrivalSubmissionId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<string>("EmployeeId")
+                                        .IsRequired()
+                                        .HasMaxLength(50)
+                                        .HasColumnType("nvarchar(50)")
+                                        .HasColumnName("ReceivedByStaffEmployeeId");
+
+                                    b2.Property<string>("FullName")
+                                        .IsRequired()
+                                        .HasMaxLength(200)
+                                        .HasColumnType("nvarchar(200)")
+                                        .HasColumnName("ReceivedByStaffFullName");
+
+                                    b2.Property<Guid>("StaffMemberId")
+                                        .HasColumnType("uniqueidentifier")
+                                        .HasColumnName("ReceivedByStaffMemberId");
+
+                                    b2.HasKey("ArrivalDetailsFlightArrivalSubmissionId");
+
+                                    b2.ToTable("flight_arrival_submissions", "operations");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("ArrivalDetailsFlightArrivalSubmissionId");
+                                });
+
+                            b1.Navigation("AircraftType")
+                                .IsRequired();
+
+                            b1.Navigation("ReceivedByEmployee")
+                                .IsRequired();
+                        });
+
+                    b.Navigation("Details")
+                        .IsRequired();
+
+                    b.Navigation("SubmittedByEmployee")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.FlightAssignedEmployee", b =>
                 {
                     b.HasOne("Operations.Domain.Flights.Flight", null)
@@ -377,6 +556,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Operations.Domain.Flights.Flight", b =>
                 {
+                    b.Navigation("ArrivalSubmissions");
+
                     b.Navigation("AssignedEmployees");
 
                     b.Navigation("PlannedServices");

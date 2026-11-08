@@ -3,6 +3,7 @@ package com.nags.operations.ui.flights
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.ApiException
+import com.nags.operations.data.AircraftTypeCatalogItem
 import com.nags.operations.data.AuthenticatedUser
 import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
@@ -13,9 +14,11 @@ import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.FlightSyncStatus
+import com.nags.operations.data.StaffCatalogItem
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.FlightsRepository
+import com.nags.operations.data.repo.SharedCatalogsRepository
 import com.nags.operations.data.userMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -141,8 +144,11 @@ class FlightsViewModel internal constructor(
     private val now: () -> Instant = Instant::now,
     private val waitForExpiryCheck: suspend (Long) -> Unit = { delay(it) },
     private val waitForSearchDebounce: suspend () -> Unit = { delay(300) },
+    val arrivalAircraftTypes: Flow<List<AircraftTypeCatalogItem>> = flowOf(emptyList()),
+    val arrivalStationStaff: Flow<List<StaffCatalogItem>> = flowOf(emptyList()),
 ) : ViewModel() {
-    constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor) : this(
+    constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
+        sharedCatalogsRepository: SharedCatalogsRepository) : this(
         fetchProfile = authRepository::profile,
         fetchFlights = repository::flights,
         fetchFlight = repository::flight,
@@ -154,6 +160,8 @@ class FlightsViewModel internal constructor(
         clearCachedFlights = repository::clearLocal,
         observeCustomerLogo = repository::customerLogo,
         pruneCachedFlights = repository::pruneExpired,
+        arrivalAircraftTypes = sharedCatalogsRepository.aircraftTypesFlow(),
+        arrivalStationStaff = sharedCatalogsRepository.stationStaffFlow(),
     )
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope

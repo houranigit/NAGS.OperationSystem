@@ -1,12 +1,20 @@
 # Operations Module Foundation
 
-This is the entry point for the current Operations module. This branch starts from `main` and reduces Operations to a flight scheduling baseline: maintain a flight register, create one flight, schedule the same flight on selected dates, and invite employees onto an existing flight. The Android client supports flight viewing, basic details, and employee invitations; scheduling remains in the web portal. HandOver implementation is excluded. Operational workflows will be designed and implemented individually later.
+This is the entry point for the current Operations module. This branch starts from `main` with a flight scheduling baseline: maintain a flight register, create one flight, schedule the same flight on selected dates, and invite employees onto an existing flight. Arrival submissions extend the domain and persistence model only. The Android client supports flight viewing, basic details, and employee invitations; scheduling remains in the web portal. HandOver implementation is excluded. Operational APIs and application workflows will be designed and implemented individually later.
 
 ## Flight data and ownership
 
 `Flight` owns customer, station, operation type, flight number, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees. MasterData remains authoritative for reference records; Operations validates selections through its existing readers and stores snapshots. Planned services and assigned employees are direct flight collections.
 
-Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Flight status, original-number history, contract placeholders, merge metadata, actual work, work orders, handover, review, approval, timeline, attachments, reminders, and automatic work creation are outside this baseline. Platform audit capture remains enabled independently of a flight history feature.
+Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Beyond the arrival model described below, flight status, original-number history, contract placeholders, merge metadata, actual work, work orders, handover, review, approval, timeline, attachments, reminders, and automatic work creation remain outside this scope. Platform audit capture remains enabled independently of a flight history feature.
+
+## Arrival submissions
+
+`Flight.ArrivalSubmissions` owns `FlightArrivalSubmission` entities, each containing an `ArrivalDetails` value object. ATA, actual aircraft type, aircraft tail number, and the receiving employee are required. Customer work reference number and remarks are optional; whitespace-only optional values become null. ATA is stored in UTC and is not constrained by the scheduled arrival or departure. Actual aircraft details do not replace the flight's planned aircraft type.
+
+Each submitting `StaffMemberId` has at most one arrival submission per flight. Updating that employee's submission preserves its identity; the receiving employee can differ from the submitter. A sole submission is accepted automatically. Adding a second employee's submission clears acceptance, and submissions remain unaccepted while multiple records exist. Selecting an accepted record belongs to a later approval workflow.
+
+This slice adds domain behavior and persistence only. It adds no arrival API, portal or mobile input, offline write queue, or approval selection workflow. Existing flight reads continue to expose their current planning details.
 
 ## Scheduling and validation
 
@@ -59,6 +67,8 @@ Shared MasterData catalog synchronization remains a separate mobile capability. 
 The former `operations.db` file and dormant drafts/queued work remain unopened. Shared catalogs and separate basic-flight snapshot/detail tables use `shared-catalogs.db` Room version 3, keyed by API environment and authenticated account and cleared on sign-out/account changes. The additive version 2 → 3 migration preserves all catalog rows. Failed connections retain good snapshots; authorization denials evict denied flights. Offline reads reflect the last successful access check until the device reconnects. Notifications use the separate `operations-baseline.db` Room database. Startup cancels the retired WorkManager outbox chain/tag, and its retained worker entry point is inert. A notification flight link resolves the current basic flight details through the scoped API. See the [Android README](../../src/Host/OperationsSystem.Mobile/README.md) for development configuration.
 
 ## Database change
+
+Arrival submissions use an additive Operations migration that preserves existing flight planning data and does not change another module's schema. Generating this migration does not apply it to configured databases.
 
 Keep the historical `main` EF migrations unchanged. `Operations_FlightSchedulingBaseline` preserves the existing flights, direct `flight_planned_services`, and `flight_assigned_employees` rows in place, and removes retired work-order, mobile, reminder, history, status, contract, and merge storage plus pending event envelopes for retired Operations contracts. The retained `FlightEmployeeAssigned` invitation contract and platform audit envelopes are preserved. The migration does not require a HandOver operational graph. It does not alter another module's schema or delete stored file blobs.
 

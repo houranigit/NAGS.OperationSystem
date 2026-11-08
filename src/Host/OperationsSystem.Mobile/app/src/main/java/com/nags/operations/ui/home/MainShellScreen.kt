@@ -37,6 +37,7 @@ import com.nags.operations.ui.flights.FlightsViewModel
 fun MainShellScreen(
     graph: AppGraph,
     factory: AppViewModelFactory,
+    subject: String?,
     onOpenNotifications: () -> Unit,
     onOpenAccount: () -> Unit,
     notificationOpenRequest: NotificationOpenRequest? = null,
@@ -45,7 +46,6 @@ fun MainShellScreen(
     val displayName by graph.tokenStore.displayNameFlow.collectAsStateWithLifecycle(initialValue = null)
     val unreadNotifications by graph.notificationsRepository.observeUnreadCount()
         .collectAsStateWithLifecycle(initialValue = 0)
-    val subject by graph.tokenStore.sessionSubjectFlow.collectAsStateWithLifecycle(initialValue = null)
     val flights: FlightsViewModel = viewModel(key = "flights:$subject", factory = factory)
     val flightState by flights.state.collectAsStateWithLifecycle()
     var selectedPage by rememberSaveable { mutableIntStateOf(0) }
