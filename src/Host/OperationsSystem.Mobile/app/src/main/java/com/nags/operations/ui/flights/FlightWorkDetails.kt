@@ -1,12 +1,6 @@
 package com.nags.operations.ui.flights
 
-import android.content.ContentResolver
-import android.net.Uri
-import android.provider.OpenableColumns
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -15,18 +9,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,9 +23,6 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.StaffCatalogItem
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Nested form-only choices; repeated employee work periods remain separate entries. */
 @Composable
@@ -179,57 +165,8 @@ internal fun FlightWorkResourceList(
     )
 }
 
-/** Temporary document references only: no copies, uploads, or persistable access grants. */
-@Composable
-internal fun FlightWorkAttachments(items: List<FlightAttachmentDraft>, onChange: (List<FlightAttachmentDraft>) -> Unit) {
-    val resolver = LocalContext.current.contentResolver
-    val scope = rememberCoroutineScope()
-    val latestItems by rememberUpdatedState(items)
-    val latestOnChange by rememberUpdatedState(onChange)
-    val fallbackName = stringResource(R.string.work_attachment_name)
-    var pickerFailed by remember { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) scope.launch {
-            val added = withContext(Dispatchers.IO) {
-                uris.map { uri -> FlightAttachmentDraft(uri = uri.toString(), name = attachmentDisplayName(resolver, uri, fallbackName)) }
-            }
-            latestOnChange(latestItems + added)
-        }
-    }
-
-    FlightWorkDetailsHeading(stringResource(R.string.work_attachments))
-    items.forEach { item ->
-        key(item.id) {
-            FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, item.name),
-                onRemove = { onChange(items.filterNot { it.id == item.id }) }) {
-                Text(item.name, Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            FlightFormDivider()
-        }
-    }
-    FlightWorkAddRow(stringResource(R.string.work_add_attachment), onClick = {
-        pickerFailed = false
-        try {
-            launcher.launch(arrayOf("*/*"))
-        } catch (_: Exception) {
-            pickerFailed = true
-        }
-    })
-    if (pickerFailed) Text(stringResource(R.string.work_attachment_unavailable),
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-}
-
 @Composable
 private fun FlightWorkDetailsHeading(title: String) {
     Text(title, Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 4.dp).semantics { heading() },
         style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
 }
-
-private fun attachmentDisplayName(resolver: ContentResolver, uri: Uri, fallback: String): String = runCatching {
-    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        if (cursor.moveToFirst()) cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(cursor::getString) else null
-    }
-}.getOrNull()?.takeIf(String::isNotBlank) ?: fallback

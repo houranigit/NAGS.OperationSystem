@@ -208,6 +208,7 @@ androidComponents {
 }
 
 dependencies {
+    implementation(libs.androidx.exifinterface)
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
 

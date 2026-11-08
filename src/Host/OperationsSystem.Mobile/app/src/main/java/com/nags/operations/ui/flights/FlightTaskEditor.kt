@@ -35,7 +35,7 @@ internal fun FlightTaskSection(
     items: List<FlightTaskDraft>,
     catalogs: FlightOperationsCatalogs,
     referenceYear: Int,
-    onChange: (List<FlightTaskDraft>) -> Unit,
+    onChange: ((List<FlightTaskDraft>) -> List<FlightTaskDraft>) -> Unit,
 ) {
     var pickerTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var pickerKind by rememberSaveable { mutableStateOf<String?>(null) }
@@ -43,7 +43,7 @@ internal fun FlightTaskSection(
     val major = stringResource(R.string.work_major)
     val minor = stringResource(R.string.work_minor)
     fun updateTask(id: String, change: (FlightTaskDraft) -> FlightTaskDraft) {
-        onChange(items.map { if (it.id == id) change(it) else it })
+        onChange { current -> current.map { if (it.id == id) change(it) else it } }
     }
     fun openPicker(id: String, kind: String) {
         pickerTaskId = id
@@ -64,7 +64,7 @@ internal fun FlightTaskSection(
                     FlightWorkRemovableEntry(
                         id = task.id,
                         removeDescription = stringResource(R.string.work_remove_item, "$taskLabel ${index + 1}"),
-                        onRemove = { onChange(items.filterNot { it.id == task.id }) },
+                        onRemove = { onChange { current -> current.filterNot { it.id == task.id } } },
                     ) {
                         FlightWorkChoiceRow(
                             label = stringResource(R.string.work_task_type),
@@ -99,13 +99,9 @@ internal fun FlightTaskSection(
                         }
                         FlightFormDivider()
                         FlightWorkPeriodFields(task.period, referenceYear) { period -> updateTask(task.id) { it.copy(period = period) } }
-                        FlightWorkNotes(
-                            reference = task.reference,
-                            onReferenceChange = { value -> updateTask(task.id) { it.copy(reference = value) } },
-                            remarks = task.remarks,
-                            onRemarksChange = { value -> updateTask(task.id) { it.copy(remarks = value) } },
-                            description = stringResource(R.string.work_task_remarks),
-                        )
+                        FlightFormDivider()
+                        FlightWorkReferenceRow(task.reference,
+                            onChange = { value -> updateTask(task.id) { it.copy(reference = value) } })
                     }
                     FlightFormDivider()
                     FlightWorkEmployeeList(task.employees, catalogs.stationStaff, showRemarks = true, referenceYear = referenceYear,
@@ -120,11 +116,18 @@ internal fun FlightTaskSection(
                     FlightWorkResourceList(FlightWorkResourceKind.GeneralSupport, task.generalSupports, catalogs.generalSupports, referenceYear,
                         onChange = { supports -> updateTask(task.id) { it.copy(generalSupports = supports) } })
                     FlightFormDivider()
-                    FlightWorkAttachments(task.attachments) { attachments -> updateTask(task.id) { it.copy(attachments = attachments) } }
+                    FlightRemarksComposer(task.remarks,
+                        onRemarksChange = { value -> updateTask(task.id) { it.copy(remarks = value) } },
+                        attachments = task.attachments,
+                        onAttachmentsChange = { attachments -> updateTask(task.id) { it.copy(attachments = attachments) } },
+                        description = stringResource(R.string.work_task_remarks))
                     FlightFormDivider()
                 }
             }
-            FlightWorkAddRow(stringResource(R.string.work_add_task)) { onChange(items + FlightTaskDraft()) }
+            FlightWorkAddRow(stringResource(R.string.work_add_task)) {
+                val added = FlightTaskDraft()
+                onChange { current -> current + added }
+            }
         }
     }
 

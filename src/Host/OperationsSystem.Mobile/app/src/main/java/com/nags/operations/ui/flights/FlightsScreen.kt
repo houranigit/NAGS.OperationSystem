@@ -83,6 +83,7 @@ import com.nags.operations.ui.invite.InviteEmployeesDialog
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -191,13 +192,18 @@ fun FlightsScreen(
     }
     if (state.selectedFlightId != null) key(state.selectedFlightId) {
         var recordingForm by rememberSaveable { mutableStateOf<String?>(null) }
-        var recordingFlight by remember { mutableStateOf<FlightDetail?>(null) }
+        // The open form owns a stable snapshot, including across activity recreation.
+        // A silent detail refresh can temporarily clear state.detail.
+        var recordingFlightSnapshot by rememberSaveable { mutableStateOf<String?>(null) }
+        val recordingFlight = remember(recordingFlightSnapshot) {
+            recordingFlightSnapshot?.let { Json.decodeFromString<FlightDetail>(it) }
+        }
         val recordingFormState = rememberSaveableStateHolder()
         FlightDetailsSheet(state = state, onClose = ::closeFlight,
             onRetry = { state.selectedFlightId?.let(viewModel::openFlight) },
             onInvite = viewModel::openInvitations,
-            onOperations = { recordingFlight = state.detail; recordingForm = "operations" },
-            onCanceled = { recordingFlight = state.detail; recordingForm = "cancellation" },
+            onOperations = { recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }; recordingForm = "operations" },
+            onCanceled = { recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }; recordingForm = "cancellation" },
             loadCustomerLogo = viewModel::customerLogo)
         // An ordinary silent detail refresh must not replace an open form or discard its edits.
         val flight = recordingFlight ?: state.detail
@@ -206,7 +212,7 @@ fun FlightsScreen(
             recordingFormState.SaveableStateProvider(activeForm) {
                 val closeForm = {
                     recordingForm = null
-                    recordingFlight = null
+                    recordingFlightSnapshot = null
                     recordingFormState.removeState(activeForm)
                 }
                 if (activeForm == "operations") {

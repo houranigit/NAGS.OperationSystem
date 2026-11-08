@@ -76,10 +76,13 @@ internal data class FlightResourceDraft(
     val remarks: String = "",
 )
 
-/** A temporary system-picker reference; no file copying, uploads, or durable URI grants. */
+/** A temporary document reference or private-cache capture; never an upload or durable draft. */
 @Serializable
 internal data class FlightAttachmentDraft(
     val id: String = UUID.randomUUID().toString(),
     val uri: String,
     val name: String,
+    val mimeType: String = "",
+    val durationMillis: Long = 0,
+    val ownedCapture: Boolean = false,
 )

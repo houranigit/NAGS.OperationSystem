@@ -29,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -87,13 +88,21 @@ internal fun FlightOperationsForm(
     var departureRemarks by rememberSaveable { mutableStateOf("") }
     var signature by rememberSaveable { mutableStateOf("") }
     var workDrafts by rememberSaveable(stateSaver = FlightWorkDraftsSaver) { mutableStateOf(FlightWorkDrafts()) }
+    val mediaSession = rememberFlightMediaSession()
+    fun updateWorkDrafts(next: FlightWorkDrafts) {
+        val retained = (next.services.flatMap { it.attachments } + next.tasks.flatMap { it.attachments }).map { it.uri }.toSet()
+        (workDrafts.services.flatMap { it.attachments } + workDrafts.tasks.flatMap { it.attachments })
+            .filter { it.ownedCapture && it.uri !in retained }.forEach { mediaSession.delete(it.uri) }
+        workDrafts = next
+    }
+    val closeForm = { mediaSession.clear(); onClose() }
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     val hasChanges = aircraftId != initialAircraftId || ata != initialAta || atd != initialAtd ||
         listOf(tailNumber, reference, arrivalRemarks, departureRemarks, signature).any { it.isNotEmpty() } ||
         workDrafts.services.isNotEmpty() || workDrafts.tasks.isNotEmpty()
     val requestClose = {
-        if (picker != null) picker = null else if (hasChanges) confirmDiscard = true else onClose()
+        if (picker != null) picker = null else if (hasChanges) confirmDiscard = true else closeForm()
     }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -135,8 +144,12 @@ internal fun FlightOperationsForm(
             FlightFormTextRow(stringResource(R.string.arrival_reference), reference, { reference = it }, stringResource(R.string.arrival_optional))
         }
         FlightFormRemarks(arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks))
-        FlightServiceSection(workDrafts.services, catalogs, referenceYear, onChange = { workDrafts = workDrafts.copy(services = it) })
-        FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, onChange = { workDrafts = workDrafts.copy(tasks = it) })
+        CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
+            FlightServiceSection(workDrafts.services, catalogs, referenceYear,
+                onChange = { change -> updateWorkDrafts(workDrafts.copy(services = change(workDrafts.services))) })
+            FlightTaskSection(workDrafts.tasks, catalogs, referenceYear,
+                onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = change(workDrafts.tasks))) })
+        }
         OperationsSectionTitle(stringResource(R.string.operations_departure), Modifier.padding(top = 6.dp))
         FlightFormFieldGroup {
             FlightFormDateTimeField(atd, stringResource(R.string.operations_atd_short), stringResource(R.string.operations_choose_atd),
@@ -155,7 +168,7 @@ internal fun FlightOperationsForm(
         options = aircraftChoices, selectedId = aircraftId, onDismiss = { picker = null }, onSelect = { aircraftId = it })
     if (picker == "signature") FlightSignatureSheet(signature, { signature = it }, onDismiss = { picker = null })
     if (confirmDiscard) FlightFormDiscardDialog(stringResource(R.string.operations_discard_title),
-        onDismiss = { confirmDiscard = false }, onDiscard = onClose)
+        onDismiss = { confirmDiscard = false }, onDiscard = closeForm)
 }
 
 @Composable

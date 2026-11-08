@@ -27,7 +27,7 @@ internal fun FlightServiceSection(
     items: List<FlightServiceDraft>,
     catalogs: FlightOperationsCatalogs,
     referenceYear: Int,
-    onChange: (List<FlightServiceDraft>) -> Unit,
+    onChange: ((List<FlightServiceDraft>) -> List<FlightServiceDraft>) -> Unit,
 ) {
     var selectingService by rememberSaveable { mutableStateOf<String?>(null) }
     val title = stringResource(R.string.work_services)
@@ -38,28 +38,33 @@ internal fun FlightServiceSection(
         FlightFormFieldGroup {
             items.forEach { item -> key(item.id) {
                 val description = item.serviceName.ifBlank { title }
-                fun update(updated: FlightServiceDraft) = onChange(items.map { if (it.id == item.id) updated else it })
+                fun update(change: (FlightServiceDraft) -> FlightServiceDraft) =
+                    onChange { current -> current.map { if (it.id == item.id) change(it) else it } }
                 FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, description),
-                    onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
+                    onRemove = { onChange { current -> current.filterNot { it.id == item.id } } }, compactDelete = true) {
                     FlightWorkChoiceRow(stringResource(R.string.work_service),
                         item.serviceName.ifBlank { stringResource(R.string.work_select_service) },
                         stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp,
                         onClick = { selectingService = item.id })
                 }
                 FlightFormDivider()
-                FlightWorkReferenceRow(item.reference, onChange = { update(item.copy(reference = it)) })
+                FlightWorkReferenceRow(item.reference, onChange = { reference -> update { it.copy(reference = reference) } })
                 FlightFormDivider()
-                FlightWorkPeriodFields(item.period, referenceYear, onChange = { update(item.copy(period = it)) })
+                FlightWorkPeriodFields(item.period, referenceYear, onChange = { period -> update { it.copy(period = period) } })
                 FlightFormDivider()
                 FlightWorkEmployeeList(item.employees, catalogs.stationStaff, showRemarks = false, referenceYear = referenceYear,
-                    onChange = { update(item.copy(employees = it)) })
-                FlightWorkNotes("", {}, item.remarks, { update(item.copy(remarks = it)) },
-                    stringResource(R.string.work_service_remarks), showReference = false)
+                    onChange = { employees -> update { it.copy(employees = employees) } })
                 FlightFormDivider()
-                FlightWorkAttachments(item.attachments, onChange = { update(item.copy(attachments = it)) })
+                FlightRemarksComposer(item.remarks, onRemarksChange = { remarks -> update { it.copy(remarks = remarks) } },
+                    attachments = item.attachments,
+                    onAttachmentsChange = { attachments -> update { it.copy(attachments = attachments) } },
+                    description = stringResource(R.string.work_service_remarks))
                 FlightFormDivider()
             } }
-            FlightWorkAddRow(stringResource(R.string.work_add_service), onClick = { onChange(items + FlightServiceDraft()) })
+            FlightWorkAddRow(stringResource(R.string.work_add_service), onClick = {
+                val added = FlightServiceDraft()
+                onChange { current -> current + added }
+            })
         }
     }
     val editing = items.firstOrNull { it.id == selectingService }
@@ -69,7 +74,7 @@ internal fun FlightServiceSection(
             options = catalogs.services.map { FlightWorkChoice(it.id, it.name) }, selectedId = editing.serviceId,
             onSelect = { id ->
                 catalogs.services.firstOrNull { it.id == id }?.let { choice ->
-                    onChange(items.map { if (it.id == editing.id) it.copy(serviceId = choice.id, serviceName = choice.name) else it })
+                    onChange { current -> current.map { if (it.id == editing.id) it.copy(serviceId = choice.id, serviceName = choice.name) else it } }
                 }
             }, onDismiss = { selectingService = null })
     }

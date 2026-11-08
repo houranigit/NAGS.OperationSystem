@@ -37,10 +37,13 @@ class FlightWorkDraftsTest {
     fun repeatedCatalogItemsKeepIndependentNestedDataThroughRestoration() {
         val first = FlightServiceDraft(serviceId = "same-service", reference = "first",
             employees = listOf(FlightEmployeeDraft(employeeId = "same-employee")),
-            attachments = listOf(FlightAttachmentDraft(uri = "content://test/one", name = "one.txt")))
+            attachments = listOf(FlightAttachmentDraft(uri = "content://test/one", name = "photo.jpg",
+                mimeType = "image/jpeg", ownedCapture = true)))
         val second = FlightServiceDraft(serviceId = "same-service", reference = "second",
             employees = listOf(FlightEmployeeDraft(employeeId = "same-employee")))
         val task = FlightTaskDraft(taskType = "Minor", remarks = "task",
+            attachments = listOf(FlightAttachmentDraft(uri = "content://test/voice", name = "voice.m4a",
+                mimeType = "audio/mp4", durationMillis = 3240, ownedCapture = true)),
             materials = listOf(FlightResourceDraft(resourceId = "material", remarks = "material")),
             generalSupports = listOf(FlightResourceDraft(resourceId = "support", period = FlightWorkPeriod("2026-11-08T10:00", "2026-11-08T11:00"))))
         val original = FlightWorkDrafts(listOf(first, second), listOf(task))
