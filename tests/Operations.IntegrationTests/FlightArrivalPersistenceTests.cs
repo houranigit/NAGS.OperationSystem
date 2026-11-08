@@ -30,7 +30,7 @@ public sealed class FlightArrivalPersistenceTests(FlightArrivalPersistenceTests.
         var assignmentId = flight.AssignedEmployees.Single().Id;
         db.ChangeTracker.Clear();
 
-        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync("20261107224214_Operations_FlightArrivalSubmissions");
 
         var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         appliedMigrations.Length.ShouldBe(existingMigrations.Length + 1);

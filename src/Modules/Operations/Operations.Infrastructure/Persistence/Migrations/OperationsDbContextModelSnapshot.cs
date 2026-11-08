@@ -155,6 +155,46 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("flight_assigned_employees", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightDepartureSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsAccepted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("SubmittedByStaffMemberId")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("SubmittedByStaffMemberId");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightId")
+                        .IsUnique()
+                        .HasFilter("[IsAccepted] = 1");
+
+                    b.HasIndex("FlightId", "SubmittedByStaffMemberId")
+                        .IsUnique();
+
+                    b.ToTable("flight_departure_submissions", "operations");
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.PlannedService", b =>
                 {
                     b.Property<Guid>("Id")
@@ -519,6 +559,134 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightDepartureSubmission", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.Flight", null)
+                        .WithMany("DepartureSubmissions")
+                        .HasForeignKey("FlightId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "SubmittedByEmployee", b1 =>
+                        {
+                            b1.Property<Guid>("FlightDepartureSubmissionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("EmployeeId")
+                                .IsRequired()
+                                .HasMaxLength(50)
+                                .HasColumnType("nvarchar(50)")
+                                .HasColumnName("SubmittedByStaffEmployeeId");
+
+                            b1.Property<string>("FullName")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("SubmittedByStaffFullName");
+
+                            b1.Property<Guid>("StaffMemberId")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("SubmittedByStaffMemberId");
+
+                            b1.HasKey("FlightDepartureSubmissionId");
+
+                            b1.ToTable("flight_departure_submissions", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightDepartureSubmissionId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.DepartureDetails", "Details", b1 =>
+                        {
+                            b1.Property<Guid>("FlightDepartureSubmissionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("Atd")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ActualDepartureUtc");
+
+                            b1.Property<string>("Remarks")
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("Remarks");
+
+                            b1.HasKey("FlightDepartureSubmissionId");
+
+                            b1.ToTable("flight_departure_submissions", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightDepartureSubmissionId");
+
+                            b1.OwnsOne("Operations.Domain.ValueObjects.CustomerSignature", "CustomerSignature", b2 =>
+                                {
+                                    b2.Property<Guid>("DepartureDetailsFlightDepartureSubmissionId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<string>("ContentType")
+                                        .IsRequired()
+                                        .HasColumnType("nvarchar(max)")
+                                        .HasColumnName("CustomerSignatureContentType");
+
+                                    b2.Property<long>("SizeBytes")
+                                        .HasColumnType("bigint")
+                                        .HasColumnName("CustomerSignatureSizeBytes");
+
+                                    b2.Property<string>("StorageKey")
+                                        .IsRequired()
+                                        .HasColumnType("nvarchar(max)")
+                                        .HasColumnName("CustomerSignatureStorageKey");
+
+                                    b2.HasKey("DepartureDetailsFlightDepartureSubmissionId");
+
+                                    b2.ToTable("flight_departure_submissions", "operations");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("DepartureDetailsFlightDepartureSubmissionId");
+                                });
+
+                            b1.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "HandledByEmployee", b2 =>
+                                {
+                                    b2.Property<Guid>("DepartureDetailsFlightDepartureSubmissionId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<string>("EmployeeId")
+                                        .IsRequired()
+                                        .HasMaxLength(50)
+                                        .HasColumnType("nvarchar(50)")
+                                        .HasColumnName("HandledByStaffEmployeeId");
+
+                                    b2.Property<string>("FullName")
+                                        .IsRequired()
+                                        .HasMaxLength(200)
+                                        .HasColumnType("nvarchar(200)")
+                                        .HasColumnName("HandledByStaffFullName");
+
+                                    b2.Property<Guid>("StaffMemberId")
+                                        .HasColumnType("uniqueidentifier")
+                                        .HasColumnName("HandledByStaffMemberId");
+
+                                    b2.HasKey("DepartureDetailsFlightDepartureSubmissionId");
+
+                                    b2.ToTable("flight_departure_submissions", "operations");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("DepartureDetailsFlightDepartureSubmissionId");
+                                });
+
+                            b1.Navigation("CustomerSignature")
+                                .IsRequired();
+
+                            b1.Navigation("HandledByEmployee")
+                                .IsRequired();
+                        });
+
+                    b.Navigation("Details")
+                        .IsRequired();
+
+                    b.Navigation("SubmittedByEmployee")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.PlannedService", b =>
                 {
                     b.HasOne("Operations.Domain.Flights.Flight", null)
@@ -559,6 +727,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("ArrivalSubmissions");
 
                     b.Navigation("AssignedEmployees");
+
+                    b.Navigation("DepartureSubmissions");
 
                     b.Navigation("PlannedServices");
                 });

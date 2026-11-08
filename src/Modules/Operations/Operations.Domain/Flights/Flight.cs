@@ -5,12 +5,13 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Domain.Flights;
 
-/// <summary>A scheduled flight with its planned services, assigned staff, and actual arrival submissions.</summary>
+/// <summary>A scheduled flight with its planning data and actual arrival and departure submissions.</summary>
 public sealed class Flight : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<PlannedService> _plannedServices = [];
     private readonly List<FlightAssignedEmployee> _assignedEmployees = [];
     private readonly List<FlightArrivalSubmission> _arrivalSubmissions = [];
+    private readonly List<FlightDepartureSubmission> _departureSubmissions = [];
 
     private Flight() { }
 
@@ -31,6 +32,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     public IReadOnlyList<PlannedService> PlannedServices => _plannedServices.AsReadOnly();
     public IReadOnlyList<FlightAssignedEmployee> AssignedEmployees => _assignedEmployees.AsReadOnly();
     public IReadOnlyList<FlightArrivalSubmission> ArrivalSubmissions => _arrivalSubmissions.AsReadOnly();
+    public IReadOnlyList<FlightDepartureSubmission> DepartureSubmissions => _departureSubmissions.AsReadOnly();
     public bool IsPerLanding => _plannedServices.Any(service => service.IsAircraftPerLanding);
 
     public static Result<Flight> ScheduleNew(
@@ -164,6 +166,42 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
             submission = new FlightArrivalSubmission(Guid.NewGuid(), Id, submittedByEmployee, details,
                 isAccepted, submittedByUserId, now.ToUniversalTime());
             _arrivalSubmissions.Add(submission);
+        }
+
+        UpdatedAtUtc = now.ToUniversalTime();
+        return submission;
+    }
+
+    public Result<FlightDepartureSubmission> SubmitDeparture(
+        StaffMemberSnapshot? submittedByEmployee,
+        DepartureDetails? details,
+        Guid submittedByUserId,
+        DateTimeOffset now)
+    {
+        if (submittedByEmployee is null || submittedByEmployee.StaffMemberId == Guid.Empty)
+            return Error.Validation("Submitting employee is required.", "Operations.DepartureSubmission.SubmittedByEmployeeRequired");
+        if (submittedByUserId == Guid.Empty)
+            return Error.Validation("Submitting user is required.", "Operations.DepartureSubmission.SubmittedByUserRequired");
+        if (details is null)
+            return Error.Validation("Departure details are required.", "Operations.DepartureSubmission.DetailsRequired");
+
+        var submission = _departureSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
+        if (submission is not null)
+        {
+            if (submission.Details == details)
+                return submission;
+
+            submission.UpdateDetails(details, submittedByUserId, now.ToUniversalTime());
+        }
+        else
+        {
+            var isAccepted = _departureSubmissions.Count == 0;
+            foreach (var existing in _departureSubmissions)
+                existing.ClearAcceptance();
+
+            submission = new FlightDepartureSubmission(Guid.NewGuid(), Id, submittedByEmployee, details,
+                isAccepted, submittedByUserId, now.ToUniversalTime());
+            _departureSubmissions.Add(submission);
         }
 
         UpdatedAtUtc = now.ToUniversalTime();
