@@ -13,6 +13,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     private readonly List<FlightArrivalSubmission> _arrivalSubmissions = [];
     private readonly List<FlightDepartureSubmission> _departureSubmissions = [];
     private readonly List<FlightCancellationSubmission> _cancellationSubmissions = [];
+    private readonly List<FlightService> _services = [];
 
     private Flight() { }
 
@@ -35,6 +36,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     public IReadOnlyList<FlightArrivalSubmission> ArrivalSubmissions => _arrivalSubmissions.AsReadOnly();
     public IReadOnlyList<FlightDepartureSubmission> DepartureSubmissions => _departureSubmissions.AsReadOnly();
     public IReadOnlyList<FlightCancellationSubmission> CancellationSubmissions => _cancellationSubmissions.AsReadOnly();
+    public IReadOnlyList<FlightService> Services => _services.AsReadOnly();
     public bool IsPerLanding => _plannedServices.Any(service => service.IsAircraftPerLanding);
 
     public static Result<Flight> ScheduleNew(
@@ -138,7 +140,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
-    /// <summary>Records or updates one employee's cancellation. Existing submission collections must be loaded.</summary>
+    /// <summary>Records or updates one employee's cancellation. Existing services and submission collections must be loaded.</summary>
     public Result<FlightCancellationSubmission> SubmitCancellation(
         StaffMemberSnapshot? submittedByEmployee,
         CancellationDetails? details,
@@ -151,8 +153,8 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
             return Error.Validation("Submitting user is required.", "Operations.CancellationSubmission.SubmittedByUserRequired");
         if (details is null)
             return Error.Validation("Cancellation details are required.", "Operations.CancellationSubmission.DetailsRequired");
-        if (_arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0)
-            return Error.Conflict("A flight with operational submissions cannot have cancellation submissions.", "Operations.CancellationSubmission.OperationsAlreadyRecorded");
+        if (_arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0 || _services.Count > 0)
+            return Error.Conflict("A flight with operational records cannot have cancellation submissions.", "Operations.CancellationSubmission.OperationsAlreadyRecorded");
 
         var submission = _cancellationSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
         if (submission is not null)
@@ -253,6 +255,131 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
         UpdatedAtUtc = now.ToUniversalTime();
         return submission;
+    }
+
+    /// <summary>Records a performed service. Existing services and cancellation submissions must be loaded.</summary>
+    public Result<FlightService> AddService(ServiceSnapshot? service, string? customerReferenceNumber,
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+    {
+        var check = ValidateServiceWrite(userId);
+        if (check.IsFailure)
+            return check.Error;
+        var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime());
+        if (created.IsFailure)
+            return created.Error;
+
+        _services.Add(created.Value);
+        UpdatedAtUtc = now.ToUniversalTime();
+        return created.Value;
+    }
+
+    public Result<FlightService> UpdateService(Guid serviceId, ServiceSnapshot? service, string? customerReferenceNumber,
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+    {
+        var found = FindServiceForWrite(serviceId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        var changed = found.Value.UpdateDetails(service, customerReferenceNumber, window, notes, userId);
+        if (changed.IsFailure)
+            return changed.Error;
+        if (changed.Value)
+            MarkServiceUpdated(found.Value, userId, now);
+        return found.Value;
+    }
+
+    public Result<FlightServicePerformer> AddServicePerformer(Guid serviceId, StaffMemberSnapshot? employee,
+        TimeWindow? window, Guid userId, DateTimeOffset now)
+    {
+        var found = FindServiceForWrite(serviceId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        var added = found.Value.AddPerformer(employee, window);
+        if (added.IsFailure)
+            return added.Error;
+
+        MarkServiceUpdated(found.Value, userId, now);
+        return added.Value;
+    }
+
+    public Result<FlightServicePerformer> UpdateServicePerformer(Guid serviceId, Guid performerId,
+        StaffMemberSnapshot? employee, TimeWindow? window, Guid userId, DateTimeOffset now)
+    {
+        var found = FindServiceForWrite(serviceId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        var changed = found.Value.UpdatePerformer(performerId, employee, window);
+        if (changed.IsFailure)
+            return changed.Error;
+        if (changed.Value)
+            MarkServiceUpdated(found.Value, userId, now);
+        return found.Value.Performers.Single(performer => performer.Id == performerId);
+    }
+
+    public Result RemoveServicePerformer(Guid serviceId, Guid performerId, Guid userId, DateTimeOffset now)
+    {
+        var found = FindServiceForWrite(serviceId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        var removed = found.Value.RemovePerformer(performerId);
+        if (removed.IsFailure)
+            return removed;
+
+        MarkServiceUpdated(found.Value, userId, now);
+        return Result.Success();
+    }
+
+    public Result<FlightServiceAttachment> AddServiceAttachment(Guid serviceId, AttachmentDetails? details,
+        Guid userId, DateTimeOffset now)
+    {
+        var found = FindServiceForWrite(serviceId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        var added = found.Value.AddAttachment(details, userId, now.ToUniversalTime());
+        if (added.IsFailure)
+            return added.Error;
+
+        MarkServiceUpdated(found.Value, userId, now);
+        return added.Value;
+    }
+
+    public Result<FlightServiceAttachment> RemoveServiceAttachment(Guid serviceId, Guid attachmentId,
+        Guid userId, DateTimeOffset now)
+    {
+        var found = FindServiceForWrite(serviceId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        var removed = found.Value.RemoveAttachment(attachmentId);
+        if (removed.IsFailure)
+            return removed.Error;
+
+        MarkServiceUpdated(found.Value, userId, now);
+        return removed.Value;
+    }
+
+    private Result ValidateServiceWrite(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            return Error.Validation("Recording user is required.", "Operations.FlightService.UserRequired");
+        if (_cancellationSubmissions.Count > 0)
+            return Error.Conflict("A flight with cancellation submissions cannot have performed services.", "Operations.Flight.CancellationSubmitted");
+        return Result.Success();
+    }
+
+    private Result<FlightService> FindServiceForWrite(Guid serviceId, Guid userId)
+    {
+        var check = ValidateServiceWrite(userId);
+        if (check.IsFailure)
+            return check.Error;
+        var service = _services.SingleOrDefault(item => item.Id == serviceId);
+        return service is null
+            ? Error.NotFound("Performed service was not found on this flight.", "Operations.FlightService.NotFound")
+            : service;
+    }
+
+    private void MarkServiceUpdated(FlightService service, Guid userId, DateTimeOffset now)
+    {
+        service.MarkUpdated(userId, now.ToUniversalTime());
+        UpdatedAtUtc = now.ToUniversalTime();
     }
 
     private void SetPlannedServices(IReadOnlyList<ServiceSnapshot> services)

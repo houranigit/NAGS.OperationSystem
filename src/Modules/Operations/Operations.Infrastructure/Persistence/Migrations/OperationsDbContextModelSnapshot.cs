@@ -235,6 +235,78 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("flight_departure_submissions", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightService", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CustomerReferenceNumber")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("EndedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightId");
+
+                    b.ToTable("flight_services", "operations");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightServiceAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UploadedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightServiceId");
+
+                    b.ToTable("flight_service_attachments", "operations");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightServicePerformer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightServiceId");
+
+                    b.ToTable("flight_service_performers", "operations");
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.PlannedService", b =>
                 {
                     b.Property<Guid>("Id")
@@ -793,6 +865,174 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightService", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.Flight", null)
+                        .WithMany("Services")
+                        .HasForeignKey("FlightId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.ServiceSnapshot", "Service", b1 =>
+                        {
+                            b1.Property<Guid>("FlightServiceId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Name")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("ServiceName");
+
+                            b1.Property<Guid>("ServiceId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("ServiceId");
+
+                            b1.HasKey("FlightServiceId");
+
+                            b1.ToTable("flight_services", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightServiceId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
+                        {
+                            b1.Property<Guid>("FlightServiceId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("FlightServiceId");
+
+                            b1.ToTable("flight_services", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightServiceId");
+                        });
+
+                    b.Navigation("Service")
+                        .IsRequired();
+
+                    b.Navigation("Window")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightServiceAttachment", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightService", null)
+                        .WithMany("Attachments")
+                        .HasForeignKey("FlightServiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.AttachmentDetails", "Details", b1 =>
+                        {
+                            b1.Property<Guid>("FlightServiceAttachmentId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("ContentType")
+                                .IsRequired()
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("ContentType");
+
+                            b1.Property<string>("FileName")
+                                .IsRequired()
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("FileName");
+
+                            b1.Property<long>("SizeBytes")
+                                .HasColumnType("bigint")
+                                .HasColumnName("SizeBytes");
+
+                            b1.Property<string>("StorageKey")
+                                .IsRequired()
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("StorageKey");
+
+                            b1.HasKey("FlightServiceAttachmentId");
+
+                            b1.ToTable("flight_service_attachments", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightServiceAttachmentId");
+                        });
+
+                    b.Navigation("Details")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightServicePerformer", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightService", null)
+                        .WithMany("Performers")
+                        .HasForeignKey("FlightServiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "Employee", b1 =>
+                        {
+                            b1.Property<Guid>("FlightServicePerformerId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("EmployeeId")
+                                .IsRequired()
+                                .HasMaxLength(50)
+                                .HasColumnType("nvarchar(50)")
+                                .HasColumnName("StaffEmployeeId");
+
+                            b1.Property<string>("FullName")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("StaffFullName");
+
+                            b1.Property<Guid>("StaffMemberId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("StaffMemberId");
+
+                            b1.HasKey("FlightServicePerformerId");
+
+                            b1.ToTable("flight_service_performers", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightServicePerformerId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
+                        {
+                            b1.Property<Guid>("FlightServicePerformerId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("FlightServicePerformerId");
+
+                            b1.ToTable("flight_service_performers", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightServicePerformerId");
+                        });
+
+                    b.Navigation("Employee")
+                        .IsRequired();
+
+                    b.Navigation("Window")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.PlannedService", b =>
                 {
                     b.HasOne("Operations.Domain.Flights.Flight", null)
@@ -839,6 +1079,15 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("DepartureSubmissions");
 
                     b.Navigation("PlannedServices");
+
+                    b.Navigation("Services");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightService", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Performers");
                 });
 #pragma warning restore 612, 618
         }

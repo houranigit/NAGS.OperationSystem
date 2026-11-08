@@ -1,12 +1,12 @@
 # Operations Module Foundation
 
-This is the entry point for the current Operations module. This branch starts from `main` with a flight scheduling baseline: maintain a flight register, create one flight, schedule the same flight on selected dates, and invite employees onto an existing flight. Arrival, departure, and cancellation submissions extend the domain and persistence model only. The Android client supports flight viewing, basic details, and employee invitations; scheduling remains in the web portal. HandOver implementation is excluded. Operational APIs and application workflows will be designed and implemented individually later.
+This is the entry point for the current Operations module. This branch starts from `main` with a flight scheduling baseline: maintain a flight register, create one flight, schedule the same flight on selected dates, and invite employees onto an existing flight. Arrival, departure, and cancellation submissions and performed flight services extend the domain and persistence model only. The Android client supports flight viewing, basic details, and employee invitations; scheduling remains in the web portal. HandOver implementation is excluded. Operational APIs and application workflows will be designed and implemented individually later.
 
 ## Flight data and ownership
 
-`Flight` owns customer, station, operation type, flight number, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees. MasterData remains authoritative for reference records; Operations validates selections through its existing readers and stores snapshots. Planned services and assigned employees are direct flight collections.
+`Flight` owns customer, station, operation type, flight number, scheduled arrival/departure, optional aircraft type, planned services, assigned employees, operational submissions, and performed services. MasterData remains authoritative for reference records; Operations validates selections through its existing readers and stores snapshots. Planned services and assigned employees are direct flight collections.
 
-Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Beyond the arrival, departure, and cancellation models described below, flight status, original-number history, contract placeholders, merge metadata, actual work, work orders, handover, review, approval, timeline, attachments, reminders, and automatic work creation remain outside this scope. Platform audit capture remains enabled independently of a flight history feature.
+Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Beyond the submission and performed-service models described below, flight status, original-number history, contract placeholders, merge metadata, other actual work, work orders, handover, review, approval, timeline, file transfers, reminders, and automatic work creation remain outside this scope. Platform audit capture remains enabled independently of a flight history feature.
 
 ## Arrival submissions
 
@@ -26,9 +26,23 @@ As with arrivals, each submitting `StaffMemberId` has at most one departure subm
 
 `Flight.SubmitCancellation` keeps at most one submission per submitting `StaffMemberId`. Corrections update only that employee's submission, preserving its identity and other employees' inputs; identical details are a no-op. A sole submission is accepted automatically. Adding another employee's submission clears acceptance, and multiple records remain unaccepted pending the later approval workflow.
 
-Any arrival or departure submission prevents cancellation submissions, and any cancellation submission prevents arrival and departure submissions. This applies to unaccepted records as well. The domain checks loaded collections, so callers must load all three submission collections. For an existing tracked flight, changes to attached arrival, departure, or cancellation submissions or their owned details force the flight's rowversion check in synchronous and asynchronous saves, even when `UpdatedAtUtc` is unchanged. There is no database constraint enforcing exclusivity across tables, so direct SQL bypasses it. Offline conflict resolution remains for the later sync workflow. Planning and roster behavior is unchanged; there is no reopen method.
+Any arrival or departure submission or performed service prevents cancellation submissions. Any cancellation submission prevents arrival and departure submissions and service mutations, including performer and attachment changes. This applies to unaccepted submissions as well. Planning and roster behavior is unchanged; there is no reopen method.
 
-These models add domain behavior and persistence only. They add no operational API, portal or mobile input, offline write queue, file upload, or approval selection workflow. Existing flight reads continue to expose their current planning details. Flight statuses, further submission prerequisites, and arrival/departure chronology policies remain for the later workflow discussion.
+## Flight services
+
+`Flight.Services` owns actual `FlightService` records separately from `PlannedServices`. Each records a service snapshot, a `TimeWindow`, optional customer reference number, and optional notes. Optional text is trimmed and becomes null when blank. A window has a required UTC start and an optional UTC end; a supplied end must be at or after the start. Repeated occurrences of the same service are allowed.
+
+`TimeWindow` contains only the start and end instants and is also used by employee work periods. On the service, `CreatedByUserId` is the single source of truth for the starter, since adding the service starts it; there is no separate starter field. `EndedByUserId` is null for an open window. Supplying or correcting the end time records the acting user; clearing the end clears that identity. An initially closed service records its creator as both starter and closer. Changes that keep the same end time, including notes, performer, or attachment edits, preserve the closer. The closer is a recording-user identity, separate from the employees performing the service and the user who last edited it.
+
+Each service owns performer records containing an employee snapshot and that employee's own time window. One employee may have multiple periods. Services, performers, and attachments have stable identities. Parent-scoped updates preserve other records and attachments; removing a performer or attachment affects only that record. Service records and attachments retain actor and timestamp metadata. Services have no acceptance flag or per-employee submission selection; review remains a later workflow. This slice introduces no performer-window containment, schedule bounds, or accepted-arrival prerequisite.
+
+Attachment entities own `AttachmentDetails` metadata containing `FileName`, `StorageKey`, `ContentType`, and `SizeBytes`, with their parent service, uploading user, and upload timestamp. Bytes belong in file storage through the existing `IFileStorage` boundary. This slice changes metadata only: it implements no upload, download, physical file deletion, MIME allowlist, or size cap.
+
+## Operational persistence boundary
+
+Domain guards use loaded collections. Write callers must load all three submission collections and `Services` with its performers and attachments. For an existing tracked flight, changes anywhere in these attached graphs, including nested edits or removals, force the flight's rowversion check in synchronous and asynchronous saves, even when `UpdatedAtUtc` is unchanged. There is no database constraint enforcing cancellation exclusivity across tables, so direct SQL bypasses it. Offline conflict resolution remains for the later sync workflow.
+
+These models add domain behavior and persistence only. They add no operational API, portal or mobile input, offline write queue, file transfer, approval selection, RTR, task, or billing workflow. Existing flight reads continue to expose their current planning details. Flight statuses, further prerequisites, and chronology policies remain for the later workflow discussion.
 
 ## Scheduling and validation
 
@@ -82,7 +96,7 @@ The former `operations.db` file and dormant drafts/queued work remain unopened. 
 
 ## Database change
 
-Arrival, departure, and cancellation submissions use additive Operations migrations that preserve existing flight planning and submission data and do not change another module's schema. Cancellation adds an initially empty `operations.flight_cancellation_submissions` table, leaving existing flight, arrival, and departure rows unchanged. Generating these migrations does not apply them to configured databases.
+Submission and performed-service storage uses additive Operations migrations that preserve existing flight planning and operational data and do not change another module's schema. Cancellation adds an initially empty `operations.flight_cancellation_submissions` table. Performed services add Operations tables for service records, performer periods, and attachment metadata. Generating these migrations does not apply them to configured databases.
 
 Keep the historical `main` EF migrations unchanged. `Operations_FlightSchedulingBaseline` preserves the existing flights, direct `flight_planned_services`, and `flight_assigned_employees` rows in place, and removes retired work-order, mobile, reminder, history, status, contract, and merge storage plus pending event envelopes for retired Operations contracts. The retained `FlightEmployeeAssigned` invitation contract and platform audit envelopes are preserved. The migration does not require a HandOver operational graph. It does not alter another module's schema or delete stored file blobs.
 
