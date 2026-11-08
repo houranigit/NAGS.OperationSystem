@@ -1,6 +1,8 @@
 package com.nags.operations.ui.flights
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,6 +21,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,13 +42,24 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLocale
@@ -63,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nags.operations.R
@@ -88,34 +104,57 @@ internal fun FlightRecordingFormScaffold(
     onRequestClose: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val focus = LocalFocusManager.current
-    val keyboard = LocalSoftwareKeyboardController.current
     Dialog(onDismissRequest = onRequestClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize(), color = FlightFormGround) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().semantics { paneTitle = title },
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); onRequestClose() }, modifier = Modifier.size(48.dp)) {
-                        Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.Close, stringResource(R.string.flights_cancel), Modifier.size(20.dp))
+        val focus = LocalFocusManager.current
+        val keyboard = LocalSoftwareKeyboardController.current
+        val editor = remember { FlightFormFocusedEditor() }
+        CompositionLocalProvider(LocalFlightFormFocusedEditor provides editor) {
+            Surface(Modifier.fillMaxSize().onGloballyPositioned { editor.origin = it.positionInWindow() }
+                .pointerInput(editor, focus, keyboard) {
+                    // Observe the release after child controls process it, without consuming their input.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        var isTap = true
+                        var release = down.position
+                        do {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            if (event.changes.size > 1 || event.changes.any {
+                                (it.position - down.position).getDistance() > viewConfiguration.touchSlop
+                            }) isTap = false
+                            event.changes.firstOrNull { it.id == down.id }?.let { release = it.position }
+                        } while (event.changes.any { it.pressed })
+                        val bounds = editor.bounds
+                        if (isTap && bounds != null && !bounds.contains(release + editor.origin)) {
+                            focus.clearFocus()
+                            keyboard?.hide()
                         }
                     }
-                    Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = {}, enabled = false, modifier = Modifier.size(48.dp)) {
-                        Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.Check, saveDescription, Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+                }, color = FlightFormGround) {
+                Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().semantics { paneTitle = title },
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); onRequestClose() }, modifier = Modifier.size(48.dp)) {
+                            Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Outlined.Close, stringResource(R.string.flights_cancel), Modifier.size(20.dp))
+                            }
+                        }
+                        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        IconButton(onClick = {}, enabled = false, modifier = Modifier.size(48.dp)) {
+                            Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.Check, saveDescription, Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+                            }
                         }
                     }
-                }
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        FlightRecordingIdentity(flight, loadCustomerLogo)
-                        content()
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FlightRecordingIdentity(flight, loadCustomerLogo)
+                            content()
+                        }
                     }
                 }
             }
@@ -159,22 +198,34 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
 @Composable
 internal fun FlightFormDateTimeField(value: String, label: String, description: String, onClick: () -> Unit) {
     val locale = LocalLocale.current.platformLocale
-    val fontScale = LocalDensity.current.fontScale
     val dateTime = value.takeIf { it.isNotBlank() }?.let(LocalDateTime::parse)
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface,
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description }) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-            val compact = maxWidth < 280.dp * fontScale
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(label, Modifier.widthIn(min = 40.dp),
-                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                val format = if (compact) "MMM d, yyyy\nHH:mm" else "MMM d, yyyy · HH:mm"
-                Text(dateTime?.format(DateTimeFormatter.ofPattern(format, locale)) ?: "—", Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, textAlign = TextAlign.Right,
-                    maxLines = if (compact) 2 else 1, overflow = TextOverflow.Ellipsis)
+            val labelMaxWidth = maxWidth * 0.45f
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, Modifier.widthIn(max = labelMaxWidth),
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                FlightFormValueText(dateTime?.format(DateTimeFormatter.ofPattern("MMM d, yyyy · HH:mm", locale)) ?: "—",
+                    Modifier.weight(1f))
             }
         }
     }
+}
+
+/** A small type adjustment precedes ellipsis; system font scaling still applies. */
+@Composable
+internal fun FlightFormValueText(value: String, modifier: Modifier = Modifier, isPlaceholder: Boolean = false) {
+    val style = MaterialTheme.typography.bodyMedium
+    Text(value, modifier, style = style, textAlign = TextAlign.Right,
+        autoSize = TextAutoSize.StepBased(minFontSize = style.fontSize * 0.9f, maxFontSize = style.fontSize, stepSize = 0.5.sp),
+        fontWeight = if (isPlaceholder) FontWeight.Normal else FontWeight.Medium,
+        fontStyle = if (isPlaceholder) FontStyle.Italic else FontStyle.Normal,
+        color = if (isPlaceholder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+        maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
@@ -192,20 +243,18 @@ internal fun FlightFormDivider() {
 
 @Composable
 internal fun FlightFormChoiceRow(label: String, value: String, description: String, isPlaceholder: Boolean = false,
-    labelWeight: Float = 0.32f, leadingPadding: Dp = 14.dp, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface,
+    leadingPadding: Dp = 14.dp, onClick: () -> Unit) {
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description }) {
-        Row(Modifier.padding(start = leadingPadding, end = 14.dp, top = 6.dp, bottom = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, Modifier.weight(labelWeight), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Row(Modifier.weight(1f - labelWeight), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                Text(value, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Right,
-                    fontWeight = if (isPlaceholder) FontWeight.Normal else FontWeight.Medium,
-                    fontStyle = if (isPlaceholder) FontStyle.Italic else FontStyle.Normal,
-                    color = if (isPlaceholder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(start = leadingPadding, end = 14.dp, top = 6.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
+            val labelMaxWidth = maxWidth * 0.45f
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.padding(start = 4.dp).size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlightFormValueText(value, Modifier.weight(1f), isPlaceholder)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -213,12 +262,14 @@ internal fun FlightFormChoiceRow(label: String, value: String, description: Stri
 
 @Composable
 internal fun FlightFormTextRow(label: String, value: String, onChange: (String) -> Unit, placeholder: String,
-    keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), labelWeight: Float = 0.32f) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(labelWeight), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
-        FlightFormTextInput(value, onChange, placeholder, label, Modifier.weight(1f - labelWeight), keyboardOptions = keyboardOptions)
+    keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 14.dp)) {
+        val labelMaxWidth = maxWidth * 0.45f
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            FlightFormTextInput(value, onChange, placeholder, label, Modifier.weight(1f), keyboardOptions = keyboardOptions)
+        }
     }
 }
 
@@ -231,16 +282,50 @@ internal fun FlightFormTextInput(value: String, onChange: (String) -> Unit, plac
     } else {
         if (multiline) AbsoluteAlignment.TopRight else AbsoluteAlignment.CenterRight
     }
-    BasicTextField(value, onChange, modifier = modifier.fillMaxWidth().heightIn(min = 48.dp)
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    BasicTextField(value, onChange, modifier = modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormEditableFocus()
         .semantics { contentDescription = label },
         textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, textAlign = textAlign, fontWeight = FontWeight.Medium),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), singleLine = !multiline,
         minLines = if (multiline) 2 else 1, maxLines = if (multiline) 5 else 1, keyboardOptions = keyboardOptions,
+        keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); keyboard?.hide() }),
         decorationBox = { inner -> Box(Modifier.fillMaxWidth(), contentAlignment = contentAlignment) {
             if (value.isEmpty()) Text(placeholder, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic, textAlign = textAlign, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = if (multiline) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
             inner()
         } })
+}
+
+/** Tracks the current editor, so outside taps never steal a newly transferred focus. */
+private class FlightFormFocusedEditor {
+    var owner: Any? = null
+    var bounds: Rect? = null
+    var origin = Offset.Zero
+    fun clear(owner: Any) { if (this.owner === owner) { this.owner = null; bounds = null } }
+}
+
+private class FlightFormEditorPosition {
+    var focused = false
+    var bounds = Rect.Zero
+}
+
+private val LocalFlightFormFocusedEditor = staticCompositionLocalOf<FlightFormFocusedEditor?> { null }
+
+@Composable
+internal fun Modifier.flightFormEditableFocus(): Modifier {
+    val editor = LocalFlightFormFocusedEditor.current ?: return this
+    val owner = remember { Any() }
+    val position = remember { FlightFormEditorPosition() }
+    DisposableEffect(editor, owner) { onDispose { editor.clear(owner) } }
+    return onGloballyPositioned {
+        position.bounds = it.boundsInWindow()
+        if (position.focused) { editor.owner = owner; editor.bounds = position.bounds }
+    }.onFocusChanged {
+        position.focused = it.hasFocus
+        if (it.hasFocus) { editor.owner = owner; editor.bounds = position.bounds }
+        else editor.clear(owner)
+    }
 }
 
 /** Both input pickers use the same rounded, dimming sheet behavior as flight details. */

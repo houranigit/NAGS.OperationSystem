@@ -6,7 +6,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -40,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -58,15 +56,11 @@ import java.time.LocalDateTime
 private val WorkAddGreen = Color(0xFF248A3D)
 private val WorkRemoveRed = Color(0xFFD92D3F)
 
-/** The remove gutter leaves less room: preserve whole labels before truncating entered values. */
+/** Intrinsic labels leave the remaining row width to the selected value. */
 @Composable
 internal fun FlightWorkChoiceRow(label: String, value: String, description: String,
     isPlaceholder: Boolean = false, leadingPadding: Dp = 14.dp, onClick: () -> Unit) {
-    val fontScale = LocalDensity.current.fontScale
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val labelWeight = (80.dp * fontScale / (maxWidth - leadingPadding - 24.dp)).coerceIn(0.32f, 0.55f)
-        FlightFormChoiceRow(label, value, description, isPlaceholder, labelWeight, leadingPadding, onClick)
-    }
+    FlightFormChoiceRow(label, value, description, isPlaceholder, leadingPadding, onClick)
 }
 
 @Composable
@@ -178,10 +172,6 @@ internal fun FlightWorkNotes(
 
 @Composable
 internal fun FlightWorkReferenceRow(reference: String, onChange: (String) -> Unit) {
-    val fontScale = LocalDensity.current.fontScale
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val labelWeight = (80.dp * fontScale / (maxWidth - 38.dp)).coerceIn(0.32f, 0.55f)
-        FlightFormTextRow(stringResource(R.string.work_customer_reference), reference, onChange,
-            stringResource(R.string.arrival_optional), labelWeight = labelWeight)
-    }
+    FlightFormTextRow(stringResource(R.string.work_customer_reference), reference, onChange,
+        stringResource(R.string.arrival_optional))
 }

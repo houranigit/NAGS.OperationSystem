@@ -127,7 +127,7 @@ internal fun FlightRemarksComposer(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             } }
             BasicTextField(remarks, onRemarksChange,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 10.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormEditableFocus().padding(horizontal = 12.dp, vertical = 10.dp)
                     .semantics { contentDescription = description; if (limitMessage != null) error(limitMessage) },
                 readOnly = media.isRecording, minLines = 1, maxLines = 6,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface,
@@ -140,6 +140,8 @@ internal fun FlightRemarksComposer(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Left)
                     inner()
                 } })
+            HorizontalDivider(Modifier.padding(horizontal = 12.dp), thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             if (media.isRecording) ComposerRecordingToolbar(media)
             else Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { prepareMedia { menuOpen = true } }, enabled = media.canAdd, modifier = Modifier.size(48.dp)) {
@@ -153,9 +155,9 @@ internal fun FlightRemarksComposer(
                     Icon(Icons.Outlined.PhotoCamera, stringResource(R.string.composer_camera), Modifier.size(22.dp))
                 }
                 IconButton(onClick = { prepareMedia(media::startRecording) }, enabled = media.canAdd, modifier = Modifier.size(48.dp)) {
-                    Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = if (media.canAdd) 1f else 0.35f), CircleShape),
+                    Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = if (media.canAdd) 1f else 0.35f), CircleShape),
                         contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.Mic, stringResource(R.string.composer_record_voice), Modifier.size(20.dp),
+                        Icon(Icons.Outlined.Mic, stringResource(R.string.composer_record_voice), Modifier.size(17.dp),
                             tint = MaterialTheme.colorScheme.onPrimary)
                     }
                 }

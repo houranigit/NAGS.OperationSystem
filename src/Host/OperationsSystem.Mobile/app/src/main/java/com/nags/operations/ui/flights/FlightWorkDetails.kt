@@ -18,7 +18,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.data.ResourceCatalogItem
@@ -56,12 +55,9 @@ internal fun FlightWorkEmployeeList(
         key(item.id) {
             FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, item.employeeName),
                 onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
-                FlightWorkChoiceRow(stringResource(R.string.work_employee), item.employeeName,
+                FlightWorkChoiceRow(stringResource(R.string.work_performed_by), item.employeeName,
                     stringResource(R.string.work_select_employee), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
             }
-            if (item.employeeCode.isNotBlank()) Text(item.employeeCode,
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             FlightFormDivider()
             FlightWorkPeriodFields(item.period, referenceYear,
                 onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })

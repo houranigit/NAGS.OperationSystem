@@ -197,6 +197,7 @@
     <string name="cancellation_choose_time">Edit cancellation time</string>
     <string name="cancellation_remarks">Cancellation remarks</string>
     <string name="cancellation_discard_title">Discard cancellation details?</string>
+    <string name="work_services_count">Services (%1$d)</string>
     <string name="work_services">Services</string>
     <string name="work_service">Service</string>
     <string name="work_add_service">Add service</string>
@@ -225,7 +226,7 @@
     <string name="work_delete">Delete</string>
     <string name="work_remove_item">Remove %1$s</string>
     <string name="work_employees">Employees</string>
-    <string name="work_employee">Employee</string>
+    <string name="work_performed_by">Performed by</string>
     <string name="work_add_employee">Add employee</string>
     <string name="work_select_employee">Select employee</string>
     <string name="work_search_employees">Search employees</string>
