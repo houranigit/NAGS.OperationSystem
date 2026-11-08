@@ -201,9 +201,8 @@ fun FlightsScreen(
         val flight = arrivalFlight ?: state.detail
         if (arrivalOpen && flight != null) {
             val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
-            val stationStaff by viewModel.arrivalStationStaff.collectAsStateWithLifecycle(initialValue = emptyList())
             arrivalFormState.SaveableStateProvider("arrival") {
-                FlightArrivalForm(flight, aircraftTypes, stationStaff, viewModel::customerLogo,
+                FlightArrivalForm(flight, aircraftTypes, viewModel::customerLogo,
                     onClose = {
                         arrivalOpen = false
                         arrivalFlight = null

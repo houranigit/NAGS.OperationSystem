@@ -88,8 +88,6 @@
     <string name="arrival_select_aircraft">Select aircraft type</string>
     <string name="arrival_tail_number">Aircraft tail number</string>
     <string name="arrival_tail_hint">Enter tail number</string>
-    <string name="arrival_received_by">Received by</string>
-    <string name="arrival_select_employee">Select employee</string>
     <string name="arrival_reference">Customer work reference number (optional)</string>
     <string name="arrival_reference_hint">Enter reference number</string>
     <string name="arrival_remarks">Remarks (optional)</string>
@@ -97,10 +95,8 @@
     <string name="arrival_save">Save arrival</string>
     <string name="arrival_save_unavailable">Saving is not available yet.</string>
     <string name="arrival_no_aircraft">No aircraft types are available in saved data.</string>
-    <string name="arrival_no_staff">No employees are available for this station in saved data.</string>
     <string name="arrival_no_results">No matching results</string>
     <string name="arrival_search_aircraft">Search aircraft types</string>
-    <string name="arrival_search_employee">Search employees</string>
     <string name="arrival_discard_title">Discard arrival details?</string>
     <string name="arrival_discard_hint">These details haven’t been saved.</string>
     <string name="arrival_discard">Discard</string>

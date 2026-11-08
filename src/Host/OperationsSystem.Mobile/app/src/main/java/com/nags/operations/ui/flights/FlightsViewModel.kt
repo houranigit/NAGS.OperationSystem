@@ -14,7 +14,6 @@ import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.FlightSyncStatus
-import com.nags.operations.data.StaffCatalogItem
 import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.FlightsRepository
@@ -145,7 +144,6 @@ class FlightsViewModel internal constructor(
     private val waitForExpiryCheck: suspend (Long) -> Unit = { delay(it) },
     private val waitForSearchDebounce: suspend () -> Unit = { delay(300) },
     val arrivalAircraftTypes: Flow<List<AircraftTypeCatalogItem>> = flowOf(emptyList()),
-    val arrivalStationStaff: Flow<List<StaffCatalogItem>> = flowOf(emptyList()),
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository) : this(
@@ -161,7 +159,6 @@ class FlightsViewModel internal constructor(
         observeCustomerLogo = repository::customerLogo,
         pruneCachedFlights = repository::pruneExpired,
         arrivalAircraftTypes = sharedCatalogsRepository.aircraftTypesFlow(),
-        arrivalStationStaff = sharedCatalogsRepository.stationStaffFlow(),
     )
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope
