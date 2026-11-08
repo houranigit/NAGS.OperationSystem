@@ -211,7 +211,8 @@ fun FlightsScreen(
                 }
                 if (activeForm == "operations") {
                     val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
-                    FlightOperationsForm(flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm)
+                    val catalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
+                    FlightOperationsForm(flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs)
                 } else {
                     FlightCancellationForm(flight, viewModel::customerLogo, onClose = closeForm)
                 }

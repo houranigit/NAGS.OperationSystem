@@ -190,13 +190,14 @@ internal fun FlightFormDivider() {
 }
 
 @Composable
-internal fun FlightFormChoiceRow(label: String, value: String, description: String, isPlaceholder: Boolean = false, onClick: () -> Unit) {
+internal fun FlightFormChoiceRow(label: String, value: String, description: String, isPlaceholder: Boolean = false,
+    labelWeight: Float = 0.32f, onClick: () -> Unit) {
     Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description }) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, Modifier.weight(0.32f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+            Text(label, Modifier.weight(labelWeight), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Row(Modifier.weight(0.68f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f - labelWeight), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 Text(value, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Right,
                     fontWeight = if (isPlaceholder) FontWeight.Normal else FontWeight.Medium,
                     fontStyle = if (isPlaceholder) FontStyle.Italic else FontStyle.Normal,
@@ -210,17 +211,17 @@ internal fun FlightFormChoiceRow(label: String, value: String, description: Stri
 
 @Composable
 internal fun FlightFormTextRow(label: String, value: String, onChange: (String) -> Unit, placeholder: String,
-    keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)) {
+    keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), labelWeight: Float = 0.32f) {
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(0.32f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+        Text(label, Modifier.weight(labelWeight), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
             maxLines = 2, overflow = TextOverflow.Ellipsis)
-        FlightFormTextInput(value, onChange, placeholder, label, Modifier.weight(0.68f), keyboardOptions = keyboardOptions)
+        FlightFormTextInput(value, onChange, placeholder, label, Modifier.weight(1f - labelWeight), keyboardOptions = keyboardOptions)
     }
 }
 
 @Composable
-private fun FlightFormTextInput(value: String, onChange: (String) -> Unit, placeholder: String, label: String,
+internal fun FlightFormTextInput(value: String, onChange: (String) -> Unit, placeholder: String, label: String,
     modifier: Modifier = Modifier, multiline: Boolean = false, textAlign: TextAlign = TextAlign.Right,
     keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)) {
     val contentAlignment = if (textAlign == TextAlign.Left) {

@@ -67,6 +67,7 @@ internal fun FlightOperationsForm(
     aircraftTypes: List<AircraftTypeCatalogItem>,
     loadCustomerLogo: (String) -> Flow<ByteArray?>,
     onClose: () -> Unit,
+    catalogs: FlightOperationsCatalogs = FlightOperationsCatalogs(),
 ) {
     val initialAircraftId = rememberSaveable { flight.aircraftTypeId.orEmpty() }
     val initialAircraftModel = rememberSaveable { flight.aircraftTypeModel.orEmpty() }
@@ -85,10 +86,12 @@ internal fun FlightOperationsForm(
     var arrivalRemarks by rememberSaveable { mutableStateOf("") }
     var departureRemarks by rememberSaveable { mutableStateOf("") }
     var signature by rememberSaveable { mutableStateOf("") }
+    var workDrafts by rememberSaveable(stateSaver = FlightWorkDraftsSaver) { mutableStateOf(FlightWorkDrafts()) }
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     val hasChanges = aircraftId != initialAircraftId || ata != initialAta || atd != initialAtd ||
-        listOf(tailNumber, reference, arrivalRemarks, departureRemarks, signature).any { it.isNotEmpty() }
+        listOf(tailNumber, reference, arrivalRemarks, departureRemarks, signature).any { it.isNotEmpty() } ||
+        workDrafts.services.isNotEmpty() || workDrafts.tasks.isNotEmpty()
     val requestClose = {
         if (picker != null) picker = null else if (hasChanges) confirmDiscard = true else onClose()
     }
@@ -132,6 +135,8 @@ internal fun FlightOperationsForm(
             FlightFormTextRow(stringResource(R.string.arrival_reference), reference, { reference = it }, stringResource(R.string.arrival_optional))
         }
         FlightFormRemarks(arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks))
+        FlightServiceSection(workDrafts.services, catalogs, referenceYear, onChange = { workDrafts = workDrafts.copy(services = it) })
+        FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, onChange = { workDrafts = workDrafts.copy(tasks = it) })
         OperationsSectionTitle(stringResource(R.string.operations_departure), Modifier.padding(top = 6.dp))
         FlightFormFieldGroup {
             FlightFormDateTimeField(atd, stringResource(R.string.operations_atd_short), stringResource(R.string.operations_choose_atd),

@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -144,6 +145,7 @@ class FlightsViewModel internal constructor(
     private val waitForExpiryCheck: suspend (Long) -> Unit = { delay(it) },
     private val waitForSearchDebounce: suspend () -> Unit = { delay(300) },
     val arrivalAircraftTypes: Flow<List<AircraftTypeCatalogItem>> = flowOf(emptyList()),
+    val operationsCatalogs: Flow<FlightOperationsCatalogs> = flowOf(FlightOperationsCatalogs()),
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository) : this(
@@ -159,6 +161,14 @@ class FlightsViewModel internal constructor(
         observeCustomerLogo = repository::customerLogo,
         pruneCachedFlights = repository::pruneExpired,
         arrivalAircraftTypes = sharedCatalogsRepository.aircraftTypesFlow(),
+        operationsCatalogs = combine(
+            combine(sharedCatalogsRepository.servicesFlow(), sharedCatalogsRepository.ataChaptersFlow(),
+                sharedCatalogsRepository.stationStaffFlow(), sharedCatalogsRepository.toolsFlow(), sharedCatalogsRepository.materialsFlow()) {
+                    services, ataChapters, stationStaff, tools, materials ->
+                FlightOperationsCatalogs(services, ataChapters, stationStaff, tools, materials)
+            },
+            sharedCatalogsRepository.generalSupportsFlow(),
+        ) { catalogs, generalSupports -> catalogs.copy(generalSupports = generalSupports) }.distinctUntilChanged(),
     )
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope
