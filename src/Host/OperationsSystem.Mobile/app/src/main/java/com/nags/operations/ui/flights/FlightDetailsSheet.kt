@@ -85,7 +85,7 @@ import kotlinx.coroutines.flow.Flow
 
 private val DetailFill = Color(0xFFF5F7FA)
 private val DetailEdge = Color(0xFFE7EBF0)
-private val ArrivalActionGreen = Color(0xFF198754)
+private val OperationsActionGreen = Color(0xFF198754)
 private val CancellationActionRed = Color(0xFFDC3545)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,7 +95,8 @@ internal fun FlightDetailsSheet(
     onClose: () -> Unit,
     onRetry: () -> Unit,
     onInvite: () -> Unit,
-    onArrived: () -> Unit,
+    onOperations: () -> Unit,
+    onCanceled: () -> Unit,
     loadCustomerLogo: (String) -> Flow<ByteArray?>,
 ) {
     val detailsTitle = stringResource(R.string.flights_details)
@@ -167,7 +168,7 @@ internal fun FlightDetailsSheet(
                                 )
                                 DetailDivider()
                             }
-                            FlightRecordingActions(onArrived = onArrived)
+                            FlightRecordingActions(onOperations = onOperations, onCanceled = onCanceled)
                             if (state.canInviteEmployees && !flight.isPerLanding) {
                                 TextButton(onClick = onInvite, enabled = state.isOnline && !flight.fromCache && !state.isInviting,
                                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary)) {
@@ -182,30 +183,30 @@ internal fun FlightDetailsSheet(
     }
 }
 
-/** Arrival opens the local form; cancellation remains a visual placeholder. */
+/** Both actions open local recording forms; saving remains unimplemented. */
 @Composable
-private fun FlightRecordingActions(loading: Boolean = false, onArrived: () -> Unit = {}) {
-    // Keep cancellation on the physical left and arrival on the right in both directions.
-    val firstIsArrival = LocalLayoutDirection.current == LayoutDirection.Rtl
+private fun FlightRecordingActions(loading: Boolean = false, onOperations: () -> Unit = {}, onCanceled: () -> Unit = {}) {
+    // Keep cancellation on the physical left and operations on the right in both directions.
+    val firstIsOperations = LocalLayoutDirection.current == LayoutDirection.Rtl
     Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        FlightRecordingAction(arrival = firstIsArrival, loading = loading, modifier = Modifier.weight(1f), onArrived = onArrived)
-        FlightRecordingAction(arrival = !firstIsArrival, loading = loading, modifier = Modifier.weight(1f), onArrived = onArrived)
+        FlightRecordingAction(operations = firstIsOperations, loading = loading, modifier = Modifier.weight(1f), onOperations = onOperations, onCanceled = onCanceled)
+        FlightRecordingAction(operations = !firstIsOperations, loading = loading, modifier = Modifier.weight(1f), onOperations = onOperations, onCanceled = onCanceled)
     }
 }
 
 @Composable
-private fun FlightRecordingAction(arrival: Boolean, loading: Boolean, modifier: Modifier, onArrived: () -> Unit) {
+private fun FlightRecordingAction(operations: Boolean, loading: Boolean, modifier: Modifier, onOperations: () -> Unit, onCanceled: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     if (loading) {
         Box(modifier.height(48.dp).background(DetailFill, shape))
     } else {
-        Button(onClick = { if (arrival) onArrived() }, modifier = modifier.heightIn(min = 48.dp), shape = shape,
+        Button(onClick = { if (operations) onOperations() else onCanceled() }, modifier = modifier.heightIn(min = 48.dp), shape = shape,
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (arrival) ArrivalActionGreen else CancellationActionRed,
+                containerColor = if (operations) OperationsActionGreen else CancellationActionRed,
                 contentColor = Color.White,
             )) {
-            Text(stringResource(if (arrival) R.string.flights_arrived else R.string.flights_canceled),
+            Text(stringResource(if (operations) R.string.flights_operations else R.string.flights_canceled),
                 fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         }
     }

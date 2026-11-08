@@ -190,24 +190,31 @@ fun FlightsScreen(
         }
     }
     if (state.selectedFlightId != null) key(state.selectedFlightId) {
-        var arrivalOpen by rememberSaveable { mutableStateOf(false) }
-        var arrivalFlight by remember { mutableStateOf<FlightDetail?>(null) }
-        val arrivalFormState = rememberSaveableStateHolder()
+        var recordingForm by rememberSaveable { mutableStateOf<String?>(null) }
+        var recordingFlight by remember { mutableStateOf<FlightDetail?>(null) }
+        val recordingFormState = rememberSaveableStateHolder()
         FlightDetailsSheet(state = state, onClose = ::closeFlight,
             onRetry = { state.selectedFlightId?.let(viewModel::openFlight) },
-            onInvite = viewModel::openInvitations, onArrived = { arrivalFlight = state.detail; arrivalOpen = true },
+            onInvite = viewModel::openInvitations,
+            onOperations = { recordingFlight = state.detail; recordingForm = "operations" },
+            onCanceled = { recordingFlight = state.detail; recordingForm = "cancellation" },
             loadCustomerLogo = viewModel::customerLogo)
         // An ordinary silent detail refresh must not replace an open form or discard its edits.
-        val flight = arrivalFlight ?: state.detail
-        if (arrivalOpen && flight != null) {
-            val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
-            arrivalFormState.SaveableStateProvider("arrival") {
-                FlightArrivalForm(flight, aircraftTypes, viewModel::customerLogo,
-                    onClose = {
-                        arrivalOpen = false
-                        arrivalFlight = null
-                        arrivalFormState.removeState("arrival")
-                    })
+        val flight = recordingFlight ?: state.detail
+        val activeForm = recordingForm
+        if (activeForm != null && flight != null) {
+            recordingFormState.SaveableStateProvider(activeForm) {
+                val closeForm = {
+                    recordingForm = null
+                    recordingFlight = null
+                    recordingFormState.removeState(activeForm)
+                }
+                if (activeForm == "operations") {
+                    val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
+                    FlightOperationsForm(flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm)
+                } else {
+                    FlightCancellationForm(flight, viewModel::customerLogo, onClose = closeForm)
+                }
             }
         }
     }
