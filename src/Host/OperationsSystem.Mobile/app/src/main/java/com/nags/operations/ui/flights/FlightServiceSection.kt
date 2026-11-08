@@ -40,19 +40,21 @@ internal fun FlightServiceSection(
                 val description = item.serviceName.ifBlank { title }
                 fun update(updated: FlightServiceDraft) = onChange(items.map { if (it.id == item.id) updated else it })
                 FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, description),
-                    onRemove = { onChange(items.filterNot { it.id == item.id }) }) {
+                    onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
                     FlightWorkChoiceRow(stringResource(R.string.work_service),
                         item.serviceName.ifBlank { stringResource(R.string.work_select_service) },
-                        stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(),
+                        stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp,
                         onClick = { selectingService = item.id })
-                    FlightFormDivider()
-                    FlightWorkPeriodFields(item.period, referenceYear, onChange = { update(item.copy(period = it)) })
-                    FlightWorkNotes(item.reference, { update(item.copy(reference = it)) },
-                    item.remarks, { update(item.copy(remarks = it)) }, stringResource(R.string.work_service_remarks))
                 }
+                FlightFormDivider()
+                FlightWorkReferenceRow(item.reference, onChange = { update(item.copy(reference = it)) })
+                FlightFormDivider()
+                FlightWorkPeriodFields(item.period, referenceYear, onChange = { update(item.copy(period = it)) })
                 FlightFormDivider()
                 FlightWorkEmployeeList(item.employees, catalogs.stationStaff, showRemarks = false, referenceYear = referenceYear,
                     onChange = { update(item.copy(employees = it)) })
+                FlightWorkNotes("", {}, item.remarks, { update(item.copy(remarks = it)) },
+                    stringResource(R.string.work_service_remarks), showReference = false)
                 FlightFormDivider()
                 FlightWorkAttachments(item.attachments, onChange = { update(item.copy(attachments = it)) })
                 FlightFormDivider()

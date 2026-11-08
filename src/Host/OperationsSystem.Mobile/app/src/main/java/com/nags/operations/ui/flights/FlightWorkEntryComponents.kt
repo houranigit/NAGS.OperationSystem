@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import com.nags.operations.R
 import java.time.LocalDateTime
@@ -59,11 +61,11 @@ private val WorkRemoveRed = Color(0xFFD92D3F)
 /** The remove gutter leaves less room: preserve whole labels before truncating entered values. */
 @Composable
 internal fun FlightWorkChoiceRow(label: String, value: String, description: String,
-    isPlaceholder: Boolean = false, onClick: () -> Unit) {
+    isPlaceholder: Boolean = false, leadingPadding: Dp = 14.dp, onClick: () -> Unit) {
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val labelWeight = (80.dp * fontScale / (maxWidth - 38.dp)).coerceIn(0.32f, 0.55f)
-        FlightFormChoiceRow(label, value, description, isPlaceholder, labelWeight, onClick)
+        val labelWeight = (80.dp * fontScale / (maxWidth - leadingPadding - 24.dp)).coerceIn(0.32f, 0.55f)
+        FlightFormChoiceRow(label, value, description, isPlaceholder, labelWeight, leadingPadding, onClick)
     }
 }
 
@@ -87,6 +89,7 @@ internal fun FlightWorkRemovableEntry(
     id: String,
     removeDescription: String,
     onRemove: () -> Unit,
+    compactDelete: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var removeOpen by rememberSaveable(id) { mutableStateOf(false) }
@@ -96,12 +99,18 @@ internal fun FlightWorkRemovableEntry(
             Icon(Icons.Filled.RemoveCircle, removeDescription, Modifier.size(20.dp), tint = WorkRemoveRed)
         }
         Box(Modifier.weight(1f).clipToBounds()) {
-            if (removeOpen) Button(onClick = onRemove,
-                modifier = Modifier.align(Alignment.TopEnd).width(80.dp).heightIn(min = 48.dp),
-                shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = WorkRemoveRed, contentColor = Color.White),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
-                Text(stringResource(R.string.work_delete), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (removeOpen) Box(Modifier.align(Alignment.TopEnd).width(80.dp).heightIn(min = 48.dp), contentAlignment = Alignment.TopEnd) {
+                Button(onClick = onRemove,
+                    modifier = if (compactDelete) Modifier.align(Alignment.Center).width(64.dp).height(34.dp)
+                        else Modifier.width(80.dp).heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(if (compactDelete) 10.dp else 12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = WorkRemoveRed, contentColor = Color.White),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = if (compactDelete) 6.dp else 10.dp, vertical = if (compactDelete) 0.dp else 8.dp)) {
+                    Text(stringResource(R.string.work_delete),
+                        style = if (compactDelete) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             Column(Modifier.fillMaxWidth().offset { IntOffset(shift.roundToPx(), 0) }.background(MaterialTheme.colorScheme.surface), content = content)
         }
@@ -156,12 +165,7 @@ internal fun FlightWorkNotes(
 ) {
     if (showReference) {
         FlightFormDivider()
-        val fontScale = LocalDensity.current.fontScale
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val labelWeight = (80.dp * fontScale / (maxWidth - 38.dp)).coerceIn(0.32f, 0.55f)
-            FlightFormTextRow(stringResource(R.string.work_customer_reference), reference, onReferenceChange,
-                stringResource(R.string.arrival_optional), labelWeight = labelWeight)
-        }
+        FlightWorkReferenceRow(reference, onReferenceChange)
     }
     FlightFormDivider()
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -169,5 +173,15 @@ internal fun FlightWorkNotes(
         FlightFormTextInput(remarks, onRemarksChange, stringResource(R.string.flight_form_remarks_hint), description,
             multiline = true, textAlign = TextAlign.Left, keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done))
+    }
+}
+
+@Composable
+internal fun FlightWorkReferenceRow(reference: String, onChange: (String) -> Unit) {
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val labelWeight = (80.dp * fontScale / (maxWidth - 38.dp)).coerceIn(0.32f, 0.55f)
+        FlightFormTextRow(stringResource(R.string.work_customer_reference), reference, onChange,
+            stringResource(R.string.arrival_optional), labelWeight = labelWeight)
     }
 }

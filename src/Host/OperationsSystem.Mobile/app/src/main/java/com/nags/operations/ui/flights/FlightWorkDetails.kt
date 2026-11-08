@@ -69,19 +69,19 @@ internal fun FlightWorkEmployeeList(
     items.forEach { item ->
         key(item.id) {
             FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, item.employeeName),
-                onRemove = { onChange(items.filterNot { it.id == item.id }) }) {
+                onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
                 FlightWorkChoiceRow(stringResource(R.string.work_employee), item.employeeName,
-                    stringResource(R.string.work_select_employee), onClick = { openPicker(item.id) })
-                if (item.employeeCode.isNotBlank()) Text(item.employeeCode,
-                    Modifier.padding(horizontal = 14.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                FlightFormDivider()
-                FlightWorkPeriodFields(item.period, referenceYear,
-                    onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
-                if (showRemarks) FlightWorkNotes("", {}, item.remarks,
-                    onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
-                    description = stringResource(R.string.work_employee_remarks), showReference = false)
+                    stringResource(R.string.work_select_employee), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
             }
+            if (item.employeeCode.isNotBlank()) Text(item.employeeCode,
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            FlightFormDivider()
+            FlightWorkPeriodFields(item.period, referenceYear,
+                onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
+            if (showRemarks) FlightWorkNotes("", {}, item.remarks,
+                onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
+                description = stringResource(R.string.work_employee_remarks), showReference = false)
             FlightFormDivider()
         }
     }

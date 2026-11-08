@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nags.operations.R
@@ -191,10 +192,11 @@ internal fun FlightFormDivider() {
 
 @Composable
 internal fun FlightFormChoiceRow(label: String, value: String, description: String, isPlaceholder: Boolean = false,
-    labelWeight: Float = 0.32f, onClick: () -> Unit) {
+    labelWeight: Float = 0.32f, leadingPadding: Dp = 14.dp, onClick: () -> Unit) {
     Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description }) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = leadingPadding, end = 14.dp, top = 6.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(labelWeight), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             Row(Modifier.weight(1f - labelWeight), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
