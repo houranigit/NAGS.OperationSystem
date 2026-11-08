@@ -215,8 +215,8 @@
     <string name="cancellation_discard_title">تجاهل بيانات الإلغاء؟</string>
     <string name="work_services_count">الخدمات (%1$d)</string>
     <string name="work_services">الخدمات</string>
-    <string name="work_service">الخدمة</string>
-    <string name="work_add_service">إضافة خدمة</string>
+    <string name="work_service">الخدمة %1$d</string>
+    <string name="work_add_service">إضافة خدمة %1$d</string>
     <string name="work_select_service">اختر خدمة</string>
     <string name="work_search_services">ابحث عن خدمة</string>
     <string name="work_no_services">لا توجد خدمات في البيانات المحفوظة.</string>
@@ -241,9 +241,9 @@
     <string name="work_customer_reference">مرجع العميل</string>
     <string name="work_delete">حذف</string>
     <string name="work_remove_item">إزالة %1$s</string>
-    <string name="work_employees">الموظفون</string>
-    <string name="work_performed_by">نُفّذت بواسطة</string>
-    <string name="work_add_employee">إضافة موظف</string>
+    <string name="work_employees">نُفّذت بواسطة (%1$d)</string>
+    <string name="work_staff_number">الموظف %1$d</string>
+    <string name="work_add_employee">إضافة موظف %1$d</string>
     <string name="work_select_employee">اختر موظفاً</string>
     <string name="work_search_employees">ابحث عن موظف</string>
     <string name="work_no_employees">لا يوجد موظفون في البيانات المحفوظة.</string>

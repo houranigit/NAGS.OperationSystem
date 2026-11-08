@@ -40,8 +40,8 @@ internal fun FlightServiceSection(
         Text(stringResource(R.string.work_services_count, items.size), Modifier.padding(horizontal = 14.dp, vertical = 2.dp).semantics { heading() },
             style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary)
-        val serviceBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-        items.forEach { item -> key(item.id) {
+        val serviceBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
+        items.forEachIndexed { index, item -> key(item.id) {
             Box(Modifier.fillMaxWidth().drawWithContent {
                 drawContent()
                 // Physical left in both locales; the quiet rule binds the tall service group.
@@ -56,7 +56,7 @@ internal fun FlightServiceSection(
                         onChange { current -> current.map { if (it.id == item.id) change(it) else it } }
                     FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, description),
                         onRemove = { onChange { current -> current.filterNot { it.id == item.id } } }, compactDelete = true) {
-                        FlightWorkChoiceRow(stringResource(R.string.work_service),
+                        FlightWorkChoiceRow(stringResource(R.string.work_service, index + 1),
                             item.serviceName.ifBlank { stringResource(R.string.work_select_service) },
                             stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp,
                             onClick = { selectingService = item.id })
@@ -77,7 +77,7 @@ internal fun FlightServiceSection(
             }
         } }
         FlightFormFieldGroup {
-            FlightWorkAddRow(stringResource(R.string.work_add_service), onClick = {
+            FlightWorkAddRow(stringResource(R.string.work_add_service, items.size + 1), onClick = {
                 val added = FlightServiceDraft()
                 onChange { current -> current + added }
             })

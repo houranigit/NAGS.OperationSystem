@@ -50,12 +50,12 @@ internal fun FlightWorkEmployeeList(
         pickerOpen = true
     }
 
-    FlightWorkDetailsHeading(stringResource(R.string.work_employees))
-    items.forEach { item ->
+    FlightWorkDetailsHeading(stringResource(R.string.work_employees, items.size))
+    items.forEachIndexed { index, item ->
         key(item.id) {
             FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, item.employeeName),
                 onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
-                FlightWorkChoiceRow(stringResource(R.string.work_performed_by), item.employeeName,
+                FlightWorkChoiceRow(stringResource(R.string.work_staff_number, index + 1), item.employeeName,
                     stringResource(R.string.work_select_employee), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
             }
             FlightFormDivider()
@@ -67,7 +67,7 @@ internal fun FlightWorkEmployeeList(
             FlightFormDivider()
         }
     }
-    FlightWorkAddRow(stringResource(R.string.work_add_employee), onClick = { openPicker(null) })
+    FlightWorkAddRow(stringResource(R.string.work_add_employee, items.size + 1), onClick = { openPicker(null) })
     if (pickerOpen) FlightWorkPicker(
         title = stringResource(R.string.work_select_employee),
         searchLabel = stringResource(R.string.work_search_employees),

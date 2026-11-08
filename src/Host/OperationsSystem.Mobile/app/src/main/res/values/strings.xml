@@ -199,8 +199,8 @@
     <string name="cancellation_discard_title">Discard cancellation details?</string>
     <string name="work_services_count">Services (%1$d)</string>
     <string name="work_services">Services</string>
-    <string name="work_service">Service</string>
-    <string name="work_add_service">Add service</string>
+    <string name="work_service">Service %1$d</string>
+    <string name="work_add_service">Add Service %1$d</string>
     <string name="work_select_service">Select service</string>
     <string name="work_search_services">Search services</string>
     <string name="work_no_services">No services are available in saved data.</string>
@@ -225,9 +225,9 @@
     <string name="work_customer_reference">Customer ref.</string>
     <string name="work_delete">Delete</string>
     <string name="work_remove_item">Remove %1$s</string>
-    <string name="work_employees">Employees</string>
-    <string name="work_performed_by">Performed by</string>
-    <string name="work_add_employee">Add employee</string>
+    <string name="work_employees">Performed By (%1$d)</string>
+    <string name="work_staff_number">Staff %1$d</string>
+    <string name="work_add_employee">Add Staff %1$d</string>
     <string name="work_select_employee">Select employee</string>
     <string name="work_search_employees">Search employees</string>
     <string name="work_no_employees">No employees are available in saved data.</string>
