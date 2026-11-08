@@ -13,6 +13,8 @@ public sealed class FlightServiceConfiguration : IEntityTypeConfiguration<Flight
         builder.Property(s => s.Id).ValueGeneratedNever();
         builder.HasIndex(s => s.FlightId);
         builder.Property(s => s.EndedByUserId);
+        builder.Property(s => s.CustomerReferenceNumber).HasMaxLength(200);
+        builder.Property(s => s.Notes).HasMaxLength(2000);
 
         builder.OwnsOne(s => s.Service, service =>
         {
@@ -41,6 +43,9 @@ public sealed class FlightServicePerformerConfiguration : IEntityTypeConfigurati
         builder.HasKey(p => p.Id);
         builder.Property(p => p.Id).ValueGeneratedNever();
         builder.HasIndex(p => p.FlightServiceId);
+        // EF-only index property shares the snapshot column; Employee owns the staff identity.
+        builder.Property<Guid>("StaffMemberId").HasColumnName("StaffMemberId").IsRequired();
+        builder.HasIndex(nameof(FlightServicePerformer.FlightServiceId), "StaffMemberId").IsUnique();
 
         builder.OwnsOne(p => p.Employee, employee =>
         {
@@ -70,9 +75,10 @@ public sealed class FlightServiceAttachmentConfiguration : IEntityTypeConfigurat
 
         builder.OwnsOne(a => a.Details, details =>
         {
-            details.Property(d => d.FileName).HasColumnName("FileName").IsRequired();
-            details.Property(d => d.StorageKey).HasColumnName("StorageKey").IsRequired();
-            details.Property(d => d.ContentType).HasColumnName("ContentType").IsRequired();
+            details.Property(d => d.Kind).HasColumnName("Kind").HasConversion<int>().IsRequired();
+            details.Property(d => d.FileName).HasColumnName("FileName").HasMaxLength(255).IsRequired();
+            details.Property(d => d.StorageKey).HasColumnName("StorageKey").HasMaxLength(500).IsRequired();
+            details.Property(d => d.ContentType).HasColumnName("ContentType").HasMaxLength(100).IsRequired();
             details.Property(d => d.SizeBytes).HasColumnName("SizeBytes").IsRequired();
         });
         builder.Navigation(a => a.Details).IsRequired();

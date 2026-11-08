@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Seeding;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 using Shouldly;
@@ -38,7 +39,7 @@ public sealed class FlightServiceTests
     [Fact]
     public void AttachmentDetails_TrimsItsStorageMetadataAndPreservesContentTypeCase()
     {
-        var details = AttachmentDetails.Create(" Evidence.jpg ", " operations/evidence.jpg ", " Image/JPEG ", 200).Value;
+        var details = AttachmentDetails.Create(" Evidence.jpg ", " operations/evidence.jpg ", " Image/JPEG ", 200, AttachmentKind.Image).Value;
 
         details.FileName.ShouldBe("Evidence.jpg");
         details.StorageKey.ShouldBe("operations/evidence.jpg");
@@ -55,7 +56,7 @@ public sealed class FlightServiceTests
     public void AttachmentDetails_RequiresFileAndStorageMetadataAndPositiveSize(string? fileName, string? storageKey,
         string? contentType, long size, string errorCode)
     {
-        var result = AttachmentDetails.Create(fileName, storageKey, contentType, size);
+        var result = AttachmentDetails.Create(fileName, storageKey, contentType, size, AttachmentKind.Image);
 
         result.Error.Code.ShouldBe(errorCode);
     }
@@ -205,7 +206,7 @@ public sealed class FlightServiceTests
     }
 
     [Fact]
-    public void ServicesAndPerformers_AllowRepeatedServiceOccurrencesAndEmployeeWorkPeriods()
+    public void RepeatedServiceOccurrences_AllowAnEmployeeOnEachService_ButNotTwiceOnOneService()
     {
         var flight = ScheduleFlight();
         var selectedService = TestData.Service();
@@ -214,17 +215,22 @@ public sealed class FlightServiceTests
         var employee = TestData.Staff();
         var firstPeriod = flight.AddServicePerformer(first.Id, employee, Window(), Guid.NewGuid(), TestData.Now.AddMinutes(2)).Value;
         var secondWindow = TimeWindow.Create(TestData.Now.AddHours(2), null).Value;
-        var secondPeriod = flight.AddServicePerformer(first.Id, employee, secondWindow, Guid.NewGuid(), TestData.Now.AddMinutes(3)).Value;
+        var secondPeriod = flight.AddServicePerformer(second.Id, employee, secondWindow, Guid.NewGuid(), TestData.Now.AddMinutes(3)).Value;
+        var previousTime = flight.UpdatedAtUtc;
+
+        var duplicate = flight.AddServicePerformer(first.Id, employee, secondWindow, Guid.NewGuid(), TestData.Now.AddMinutes(4));
 
         flight.Services.Count.ShouldBe(2);
         first.Id.ShouldNotBe(second.Id);
         first.Service.ShouldBe(second.Service);
-        first.Performers.Count.ShouldBe(2);
+        first.Performers.ShouldHaveSingleItem().ShouldBeSameAs(firstPeriod);
         firstPeriod.Id.ShouldNotBe(secondPeriod.Id);
         firstPeriod.Employee.ShouldBe(employee);
         secondPeriod.Employee.ShouldBe(employee);
         secondPeriod.Window.ShouldBe(secondWindow);
-        second.Performers.ShouldBeEmpty();
+        second.Performers.ShouldHaveSingleItem().ShouldBeSameAs(secondPeriod);
+        duplicate.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeAssignmentsRequired");
+        flight.UpdatedAtUtc.ShouldBe(previousTime);
     }
 
     [Fact]
@@ -237,7 +243,7 @@ public sealed class FlightServiceTests
         var performer = flight.AddServicePerformer(service.Id, TestData.Staff(), Window(), Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
         var attachment = flight.AddServiceAttachment(service.Id, Attachment(), Guid.NewGuid(), TestData.Now.AddMinutes(2)).Value;
         var changedService = TestData.Service();
-        var changedWindow = TimeWindow.Create(TestData.Now.AddHours(3), TestData.Now.AddHours(4)).Value;
+        var changedWindow = TimeWindow.Create(TestData.Now.AddHours(-1), TestData.Now.AddHours(4)).Value;
         var editor = Guid.NewGuid();
         var updatedAt = TestData.Now.AddMinutes(3).ToOffset(TimeSpan.FromHours(3));
 
@@ -283,14 +289,14 @@ public sealed class FlightServiceTests
     }
 
     [Fact]
-    public void PerformerEditsAndRemoval_KeepOtherWorkPeriodsAndAttachments_WithoutWindowContainmentRules()
+    public void PerformerEditsAndRemoval_KeepOtherEmployeesAndAttachments()
     {
         var flight = ScheduleFlight();
         var service = AddService(flight);
         var employee = TestData.Staff();
-        var outsideWindow = TimeWindow.Create(TestData.Now.AddHours(-4), TestData.Now.AddHours(-3)).Value;
-        var first = flight.AddServicePerformer(service.Id, employee, outsideWindow, Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
-        var second = flight.AddServicePerformer(service.Id, employee, Window(), Guid.NewGuid(), TestData.Now.AddMinutes(2)).Value;
+        var first = flight.AddServicePerformer(service.Id, employee, Window(), Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
+        var otherEmployee = TestData.Staff();
+        var second = flight.AddServicePerformer(service.Id, otherEmployee, Window(), Guid.NewGuid(), TestData.Now.AddMinutes(2)).Value;
         var attachment = flight.AddServiceAttachment(service.Id, Attachment(), Guid.NewGuid(), TestData.Now.AddMinutes(3)).Value;
         var changedEmployee = TestData.Staff();
         var changedWindow = TimeWindow.Create(TestData.Now.AddHours(3), null).Value;
@@ -309,7 +315,7 @@ public sealed class FlightServiceTests
         flight.RemoveServicePerformer(service.Id, first.Id, editor, updatedAt.AddMinutes(1)).IsSuccess.ShouldBeTrue();
 
         service.Performers.ShouldHaveSingleItem().ShouldBeSameAs(second);
-        second.Employee.ShouldBe(employee);
+        second.Employee.ShouldBe(otherEmployee);
         service.Attachments.ShouldHaveSingleItem().ShouldBeSameAs(attachment);
         service.UpdatedAtUtc.ShouldBe(updatedAt.AddMinutes(1).ToUniversalTime());
         flight.UpdatedAtUtc.ShouldBe(updatedAt.AddMinutes(1).ToUniversalTime());
@@ -475,6 +481,209 @@ public sealed class FlightServiceTests
         flight.UpdatedAtUtc.ShouldBe(previousTime);
     }
 
+    [Theory]
+    [InlineData("unknown", "Operations.WorkOrder.UnknownDescriptionRequired")]
+    [InlineData("notes", "Operations.WorkOrder.DescriptionTooLong")]
+    [InlineData("reference", "Operations.WorkOrder.CustomerReferenceNumberTooLong")]
+    [InlineData("per-landing", "Operations.WorkOrder.PerLandingLineNotAllowed")]
+    public void ServiceAddAndUpdate_PreserveReferenceDescriptionAndActualServiceRules(string scenario, string code)
+    {
+        var flight = ScheduleFlight();
+        var selected = scenario switch
+        {
+            "unknown" => new ServiceSnapshot(WellKnownMasterDataIds.UnknownService, "Unknown Service"),
+            "per-landing" => TestData.PerLandingService(),
+            _ => TestData.Service()
+        };
+        var reference = scenario == "reference" ? new string('R', 201) : null;
+        var notes = scenario == "notes" ? new string('N', 2001) : null;
+
+        var added = flight.AddService(selected, reference, Window(), notes, Guid.NewGuid(), TestData.Now);
+
+        added.Error.Code.ShouldBe(code);
+        flight.Services.ShouldBeEmpty();
+        flight.UpdatedAtUtc.ShouldBeNull();
+
+        var service = AddService(flight);
+        var originalService = service.Service;
+        var originalCreator = service.CreatedByUserId;
+        var updated = flight.UpdateService(service.Id, selected, reference, Window(), notes,
+            Guid.NewGuid(), TestData.Now.AddMinutes(1));
+
+        updated.Error.Code.ShouldBe(code);
+        service.Service.ShouldBeSameAs(originalService);
+        service.CreatedByUserId.ShouldBe(originalCreator);
+        service.CustomerReferenceNumber.ShouldBeNull();
+        service.Notes.ShouldBeNull();
+        service.UpdatedAtUtc.ShouldBeNull();
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now);
+    }
+
+    [Fact]
+    public void UnknownService_AllowsRequiredNotesAndTrimmedReferenceAndDescriptionLengthBoundaries()
+    {
+        var flight = ScheduleFlight();
+        var reference = new string('R', 200);
+        var notes = new string('N', 2000);
+
+        var service = flight.AddService(new ServiceSnapshot(WellKnownMasterDataIds.UnknownService, "Unknown Service"),
+            $" {reference} ", Window(), $" {notes} ", Guid.NewGuid(), TestData.Now).Value;
+
+        service.CustomerReferenceNumber.ShouldBe(reference);
+        service.Notes.ShouldBe(notes);
+    }
+
+    [Theory]
+    [InlineData(true, "Operations.WorkOrder.EmployeeFromBeforeLine")]
+    [InlineData(false, "Operations.WorkOrder.EmployeeToAfterLine")]
+    public void ServicePerformer_MustFitTheServiceWindow(bool beforeStart, string code)
+    {
+        var flight = ScheduleFlight();
+        var window = TimeWindow.Create(TestData.Now, TestData.Now.AddHours(1)).Value;
+        var service = flight.AddService(TestData.Service(), null, window, null, Guid.NewGuid(), TestData.Now).Value;
+        var outside = TimeWindow.Create(beforeStart ? TestData.Now.AddMinutes(-1) : TestData.Now,
+            beforeStart ? TestData.Now.AddMinutes(30) : TestData.Now.AddHours(2)).Value;
+
+        var result = flight.AddServicePerformer(service.Id, TestData.Staff(), outside,
+            Guid.NewGuid(), TestData.Now.AddMinutes(1));
+
+        result.Error.Code.ShouldBe(code);
+        service.Performers.ShouldBeEmpty();
+        service.UpdatedAtUtc.ShouldBeNull();
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now);
+    }
+
+    [Fact]
+    public void ServicePerformerUpdate_CannotSelectAnEmployeeAlreadyOnTheService()
+    {
+        var flight = ScheduleFlight();
+        var service = AddService(flight);
+        var user = Guid.NewGuid();
+        var first = flight.AddServicePerformer(service.Id, TestData.Staff(), Window(), user, TestData.Now).Value;
+        var second = flight.AddServicePerformer(service.Id, TestData.Staff(), Window(), user, TestData.Now).Value;
+        var originalEmployee = first.Employee;
+
+        var result = flight.UpdateServicePerformer(service.Id, first.Id, second.Employee, Window(),
+            Guid.NewGuid(), TestData.Now.AddMinutes(1));
+
+        result.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeAssignmentsRequired");
+        first.Employee.ShouldBeSameAs(originalEmployee);
+        service.Performers.Count.ShouldBe(2);
+        service.UpdatedByUserId.ShouldBe(user);
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now);
+    }
+
+    [Fact]
+    public void OpenEmployeePeriod_CannotStartAfterAClosedServiceEnds_AndCannotBeStrandedByClosingItsService()
+    {
+        var flight = ScheduleFlight();
+        var user = Guid.NewGuid();
+        var closedWindow = TimeWindow.Create(TestData.Now, TestData.Now.AddHours(1)).Value;
+        var employeeWindow = TimeWindow.Create(TestData.Now.AddHours(2), null).Value;
+        var closed = flight.AddService(TestData.Service(), null, closedWindow, null, user, TestData.Now).Value;
+
+        var added = flight.AddServicePerformer(closed.Id, TestData.Staff(), employeeWindow, user, TestData.Now.AddMinutes(1));
+
+        added.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeFromAfterLine");
+        closed.Performers.ShouldBeEmpty();
+        closed.UpdatedAtUtc.ShouldBeNull();
+
+        var open = AddService(flight);
+        var originalWindow = open.Window;
+        var performer = flight.AddServicePerformer(open.Id, TestData.Staff(), employeeWindow, user, TestData.Now).Value;
+        var updated = flight.UpdateService(open.Id, open.Service, "NEW", closedWindow, "NEW", Guid.NewGuid(),
+            TestData.Now.AddMinutes(1));
+
+        updated.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeFromAfterLine");
+        open.Window.ShouldBeSameAs(originalWindow);
+        open.CustomerReferenceNumber.ShouldBeNull();
+        open.Notes.ShouldBeNull();
+        open.EndedByUserId.ShouldBeNull();
+        open.Performers.ShouldHaveSingleItem().ShouldBeSameAs(performer);
+        open.UpdatedByUserId.ShouldBe(user);
+        open.UpdatedAtUtc.ShouldBe(TestData.Now);
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now);
+    }
+
+    [Theory]
+    [InlineData(true, "Operations.WorkOrder.EmployeeFromBeforeLine")]
+    [InlineData(false, "Operations.WorkOrder.EmployeeToAfterLine")]
+    public void ServiceWindowUpdate_RevalidatesRetainedEmployeesBeforeChangingAnyDetails(bool moveStart, string code)
+    {
+        var flight = ScheduleFlight();
+        var service = AddService(flight);
+        var creator = service.CreatedByUserId;
+        var performer = flight.AddServicePerformer(service.Id, TestData.Staff(),
+            TimeWindow.Create(TestData.Now.AddMinutes(15), TestData.Now.AddMinutes(90)).Value,
+            creator, TestData.Now).Value;
+        var originalService = service.Service;
+        var originalWindow = service.Window;
+        var changed = TimeWindow.Create(moveStart ? TestData.Now.AddMinutes(30) : TestData.Now,
+            moveStart ? null : TestData.Now.AddMinutes(60)).Value;
+
+        var result = flight.UpdateService(service.Id, TestData.Service(), "NEW", changed, "NEW",
+            Guid.NewGuid(), TestData.Now.AddMinutes(1));
+
+        result.Error.Code.ShouldBe(code);
+        service.Service.ShouldBeSameAs(originalService);
+        service.Window.ShouldBeSameAs(originalWindow);
+        service.CustomerReferenceNumber.ShouldBeNull();
+        service.Notes.ShouldBeNull();
+        service.EndedByUserId.ShouldBeNull();
+        service.UpdatedByUserId.ShouldBe(creator);
+        service.Performers.ShouldHaveSingleItem().ShouldBeSameAs(performer);
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now);
+    }
+
+    [Fact]
+    public void ServiceAttachmentLimit_AllowsTenAndReleasesCapacityAfterRemoval()
+    {
+        var flight = ScheduleFlight();
+        var service = AddService(flight);
+        var user = Guid.NewGuid();
+        for (var index = 0; index < 10; index++)
+            flight.AddServiceAttachment(service.Id, Attachment($"evidence-{index}.jpg"), user, TestData.Now).IsSuccess.ShouldBeTrue();
+        var first = service.Attachments[0];
+
+        var extra = flight.AddServiceAttachment(service.Id, Attachment("extra.jpg"), Guid.NewGuid(), TestData.Now.AddMinutes(1));
+
+        extra.Error.Code.ShouldBe("Operations.WorkOrder.AttachmentLimitExceeded");
+        service.Attachments.Count.ShouldBe(10);
+        service.UpdatedByUserId.ShouldBe(user);
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now);
+
+        flight.RemoveServiceAttachment(service.Id, first.Id, user, TestData.Now).IsSuccess.ShouldBeTrue();
+        flight.AddServiceAttachment(service.Id, Attachment("replacement.jpg"), user, TestData.Now).IsSuccess.ShouldBeTrue();
+        service.Attachments.Count.ShouldBe(10);
+        service.Attachments.ShouldAllBe(item => item.Id != first.Id);
+    }
+
+    [Theory]
+    [InlineData(AttachmentKind.Image)]
+    [InlineData(AttachmentKind.Voice)]
+    [InlineData(AttachmentKind.Document)]
+    public void AttachmentDetails_PreservesExplicitKindAndNormalizesTheStoredFileName(AttachmentKind kind)
+    {
+        var details = AttachmentDetails.Create($" folder/{new string('a', 300)}.jpg ", " key ", " type ", 1, kind).Value;
+
+        details.Kind.ShouldBe(kind);
+        details.FileName.ShouldBe(new string('a', 255));
+        details.StorageKey.ShouldBe("key");
+        details.ContentType.ShouldBe("type");
+    }
+
+    [Fact]
+    public void AttachmentDetails_EnforcesKindAndStorageMetadataLengthBoundaries()
+    {
+        var valid = AttachmentDetails.Create("file.jpg", new string('k', 500), new string('m', 100), 1, AttachmentKind.Image);
+        valid.IsSuccess.ShouldBeTrue();
+        AttachmentDetails.Create("file.jpg", new string('k', 501), "image/jpeg", 1, AttachmentKind.Image).IsFailure.ShouldBeTrue();
+        AttachmentDetails.Create("file.jpg", "key", new string('m', 101), 1, AttachmentKind.Image).IsFailure.ShouldBeTrue();
+        AttachmentDetails.Create("file.jpg", "key", "image/jpeg", 1, (AttachmentKind)99).IsFailure.ShouldBeTrue();
+        AttachmentDetails.Create("file.jpg", "key", "image/jpeg", 1, AttachmentKind.Image).Value
+            .ShouldNotBe(AttachmentDetails.Create("file.jpg", "key", "image/jpeg", 1, AttachmentKind.Voice).Value);
+    }
+
     private static Flight ScheduleFlight() =>
         Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
             TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now).Value;
@@ -485,5 +694,5 @@ public sealed class FlightServiceTests
     private static TimeWindow Window() => TimeWindow.Create(TestData.Now, null).Value;
 
     private static AttachmentDetails Attachment(string fileName = "evidence.jpg") =>
-        AttachmentDetails.Create(fileName, $"operations/{fileName}", "image/jpeg", 200).Value;
+        AttachmentDetails.Create(fileName, $"operations/{fileName}", "image/jpeg", 200, AttachmentKind.Image).Value;
 }

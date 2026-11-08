@@ -12,6 +12,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
     : IClassFixture<FlightServicePersistenceTests.DatabaseFixture>
 {
     private const string CancellationBaseline = "20261108190121_Operations_FlightCancellationSubmissions";
+    private const string ServiceMigration = "20261108201817_Operations_FlightServices";
     private static readonly DateTimeOffset Now = new(2026, 11, 8, 15, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -40,12 +41,14 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         var canceledVersion = canceledFlight.RowVersion.ToArray();
         db.ChangeTracker.Clear();
 
-        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync(ServiceMigration);
 
         var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         appliedMigrations.Length.ShouldBe(previousMigrations.Length + 1);
         appliedMigrations.Take(previousMigrations.Length).ShouldBe(previousMigrations);
         appliedMigrations.Last().ShouldEndWith("_Operations_FlightServices");
+        // Current mappings include metadata added after this published historical migration.
+        await db.Database.MigrateAsync();
         var operational = await LoadFlightAsync(db, operationalFlight.Id);
         operational.Customer.ShouldBe(operationalFlight.Customer);
         operational.Station.ShouldBe(operationalFlight.Station);
@@ -81,7 +84,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
     }
 
     [Fact]
-    public async Task Service_graph_round_trips_repeated_catalog_and_employee_periods_and_keeps_child_ids_on_edits()
+    public async Task Service_graph_round_trips_repeated_catalog_and_distinct_employees_and_keeps_child_ids_on_edits()
     {
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
@@ -95,10 +98,11 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         var service = flight.AddService(catalog, "  CUSTOMER-REF  ", openWindow, "  Service notes  ", createdBy, Now.AddMinutes(1)).Value;
         var repeatedService = flight.AddService(catalog, null, openWindow, null, createdBy, Now.AddMinutes(1)).Value;
         var firstPerformer = flight.AddServicePerformer(service.Id, employee, openWindow, performerUser, Now.AddMinutes(2)).Value;
-        var earlierPeriod = TimeWindow.Create(Now.AddHours(-1), Now.AddMinutes(-30)).Value;
-        var secondPerformer = flight.AddServicePerformer(service.Id, employee, earlierPeriod, performerUser, Now.AddMinutes(2)).Value;
+        var earlierPeriod = TimeWindow.Create(Now.AddMinutes(5), Now.AddMinutes(10)).Value;
+        var secondEmployee = Employee("Second performing engineer", "E201");
+        var secondPerformer = flight.AddServicePerformer(service.Id, secondEmployee, earlierPeriod, performerUser, Now.AddMinutes(2)).Value;
         var image = Attachment("service.jpg", "services/service.jpg", "image/jpeg", 4096);
-        var voice = Attachment("voice.m4a", "services/voice.m4a", "audio/mp4", 2048);
+        var voice = Attachment("voice.m4a", "services/voice.m4a", "audio/mp4", 2048, AttachmentKind.Voice);
         var firstAttachment = flight.AddServiceAttachment(service.Id, image, uploadedBy,
             Now.AddMinutes(3).ToOffset(TimeSpan.FromHours(3))).Value;
         var secondAttachment = flight.AddServiceAttachment(service.Id, voice, uploadedBy, Now.AddMinutes(3)).Value;
@@ -124,7 +128,8 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         persisted.UpdatedByUserId.ShouldBe(uploadedBy);
         persisted.UpdatedAtUtc.ShouldBe(Now.AddMinutes(3));
         persisted.Performers.Count.ShouldBe(2);
-        persisted.Performers.ShouldAllBe(item => item.Employee.StaffMemberId == employee.StaffMemberId);
+        persisted.Performers.Single(item => item.Id == firstPerformer.Id).Employee.ShouldBe(employee);
+        persisted.Performers.Single(item => item.Id == secondPerformer.Id).Employee.ShouldBe(secondEmployee);
         persisted.Performers.Single(item => item.Id == firstPerformer.Id).Window.ShouldBe(openWindow);
         persisted.Performers.Single(item => item.Id == secondPerformer.Id).Window.ShouldBe(earlierPeriod);
         persisted.Attachments.Count.ShouldBe(2);
@@ -142,12 +147,13 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
 
         var updatedBy = Guid.NewGuid();
         var performerEditor = Guid.NewGuid();
+        var replacementEmployee = Employee("Replacement engineer", "E202");
         var changedCatalog = new ServiceSnapshot(Guid.NewGuid(), "Updated service selection");
         var closedWindow = TimeWindow.Create(Now, Now.AddHours(2)).Value;
         var closedPerformerWindow = TimeWindow.Create(Now, Now.AddHours(1)).Value;
         reloaded.UpdateService(service.Id, changedCatalog, "UPDATED-REF", closedWindow, "Updated notes",
             updatedBy, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
-        reloaded.UpdateServicePerformer(service.Id, firstPerformer.Id, employee, closedPerformerWindow,
+        reloaded.UpdateServicePerformer(service.Id, firstPerformer.Id, replacementEmployee, closedPerformerWindow,
             performerEditor, Now.AddMinutes(5)).IsSuccess.ShouldBeTrue();
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -165,6 +171,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         persisted.UpdatedAtUtc.ShouldBe(Now.AddMinutes(5));
         persisted.Performers.Select(item => item.Id).OrderBy(id => id)
             .ShouldBe(new[] { firstPerformer.Id, secondPerformer.Id }.OrderBy(id => id));
+        persisted.Performers.Single(item => item.Id == firstPerformer.Id).Employee.ShouldBe(replacementEmployee);
         persisted.Performers.Single(item => item.Id == firstPerformer.Id).Window.ShouldBe(closedPerformerWindow);
         persisted.Performers.Single(item => item.Id == secondPerformer.Id).Window.ShouldBe(earlierPeriod);
         persisted.Attachments.Select(item => item.Id).OrderBy(id => id)
@@ -309,6 +316,53 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         preservedForeign.Id.ShouldBe(foreign.Id);
         preservedForeign.Performers.ShouldHaveSingleItem().Id.ShouldBe(foreign.Performers.Single().Id);
         preservedForeign.Attachments.ShouldHaveSingleItem().Id.ShouldBe(foreign.Attachments.Single().Id);
+    }
+
+    [Fact]
+    public async Task Service_employee_uniqueness_and_invalid_parent_edits_preserve_the_existing_graph()
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync();
+        var actor = Guid.NewGuid();
+        var flight = ScheduleFlight();
+        var employee = Employee("Performing engineer", "E350");
+        var service = AddGraph(flight, employee, actor, Now.AddMinutes(1));
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var reloaded = await LoadFlightAsync(db, flight.Id);
+        var persisted = reloaded.Services.ShouldHaveSingleItem();
+        var version = reloaded.RowVersion.ToArray();
+        reloaded.AddServicePerformer(service.Id, employee, Window(), actor, Now.AddMinutes(2)).IsFailure.ShouldBeTrue();
+        var incompatibleParent = TimeWindow.Create(Now.AddMinutes(1), null).Value;
+        reloaded.UpdateService(service.Id, persisted.Service, "Should not apply", incompatibleParent, "Should not apply",
+            actor, Now.AddMinutes(2)).IsFailure.ShouldBeTrue();
+        reloaded.UpdateService(service.Id, persisted.Service, new string('R', 201), persisted.Window, persisted.Notes,
+            actor, Now.AddMinutes(2)).IsFailure.ShouldBeTrue();
+        reloaded.UpdateService(service.Id, persisted.Service, persisted.CustomerReferenceNumber, persisted.Window,
+            new string('N', 2001), actor, Now.AddMinutes(2)).IsFailure.ShouldBeTrue();
+        (await db.SaveChangesAsync()).ShouldBe(0);
+        reloaded.RowVersion.ShouldBe(version);
+        var performerId = persisted.Performers.ShouldHaveSingleItem().Id;
+        var duplicate = await Should.ThrowAsync<SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [operations].[flight_service_performers]
+                ([Id], [FlightServiceId], [StaffMemberId], [StaffFullName], [StaffEmployeeId], [FromUtc], [ToUtc])
+            SELECT {Guid.NewGuid()}, [FlightServiceId], [StaffMemberId], [StaffFullName], [StaffEmployeeId], [FromUtc], [ToUtc]
+            FROM [operations].[flight_service_performers] WHERE [Id] = {performerId}
+            """));
+        new[] { 2601, 2627 }.ShouldContain(duplicate.Number);
+        db.ChangeTracker.Clear();
+
+        reloaded = await LoadFlightAsync(db, flight.Id);
+        persisted = reloaded.Services.ShouldHaveSingleItem();
+        persisted.CustomerReferenceNumber.ShouldBeNull();
+        persisted.Notes.ShouldBeNull();
+        persisted.Window.ShouldBe(Window());
+        persisted.Performers.ShouldHaveSingleItem().Id.ShouldBe(performerId);
+        persisted.Performers.Single().Employee.ShouldBe(employee);
+        persisted.Attachments.ShouldHaveSingleItem().Id.ShouldBe(service.Attachments.Single().Id);
+        reloaded.RowVersion.ShouldBe(version);
     }
 
     [Fact]
@@ -560,8 +614,8 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
     private static TimeWindow Window() => TimeWindow.Create(Now.ToOffset(TimeSpan.FromHours(3)), null).Value;
 
     private static AttachmentDetails Attachment(string fileName = "service.jpg", string storageKey = "services/service.jpg",
-        string contentType = "image/jpeg", long sizeBytes = 4096) =>
-        AttachmentDetails.Create(fileName, storageKey, contentType, sizeBytes).Value;
+        string contentType = "image/jpeg", long sizeBytes = 4096, AttachmentKind kind = AttachmentKind.Image) =>
+        AttachmentDetails.Create(fileName, storageKey, contentType, sizeBytes, kind).Value;
 
     public sealed class DatabaseFixture : IAsyncLifetime
     {

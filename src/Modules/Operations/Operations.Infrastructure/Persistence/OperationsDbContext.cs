@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Operations.Application.Abstractions;
 using Operations.Domain.Flights;
+using Operations.Domain.ValueObjects;
 
 namespace Operations.Infrastructure.Persistence;
 
@@ -46,13 +47,32 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         var changedServiceFlightIds = serviceEntries.Where(entry => changedServiceIds.Contains(entry.Entity.Id))
             .Select(entry => entry.Entity.FlightId).ToHashSet();
 
+        var taskEntries = ChangeTracker.Entries<FlightTask>().ToList();
+        var changedTaskIds = taskEntries.Where(HasChangedOwnedGraph).Select(entry => entry.Entity.Id).ToHashSet();
+        foreach (var tool in ChangeTracker.Entries<FlightTaskTool>().Where(HasChangedOwnedGraph))
+            changedTaskIds.Add(tool.Entity.FlightTaskId);
+        foreach (var material in ChangeTracker.Entries<FlightTaskMaterial>().Where(HasChangedOwnedGraph))
+            changedTaskIds.Add(material.Entity.FlightTaskId);
+        foreach (var support in ChangeTracker.Entries<FlightTaskGeneralSupport>().Where(HasChangedOwnedGraph))
+            changedTaskIds.Add(support.Entity.FlightTaskId);
+        foreach (var performer in ChangeTracker.Entries<FlightTaskPerformer>().Where(HasChangedOwnedGraph))
+            changedTaskIds.Add(performer.Entity.FlightTaskId);
+        foreach (var attachment in ChangeTracker.Entries<FlightTaskAttachment>().Where(HasChangedOwnedGraph))
+            changedTaskIds.Add(attachment.Entity.FlightTaskId);
+        // A removed optional chapter is no longer reachable through the task's current reference.
+        foreach (var chapter in ChangeTracker.Entries<AtaChapterSnapshot>().Where(HasChangedOwnedGraph))
+            changedTaskIds.Add(chapter.Property<Guid>("FlightTaskId").CurrentValue);
+        var changedTaskFlightIds = taskEntries.Where(entry => changedTaskIds.Contains(entry.Entity.Id))
+            .Select(entry => entry.Entity.FlightId).ToHashSet();
+
         foreach (var flight in ChangeTracker.Entries<Flight>()
             .Where(entry => entry.State is EntityState.Unchanged or EntityState.Modified).ToList())
         {
             if (flight.Entity.ArrivalSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
                 || flight.Entity.DepartureSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
                 || flight.Entity.CancellationSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
-                || changedServiceFlightIds.Contains(flight.Entity.Id))
+                || changedServiceFlightIds.Contains(flight.Entity.Id)
+                || changedTaskFlightIds.Contains(flight.Entity.Id))
             {
                 // Force the flight rowversion check even when the supplied timestamp is unchanged.
                 flight.Property(item => item.UpdatedAtUtc).IsModified = true;

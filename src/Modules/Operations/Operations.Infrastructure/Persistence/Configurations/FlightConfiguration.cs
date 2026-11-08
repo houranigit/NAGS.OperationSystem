@@ -57,6 +57,7 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
         builder.HasMany(f => f.DepartureSubmissions).WithOne().HasForeignKey(d => d.FlightId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(f => f.CancellationSubmissions).WithOne().HasForeignKey(c => c.FlightId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(f => f.Services).WithOne().HasForeignKey(s => s.FlightId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(f => f.Tasks).WithOne().HasForeignKey(t => t.FlightId).OnDelete(DeleteBehavior.Cascade);
 
         builder.Ignore(f => f.IsPerLanding);
         builder.Ignore(f => f.DomainEvents);

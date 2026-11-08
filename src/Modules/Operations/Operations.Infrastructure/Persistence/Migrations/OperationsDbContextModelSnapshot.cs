@@ -247,7 +247,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("CustomerReferenceNumber")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<Guid?>("EndedByUserId")
                         .HasColumnType("uniqueidentifier");
@@ -256,7 +257,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<DateTimeOffset?>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -300,11 +302,198 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("FlightServiceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("StaffMemberId")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("StaffMemberId");
+
                     b.HasKey("Id");
 
                     b.HasIndex("FlightServiceId");
 
+                    b.HasIndex("FlightServiceId", "StaffMemberId")
+                        .IsUnique();
+
                     b.ToTable("flight_service_performers", "operations");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CustomerReferenceNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("EndedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("TaskType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightId");
+
+                    b.ToTable("flight_tasks", "operations");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightTaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UploadedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightTaskId");
+
+                    b.ToTable("flight_task_attachments", "operations");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskGeneralSupport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightTaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("GeneralSupportId")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("GeneralSupportId");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightTaskId");
+
+                    b.HasIndex("FlightTaskId", "GeneralSupportId")
+                        .IsUnique();
+
+                    b.ToTable("flight_task_general_supports", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_flight_task_general_supports_ResourceUsage", "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))");
+                        });
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskMaterial", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightTaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MaterialId")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("MaterialId");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightTaskId");
+
+                    b.HasIndex("FlightTaskId", "MaterialId")
+                        .IsUnique();
+
+                    b.ToTable("flight_task_materials", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_flight_task_materials_ResourceUsage", "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))");
+                        });
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskPerformer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightTaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("StaffMemberId")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("StaffMemberId");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightTaskId");
+
+                    b.HasIndex("FlightTaskId", "StaffMemberId")
+                        .IsUnique();
+
+                    b.ToTable("flight_task_performers", "operations");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskTool", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightTaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ToolId")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("ToolId");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightTaskId");
+
+                    b.HasIndex("FlightTaskId", "ToolId")
+                        .IsUnique();
+
+                    b.ToTable("flight_task_tools", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_flight_task_tools_ResourceUsage", "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))");
+                        });
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.PlannedService", b =>
@@ -939,13 +1128,19 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                             b1.Property<string>("ContentType")
                                 .IsRequired()
-                                .HasColumnType("nvarchar(max)")
+                                .HasMaxLength(100)
+                                .HasColumnType("nvarchar(100)")
                                 .HasColumnName("ContentType");
 
                             b1.Property<string>("FileName")
                                 .IsRequired()
-                                .HasColumnType("nvarchar(max)")
+                                .HasMaxLength(255)
+                                .HasColumnType("nvarchar(255)")
                                 .HasColumnName("FileName");
+
+                            b1.Property<int>("Kind")
+                                .HasColumnType("int")
+                                .HasColumnName("Kind");
 
                             b1.Property<long>("SizeBytes")
                                 .HasColumnType("bigint")
@@ -953,7 +1148,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                             b1.Property<string>("StorageKey")
                                 .IsRequired()
-                                .HasColumnType("nvarchar(max)")
+                                .HasMaxLength(500)
+                                .HasColumnType("nvarchar(500)")
                                 .HasColumnName("StorageKey");
 
                             b1.HasKey("FlightServiceAttachmentId");
@@ -994,6 +1190,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                                 .HasColumnName("StaffFullName");
 
                             b1.Property<Guid>("StaffMemberId")
+                                .ValueGeneratedOnUpdateSometimes()
                                 .HasColumnType("uniqueidentifier")
                                 .HasColumnName("StaffMemberId");
 
@@ -1030,6 +1227,397 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Window")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTask", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.Flight", null)
+                        .WithMany("Tasks")
+                        .HasForeignKey("FlightId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("FlightTaskId");
+
+                            b1.ToTable("flight_tasks", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.AtaChapterSnapshot", "AtaChapter", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<Guid>("AtaChapterId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("AtaChapterId");
+
+                            b1.Property<string>("Code")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)")
+                                .HasColumnName("AtaChapterCode");
+
+                            b1.Property<string>("Title")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("AtaChapterTitle");
+
+                            b1.HasKey("FlightTaskId");
+
+                            b1.ToTable("flight_tasks", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskId");
+                        });
+
+                    b.Navigation("AtaChapter");
+
+                    b.Navigation("Window")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskAttachment", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightTask", null)
+                        .WithMany("Attachments")
+                        .HasForeignKey("FlightTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.AttachmentDetails", "Details", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskAttachmentId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("ContentType")
+                                .IsRequired()
+                                .HasMaxLength(100)
+                                .HasColumnType("nvarchar(100)")
+                                .HasColumnName("ContentType");
+
+                            b1.Property<string>("FileName")
+                                .IsRequired()
+                                .HasMaxLength(255)
+                                .HasColumnType("nvarchar(255)")
+                                .HasColumnName("FileName");
+
+                            b1.Property<int>("Kind")
+                                .HasColumnType("int")
+                                .HasColumnName("Kind");
+
+                            b1.Property<long>("SizeBytes")
+                                .HasColumnType("bigint")
+                                .HasColumnName("SizeBytes");
+
+                            b1.Property<string>("StorageKey")
+                                .IsRequired()
+                                .HasMaxLength(500)
+                                .HasColumnType("nvarchar(500)")
+                                .HasColumnName("StorageKey");
+
+                            b1.HasKey("FlightTaskAttachmentId");
+
+                            b1.ToTable("flight_task_attachments", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskAttachmentId");
+                        });
+
+                    b.Navigation("Details")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskGeneralSupport", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightTask", null)
+                        .WithMany("GeneralSupports")
+                        .HasForeignKey("FlightTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.ResourceUsage", "Usage", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskGeneralSupportId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset?>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<decimal?>("Quantity")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Quantity");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("FlightTaskGeneralSupportId");
+
+                            b1.ToTable("flight_task_general_supports", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskGeneralSupportId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.GeneralSupportSnapshot", "GeneralSupport", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskGeneralSupportId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("CalculationType")
+                                .HasColumnType("int")
+                                .HasDefaultValue(0)
+                                .HasColumnName("CalculationType");
+
+                            b1.Property<Guid>("GeneralSupportId")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("GeneralSupportId");
+
+                            b1.Property<string>("Name")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("GeneralSupportName");
+
+                            b1.HasKey("FlightTaskGeneralSupportId");
+
+                            b1.ToTable("flight_task_general_supports", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskGeneralSupportId");
+                        });
+
+                    b.Navigation("GeneralSupport")
+                        .IsRequired();
+
+                    b.Navigation("Usage")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskMaterial", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightTask", null)
+                        .WithMany("Materials")
+                        .HasForeignKey("FlightTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.ResourceUsage", "Usage", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskMaterialId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset?>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<decimal?>("Quantity")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Quantity");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("FlightTaskMaterialId");
+
+                            b1.ToTable("flight_task_materials", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskMaterialId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.MaterialSnapshot", "Material", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskMaterialId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("CalculationType")
+                                .HasColumnType("int")
+                                .HasDefaultValue(0)
+                                .HasColumnName("CalculationType");
+
+                            b1.Property<Guid>("MaterialId")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("MaterialId");
+
+                            b1.Property<string>("Name")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("MaterialName");
+
+                            b1.HasKey("FlightTaskMaterialId");
+
+                            b1.ToTable("flight_task_materials", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskMaterialId");
+                        });
+
+                    b.Navigation("Material")
+                        .IsRequired();
+
+                    b.Navigation("Usage")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskPerformer", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightTask", null)
+                        .WithMany("Performers")
+                        .HasForeignKey("FlightTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "Employee", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskPerformerId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("EmployeeId")
+                                .IsRequired()
+                                .HasMaxLength(50)
+                                .HasColumnType("nvarchar(50)")
+                                .HasColumnName("StaffEmployeeId");
+
+                            b1.Property<string>("FullName")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("StaffFullName");
+
+                            b1.Property<Guid>("StaffMemberId")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("StaffMemberId");
+
+                            b1.HasKey("FlightTaskPerformerId");
+
+                            b1.ToTable("flight_task_performers", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskPerformerId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskPerformerId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("FlightTaskPerformerId");
+
+                            b1.ToTable("flight_task_performers", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskPerformerId");
+                        });
+
+                    b.Navigation("Employee")
+                        .IsRequired();
+
+                    b.Navigation("Window")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTaskTool", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightTask", null)
+                        .WithMany("Tools")
+                        .HasForeignKey("FlightTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.ResourceUsage", "Usage", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskToolId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset?>("FromUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("FromUtc");
+
+                            b1.Property<decimal?>("Quantity")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("decimal(18,2)")
+                                .HasColumnName("Quantity");
+
+                            b1.Property<DateTimeOffset?>("ToUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("ToUtc");
+
+                            b1.HasKey("FlightTaskToolId");
+
+                            b1.ToTable("flight_task_tools", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskToolId");
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.ToolSnapshot", "Tool", b1 =>
+                        {
+                            b1.Property<Guid>("FlightTaskToolId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("CalculationType")
+                                .HasColumnType("int")
+                                .HasDefaultValue(1)
+                                .HasColumnName("CalculationType");
+
+                            b1.Property<string>("Name")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("ToolName");
+
+                            b1.Property<Guid>("ToolId")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("ToolId");
+
+                            b1.HasKey("FlightTaskToolId");
+
+                            b1.ToTable("flight_task_tools", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightTaskToolId");
+                        });
+
+                    b.Navigation("Tool")
+                        .IsRequired();
+
+                    b.Navigation("Usage")
                         .IsRequired();
                 });
 
@@ -1081,6 +1669,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("PlannedServices");
 
                     b.Navigation("Services");
+
+                    b.Navigation("Tasks");
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightService", b =>
@@ -1088,6 +1678,19 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Performers");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightTask", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("GeneralSupports");
+
+                    b.Navigation("Materials");
+
+                    b.Navigation("Performers");
+
+                    b.Navigation("Tools");
                 });
 #pragma warning restore 612, 618
         }
