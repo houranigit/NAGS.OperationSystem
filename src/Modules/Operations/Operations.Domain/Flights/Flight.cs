@@ -5,13 +5,14 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Domain.Flights;
 
-/// <summary>A scheduled flight with its planning data and actual arrival and departure submissions.</summary>
+/// <summary>A flight with planning data and mutually exclusive cancellation or operational details.</summary>
 public sealed class Flight : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<PlannedService> _plannedServices = [];
     private readonly List<FlightAssignedEmployee> _assignedEmployees = [];
     private readonly List<FlightArrivalSubmission> _arrivalSubmissions = [];
     private readonly List<FlightDepartureSubmission> _departureSubmissions = [];
+    private readonly List<FlightCancellationSubmission> _cancellationSubmissions = [];
 
     private Flight() { }
 
@@ -33,6 +34,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     public IReadOnlyList<FlightAssignedEmployee> AssignedEmployees => _assignedEmployees.AsReadOnly();
     public IReadOnlyList<FlightArrivalSubmission> ArrivalSubmissions => _arrivalSubmissions.AsReadOnly();
     public IReadOnlyList<FlightDepartureSubmission> DepartureSubmissions => _departureSubmissions.AsReadOnly();
+    public IReadOnlyList<FlightCancellationSubmission> CancellationSubmissions => _cancellationSubmissions.AsReadOnly();
     public bool IsPerLanding => _plannedServices.Any(service => service.IsAircraftPerLanding);
 
     public static Result<Flight> ScheduleNew(
@@ -136,6 +138,46 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
+    /// <summary>Records or updates one employee's cancellation. Existing submission collections must be loaded.</summary>
+    public Result<FlightCancellationSubmission> SubmitCancellation(
+        StaffMemberSnapshot? submittedByEmployee,
+        CancellationDetails? details,
+        Guid submittedByUserId,
+        DateTimeOffset now)
+    {
+        if (submittedByEmployee is null || submittedByEmployee.StaffMemberId == Guid.Empty)
+            return Error.Validation("Submitting employee is required.", "Operations.CancellationSubmission.SubmittedByEmployeeRequired");
+        if (submittedByUserId == Guid.Empty)
+            return Error.Validation("Submitting user is required.", "Operations.CancellationSubmission.SubmittedByUserRequired");
+        if (details is null)
+            return Error.Validation("Cancellation details are required.", "Operations.CancellationSubmission.DetailsRequired");
+        if (_arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0)
+            return Error.Conflict("A flight with operational submissions cannot have cancellation submissions.", "Operations.CancellationSubmission.OperationsAlreadyRecorded");
+
+        var submission = _cancellationSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
+        if (submission is not null)
+        {
+            if (submission.Details == details)
+                return submission;
+
+            submission.UpdateDetails(details, submittedByUserId, now.ToUniversalTime());
+        }
+        else
+        {
+            var isAccepted = _cancellationSubmissions.Count == 0;
+            foreach (var existing in _cancellationSubmissions)
+                existing.ClearAcceptance();
+
+            submission = new FlightCancellationSubmission(Guid.NewGuid(), Id, submittedByEmployee, details,
+                isAccepted, submittedByUserId, now.ToUniversalTime());
+            _cancellationSubmissions.Add(submission);
+        }
+
+        UpdatedAtUtc = now.ToUniversalTime();
+        return submission;
+    }
+
+    /// <summary>Records or updates one employee's arrival. Existing submission collections must be loaded.</summary>
     public Result<FlightArrivalSubmission> SubmitArrival(
         StaffMemberSnapshot? submittedByEmployee,
         ArrivalDetails? details,
@@ -148,6 +190,8 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
             return Error.Validation("Submitting user is required.", "Operations.ArrivalSubmission.SubmittedByUserRequired");
         if (details is null)
             return Error.Validation("Arrival details are required.", "Operations.ArrivalSubmission.DetailsRequired");
+        if (_cancellationSubmissions.Count > 0)
+            return Error.Conflict("A flight with cancellation submissions cannot have arrival submissions.", "Operations.Flight.CancellationSubmitted");
 
         var submission = _arrivalSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
         if (submission is not null)
@@ -172,6 +216,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return submission;
     }
 
+    /// <summary>Records or updates one employee's departure. Existing submission collections must be loaded.</summary>
     public Result<FlightDepartureSubmission> SubmitDeparture(
         StaffMemberSnapshot? submittedByEmployee,
         DepartureDetails? details,
@@ -184,6 +229,8 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
             return Error.Validation("Submitting user is required.", "Operations.DepartureSubmission.SubmittedByUserRequired");
         if (details is null)
             return Error.Validation("Departure details are required.", "Operations.DepartureSubmission.DetailsRequired");
+        if (_cancellationSubmissions.Count > 0)
+            return Error.Conflict("A flight with cancellation submissions cannot have departure submissions.", "Operations.Flight.CancellationSubmitted");
 
         var submission = _departureSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
         if (submission is not null)

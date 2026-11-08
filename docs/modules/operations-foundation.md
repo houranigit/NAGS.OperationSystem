@@ -1,12 +1,12 @@
 # Operations Module Foundation
 
-This is the entry point for the current Operations module. This branch starts from `main` with a flight scheduling baseline: maintain a flight register, create one flight, schedule the same flight on selected dates, and invite employees onto an existing flight. Arrival and departure submissions extend the domain and persistence model only. The Android client supports flight viewing, basic details, and employee invitations; scheduling remains in the web portal. HandOver implementation is excluded. Operational APIs and application workflows will be designed and implemented individually later.
+This is the entry point for the current Operations module. This branch starts from `main` with a flight scheduling baseline: maintain a flight register, create one flight, schedule the same flight on selected dates, and invite employees onto an existing flight. Arrival, departure, and cancellation submissions extend the domain and persistence model only. The Android client supports flight viewing, basic details, and employee invitations; scheduling remains in the web portal. HandOver implementation is excluded. Operational APIs and application workflows will be designed and implemented individually later.
 
 ## Flight data and ownership
 
 `Flight` owns customer, station, operation type, flight number, scheduled arrival/departure, optional aircraft type, planned services, and assigned employees. MasterData remains authoritative for reference records; Operations validates selections through its existing readers and stores snapshots. Planned services and assigned employees are direct flight collections.
 
-Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Beyond the arrival and departure models described below, flight status, original-number history, contract placeholders, merge metadata, actual work, work orders, handover, review, approval, timeline, attachments, reminders, and automatic work creation remain outside this scope. Platform audit capture remains enabled independently of a flight history feature.
+Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Beyond the arrival, departure, and cancellation models described below, flight status, original-number history, contract placeholders, merge metadata, actual work, work orders, handover, review, approval, timeline, attachments, reminders, and automatic work creation remain outside this scope. Platform audit capture remains enabled independently of a flight history feature.
 
 ## Arrival submissions
 
@@ -20,7 +20,15 @@ Each submitting `StaffMemberId` has at most one arrival submission per flight. U
 
 As with arrivals, each submitting `StaffMemberId` has at most one departure submission per flight, and the handler can differ from the submitter. Updates preserve submission identity; unchanged details are a no-op. The first submission is accepted automatically; adding another employee's submission clears acceptance, and multiple records remain unaccepted pending the later approval workflow. Arrival and departure acceptance are independent.
 
-Both slices add domain behavior and persistence only. They add no operational API, portal or mobile input, offline write queue, file upload, or approval selection workflow. Existing flight reads continue to expose their current planning details. Flight statuses, submission prerequisites, and arrival/departure chronology policies remain for the later workflow discussion.
+## Cancellation submissions
+
+`Flight.CancellationSubmissions` owns `FlightCancellationSubmission` entities, each containing a submitting employee snapshot, a `CancellationDetails` value object, acceptance state, and audit metadata. `CanceledAtUtc` is required, rejects the default timestamp, and is normalized to UTC. Remarks are optional, trimmed, and stored as null when blank.
+
+`Flight.SubmitCancellation` keeps at most one submission per submitting `StaffMemberId`. Corrections update only that employee's submission, preserving its identity and other employees' inputs; identical details are a no-op. A sole submission is accepted automatically. Adding another employee's submission clears acceptance, and multiple records remain unaccepted pending the later approval workflow.
+
+Any arrival or departure submission prevents cancellation submissions, and any cancellation submission prevents arrival and departure submissions. This applies to unaccepted records as well. The domain checks loaded collections, so callers must load all three submission collections. For an existing tracked flight, changes to attached arrival, departure, or cancellation submissions or their owned details force the flight's rowversion check in synchronous and asynchronous saves, even when `UpdatedAtUtc` is unchanged. There is no database constraint enforcing exclusivity across tables, so direct SQL bypasses it. Offline conflict resolution remains for the later sync workflow. Planning and roster behavior is unchanged; there is no reopen method.
+
+These models add domain behavior and persistence only. They add no operational API, portal or mobile input, offline write queue, file upload, or approval selection workflow. Existing flight reads continue to expose their current planning details. Flight statuses, further submission prerequisites, and arrival/departure chronology policies remain for the later workflow discussion.
 
 ## Scheduling and validation
 
@@ -74,7 +82,7 @@ The former `operations.db` file and dormant drafts/queued work remain unopened. 
 
 ## Database change
 
-Arrival and departure submissions use additive Operations migrations that preserve existing flight planning data and do not change another module's schema. Generating these migrations does not apply them to configured databases.
+Arrival, departure, and cancellation submissions use additive Operations migrations that preserve existing flight planning and submission data and do not change another module's schema. Cancellation adds an initially empty `operations.flight_cancellation_submissions` table, leaving existing flight, arrival, and departure rows unchanged. Generating these migrations does not apply them to configured databases.
 
 Keep the historical `main` EF migrations unchanged. `Operations_FlightSchedulingBaseline` preserves the existing flights, direct `flight_planned_services`, and `flight_assigned_employees` rows in place, and removes retired work-order, mobile, reminder, history, status, contract, and merge storage plus pending event envelopes for retired Operations contracts. The retained `FlightEmployeeAssigned` invitation contract and platform audit envelopes are preserved. The migration does not require a HandOver operational graph. It does not alter another module's schema or delete stored file blobs.
 
